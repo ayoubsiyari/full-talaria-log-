@@ -17670,10 +17670,12 @@ class OrderManager {
             if (targetId !== undefined && this.tpLines) {
                 const hitLine = this.tpLines.find(tpLine => tpLine.orderId === orderId && tpLine.targetId === targetId);
                 if (hitLine) {
-                    // Remove the SVG elements for this TP line
+                    // Remove ALL SVG elements for this TP line (including P&L label)
                     if (hitLine.line) hitLine.line.remove();
                     if (hitLine.labelBox) hitLine.labelBox.remove();
                     if (hitLine.labelText) hitLine.labelText.remove();
+                    if (hitLine.pnlBox) hitLine.pnlBox.remove();
+                    if (hitLine.pnlText) hitLine.pnlText.remove();
                     if (hitLine.priceBox) hitLine.priceBox.remove();
                     if (hitLine.priceText) hitLine.priceText.remove();
                     if (hitLine.closeBtn) hitLine.closeBtn.remove();
@@ -20243,13 +20245,13 @@ class OrderManager {
         // 4. Wipe all SVG drawing layers (entry/exit markers, connectors, etc.)
         if (this.chart?.svg) {
             this._stripOrderDrawingLayersFromChart(this.chart);
-            this.chart.svg.selectAll('.exit-marker, [class*="exit-marker-"]').remove();
+            this.chart.svg.selectAll('.exit-marker, [class*="exit-marker-"], .partial-close-marker, [class*="partial-close-marker-"]').remove();
         }
         const layoutCharts = typeof this._collectLayoutCharts === 'function'
             ? this._collectLayoutCharts() : [];
         layoutCharts.forEach(c => {
             this._stripOrderDrawingLayersFromChart(c);
-            if (c?.svg) c.svg.selectAll('.exit-marker, [class*="exit-marker-"]').remove();
+            if (c?.svg) c.svg.selectAll('.exit-marker, [class*="exit-marker-"], .partial-close-marker, [class*="partial-close-marker-"]').remove();
         });
 
         // 5. Reset in-memory visual arrays
@@ -20261,6 +20263,7 @@ class OrderManager {
         this.pendingTargetLines = [];
         this.entryMarkers = [];
         this.exitMarkers = [];
+        this.partialCloseMarkers = [];
         this.tradeConnectors = [];
         this.mfeMaeMarkers = [];
 
@@ -20779,7 +20782,8 @@ class OrderManager {
 
     /**
      * Draw partial close marker on chart (for TP partial hits)
-     * Aggregates P&L for markers at the same price level (for split entries)
+     * Uses the same TradingView-style arrow + tick + hover tooltip as drawExitMarker.
+     * Aggregates P&L for markers at the same price level (for split entries).
      */
     drawPartialCloseMarker(order, closeData) {
         if (!this.chart || !this.chart.svg || !this.chart.scales) {
@@ -20787,89 +20791,140 @@ class OrderManager {
             return;
         }
 
-        const { xScale, yScale } = this.chart.scales;
-        if (!xScale || !yScale) return;
+        const { yScale } = this.chart.scales;
+        if (!yScale) return;
 
         const dataIndex = this._findCandleIndexForTime(this.chart.data, closeData.closeTime);
         if (dataIndex === -1) return;
 
-        // Get candle spacing and margin
-        const x = this.chart.dataIndexToPixel(dataIndex);
-        const y = yScale(closeData.closePrice);
-        
-        console.log('   Partial Close Position: x=', x, 'y=', y, 'data index=', dataIndex);
-        
-        // Check if there's already a marker at this price level (for aggregation)
         if (!this.partialCloseMarkers) this.partialCloseMarkers = [];
-        
+
         const priceKey = closeData.closePrice.toFixed(5);
-        const existingMarker = this.partialCloseMarkers.find(m => 
+        const existingMarker = this.partialCloseMarkers.find(m =>
             m.priceKey === priceKey && m.time === closeData.closeTime
         );
-        
+
         if (existingMarker) {
-            // Aggregate P&L to existing marker
             existingMarker.totalPnL += closeData.pnl;
+            existingMarker.totalQuantity += (order.quantity * (closeData.percentage || 1));
             existingMarker.count++;
-            
-            // Update the existing marker's text
-            const isProfitable = existingMarker.totalPnL >= 0;
-            const color = isProfitable ? '#22c55e' : '#ef4444';
-            const pnlText = `${isProfitable ? '+' : ''}$${existingMarker.totalPnL.toFixed(2)}`;
-            
-            existingMarker.marker.select('[data-role="partial-pnl-text"]')
-                .attr('fill', color)
-                .text(pnlText);
-            
+            if (!existingMarker.linkedOrderIds) {
+                existingMarker.linkedOrderIds = [String(existingMarker.orderId)];
+            }
+            const nid = String(order.id);
+            if (!existingMarker.linkedOrderIds.includes(nid)) {
+                existingMarker.linkedOrderIds.push(nid);
+            }
+            existingMarker.marker.attr('data-linked-order-ids', existingMarker.linkedOrderIds.join(','));
+            const lotsTxt = existingMarker.marker.select('[data-role="exit-lots-text"]');
+            if (!lotsTxt.empty()) {
+                lotsTxt.text(`${existingMarker.totalQuantity.toFixed(2)} lots`);
+            }
+            this._drawTradeConnector(order, closeData);
             console.log(`   📊 Aggregated partial close: ${existingMarker.count} positions, total P&L: ${existingMarker.totalPnL.toFixed(2)}`);
             return;
         }
-        
+
+        const candleSpacing = this.chart.getCandleSpacing();
+        const x = this.chart.dataIndexToPixel(dataIndex);
+        const y = yScale(closeData.closePrice);
+        const candle = this.chart.data[dataIndex];
         const isProfitable = closeData.pnl >= 0;
         const color = isProfitable ? '#22c55e' : '#ef4444';
-        const percentText = `${(closeData.percentage * 100).toFixed(0)}%`;
-        
-        // Append directly to main SVG to avoid clip-path
+        const sz = 12;
+        const gap = 4;
+        const tickW = Math.max(candleSpacing * 0.6, 8);
+        const closeQuantity = order.quantity * (closeData.percentage || 1);
+
+        const isBuyExit = order.type === 'BUY';
+        const wickY = isBuyExit ? yScale(candle.h) : yScale(candle.l);
+        const arrowCY = isBuyExit ? wickY - sz - gap : wickY + sz + gap;
+
         const markerGroup = this.chart.svg.append('g')
             .attr('class', `partial-close-marker partial-close-marker-${order.id}-${closeData.targetId}`)
-            .style('pointer-events', 'none')
+            .attr('data-linked-order-ids', String(order.id))
+            .style('pointer-events', 'all')
+            .style('cursor', 'pointer')
             .style('clip-path', 'none')
-            .raise(); // Bring to front
-        
-        setTimeout(() => markerGroup.raise(), 50);
-        
-        // P&L text with percentage indicator
-        const pnlText = `${isProfitable ? '+' : ''}$${closeData.pnl.toFixed(2)}`;
-        const priceText = closeData.closePrice.toFixed(5);
-        const labelY = y - 10;
-        
-        // P&L text 
-        markerGroup.append('text')
-            .attr('data-role', 'partial-pnl-text')
-            .attr('x', x)
-            .attr('y', labelY)
-            .attr('text-anchor', 'middle')
-            .attr('dominant-baseline', 'middle')
+            .raise();
+
+        markerGroup.append('line')
+            .attr('data-role', 'exit-tick')
+            .attr('x1', x - tickW / 2).attr('x2', x + tickW / 2)
+            .attr('y1', y).attr('y2', y)
+            .attr('stroke', color).attr('stroke-width', 2);
+
+        const arrowPath = isBuyExit
+            ? this._arrowDownPath(x, arrowCY, sz)
+            : this._arrowUpPath(x, arrowCY, sz);
+
+        const glowId = `partial-glow-${order.id}-${closeData.targetId}`;
+        markerGroup.attr('data-exit-glow-id', glowId);
+        this._ensureMarkerGlowFilter(this.chart.svg, glowId, color);
+
+        markerGroup.append('path')
+            .attr('data-role', 'exit-arrow')
+            .attr('d', arrowPath)
             .attr('fill', color)
-            .attr('font-size', '11px')
-            .attr('font-weight', '600')
-            .attr('font-family', 'Roboto, sans-serif')
-            .text(pnlText);
-        
-        // Close price below P&L
-        markerGroup.append('text')
-            .attr('data-role', 'partial-price-text')
-            .attr('x', x)
-            .attr('y', labelY + 14)
-            .attr('text-anchor', 'middle')
-            .attr('dominant-baseline', 'middle')
-            .attr('fill', '#9ca3af')
-            .attr('font-size', '10px')
-            .attr('font-weight', '400')
-            .attr('font-family', 'Roboto, sans-serif')
-            .text(priceText);
-        
-        // Store marker reference with aggregation data
+            .attr('stroke', 'none');
+
+        const ttGroup = markerGroup.append('g')
+            .attr('data-role', 'exit-tooltip')
+            .style('display', 'none')
+            .style('pointer-events', 'none');
+
+        const percentText = closeData.percentage ? `${(closeData.percentage * 100).toFixed(0)}%` : '';
+        const tag = `TP ${percentText}`.trim();
+        const lineH = 15, ttPad = 5, ttW = 118;
+        const nLines = 3;
+        const ttH = nLines * lineH + ttPad * 2;
+        const ttX = x + 14;
+        const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
+
+        ttGroup.append('rect')
+            .attr('x', ttX).attr('y', ttY)
+            .attr('width', ttW).attr('height', ttH)
+            .attr('rx', 4)
+            .attr('fill', 'rgba(15, 23, 42, 0.92)')
+            .attr('stroke', color).attr('stroke-width', 1);
+
+        const ttLine = (i, text, opts = {}) => {
+            const t = ttGroup.append('text')
+                .attr('x', ttX + ttPad + 2)
+                .attr('y', ttY + ttPad + i * lineH - 3)
+                .attr('fill', opts.fill || '#e2e8f0')
+                .attr('font-size', '10px')
+                .attr('font-weight', opts.bold ? '700' : '400')
+                .attr('font-family', 'Roboto, sans-serif')
+                .text(text);
+            if (opts.role) t.attr('data-role', opts.role);
+        };
+
+        ttLine(1, closeData.closePrice.toFixed(5), { role: 'exit-price-text', fill: '#f8fafc', bold: true });
+        ttLine(2, `${closeQuantity.toFixed(2)} lots`, { role: 'exit-lots-text' });
+        ttLine(3, tag, { role: 'exit-tag-text', fill: color, bold: true });
+
+        const self = this;
+        markerGroup
+            .on('mouseenter', function() {
+                ttGroup.style('display', null);
+                self._setExitArrowHoverGlowFromSelection(markerGroup, true);
+                const raw = markerGroup.attr('data-linked-order-ids') || String(order.id);
+                raw.split(',').map((s) => s.trim()).filter(Boolean).forEach((lid) => {
+                    self._setConnectorHoverHighlight(lid, true);
+                    self._setEntryArrowHoverGlow(lid, true);
+                });
+            })
+            .on('mouseleave', function() {
+                ttGroup.style('display', 'none');
+                self._setExitArrowHoverGlowFromSelection(markerGroup, false);
+                const raw = markerGroup.attr('data-linked-order-ids') || String(order.id);
+                raw.split(',').map((s) => s.trim()).filter(Boolean).forEach((lid) => {
+                    self._setConnectorHoverHighlight(lid, false);
+                    self._setEntryArrowHoverGlow(lid, false);
+                });
+            });
+
         this.partialCloseMarkers.push({
             orderId: order.id,
             targetId: closeData.targetId,
@@ -20877,10 +20932,16 @@ class OrderManager {
             time: closeData.closeTime,
             priceKey: priceKey,
             totalPnL: closeData.pnl,
+            totalQuantity: closeQuantity,
             count: 1,
-            price: closeData.closePrice
+            price: closeData.closePrice,
+            isBuyExit,
+            linkedOrderIds: [String(order.id)]
         });
-        
+
+        this._drawTradeConnector(order, closeData);
+
+        const pnlText = `${isProfitable ? '+' : ''}$${closeData.pnl.toFixed(2)}`;
         console.log(`✅ Partial close marker drawn for order #${order.id} target #${closeData.targetId} (P&L: ${pnlText})`);
     }
     
@@ -20974,23 +21035,42 @@ class OrderManager {
         }
 
         if (this.partialCloseMarkers && this.partialCloseMarkers.length > 0) {
-            this.partialCloseMarkers.forEach(({ marker, time, price }) => {
+            const { yScale: partialY } = this.chart.scales;
+            this.partialCloseMarkers.forEach(({ marker, time, price, isBuyExit }) => {
                 const dataIndex = this._findCandleIndexForTime(this.chart.data, time);
                 if (dataIndex === -1) return;
 
+                const candle = this.chart.data[dataIndex];
+                const candleSpacing = this.chart.getCandleSpacing();
                 const x = this.chart.dataIndexToPixel(dataIndex);
-                const y = this.chart.scales.yScale(price);
+                const y = partialY(price);
+                const sz = 12;
+                const gap = 4;
+                const tickW = Math.max(candleSpacing * 0.6, 8);
+                const wickY = isBuyExit ? partialY(candle.h) : partialY(candle.l);
+                const arrowCY = isBuyExit ? wickY - sz - gap : wickY + sz + gap;
 
-                const labelY = y - 10;
-
-                const pnlText = marker.select('[data-role="partial-pnl-text"]');
-                if (!pnlText.empty()) {
-                    pnlText.attr('x', x).attr('y', labelY);
+                const tick = marker.select('[data-role="exit-tick"]');
+                if (!tick.empty()) {
+                    tick.attr('x1', x - tickW / 2).attr('x2', x + tickW / 2).attr('y1', y).attr('y2', y);
                 }
 
-                const priceText = marker.select('[data-role="partial-price-text"]');
-                if (!priceText.empty()) {
-                    priceText.attr('x', x).attr('y', labelY + 14);
+                const arrowPath = isBuyExit
+                    ? this._arrowDownPath(x, arrowCY, sz)
+                    : this._arrowUpPath(x, arrowCY, sz);
+                const arrow = marker.select('[data-role="exit-arrow"]');
+                if (!arrow.empty()) arrow.attr('d', arrowPath);
+
+                const tt = marker.select('[data-role="exit-tooltip"]');
+                if (!tt.empty()) {
+                    const ttX = x + 14;
+                    const ttRect = tt.select('rect');
+                    const ttH = ttRect.empty() ? 55 : parseFloat(ttRect.attr('height'));
+                    const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
+                    if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
+                    tt.selectAll('text').each(function(d, i) {
+                        d3.select(this).attr('x', ttX + 8).attr('y', ttY + 6 + (i + 1) * 15 - 3);
+                    });
                 }
             });
         }
@@ -21054,6 +21134,16 @@ class OrderManager {
         // Toggle exit markers
         if (this.exitMarkers && this.exitMarkers.length > 0) {
             this.exitMarkers.forEach(({ marker }) => {
+                if (marker) {
+                    marker.style('visibility', show ? 'visible' : 'hidden');
+                    marker.style('opacity', show ? 1 : 0);
+                }
+            });
+        }
+
+        // Toggle partial close markers
+        if (this.partialCloseMarkers && this.partialCloseMarkers.length > 0) {
+            this.partialCloseMarkers.forEach(({ marker }) => {
                 if (marker) {
                     marker.style('visibility', show ? 'visible' : 'hidden');
                     marker.style('opacity', show ? 1 : 0);

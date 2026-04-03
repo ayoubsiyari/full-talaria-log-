@@ -1413,7 +1413,7 @@ def create_checkout_session():
             },
         }
 
-        # Apply server-validated coupon instead of open allow_promotion_codes
+        # Apply server-validated coupon if provided; otherwise show Stripe's promo field
         if coupon_code:
             try:
                 promo_list = stripe.PromotionCode.list(code=coupon_code, active=True, limit=1)
@@ -1428,7 +1428,8 @@ def create_checkout_session():
                     return jsonify({'error': 'Invalid or expired coupon code'}), 400
             except stripe.error.StripeError:
                 return jsonify({'error': 'Could not apply coupon'}), 400
-        # No allow_promotion_codes — users must use /validate-coupon first
+        else:
+            session_params['allow_promotion_codes'] = True
 
         # Add trial period if plan has one (only if no coupon applied — avoid stacking)
         if plan.trial_days > 0 and 'discounts' not in session_params:
