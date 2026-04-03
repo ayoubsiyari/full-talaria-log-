@@ -72,6 +72,7 @@ import { BalanceProvider } from './context/BalanceContext';
 import AdvancedFilter from './components/AdvancedFilter';
 import FilterToggle from './components/FilterToggle';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { API_BASE_URL } from './config';
 import { SidebarProvider, useSidebar } from './context/SidebarContext';
 import { FeatureFlagsProvider } from './context/FeatureFlagsContext';
 import { ProfileProvider } from './context/ProfileContext';
@@ -388,24 +389,62 @@ function LayoutWithSidebar() {
 function ProtectedLayout() {
   const { token, isInitialized } = useAuth();
   const { activeProfile, loading, error } = useProfile();
-  
-  // Check if this is an admin login session
+  const [subChecked, setSubChecked] = useState(false);
+  const [hasAccess, setHasAccess] = useState(false);
+
   const isAdminLoginSession = localStorage.getItem('admin_login_session') === 'true';
 
-  console.log('🔍 ProtectedLayout - token:', !!token, 'isInitialized:', isInitialized, 'loading:', loading, 'activeProfile:', !!activeProfile, 'error:', error, 'isAdminLoginSession:', isAdminLoginSession);
+  useEffect(() => {
+    if (!token) return;
 
-  if (!isInitialized || loading) {
-    console.log('🔄 ProtectedLayout - Showing loading screen (auth initializing or profiles loading)');
+    // Admin bypass via JWT payload
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      if (payload.is_admin === true || payload.role === 'admin') {
+        setHasAccess(true);
+        setSubChecked(true);
+        return;
+      }
+    } catch (e) { /* continue */ }
+
+    // Check from localStorage first for fast render, then verify live
+    try {
+      const cu = JSON.parse(localStorage.getItem('talaria_current_user') || '{}');
+      if (cu.role === 'admin') { setHasAccess(true); setSubChecked(true); return; }
+      if (cu.has_journal_access) { setHasAccess(true); }
+    } catch (e) { /* ignore */ }
+
+    // Live check against backend
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/subscriptions/my-subscription`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const active = (data.has_subscription && ['active', 'trialing'].includes(data.subscription?.status)) || data.has_journal_access === true;
+          setHasAccess(active);
+          // Sync localStorage so other parts of the app stay in sync
+          try {
+            const cu = JSON.parse(localStorage.getItem('talaria_current_user') || '{}');
+            cu.has_journal_access = active;
+            localStorage.setItem('talaria_current_user', JSON.stringify(cu));
+          } catch (e) { /* ignore */ }
+        }
+      } catch (e) { /* network error — fall back to localStorage result */ }
+      finally { setSubChecked(true); }
+    })();
+  }, [token]);
+
+  if (!isInitialized || loading || (token && !subChecked)) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50">
-        <div className="text-[#040028] font-medium">Loading...</div>
+      <div className="flex items-center justify-center min-h-screen bg-[#030014]">
+        <div className="text-white/40 text-sm">Loading...</div>
       </div>
     );
   }
 
-  // If there's an error and no active profile, show the profile selection page
   if (error && !activeProfile) {
-    console.log('⚠️ ProtectedLayout - Error loading profiles, showing profile selection');
     return (
       <Routes>
         <Route path="/select-profile" element={<ProfileSelectionPage />} />
@@ -415,28 +454,14 @@ function ProtectedLayout() {
   }
 
   if (!token) {
-    // Check if token exists in localStorage but not in state (timing issue)
     const localStorageToken = localStorage.getItem('token');
-    if (localStorageToken && isAdminLoginSession) {
-      console.log('🔄 ProtectedLayout - Token exists in localStorage but not in state, waiting for state update');
+    if ((localStorageToken && isAdminLoginSession) || isAdminLoginSession) {
       return (
-        <div className="flex items-center justify-center min-h-screen bg-slate-50">
-          <div className="text-[#040028] font-medium">Initializing admin session...</div>
+        <div className="flex items-center justify-center min-h-screen bg-[#030014]">
+          <div className="text-white/40 text-sm">Initializing session...</div>
         </div>
       );
     }
-    
-    // If this is an admin login session, give it a bit more time to process
-    if (isAdminLoginSession) {
-      console.log('🔄 ProtectedLayout - Admin login session detected but no token yet, showing loading');
-      console.log('🔍 ProtectedLayout - Checking localStorage for token:', !!localStorage.getItem('token'));
-      return (
-        <div className="flex items-center justify-center min-h-screen bg-slate-50">
-          <div className="text-[#040028] font-medium">Initializing admin session...</div>
-        </div>
-      );
-    }
-    console.log('🔍 ProtectedLayout - No token, redirecting to homepage login');
     if (typeof window !== 'undefined') {
       window.location.replace('/login/?next=' + encodeURIComponent(window.location.pathname + window.location.search));
     }
@@ -452,19 +477,12 @@ function ProtectedLayout() {
     );
   }
 
-  // Gate: require active subscription (or admin role) to access protected pages
-  try {
-    const stored = localStorage.getItem('talaria_current_user');
-    if (stored) {
-      const cu = JSON.parse(stored);
-      if (!cu.has_journal_access && cu.role !== 'admin') {
-        if (typeof window !== 'undefined') {
-          window.location.replace('/journal/pricing');
-        }
-        return null;
-      }
+  if (!hasAccess) {
+    if (typeof window !== 'undefined') {
+      window.location.replace('/journal/pricing');
     }
-  } catch (e) { /* ignore parse errors */ }
+    return null;
+  }
 
   return <LayoutWithSidebar />;
 }
@@ -492,23 +510,8 @@ function AppRoutes() {
     location.pathname === '/disclaimer' ||
     location.pathname === '/legal'
 
-  // Handle authenticated users visiting the home page or login page
+  // Authenticated users on root or login → send to dashboard (ProtectedLayout handles access check)
   if (isInitialized && token && (location.pathname === '/' || location.pathname === '/login')) {
-    // Check subscription before deciding where to send the user
-    let hasAccess = false;
-    let userRole = null;
-    try {
-      const stored = localStorage.getItem('talaria_current_user');
-      if (stored) {
-        const cu = JSON.parse(stored);
-        hasAccess = !!cu.has_journal_access;
-        userRole = cu.role;
-      }
-    } catch (e) { /* ignore */ }
-
-    if (userRole !== 'admin' && !hasAccess) {
-      return <Navigate to="/pricing" replace />;
-    }
     if (activeProfile) {
       return <Navigate to="/dashboard" replace />;
     } else {

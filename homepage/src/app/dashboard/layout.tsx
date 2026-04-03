@@ -74,7 +74,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <a href="/chart/index.html" className="rounded-full border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10 transition">
               {nav.backtest}
             </a>
-            <a href="#" className="rounded-full border border-white/10 bg-white/5 px-3 py-2 opacity-60 cursor-not-allowed">
+            <a href="/journal/dashboard" className="rounded-full border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10 transition">
               {nav.journal}
             </a>
             {user?.role === "admin" ? (
