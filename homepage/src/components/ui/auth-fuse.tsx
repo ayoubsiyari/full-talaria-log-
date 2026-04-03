@@ -257,7 +257,7 @@ function SignInForm({ prefillEmail, bannerMessage, nextPath, onForgotPassword }:
       } else if (!hasAccess) {
         window.location.href = "/journal/pricing";
       } else {
-        window.location.href = "/journal/dashboard";
+        window.location.href = "/dashboard/";
       }
     } finally {
       setLoading(false);
@@ -490,7 +490,7 @@ function VerificationForm({ email, onVerified, onBack, nextPath }: { email: stri
       }
 
       const safeNext = nextPath && nextPath.startsWith("/") ? nextPath : null;
-      window.location.href = safeNext || "/journal/dashboard";
+      window.location.href = safeNext || "/dashboard/";
     } finally {
       setLoading(false);
     }

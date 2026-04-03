@@ -518,7 +518,7 @@ export default function HomePage() {
                             if (cu.has_journal_access || user?.role === "admin") {
                               return (
                                 <a
-                                  href="/journal/dashboard"
+                                  href="/dashboard/"
                                   className="w-full py-2 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 transition-all flex items-center justify-center gap-2 mb-2"
                                 >
                                   {isArabic ? "لوحة التحكم" : "Go to Dashboard"}
