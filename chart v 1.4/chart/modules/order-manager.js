@@ -11791,13 +11791,13 @@ class OrderManager {
                 }
             });
         } else {
-            // Draw single TP as a full line when it has a valid price away from entry
-            if (tpEnabled && tpPrice > 0 && Math.abs(tpPrice - entryPrice) > 1e-8) {
+            // Draw single TP preview line only after user drags it
+            if (tpEnabled && this.tpManuallyPositioned && tpPrice > 0) {
                 this.previewLines.tp = this.drawPreviewLine(tpPrice, '#22c55e', 'TP', null, true);
                 if (this.previewLines.tp) {
                     this.previewLines.tp.targetPrice = tpPrice;
                 }
-            } else if (tpEnabled) {
+            } else if (tpEnabled && !this.tpManuallyPositioned) {
                 this.previewLines.tp = this.drawPreviewBadge(tpBadgeAnchorPrice, '#22c55e', 'TP', tpPrice);
             }
         }
