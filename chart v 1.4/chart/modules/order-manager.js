@@ -19052,12 +19052,17 @@ class OrderManager {
         const self = this;
         let isDragging = false;
         
+        let dragStartPrice = pendingOrder.entryPrice;
+        let dragStartQty = pendingOrder.quantity;
+
         const drag = d3.drag()
             .on('start', function() {
                 isDragging = true;
                 self._isDraggingOrderLine = true;
                 if (!self._draggingPendingOrderIds) self._draggingPendingOrderIds = new Set();
                 self._draggingPendingOrderIds.add(pendingOrder.id);
+                dragStartPrice = pendingOrder.entryPrice;
+                dragStartQty = pendingOrder.quantity;
                 line.attr('stroke-width', 1.6).attr('opacity', 1);
                 console.log(`🎯 Started dragging pending entry line #${pendingOrder.id}`);
             })
@@ -19066,21 +19071,47 @@ class OrderManager {
                 
                 const chartHeight = chart.h || 500;
                 const clampedY = Math.max(0, Math.min(chartHeight, event.y));
-                const newPrice = chart.scales.yScale.invert(clampedY);
+                let newPrice = chart.scales.yScale.invert(clampedY);
                 
+                // Recalculate lot size from fixed risk when SL exists
+                const slPrice = pendingOrder.stopLoss;
+                const risk = pendingOrder.riskAmount || pendingOrder.originalRiskAmount || 0;
+                const minLot = self.getMarketConfig()?.minSize ?? 0.01;
+                const maxLotCap = dragStartQty * 20;
+
+                if (slPrice > 0 && risk > 0) {
+                    const pip = self.pipSize || 0.0001;
+                    const minDist = pip * 2;
+
+                    // Prevent entry from crossing or getting too close to SL
+                    if (pendingOrder.direction === 'BUY') {
+                        if (newPrice <= slPrice + minDist) newPrice = slPrice + minDist;
+                    } else {
+                        if (newPrice >= slPrice - minDist) newPrice = slPrice - minDist;
+                    }
+
+                    const newQty = self._enginePositionSize(risk, newPrice, slPrice, newPrice);
+                    const rounded = Math.round(Math.max(minLot, newQty) * 100) / 100;
+
+                    // If lot size exceeds cap, don't move entry further
+                    if (rounded > maxLotCap) return;
+
+                    pendingOrder.quantity = rounded;
+                }
+
+                pendingOrder.entryPrice = newPrice;
+                const finalY = chart.scales.yScale(newPrice);
+
                 // Update line position
-                line.attr('y1', clampedY).attr('y2', clampedY);
-                dragHitLine.attr('y1', clampedY).attr('y2', clampedY);
+                line.attr('y1', finalY).attr('y2', finalY);
+                dragHitLine.attr('y1', finalY).attr('y2', finalY);
                 
-                // Use same positioning as updateOrderLines
                 const boxHeight = 18;
-                const boxY = clampedY - boxHeight / 2;
+                const boxY = finalY - boxHeight / 2;
                 const yAxisWidth = 70;
                 
-                // Position close button (rightmost, before Y-axis area)
-                closeBtn.attr('transform', `translate(${chart.w - yAxisWidth - 15}, ${clampedY})`);
+                closeBtn.attr('transform', `translate(${chart.w - yAxisWidth - 15}, ${finalY})`);
                 
-                // Position label box to the left of close button
                 const labelTextBbox = labelText.node().getBBox();
                 const labelBoxWidth = labelTextBbox.width + 20;
                 const labelBoxX = chart.w - yAxisWidth - 30 - labelBoxWidth;
@@ -19093,15 +19124,12 @@ class OrderManager {
                 
                 labelText
                     .attr('x', labelBoxX + 10)
-                    .attr('y', clampedY + 4);
+                    .attr('y', finalY + 4);
                 line.attr('x1', 0).attr('x2', Math.max(0, labelBoxX));
                 dragHitLine.attr('x1', 0).attr('x2', Math.max(0, labelBoxX));
                 
-                // Hide price box/text (price shown on Y-axis)
                 if (priceBox) priceBox.style('display', 'none');
                 if (priceText) priceText.style('display', 'none');
-                
-                pendingOrder.entryPrice = newPrice;
 
                 // Live auto-detect order type while dragging
                 const curCandle = self.getCurrentCandle();
@@ -19113,12 +19141,12 @@ class OrderManager {
                     } else {
                         newType = newPrice < curPrice ? 'stop' : 'limit';
                     }
-                    if (pendingOrder.orderType !== newType) {
-                        pendingOrder.orderType = newType;
-                        const typeLabel = `${newType} ${pendingOrder.direction.toLowerCase()} ${pendingOrder.quantity.toFixed(2)}`;
-                        labelText.text(typeLabel);
-                    }
+                    pendingOrder.orderType = newType;
                 }
+
+                // Update label text with current type + recalculated lot size
+                const typeLabel = `${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${pendingOrder.quantity.toFixed(2)}`;
+                labelText.text(typeLabel);
             })
             .on('end', function() {
                 if (!isDragging) return;
@@ -19129,7 +19157,7 @@ class OrderManager {
                 line.attr('stroke-width', 1).attr('opacity', 0.92);
                 
                 const formattedPrice = self.formatPrice(pendingOrder.entryPrice);
-                console.log(`📍 Pending entry moved to ${formattedPrice}`);
+                console.log(`📍 Pending entry moved to ${formattedPrice} | lots: ${pendingOrder.quantity.toFixed(2)}`);
                 
                 // Auto-detect order type based on final position vs current price
                 const curCandle = self.getCurrentCandle();
@@ -19166,12 +19194,13 @@ class OrderManager {
                     }
                 }
                 
-                // Redraw targets to update P&L
+                // Redraw targets to update P&L with new lot size
                 self.removePendingSLTPLines(pendingOrder.id);
                 self.drawPendingOrderTargets(pendingOrder);
                 self._updateSplitGroupAvgLines(chart);
+                if (typeof self.updatePositionsPanel === 'function') self.updatePositionsPanel();
                 
-                self.showNotification(`✏️ Entry moved to ${formattedPrice}`, 'info');
+                self.showNotification(`✏️ Entry → ${formattedPrice} | ${pendingOrder.quantity.toFixed(2)} lots`, 'info');
             });
         
         // Apply drag to line, labelBox, and priceBox
@@ -19535,15 +19564,39 @@ class OrderManager {
                 } else if (target.type === 'SL') {
                     const p = parseFloat(formattedPrice);
                     pendingOrder.stopLoss = p;
+
+                    // Recalculate lot size: keep risk fixed, adjust lots for new SL distance
+                    const risk = pendingOrder.riskAmount || pendingOrder.originalRiskAmount || 0;
+                    const minLot = self.getMarketConfig()?.minSize ?? 0.01;
+                    if (risk > 0 && pendingOrder.entryPrice > 0) {
+                        const newQty = self._enginePositionSize(risk, pendingOrder.entryPrice, p, pendingOrder.entryPrice);
+                        const rounded = Math.round(Math.max(minLot, newQty) * 100) / 100;
+                        pendingOrder.quantity = rounded;
+                        console.log(`🔄 SL moved → recalculated lots: ${rounded.toFixed(2)} (risk $${risk})`);
+                    }
+
                     if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
-                        self._getSplitGroupPendingOrders(pendingOrder).forEach((m) => { m.stopLoss = p; });
+                        self._getSplitGroupPendingOrders(pendingOrder).forEach((m) => {
+                            m.stopLoss = p;
+                            // Recalculate each split leg's lot size too
+                            const mRisk = m.riskAmount || m.originalRiskAmount || 0;
+                            if (mRisk > 0 && m.entryPrice > 0) {
+                                const mQty = self._enginePositionSize(mRisk, m.entryPrice, p, m.entryPrice);
+                                m.quantity = Math.round(Math.max(minLot, mQty) * 100) / 100;
+                            }
+                        });
                     }
                 }
                 
+                // Redraw the pending order entry label to show updated lot size
+                self.removePendingOrderLine(pendingOrder.id);
+                self.drawPendingOrderLine(pendingOrder);
+
                 self.removePendingSLTPLines(pendingOrder.id);
                 self.drawPendingOrderTargets(pendingOrder);
+                if (typeof self.updatePositionsPanel === 'function') self.updatePositionsPanel();
                 
-                self.showNotification(`✏️ ${target.type} moved to ${formattedPrice}`, 'info');
+                self.showNotification(`✏️ ${target.type} → ${formattedPrice} | ${pendingOrder.quantity.toFixed(2)} lots`, 'info');
             });
         
         // Apply drag to BOTH line AND labelGroup (same as executed orders)
