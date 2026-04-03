@@ -262,7 +262,7 @@ export default function Pricing() {
     },
     {
       q: 'Can I cancel my subscription?',
-      a: 'Yes, you can cancel anytime. You'll keep access until the end of your billing period.',
+      a: 'Yes, you can cancel anytime. You will keep access until the end of your billing period.',
     },
     {
       q: 'What happens to my data if I cancel?',
