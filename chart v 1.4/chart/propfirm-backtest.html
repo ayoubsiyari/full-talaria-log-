@@ -21,14 +21,44 @@
 
             fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
                 .then(function(res) {
-                    if (!res.ok) {
-                        redirectToLogin();
+                    if (!res.ok) { redirectToLogin(); return null; }
+                    return res.json();
+                })
+                .then(function(data) {
+                    if (data && data.user && data.user.id) {
+                        window.__talariaUserId = data.user.id;
+                        try { localStorage.setItem('_uid', String(data.user.id)); } catch(e) {}
                     }
                 })
                 .catch(function() {
                     redirectToLogin();
                 });
         })();
+    </script>
+    <script>
+    (function() {
+        var uid = null;
+        try { uid = localStorage.getItem('_uid'); } catch(e) {}
+        window.userKey = function(key) {
+            var id = uid || window.__talariaUserId;
+            if (!id) { try { id = localStorage.getItem('_uid'); } catch(e) {} }
+            if (id) { uid = id; return 'u' + id + '_' + key; }
+            return key;
+        };
+        window.userStorage = {
+            getItem: function(key) {
+                var scoped = localStorage.getItem(window.userKey(key));
+                if (scoped !== null) return scoped;
+                var legacy = localStorage.getItem(key);
+                if (legacy !== null && uid) {
+                    try { localStorage.setItem(window.userKey(key), legacy); localStorage.removeItem(key); } catch(e) {}
+                }
+                return legacy;
+            },
+            setItem: function(key, val) { localStorage.setItem(window.userKey(key), val); },
+            removeItem: function(key) { localStorage.removeItem(window.userKey(key)); }
+        };
+    })();
     </script>
 </head>
 <body>

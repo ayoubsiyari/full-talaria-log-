@@ -7,10 +7,10 @@ window._spPanels = {};
     function ch()      { return window.chart || window.mainChart || null; }
     function apply()   { var c=ch(); if(!c) return; if(c.applyChartSettings) c.applyChartSettings(); if(c.scheduleRender) c.scheduleRender(); else if(c.render) c.render(); try{if(c.saveSettings)c.saveSettings();}catch(e){} }
     function set(k,v)  { var c=ch(); if(!c) return; c.chartSettings=c.chartSettings||{}; c.chartSettings[k]=v; apply(); }
-    function sess()    { try{return window.backtestingSession||JSON.parse(localStorage.getItem('backtestingSession')||'{}')||{};}catch(e){return{};} }
-    function saveSess(s){ window.backtestingSession=s; try{localStorage.setItem('backtestingSession',JSON.stringify(s));}catch(e){} var c=ch(); if(c) c.backtestingSession=s; }
-    function gLoad()   { try{return JSON.parse(localStorage.getItem('talaria_general_settings')||'{}');}catch(e){return{};} }
-    function gSave(p)  { var c=Object.assign({},gLoad(),p); try{localStorage.setItem('talaria_general_settings',JSON.stringify(c));}catch(e){} window.generalSettings=c; return c; }
+    function sess()    { try{return window.backtestingSession||JSON.parse(userStorage.getItem('backtestingSession')||'{}')||{};}catch(e){return{};} }
+    function saveSess(s){ window.backtestingSession=s; try{userStorage.setItem('backtestingSession',JSON.stringify(s));}catch(e){} var c=ch(); if(c) c.backtestingSession=s; }
+    function gLoad()   { try{return JSON.parse(userStorage.getItem('talaria_general_settings')||'{}');}catch(e){return{};} }
+    function gSave(p)  { var c=Object.assign({},gLoad(),p); try{userStorage.setItem('talaria_general_settings',JSON.stringify(c));}catch(e){} window.generalSettings=c; return c; }
 
     /* expose to Part 2 */
     window._spH = { ch:ch, apply:apply, set:set, sess:sess, saveSess:saveSess, gLoad:gLoad, gSave:gSave };

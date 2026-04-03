@@ -1205,8 +1205,8 @@ class OrderManager {
             this.pipValuePerLot  = cfg.pipValuePerLot;
             this.contractSize    = cfg.contractSize;
             this.symbolPrecision = cfg.symbolPrecision;
-            localStorage.setItem('chart_pipSize',        cfg.pipSize);
-            localStorage.setItem('chart_pipValuePerLot', cfg.pipValuePerLot);
+            userStorage.setItem('chart_pipSize',        cfg.pipSize);
+            userStorage.setItem('chart_pipValuePerLot', cfg.pipValuePerLot);
         }
 
         // Hide dropdown — symbol is known, no need to choose manually
@@ -1270,8 +1270,8 @@ class OrderManager {
         if (Number.isFinite(pvl) && pvl > 0) this.pipValuePerLot = pvl;
 
         try {
-            localStorage.setItem('chart_pipSize', String(this.pipSize));
-            localStorage.setItem('chart_pipValuePerLot', String(this.pipValuePerLot));
+            userStorage.setItem('chart_pipSize', String(this.pipSize));
+            userStorage.setItem('chart_pipValuePerLot', String(this.pipValuePerLot));
         } catch (e) { /* ignore */ }
 
         this._lastSyncedPipSymbol = ticker;
@@ -1538,9 +1538,9 @@ class OrderManager {
         const journalByTicker = this.groupJournalByTicker();
         try {
             const key = this.getJournalStorageKey();
-            localStorage.setItem(key, JSON.stringify(this.tradeJournal));
-            localStorage.setItem(`${key}_perInstrumentStats`, JSON.stringify(perInstrumentStats));
-            localStorage.setItem(`${key}_byTicker`, JSON.stringify(journalByTicker));
+            userStorage.setItem(key, JSON.stringify(this.tradeJournal));
+            userStorage.setItem(`${key}_perInstrumentStats`, JSON.stringify(perInstrumentStats));
+            userStorage.setItem(`${key}_byTicker`, JSON.stringify(journalByTicker));
         } catch (e) {
             console.warn('Could not save trade journal to localStorage:', e);
         }
@@ -1863,9 +1863,9 @@ class OrderManager {
         // Load trade journal from localStorage
         try {
             const key = this.getJournalStorageKey();
-            let savedJournal = localStorage.getItem(key);
+            let savedJournal = userStorage.getItem(key);
             if (!savedJournal && key !== 'tradeJournal') {
-                const legacy = localStorage.getItem('tradeJournal');
+                const legacy = userStorage.getItem('tradeJournal');
                 if (legacy) {
                     savedJournal = legacy;
                 }
@@ -1961,16 +1961,16 @@ class OrderManager {
         
         // Load MFE/MAE settings from localStorage
         try {
-            const savedHours = localStorage.getItem('mfeMaeTrackingHours');
+            const savedHours = userStorage.getItem('mfeMaeTrackingHours');
             if (savedHours) {
                 this.mfeMaeTrackingHours = parseFloat(savedHours);
                 console.log(`⚙️ Loaded MFE/MAE tracking window: ${this.mfeMaeTrackingHours}h`);
             }
-            const savedMode = localStorage.getItem('postExitTrackingMode');
+            const savedMode = userStorage.getItem('postExitTrackingMode');
             if (savedMode === 'candles' || savedMode === 'hours') {
                 this.postExitTrackingMode = savedMode;
             }
-            const savedCandles = Number.parseInt(localStorage.getItem('postExitTrackingCandles') || '', 10);
+            const savedCandles = Number.parseInt(userStorage.getItem('postExitTrackingCandles') || '', 10);
             if (Number.isFinite(savedCandles) && savedCandles > 0) {
                 this.postExitTrackingCandles = savedCandles;
             }
@@ -1978,10 +1978,9 @@ class OrderManager {
             console.warn('Could not load MFE/MAE settings from localStorage:', e);
         }
         
-        // Load instrument settings from localStorage
         try {
-            const savedPipSize = localStorage.getItem('chart_pipSize');
-            const savedPipValue = localStorage.getItem('chart_pipValuePerLot');
+            const savedPipSize = userStorage.getItem('chart_pipSize');
+            const savedPipValue = userStorage.getItem('chart_pipValuePerLot');
             if (savedPipSize) {
                 this.pipSize = parseFloat(savedPipSize);
                 console.log(`⚙️ Loaded pip size: ${this.pipSize}`);
@@ -1994,16 +1993,14 @@ class OrderManager {
             console.warn('Could not load instrument settings from localStorage:', e);
         }
         
-        // Load position scaling setting from localStorage
         try {
-            const savedScaling = localStorage.getItem('enablePositionScaling');
+            const savedScaling = userStorage.getItem('enablePositionScaling');
             if (savedScaling !== null) {
                 this.enablePositionScaling = savedScaling === 'true';
                 console.log(`⚙️ Loaded position scaling setting: ${this.enablePositionScaling ? 'ENABLED ✓' : 'DISABLED ✗'}`);
             } else {
-                // First time - enable by default and save
                 this.enablePositionScaling = true;
-                localStorage.setItem('enablePositionScaling', 'true');
+                userStorage.setItem('enablePositionScaling', 'true');
                 console.log(`⚙️ Position scaling ENABLED by default ✓`);
             }
         } catch (e) {
@@ -2081,7 +2078,7 @@ class OrderManager {
      */
     loadMarketType() {
         try {
-            const saved = localStorage.getItem('chart_marketType');
+            const saved = userStorage.getItem('chart_marketType');
             if (saved && this.marketConfigs[saved]) {
                 this.marketType = saved;
                 console.log(`📊 Loaded market type: ${this.marketConfigs[saved].name}`);
@@ -2091,12 +2088,9 @@ class OrderManager {
         }
     }
     
-    /**
-     * Save market type to localStorage
-     */
     saveMarketType() {
         try {
-            localStorage.setItem('chart_marketType', this.marketType);
+            userStorage.setItem('chart_marketType', this.marketType);
         } catch (e) {
             console.warn('Could not save market type:', e);
         }
@@ -2123,9 +2117,8 @@ class OrderManager {
         this.contractSize = config.contractSize;
         this.symbolPrecision = config.symbolPrecision;
         
-        // Save to localStorage for persistence
-        localStorage.setItem('chart_pipSize', config.pipSize);
-        localStorage.setItem('chart_pipValuePerLot', config.pipValuePerLot);
+        userStorage.setItem('chart_pipSize', config.pipSize);
+        userStorage.setItem('chart_pipValuePerLot', config.pipValuePerLot);
         
         console.log(`📊 Switched from ${this.marketConfigs[oldType].name} to ${config.name}`);
         console.log(`   Pip Size: ${config.pipSize} | Pip Value: $${config.pipValuePerLot} | Position: ${config.positionLabel}`);
@@ -2174,7 +2167,7 @@ class OrderManager {
         
         // Try to load setting from localStorage
         try {
-            const savedSoundSetting = localStorage.getItem('orderSoundEnabled');
+            const savedSoundSetting = userStorage.getItem('orderSoundEnabled');
             if (savedSoundSetting !== null) {
                 this.soundEnabled = savedSoundSetting === 'true';
             }
@@ -2265,7 +2258,7 @@ class OrderManager {
      */
     toggleOrderSound(enabled) {
         this.soundEnabled = enabled;
-        localStorage.setItem('orderSoundEnabled', enabled ? 'true' : 'false');
+        userStorage.setItem('orderSoundEnabled', enabled ? 'true' : 'false');
         console.log(`🔊 Order sounds: ${enabled ? 'ENABLED' : 'DISABLED'}`);
     }
     
@@ -2472,9 +2465,9 @@ class OrderManager {
                 }
                 // Save to localStorage
                 try {
-                    localStorage.setItem('mfeMaeTrackingHours', newHours);
-                    localStorage.setItem('postExitTrackingMode', this.postExitTrackingMode);
-                    localStorage.setItem('postExitTrackingCandles', String(this.postExitTrackingCandles));
+                    userStorage.setItem('mfeMaeTrackingHours', newHours);
+                    userStorage.setItem('postExitTrackingMode', this.postExitTrackingMode);
+                    userStorage.setItem('postExitTrackingCandles', String(this.postExitTrackingCandles));
                 } catch (e) {
                     console.warn('Could not save MFE/MAE settings:', e);
                 }
@@ -2589,8 +2582,8 @@ class OrderManager {
                 
                 // Save to localStorage
                 try {
-                    localStorage.setItem('chart_pipSize', newPipSize);
-                    localStorage.setItem('chart_pipValuePerLot', newPipValue);
+                    userStorage.setItem('chart_pipSize', newPipSize);
+                    userStorage.setItem('chart_pipValuePerLot', newPipValue);
                 } catch (e) {
                     console.warn('Could not save instrument settings:', e);
                 }
@@ -9685,7 +9678,7 @@ class OrderManager {
                     return;
                 }
                 
-                const saved = JSON.parse(localStorage.getItem('protectionSettings') || '[]');
+                const saved = JSON.parse(userStorage.getItem('protectionSettings') || '[]');
                 const setting = saved.find(s => s.name === settingName);
                 if (setting) {
                     this.applyProtectionSettings(setting);
@@ -9707,9 +9700,9 @@ class OrderManager {
                 
                 if (!confirm(`Delete protection setting "${settingName}"?`)) return;
                 
-                let saved = JSON.parse(localStorage.getItem('protectionSettings') || '[]');
+                let saved = JSON.parse(userStorage.getItem('protectionSettings') || '[]');
                 saved = saved.filter(s => s.name !== settingName);
-                localStorage.setItem('protectionSettings', JSON.stringify(saved));
+                userStorage.setItem('protectionSettings', JSON.stringify(saved));
                 this.loadSavedProtectionSettings();
                 this.showNotification(`🗑️ Protection setting "${settingName}" deleted!`, 'success');
             };
@@ -23380,7 +23373,7 @@ class OrderManager {
 
         // Restore custom position only from V2 (ignore legacy miDockPosition so old floats don't apply)
         try {
-            const savedPos = JSON.parse(localStorage.getItem(dockPosKey) || 'null');
+            const savedPos = JSON.parse(userStorage.getItem(dockPosKey) || 'null');
             if (savedPos && Number.isFinite(savedPos.left) && Number.isFinite(savedPos.top)) {
                 miDockAnchoredAboveReplay = false;
                 host.style.left = `${savedPos.left}px`;
@@ -23413,7 +23406,7 @@ class OrderManager {
 
         // Restore minimized state
         try {
-            const minimized = localStorage.getItem(dockMinKey) === '1';
+            const minimized = userStorage.getItem(dockMinKey) === '1';
             if (minimized && body) {
                 body.style.display = 'none';
                 if (toggleBtn) toggleBtn.textContent = '+';
@@ -23427,7 +23420,7 @@ class OrderManager {
                 const isHidden = body.style.display === 'none';
                 body.style.display = isHidden ? 'block' : 'none';
                 toggleBtn.textContent = isHidden ? '−' : '+';
-                try { localStorage.setItem(dockMinKey, isHidden ? '0' : '1'); } catch (_) {}
+                try { userStorage.setItem(dockMinKey, isHidden ? '0' : '1'); } catch (_) {}
             });
         }
 
@@ -23472,7 +23465,7 @@ class OrderManager {
                 dragging = false;
                 const rect = host.getBoundingClientRect();
                 try {
-                    localStorage.setItem(dockPosKey, JSON.stringify({ left: Math.round(rect.left), top: Math.round(rect.top) }));
+                    userStorage.setItem(dockPosKey, JSON.stringify({ left: Math.round(rect.left), top: Math.round(rect.top) }));
                 } catch (_) {}
             };
             document.addEventListener('mousemove', onMouseMove);
@@ -23711,7 +23704,7 @@ class OrderManager {
         const select = document.getElementById('savedProtectionSettings');
         if (!select) return;
         
-        const saved = JSON.parse(localStorage.getItem('protectionSettings') || '[]');
+        const saved = JSON.parse(userStorage.getItem('protectionSettings') || '[]');
         
         // Clear existing options except first one
         select.innerHTML = '<option value="">-- Select Saved Setting --</option>';
@@ -23966,7 +23959,7 @@ class OrderManager {
                 }
             };
             
-            let saved = JSON.parse(localStorage.getItem('protectionSettings') || '[]');
+            let saved = JSON.parse(userStorage.getItem('protectionSettings') || '[]');
             
             // Check if name already exists
             const existingIndex = saved.findIndex(s => s.name === setting.name);
@@ -23977,7 +23970,7 @@ class OrderManager {
                 saved.push(setting);
             }
             
-            localStorage.setItem('protectionSettings', JSON.stringify(saved));
+            userStorage.setItem('protectionSettings', JSON.stringify(saved));
             this.loadSavedProtectionSettings();
             this.showNotification(`💾 Protection setting "${setting.name}" saved!`, 'success');
             modal.remove();
@@ -24653,7 +24646,7 @@ class OrderManager {
      */
     togglePositionScaling(enabled) {
         this.enablePositionScaling = enabled;
-        localStorage.setItem('enablePositionScaling', enabled);
+        userStorage.setItem('enablePositionScaling', enabled);
         console.log(`📊 Position Scaling: ${enabled ? 'ENABLED ✓' : 'DISABLED ✗'}`);
         
         if (!enabled) {

@@ -83,7 +83,7 @@ window.saveNewPreset = function() {
         }
     };
     
-    let saved = JSON.parse(localStorage.getItem('protectionSettings') || '[]');
+    let saved = JSON.parse(userStorage.getItem('protectionSettings') || '[]');
     
     // Check if name already exists
     const existingIndex = saved.findIndex(s => s.name === preset.name);
@@ -94,7 +94,7 @@ window.saveNewPreset = function() {
         saved.push(preset);
     }
     
-    localStorage.setItem('protectionSettings', JSON.stringify(saved));
+    userStorage.setItem('protectionSettings', JSON.stringify(saved));
     console.log('✅ Protection preset saved:', preset);
     
     // Reload presets dropdown
@@ -658,7 +658,7 @@ function loadProtectionPresets() {
     const select = document.getElementById('protectionPresetSelect');
     if (!select) return;
 
-    const presets = JSON.parse(localStorage.getItem('protectionSettings') || '[]');
+    const presets = JSON.parse(userStorage.getItem('protectionSettings') || '[]');
     
     // Clear existing options except first one
     select.innerHTML = '<option value="">-- None (Configure in chart) --</option>';
@@ -689,7 +689,7 @@ function showPresetDetails(presetName) {
         return;
     }
 
-    const presets = JSON.parse(localStorage.getItem('protectionSettings') || '[]');
+    const presets = JSON.parse(userStorage.getItem('protectionSettings') || '[]');
     const preset = presets.find(p => p.name === presetName);
     
     if (!preset) {
@@ -791,7 +791,7 @@ async function handleFormSubmit(e) {
     const selectedPresetName = document.getElementById('protectionPresetSelect')?.value;
     let protectionPreset = null;
     if (selectedPresetName) {
-        const presets = JSON.parse(localStorage.getItem('protectionSettings') || '[]');
+        const presets = JSON.parse(userStorage.getItem('protectionSettings') || '[]');
         protectionPreset = presets.find(p => p.name === selectedPresetName);
         console.log('🛡️ Selected protection preset:', protectionPreset);
     }
@@ -864,9 +864,9 @@ async function handleFormSubmit(e) {
 
     // Store as active session locally (compatibility with existing UI)
     try {
-        localStorage.setItem('backtestingSession', JSON.stringify(formData));
+        userStorage.setItem('backtestingSession', JSON.stringify(formData));
         if (sessionId) {
-            localStorage.setItem('active_trading_session_id', String(sessionId));
+            userStorage.setItem('active_trading_session_id', String(sessionId));
         }
     } catch (e) {}
     

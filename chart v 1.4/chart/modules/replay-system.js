@@ -667,7 +667,7 @@ class ReplaySystem {
         closeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             clone.remove();
-            localStorage.removeItem('replayToolbarClonePosition');
+            userStorage.removeItem('replayToolbarClonePosition');
             if (this.toolbar) {
                 this.toolbar.style.opacity = '1';
             }
@@ -824,7 +824,7 @@ class ReplaySystem {
 
     saveFloatingClonePosition(left, top) {
         try {
-            localStorage.setItem('replayToolbarClonePosition', JSON.stringify({ left, top }));
+            userStorage.setItem('replayToolbarClonePosition', JSON.stringify({ left, top }));
         } catch (err) {
             console.warn('⚠️ Failed to save floating clone position', err);
         }
@@ -832,7 +832,7 @@ class ReplaySystem {
 
     loadFloatingClonePosition() {
         try {
-            const stored = localStorage.getItem('replayToolbarClonePosition');
+            const stored = userStorage.getItem('replayToolbarClonePosition');
             if (stored) {
                 return JSON.parse(stored);
             }
@@ -847,7 +847,7 @@ class ReplaySystem {
         const rect = this.toolbar.getBoundingClientRect();
         const position = { left: rect.left, top: rect.top };
         try {
-            localStorage.setItem(this.storageKey, JSON.stringify(position));
+            userStorage.setItem(this.storageKey, JSON.stringify(position));
         } catch (err) {
             console.warn('⚠️ Failed to save replay toolbar position', err);
         }
@@ -856,7 +856,7 @@ class ReplaySystem {
     loadToolbarPosition() {
         if (!this.toolbar) return;
         try {
-            const stored = localStorage.getItem(this.storageKey);
+            const stored = userStorage.getItem(this.storageKey);
             if (!stored) return;
             const { left, top } = JSON.parse(stored);
             if (Number.isFinite(left) && Number.isFinite(top)) {
@@ -2020,7 +2020,7 @@ class ReplaySystem {
         const floatingClone = document.getElementById('replayToolbarClone');
         if (floatingClone) {
             floatingClone.remove();
-            localStorage.removeItem('replayToolbarClonePosition');
+            userStorage.removeItem('replayToolbarClonePosition');
         }
         if (this.toolbar) {
             this.toolbar.style.opacity = '1';

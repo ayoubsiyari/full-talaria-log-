@@ -377,7 +377,7 @@ class DatePriceRangeTool extends BaseDrawing {
 
         let savedPipSize = NaN;
         if (typeof localStorage !== 'undefined') {
-            savedPipSize = Number(localStorage.getItem('chart_pipSize'));
+            savedPipSize = Number(userStorage.getItem('chart_pipSize'));
         }
         if (isFinite(savedPipSize) && savedPipSize > 0) return savedPipSize;
 

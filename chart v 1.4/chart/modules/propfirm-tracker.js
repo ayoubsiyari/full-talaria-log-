@@ -32,7 +32,7 @@ class PropFirmTracker {
     // Load prop firm session from localStorage
     loadSession() {
         try {
-            const session = localStorage.getItem('backtestingSession');
+            const session = userStorage.getItem('backtestingSession');
             if (session) {
                 this.sessionData = JSON.parse(session);
                 

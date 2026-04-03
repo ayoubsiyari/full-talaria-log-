@@ -1152,7 +1152,7 @@ class AlertSystem {
      */
     loadAlerts() {
         try {
-            const stored = localStorage.getItem(this.storageKey);
+            const stored = userStorage.getItem(this.storageKey);
             if (stored) {
                 this.alerts = JSON.parse(stored);
                 console.log('📂 Loaded', this.alerts.length, 'alerts from storage');
@@ -1168,7 +1168,7 @@ class AlertSystem {
      */
     saveAlerts() {
         try {
-            localStorage.setItem(this.storageKey, JSON.stringify(this.alerts));
+            userStorage.setItem(this.storageKey, JSON.stringify(this.alerts));
         } catch (e) {
             console.error('Failed to save alerts:', e);
         }

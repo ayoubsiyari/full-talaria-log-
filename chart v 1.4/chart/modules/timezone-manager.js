@@ -51,7 +51,7 @@ class TimezoneManager {
      */
     loadTimezone() {
         try {
-            const saved = localStorage.getItem(this.STORAGE_KEY);
+            const saved = userStorage.getItem(this.STORAGE_KEY);
             if (saved) {
                 const tz = this.timezones.find(t => t.id === saved);
                 if (tz) return tz;
@@ -67,7 +67,7 @@ class TimezoneManager {
      */
     saveTimezone(timezone) {
         try {
-            localStorage.setItem(this.STORAGE_KEY, timezone.id);
+            userStorage.setItem(this.STORAGE_KEY, timezone.id);
         } catch (e) {
             console.warn('Failed to save timezone:', e);
         }

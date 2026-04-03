@@ -779,8 +779,8 @@ class Chart {
                         if (payload && payload.session && payload.session.config) {
                             session = this.normalizeBacktestingSession(payload.session.config);
                             try {
-                                localStorage.setItem('backtestingSession', JSON.stringify(session));
-                                localStorage.setItem('active_trading_session_id', String(sessionId));
+                                userStorage.setItem('backtestingSession', JSON.stringify(session));
+                                userStorage.setItem('active_trading_session_id', String(sessionId));
                             } catch (e) {}
                             this.activeTradingSessionId = sessionId ? String(sessionId) : null;
                         }
@@ -792,7 +792,7 @@ class Chart {
 
             // Load session data from localStorage (fallback)
             if (!session) {
-                const sessionData = localStorage.getItem('backtestingSession');
+                const sessionData = userStorage.getItem('backtestingSession');
                 if (sessionData) {
                     session = this.normalizeBacktestingSession(JSON.parse(sessionData));
                 }
@@ -806,7 +806,7 @@ class Chart {
 
                 if (!this.activeTradingSessionId) {
                     try {
-                        this.activeTradingSessionId = localStorage.getItem('active_trading_session_id');
+                        this.activeTradingSessionId = userStorage.getItem('active_trading_session_id');
                     } catch (e) {
                         this.activeTradingSessionId = null;
                     }
@@ -1258,7 +1258,7 @@ class Chart {
 
             const symbolDisplay = document.getElementById('symbolDisplay');
 
-            const session = this.backtestingSession || JSON.parse(localStorage.getItem('backtestingSession') || '{}');
+            const session = this.backtestingSession || JSON.parse(userStorage.getItem('backtestingSession') || '{}');
             const targetTicker = this.resolveSessionTickerForFileId(session, targetFileId) || this.currentSymbol;
             if (this.orderManager && typeof this.orderManager.canSwitchToTicker === 'function') {
                 const canSwitch = this.orderManager.canSwitchToTicker(targetTicker);
@@ -1468,7 +1468,7 @@ class Chart {
         try {
             const session = this.backtestingSession
                 || (mainChart && mainChart.backtestingSession)
-                || JSON.parse(localStorage.getItem('backtestingSession') || '{}');
+                || JSON.parse(userStorage.getItem('backtestingSession') || '{}');
 
             const targetTicker = (mainChart && typeof mainChart.resolveSessionTickerForFileId === 'function')
                 ? mainChart.resolveSessionTickerForFileId(session, targetFileId)
@@ -1683,7 +1683,7 @@ class Chart {
             if (fromUrl) return String(fromUrl);
         } catch (e) {}
         try {
-            const fromStorage = localStorage.getItem('active_trading_session_id');
+            const fromStorage = userStorage.getItem('active_trading_session_id');
             if (fromStorage) return String(fromStorage);
         } catch (e) {}
         return null;
@@ -2247,7 +2247,7 @@ class Chart {
     saveSettings() {
         try {
             // 1. Save to localStorage immediately (instant, works offline)
-            localStorage.setItem('chartSettings', JSON.stringify(this.chartSettings));
+            userStorage.setItem('chartSettings', JSON.stringify(this.chartSettings));
         } catch (error) {
             console.error('❌ Failed to save settings:', error);
         }
@@ -2364,7 +2364,7 @@ class Chart {
     async loadSavedSettings() {
         // Restore active template selections from dedicated key (fastest, most reliable path)
         try {
-            const _tplSel = JSON.parse(localStorage.getItem('chart_active_tpl') || 'null');
+            const _tplSel = JSON.parse(userStorage.getItem('chart_active_tpl') || 'null');
             if (_tplSel) {
                 if (_tplSel.full)      { this._lastTemplateSelected   = _tplSel.full;      this.chartSettings.activeFullTemplate       = _tplSel.full; }
                 if (_tplSel.chartOnly) { this._lastChartOnlyTemplate  = _tplSel.chartOnly; this.chartSettings.activeChartOnlyTemplate  = _tplSel.chartOnly; }
@@ -2375,7 +2375,7 @@ class Chart {
         // Apply localStorage settings immediately (non-blocking) so the chart
         // renders on the first frame without waiting for the API network call.
         try {
-            const saved = localStorage.getItem('chartSettings');
+            const saved = userStorage.getItem('chartSettings');
             if (saved) {
                 const settings = JSON.parse(saved);
                 this.chartSettings = { ...this.chartSettings, ...settings };
@@ -2435,10 +2435,9 @@ class Chart {
 
     loadToolDefaults() {
         try {
-            const saved = localStorage.getItem('toolDefaults');
+            const saved = userStorage.getItem('toolDefaults');
             if (saved) {
                 const savedDefaults = JSON.parse(saved);
-                // Merge saved defaults with built-in defaults
                 Object.keys(savedDefaults).forEach(tool => {
                     if (this.toolDefaults[tool]) {
                         this.toolDefaults[tool] = { ...this.toolDefaults[tool], ...savedDefaults[tool] };
@@ -2452,7 +2451,7 @@ class Chart {
     
     saveToolDefaults() {
         try {
-            localStorage.setItem('toolDefaults', JSON.stringify(this.toolDefaults));
+            userStorage.setItem('toolDefaults', JSON.stringify(this.toolDefaults));
         } catch (e) {
             console.error('Failed to save tool defaults:', e);
         }
@@ -2461,7 +2460,7 @@ class Chart {
     
     loadDrawingsFromStorage() {
         try {
-            const saved = localStorage.getItem(`chart_drawings_${this.currentFileId || 'default'}`);
+            const saved = userStorage.getItem(`chart_drawings_${this.currentFileId || 'default'}`);
             if (saved) {
                 this.drawings = JSON.parse(saved);
                 
@@ -2867,7 +2866,7 @@ class Chart {
         } else if (Array.isArray(this.drawings) && this.drawings.length > 0) {
             this.svg.selectAll('*').remove();
             this.drawings = [];
-            localStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify([]));
+            userStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify([]));
             this.scheduleRender();
             cleared = true;
         }
@@ -4321,7 +4320,7 @@ class Chart {
                     self.chartSettings.activeFullTemplate = null;
                     self.chartSettings.activeChartOnlyTemplate = null;
                     self.chartSettings.activePanelOnlyTemplate = null;
-                    try { localStorage.removeItem('chart_active_tpl'); } catch(e) {}
+                    try { userStorage.removeItem('chart_active_tpl'); } catch(e) {}
                     d3.selectAll('.template-selector').property('value', '');
                     if (typeof self.saveSettings === 'function') self.saveSettings();
                     if (typeof self._updateThemePreview === 'function' && self._themePreviewChartSettings) {
@@ -4784,7 +4783,7 @@ class Chart {
                     this.chartSettings.activeFullTemplate = null;
                     this.chartSettings.activeChartOnlyTemplate = null;
                     this.chartSettings.activePanelOnlyTemplate = null;
-                    try { localStorage.removeItem('chart_active_tpl'); } catch(e) {}
+                    try { userStorage.removeItem('chart_active_tpl'); } catch(e) {}
                 });
             });
         }
@@ -5256,7 +5255,7 @@ class Chart {
 
     getUserChartTemplates() {
         try {
-            const raw = localStorage.getItem('chart_user_templates');
+            const raw = userStorage.getItem('chart_user_templates');
             if (!raw) return {};
             const parsed = JSON.parse(raw);
             if (!parsed || typeof parsed !== 'object') return {};
@@ -5268,7 +5267,7 @@ class Chart {
 
     saveUserChartTemplates(templates) {
         try {
-            localStorage.setItem('chart_user_templates', JSON.stringify(templates || {}));
+            userStorage.setItem('chart_user_templates', JSON.stringify(templates || {}));
         } catch (e) {
         }
     }
@@ -5663,7 +5662,7 @@ class Chart {
         } else if (this.chartSettings) {
             this.chartSettings.activeUnifiedTheme = null;
         }
-        try { localStorage.setItem('chart_active_tpl', JSON.stringify({ full: resolvedName, chartOnly: this._lastChartOnlyTemplate || null, panelOnly: this._lastPanelOnlyTemplate || null })); } catch(e) {}
+        try { userStorage.setItem('chart_active_tpl', JSON.stringify({ full: resolvedName, chartOnly: this._lastChartOnlyTemplate || null, panelOnly: this._lastPanelOnlyTemplate || null })); } catch(e) {}
 
         // Apply all template settings to chartSettings
         Object.keys(template).forEach(key => {
@@ -5711,7 +5710,7 @@ class Chart {
         this.chartSettings.activeUnifiedTheme = templateName;
         const isPreview = (typeof window !== 'undefined' && window._templatePreviewMode === true);
         if (!isPreview) {
-            try { localStorage.setItem('chart_active_tpl', JSON.stringify({ full: this._lastTemplateSelected || templateName || null, chartOnly: templateName, panelOnly: this._lastPanelOnlyTemplate || null })); } catch(e) {}
+            try { userStorage.setItem('chart_active_tpl', JSON.stringify({ full: this._lastTemplateSelected || templateName || null, chartOnly: templateName, panelOnly: this._lastPanelOnlyTemplate || null })); } catch(e) {}
         }
         const chartKeys = Object.keys(template).filter(k => k !== 'name' && !PANEL_KEYS.has(k));
         if (chartKeys.length > 0) {
@@ -5770,7 +5769,7 @@ class Chart {
         this.chartSettings.activeUnifiedTheme = templateName;
         const isPreview = (typeof window !== 'undefined' && window._templatePreviewMode === true);
         if (!isPreview) {
-            try { localStorage.setItem('chart_active_tpl', JSON.stringify({ full: this._lastTemplateSelected || templateName || null, chartOnly: this._lastChartOnlyTemplate || null, panelOnly: templateName })); } catch(e) {}
+            try { userStorage.setItem('chart_active_tpl', JSON.stringify({ full: this._lastTemplateSelected || templateName || null, chartOnly: this._lastChartOnlyTemplate || null, panelOnly: templateName })); } catch(e) {}
         }
         const hasPanelKeys = PANEL_KEYS.some(k => template[k] !== undefined);
         if (hasPanelKeys) {
@@ -5932,9 +5931,9 @@ class Chart {
         this._lastChartOnlyTemplate = null;
         this._lastPanelOnlyTemplate = null;
         if (this.chartSettings) this.chartSettings.activeUnifiedTheme = null;
-        try { localStorage.removeItem('chart_active_tpl'); } catch(e) {}
+        try { userStorage.removeItem('chart_active_tpl'); } catch(e) {}
         try {
-            localStorage.removeItem('chartSettings');
+            userStorage.removeItem('chartSettings');
         } catch (e) {
         }
         this.applyChartSettings();
@@ -6072,7 +6071,7 @@ class Chart {
 
     getSymbolSwitcherEntries() {
         const entries = [];
-        const session = this.backtestingSession || this.normalizeBacktestingSession(JSON.parse(localStorage.getItem('backtestingSession') || '{}'));
+        const session = this.backtestingSession || this.normalizeBacktestingSession(JSON.parse(userStorage.getItem('backtestingSession') || '{}'));
 
         if (session && session.instruments && typeof session.instruments === 'object') {
             Object.keys(session.instruments).forEach((tickerKey) => {
@@ -7848,7 +7847,7 @@ class Chart {
                 // Sync deletion to other panels
                 this.syncDrawingToOtherPanels(deletedDrawing, 'delete');
                 // Save to localStorage
-                localStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
+                userStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
                 this.needsRender = true;
             }
             // Ctrl/Cmd + Z - undo last drawing
@@ -7857,7 +7856,7 @@ class Chart {
                 if (this.drawings.length > 0) {
                     this.drawings.pop();
                     // Save to localStorage
-                    localStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
+                    userStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
                     this.needsRender = true;
                 }
             }
@@ -8119,7 +8118,7 @@ class Chart {
         };
 
         try {
-            const stored = window.localStorage.getItem('goToPresets');
+            const stored = userStorage.getItem('goToPresets');
             if (!stored) return defaultPresets;
             const parsed = JSON.parse(stored);
             return {
@@ -8166,7 +8165,7 @@ class Chart {
         };
 
         try {
-            window.localStorage.setItem('goToPresets', JSON.stringify(this.goToPresets));
+            userStorage.setItem('goToPresets', JSON.stringify(this.goToPresets));
         } catch (err) {
             console.warn('Failed to save go-to presets', err);
         }
@@ -12429,7 +12428,7 @@ class Chart {
                         // Save to localStorage directly using index
                         try {
                             const drawingsData = JSON.stringify(chart.drawings);
-                            localStorage.setItem(`chart_drawings_${chart.currentFileId || 'default'}`, drawingsData);
+                            userStorage.setItem(`chart_drawings_${chart.currentFileId || 'default'}`, drawingsData);
                         } catch (e) {
                             console.error('Failed to save after resize:', e);
                         }
@@ -14133,7 +14132,7 @@ class Chart {
                         this.updateToolDefaultsFromDrawing(newDrawing);
                         
                         // Save to localStorage
-                        localStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
+                        userStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
                         
                         // For text tool, enter inline edit mode immediately
                         if (this.pendingTextEdit) {
@@ -16053,7 +16052,7 @@ class Chart {
         }
 
         try {
-            localStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
+            userStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
         } catch (error) {
         }
 
@@ -17349,7 +17348,7 @@ class Chart {
         // Save all drawings to localStorage
         try {
             const drawingsData = JSON.stringify(this.drawings);
-            localStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, drawingsData);
+            userStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, drawingsData);
         } catch (e) {
             console.error('Failed to save drawings to localStorage:', e);
         }

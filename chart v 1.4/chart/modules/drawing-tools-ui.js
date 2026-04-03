@@ -5061,7 +5061,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         try {
 
-            const savedPos = localStorage.getItem('drawingSettingsModalPosition');
+            const savedPos = userStorage.getItem('drawingSettingsModalPosition');
 
             if (savedPos) {
 
@@ -24169,7 +24169,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const key = `drawing_templates_${toolType}`;
 
-        const saved = localStorage.getItem(key);
+        const saved = userStorage.getItem(key);
 
         return saved ? JSON.parse(saved) : [];
 
@@ -24793,7 +24793,7 @@ showSaveTemplateDialog(drawing, dropdown) {
 
         templates.push(newTemplate);
 
-        localStorage.setItem(`drawing_templates_${actualDrawing.type}`, JSON.stringify(templates));
+        userStorage.setItem(`drawing_templates_${actualDrawing.type}`, JSON.stringify(templates));
 
 
 
@@ -25019,7 +25019,7 @@ applyTemplate(drawing, templateId, modal) {
 
                 try {
 
-                    localStorage.setItem('drawingSettingsModalPosition', JSON.stringify(savedPos));
+                    userStorage.setItem('drawingSettingsModalPosition', JSON.stringify(savedPos));
 
                 } catch (e) {
 
@@ -25366,7 +25366,7 @@ applyTemplate(drawing, templateId, modal) {
 
         templates = templates.filter(t => t.id !== templateId);
 
-        localStorage.setItem(`drawing_templates_${toolType}`, JSON.stringify(templates));
+        userStorage.setItem(`drawing_templates_${toolType}`, JSON.stringify(templates));
 
         window.dispatchEvent(new CustomEvent('drawingTemplatesUpdated', {
 
@@ -32976,7 +32976,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
         try {
 
-            window.localStorage.setItem('chart_keep_drawing', this.keepDrawingEnabled ? '1' : '0');
+            userStorage.setItem('chart_keep_drawing', this.keepDrawingEnabled ? '1' : '0');
 
         } catch (err) {
 
@@ -32992,7 +32992,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
         try {
 
-            const stored = window.localStorage.getItem('chart_keep_drawing');
+            const stored = userStorage.getItem('chart_keep_drawing');
 
             if (stored === '1') return true;
 

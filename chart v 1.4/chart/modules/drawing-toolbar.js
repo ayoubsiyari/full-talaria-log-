@@ -1966,7 +1966,7 @@ class DrawingToolbar {
 
     getSavedTemplates(toolType) {
         const key = this.getTemplatesKey(toolType);
-        const saved = localStorage.getItem(key);
+        const saved = userStorage.getItem(key);
         return saved ? JSON.parse(saved) : [];
     }
 
@@ -2094,7 +2094,7 @@ class DrawingToolbar {
                 opacity: (styleSnapshot && styleSnapshot.opacity !== undefined) ? styleSnapshot.opacity : (actualDrawing.style && actualDrawing.style.opacity)
             };
             templates.push(newTemplate);
-            localStorage.setItem(this.getTemplatesKey(actualDrawing.type), JSON.stringify(templates));
+            userStorage.setItem(this.getTemplatesKey(actualDrawing.type), JSON.stringify(templates));
 
             window.dispatchEvent(new CustomEvent('drawingTemplatesUpdated', {
                 detail: { toolType: actualDrawing.type }
@@ -2166,7 +2166,7 @@ class DrawingToolbar {
     deleteTemplate(toolType, templateId) {
         let templates = this.getSavedTemplates(toolType);
         templates = templates.filter(t => t.id !== templateId);
-        localStorage.setItem(this.getTemplatesKey(toolType), JSON.stringify(templates));
+        userStorage.setItem(this.getTemplatesKey(toolType), JSON.stringify(templates));
         window.dispatchEvent(new CustomEvent('drawingTemplatesUpdated', {
             detail: { toolType }
         }));
@@ -2220,7 +2220,7 @@ class DrawingToolbar {
         const rect = this.toolbar.getBoundingClientRect();
         const position = { left: rect.left, top: rect.top };
         try {
-            localStorage.setItem(this.storageKey, JSON.stringify(position));
+            userStorage.setItem(this.storageKey, JSON.stringify(position));
             this.savedPosition = position;
         } catch (err) {
             console.warn('⚠️ Failed to save toolbar position', err);
@@ -2230,7 +2230,7 @@ class DrawingToolbar {
     loadToolbarPosition() {
         if (this.savedPosition) return; // Already loaded
         try {
-            const stored = localStorage.getItem(this.storageKey);
+            const stored = userStorage.getItem(this.storageKey);
             if (stored) {
                 this.savedPosition = JSON.parse(stored);
             }

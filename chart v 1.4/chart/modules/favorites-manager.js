@@ -414,13 +414,13 @@ class FavoritesManager {
     
     loadFavorites() {
         try {
-            const stored = localStorage.getItem(this.storageKey);
+            const stored = userStorage.getItem(this.storageKey);
             this.favorites = stored ? JSON.parse(stored) : [];
             if (Array.isArray(this.favorites)) {
                 const filtered = this.favorites.filter(id => this.toolDefinitions && this.toolDefinitions[id]);
                 if (filtered.length !== this.favorites.length) {
                     this.favorites = filtered;
-                    localStorage.setItem(this.storageKey, JSON.stringify(this.favorites));
+                    userStorage.setItem(this.storageKey, JSON.stringify(this.favorites));
                 }
             }
             console.log('📂 Loaded favorites:', this.favorites);
@@ -432,7 +432,7 @@ class FavoritesManager {
     
     saveFavorites() {
         try {
-            localStorage.setItem(this.storageKey, JSON.stringify(this.favorites));
+            userStorage.setItem(this.storageKey, JSON.stringify(this.favorites));
             console.log('💾 Saved favorites:', this.favorites);
         } catch (error) {
             console.error('❌ Error saving favorites:', error);
@@ -702,7 +702,7 @@ class FavoritesManager {
     loadPosition() {
         const defaultPosition = this.clampToolbarPosition(56, this.getMinToolbarTop());
         try {
-            const stored = localStorage.getItem(this.positionKey);
+            const stored = userStorage.getItem(this.positionKey);
             if (stored) {
                 const position = JSON.parse(stored);
                 const clamped = this.clampToolbarPosition(Number(position.left), Number(position.top));
@@ -730,7 +730,7 @@ class FavoritesManager {
                 left: clamped.left,
                 top: clamped.top
             };
-            localStorage.setItem(this.positionKey, JSON.stringify(position));
+            userStorage.setItem(this.positionKey, JSON.stringify(position));
             console.log('💾 Saved position:', position);
         } catch (error) {
             console.error('❌ Error saving position:', error);
@@ -835,7 +835,7 @@ class FavoritesManager {
     // Load visibility state from localStorage
     loadVisibility() {
         try {
-            const stored = localStorage.getItem(this.visibilityKey);
+            const stored = userStorage.getItem(this.visibilityKey);
             if (stored !== null) {
                 this.isVisible = stored === 'true';
             }
@@ -854,7 +854,7 @@ class FavoritesManager {
     // Save visibility state to localStorage
     saveVisibility() {
         try {
-            localStorage.setItem(this.visibilityKey, String(this.isVisible));
+            userStorage.setItem(this.visibilityKey, String(this.isVisible));
             console.log('💾 Saved visibility:', this.isVisible);
         } catch (error) {
             console.error('❌ Error saving visibility:', error);

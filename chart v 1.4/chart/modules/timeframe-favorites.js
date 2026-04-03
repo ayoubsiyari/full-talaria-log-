@@ -31,7 +31,7 @@ class TimeframeFavorites {
                 }
             }
 
-            const saved = localStorage.getItem('chart_timeframe_favorites');
+            const saved = userStorage.getItem('chart_timeframe_favorites');
             if (saved) {
                 const parsed = JSON.parse(saved);
                 if (Array.isArray(parsed) && parsed.length > 0) {
@@ -51,7 +51,7 @@ class TimeframeFavorites {
     saveFavorites() {
         try {
             this.favorites = this.normalizeTimeframeList(this.favorites);
-            localStorage.setItem('chart_timeframe_favorites', JSON.stringify(this.favorites));
+            userStorage.setItem('chart_timeframe_favorites', JSON.stringify(this.favorites));
 
             if (typeof window !== 'undefined' && typeof window.saveTimeframeFavorites === 'function') {
                 window.saveTimeframeFavorites(this.favorites);
@@ -112,7 +112,7 @@ class TimeframeFavorites {
 
     loadCustomTimeframes() {
         try {
-            const saved = localStorage.getItem('chart_custom_timeframes');
+            const saved = userStorage.getItem('chart_custom_timeframes');
             const parsed = saved ? JSON.parse(saved) : [];
             const fromFavorites = (this.favorites || []).filter(tf => !this.isBuiltInTimeframe(tf));
 
@@ -128,7 +128,7 @@ class TimeframeFavorites {
         try {
             this.customTimeframes = this.normalizeTimeframeList(this.customTimeframes)
                 .filter(tf => !this.isBuiltInTimeframe(tf));
-            localStorage.setItem('chart_custom_timeframes', JSON.stringify(this.customTimeframes));
+            userStorage.setItem('chart_custom_timeframes', JSON.stringify(this.customTimeframes));
         } catch (e) {
             console.error('Failed to save custom timeframes:', e);
         }

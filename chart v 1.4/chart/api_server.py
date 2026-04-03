@@ -299,6 +299,7 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     access_expires_at = Column(DateTime, nullable=True)
+    max_sessions = Column(Integer, default=1, nullable=False, server_default="1")
 
 class UserSession(Base):
     __tablename__ = "user_sessions"
@@ -345,6 +346,7 @@ Base.metadata.create_all(bind=engine, tables=_CHART_TABLES)
 try:
     with engine.connect() as _conn:
         _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS access_expires_at TIMESTAMP"))
+        _conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS max_sessions INTEGER NOT NULL DEFAULT 1"))
         _conn.commit()
 except Exception:
     pass
@@ -2648,8 +2650,6 @@ def _require_admin(request: Request):
     return user
 
 def _can_access_trading_session(user: User, session: TradingSession) -> bool:
-    if user.role == "admin":
-        return True
     return int(session.user_id) == int(user.id)
 
 def _session_public_dict(s: TradingSession):
@@ -3155,6 +3155,7 @@ def _user_public_dict(user: User):
         "base_currency": getattr(user, 'base_currency', 'USD'),
         "is_active": bool(user.is_active),
         "access_expires_at": expires.isoformat() if expires else None,
+        "max_sessions": getattr(user, 'max_sessions', 1) or 1,
         "created_at": created.isoformat() if created else None,
         "updated_at": updated.isoformat() if updated else None,
     }
@@ -3212,6 +3213,18 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
             raise HTTPException(status_code=401, detail="Invalid credentials")
         if not _verify_password(payload.password, user.password_hash):
             raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        max_sess = user.max_sessions if user.max_sessions and user.max_sessions > 0 else 1
+        if user.role != "admin":
+            existing = (
+                db.query(UserSession)
+                .filter(UserSession.user_id == user.id)
+                .order_by(UserSession.last_active_at.desc())
+                .all()
+            )
+            if len(existing) >= max_sess:
+                for old in existing[max_sess - 1:]:
+                    db.delete(old)
 
         session_id = secrets.token_urlsafe(32)
         sess = UserSession(
@@ -3286,6 +3299,7 @@ class _CreateUserIn(BaseModel):
     role: str = "user"
     access_days: int | None = None
     access_expires_at: str | None = None
+    max_sessions: int = 1
 
 
 @app.post("/api/admin/users")
@@ -3311,6 +3325,7 @@ async def admin_create_user(payload: _CreateUserIn, request: Request):
             role=payload.role.strip().lower() if payload.role in ("user", "admin") else "user",
             is_active=True,
             access_expires_at=expires,
+            max_sessions=max(1, payload.max_sessions) if payload.max_sessions else 1,
         )
         db.add(user)
         db.commit()
@@ -3328,6 +3343,7 @@ class _UpdateUserIn(BaseModel):
     access_expires_at: str | None = None
     access_days: int | None = None
     password: str | None = None
+    max_sessions: int | None = None
 
 
 @app.put("/api/admin/users/{user_id}")
@@ -3351,6 +3367,8 @@ async def admin_update_user(user_id: int, payload: _UpdateUserIn, request: Reque
             user.is_active = payload.is_active
         if payload.password:
             user.password_hash = _hash_password(payload.password)
+        if payload.max_sessions is not None:
+            user.max_sessions = max(1, payload.max_sessions)
         if payload.access_expires_at is not None:
             if payload.access_expires_at == "" or payload.access_expires_at.lower() == "null":
                 user.access_expires_at = None
@@ -3765,9 +3783,7 @@ async def list_trading_sessions(request: Request):
     user = _require_user(request)
     db = SessionLocal()
     try:
-        q = db.query(TradingSession)
-        if user.role != "admin":
-            q = q.filter(TradingSession.user_id == user.id)
+        q = db.query(TradingSession).filter(TradingSession.user_id == user.id)
         sessions = q.order_by(TradingSession.created_at.desc()).all()
         return {"sessions": [_session_public_dict(s) for s in sessions]}
     finally:

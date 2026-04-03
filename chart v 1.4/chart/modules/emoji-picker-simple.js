@@ -148,7 +148,7 @@ class SimpleEmojiPicker {
     
     loadRecentEmojis() {
         try {
-            const saved = localStorage.getItem('recentEmojis');
+            const saved = userStorage.getItem('recentEmojis');
             return saved ? JSON.parse(saved) : ['✅', '🦄', '❌', '🚀', '🧲', '👁️', '🏛️', '🙂'];
         } catch (e) {
             return ['✅', '🦄', '❌', '🚀', '🧲', '👁️', '🏛️', '🙂'];
@@ -157,7 +157,7 @@ class SimpleEmojiPicker {
     
     saveRecentEmojis() {
         try {
-            localStorage.setItem('recentEmojis', JSON.stringify(this.recentEmojis.slice(0, 16)));
+            userStorage.setItem('recentEmojis', JSON.stringify(this.recentEmojis.slice(0, 16)));
         } catch (e) {
             console.warn('Could not save recent emojis');
         }

@@ -75,9 +75,18 @@
                     if (!res.ok) {
 
                         redirectToLogin();
+                        return null;
 
                     }
+                    return res.json();
 
+                })
+
+                .then(function(data) {
+                    if (data && data.user && data.user.id) {
+                        window.__talariaUserId = data.user.id;
+                        try { localStorage.setItem('_uid', String(data.user.id)); } catch(e) {}
+                    }
                 })
 
                 .catch(function() {
@@ -88,6 +97,36 @@
 
         })();
 
+    </script>
+    <script>
+    // Per-user localStorage isolation. All user-specific data is prefixed
+    // with the user ID so different accounts on the same browser stay separate.
+    (function() {
+        var uid = null;
+        try { uid = localStorage.getItem('_uid'); } catch(e) {}
+
+        window.userKey = function(key) {
+            var id = uid || window.__talariaUserId;
+            if (!id) { try { id = localStorage.getItem('_uid'); } catch(e) {} }
+            if (id) { uid = id; return 'u' + id + '_' + key; }
+            return key;
+        };
+
+        window.userStorage = {
+            getItem: function(key) {
+                var scoped = localStorage.getItem(window.userKey(key));
+                if (scoped !== null) return scoped;
+                // Migrate: check legacy un-scoped key
+                var legacy = localStorage.getItem(key);
+                if (legacy !== null && uid) {
+                    try { localStorage.setItem(window.userKey(key), legacy); localStorage.removeItem(key); } catch(e) {}
+                }
+                return legacy;
+            },
+            setItem: function(key, val) { localStorage.setItem(window.userKey(key), val); },
+            removeItem: function(key) { localStorage.removeItem(window.userKey(key)); }
+        };
+    })();
     </script>
 
     <style>
@@ -43400,7 +43439,7 @@
 
             // Check if it's a propfirm session and show the button
 
-            const session = localStorage.getItem('backtestingSession');
+            const session = userStorage.getItem('backtestingSession');
 
             if (session) {
 
@@ -44364,7 +44403,7 @@
 
             // Profit Target (would calculate from account balance)
 
-            const session = JSON.parse(localStorage.getItem('backtestingSession') || '{}');
+            const session = JSON.parse(userStorage.getItem('backtestingSession') || '{}');
 
             const startBalance = session.balance || 10000;
 
@@ -49132,13 +49171,13 @@ function showIndicatorsMenu() {
 
             const PANEL_DEFAULT_H   = 230;
 
-            let panelExpanded = localStorage.getItem('replayPanelExpanded') !== 'false';
+            let panelExpanded = userStorage.getItem('replayPanelExpanded') !== 'false';
 
 
 
             function getPanelH() {
 
-                return parseInt(localStorage.getItem('replayPanelHeight') || PANEL_DEFAULT_H, 10);
+                return parseInt(userStorage.getItem('replayPanelHeight') || PANEL_DEFAULT_H, 10);
 
             }
 
@@ -49160,7 +49199,7 @@ function showIndicatorsMenu() {
 
                 panelExpanded = false;
 
-                localStorage.setItem('replayPanelExpanded', 'false');
+                userStorage.setItem('replayPanelExpanded', 'false');
 
                 document.body.classList.add('replay-tabs-collapsed');
 
@@ -49178,7 +49217,7 @@ function showIndicatorsMenu() {
 
                 panelExpanded = true;
 
-                localStorage.setItem('replayPanelExpanded', 'true');
+                userStorage.setItem('replayPanelExpanded', 'true');
 
                 document.body.classList.remove('replay-tabs-collapsed');
 
@@ -49218,7 +49257,7 @@ function showIndicatorsMenu() {
 
             const maximizeBtn = document.getElementById('replayMaximizeBtn');
 
-            let panelMaximized = localStorage.getItem('replayPanelMaximized') === 'true';
+            let panelMaximized = userStorage.getItem('replayPanelMaximized') === 'true';
 
 
 
@@ -49226,7 +49265,7 @@ function showIndicatorsMenu() {
 
                 panelMaximized = true;
 
-                localStorage.setItem('replayPanelMaximized', 'true');
+                userStorage.setItem('replayPanelMaximized', 'true');
 
                 if (!panelExpanded) expandPanel();
 
@@ -49244,7 +49283,7 @@ function showIndicatorsMenu() {
 
                 panelMaximized = false;
 
-                localStorage.setItem('replayPanelMaximized', 'false');
+                userStorage.setItem('replayPanelMaximized', 'false');
 
                 document.body.classList.remove('replay-panel-maximized');
 
@@ -49314,7 +49353,7 @@ function showIndicatorsMenu() {
 
                             panelExpanded = true;
 
-                            localStorage.setItem('replayPanelExpanded', 'true');
+                            userStorage.setItem('replayPanelExpanded', 'true');
 
                             document.body.classList.remove('replay-tabs-collapsed');
 
@@ -49354,7 +49393,7 @@ function showIndicatorsMenu() {
 
                         } else {
 
-                            localStorage.setItem('replayPanelHeight', Math.round(finalH));
+                            userStorage.setItem('replayPanelHeight', Math.round(finalH));
 
                         }
 
@@ -49626,7 +49665,7 @@ function showIndicatorsMenu() {
 
                 // Store the last selected magnet type (default to 'strong')
 
-                let lastMagnetType = localStorage.getItem('magnetType') || 'strong';
+                let lastMagnetType = userStorage.getItem('magnetType') || 'strong';
 
                 let magnetActive = false;
 
@@ -49944,7 +49983,7 @@ function showIndicatorsMenu() {
 
                         lastMagnetType = type;
 
-                        localStorage.setItem('magnetType', type);
+                        userStorage.setItem('magnetType', type);
 
                         
 
@@ -50048,7 +50087,7 @@ function showIndicatorsMenu() {
 
             const snapToggleItem = document.getElementById('snapToIndicators');
 
-            let snapToIndicators = localStorage.getItem('snapToIndicators') === 'true';
+            let snapToIndicators = userStorage.getItem('snapToIndicators') === 'true';
 
             
 
@@ -50068,7 +50107,7 @@ function showIndicatorsMenu() {
 
                     snapToIndicators = this.checked;
 
-                    localStorage.setItem('snapToIndicators', snapToIndicators);
+                    userStorage.setItem('snapToIndicators', snapToIndicators);
 
                     
 
@@ -50174,7 +50213,7 @@ function showIndicatorsMenu() {
 
                     lastMagnetType = normalizedMode;
 
-                    localStorage.setItem('magnetType', normalizedMode);
+                    userStorage.setItem('magnetType', normalizedMode);
 
                 }
 
@@ -50228,7 +50267,7 @@ function showIndicatorsMenu() {
 
             // Load backtesting session settings
 
-            const sessionData = localStorage.getItem('backtestingSession');
+            const sessionData = userStorage.getItem('backtestingSession');
 
             
 
@@ -50588,7 +50627,7 @@ function showIndicatorsMenu() {
 
             // Load backtesting session configuration
 
-            const sessionData = localStorage.getItem('backtestingSession');
+            const sessionData = userStorage.getItem('backtestingSession');
 
             
 
@@ -52279,7 +52318,7 @@ function showIndicatorsMenu() {
 
                     }
 
-                    const saved = localStorage.getItem('replayUpdateInterval');
+                    const saved = userStorage.getItem('replayUpdateInterval');
 
                     if (saved) return normalizeIntervalTf(saved) || 'auto';
 
@@ -52391,7 +52430,7 @@ function showIndicatorsMenu() {
 
                     try {
 
-                        localStorage.setItem('replayUpdateInterval', normalized);
+                        userStorage.setItem('replayUpdateInterval', normalized);
 
                     } catch (err) {}
 
@@ -52627,7 +52666,7 @@ function showIndicatorsMenu() {
 
                         clone.remove();
 
-                        localStorage.removeItem('speedSliderClonePosition');
+                        userStorage.removeItem('speedSliderClonePosition');
 
                         setOriginalSpeedBarOpacity('1');
 
@@ -52761,7 +52800,7 @@ function showIndicatorsMenu() {
 
                             clone.remove();
 
-                            localStorage.removeItem('speedSliderClonePosition');
+                            userStorage.removeItem('speedSliderClonePosition');
 
                             setOriginalSpeedBarOpacity('1');
 
@@ -52779,7 +52818,7 @@ function showIndicatorsMenu() {
 
                         try {
 
-                            localStorage.setItem('speedSliderClonePosition', JSON.stringify({ left: rect.left, top: rect.top }));
+                            userStorage.setItem('speedSliderClonePosition', JSON.stringify({ left: rect.left, top: rect.top }));
 
                         } catch (err) {}
 
@@ -54237,7 +54276,7 @@ function showIndicatorsMenu() {
 
                             try {
 
-                                localStorage.setItem('speedSliderClonePosition', JSON.stringify({ left: cloneRect.left, top: cloneRect.top }));
+                                userStorage.setItem('speedSliderClonePosition', JSON.stringify({ left: cloneRect.left, top: cloneRect.top }));
 
                             } catch (err) {}
 
@@ -54265,7 +54304,7 @@ function showIndicatorsMenu() {
 
                 try {
 
-                    localStorage.removeItem('speedSliderClonePosition');
+                    userStorage.removeItem('speedSliderClonePosition');
 
                 } catch (err) {}
 
@@ -55232,7 +55271,7 @@ function showIndicatorsMenu() {
 
                 function populateSymbolList() {
 
-                    const session = JSON.parse(localStorage.getItem('backtestingSession') || '{}');
+                    const session = JSON.parse(userStorage.getItem('backtestingSession') || '{}');
 
                     const files = session.files || [];
 
@@ -56178,7 +56217,7 @@ window._applyCrosshairSettings=function(color,opacity,width,lineStyle){
 
     if(c.scheduleRender)c.scheduleRender();
 
-    try{if(c.saveSettings)c.saveSettings();}catch(e){try{localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}catch(e2){}}
+    try{if(c.saveSettings)c.saveSettings();}catch(e){try{userStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}catch(e2){}}
 
 };
 
@@ -56304,7 +56343,7 @@ window._openCrosshairColorPicker=function(btn){
 
             if(c2.scheduleRender)c2.scheduleRender();
 
-            try{if(c2.saveSettings)c2.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c2.chartSettings));}
+            try{if(c2.saveSettings)c2.saveSettings();}catch(e){userStorage.setItem('chartSettings',JSON.stringify(c2.chartSettings));}
 
         },btn,{
 
@@ -56324,7 +56363,7 @@ window._openCrosshairColorPicker=function(btn){
 
                 if(c2.scheduleRender)c2.scheduleRender();
 
-                try{if(c2.saveSettings)c2.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c2.chartSettings));}
+                try{if(c2.saveSettings)c2.saveSettings();}catch(e){userStorage.setItem('chartSettings',JSON.stringify(c2.chartSettings));}
 
             },
 
@@ -56344,7 +56383,7 @@ window._openCrosshairColorPicker=function(btn){
 
                 if(c2.scheduleRender)c2.scheduleRender();
 
-                try{if(c2.saveSettings)c2.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c2.chartSettings));}
+                try{if(c2.saveSettings)c2.saveSettings();}catch(e){userStorage.setItem('chartSettings',JSON.stringify(c2.chartSettings));}
 
                 var dashMap={solid:'none',dashed:'8 4',dotted:'2 4'};
 
@@ -56390,7 +56429,7 @@ window._openScaleLinesColorPicker=function(btn){
 
             if(c2.scheduleRender)c2.scheduleRender();
 
-            try{if(c2.saveSettings)c2.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c2.chartSettings));}
+            try{if(c2.saveSettings)c2.saveSettings();}catch(e){userStorage.setItem('chartSettings',JSON.stringify(c2.chartSettings));}
 
         },btn,{
 
@@ -56410,7 +56449,7 @@ window._openScaleLinesColorPicker=function(btn){
 
                 if(c2.scheduleRender)c2.scheduleRender();
 
-                try{if(c2.saveSettings)c2.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c2.chartSettings));}
+                try{if(c2.saveSettings)c2.saveSettings();}catch(e){userStorage.setItem('chartSettings',JSON.stringify(c2.chartSettings));}
 
                 var lineEl=document.getElementById('_slLinePreview');
 
@@ -56434,7 +56473,7 @@ window._openScaleLinesColorPicker=function(btn){
 
                 if(c2.scheduleRender)c2.scheduleRender();
 
-                try{if(c2.saveSettings)c2.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c2.chartSettings));}
+                try{if(c2.saveSettings)c2.saveSettings();}catch(e){userStorage.setItem('chartSettings',JSON.stringify(c2.chartSettings));}
 
                 var dashMap={solid:'none',dashed:'8 4',dotted:'2 4'};
 
@@ -56487,7 +56526,7 @@ var P={};
 function ch(){ return (window.getActiveChart&&window.getActiveChart())||window.chart||window.mainChart||null; }
 
 function getUnifiedSel(chart){if(!chart)return null;if(typeof chart.getActiveUnifiedThemeId==='function')return chart.getActiveUnifiedThemeId();return null;}
-function apply(){ var c=ch(); if(!c)return; if(c.applyChartSettings)c.applyChartSettings(); if(c.scheduleRender)c.scheduleRender(); else if(c.render)c.render(); try{if(c.saveSettings)c.saveSettings();}catch(e){try{localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}catch(e2){}} if(typeof tlRefreshTemplateDropdownChrome==='function')tlRefreshTemplateDropdownChrome(); }
+function apply(){ var c=ch(); if(!c)return; if(c.applyChartSettings)c.applyChartSettings(); if(c.scheduleRender)c.scheduleRender(); else if(c.render)c.render(); try{if(c.saveSettings)c.saveSettings();}catch(e){try{userStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}catch(e2){}} if(typeof tlRefreshTemplateDropdownChrome==='function')tlRefreshTemplateDropdownChrome(); }
 
 function set(k,v){ var c=ch(); if(!c)return; c.chartSettings=c.chartSettings||{}; c.chartSettings[k]=v; apply(); }
 
@@ -56519,19 +56558,19 @@ function spClearActiveTplSelection(){
 
     }
 
-    try{localStorage.removeItem('chart_active_tpl');}catch(e){}
+    try{userStorage.removeItem('chart_active_tpl');}catch(e){}
 
 }
 
-function sess(){ try{return window.backtestingSession||JSON.parse(localStorage.getItem('backtestingSession')||'{}')||{};}catch(e){return{};} }
+function sess(){ try{return window.backtestingSession||JSON.parse(userStorage.getItem('backtestingSession')||'{}')||{};}catch(e){return{};} }
 
-function saveSess(s){ window.backtestingSession=s; try{localStorage.setItem('backtestingSession',JSON.stringify(s));}catch(e){} var c=ch(); if(c)c.backtestingSession=s; }
+function saveSess(s){ window.backtestingSession=s; try{userStorage.setItem('backtestingSession',JSON.stringify(s));}catch(e){} var c=ch(); if(c)c.backtestingSession=s; }
 
-function gLoad(){ try{return JSON.parse(localStorage.getItem('talaria_general_settings')||'{}');}catch(e){return{};} }
+function gLoad(){ try{return JSON.parse(userStorage.getItem('talaria_general_settings')||'{}');}catch(e){return{};} }
 
 function showTemplateConfirmation(templateName,method,property,templateId,originalState,originalChartSettings){var c=ch();if(!c)return;var existing=document.getElementById('templateConfirmationModal');if(existing)existing.remove();var modal=document.createElement('div');modal.id='templateConfirmationModal';modal.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:10000;';var isPanelTemplate=(method==='applyPanelOnlyTemplate');var isChartTemplate=(method==='applyChartOnlyTemplate');var isFullTemplate=(method==='applyTemplate');var showMatchingPanelForChart=(String(templateName||'').trim().toLowerCase()==='dark'||String(templateName||'').trim().toLowerCase()==='light');var previewArea='';var originalChartTemplate=c._lastChartOnlyTemplate;var originalPanelTemplate=c._lastPanelOnlyTemplate;var originalChartSettingsForPreview=null;if(isPanelTemplate){originalChartSettingsForPreview=c.chartSettings?JSON.parse(JSON.stringify(c.chartSettings)):null;previewArea='<div style="margin-bottom:12px;"><label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#d1d4dc;cursor:pointer;"><input type="checkbox" id="applyMatchingChart" style="margin:0;"><span>Also apply matching chart colors</span></label></div>';}else if(isFullTemplate){previewArea='';}else if(isChartTemplate){originalChartSettingsForPreview=c.chartSettings?JSON.parse(JSON.stringify(c.chartSettings)):null;previewArea=showMatchingPanelForChart?'<div style="margin-bottom:12px;"><label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#d1d4dc;cursor:pointer;"><input type="checkbox" id="applyMatchingPanel" style="margin:0;"><span>Also apply matching panel & sidebar</span></label></div>':'';}if(originalChartSettingsForPreview){window.tempOriginalChartSettings=originalChartSettingsForPreview;}modal.innerHTML='<div style="background:rgba(22,24,30,0.98);border:1px solid rgba(104,113,133,0.35);border-radius:10px;padding:16px;max-width:320px;box-shadow:0 10px 30px rgba(0,0,0,0.5);"><div id="templateConfirmationDragHandle" style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;cursor:grab;user-select:none;-webkit-user-select:none;"><div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#2962ff,#7b61ff);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/></svg></div><div style="flex:1;min-width:0;"><h3 style="margin:0;font-size:14px;font-weight:600;color:#d1d4dc;">Apply Template</h3><p style="margin:2px 0 0;font-size:12px;color:#787b86;">'+templateName+'</p></div><button type="button" id="confirmCloseTemplate" title="Close" aria-label="Close" style="flex-shrink:0;margin:0;padding:0;width:28px;height:28px;line-height:1;border:none;border-radius:6px;background:rgba(255,255,255,0.08);color:#d1d4dc;font-size:18px;font-weight:400;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s;">&times;</button></div>'+previewArea+'<p style="margin:0 0 14px;font-size:12px;color:#a8abb8;line-height:1.4;">Preview applied. Keep these changes?</p><div style="display:flex;gap:8px;"><button id="confirmApplyTemplate" style="flex:1;padding:8px 12px;background:#2962ff;color:#fff;border:none;border-radius:5px;font-size:13px;font-weight:600;cursor:pointer;transition:background 0.15s;">Apply</button><button id="confirmCancelTemplate" style="flex:1;padding:8px 12px;background:rgba(255,255,255,0.1);color:#d1d4dc;border:none;border-radius:5px;font-size:13px;font-weight:600;cursor:pointer;transition:background 0.15s;">Cancel</button></div></div>';document.body.appendChild(modal);var dragH=document.getElementById("templateConfirmationDragHandle");if(dragH){var dragState=null;var onTplDragMove=function(ev){if(!dragState)return;var cx=ev.clientX,cy=ev.clientY;var dx=cx-dragState.sx,dy=cy-dragState.sy;var nl=dragState.ox+dx,nt=dragState.oy+dy;var mw=modal.offsetWidth,mh=modal.offsetHeight;nl=Math.max(0,Math.min(window.innerWidth-mw,nl));nt=Math.max(0,Math.min(window.innerHeight-mh,nt));modal.style.left=nl+"px";modal.style.top=nt+"px";};var onTplDragUp=function(){if(!dragState)return;dragState=null;document.removeEventListener("mousemove",onTplDragMove);document.removeEventListener("mouseup",onTplDragUp);document.body.style.cursor="";dragH.style.cursor="grab";};dragH.addEventListener("mousedown",function(e){if(e.button!==0)return;if(e.target&&e.target.closest&&e.target.closest("#confirmCloseTemplate"))return;var br=modal.getBoundingClientRect();modal.style.left=br.left+"px";modal.style.top=br.top+"px";modal.style.bottom="auto";modal.style.right="auto";modal.style.transform="none";dragState={sx:e.clientX,sy:e.clientY,ox:br.left,oy:br.top};document.body.style.cursor="grabbing";dragH.style.cursor="grabbing";document.addEventListener("mousemove",onTplDragMove);document.addEventListener("mouseup",onTplDragUp);e.preventDefault();});}var applyBtn=document.getElementById('confirmApplyTemplate');var cancelBtn=document.getElementById('confirmCancelTemplate');var chartCheckbox=document.getElementById('applyMatchingChart');var panelCheckbox=document.getElementById('applyMatchingPanel');if(chartCheckbox){chartCheckbox.addEventListener('change',function(){if(this.checked){var chartTemplates=typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[];var matchingChart=chartTemplates.find(function(t){return t.id===templateId;})||chartTemplates.find(function(t){return t.name===templateName;});if(!matchingChart&&typeof c.applyChartOnlyTemplate==='function'){c.applyChartOnlyTemplate(templateId);c._lastChartOnlyTemplate=templateId;if(c.applyChartSettings)c.applyChartSettings();if(c.scheduleRender)c.scheduleRender();else if(c.render)c.render();}if(matchingChart&&typeof c.applyChartOnlyTemplate==='function'){c.applyChartOnlyTemplate(matchingChart.id);c._lastChartOnlyTemplate=matchingChart.id;var chartDropdown=document.getElementById('tl_chart_dd_trig');if(chartDropdown){var chartDots='<span style="display:flex;gap:3px;flex-shrink:0;"><span style="width:9px;height:9px;border-radius:50%;background:'+(matchingChart.accent||'#888')+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+(matchingChart.up||'#089981')+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+(matchingChart.down||'#f23645')+';display:inline-block;"></span></span>';chartDropdown.innerHTML='<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;">'+matchingChart.name+'</span>'+chartDots+'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>';}if(c.applyChartSettings)c.applyChartSettings();if(c.scheduleRender)c.scheduleRender();else if(c.render)c.render();}}else{if(typeof c.applyChartOnlyTemplate==='function'){c.applyChartOnlyTemplate(originalChartTemplate||'null');c._lastChartOnlyTemplate=originalChartTemplate;}if(window.tempOriginalChartSettings){c.chartSettings=JSON.parse(JSON.stringify(window.tempOriginalChartSettings));}var chartDropdown=document.getElementById('tl_chart_dd_trig');if(chartDropdown&&originalChartTemplate){var chartTemplates=typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[];var originalChart=chartTemplates.find(function(t){return t.id===originalChartTemplate;});if(originalChart){var chartDots='<span style="display:flex;gap:3px;flex-shrink:0;"><span style="width:9px;height:9px;border-radius:50%;background:'+originalChart.accent+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+originalChart.up+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+originalChart.down+';display:inline-block;"></span></span>';chartDropdown.innerHTML='<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;">'+originalChart.name+'</span>'+chartDots+'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>';}}if(c.applyChartSettings)c.applyChartSettings();if(c.scheduleRender)c.scheduleRender();else if(c.render)c.render();}});}if(panelCheckbox){panelCheckbox.addEventListener('change',function(){if(this.checked){var panelTemplates=typeof c.getPanelTemplateSwatches==='function'?c.getPanelTemplateSwatches():[];var matchingPanel=panelTemplates.find(function(t){return t.id===templateId;})||panelTemplates.find(function(t){return t.name===templateName;});if(!matchingPanel&&typeof c.applyPanelOnlyTemplate==='function'){c.applyPanelOnlyTemplate(templateId);c._lastPanelOnlyTemplate=templateId;var chartTpls=typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[];var chartTpl=chartTpls.find(function(t){return t.id===templateId;});var panelDropdown=document.getElementById('tl_panel_dd_trig');if(panelDropdown&&chartTpl){var pd='<span style="display:flex;gap:3px;flex-shrink:0;"><span style="width:9px;height:9px;border-radius:50%;background:'+(chartTpl.up||'#089981')+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+(chartTpl.down||'#f23645')+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+(chartTpl.accent||'#2962ff')+';display:inline-block;"></span></span>';panelDropdown.innerHTML='<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;">'+templateName+'</span>'+pd+'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>';}if(c.applyChartSettings)c.applyChartSettings();if(c.scheduleRender)c.scheduleRender();else if(c.render)c.render();}if(matchingPanel&&typeof c.applyPanelOnlyTemplate==='function'){c.applyPanelOnlyTemplate(matchingPanel.id);c._lastPanelOnlyTemplate=matchingPanel.id;var panelDropdown=document.getElementById('tl_panel_dd_trig');if(panelDropdown){var panelDots='<span style="display:flex;gap:3px;flex-shrink:0;"><span style="width:9px;height:9px;border-radius:50%;background:'+matchingPanel.accent+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+matchingPanel.up+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+matchingPanel.down+';display:inline-block;"></span></span>';panelDropdown.innerHTML='<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;">'+matchingPanel.name+'</span>'+panelDots+'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>';}if(c.applyChartSettings)c.applyChartSettings();if(c.scheduleRender)c.scheduleRender();else if(c.render)c.render();}}else{if(typeof c.applyPanelOnlyTemplate==='function'){c.applyPanelOnlyTemplate(originalPanelTemplate||'null');c._lastPanelOnlyTemplate=originalPanelTemplate;}if(window.tempOriginalChartSettings){c.chartSettings=JSON.parse(JSON.stringify(window.tempOriginalChartSettings));}var panelDropdown=document.getElementById('tl_panel_dd_trig');if(panelDropdown&&originalPanelTemplate){var panelTemplates=typeof c.getPanelTemplateSwatches==='function'?c.getPanelTemplateSwatches():[];var originalPanel=panelTemplates.find(function(t){return t.id===originalPanelTemplate;});if(originalPanel){var panelDots='<span style="display:flex;gap:3px;flex-shrink:0;"><span style="width:9px;height:9px;border-radius:50%;background:'+originalPanel.accent+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+originalPanel.up+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+originalPanel.down+';display:inline-block;"></span></span>';panelDropdown.innerHTML='<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;">'+originalPanel.name+'</span>'+panelDots+'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>';}}if(c.applyChartSettings)c.applyChartSettings();if(c.scheduleRender)c.scheduleRender();else if(c.render)c.render();}});}if(applyBtn){applyBtn.addEventListener('click',function(){c[property]=templateId;var _mkDots=function(t){return '<span style="display:flex;gap:3px;flex-shrink:0;"><span style="width:9px;height:9px;border-radius:50%;background:'+t.accent+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+t.up+';display:inline-block;"></span><span style="width:9px;height:9px;border-radius:50%;background:'+t.down+';display:inline-block;"></span></span>';};var _syncTrig=function(ddId,tpl){if(!tpl)return;var trig=document.getElementById(ddId+'_trig');if(trig){trig.innerHTML='<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d4dc;">'+tpl.name+'</span>'+_mkDots(tpl)+'<svg viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg>';}};if(isPanelTemplate){var pTpls=typeof c.getPanelTemplateSwatches==='function'?c.getPanelTemplateSwatches():(typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[]);_syncTrig('tl_panel_dd',pTpls.find(function(t){return t.id===templateId;}));}else if(isChartTemplate){var cTpls=typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[];_syncTrig('tl_chart_dd',cTpls.find(function(t){return t.id===templateId;}));}if(isPanelTemplate&&chartCheckbox&&chartCheckbox.checked){var chartTemplates=typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[];var matchingChart=chartTemplates.find(function(t){return t.id===templateId;})||chartTemplates.find(function(t){return t.name===templateName;});if(matchingChart&&typeof c.applyChartOnlyTemplate==='function'){c.applyChartOnlyTemplate(matchingChart.id);c._lastChartOnlyTemplate=matchingChart.id;_syncTrig('tl_chart_dd',matchingChart);}else if(typeof c.applyChartOnlyTemplate==='function'){c.applyChartOnlyTemplate(templateId);c._lastChartOnlyTemplate=templateId;}}else if(isChartTemplate&&panelCheckbox&&panelCheckbox.checked){var panelTemplates=typeof c.getPanelTemplateSwatches==='function'?c.getPanelTemplateSwatches():[];var matchingPanel=panelTemplates.find(function(t){return t.name===templateName;});if(matchingPanel&&typeof c.applyPanelOnlyTemplate==='function'){c.applyPanelOnlyTemplate(matchingPanel.id);c._lastPanelOnlyTemplate=matchingPanel.id;_syncTrig('tl_panel_dd',matchingPanel);}}else if(isFullTemplate){var cTpls2=typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[];var pTpls2=typeof c.getPanelTemplateSwatches==='function'?c.getPanelTemplateSwatches():(typeof c.getTalariaTemplateSwatches==='function'?c.getTalariaTemplateSwatches():[]);var ft=cTpls2.find(function(t){return t.id===templateId;})||cTpls2.find(function(t){return t.name===templateName;});if(ft){_syncTrig('tl_chart_dd',ft);_syncTrig('tl_panel_dd',pTpls2.find(function(t){return t.id===templateId;})||ft);}}try{if(c.saveSettings)c.saveSettings();}catch(ex){}window.tempOriginalChartSettings=null;modal.remove();});}var cancelTemplate=function(){c[property]=originalState;if(originalChartSettings){c.chartSettings=JSON.parse(JSON.stringify(originalChartSettings));}if(typeof c[method]==='function')c[method](originalState);if(window.tempOriginalChartSettings){c.chartSettings=JSON.parse(JSON.stringify(window.tempOriginalChartSettings));}if(isPanelTemplate&&typeof c.applyChartOnlyTemplate==='function'){c.applyChartOnlyTemplate(originalChartTemplate||'null');}else if(isChartTemplate&&typeof c.applyPanelOnlyTemplate==='function'){c.applyPanelOnlyTemplate(originalPanelTemplate||'null');}try{if(c.saveSettings)c.saveSettings();}catch(ex){}if(c.applyChartSettings)c.applyChartSettings();if(c.scheduleRender)c.scheduleRender();else if(c.render)c.render();window.tempOriginalChartSettings=null;modal.remove();};if(cancelBtn)cancelBtn.addEventListener('click',cancelTemplate);var closeBtn=document.getElementById('confirmCloseTemplate');if(closeBtn)closeBtn.addEventListener('click',cancelTemplate);}
 
-function gSave(p){ var c=Object.assign({},gLoad(),p); try{localStorage.setItem('talaria_general_settings',JSON.stringify(c));}catch(e){} window.generalSettings=c; return c; }
+function gSave(p){ var c=Object.assign({},gLoad(),p); try{userStorage.setItem('talaria_general_settings',JSON.stringify(c));}catch(e){} window.generalSettings=c; return c; }
 
 // Template preview mode: do not persist previewed colors until user confirms Apply.
 if(!window.__tplPreviewCommitHookBound){
@@ -56578,7 +56617,7 @@ if(!window.__tplPreviewCommitHookBound){
                         chartOnly:c._lastChartOnlyTemplate||cs.activeChartOnlyTemplate||null,
                         panelOnly:c._lastPanelOnlyTemplate||cs.activePanelOnlyTemplate||null
                     };
-                    try{ localStorage.setItem('chart_active_tpl',JSON.stringify(payload)); }catch(_e){}
+                    try{ userStorage.setItem('chart_active_tpl',JSON.stringify(payload)); }catch(_e){}
                     window.__templatePreviewOriginal=null;
                 },0);
             }else{
@@ -57391,7 +57430,7 @@ P['symbol']={title:'Symbol',build:function(){
 
         if(c.scheduleRender)c.scheduleRender();
 
-        try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
+        try{if(c.saveSettings)c.saveSettings();}catch(e){userStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
 
         spClearActiveTplSelection();
 
@@ -57407,7 +57446,7 @@ P['symbol']={title:'Symbol',build:function(){
 
         if(c.scheduleRender)c.scheduleRender();
 
-        try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
+        try{if(c.saveSettings)c.saveSettings();}catch(e){userStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
 
     });
 
@@ -57425,7 +57464,7 @@ P['symbol']={title:'Symbol',build:function(){
 
         if(c.scheduleRender)c.scheduleRender();
 
-        try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
+        try{if(c.saveSettings)c.saveSettings();}catch(e){userStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
 
         spClearActiveTplSelection();
 
@@ -57443,7 +57482,7 @@ P['symbol']={title:'Symbol',build:function(){
 
         if(c.scheduleRender)c.scheduleRender();
 
-        try{if(c.saveSettings)c.saveSettings();}catch(e){localStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
+        try{if(c.saveSettings)c.saveSettings();}catch(e){userStorage.setItem('chartSettings',JSON.stringify(c.chartSettings));}
 
     });
 
@@ -59325,7 +59364,7 @@ window._i18nT=function(str){
 
     if(!str)return str;
 
-    var lang=localStorage.getItem('chartLanguage')||'en';
+    var lang=userStorage.getItem('chartLanguage')||'en';
 
     if(lang==='en')return str;
 
@@ -59337,9 +59376,9 @@ window._i18nT=function(str){
 
 window._applyLanguage=function(lang){
 
-    var prev=localStorage.getItem('chartLanguage')||'en';
+    var prev=userStorage.getItem('chartLanguage')||'en';
 
-    localStorage.setItem('chartLanguage',lang);
+    userStorage.setItem('chartLanguage',lang);
 
     var t=window._translations[lang]||{};
 
@@ -59415,7 +59454,7 @@ window._applyLanguage=function(lang){
 
 (function(){
 
-    var saved=localStorage.getItem('chartLanguage');
+    var saved=userStorage.getItem('chartLanguage');
 
     if(saved&&saved!=='en'){document.addEventListener('DOMContentLoaded',function(){window._applyLanguage(saved);});}
 
@@ -59767,7 +59806,7 @@ window._wireProfileAccountOverview=function(content,restoreAccountTab){
 
         if(!sid){
 
-            try{sid=localStorage.getItem('active_trading_session_id');}catch(e2){}
+            try{sid=userStorage.getItem('active_trading_session_id');}catch(e2){}
 
         }
 
@@ -59823,7 +59862,7 @@ window._profileFillAccountTab=function(c){
 
     var _T=window._i18nT||function(s){return s;};
 
-    var curLang=localStorage.getItem('chartLanguage')||'en';
+    var curLang=userStorage.getItem('chartLanguage')||'en';
 
     var langs=[{code:'en',label:'English',native:'English'},{code:'ar',label:'Arabic',native:'العربية',rtl:true}];
 
@@ -60553,7 +60592,7 @@ setTimeout(function(){
 
         var currentTz = (function(){
 
-            try { var s = JSON.parse(localStorage.getItem('chartSession') || '{}'); return s.timezone || 'UTC'; } catch(e){ return 'UTC'; }
+            try { var s = JSON.parse(userStorage.getItem('chartSession') || '{}'); return s.timezone || 'UTC'; } catch(e){ return 'UTC'; }
 
         })();
 
@@ -60645,11 +60684,11 @@ setTimeout(function(){
 
             // Apply timezone via settings mechanism
 
-            var s = (function(){ try { return JSON.parse(localStorage.getItem('chartSession') || '{}'); } catch(e){ return {}; } })();
+            var s = (function(){ try { return JSON.parse(userStorage.getItem('chartSession') || '{}'); } catch(e){ return {}; } })();
 
             s.timezone = tz;
 
-            try { localStorage.setItem('chartSession', JSON.stringify(s)); } catch(e){}
+            try { userStorage.setItem('chartSession', JSON.stringify(s)); } catch(e){}
 
             if (window.timezoneManager && window.timezoneManager.setTimezone) window.timezoneManager.setTimezone(tz);
 
@@ -61091,7 +61130,7 @@ setTimeout(function(){
 
             // Try to keep the same tf selected; otherwise default to Auto
 
-            var saved = localStorage.getItem('replayUpdateInterval') || 'auto';
+            var saved = userStorage.getItem('replayUpdateInterval') || 'auto';
 
             var idx = activeIntervals.findIndex(function(iv) { return iv.tf === saved; });
 
@@ -61181,7 +61220,7 @@ setTimeout(function(){
 
             if (curValueSpan) curValueSpan.textContent = iv.label;
 
-            if (!skipSave) localStorage.setItem('replayUpdateInterval', iv.tf);
+            if (!skipSave) userStorage.setItem('replayUpdateInterval', iv.tf);
 
 
 

@@ -5824,8 +5824,7 @@ class DrawingToolsManager {
 
         // 1. Save to localStorage immediately (instant, works offline)
         try {
-            localStorage.setItem(key, JSON.stringify(data));
-            // [debug removed]
+            userStorage.setItem(key, JSON.stringify(data));
         } catch (error) {
             console.warn('⚠️ Failed to save drawings to localStorage:', error?.message || error);
         }
@@ -6152,11 +6151,11 @@ class DrawingToolsManager {
             // 3. Fall back to localStorage
             else {
                 const key = this.getStorageKey();
-                saved = localStorage.getItem(key);
+                saved = userStorage.getItem(key);
                 if (!saved && key.includes('_s')) {
                     const fileId = this.chart.currentFileId || 'default';
                     const legacyKey = `chart_drawings_${fileId}`;
-                    const legacy = localStorage.getItem(legacyKey);
+                    const legacy = userStorage.getItem(legacyKey);
                     if (legacy) {
                         saved = legacy;
                     }
@@ -8042,7 +8041,7 @@ class DrawingToolsManager {
      */
     loadSavedToolStyles() {
         try {
-            const saved = localStorage.getItem('drawingToolStyles');
+            const saved = userStorage.getItem('drawingToolStyles');
             return saved ? JSON.parse(saved) : {};
         } catch (e) {
             console.warn('Failed to load saved tool styles:', e);
@@ -8122,8 +8121,7 @@ class DrawingToolsManager {
         }
         
         try {
-            localStorage.setItem('drawingToolStyles', JSON.stringify(this.savedToolStyles));
-            // [debug removed]
+            userStorage.setItem('drawingToolStyles', JSON.stringify(this.savedToolStyles));
         } catch (e) {
             console.warn('Failed to save tool style:', e);
         }

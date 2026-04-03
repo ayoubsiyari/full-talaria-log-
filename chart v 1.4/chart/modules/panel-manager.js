@@ -70,7 +70,7 @@ class PanelManager {
      */
     loadSyncSettings() {
         try {
-            const saved = localStorage.getItem('chart_panel_sync_settings');
+            const saved = userStorage.getItem('chart_panel_sync_settings');
             if (saved) {
                 this.syncSettings = { ...this.syncSettings, ...JSON.parse(saved) };
             }
@@ -84,7 +84,7 @@ class PanelManager {
      */
     saveSyncSettings() {
         try {
-            localStorage.setItem('chart_panel_sync_settings', JSON.stringify(this.syncSettings));
+            userStorage.setItem('chart_panel_sync_settings', JSON.stringify(this.syncSettings));
         } catch (e) {
             console.warn('Failed to save sync settings:', e);
         }
@@ -2135,13 +2135,10 @@ class PanelManager {
                     delete settings[k];
                 }
             }
-            localStorage.setItem(key, JSON.stringify(settings));
+            userStorage.setItem(key, JSON.stringify(settings));
         } catch (e) {}
     }
 
-    /**
-     * Force extra panel chart visuals to match the main chart (avoids stale localStorage themes).
-     */
     applyMainAppearanceToPanelChart(panelChart) {
         const main = typeof window !== 'undefined' ? window.chart : null;
         if (!main || !main.chartSettings || !panelChart || !panelChart.chartSettings) return;
@@ -2157,7 +2154,7 @@ class PanelManager {
         const key = `chart_panel_${panelIndex}_settings`;
         
         try {
-            const saved = localStorage.getItem(key);
+            const saved = userStorage.getItem(key);
             if (saved) {
                 const settings = JSON.parse(saved);
                 const panel = this.panels[panelIndex];
@@ -2203,13 +2200,13 @@ class PanelManager {
                     };
                 })
             };
-            localStorage.setItem('chart_panel_state', JSON.stringify(state));
+            userStorage.setItem('chart_panel_state', JSON.stringify(state));
         } catch (e) {}
     }
 
     loadPanelState() {
         try {
-            const raw = localStorage.getItem('chart_panel_state');
+            const raw = userStorage.getItem('chart_panel_state');
             if (!raw) return null;
             return JSON.parse(raw);
         } catch (e) {
@@ -2555,13 +2552,13 @@ class PanelManager {
                 if (!panel.element) return null;
                 return { left: panel.element.style.left, top: panel.element.style.top, width: panel.element.style.width, height: panel.element.style.height };
             });
-            localStorage.setItem('chart_panel_sizes_' + this.currentLayout, JSON.stringify(sizes));
+            userStorage.setItem('chart_panel_sizes_' + this.currentLayout, JSON.stringify(sizes));
         } catch (e) { /* ignore */ }
     }
 
     _loadPanelSizes() {
         try {
-            const saved = localStorage.getItem('chart_panel_sizes_' + this.currentLayout);
+            const saved = userStorage.getItem('chart_panel_sizes_' + this.currentLayout);
             if (!saved) return false;
             const sizes = JSON.parse(saved);
             if (!Array.isArray(sizes) || sizes.length !== this.panels.length) return false;
@@ -2584,7 +2581,7 @@ class PanelManager {
     }
 
     _resetPanelSizes() {
-        try { localStorage.removeItem('chart_panel_sizes_' + this.currentLayout); } catch (e) { /* ignore */ }
+        try { userStorage.removeItem('chart_panel_sizes_' + this.currentLayout); } catch (e) { /* ignore */ }
     }
 }
 

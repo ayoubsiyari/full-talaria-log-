@@ -346,7 +346,7 @@ class CompareOverlay {
 
     getSessionSymbolFiles() {
         try {
-            const session = JSON.parse(localStorage.getItem('backtestingSession') || '{}');
+            const session = JSON.parse(userStorage.getItem('backtestingSession') || '{}');
             if (session && Array.isArray(session.files) && session.files.length > 0) {
                 return session.files;
             }

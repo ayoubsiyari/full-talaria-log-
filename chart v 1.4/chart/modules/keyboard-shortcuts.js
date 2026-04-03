@@ -35,7 +35,7 @@ class KeyboardShortcutsManager {
      */
     loadCustomShortcuts() {
         try {
-            const saved = localStorage.getItem('chart_custom_shortcuts');
+            const saved = userStorage.getItem('chart_custom_shortcuts');
             return saved ? JSON.parse(saved) : {};
         } catch (e) {
             console.warn('Failed to load custom shortcuts:', e);
@@ -48,7 +48,7 @@ class KeyboardShortcutsManager {
      */
     saveCustomShortcuts() {
         try {
-            localStorage.setItem('chart_custom_shortcuts', JSON.stringify(this.customShortcuts));
+            userStorage.setItem('chart_custom_shortcuts', JSON.stringify(this.customShortcuts));
         } catch (e) {
             console.warn('Failed to save custom shortcuts:', e);
         }
@@ -858,7 +858,7 @@ class KeyboardShortcutsManager {
     
     saveDrawings() {
         const storageKey = `chart_drawings_${this.chart.currentFileId || 'default'}`;
-        localStorage.setItem(storageKey, JSON.stringify(this.chart.drawings || []));
+        userStorage.setItem(storageKey, JSON.stringify(this.chart.drawings || []));
     }
     
     showSymbolSearchIndicator(text) {
