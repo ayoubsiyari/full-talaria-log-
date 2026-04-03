@@ -12261,8 +12261,13 @@ class Chart {
                 // Regular candle
                 // For hollow candle mode, up candles are hollow, down candles are filled
                 const shouldBeHollow = isHollow && isUp;
-                const bTop = Math.round(bodyTop);
-                const bH   = Math.max(1, Math.round(bodyHeight));
+                // Anchor the open edge to a fixed pixel to prevent subpixel
+                // vibration during tick animation.  For bullish candles the open
+                // is the bottom edge; for bearish it's the top edge.
+                const roundedOpen  = Math.round(yo);
+                const roundedClose = Math.round(yc);
+                const bTop = isUp ? roundedClose : roundedOpen;
+                const bH   = Math.max(1, Math.abs(roundedOpen - roundedClose));
                 
                 if (isUp) {
                     // Draw body fill (if enabled)

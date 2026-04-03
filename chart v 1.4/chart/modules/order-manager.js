@@ -8137,6 +8137,30 @@ class OrderManager {
             ];
         }
 
+        // Multi-TP labels like "TP1 (69%)", "TP2 (31%)" etc.
+        if (label && label.startsWith('TP') && label !== 'TP') {
+            const infoText = this._formatMultiTpInfoText(label, price);
+            return [
+                {
+                    text: label,
+                    fill: '#16a34a',
+                    stroke: '#22c55e',
+                    textColor: '#ffffff',
+                    fontWeight: '700',
+                    minWidth: 40
+                },
+                {
+                    text: infoText,
+                    fill: '#0f172a',
+                    stroke: '#22c55e',
+                    textColor: '#22c55e',
+                    fontWeight: '700',
+                    minWidth: 74,
+                    role: 'price'
+                }
+            ];
+        }
+
         if (label === 'SL') {
             const infoText = this._formatTpSlInfoText('SL', price);
             return [
@@ -11074,16 +11098,18 @@ class OrderManager {
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
         const riskDist = entryPrice > 0 && slPrice > 0 ? Math.abs(entryPrice - slPrice) : 0;
-        const pip = this.pipSize || 0.0001;
-        const pvl = this.pipValuePerLot || 10;
+        const side = (this.orderSide || 'BUY').toUpperCase();
 
         list.innerHTML = this.tpTargets.map(target => {
             const tpDist = entryPrice > 0 && target.price > 0 ? Math.abs(target.price - entryPrice) : 0;
             const rr = riskDist > 0 ? (tpDist / riskDist).toFixed(1) : '—';
             const pctShare = target.percentage || 0;
             const shareQty = quantity * (pctShare / 100);
-            const profitPips = tpDist / pip;
-            const profitUsd = (profitPips * shareQty * pvl).toFixed(2);
+            let profitUsd = '0.00';
+            if (entryPrice > 0 && target.price > 0 && shareQty > 0) {
+                const pnl = this.estimatePnLForPriceLevel(side, entryPrice, target.price, shareQty);
+                profitUsd = Math.abs(pnl).toFixed(2);
+            }
 
             return `<div class="order-tp-multi__row">
                 <div class="order-tp-multi__row-pct">
@@ -11109,16 +11135,19 @@ class OrderManager {
             let weightedRR = 0;
             let totalPct = 0;
             this.tpTargets.forEach(t => {
-                const dist = entryPrice > 0 && t.price > 0 ? Math.abs(t.price - entryPrice) : 0;
                 const pct = t.percentage || 0;
                 const shareQ = quantity * (pct / 100);
-                const pProfit = (dist / pip) * shareQ * pvl;
-                totalProfit += pProfit;
-                if (riskDist > 0) weightedRR += (dist / riskDist) * (pct / 100);
+                if (entryPrice > 0 && t.price > 0 && shareQ > 0) {
+                    totalProfit += this.estimatePnLForPriceLevel(side, entryPrice, t.price, shareQ);
+                }
+                if (riskDist > 0) {
+                    const dist = entryPrice > 0 && t.price > 0 ? Math.abs(t.price - entryPrice) : 0;
+                    weightedRR += (dist / riskDist) * (pct / 100);
+                }
                 totalPct += pct;
             });
             const blendRR = weightedRR.toFixed(1);
-            blendEl.textContent = `${blendRR}R → +$${totalProfit.toFixed(2)}`;
+            blendEl.textContent = `${blendRR}R → +$${Math.abs(totalProfit).toFixed(2)}`;
         }
 
         // Wire input listeners
@@ -11937,8 +11966,15 @@ class OrderManager {
                 // Update price text without full re-render for performance
                 const formattedPrice = self.formatPrice(newPrice);
                 if (lineData.priceText) {
-                    const isTpOrSl = lineData.label === 'TP' || lineData.label === 'SL';
-                    lineData.priceText.text(isTpOrSl ? self._formatTpSlInfoText(lineData.label, newPrice) : formattedPrice);
+                    const isSingleTpOrSl = lineData.label === 'TP' || lineData.label === 'SL';
+                    const isMultiTp = lineData.label && lineData.label.startsWith('TP') && lineData.label !== 'TP';
+                    if (isSingleTpOrSl) {
+                        lineData.priceText.text(self._formatTpSlInfoText(lineData.label, newPrice));
+                    } else if (isMultiTp) {
+                        lineData.priceText.text(self._formatMultiTpInfoText(lineData.label, newPrice));
+                    } else {
+                        lineData.priceText.text(formattedPrice);
+                    }
                 }
                 
                 // Calculate and display pip distance in real-time
@@ -12015,24 +12051,9 @@ class OrderManager {
                         }
                     }
                 } else if (lineData.label && lineData.label.startsWith('TP') && lineData.targetIndex !== undefined) {
-                    // Handle multiple TP line drag
+                    // Handle multiple TP line drag — only update price, preserve user-set percentages
                     if (self.tpTargets && self.tpTargets[lineData.targetIndex]) {
-                        // Only update price, keep percentage unchanged
                         self.tpTargets[lineData.targetIndex].price = parseFloat(newPrice.toFixed(5));
-                        
-                        // Ensure percentages stay equal and sum to 100%
-                        const numTargets = self.tpTargets.length;
-                        const equalPercentage = 100 / numTargets;
-                        self.tpTargets.forEach((target, idx) => {
-                            // Use precise rounding to ensure sum equals 100%
-                            if (idx === numTargets - 1) {
-                                // Last one gets remainder
-                                const sumSoFar = equalPercentage * (numTargets - 1);
-                                target.percentage = parseFloat((100 - sumSoFar).toFixed(1));
-                            } else {
-                                target.percentage = parseFloat(equalPercentage.toFixed(1));
-                            }
-                        });
                         
                         // Update the price input field in the UI
                         const tpInput = document.getElementById(`tpTarget${self.tpTargets[lineData.targetIndex].id}Price`);
@@ -12040,7 +12061,7 @@ class OrderManager {
                             tpInput.value = parseFloat(newPrice.toFixed(5));
                         }
                         
-                        // Update the label on the chart to show new percentage
+                        // Update the label on the chart to show current percentage
                         const targetNum = lineData.targetIndex + 1;
                         const newPercentage = self.tpTargets[lineData.targetIndex].percentage;
                         const newLabel = `TP${targetNum} (${newPercentage.toFixed(0)}%)`;
@@ -12112,6 +12133,9 @@ class OrderManager {
                             const slAmountDisplay = document.getElementById('slAmountDisplay');
                             if (slAmountDisplay) slAmountDisplay.textContent = `$${riskAmount.toFixed(2)}`;
                         }
+                        // Re-render multi-TP rows so R:R updates with new SL
+                        const multiTPEnabled = document.getElementById('multipleTPToggle')?.checked;
+                        if (multiTPEnabled) self.renderTPTargets();
                     }
                 } else if (lineData.label && lineData.label.startsWith('BE @')) {
                     // Mark BE as manually positioned
@@ -12243,6 +12267,9 @@ class OrderManager {
                     
                     // Recalculate risk/reward since TP/SL are synced to entry
                     self.calculateAdvancedRiskReward();
+                    // Re-render multi-TP rows so profit/R:R update with new entry
+                    const multiTPOn = document.getElementById('multipleTPToggle')?.checked;
+                    if (multiTPOn) self.renderTPTargets();
                 } else if (lineData.label && lineData.label.startsWith('Entry#') && lineData.isSplitEntry) {
                     // Split entry line drag — sync price back to splitEntries and multiEntryLevels
                     if (lineData.splitEntryId !== undefined) {
@@ -13693,6 +13720,38 @@ class OrderManager {
         const absPnl = Math.abs(pnl);
         const sign = label === 'SL' ? '-' : '+';
         return `${sign}$${absPnl.toFixed(2)}  (${this.formatQuantity(qty)})`;
+    }
+
+    /**
+     * P&L text for a single multi-TP level (used on chart label).
+     * Uses estimatePnLForPriceLevel with per-target share quantity for consistency with panel.
+     */
+    _formatMultiTpInfoText(label, price) {
+        const qty = parseFloat(document.getElementById('orderQuantity')?.value || 0);
+        const fallback = this.formatPrice(price);
+        if (!(price > 0) || !(qty > 0)) return fallback;
+        const side = (this.orderSide || 'BUY').toUpperCase();
+        const entryPx = this._getReferenceEntryForOrderMath();
+        if (!(entryPx > 0) || price === entryPx) return fallback;
+
+        // Find matching target to get its percentage share
+        let pctShare = 100;
+        if (this.tpTargets && this.tpTargets.length > 0) {
+            const match = label.match(/TP(\d+)/);
+            if (match) {
+                const idx = parseInt(match[1], 10) - 1;
+                if (this.tpTargets[idx]) {
+                    pctShare = this.tpTargets[idx].percentage || 0;
+                }
+            }
+        }
+
+        const shareQty = qty * (pctShare / 100);
+        if (shareQty <= 0) return fallback;
+
+        const pnl = this.estimatePnLForPriceLevel(side, entryPx, price, shareQty);
+        const absPnl = Math.abs(pnl);
+        return `+$${absPnl.toFixed(2)}`;
     }
 
     _getReferenceEntryForOrderMath() {
