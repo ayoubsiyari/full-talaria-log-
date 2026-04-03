@@ -19787,6 +19787,28 @@ class OrderManager {
     }
 
     _setEntryArrowHoverGlow(orderId, active) {
+        const idStr = String(orderId);
+        const matches = (m) => m && (m.orderId === orderId || String(m.orderId) === idStr);
+        const rows = (this.entryMarkers || []).filter(matches);
+        const applyToMarker = (m) => {
+            const chart = m.chart || this.chart;
+            const svg = chart?.svg;
+            if (!svg || !m.marker || typeof m.marker.select !== 'function') return;
+            const arrowEl = m.marker.select('[data-role="entry-arrow"]');
+            if (arrowEl.empty()) return;
+            const c = arrowEl.attr('fill') || '#2962ff';
+            const glowId = `entry-glow-${orderId}`;
+            this._ensureMarkerGlowFilter(svg, glowId, c);
+            if (active) {
+                arrowEl.attr('filter', `url(#${glowId})`).attr('stroke', c).attr('stroke-width', 1);
+            } else {
+                arrowEl.attr('filter', null).attr('stroke', 'none').attr('stroke-width', 0);
+            }
+        };
+        if (rows.length) {
+            rows.forEach(applyToMarker);
+            return;
+        }
         const svg = this.chart?.svg;
         if (!svg) return;
         const g = svg.select(`.entry-marker-${orderId}`);
@@ -19913,17 +19935,33 @@ class OrderManager {
         markerGroup
             .on('mouseenter', function() {
                 ttGroup.style('display', null);
-                self._setEntryArrowHoverGlow(oid, true);
-                self._setConnectorHoverHighlight(oid, true);
                 const ex = self._findExitMarkerSelectionForOrder(oid);
-                if (ex) self._setExitArrowHoverGlowFromSelection(ex, true);
+                if (ex && !ex.empty()) {
+                    self._setExitArrowHoverGlowFromSelection(ex, true);
+                    const raw = ex.attr('data-linked-order-ids') || String(oid);
+                    raw.split(',').map((s) => s.trim()).filter(Boolean).forEach((lid) => {
+                        self._setConnectorHoverHighlight(lid, true);
+                        self._setEntryArrowHoverGlow(lid, true);
+                    });
+                } else {
+                    self._setEntryArrowHoverGlow(oid, true);
+                    self._setConnectorHoverHighlight(oid, true);
+                }
             })
             .on('mouseleave', function() {
                 ttGroup.style('display', 'none');
-                self._setEntryArrowHoverGlow(oid, false);
-                self._setConnectorHoverHighlight(oid, false);
                 const ex = self._findExitMarkerSelectionForOrder(oid);
-                if (ex) self._setExitArrowHoverGlowFromSelection(ex, false);
+                if (ex && !ex.empty()) {
+                    self._setExitArrowHoverGlowFromSelection(ex, false);
+                    const raw = ex.attr('data-linked-order-ids') || String(oid);
+                    raw.split(',').map((s) => s.trim()).filter(Boolean).forEach((lid) => {
+                        self._setConnectorHoverHighlight(lid, false);
+                        self._setEntryArrowHoverGlow(lid, false);
+                    });
+                } else {
+                    self._setEntryArrowHoverGlow(oid, false);
+                    self._setConnectorHoverHighlight(oid, false);
+                }
             });
 
         if (!this.entryMarkers) this.entryMarkers = [];
