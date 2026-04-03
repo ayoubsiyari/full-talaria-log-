@@ -353,7 +353,7 @@ class OrderManager {
     _stripOrderDrawingLayersFromChart(chart) {
         if (!chart?.svg?.selectAll) return;
         const s = chart.svg;
-        s.selectAll('.order-line,.order-label-box,.order-label-text,.order-arrow,.order-price-box,.order-price-text,.order-close-btn,.order-pnl-box,.order-pnl-text').remove();
+        s.selectAll('.order-line,.order-drag-hit,.order-label-box,.order-label-text,.order-arrow,.order-price-box,.order-price-text,.order-close-btn,.order-pnl-box,.order-pnl-text').remove();
         s.selectAll('.pending-order-line,.pending-order-label-box,.pending-order-label-text,.pending-order-price-box,.pending-order-price-text,.pending-order-close-btn').remove();
         s.selectAll('.pending-tp-line,.pending-sl-line,.pending-be-line,.pending-tp-label,.pending-sl-label,.pending-be-label').remove();
         s.selectAll('.sl-line,.sl-label-box,.sl-label-text,.sl-pnl-box,.sl-pnl-text,.sl-close-btn,.sl-price-box,.sl-price-text').remove();
@@ -374,6 +374,7 @@ class OrderManager {
         const stripOl = (ol) => {
             try {
                 if (ol.line) ol.line.remove();
+                if (ol.dragHitLine) ol.dragHitLine.remove();
                 if (ol.labelBox) ol.labelBox.remove();
                 if (ol.labelText) ol.labelText.remove();
                 if (ol.arrow) ol.arrow.remove();
@@ -19274,6 +19275,14 @@ class OrderManager {
             .attr('stroke', lineColor)
             .attr('stroke-width', 1)
             .attr('opacity', 1)
+            .attr('pointer-events', 'none');
+
+        // Wide invisible hit area for easy dragging from the line
+        const dragHitLine = chart.svg.append('line')
+            .attr('class', `order-drag-hit order-${order.id}`)
+            .attr('stroke', 'transparent')
+            .attr('stroke-width', 16)
+            .attr('pointer-events', 'stroke')
             .style('cursor', 'ns-resize');
 
         const labelBox = chart.svg.append('rect')
@@ -19282,6 +19291,7 @@ class OrderManager {
             .attr('stroke', color)
             .attr('stroke-width', 1)
             .attr('rx', 3)
+            .attr('pointer-events', 'all')
             .style('cursor', 'ns-resize');
 
         const labelText = chart.svg.append('text')
@@ -19290,6 +19300,7 @@ class OrderManager {
             .attr('font-size', '11px')
             .attr('font-weight', '700')
             .attr('letter-spacing', '0.01em')
+            .attr('pointer-events', 'all')
             .style('cursor', 'ns-resize')
             .text(`${order.type.toLowerCase()} ${order.quantity.toFixed(2)}`);
 
@@ -19298,6 +19309,7 @@ class OrderManager {
             .attr('fill', '#ffffff')
             .attr('font-size', '12px')
             .attr('font-weight', '700')
+            .attr('pointer-events', 'all')
             .style('cursor', 'ns-resize')
             .text(order.type === 'BUY' ? '↑' : '↓');
 
@@ -19305,6 +19317,7 @@ class OrderManager {
             .attr('class', `order-price-box order-${order.id}`)
             .attr('fill', color)
             .attr('rx', 2)
+            .attr('pointer-events', 'all')
             .style('cursor', 'ns-resize');
 
         const priceText = chart.svg.append('text')
@@ -19313,6 +19326,7 @@ class OrderManager {
             .attr('font-size', '11px')
             .attr('font-weight', '700')
             .attr('text-anchor', 'middle')
+            .attr('pointer-events', 'all')
             .style('cursor', 'ns-resize')
             .text(order.openPrice.toFixed(5));
 
@@ -19371,11 +19385,12 @@ class OrderManager {
             .text('$0.00');
 
         this._setupEntryDragToCreateTPSL(order, line, labelBox, chart,
-            [labelText, arrow, priceBox, priceText]);
+            [dragHitLine, labelText, arrow, priceBox, priceText]);
 
         this.orderLines.push({
             orderId: order.id,
             line,
+            dragHitLine,
             labelBox,
             labelText,
             arrow,
@@ -21608,6 +21623,7 @@ class OrderManager {
             
             // Remove all SVG elements
             if (orderLine.line) orderLine.line.remove();
+            if (orderLine.dragHitLine) orderLine.dragHitLine.remove();
             if (orderLine.labelBox) orderLine.labelBox.remove();
             if (orderLine.labelText) orderLine.labelText.remove();
             if (orderLine.arrow) orderLine.arrow.remove();
