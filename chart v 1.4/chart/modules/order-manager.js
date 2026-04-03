@@ -10488,11 +10488,13 @@ class OrderManager {
         
         if (tpEnabled) {
             if (multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
-                // Calculate reward for multiple TPs based on distribution mode
+                // Use effective percentages (same conversion+normalization as placeOrder)
+                const ePcts = this._computeEffectiveTPPercentages(effectiveEntryForReward, qtyForReward, this.orderSide);
                 console.log(`📊 Calculating reward for ${this.tpTargets.length} TP targets, mode: ${this.tpDistributionMode}`);
                 this.tpTargets.forEach((target, index) => {
-                    console.log(`   Target ${index + 1}: price=${target.price?.toFixed(5)}, percentage=${target.percentage}`);
-                    if (target.price > 0 && target.percentage > 0) {
+                    const ePct = ePcts[index] || 0;
+                    console.log(`   Target ${index + 1}: price=${target.price?.toFixed(5)}, raw=${target.percentage}, effectivePct=${ePct.toFixed(1)}%`);
+                    if (target.price > 0 && ePct > 0) {
                         const tpPx = Number.parseFloat(target.price);
                         let priceDiff;
                         if (this.orderSide === 'BUY') {
@@ -10502,19 +10504,9 @@ class OrderManager {
                         }
                         
                         if (priceDiff > 0) {
-                            let partialReward = 0;
-                            if (this.tpDistributionMode === 'percent') {
-                                const partialQuantity = qtyForReward * (target.percentage / 100);
-                                partialReward = Math.max(0, this.estimatePnLForPriceLevel(
-                                    this.orderSide, effectiveEntryForReward, tpPx, partialQuantity));
-                            } else if (this.tpDistributionMode === 'amount') {
-                                partialReward = target.percentage;
-                                console.log(`      Amount mode: partialReward = ${partialReward}`);
-                            } else if (this.tpDistributionMode === 'lots') {
-                                partialReward = Math.max(0, this.estimatePnLForPriceLevel(
-                                    this.orderSide, effectiveEntryForReward, tpPx, target.percentage));
-                            }
-                            
+                            const partialQuantity = qtyForReward * (ePct / 100);
+                            const partialReward = Math.max(0, this.estimatePnLForPriceLevel(
+                                this.orderSide, effectiveEntryForReward, tpPx, partialQuantity));
                             reward += partialReward;
                             console.log(`      Added ${partialReward.toFixed(2)}, total reward now: ${reward.toFixed(2)}`);
                         }
@@ -11093,15 +11085,21 @@ class OrderManager {
         const riskDist = entryPrice > 0 && slPrice > 0 ? Math.abs(entryPrice - slPrice) : 0;
         const side = (this.orderSide || 'BUY').toUpperCase();
 
-        list.innerHTML = this.tpTargets.map(target => {
+        // Pre-compute effective percentages to match what placeOrder will actually do
+        const effectivePcts = this._computeEffectiveTPPercentages(entryPrice, quantity, side);
+
+        list.innerHTML = this.tpTargets.map((target, tIdx) => {
             const tpDist = entryPrice > 0 && target.price > 0 ? Math.abs(target.price - entryPrice) : 0;
             const rr = riskDist > 0 ? (tpDist / riskDist).toFixed(1) : '—';
             const pctShare = target.percentage || 0;
-            const shareQty = quantity * (pctShare / 100);
+            const effectivePct = effectivePcts[tIdx] || 0;
             let profitUsd = '0.00';
-            if (entryPrice > 0 && target.price > 0 && shareQty > 0) {
-                const pnl = this.estimatePnLForPriceLevel(side, entryPrice, target.price, shareQty);
-                profitUsd = Math.abs(pnl).toFixed(2);
+            if (entryPrice > 0 && target.price > 0 && effectivePct > 0) {
+                const shareQty = quantity * (effectivePct / 100);
+                if (shareQty > 0) {
+                    const pnl = this.estimatePnLForPriceLevel(side, entryPrice, target.price, shareQty);
+                    profitUsd = Math.abs(pnl).toFixed(2);
+                }
             }
 
             return `<div class="order-tp-multi__row">
@@ -11127,15 +11125,16 @@ class OrderManager {
             let totalProfit = 0;
             let weightedRR = 0;
             let totalPct = 0;
-            this.tpTargets.forEach(t => {
+            this.tpTargets.forEach((t, tIdx) => {
                 const pct = t.percentage || 0;
-                const shareQ = quantity * (pct / 100);
-                if (entryPrice > 0 && t.price > 0 && shareQ > 0) {
-                    totalProfit += this.estimatePnLForPriceLevel(side, entryPrice, t.price, shareQ);
+                const ePct = effectivePcts[tIdx] || 0;
+                if (entryPrice > 0 && t.price > 0 && ePct > 0) {
+                    const shareQ = quantity * (ePct / 100);
+                    if (shareQ > 0) totalProfit += this.estimatePnLForPriceLevel(side, entryPrice, t.price, shareQ);
                 }
-                if (riskDist > 0) {
+                if (riskDist > 0 && ePct > 0) {
                     const dist = entryPrice > 0 && t.price > 0 ? Math.abs(t.price - entryPrice) : 0;
-                    weightedRR += (dist / riskDist) * (pct / 100);
+                    weightedRR += (dist / riskDist) * (ePct / 100);
                 }
                 totalPct += pct;
             });
@@ -11182,6 +11181,41 @@ class OrderManager {
         // Calculate position size and risk/reward
         this.calculatePositionFromRisk();
         this.calculateAdvancedRiskReward();
+    }
+
+    /**
+     * Simulate the placeOrder conversion+normalization so the panel preview
+     * matches the ACTUAL percentages that will be used when the order executes.
+     * Returns an array of effective percentages (one per tpTarget, summing to 100).
+     */
+    _computeEffectiveTPPercentages(entryPrice, quantity, side) {
+        if (!this.tpTargets || this.tpTargets.length === 0 || !(entryPrice > 0) || !(quantity > 0)) {
+            return (this.tpTargets || []).map(t => t.percentage || 0);
+        }
+        const mode = this.tpDistributionMode || 'percent';
+        const ps = this.pipSize || 0.0001;
+        const pv = this.pipValuePerLot || 10;
+
+        const converted = this.tpTargets.map(t => {
+            const val = t.percentage || 0;
+            if (!(t.price > 0) || val <= 0) return 0;
+
+            if (mode === 'percent') return val;
+            if (mode === 'lots') return quantity > 0 ? (val / quantity) * 100 : 0;
+
+            // amount mode
+            const priceDiff = side === 'BUY' ? (t.price - entryPrice) : (entryPrice - t.price);
+            const pipsMove = priceDiff / ps;
+            const profitPerLot = pipsMove * pv;
+            const lotsToClose = profitPerLot > 0 ? val / profitPerLot : 0;
+            return quantity > 0 ? (lotsToClose / quantity) * 100 : 0;
+        });
+
+        const total = converted.reduce((s, v) => s + v, 0);
+        if (total > 0 && Math.abs(total - 100) > 0.01) {
+            return converted.map(v => (v / total) * 100);
+        }
+        return converted;
     }
 
     /**
@@ -13727,24 +13761,20 @@ class OrderManager {
         const entryPx = this._getReferenceEntryForOrderMath();
         if (!(entryPx > 0) || price === entryPx) return fallback;
 
-        // Find matching target to get its percentage share
-        let pctShare = 100;
+        let idx = -1;
         if (this.tpTargets && this.tpTargets.length > 0) {
             const match = label.match(/TP(\d+)/);
-            if (match) {
-                const idx = parseInt(match[1], 10) - 1;
-                if (this.tpTargets[idx]) {
-                    pctShare = this.tpTargets[idx].percentage || 0;
-                }
-            }
+            if (match) idx = parseInt(match[1], 10) - 1;
         }
 
-        const shareQty = qty * (pctShare / 100);
-        if (shareQty <= 0) return fallback;
+        const effectivePcts = this._computeEffectiveTPPercentages(entryPx, qty, side);
+        const ePct = idx >= 0 && idx < effectivePcts.length ? effectivePcts[idx] : 0;
+        if (ePct <= 0) return fallback;
 
+        const shareQty = qty * (ePct / 100);
+        if (shareQty <= 0) return fallback;
         const pnl = this.estimatePnLForPriceLevel(side, entryPx, price, shareQty);
-        const absPnl = Math.abs(pnl);
-        return `+$${absPnl.toFixed(2)}`;
+        return `+$${Math.abs(pnl).toFixed(2)}`;
     }
 
     _getReferenceEntryForOrderMath() {
@@ -14909,33 +14939,33 @@ class OrderManager {
             }
             
             // Filter out targets with no price set and convert to actual percentages
+            const currentTpMode = this.tpDistributionMode || 'percent';
             tpTargets = this.tpTargets
                 .filter(t => t.price > 0)
                 .map(t => {
                     let actualPercentage;
+                    const originalValue = t.percentage;
                     
                     // Convert distribution value to actual percentage based on mode
-                    if (this.tpDistributionMode === 'percent') {
-                        // Already a percentage
+                    if (currentTpMode === 'percent') {
                         actualPercentage = t.percentage;
-                    } else if (this.tpDistributionMode === 'amount') {
-                        // Convert dollar amount to percentage of position
-                        // Calculate how much quantity closes this dollar amount
+                    } else if (currentTpMode === 'amount') {
                         const priceDiff = this.orderSide === 'BUY' 
                             ? (t.price - entryPrice) 
                             : (entryPrice - t.price);
                         const pipsMove = priceDiff / this.pipSize;
                         const profitPerLot = pipsMove * this.pipValuePerLot;
-                        const lotsToClose = t.percentage / profitPerLot; // dollars / profit-per-lot = lots
-                        actualPercentage = (lotsToClose / quantity) * 100;
-                    } else if (this.tpDistributionMode === 'lots') {
-                        // Convert lot size to percentage
-                        actualPercentage = (t.percentage / quantity) * 100;
+                        const lotsToClose = profitPerLot > 0 ? t.percentage / profitPerLot : 0;
+                        actualPercentage = quantity > 0 ? (lotsToClose / quantity) * 100 : 0;
+                    } else if (currentTpMode === 'lots') {
+                        actualPercentage = quantity > 0 ? (t.percentage / quantity) * 100 : 0;
                     }
                     
                     return { 
                         ...t, 
                         percentage: actualPercentage,
+                        originalValue: originalValue,
+                        distributionMode: currentTpMode,
                         hit: false 
                     };
                 });
@@ -14946,7 +14976,7 @@ class OrderManager {
                 tpTargets.forEach(t => t.percentage = (t.percentage / totalPct) * 100);
             }
             
-            console.log(`✅ TP Targets prepared for order (converted to percentages):`, tpTargets);
+            console.log(`✅ TP Targets prepared for order (mode=${currentTpMode}, converted to percentages):`, tpTargets);
         } else {
             console.log(`📊 Multiple TP: ${multipleTPEnabled ? 'enabled' : 'disabled'}, this.tpTargets:`, this.tpTargets);
         }
@@ -21480,6 +21510,16 @@ class OrderManager {
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize');
                     
+                    const tpMode = target.distributionMode || 'percent';
+                    const tpOrigVal = target.originalValue != null ? target.originalValue : target.percentage;
+                    let tpLabelStr;
+                    if (tpMode === 'amount') {
+                        tpLabelStr = `TP${index + 1} ($${tpOrigVal.toFixed(0)})`;
+                    } else if (tpMode === 'lots') {
+                        tpLabelStr = `TP${index + 1} (${tpOrigVal.toFixed(2)}L)`;
+                    } else {
+                        tpLabelStr = `TP${index + 1} (${target.percentage.toFixed(0)}%)`;
+                    }
                     const tpLabelText = chart.svg.append('text')
                         .attr('class', `tp-label-text tp-${order.id} tp-target-${target.id || index}`)
                         .attr('fill', '#ffffff')
@@ -21487,7 +21527,7 @@ class OrderManager {
                         .attr('font-weight', '700')
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize')
-                        .text(`TP${index + 1} (${target.percentage.toFixed(0)}%)`);
+                        .text(tpLabelStr);
 
                     const tpPnlBox = chart.svg.append('rect')
                         .attr('class', `tp-pnl-box tp-${order.id} tp-target-${target.id || index}`)
@@ -22286,9 +22326,28 @@ class OrderManager {
                     const numPositions = groupData ? groupData.positions.length : 1;
                     const totalPnL = groupData ? groupData.totalPnL : 0;
                     
+                    // Resolve target metadata for label formatting
+                    let tpTarget = null;
+                    if (targetId !== undefined && position.tpTargets) {
+                        for (let i = 0; i < position.tpTargets.length; i++) {
+                            const t = position.tpTargets[i];
+                            if (t.id === targetId || i === targetId) { tpTarget = t; break; }
+                        }
+                    }
+                    const tpMode = tpTarget?.distributionMode || 'percent';
+                    const tpOrigVal = tpTarget?.originalValue != null ? tpTarget.originalValue : percentage;
+
                     let labelStr;
                     if (targetIndex >= 0) {
-                        labelStr = numPositions > 1 ? `TP${targetIndex + 1} (${percentage.toFixed(0)}%, ${numPositions}×)` : `TP${targetIndex + 1} (${percentage.toFixed(0)}%)`;
+                        let valStr;
+                        if (tpMode === 'amount') {
+                            valStr = `$${tpOrigVal.toFixed(0)}`;
+                        } else if (tpMode === 'lots') {
+                            valStr = `${tpOrigVal.toFixed(2)}L`;
+                        } else {
+                            valStr = `${percentage.toFixed(0)}%`;
+                        }
+                        labelStr = numPositions > 1 ? `TP${targetIndex + 1} (${valStr}, ${numPositions}×)` : `TP${targetIndex + 1} (${valStr})`;
                     } else {
                         labelStr = numPositions > 1 ? `TP (${numPositions}×)` : 'TP';
                     }
