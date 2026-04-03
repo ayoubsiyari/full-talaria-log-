@@ -1004,6 +1004,9 @@ class OrderManager {
         if (rs && rs.isActive && rs.isPlaying) {
             console.log(`⏸️ Pausing replay${reason ? ` (${reason})` : ''}`);
             rs.pause();
+            // Discard saved tick state so the partially-animated candle stays
+            // frozen at the exact tick where the hit occurred instead of resuming.
+            rs._savedTickState = null;
         }
     }
 
@@ -8641,6 +8644,12 @@ class OrderManager {
         // New order draft: drop multi-entry rows from the last session (preview was cleared on close).
         if (!this.editingPendingOrderId) {
             this._resetMultiEntryStateForNewOrder();
+
+            // Default to market order for every new draft
+            this.orderType = 'market';
+            document.querySelectorAll('.order-type-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.type === 'market');
+            });
         }
 
         // Refresh header badge (symbol + market type) every time the drawer opens
