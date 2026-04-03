@@ -18,6 +18,21 @@ except ImportError:
 
 subscription_bp = Blueprint('subscriptions', __name__)
 
+
+def _parse_features(raw):
+    """Parse features from DB — handles JSON array string, comma-separated, or already a list."""
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        return raw
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return parsed
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return [s.strip() for s in raw.split(',') if s.strip()]
+
 # Initialize Stripe
 if STRIPE_AVAILABLE:
     stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', '')
@@ -1012,7 +1027,7 @@ def get_public_plans():
                 'price_monthly': plan.price_monthly if hasattr(plan, 'price_monthly') else plan.price,
                 'price_yearly': plan.price_yearly if hasattr(plan, 'price_yearly') else (plan.price * 10 if plan.price else 0),
                 'interval': plan.interval,
-                'features': json.loads(plan.features) if plan.features else [],
+                'features': _parse_features(plan.features),
                 'trial_days': plan.trial_days,
                 'is_popular': plan.name.lower() == 'pro' or 'pro' in plan.name.lower()
             } for plan in plans]
@@ -1044,6 +1059,7 @@ def get_my_subscription():
             return jsonify({
                 'success': True,
                 'has_subscription': False,
+                'has_journal_access': bool(user.has_journal_access),
                 'subscription': None,
                 'plan': None
             }), 200
@@ -1062,6 +1078,7 @@ def get_my_subscription():
         return jsonify({
             'success': True,
             'has_subscription': True,
+            'has_journal_access': bool(user.has_journal_access),
             'subscription': {
                 'id': subscription.id,
                 'status': subscription.status,
@@ -1081,7 +1098,7 @@ def get_my_subscription():
                 'price_monthly': plan.price_monthly if hasattr(plan, 'price_monthly') else plan.price,
                 'price_yearly': plan.price_yearly if hasattr(plan, 'price_yearly') else 0,
                 'interval': plan.interval,
-                'features': json.loads(plan.features) if plan.features else []
+                'features': _parse_features(plan.features)
             } if plan else None
         }), 200
         

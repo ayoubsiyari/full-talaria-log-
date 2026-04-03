@@ -39,10 +39,9 @@ export default function SubscriptionGuard({ children, feature = 'this feature' }
       if (res.ok) {
         const data = await res.json();
         setSubscription(data);
-        // User has access if they have an active subscription or are in trial
         const hasActiveSubscription = data.has_subscription && 
           ['active', 'trialing'].includes(data.subscription?.status);
-        setHasAccess(hasActiveSubscription);
+        setHasAccess(hasActiveSubscription || data.has_journal_access === true);
       }
     } catch (err) {
       console.error('Error checking subscription:', err);

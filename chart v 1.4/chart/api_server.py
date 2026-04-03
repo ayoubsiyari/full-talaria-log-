@@ -3867,10 +3867,14 @@ async def admin_delete_dataset(file_id: int, request: Request):
 def _plan_public_dict(p):
     feats = []
     if p.features:
-        try:
-            feats = json.loads(p.features) if isinstance(p.features, str) else p.features
-        except Exception:
-            feats = []
+        if isinstance(p.features, list):
+            feats = p.features
+        elif isinstance(p.features, str):
+            try:
+                parsed = json.loads(p.features)
+                feats = parsed if isinstance(parsed, list) else []
+            except (json.JSONDecodeError, TypeError):
+                feats = [s.strip() for s in p.features.split(',') if s.strip()]
     return {
         "id": p.id,
         "name": p.name,

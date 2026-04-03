@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { CheckCircle, ArrowRight, Sparkles, Loader2 } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { CheckCircle, ArrowRight, Sparkles, Loader2, BarChart3, Brain, BookOpen, Shield } from 'lucide-react';
 import { API_BASE_URL } from '../config';
-import TalariaLogo from '../components/TalariaLogo';
+import logo from '../assets/logo4.jpg';
 
 export default function SubscriptionSuccess() {
   const [searchParams] = useSearchParams();
@@ -30,7 +31,13 @@ export default function SubscriptionSuccess() {
       });
       const data = await res.json();
       if (data.success) {
-        console.log('✅ Subscription verified:', data.message);
+        console.log('Subscription verified:', data.message);
+        // Update stored user data to reflect new access
+        try {
+          const storedUser = JSON.parse(localStorage.getItem('talaria_current_user') || '{}');
+          storedUser.has_journal_access = true;
+          localStorage.setItem('talaria_current_user', JSON.stringify(storedUser));
+        } catch {}
       }
     } catch (err) {
       console.error('Error verifying session:', err);
@@ -39,80 +46,120 @@ export default function SubscriptionSuccess() {
     }
   };
 
+  const features = [
+    { icon: BarChart3, label: 'Advanced analytics & 200+ metrics' },
+    { icon: Brain, label: 'AI-powered trading insights' },
+    { icon: BookOpen, label: 'Unlimited trade journaling' },
+    { icon: Shield, label: 'Strategy builder & backtesting' },
+  ];
+
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white flex items-center justify-center">
-      <div className="max-w-lg mx-auto px-6 py-20 text-center">
+    <div className="min-h-screen bg-[#030014] text-white relative overflow-hidden flex items-center justify-center">
+      {/* Background */}
+      <div className="fixed inset-0 pointer-events-none z-0">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-emerald-900/15 via-transparent to-transparent" />
+        <div className="absolute inset-0 opacity-30 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0wIDBoNjB2NjBIMHoiLz48cGF0aCBkPSJNMzAgMzBoMXYxaC0xek0zMCAwaDF2MWgtMXoiIGZpbGw9IiMxYTFhMmUiIGZpbGwtb3BhY2l0eT0iLjMiLz48L2c+PC9zdmc+')]" />
+      </div>
+
+      <div className="relative z-10 max-w-lg mx-auto px-6 py-20">
         {loading ? (
-          <div className="space-y-6">
-            <Loader2 className="w-16 h-16 text-blue-500 animate-spin mx-auto" />
-            <h1 className="text-2xl font-semibold">Processing your subscription...</h1>
-            <p className="text-white/60">Please wait while we confirm your payment.</p>
-          </div>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center space-y-6"
+          >
+            <Loader2 className="w-12 h-12 text-blue-400 animate-spin mx-auto" />
+            <div>
+              <h1 className="text-xl font-semibold text-white mb-2">Processing your subscription...</h1>
+              <p className="text-white/35 text-sm">Please wait while we confirm your payment.</p>
+            </div>
+          </motion.div>
         ) : (
-          <div className="space-y-8">
-            {/* Success Icon */}
-            <div className="relative inline-block">
-              <div className="absolute inset-0 bg-green-500/20 rounded-full blur-2xl"></div>
-              <div className="relative w-24 h-24 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center mx-auto">
-                <CheckCircle className="w-12 h-12 text-white" />
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+            className="text-center"
+          >
+            {/* Success icon */}
+            <div className="relative inline-block mb-8">
+              <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-3xl scale-150" />
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 200, damping: 12, delay: 0.2 }}
+                className="relative w-20 h-20 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center mx-auto shadow-[0_0_40px_rgba(16,185,129,0.3)]"
+              >
+                <CheckCircle className="w-10 h-10 text-white" strokeWidth={2} />
+              </motion.div>
+            </div>
+
+            {/* Message */}
+            <h1 className="text-3xl sm:text-4xl font-bold text-white mb-3 tracking-tight">
+              Welcome to Talaria Pro!
+            </h1>
+            <p className="text-white/40 text-base leading-relaxed mb-10 max-w-sm mx-auto">
+              Your subscription is active. Full access to all premium features is now unlocked.
+            </p>
+
+            {/* Features */}
+            <div className="rounded-2xl p-[1px] bg-gradient-to-b from-white/[0.1] to-white/[0.03] mb-8">
+              <div className="rounded-[15px] bg-[#08091a] p-5 sm:p-6">
+                <div className="flex items-center justify-center gap-2 mb-5">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span className="text-sm font-medium text-white/70">Features Unlocked</span>
+                </div>
+                <div className="space-y-3">
+                  {features.map((f, idx) => (
+                    <motion.div
+                      key={f.label}
+                      initial={{ opacity: 0, x: -12 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.4 + idx * 0.08 }}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.02]"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+                        <f.icon className="w-4 h-4 text-emerald-400" />
+                      </div>
+                      <span className="text-sm text-white/60">{f.label}</span>
+                    </motion.div>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* Success Message */}
-            <div>
-              <h1 className="text-4xl font-bold mb-4">Welcome to Talaria Pro!</h1>
-              <p className="text-white/60 text-lg leading-relaxed">
-                Your subscription is now active. You have full access to all premium features.
-              </p>
-            </div>
-
-            {/* Features Unlocked */}
-            <div className="bg-white/5 rounded-xl p-6 border border-white/10">
-              <h3 className="text-lg font-medium mb-4 flex items-center justify-center gap-2">
-                <Sparkles className="w-5 h-5 text-yellow-400" />
-                Features Unlocked
-              </h3>
-              <ul className="space-y-3 text-left">
-                {[
-                  'Unlimited trade logging',
-                  'Advanced AI insights',
-                  'Premium analytics dashboard',
-                  'Priority support',
-                  'API access'
-                ].map((feature, idx) => (
-                  <li key={idx} className="flex items-center gap-3 text-white/80">
-                    <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0" />
-                    {feature}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            {/* CTAs */}
+            <div className="flex flex-col sm:flex-row gap-3 justify-center mb-8">
               <Link
                 to="/dashboard"
-                className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:brightness-110 transition-all shadow-[0_0_24px_rgba(59,130,246,0.2)]"
               >
                 Go to Dashboard
                 <ArrowRight className="w-4 h-4" />
               </Link>
               <Link
                 to="/settings"
-                className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white/10 text-white font-medium rounded-lg hover:bg-white/20 transition-all border border-white/20"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-medium text-white/60 bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] transition-all"
               >
                 Manage Subscription
               </Link>
             </div>
 
-            {/* Help Text */}
-            <p className="text-white/40 text-sm">
-              A confirmation email has been sent to your registered email address.
-              <br />
-              Need help? <Link to="/contact" className="text-blue-400 hover:text-blue-300">Contact support</Link>
+            {/* Help */}
+            <p className="text-white/25 text-xs">
+              A confirmation email has been sent to your address.{' '}
+              <Link to="/contact" className="text-blue-400/60 hover:text-blue-400 transition-colors">Need help?</Link>
             </p>
-          </div>
+          </motion.div>
         )}
+      </div>
+
+      {/* Logo watermark */}
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-10">
+        <a href="/" className="flex items-center gap-2 opacity-20 hover:opacity-40 transition-opacity">
+          <img src={logo} alt="Talaria" className="w-5 h-5 rounded-md" />
+          <span className="text-xs text-white font-medium">Talaria</span>
+        </a>
       </div>
     </div>
   );
