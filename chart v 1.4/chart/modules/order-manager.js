@@ -1465,6 +1465,20 @@ class OrderManager {
         lotRisk.classList.toggle('is-hidden', !isLot);
     }
 
+    /** Keep multi-TP button visual in sync with the hidden checkbox. */
+    _syncMultiTPButtonState() {
+        const cb = document.getElementById('multipleTPToggle');
+        const btn = document.getElementById('multiTPBtn');
+        const settings = document.getElementById('multipleTPSettings');
+        const single = document.querySelector('.order-tp-single');
+        if (!cb || !btn) return;
+        const isMulti = cb.checked;
+        btn.textContent = isMulti ? 'Single' : 'Multi';
+        btn.classList.toggle('active', isMulti);
+        if (settings) settings.classList.toggle('is-hidden', !isMulti);
+        if (single) single.classList.toggle('is-hidden', isMulti);
+    }
+
     /**
      * Position size (lots / contracts / units) from a fixed dollar risk.
      * @param {number} riskUSD
@@ -7079,6 +7093,209 @@ class OrderManager {
                     padding-bottom: 6px !important;
                 }
 
+                /* ── COMPACT TP CARD ───────────────────────────────────────────── */
+                .order-tp-card--compact {
+                    padding: 10px 12px !important;
+                    border-radius: 8px !important;
+                    border: 1px solid rgba(34, 197, 94, 0.42) !important;
+                    background: rgba(8, 11, 17, 0.92) !important;
+                }
+                .order-tp-card__header--compact {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: 8px;
+                }
+                .order-tp-card__header-right {
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                }
+                .multi-tp-toggle {
+                    border-color: rgba(34, 197, 94, 0.35) !important;
+                }
+                .multi-tp-toggle:hover {
+                    color: #22c55e !important;
+                    border-color: #22c55e !important;
+                }
+                .multi-tp-toggle.active {
+                    background: rgba(34, 197, 94, 0.12) !important;
+                    color: #22c55e !important;
+                    border-color: rgba(34, 197, 94, 0.4) !important;
+                }
+
+                /* Single TP row */
+                .order-tp-single__row {
+                    display: grid;
+                    grid-template-columns: 1fr 0.6fr 1fr;
+                    gap: 6px;
+                }
+                .order-tp-single__field {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 3px;
+                }
+                .order-tp-col-label {
+                    font-size: 8px;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                    color: var(--om-dim);
+                    font-family: 'DM Sans', sans-serif;
+                }
+                .order-input--tp-inline {
+                    font-size: 12px !important;
+                    font-weight: 600 !important;
+                    padding: 7px 8px !important;
+                    border-radius: 5px !important;
+                    background: var(--om-bg) !important;
+                    border: 1px solid var(--om-b) !important;
+                    color: var(--om-tx) !important;
+                    font-family: var(--om-mono) !important;
+                    width: 100%;
+                    box-sizing: border-box;
+                }
+                .order-input--tp-inline:focus {
+                    border-color: rgba(34, 197, 94, 0.55) !important;
+                    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.22);
+                    outline: none;
+                }
+
+                /* Multiple TP rows */
+                .order-tp-multi { display: flex; flex-direction: column; gap: 0; }
+                .order-tp-multi__cols {
+                    display: flex;
+                    gap: 4px;
+                    padding: 0 2px 3px;
+                }
+                .order-tp-multi__rows {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                    max-height: 150px;
+                    overflow-y: auto;
+                    overflow-x: hidden;
+                    scrollbar-width: thin;
+                    scrollbar-color: rgba(34, 197, 94, 0.2) transparent;
+                    padding: 2px 0;
+                }
+                .order-tp-multi__rows::-webkit-scrollbar { width: 4px; }
+                .order-tp-multi__rows::-webkit-scrollbar-track { background: transparent; }
+                .order-tp-multi__rows::-webkit-scrollbar-thumb { background: rgba(34, 197, 94, 0.2); border-radius: 2px; }
+                .order-tp-multi__row {
+                    display: flex;
+                    gap: 4px;
+                    align-items: center;
+                }
+                .order-tp-multi__row input {
+                    font-size: 11px;
+                    font-weight: 600;
+                    padding: 6px 6px;
+                    border-radius: 4px;
+                    background: var(--om-bg);
+                    border: 1px solid var(--om-b);
+                    color: var(--om-tx);
+                    font-family: var(--om-mono);
+                    box-sizing: border-box;
+                    width: 100%;
+                    outline: none;
+                }
+                .order-tp-multi__row input:focus {
+                    border-color: rgba(34, 197, 94, 0.55);
+                    box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.18);
+                }
+                .order-tp-multi__row-pct { flex: 0 0 44px; }
+                .order-tp-multi__row-price { flex: 1; }
+                .order-tp-multi__row-rr { flex: 0 0 40px; }
+                .order-tp-multi__row-profit { flex: 1; }
+                .order-tp-multi__row-del {
+                    flex: 0 0 22px;
+                    height: 22px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border: 1px solid rgba(34, 197, 94, 0.25);
+                    border-radius: 3px;
+                    background: transparent;
+                    color: #22c55e;
+                    font-size: 10px;
+                    cursor: pointer;
+                    padding: 0;
+                    transition: all 0.1s;
+                    font-family: var(--om-mono);
+                    font-weight: 700;
+                }
+                .order-tp-multi__row-del:hover {
+                    background: rgba(239, 68, 68, 0.15);
+                    border-color: rgba(239, 68, 68, 0.4);
+                    color: #ef4444;
+                }
+                .order-tp-multi__add {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 4px;
+                    margin-top: 4px;
+                    border-top: 1px dashed rgba(34, 197, 94, 0.2);
+                    cursor: pointer;
+                    color: var(--om-dim);
+                    transition: color 0.1s;
+                }
+                .order-tp-multi__add:hover { color: #22c55e; }
+                .order-tp-multi__add-icon { font-size: 14px; font-weight: 600; }
+                .order-tp-multi__blend {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 6px 2px 2px;
+                    border-top: 1px dashed rgba(34, 197, 94, 0.2);
+                    margin-top: 4px;
+                }
+                .order-tp-multi__blend-label {
+                    font-size: 10px;
+                    font-weight: 600;
+                    color: var(--om-dim);
+                    font-family: 'DM Sans', sans-serif;
+                }
+                .order-tp-multi__blend-value {
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: #22c55e;
+                    font-family: var(--om-mono);
+                }
+
+                /* TP stats compact */
+                .order-tp-stats-compact {
+                    display: flex;
+                    gap: 14px;
+                    margin-top: 6px;
+                    font-size: 11px;
+                    font-family: var(--om-mono);
+                    color: var(--om-dim);
+                }
+                .order-tp-stats-compact strong { color: var(--om-tx); font-weight: 600; }
+
+                /* Compact summary */
+                .order-tp-summary--compact { margin-top: 6px; }
+
+                /* Light mode for TP card */
+                body.light-mode .order-tp-card--compact {
+                    background: #ffffff !important;
+                    border-color: rgba(34, 197, 94, 0.35) !important;
+                }
+                body.light-mode .order-input--tp-inline {
+                    background: #f7f8fa !important;
+                    border-color: #e0e3eb !important;
+                    color: #131722 !important;
+                }
+                body.light-mode .order-tp-multi__row input {
+                    background: #f7f8fa;
+                    border-color: #e0e3eb;
+                    color: #131722;
+                }
+                body.light-mode .order-tp-stats-compact { color: #787b86; }
+                body.light-mode .order-tp-stats-compact strong { color: #131722; }
+
                 /* ── COMPACT INFO LINE ──────────────────────────────────────────── */
                 .order-entry-sl-info {
                     display: flex;
@@ -7458,76 +7675,74 @@ class OrderManager {
                     <div class="multi-entry-header" style="display:none;"></div>
                 </div>
 
-                <div class="order-section order-tp-card" id="tpSection">
-                    <div class="order-tp-card__header">
+                <div class="order-section order-tp-card order-tp-card--compact" id="tpSection">
+                    <div class="order-tp-card__header order-tp-card__header--compact">
                         <div class="order-tp-card__title-group">
                             <span class="order-tp-card__icon" aria-hidden="true"></span>
-                            <span class="order-tp-card__title">Profit target</span>
-                            <button type="button" class="order-tp-card__link-btn" id="tpChartLinkStub" tabindex="-1" title="Chart link" aria-hidden="true">🔗</button>
+                            <span class="order-tp-card__title">Profit Target</span>
                         </div>
-                        <label class="order-tp-card__toggle-wrap" for="enableTP">
-                            <input type="checkbox" id="enableTP" class="order-checkbox" checked>
-                            <span class="order-tp-card__toggle-label">Enable</span>
-                        </label>
+                        <div class="order-tp-card__header-right">
+                            <label class="order-entry-sl-enable" for="enableTP" style="margin-right:4px;">
+                                <input type="checkbox" id="enableTP" class="order-checkbox" checked>
+                            </label>
+                            <input type="checkbox" id="multipleTPToggle" class="order-checkbox" style="display:none;">
+                            <button type="button" class="multi-entry-toggle multi-entry-toggle--compact multi-tp-toggle" id="multiTPBtn">Single</button>
+                        </div>
                     </div>
                     <div id="tpCardMain" class="order-tp-card__main">
-                        <div id="tpInputs" class="order-tp-card__body">
-                            <div class="order-tp-card__inputs-row order-tp-card__inputs-row--three" id="tpInputsRow">
-                                <div class="order-tp-field">
-                                    <label class="order-tp-field__label" for="tpPrice">Price</label>
-                                    <div class="order-input-wrapper order-input-wrapper--tp" style="display: flex; gap: 4px; align-items: center;">
-                                        <input type="number" id="tpPrice" value="0" step="0.00001" class="order-input order-input--compact" placeholder="Price" aria-label="Take profit price" style="flex: 1; min-width: 0;">
-                                        <span class="input-stepper-group">
-                                        <button type="button" class="input-stepper input-stepper--tp" data-target="tpPrice" data-step-mode="pip" data-step="-1">−</button>
-                                        <button type="button" class="input-stepper input-stepper--tp" data-target="tpPrice" data-step-mode="pip" data-step="1">+</button>
-                                        </span>
-                                    </div>
+                        <!-- Single TP mode -->
+                        <div id="tpInputs" class="order-tp-card__body order-tp-single">
+                            <div class="order-tp-single__row">
+                                <div class="order-tp-single__field">
+                                    <label class="order-tp-col-label">Price</label>
+                                    <input type="number" id="tpPrice" value="0" step="0.00001" class="order-input order-input--compact order-input--tp-inline" placeholder="0">
                                 </div>
-                                <div class="order-tp-field" id="tpFieldRR">
-                                    <label class="order-tp-field__label" for="tpRRInput">R : R</label>
-                                    <div class="order-input-wrapper order-input-wrapper--tp-rr" style="display: flex; gap: 4px; align-items: center;">
-                                        <input type="number" id="tpRRInput" value="0" step="0.1" min="0" class="order-input order-input--compact" aria-label="Risk to reward ratio" style="flex: 1; min-width: 0;">
-                                        <span class="input-stepper-group">
-                                        <button type="button" class="input-stepper input-stepper--tp" data-target="tpRRInput" data-step="-0.1">−</button>
-                                        <button type="button" class="input-stepper input-stepper--tp" data-target="tpRRInput" data-step="0.1">+</button>
-                                        </span>
-                                    </div>
+                                <div class="order-tp-single__field">
+                                    <label class="order-tp-col-label">R:R</label>
+                                    <input type="number" id="tpRRInput" value="0" step="0.1" min="0" class="order-input order-input--compact order-input--tp-inline">
                                 </div>
-                                <div class="order-tp-field" id="tpFieldTargetUsd">
-                                    <label class="order-tp-field__label" for="tpTargetProfitUSD">Target $</label>
-                                    <div class="order-input-wrapper order-input-wrapper--tp-target" style="display: flex; gap: 4px; align-items: center;">
-                                        <span class="order-input-prefix">$</span>
-                                        <input type="number" id="tpTargetProfitUSD" value="300" min="0" step="1" class="order-input order-input--compact" placeholder="0" aria-label="Target profit in dollars" style="flex: 1; min-width: 0;">
-                                        <span class="input-stepper-group">
-                                        <button type="button" class="input-stepper input-stepper--tp" data-target="tpTargetProfitUSD" data-step="-10">−</button>
-                                        <button type="button" class="input-stepper input-stepper--tp" data-target="tpTargetProfitUSD" data-step="+10">+</button>
-                                        </span>
-                                    </div>
-                                </div>
-                                <div class="order-tp-field is-hidden" id="tpFieldTargetPct">
-                                    <label class="order-tp-field__label" for="tpTargetProfitPercent">Target %</label>
-                                    <div class="order-input-wrapper order-input-wrapper--tp-target" style="display: flex; gap: 4px; align-items: center;">
-                                        <input type="number" id="tpTargetProfitPercent" value="3" min="0" step="0.1" class="order-input order-input--compact" placeholder="0" aria-label="Target profit as percent of balance" style="flex: 1; min-width: 0;">
-                                        <span class="order-input-suffix">%</span>
-                                        <span class="input-stepper-group">
-                                        <button type="button" class="input-stepper input-stepper--tp" data-target="tpTargetProfitPercent" data-step="-0.5">−</button>
-                                        <button type="button" class="input-stepper input-stepper--tp" data-target="tpTargetProfitPercent" data-step="0.5">+</button>
-                                        </span>
-                                    </div>
+                                <div class="order-tp-single__field">
+                                    <label class="order-tp-col-label">Profit</label>
+                                    <input type="number" id="tpTargetProfitUSD" value="0" min="0" step="1" class="order-input order-input--compact order-input--tp-inline" placeholder="0">
                                 </div>
                             </div>
-                            <div class="order-tp-stats">
-                                <div class="order-tp-stat order-tp-stat--dist">
-                                    <span class="order-tp-stat__label">Distance</span>
-                                    <span id="tpDistanceDisplay" class="order-tp-stat__value">—</span>
-                                </div>
-                                <div class="order-tp-stat order-tp-stat--profit">
-                                    <span class="order-tp-stat__label">Profit $</span>
-                                    <span id="tpProfitDisplay" class="order-tp-stat__value">—</span>
-                                </div>
+                            <div class="order-tp-field is-hidden" id="tpFieldTargetPct">
+                                <input type="number" id="tpTargetProfitPercent" value="3" min="0" step="0.1" class="order-input order-input--compact" placeholder="0" aria-label="Target profit as percent of balance" style="display:none;">
                             </div>
+                            <div id="tpFieldRR" style="display:none;"></div>
+                            <div id="tpFieldTargetUsd" style="display:none;"></div>
+                            <div id="tpInputsRow" style="display:none;"></div>
                         </div>
-                        <div class="order-tp-summary">
+
+                        <!-- Multiple TP mode -->
+                        <div id="multipleTPSettings" class="order-tp-multi is-hidden">
+                            <div class="order-tp-multi__cols">
+                                <span class="order-tp-col-label" style="flex:0 0 44px;">%</span>
+                                <span class="order-tp-col-label" style="flex:1;">Price</span>
+                                <span class="order-tp-col-label" style="flex:0 0 40px;">R:R</span>
+                                <span class="order-tp-col-label" style="flex:1;">Profit</span>
+                                <span style="flex:0 0 22px;"></span>
+                            </div>
+                            <div id="multipleTPList" class="order-tp-multi__rows"></div>
+                            <div class="order-tp-multi__add" id="tpMultiAddBtn">
+                                <span class="order-tp-multi__add-icon">+</span>
+                            </div>
+                            <div class="order-tp-multi__blend" id="tpMultiBlend">
+                                <span class="order-tp-multi__blend-label">Blended</span>
+                                <span class="order-tp-multi__blend-value" id="tpBlendedValue">—</span>
+                            </div>
+                            <input type="hidden" id="numTPTargets" value="2">
+                            <p id="tpDistributionHint" style="display:none;">TPs will be evenly distributed.</p>
+                        </div>
+
+                        <!-- Stats row -->
+                        <div class="order-tp-stats-compact">
+                            <span>Dist <strong id="tpDistanceDisplay">—</strong></span>
+                            <span>Profit <strong id="tpProfitDisplay">—</strong></span>
+                        </div>
+
+                        <!-- Risk / Reward bar -->
+                        <div class="order-tp-summary order-tp-summary--compact">
                             <div class="order-tp-summary__bar" aria-hidden="true">
                                 <span id="tpRiskRewardBarRisk" class="order-tp-summary__bar-seg order-tp-summary__bar-seg--risk" style="width:50%"></span>
                                 <span id="tpRiskRewardBarReward" class="order-tp-summary__bar-seg order-tp-summary__bar-seg--reward" style="width:50%"></span>
@@ -7674,34 +7889,7 @@ class OrderManager {
                     </div>
                 </div>
 
-                <div class="order-collapse" data-collapse="multiple-tp" id="multipleTPSection">
-                    <button type="button" class="order-collapse__header">
-                        <span>Multiple Take Profits</span>
-                        <span class="order-collapse__chevron">⌄</span>
-                    </button>
-                    <div class="order-collapse__content">
-                        <div class="order-toggle-wrapper">
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="multipleTPToggle">
-                                <span class="toggle-switch__track"></span>
-                                <span class="toggle-switch__thumb"></span>
-                            </label>
-                            <label for="multipleTPToggle" class="order-toggle-label">Enable multiple TPs</label>
-                        </div>
-
-                        <div id="multipleTPSettings" class="order-section order-section--compact is-hidden">
-                            <label class="order-label" style="font-size: 11px; margin-bottom: 6px;">Number of TP targets</label>
-                            <div class="order-input-wrapper" style="margin-bottom: 12px;">
-                                <input type="number" id="numTPTargets" value="2" min="2" max="10" step="1" class="order-input order-input--compact" style="text-align: center;">
-                                <button type="button" id="recalculateTPTargets" class="order-inline-action">
-                                    Auto-Calculate
-                                </button>
-                            </div>
-                            <div id="multipleTPList"></div>
-                            <p id="tpDistributionHint" class="order-hint" style="font-size: 10px; margin-top: 8px;">TPs will be evenly distributed. Each will close an equal $ amount.</p>
-                        </div>
-                    </div>
-                </div>
+                <div id="multipleTPSection" style="display:none;"></div>
 
                 <!-- Position Scaling Control -->
                 <div class="order-section" id="scalePositionSection" style="margin-top: 8px; margin-bottom: 8px;">
@@ -8939,6 +9127,7 @@ class OrderManager {
                 // Disable multiple TPs
                 const multipleTPToggle = document.getElementById('multipleTPToggle');
                 if (multipleTPToggle) multipleTPToggle.checked = false;
+                this._syncMultiTPButtonState();
                 
                 // Disable scaling
                 const scalePositionCheckbox = document.getElementById('scalePositionCheckbox');
@@ -9581,17 +9770,36 @@ class OrderManager {
             };
         }
         
-        // Multiple TP toggle
+        // Multiple TP toggle (button + hidden checkbox)
         const multipleTPToggle = document.getElementById('multipleTPToggle');
         const multipleTPSettings = document.getElementById('multipleTPSettings');
-        if (multipleTPToggle && multipleTPSettings) {
-            multipleTPToggle.onchange = () => {
-                multipleTPSettings.classList.toggle('is-hidden', !multipleTPToggle.checked);
-                // If enabling, initialize with number from input
-                if (multipleTPToggle.checked) {
+        const multiTPBtn = document.getElementById('multiTPBtn');
+        const tpSingleView = document.querySelector('.order-tp-single');
+        if (multiTPBtn && multipleTPToggle && multipleTPSettings) {
+            multiTPBtn.onclick = () => {
+                multipleTPToggle.checked = !multipleTPToggle.checked;
+                const isMulti = multipleTPToggle.checked;
+                multiTPBtn.textContent = isMulti ? 'Single' : 'Multi';
+                multiTPBtn.classList.toggle('active', isMulti);
+                multipleTPSettings.classList.toggle('is-hidden', !isMulti);
+                if (tpSingleView) tpSingleView.classList.toggle('is-hidden', isMulti);
+                if (isMulti) {
                     this.initializeTPTargets();
                 }
-                // Update preview lines to show/hide multiple TP badges
+                this.updatePreviewLines();
+            };
+            // Also support programmatic .onchange calls
+            multipleTPToggle.onchange = () => {
+                const isMulti = multipleTPToggle.checked;
+                if (multiTPBtn) {
+                    multiTPBtn.textContent = isMulti ? 'Single' : 'Multi';
+                    multiTPBtn.classList.toggle('active', isMulti);
+                }
+                multipleTPSettings.classList.toggle('is-hidden', !isMulti);
+                if (tpSingleView) tpSingleView.classList.toggle('is-hidden', isMulti);
+                if (isMulti) {
+                    this.initializeTPTargets();
+                }
                 this.updatePreviewLines();
             };
         }
@@ -9618,12 +9826,14 @@ class OrderManager {
             };
         }
         
-        // Add TP Target button (deprecated but kept for compatibility)
+        // Add TP Target buttons
         const addTPButton = document.getElementById('addTPTarget');
         if (addTPButton) {
-            addTPButton.onclick = () => {
-                this.addTPTarget();
-            };
+            addTPButton.onclick = () => { this.addTPTarget(); };
+        }
+        const tpMultiAddBtn = document.getElementById('tpMultiAddBtn');
+        if (tpMultiAddBtn) {
+            tpMultiAddBtn.onclick = () => { this.addTPTarget(); };
         }
         
         // Breakeven inputs - update BE line when values change
@@ -9717,11 +9927,12 @@ class OrderManager {
 
                 const multipleTPToggle = document.getElementById('multipleTPToggle');
                 const multipleTPSettings = document.getElementById('multipleTPSettings');
-                if (multipleTPToggle) multipleTPToggle.checked = false;
-                if (multipleTPSettings) multipleTPSettings.classList.add('is-hidden');
+        if (multipleTPToggle) multipleTPToggle.checked = false;
+        if (multipleTPSettings) multipleTPSettings.classList.add('is-hidden');
+        this._syncMultiTPButtonState();
 
-                this.updateOrderPanelPrice();
-                setTimeout(() => {
+        this.updateOrderPanelPrice();
+        setTimeout(() => {
                     this.syncDefaultTargetsToEntry();
                     this.calculatePositionFromRisk();
                     this.calculateAdvancedRiskReward();
@@ -10858,123 +11069,73 @@ class OrderManager {
     renderTPTargets() {
         const list = document.getElementById('multipleTPList');
         if (!list || !this.tpTargets) return;
-        
-        // Validate and show errors
-        const errors = this.validateTPTargets();
-        const hasErrors = errors.length > 0;
-        
-        // Determine suffix based on distribution mode
-        let suffix, unitLabel;
-        if (this.tpDistributionMode === 'percent') {
-            suffix = '%';
-            unitLabel = 'Percent';
-        } else if (this.tpDistributionMode === 'amount') {
-            suffix = '$';
-            unitLabel = 'Amount';
-        } else if (this.tpDistributionMode === 'lots') {
-            suffix = 'Lots';
-            unitLabel = 'Lots';
-        }
-        
-        list.innerHTML = this.tpTargets.map(target => `
-            <div class="tp-target-row" style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">
-                <div style="flex: 1;">
-                    <input type="number" 
-                           id="tpTarget${target.id}Price" 
-                           value="${target.price}" 
-                           step="0.00001" 
-                           placeholder="Price"
-                           class="order-input order-input--compact" 
-                           style="padding: 6px 8px; font-size: 11px;">
+
+        const entryPrice = this._getReferenceEntryForOrderMath();
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
+        const riskDist = entryPrice > 0 && slPrice > 0 ? Math.abs(entryPrice - slPrice) : 0;
+        const pip = this.pipSize || 0.0001;
+        const pvl = this.pipValuePerLot || 10;
+
+        list.innerHTML = this.tpTargets.map(target => {
+            const tpDist = entryPrice > 0 && target.price > 0 ? Math.abs(target.price - entryPrice) : 0;
+            const rr = riskDist > 0 ? (tpDist / riskDist).toFixed(1) : '—';
+            const pctShare = target.percentage || 0;
+            const shareQty = quantity * (pctShare / 100);
+            const profitPips = tpDist / pip;
+            const profitUsd = (profitPips * shareQty * pvl).toFixed(2);
+
+            return `<div class="order-tp-multi__row">
+                <div class="order-tp-multi__row-pct">
+                    <input type="number" id="tpTarget${target.id}Pct" value="${pctShare}" min="1" step="1">
                 </div>
-                <div style="width: 90px; position: relative;">
-                    <input type="number" 
-                           id="tpTarget${target.id}Pct" 
-                           value="${target.percentage}" 
-                           min="0.01" 
-                           step="${this.tpDistributionMode === 'percent' ? '1' : '0.01'}"
-                           class="order-input order-input--compact" 
-                           style="padding: 6px 24px 6px 8px; font-size: 11px; text-align: left;">
-                    <span style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 10px; color: #787b86; pointer-events: none;">${suffix}</span>
+                <div class="order-tp-multi__row-price">
+                    <input type="number" id="tpTarget${target.id}Price" value="${target.price}" step="0.00001" placeholder="0">
                 </div>
-                <button onclick="chart.orderManager.removeTPTarget(${target.id})" 
-                        style="padding: 4px 8px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 4px; color: #ef4444; font-size: 12px; cursor: pointer;">
-                    ×
-                </button>
-            </div>
-        `).join('');
-        
-        // Show validation errors if any
-        if (hasErrors) {
-            const errorHTML = `
-                <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 4px; padding: 8px; margin-top: 8px;">
-                    ${errors.map(err => `
-                        <div style="color: #ef4444; font-size: 11px; margin-bottom: 4px;">
-                            ${err}
-                        </div>
-                    `).join('')}
+                <div class="order-tp-multi__row-rr">
+                    <input type="text" value="${rr}" readonly tabindex="-1" style="color:#22c55e;text-align:center;cursor:default;background:transparent;border-color:transparent;">
                 </div>
-            `;
-            list.innerHTML += errorHTML;
+                <div class="order-tp-multi__row-profit">
+                    <input type="text" value="${profitUsd}" readonly tabindex="-1" style="color:#22c55e;cursor:default;background:transparent;border-color:transparent;">
+                </div>
+                <button class="order-tp-multi__row-del" onclick="chart.orderManager.removeTPTarget(${target.id})">×</button>
+            </div>`;
+        }).join('');
+
+        // Blended R:R and total profit
+        const blendEl = document.getElementById('tpBlendedValue');
+        if (blendEl) {
+            let totalProfit = 0;
+            let weightedRR = 0;
+            let totalPct = 0;
+            this.tpTargets.forEach(t => {
+                const dist = entryPrice > 0 && t.price > 0 ? Math.abs(t.price - entryPrice) : 0;
+                const pct = t.percentage || 0;
+                const shareQ = quantity * (pct / 100);
+                const pProfit = (dist / pip) * shareQ * pvl;
+                totalProfit += pProfit;
+                if (riskDist > 0) weightedRR += (dist / riskDist) * (pct / 100);
+                totalPct += pct;
+            });
+            const blendRR = weightedRR.toFixed(1);
+            blendEl.textContent = `${blendRR}R → +$${totalProfit.toFixed(2)}`;
         }
-        
-        // Show total based on distribution mode
-        const totalValue = this.tpTargets.reduce((sum, t) => sum + (t.percentage || 0), 0);
-        
-        let totalText, totalColor, isValid, targetValue;
-        if (this.tpDistributionMode === 'percent') {
-            targetValue = 100;
-            isValid = Math.abs(totalValue - 100) < 0.1;
-            totalColor = isValid ? '#22c55e' : '#ef4444';
-            totalText = `${totalValue.toFixed(1)}%`;
-        } else if (this.tpDistributionMode === 'amount') {
-            // Get expected total reward
-            const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
-            const originalTP = parseFloat(document.getElementById('tpPrice')?.value || 0);
-            const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
-            const priceDiff = this.orderSide === 'BUY' ? (originalTP - entryPrice) : (entryPrice - originalTP);
-            const pipsMove = priceDiff / this.pipSize;
-            targetValue = pipsMove * quantity * this.pipValuePerLot;
-            isValid = Math.abs(totalValue - targetValue) < 1;
-            totalColor = isValid ? '#22c55e' : '#ef4444';
-            totalText = `$${totalValue.toFixed(2)}`;
-        } else if (this.tpDistributionMode === 'lots') {
-            targetValue = parseFloat(document.getElementById('orderQuantity')?.value || 1);
-            isValid = Math.abs(totalValue - targetValue) < 0.01;
-            totalColor = isValid ? '#22c55e' : '#ef4444';
-            totalText = `${totalValue.toFixed(2)} Lots`;
-        }
-        
-        const totalHTML = `
-            <div style="text-align: center; margin-top: 8px; padding: 4px; background: rgba(255,255,255,0.05); border-radius: 4px;">
-                <span style="font-size: 10px; color: #787b86;">Total: </span>
-                <span style="font-size: 11px; color: ${totalColor}; font-weight: 600;">${totalText}</span>
-                ${isValid ? ' ✓' : ' ⚠️'}
-            </div>
-        `;
-        list.innerHTML += totalHTML;
-        
-        // Add input listeners
+
+        // Wire input listeners
         this.tpTargets.forEach(target => {
             const priceInput = document.getElementById(`tpTarget${target.id}Price`);
             const pctInput = document.getElementById(`tpTarget${target.id}Pct`);
-            
             if (priceInput) {
                 priceInput.oninput = () => {
                     target.price = parseFloat(priceInput.value) || 0;
-                    // Re-render to update validation
                     this.renderTPTargets();
-                    // Update preview lines on chart in real-time
                     this.updatePreviewLines();
                 };
             }
-            
             if (pctInput) {
                 pctInput.oninput = () => {
                     target.percentage = parseFloat(pctInput.value) || 0;
-                    // Re-render to update validation and percentage total
                     this.renderTPTargets();
-                    // Update preview lines on chart in real-time
                     this.updatePreviewLines();
                 };
             }
@@ -14066,6 +14227,7 @@ class OrderManager {
             const multipleTPSettings = document.getElementById('multipleTPSettings');
             if (multipleTPToggle) multipleTPToggle.checked = false;
             if (multipleTPSettings) multipleTPSettings.classList.add('is-hidden');
+            this._syncMultiTPButtonState();
         } else {
             // Recalculate percentages
             const equalPercent = Math.round(100 / this.tpTargets.length);
