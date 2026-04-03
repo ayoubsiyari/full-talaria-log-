@@ -11344,18 +11344,20 @@ class OrderManager {
         const tpFormatted = tpDefault.toFixed(precision);
         const slFormatted = slDefault.toFixed(precision);
 
+        const isUnset = (v) => !v || parseFloat(v) === 0;
+
         // TP syncing: use weighted avg as reference when multi-entry (matches TP badge anchor)
         if (tpPriceInput && !this.tpManuallyPositioned) {
             const existing = String(tpPriceInput.value || '').trim();
-            if (!existing || existing === refFormatted) {
+            if (isUnset(existing) || existing === refFormatted) {
                 tpPriceInput.value = tpFormatted;
             }
         }
 
-        // SL syncing: track entry until user explicitly drags SL
+        // SL syncing: auto-set from risk on first open, then track entry
         if (slPriceInput && !this.slManuallyPositioned) {
             const existing = String(slPriceInput.value || '').trim();
-            if (!existing || existing === mainFormatted) {
+            if (isUnset(existing) || existing === mainFormatted) {
                 slPriceInput.value = slFormatted;
             }
         }
