@@ -8684,6 +8684,13 @@ class OrderManager {
             if (slIn) slIn.value = 0;
         }
 
+        // Clear stale validation errors
+        const orderValidationBox = document.getElementById('orderValidation');
+        if (orderValidationBox) {
+            orderValidationBox.className = 'order-validation';
+            orderValidationBox.innerHTML = '';
+        }
+
         // Reset multiple TP UI to avoid stale state
         const multipleTPToggle = document.getElementById('multipleTPToggle');
         const multipleTPSettings = document.getElementById('multipleTPSettings');
