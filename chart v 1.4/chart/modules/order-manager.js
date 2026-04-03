@@ -11782,17 +11782,7 @@ class OrderManager {
                     const color = `rgba(34, 197, 94, ${greenIntensity})`;
                     const label = `TP${index + 1}`;
                     
-                    // Format label based on distribution mode
-                    let fullLabel;
-                    if (this.tpDistributionMode === 'percent') {
-                        fullLabel = `TP${index + 1} (${target.percentage.toFixed(0)}%)`;
-                    } else if (this.tpDistributionMode === 'amount') {
-                        fullLabel = `TP${index + 1} ($${target.percentage.toFixed(0)})`;
-                    } else if (this.tpDistributionMode === 'lots') {
-                        fullLabel = `TP${index + 1} (${target.percentage.toFixed(2)} lots)`;
-                    }
-                    
-                    const tpLine = this.drawPreviewLine(target.price, color, fullLabel, null, true, index, target.id);
+                    const tpLine = this.drawPreviewLine(target.price, color, label, null, true, index, target.id);
                     if (tpLine) {
                         this.previewLines.multipleTPs.push(tpLine);
                     }
