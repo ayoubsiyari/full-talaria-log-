@@ -19073,13 +19073,13 @@ class OrderManager {
                 const clampedY = Math.max(0, Math.min(chartHeight, event.y));
                 let newPrice = chart.scales.yScale.invert(clampedY);
                 
-                // Recalculate lot size from fixed risk when SL exists
                 const slPrice = pendingOrder.stopLoss;
                 const risk = pendingOrder.riskAmount || pendingOrder.originalRiskAmount || 0;
                 const minLot = self.getMarketConfig()?.minSize ?? 0.01;
                 const maxLotCap = dragStartQty * 20;
+                const sizingMode = self.positionSizeMode || 'risk-usd';
 
-                if (slPrice > 0 && risk > 0) {
+                if (slPrice > 0) {
                     const pip = self.pipSize || 0.0001;
                     const minDist = pip * 2;
 
@@ -19090,13 +19090,19 @@ class OrderManager {
                         if (newPrice >= slPrice - minDist) newPrice = slPrice - minDist;
                     }
 
-                    const newQty = self._enginePositionSize(risk, newPrice, slPrice, newPrice);
-                    const rounded = Math.round(Math.max(minLot, newQty) * 100) / 100;
+                    if (sizingMode === 'lot-size') {
+                        // Lot Size mode: keep lots fixed, recalculate risk
+                        const newRisk = self._engineRisk(newPrice, slPrice, pendingOrder.quantity, newPrice);
+                        pendingOrder.riskAmount = Math.round(newRisk * 100) / 100;
+                    } else if (risk > 0) {
+                        // Risk $ / Risk % mode: keep risk fixed, recalculate lots
+                        const newQty = self._enginePositionSize(risk, newPrice, slPrice, newPrice);
+                        const rounded = Math.round(Math.max(minLot, newQty) * 100) / 100;
 
-                    // If lot size exceeds cap, don't move entry further
-                    if (rounded > maxLotCap) return;
+                        if (rounded > maxLotCap) return;
 
-                    pendingOrder.quantity = rounded;
+                        pendingOrder.quantity = rounded;
+                    }
                 }
 
                 pendingOrder.entryPrice = newPrice;
@@ -19200,7 +19206,11 @@ class OrderManager {
                 self._updateSplitGroupAvgLines(chart);
                 if (typeof self.updatePositionsPanel === 'function') self.updatePositionsPanel();
                 
-                self.showNotification(`✏️ Entry → ${formattedPrice} | ${pendingOrder.quantity.toFixed(2)} lots`, 'info');
+                const sMode = self.positionSizeMode || 'risk-usd';
+                const notifDetail = sMode === 'lot-size'
+                    ? `$${pendingOrder.riskAmount} risk`
+                    : `${pendingOrder.quantity.toFixed(2)} lots`;
+                self.showNotification(`✏️ Entry → ${formattedPrice} | ${notifDetail}`, 'info');
             });
         
         // Apply drag to line, labelBox, and priceBox
@@ -19565,24 +19575,40 @@ class OrderManager {
                     const p = parseFloat(formattedPrice);
                     pendingOrder.stopLoss = p;
 
-                    // Recalculate lot size: keep risk fixed, adjust lots for new SL distance
+                    const sizingMode = self.positionSizeMode || 'risk-usd';
                     const risk = pendingOrder.riskAmount || pendingOrder.originalRiskAmount || 0;
                     const minLot = self.getMarketConfig()?.minSize ?? 0.01;
-                    if (risk > 0 && pendingOrder.entryPrice > 0) {
-                        const newQty = self._enginePositionSize(risk, pendingOrder.entryPrice, p, pendingOrder.entryPrice);
-                        const rounded = Math.round(Math.max(minLot, newQty) * 100) / 100;
-                        pendingOrder.quantity = rounded;
-                        console.log(`🔄 SL moved → recalculated lots: ${rounded.toFixed(2)} (risk $${risk})`);
+
+                    if (sizingMode === 'lot-size') {
+                        // Lot Size mode: keep lots fixed, recalculate risk
+                        if (pendingOrder.entryPrice > 0) {
+                            const newRisk = self._engineRisk(pendingOrder.entryPrice, p, pendingOrder.quantity, pendingOrder.entryPrice);
+                            pendingOrder.riskAmount = Math.round(newRisk * 100) / 100;
+                            console.log(`🔄 SL moved → recalculated risk: $${pendingOrder.riskAmount} (lots ${pendingOrder.quantity.toFixed(2)})`);
+                        }
+                    } else {
+                        // Risk mode: keep risk fixed, recalculate lots
+                        if (risk > 0 && pendingOrder.entryPrice > 0) {
+                            const newQty = self._enginePositionSize(risk, pendingOrder.entryPrice, p, pendingOrder.entryPrice);
+                            const rounded = Math.round(Math.max(minLot, newQty) * 100) / 100;
+                            pendingOrder.quantity = rounded;
+                            console.log(`🔄 SL moved → recalculated lots: ${rounded.toFixed(2)} (risk $${risk})`);
+                        }
                     }
 
                     if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
                         self._getSplitGroupPendingOrders(pendingOrder).forEach((m) => {
                             m.stopLoss = p;
-                            // Recalculate each split leg's lot size too
-                            const mRisk = m.riskAmount || m.originalRiskAmount || 0;
-                            if (mRisk > 0 && m.entryPrice > 0) {
-                                const mQty = self._enginePositionSize(mRisk, m.entryPrice, p, m.entryPrice);
-                                m.quantity = Math.round(Math.max(minLot, mQty) * 100) / 100;
+                            if (sizingMode === 'lot-size') {
+                                if (m.entryPrice > 0) {
+                                    m.riskAmount = Math.round(self._engineRisk(m.entryPrice, p, m.quantity, m.entryPrice) * 100) / 100;
+                                }
+                            } else {
+                                const mRisk = m.riskAmount || m.originalRiskAmount || 0;
+                                if (mRisk > 0 && m.entryPrice > 0) {
+                                    const mQty = self._enginePositionSize(mRisk, m.entryPrice, p, m.entryPrice);
+                                    m.quantity = Math.round(Math.max(minLot, mQty) * 100) / 100;
+                                }
                             }
                         });
                     }
@@ -19596,7 +19622,11 @@ class OrderManager {
                 self.drawPendingOrderTargets(pendingOrder);
                 if (typeof self.updatePositionsPanel === 'function') self.updatePositionsPanel();
                 
-                self.showNotification(`✏️ ${target.type} → ${formattedPrice} | ${pendingOrder.quantity.toFixed(2)} lots`, 'info');
+                const slSMode = self.positionSizeMode || 'risk-usd';
+                const slDetail = (target.type === 'SL' && slSMode === 'lot-size')
+                    ? `$${pendingOrder.riskAmount} risk`
+                    : `${pendingOrder.quantity.toFixed(2)} lots`;
+                self.showNotification(`✏️ ${target.type} → ${formattedPrice} | ${slDetail}`, 'info');
             });
         
         // Apply drag to BOTH line AND labelGroup (same as executed orders)
