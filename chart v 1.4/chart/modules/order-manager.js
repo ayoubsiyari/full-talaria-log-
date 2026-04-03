@@ -6937,6 +6937,176 @@ class OrderManager {
                     border-color: rgba(38, 67, 247, 0.15) !important;
                 }
 
+                /* ── COMPACT TOP ROW: BUY/SELL + Market/Limit/Stop ────────────── */
+                .order-panel__top-row {
+                    display: flex;
+                    gap: 6px;
+                    margin-bottom: 2px;
+                }
+                .order-panel__top-row .order-panel__tab-group {
+                    flex: 1;
+                    margin-bottom: 0;
+                }
+                .order-panel__top-row .order-panel__type-group {
+                    flex: 1;
+                    display: flex;
+                    gap: 0;
+                    padding: 2px;
+                    background: var(--om-seg-bg);
+                    border: 1px solid var(--om-seg-border);
+                    border-radius: 5px;
+                    margin-bottom: 0;
+                }
+
+                /* ── COMPACT RISK ROW ───────────────────────────────────────────── */
+                .order-risk-compact {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    width: 100%;
+                }
+                .order-risk-compact__tabs {
+                    flex: 0 0 auto !important;
+                    width: auto !important;
+                    max-width: none !important;
+                    min-width: 0 !important;
+                    margin-bottom: 0 !important;
+                }
+                .order-risk-compact__tabs .position-mode-tab {
+                    padding: 4px 8px !important;
+                    font-size: 10px !important;
+                    min-width: 0 !important;
+                }
+                .order-risk-compact__input {
+                    flex: 1;
+                    min-width: 0;
+                }
+                .order-risk-compact__calc {
+                    flex: 0 0 auto;
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: var(--om-dim);
+                    font-family: var(--om-mono);
+                    white-space: nowrap;
+                    padding-right: 2px;
+                }
+
+                /* ── ENTRY + SL SIDE BY SIDE ────────────────────────────────────── */
+                .order-entry-sl-grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 8px;
+                }
+                .order-entry-sl-col {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                }
+                .order-entry-sl-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 4px;
+                    min-height: 20px;
+                }
+                .order-entry-sl-header__title {
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                }
+                .order-label--compact {
+                    font-size: 10px !important;
+                    font-weight: 700 !important;
+                    text-transform: uppercase;
+                    letter-spacing: 0.04em;
+                    color: var(--om-tx);
+                    margin-bottom: 0 !important;
+                }
+                .order-label--sl {
+                    color: #f23645 !important;
+                }
+                .order-sl-dot {
+                    display: inline-block;
+                    width: 7px;
+                    height: 7px;
+                    border-radius: 50%;
+                    background: #f23645;
+                    flex-shrink: 0;
+                }
+                .order-entry-sl-enable {
+                    display: flex;
+                    align-items: center;
+                }
+                .order-entry-sl-enable .order-checkbox {
+                    width: 14px;
+                    height: 14px;
+                    margin: 0;
+                }
+                .multi-entry-toggle--compact {
+                    font-size: 9px !important;
+                    padding: 1px 6px !important;
+                    border-radius: 3px !important;
+                    border: 1px solid var(--om-seg-border) !important;
+                    background: var(--om-seg-bg) !important;
+                    color: var(--om-dim) !important;
+                    cursor: pointer;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 0.02em;
+                }
+                .multi-entry-toggle--compact:hover {
+                    color: var(--om-ot-gold) !important;
+                    border-color: var(--om-ot-gold) !important;
+                }
+                .multi-entry-toggle--compact.active {
+                    background: var(--om-ot-gold-bg) !important;
+                    color: var(--om-ot-gold) !important;
+                    border-color: rgba(201, 168, 76, 0.3) !important;
+                }
+                .order-input--entry-sl {
+                    font-size: 14px !important;
+                    font-weight: 600 !important;
+                    padding: 8px 10px !important;
+                    border-radius: 5px !important;
+                    background: var(--om-in-bg) !important;
+                    border: 1px solid var(--om-in-b) !important;
+                    color: var(--om-tx) !important;
+                    font-family: var(--om-mono) !important;
+                }
+                .order-input--entry-sl:focus {
+                    border-color: var(--om-ot-gold) !important;
+                    outline: none;
+                }
+                .order-section--entry-sl {
+                    padding-bottom: 6px !important;
+                }
+
+                /* ── COMPACT INFO LINE ──────────────────────────────────────────── */
+                .order-entry-sl-info {
+                    display: flex;
+                    gap: 14px;
+                    margin-top: 6px;
+                    font-size: 11px;
+                    font-family: var(--om-mono);
+                    color: var(--om-dim);
+                }
+                .order-entry-sl-info strong {
+                    color: var(--om-tx);
+                    font-weight: 600;
+                }
+
+                /* Light mode overrides for compact layout */
+                body.light-mode .order-label--compact { color: #131722; }
+                body.light-mode .order-label--sl { color: #f23645 !important; }
+                body.light-mode .order-risk-compact__calc { color: #787b86; }
+                body.light-mode .order-entry-sl-info { color: #787b86; }
+                body.light-mode .order-entry-sl-info strong { color: #131722; }
+                body.light-mode .order-input--entry-sl {
+                    background: #f7f8fa !important;
+                    border-color: #e0e3eb !important;
+                    color: #131722 !important;
+                }
+
                 /* ── MISC ────────────────────────────────────────────────────────── */
                 .is-hidden { display: none !important; }
             `;
@@ -7005,13 +7175,12 @@ class OrderManager {
                     </div>
                 </div>
 
-                <div class="order-panel__tab-group">
-                    <button id="buyTab" type="button" class="order-tab order-tab--buy active">BUY</button>
-                    <button id="sellTab" type="button" class="order-tab order-tab--sell">SELL</button>
-                </div>
-
-                <div class="order-section" id="orderTypeSection">
-                    <div class="order-button-group">
+                <div class="order-panel__top-row">
+                    <div class="order-panel__tab-group">
+                        <button id="buyTab" type="button" class="order-tab order-tab--buy active">BUY</button>
+                        <button id="sellTab" type="button" class="order-tab order-tab--sell">SELL</button>
+                    </div>
+                    <div class="order-button-group order-panel__type-group" id="orderTypeSection">
                         <button class="order-type-btn active" type="button" data-type="market">Market</button>
                         <button class="order-type-btn" type="button" data-type="limit">Limit</button>
                         <button class="order-type-btn" type="button" data-type="stop">Stop</button>
@@ -7084,69 +7253,94 @@ class OrderManager {
 
                 </div>
 
-                <div class="order-section">
-                    <div class="order-position-sizing-head">
-                        <label class="order-label" id="positionSizingLabel" for="riskAmountUSD">Position sizing</label>
+                <div class="order-section order-section--risk-row">
+                    <div class="order-risk-compact">
+                        <div class="order-button-group order-button-group--inline order-button-group--position-mode order-risk-compact__tabs">
+                            <button class="position-mode-tab active" type="button" data-mode="risk-usd">$</button>
+                            <button class="position-mode-tab" type="button" data-mode="risk-percent">%</button>
+                            <button class="position-mode-tab" type="button" data-mode="lot-size">#</button>
+                        </div>
                         <div id="balanceSourceToggle" style="display: none; gap: 0; margin-left: auto;">
                             <button class="balance-source-tab active" type="button" data-balance="current" style="font-size: 9px; padding: 2px 8px; border-radius: 4px 0 0 4px; background: #334155; color: #e2e8f0; border: 1px solid #475569; cursor: pointer; white-space: nowrap;">Current</button>
                             <button class="balance-source-tab" type="button" data-balance="initial" style="font-size: 9px; padding: 2px 8px; border-radius: 0 4px 4px 0; background: transparent; color: #94a3b8; border: 1px solid #475569; border-left: none; cursor: pointer; white-space: nowrap;">Initial</button>
                         </div>
-                        <div class="order-button-group order-button-group--inline order-button-group--position-mode">
-                            <button class="position-mode-tab active" type="button" data-mode="risk-usd">Risk $</button>
-                            <button class="position-mode-tab" type="button" data-mode="risk-percent">Risk %</button>
-                            <button class="position-mode-tab" type="button" data-mode="lot-size">Lot Size</button>
+                        <div id="riskUSDInput" class="order-input-wrapper order-risk-compact__input" style="display: flex; gap: 4px; align-items: center;">
+                            <span class="order-input-prefix">$</span>
+                            <input type="number" id="riskAmountUSD" value="100" min="1" step="1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
+                            <span class="input-stepper-group">
+                            <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="-10">−</button>
+                            <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="+10">+</button>
+                            </span>
                         </div>
-                    </div>
-
-                    <div id="riskUSDInput" class="order-input-wrapper" style="display: flex; gap: 6px; align-items: center;">
-                        <span class="order-input-prefix">$</span>
-                        <input type="number" id="riskAmountUSD" value="100" min="1" step="1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
-                        <span class="input-stepper-group">
-                        <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="-10">−</button>
-                        <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="+10">+</button>
-                        </span>
-                    </div>
-                    <div id="riskPercentInput" class="order-input-wrapper is-hidden" style="display: flex; gap: 6px; align-items: center;">
-                        <input type="number" id="riskAmountPercent" value="1" min="0.1" step="0.1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
-                        <span class="order-input-suffix">%</span>
-                        <span class="input-stepper-group">
-                        <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="-0.5">−</button>
-                        <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="+0.5">+</button>
-                        </span>
-                    </div>
-                    <div id="lotSizeInput" class="order-input-wrapper is-hidden" style="display: flex; gap: 6px; align-items: center;">
-                        <input type="number" id="lotSizeAmount" value="1" min="0.01" step="0.01" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
-                        <span class="order-input-suffix">Lots</span>
-                        <span class="input-stepper-group">
-                        <button type="button" class="input-stepper" data-target="lotSizeAmount" data-step="-0.1">−</button>
-                        <button type="button" class="input-stepper" data-target="lotSizeAmount" data-step="+0.1">+</button>
-                        </span>
+                        <div id="riskPercentInput" class="order-input-wrapper order-risk-compact__input is-hidden" style="display: flex; gap: 4px; align-items: center;">
+                            <input type="number" id="riskAmountPercent" value="1" min="0.1" step="0.1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
+                            <span class="order-input-suffix">%</span>
+                            <span class="input-stepper-group">
+                            <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="-0.5">−</button>
+                            <button type="button" class="input-stepper" data-target="riskAmountPercent" data-step="+0.5">+</button>
+                            </span>
+                        </div>
+                        <div id="lotSizeInput" class="order-input-wrapper order-risk-compact__input is-hidden" style="display: flex; gap: 4px; align-items: center;">
+                            <input type="number" id="lotSizeAmount" value="1" min="0.01" step="0.01" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
+                            <span class="order-input-suffix">Lots</span>
+                            <span class="input-stepper-group">
+                            <button type="button" class="input-stepper" data-target="lotSizeAmount" data-step="-0.1">−</button>
+                            <button type="button" class="input-stepper" data-target="lotSizeAmount" data-step="+0.1">+</button>
+                            </span>
+                        </div>
+                        <span id="calculatedValue" class="order-risk-compact__calc">1.0%</span>
                     </div>
                     <input type="hidden" id="orderQuantity" value="1">
-                    <div id="calculatedPosition" class="order-calculation">
+                    <div id="calculatedPosition" class="order-calculation" style="display:none;">
                         <span class="order-calculation-label" id="calculatedLabel">Risk Amount</span>
-                        <span id="calculatedValue" class="order-calculation-value">$0.00</span>
+                    </div>
+                    <label class="order-label" id="positionSizingLabel" for="riskAmountUSD" style="display:none;">Position sizing</label>
+                </div>
+
+                <div class="order-section order-section--entry-sl" id="entrySlCombinedSection">
+                    <div class="order-entry-sl-grid">
+                        <div class="order-entry-sl-col">
+                            <div class="order-entry-sl-header">
+                                <label class="order-label order-label--compact">Entry</label>
+                                <button type="button" class="multi-entry-toggle multi-entry-toggle--compact" id="multiEntryToggle">Multi</button>
+                            </div>
+                            <div id="singleEntryMode">
+                                <input type="number" id="orderEntryPrice" value="0" step="0.00001" class="order-input order-input--compact order-input--entry-sl" style="width: 100%;">
+                            </div>
+                        </div>
+                        <div class="order-entry-sl-col" id="slSection">
+                            <div class="order-entry-sl-header">
+                                <div class="order-entry-sl-header__title">
+                                    <span class="order-sl-dot"></span>
+                                    <label class="order-label order-label--compact order-label--sl">Stop Loss</label>
+                                </div>
+                                <label class="order-entry-sl-enable" for="enableSL">
+                                    <input type="checkbox" id="enableSL" class="order-checkbox" checked>
+                                </label>
+                            </div>
+                            <div id="slInputs" class="order-sl-card__body">
+                                <input type="number" id="slPrice" value="0" step="0.00001" class="order-input order-input--compact order-input--entry-sl" placeholder="0" aria-label="Stop loss price" style="width: 100%;">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="order-entry-sl-info" id="slStatRowQty">
+                        <span>Dist <strong id="slPipsDisplay">—</strong></span>
+                        <span>Qty <strong id="slQuantityDisplay">—</strong></span>
+                    </div>
+                    <div id="slStatRowsLotRisk" class="order-sl-stat-rows-lot-risk is-hidden">
+                        <div class="order-sl-stat order-sl-stat--riskusd">
+                            <span class="order-sl-stat__label">Risk $</span>
+                            <span id="slRiskUsdDisplay" class="order-sl-stat__value">—</span>
+                        </div>
+                        <div class="order-sl-stat order-sl-stat--riskpct">
+                            <span class="order-sl-stat__label">Risk %</span>
+                            <span id="slRiskPctDisplay" class="order-sl-stat__value">—</span>
+                        </div>
                     </div>
                 </div>
 
-                <div class="order-section" id="entryPriceSection">
-                    <div class="multi-entry-header">
-                        <label class="order-label">Entry price</label>
-                        <button type="button" class="multi-entry-toggle" id="multiEntryToggle">Multiple</button>
-                    </div>
-
-                    <!-- Single entry mode (default until multi is activated) -->
-                    <div id="singleEntryMode">
-                        <div class="order-input-wrapper" style="display: flex; gap: 6px; align-items: center;">
-                            <input type="number" id="orderEntryPrice" value="0" step="0.00001" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
-                            <span class="order-input-suffix">USD</span>
-                            <span class="input-stepper-group">
-                            <button type="button" class="input-stepper" data-target="orderEntryPrice" data-step-mode="pip" data-step="-1">−</button>
-                            <button type="button" class="input-stepper" data-target="orderEntryPrice" data-step-mode="pip" data-step="1">+</button>
-                            </span>
-                        </div>
-                    </div>
-
+                <div id="entryPriceSection" class="order-section" style="padding-top:0;">
+                    <div class="multi-entry-header" style="display:none;"></div>
                     <!-- Multiple entry mode (hidden until activated) -->
                     <div id="multiEntryMode" style="display: none;">
                         <div class="multi-entry-container">
@@ -7177,48 +7371,6 @@ class OrderManager {
                             </div>
                         </div>
                         <input type="hidden" id="orderEntryPriceMulti" value="0">
-                    </div>
-                </div>
-
-                <div class="order-section order-sl-card" id="slSection">
-                    <div class="order-sl-card__header">
-                        <div class="order-sl-card__title-group">
-                            <span class="order-sl-card__icon" aria-hidden="true"></span>
-                            <span class="order-sl-card__title">Stop loss</span>
-                        </div>
-                        <label class="order-sl-card__toggle-wrap" for="enableSL">
-                            <input type="checkbox" id="enableSL" class="order-checkbox" checked>
-                            <span class="order-sl-card__toggle-label">Enable</span>
-                        </label>
-                    </div>
-                    <div id="slInputs" class="order-sl-card__body">
-                        <div class="order-input-wrapper order-input-wrapper--sl" style="display: flex; gap: 6px; align-items: center;">
-                            <input type="number" id="slPrice" value="0" step="0.00001" class="order-input order-input--compact" placeholder="Price" aria-label="Stop loss price" style="flex: 1; min-width: 0;">
-                            <span class="input-stepper-group">
-                            <button type="button" class="input-stepper" data-target="slPrice" data-step-mode="pip" data-step="-1">−</button>
-                            <button type="button" class="input-stepper" data-target="slPrice" data-step-mode="pip" data-step="1">+</button>
-                            </span>
-                        </div>
-                        <div class="order-sl-stats">
-                            <div class="order-sl-stat order-sl-stat--distance">
-                                <span class="order-sl-stat__label">Distance</span>
-                                <span id="slPipsDisplay" class="order-sl-stat__value">—</span>
-                            </div>
-                            <div id="slStatRowQty" class="order-sl-stat order-sl-stat--qty">
-                                <span class="order-sl-stat__label">Quantity</span>
-                                <span id="slQuantityDisplay" class="order-sl-stat__value">—</span>
-                            </div>
-                            <div id="slStatRowsLotRisk" class="order-sl-stat-rows-lot-risk is-hidden">
-                                <div class="order-sl-stat order-sl-stat--riskusd">
-                                    <span class="order-sl-stat__label">Risk $</span>
-                                    <span id="slRiskUsdDisplay" class="order-sl-stat__value">—</span>
-                                </div>
-                                <div class="order-sl-stat order-sl-stat--riskpct">
-                                    <span class="order-sl-stat__label">Risk %</span>
-                                    <span id="slRiskPctDisplay" class="order-sl-stat__value">—</span>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 </div>
 
@@ -14872,6 +15024,7 @@ class OrderManager {
                 pendingOrder.takeProfit = tpPrice > 0 ? tpPrice : null;
                 pendingOrder.stopLoss = slPrice > 0 ? slPrice : null;
                 pendingOrder.riskAmount = riskAmount;
+                pendingOrder.sizingMode = this.positionSizeMode || 'risk-usd';
                 pendingOrder.autoBreakeven = autoBreakeven;
                 pendingOrder.breakevenSettings = autoBreakeven ? breakevenSettings : null;
 
@@ -15179,6 +15332,7 @@ class OrderManager {
             tpTargets: tpTargets,
             placedTime: timestamp,
             status: 'PENDING',
+            sizingMode: this.positionSizeMode || 'risk-usd',
             // Store scaling intent for when order executes
             scaleWithExisting: this.scaleNextOrder
         };
@@ -15243,6 +15397,7 @@ class OrderManager {
             splitIndex: splitIndex,
             splitTotal: splitTotal,
             isSplitEntry: true,
+            sizingMode: this.positionSizeMode || 'risk-usd',
             // Store scaling intent for when order executes
             scaleWithExisting: this.scaleNextOrder
         };
@@ -19077,7 +19232,7 @@ class OrderManager {
                 const risk = pendingOrder.riskAmount || pendingOrder.originalRiskAmount || 0;
                 const minLot = self.getMarketConfig()?.minSize ?? 0.01;
                 const maxLotCap = dragStartQty * 20;
-                const sizingMode = self.positionSizeMode || 'risk-usd';
+                const sizingMode = pendingOrder.sizingMode || 'risk-usd';
 
                 if (slPrice > 0) {
                     const pip = self.pipSize || 0.0001;
@@ -19206,7 +19361,7 @@ class OrderManager {
                 self._updateSplitGroupAvgLines(chart);
                 if (typeof self.updatePositionsPanel === 'function') self.updatePositionsPanel();
                 
-                const sMode = self.positionSizeMode || 'risk-usd';
+                const sMode = pendingOrder.sizingMode || 'risk-usd';
                 const notifDetail = sMode === 'lot-size'
                     ? `$${pendingOrder.riskAmount} risk`
                     : `${pendingOrder.quantity.toFixed(2)} lots`;
@@ -19575,7 +19730,7 @@ class OrderManager {
                     const p = parseFloat(formattedPrice);
                     pendingOrder.stopLoss = p;
 
-                    const sizingMode = self.positionSizeMode || 'risk-usd';
+                    const sizingMode = pendingOrder.sizingMode || 'risk-usd';
                     const risk = pendingOrder.riskAmount || pendingOrder.originalRiskAmount || 0;
                     const minLot = self.getMarketConfig()?.minSize ?? 0.01;
 
@@ -19622,7 +19777,7 @@ class OrderManager {
                 self.drawPendingOrderTargets(pendingOrder);
                 if (typeof self.updatePositionsPanel === 'function') self.updatePositionsPanel();
                 
-                const slSMode = self.positionSizeMode || 'risk-usd';
+                const slSMode = pendingOrder.sizingMode || 'risk-usd';
                 const slDetail = (target.type === 'SL' && slSMode === 'lot-size')
                     ? `$${pendingOrder.riskAmount} risk`
                     : `${pendingOrder.quantity.toFixed(2)} lots`;
