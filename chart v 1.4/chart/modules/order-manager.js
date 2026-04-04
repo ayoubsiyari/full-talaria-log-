@@ -747,6 +747,10 @@ class OrderManager {
      * fill at the open (slippage) instead of the exact SL/TP price.
      */
     _gapFill(level, candleOpen, isBuy, isTP) {
+        const rs = this.replaySystem;
+        if (rs && rs.animatingCandle && (Number(rs.tickProgress) || 0) > 0) {
+            return level;
+        }
         if (isBuy) {
             return isTP
                 ? (candleOpen > level ? candleOpen : level)   // BUY TP: open gapped above TP
@@ -17351,46 +17355,45 @@ class OrderManager {
      * Execute a pending order
      */
     executePendingOrder(pendingOrder, currentCandle) {
-        // REALISTIC GAP HANDLING: If there's a gap, order should execute at the candle's open price
-        // not at the pending order price (which was never actually traded)
+        // During tick animation the price reached the entry level tick-by-tick,
+        // so there is no gap — fill at the exact entry price.
+        const rs = this.replaySystem;
+        const inTickAnim = !!(rs && rs.animatingCandle && (Number(rs.tickProgress) || 0) > 0);
+
         const open = currentCandle.o;
         const high = currentCandle.h;
         const low = currentCandle.l;
         
-        let executionPrice = pendingOrder.entryPrice; // Default to pending order price
+        let executionPrice = pendingOrder.entryPrice;
         let hadGap = false;
         
-        // Detect gaps and adjust execution price
-        if (pendingOrder.orderType === 'limit') {
-            if (pendingOrder.direction === 'BUY') {
-                // Limit BUY: wanted to buy at entryPrice, but if price gapped down below it,
-                // execute at the open (which is lower than our limit = better price)
-                if (open < pendingOrder.entryPrice && low < pendingOrder.entryPrice) {
-                    executionPrice = open;
-                    hadGap = open < pendingOrder.entryPrice; // Gap if open is significantly different
+        if (!inTickAnim) {
+            // REALISTIC GAP HANDLING (candle-by-candle mode only):
+            // If there's a gap, order should execute at the candle's open price
+            // not at the pending order price (which was never actually traded)
+            if (pendingOrder.orderType === 'limit') {
+                if (pendingOrder.direction === 'BUY') {
+                    if (open < pendingOrder.entryPrice && low < pendingOrder.entryPrice) {
+                        executionPrice = open;
+                        hadGap = open < pendingOrder.entryPrice;
+                    }
+                } else {
+                    if (open > pendingOrder.entryPrice && high > pendingOrder.entryPrice) {
+                        executionPrice = open;
+                        hadGap = open > pendingOrder.entryPrice;
+                    }
                 }
-            } else { // SELL
-                // Limit SELL: wanted to sell at entryPrice, but if price gapped up above it,
-                // execute at the open (which is higher than our limit = better price)
-                if (open > pendingOrder.entryPrice && high > pendingOrder.entryPrice) {
-                    executionPrice = open;
-                    hadGap = open > pendingOrder.entryPrice;
-                }
-            }
-        } else if (pendingOrder.orderType === 'stop') {
-            if (pendingOrder.direction === 'BUY') {
-                // Stop BUY: wanted to buy at entryPrice, but if price gapped up above it,
-                // execute at the open (which is higher = slippage against us)
-                if (open > pendingOrder.entryPrice && high > pendingOrder.entryPrice) {
-                    executionPrice = open;
-                    hadGap = open > pendingOrder.entryPrice;
-                }
-            } else { // SELL
-                // Stop SELL: wanted to sell at entryPrice, but if price gapped down below it,
-                // execute at the open (which is lower = slippage against us)
-                if (open < pendingOrder.entryPrice && low < pendingOrder.entryPrice) {
-                    executionPrice = open;
-                    hadGap = open < pendingOrder.entryPrice;
+            } else if (pendingOrder.orderType === 'stop') {
+                if (pendingOrder.direction === 'BUY') {
+                    if (open > pendingOrder.entryPrice && high > pendingOrder.entryPrice) {
+                        executionPrice = open;
+                        hadGap = open > pendingOrder.entryPrice;
+                    }
+                } else {
+                    if (open < pendingOrder.entryPrice && low < pendingOrder.entryPrice) {
+                        executionPrice = open;
+                        hadGap = open < pendingOrder.entryPrice;
+                    }
                 }
             }
         }
