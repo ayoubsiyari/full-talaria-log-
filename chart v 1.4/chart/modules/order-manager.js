@@ -8988,6 +8988,10 @@ class OrderManager {
         if (calcValue) calcValue.textContent = '';
 
         this.removePreviewLines();
+
+        if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
+            this.chart.updateSVGPointerEvents();
+        }
     }
 
     /**

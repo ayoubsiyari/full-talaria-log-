@@ -13825,10 +13825,6 @@ class Chart {
             
             const [x, y] = d3.pointer(event);
             
-            // Always stop propagation and prevent defaults for SVG interactions
-            event.stopPropagation(); // Prevent canvas drag
-            event.preventDefault(); // Prevent text selection
-            
             // Ensure we have valid scales before proceeding
             if (!this.xScale || !this.yScale) {
                 return;
@@ -13838,19 +13834,26 @@ class Chart {
                 // Selection mode
                 const foundDrawing = this.findDrawingAtPoint(x, y);
                 if (foundDrawing) {
+                    event.stopPropagation();
+                    event.preventDefault();
                     this.selectedDrawing = foundDrawing.index;
                     this.scheduleRender();
 
                     // Context menu is handled on contextmenu (right-click release),
                     // not on mousedown. This allows right-drag box zoom without
                     // opening the menu at the same time.
-                } else {
+                } else if (this.selectedDrawing !== null) {
+                    event.stopPropagation();
+                    event.preventDefault();
                     this.selectedDrawing = null;
                     this.hideContextMenu();
-                    this.scheduleRender(); // Update visual to show deselection
+                    this.scheduleRender();
                 }
+                // No drawing found & nothing selected: let event propagate to canvas for panning
             } else {
-                // Drawing mode
+                // Drawing mode — always capture
+                event.stopPropagation();
+                event.preventDefault();
                 
                 // Calculate data coordinates - snap to candle center
                 const dataIdx = Math.round(this.pixelToDataIndex(x));
@@ -13869,14 +13872,13 @@ class Chart {
         
         // Handle SVG mousemove for drawing preview and interaction
         this.svg.on('mousemove', (event) => {
-            event.stopPropagation(); // Prevent canvas events while interacting with SVG
-            event.preventDefault();
-            
             // Always update crosshair so lines follow the cursor when SVG intercepts events
             if (typeof this.updateCrosshair === 'function') this.updateCrosshair(event);
             
-            // Skip if no active drawing
+            // Only block canvas events when actively drawing
             if (!start || !startData || !this.tool) return;
+            event.stopPropagation();
+            event.preventDefault();
             
             // Get current pointer coordinates - snap to candle center
             const [rawX, y] = d3.pointer(event);
