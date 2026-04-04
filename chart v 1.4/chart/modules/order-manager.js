@@ -20914,12 +20914,8 @@ class OrderManager {
                 if (!isPending && ml.pnlText?.node()) {
                     pbw = ml.pnlText.node().getBBox().width + pad * 2;
                 }
-                let qbw = 0;
-                if (isPending && ml.priceText?.node()) {
-                    qbw = Math.max((ml.priceText.node().getBBox().width || 0) + pad * 2, 44);
-                }
-                const rowW = lbw + (pbw > 0 ? gap + pbw : 0) + (qbw > 0 ? gap + qbw : 0) + closeBtnGap + closeBtnR * 2;
-                memberWidths.push({ ml, lbw, pbw, qbw, rowW, isPending, od });
+                const rowW = lbw + (pbw > 0 ? gap + pbw : 0) + closeBtnGap + closeBtnR * 2;
+                memberWidths.push({ ml, lbw, pbw, rowW, isPending, od });
                 if (rowW > maxRowW) maxRowW = rowW;
             }
 
@@ -20997,21 +20993,8 @@ class OrderManager {
                 ml.line?.attr('x1', 0).attr('x2', ch.w).attr('y1', oy).attr('y2', oy);
                 ml.dragHitLine?.attr('x1', 0).attr('x2', ch.w).attr('y1', oy).attr('y2', oy);
 
-                // For pending entries, update label + show quantity segment
-                if (isPending && od && ml.labelText) {
-                    const oType = (od.orderType === 'limit' ? 'LIMIT' : 'STOP');
-                    const oDir = od.direction;
-                    const oNum = od.isSplitEntry ? ` #${od.splitIndex || ''}` : '';
-                    ml.labelText.text(`${oType} ${oDir}${oNum}`);
-                    if (ml.priceBox && ml.priceText) {
-                        ml.priceText.text(this.formatQuantity(od.quantity || 0));
-                        ml.priceBox.style('display', null);
-                        ml.priceText.style('display', null);
-                    }
-                } else if (!isPending) {
-                    if (ml.priceBox) ml.priceBox.style('display', 'none');
-                    if (ml.priceText) ml.priceText.style('display', 'none');
-                }
+                if (ml.priceBox) ml.priceBox.style('display', 'none');
+                if (ml.priceText) ml.priceText.style('display', 'none');
 
                 // Live P&L
                 if (!isPending && ml.pnlBox && ml.pnlText && od) {
@@ -21035,38 +21018,17 @@ class OrderManager {
                 ml.closeBtn?.attr('transform', `translate(${closeBtnX}, ${oy})`);
 
                 // Label box right-aligned to close button
-                const labelEndX = closeBtnX - closeBtnR - closeBtnGap;
                 const labelBoxX = alignX;
 
-                const memberBoxH = isPending ? 24 : boxH;
-                const memberBoxY = oy - memberBoxH / 2;
                 ml.labelBox
                     ?.attr('x', labelBoxX)
-                    .attr('y', memberBoxY)
+                    .attr('y', boxY)
                     .attr('width', lbw)
-                    .attr('height', memberBoxH)
-                    .attr('rx', 7);
+                    .attr('height', boxH);
                 ml.labelText?.attr('x', labelBoxX + pad).attr('y', oy + 4);
                 ml.arrow?.attr('x', labelBoxX + pad + (ml.labelText?.node()?.getBBox()?.width || 0) + 4).attr('y', oy + 4);
 
                 let memberCx = labelBoxX + lbw + gap;
-
-                // Quantity segment for pending entries
-                if (isPending && ml.priceBox && ml.priceText && qbw > 0) {
-                    ml.priceBox
-                        .attr('x', memberCx)
-                        .attr('y', memberBoxY)
-                        .attr('width', qbw)
-                        .attr('height', memberBoxH)
-                        .attr('rx', 7)
-                        .style('display', null);
-                    ml.priceText
-                        .attr('x', memberCx + qbw / 2)
-                        .attr('y', oy + 4)
-                        .attr('text-anchor', 'middle')
-                        .style('display', null);
-                    memberCx += qbw + gap;
-                }
 
                 if (!isPending && ml.pnlBox && ml.pnlText && actualPbw > 0) {
                     ml.pnlBox
@@ -21191,20 +21153,19 @@ class OrderManager {
             .style('pointer-events', 'stroke')
             .style('cursor', 'ns-resize');
         
-        // Label box with colored background matching preview style
+        // Label box with colored background for visibility
         const labelBox = chart.svg.append('rect')
             .attr('class', `pending-order-label-box pending-${pendingOrder.id}`)
             .attr('fill', lineColor)
             .attr('stroke', lineColor)
-            .attr('stroke-width', 1.2)
-            .attr('rx', 7)
+            .attr('stroke-width', 1)
+            .attr('rx', 3)
             .style('pointer-events', 'all')
             .style('cursor', 'ns-resize');
         
         // Label text showing order type and direction (white text on colored background)
         const orderTypeLabel = pendingOrder.orderType === 'limit' ? 'LIMIT' : 'STOP';
         const directionLabel = pendingOrder.direction; // BUY or SELL
-        const entryNum = pendingOrder.isSplitEntry ? ` #${pendingOrder.splitIndex || ''}` : '';
         const labelText = chart.svg.append('text')
             .attr('class', `pending-order-label-text pending-${pendingOrder.id}`)
             .attr('fill', '#ffffff')
@@ -21212,29 +21173,32 @@ class OrderManager {
             .attr('font-weight', '700')
             .attr('letter-spacing', '0.01em')
             .style('cursor', 'pointer')
-            .text(`${orderTypeLabel} ${directionLabel}${entryNum}`);
+            .text(`${orderTypeLabel} ${directionLabel} ${this.formatQuantity(pendingOrder.quantity || 0)}`);
         
-        // Quantity box (separate segment matching preview style)
+        // Right side price box (skip if created from position tool - it already shows the price)
         let priceBox = null;
         let priceText = null;
         
-        priceBox = chart.svg.append('rect')
-            .attr('class', `pending-order-price-box pending-${pendingOrder.id}`)
-            .attr('fill', '#0f172a')
-            .attr('stroke', lineColor)
-            .attr('stroke-width', 1)
-            .attr('rx', 7)
-            .style('pointer-events', 'all')
-            .style('cursor', 'ns-resize');
-        
-        priceText = chart.svg.append('text')
-            .attr('class', `pending-order-price-text pending-${pendingOrder.id}`)
-            .attr('fill', '#e2e8f0')
-            .attr('font-size', '11px')
-            .attr('font-weight', '700')
-            .attr('text-anchor', 'middle')
-            .style('cursor', 'pointer')
-            .text(this.formatQuantity(pendingOrder.quantity || 0));
+        if (!pendingOrder.createdFromTool) {
+            priceBox = chart.svg.append('rect')
+                .attr('class', `pending-order-price-box pending-${pendingOrder.id}`)
+                .attr('fill', '#0f172a')
+                .attr('stroke', lineColor)
+                .attr('stroke-width', 1)
+                .attr('rx', 3)
+                .style('pointer-events', 'all')
+                .style('cursor', 'ns-resize');
+            
+            // Price text
+            priceText = chart.svg.append('text')
+                .attr('class', `pending-order-price-text pending-${pendingOrder.id}`)
+                .attr('fill', '#e2e8f0')
+                .attr('font-size', '11px')
+                .attr('font-weight', '700')
+                .attr('text-anchor', 'middle')
+                .style('cursor', 'pointer')
+                .text(this.formatPrice(pendingOrder.entryPrice));
+        }
         
         // Close button (X) for pending orders
         const closeBtn = chart.svg.append('g')
@@ -21350,49 +21314,30 @@ class OrderManager {
                 line.attr('y1', finalY).attr('y2', finalY);
                 dragHitLine.attr('y1', finalY).attr('y2', finalY);
                 
-                const boxHeight = 24;
+                const boxHeight = 18;
                 const boxY = finalY - boxHeight / 2;
                 const yAxisWidth = 70;
-                const dGap = 4;
-                const dPad = 8;
-                const closeBtnR = 10;
-                const closeBtnGap = 6;
+                
+                closeBtn.attr('transform', `translate(${chart.w - yAxisWidth - 15}, ${finalY})`);
                 
                 const labelTextBbox = labelText.node().getBBox();
-                const labelBW = labelTextBbox.width + dPad * 2;
-                let qtyBW = 0;
-                if (priceText?.node()) {
-                    const qtw = priceText.node().getBBox().width || 0;
-                    qtyBW = Math.max(qtw + dPad * 2, 44);
-                }
-
-                const rightEdge = chart.w - yAxisWidth - 10;
-                const closeBtnX = rightEdge - closeBtnR;
-                const startX = closeBtnX - closeBtnR - closeBtnGap
-                    - (qtyBW > 0 ? qtyBW + dGap : 0) - labelBW;
-
-                let dcx = startX;
+                const labelBoxWidth = labelTextBbox.width + 20;
+                const labelBoxX = chart.w - yAxisWidth - 30 - labelBoxWidth;
+                
                 labelBox
-                    .attr('x', dcx)
+                    .attr('x', labelBoxX)
                     .attr('y', boxY)
-                    .attr('width', labelBW)
+                    .attr('width', labelBoxWidth)
                     .attr('height', boxHeight);
+                
                 labelText
-                    .attr('x', dcx + dPad)
+                    .attr('x', labelBoxX + 10)
                     .attr('y', finalY + 4);
-                dcx += labelBW + dGap;
-
-                if (priceBox && priceText && qtyBW > 0) {
-                    priceBox.attr('x', dcx).attr('y', boxY).attr('width', qtyBW).attr('height', boxHeight)
-                        .style('display', null);
-                    priceText.attr('x', dcx + qtyBW / 2).attr('y', finalY + 4).attr('text-anchor', 'middle')
-                        .style('display', null);
-                    dcx += qtyBW + dGap;
-                }
-
-                closeBtn.attr('transform', `translate(${closeBtnX}, ${finalY})`);
-                line.attr('x1', 0).attr('x2', Math.max(0, startX));
-                dragHitLine.attr('x1', 0).attr('x2', Math.max(0, startX));
+                line.attr('x1', 0).attr('x2', Math.max(0, labelBoxX));
+                dragHitLine.attr('x1', 0).attr('x2', Math.max(0, labelBoxX));
+                
+                if (priceBox) priceBox.style('display', 'none');
+                if (priceText) priceText.style('display', 'none');
 
                 // Live auto-detect order type while dragging
                 const curCandle = self.getCurrentCandle();
@@ -21407,10 +21352,9 @@ class OrderManager {
                     pendingOrder.orderType = newType;
                 }
 
-                // Update label + quantity texts separately
-                const entryNumStr = pendingOrder.isSplitEntry ? ` #${pendingOrder.splitIndex || ''}` : '';
-                labelText.text(`${pendingOrder.orderType.toUpperCase()} ${pendingOrder.direction}${entryNumStr}`);
-                if (priceText) priceText.text(self.formatQuantity(pendingOrder.quantity));
+                // Update label text with current type + recalculated lot size
+                const typeLabel = `${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${pendingOrder.quantity.toFixed(2)}`;
+                labelText.text(typeLabel);
             })
             .on('end', function() {
                 if (!isDragging) return;
@@ -21676,11 +21620,6 @@ class OrderManager {
 
         const marginRight = 90;
 
-        const segHeight = 24;
-        const segFontSize = '11px';
-        const segGap = 4;
-        const segRadius = 7;
-
         this.pendingTargetLines.forEach((entry) => {
             if (entry.chart !== ch) return;
             entry.targets.forEach((target) => {
@@ -21707,82 +21646,51 @@ class OrderManager {
                 const bgColor = target.type === 'TP' ? '#22c55e'
                     : target.type === 'SL' ? '#f23645'
                     : '#f59e0b';
-                const darkFill = target.type === 'TP' ? '#16a34a'
-                    : target.type === 'SL' ? '#dc2626'
-                    : '#d97706';
 
-                // Build multi-segment layout matching preview style
-                let segments = [];
-                if (target.type === 'TP') {
-                    const tpLabel = target.targetId != null
-                        ? `TP${typeof target.targetId === 'number' ? target.targetId + 1 : target.targetId}`
-                        : 'TP';
-                    // Extract the numeric label (TP1, TP2) from labelText if available
-                    const tpMatch = target.labelText?.match(/^(TP\d*)/);
-                    const nameText = tpMatch ? tpMatch[1] : tpLabel;
-                    const pnlSign = (target.pnl || 0) >= 0 ? '+' : '';
-                    const pnlText = `${pnlSign}$${(target.pnl || 0).toFixed(2)}`;
-                    segments = [
-                        { text: nameText, fill: darkFill, stroke: bgColor, textColor: '#ffffff', minWidth: 40 },
-                        { text: pnlText, fill: '#0f172a', stroke: bgColor, textColor: bgColor, minWidth: 74 }
-                    ];
-                } else if (target.type === 'SL') {
-                    const pnlSign = (target.pnl || 0) >= 0 ? '+' : '';
-                    const slQty = entry.pendingOrder?.quantity || 0;
-                    let pnlText = `${pnlSign}$${(target.pnl || 0).toFixed(2)}`;
-                    if (slQty > 0) pnlText += ` (${this.formatQuantity(slQty)})`;
-                    segments = [
-                        { text: 'SL', fill: '#dc2626', stroke: '#ef4444', textColor: '#ffffff', minWidth: 34 },
-                        { text: pnlText, fill: '#0f172a', stroke: '#ef4444', textColor: '#ef4444', minWidth: 74 }
-                    ];
+                const labelRect = labelGroup.append('rect')
+                    .attr('rx', 3)
+                    .attr('fill', bgColor)
+                    .attr('stroke', bgColor)
+                    .attr('stroke-width', 1);
+
+                let displayLabel = '';
+                if (target.labelText) {
+                    displayLabel = target.labelText;
                 } else if (target.type === 'BE') {
-                    let beLabel = '';
-                    if (target.beMode === 'pips') beLabel = `BE @ ${target.beValue}p`;
-                    else if (target.beMode === 'rr') beLabel = `BE @ ${target.beValue}R`;
-                    else beLabel = `BE @ $${target.beValue}`;
-                    segments = [
-                        { text: beLabel, fill: '#d97706', stroke: '#f59e0b', textColor: '#ffffff', minWidth: 80 },
-                        { text: this.formatPrice(target.price), fill: '#0f172a', stroke: '#f59e0b', textColor: '#ffffff', minWidth: 74 }
-                    ];
+                    displayLabel = target.beMode === 'pips'
+                        ? `BE @ ${target.beValue}p`
+                        : `BE @ $${target.beValue}`;
                 } else {
-                    const displayLabel = target.labelText || `${target.type} ${this.formatPrice(target.price)}`;
-                    segments = [
-                        { text: displayLabel, fill: bgColor, stroke: bgColor, textColor: '#ffffff', minWidth: 40 }
-                    ];
+                    displayLabel = `${target.type} ${this.formatPrice(target.price)}`;
                 }
 
-                let offsetX = 0;
-                segments.forEach(seg => {
-                    const segGroup = labelGroup.append('g')
-                        .attr('class', 'pending-target-segment');
-                    const textEl = segGroup.append('text')
-                        .attr('fill', seg.textColor)
-                        .attr('font-size', segFontSize)
-                        .attr('font-weight', '700')
-                        .attr('text-anchor', 'middle')
-                        .attr('y', segHeight / 2)
-                        .attr('dy', '0.35em')
-                        .style('pointer-events', 'none')
-                        .text(seg.text);
-                    const textBBox = textEl.node().getBBox();
-                    const segW = Math.max(textBBox.width + 16, seg.minWidth || 28);
-                    segGroup.insert('rect', ':first-child')
-                        .attr('width', segW)
-                        .attr('height', segHeight)
-                        .attr('rx', segRadius)
-                        .attr('fill', seg.fill)
-                        .attr('stroke', seg.stroke)
-                        .attr('stroke-width', 1.2);
-                    textEl.attr('x', segW / 2);
-                    segGroup.attr('transform', `translate(${offsetX}, 0)`);
-                    offsetX += segW + segGap;
-                });
+                const text = labelGroup.append('text')
+                    .attr('fill', '#ffffff')
+                    .attr('font-size', '11px')
+                    .attr('font-weight', '700')
+                    .style('pointer-events', 'none')
+                    .text(displayLabel);
 
-                const totalWidth = Math.max(offsetX - segGap, 0);
-                target.labelDimensions = { width: totalWidth, height: segHeight };
+                const bbox = text.node().getBBox();
+                const labelWidth = bbox.width + 16;
+                const labelHeight = bbox.height + 8;
 
-                const translateX = ch.w - totalWidth - marginRight;
-                const translateY = y - segHeight / 2;
+                target.labelDimensions = { width: labelWidth, height: labelHeight };
+
+                labelRect
+                    .attr('width', labelWidth)
+                    .attr('height', labelHeight)
+                    .attr('x', 0)
+                    .attr('y', 0);
+
+                text
+                    .attr('x', labelWidth / 2)
+                    .attr('y', labelHeight / 2)
+                    .attr('text-anchor', 'middle')
+                    .attr('dy', '0.35em');
+
+                const translateX = ch.w - labelWidth - marginRight;
+                const translateY = y - labelHeight / 2;
                 labelGroup
                     .attr('transform', `translate(${translateX}, ${translateY})`)
                     .style('cursor', isDraggable ? 'ns-resize' : 'default');
@@ -24388,21 +24296,8 @@ class OrderManager {
                         .attr('y2', y);
                 }
 
-                // For pending orders, show the split label + quantity in separate segments
-                if (isPending && orderData && labelText) {
-                    const oType = (orderData.orderType === 'limit' ? 'LIMIT' : 'STOP');
-                    const oDir = orderData.direction;
-                    const oNum = orderData.isSplitEntry ? ` #${orderData.splitIndex || ''}` : '';
-                    labelText.text(`${oType} ${oDir}${oNum}`);
-                    if (priceBox && priceText) {
-                        priceText.text(this.formatQuantity(orderData.quantity || 0));
-                        priceBox.style('display', null);
-                        priceText.style('display', null);
-                    }
-                } else if (!isPending) {
-                    if (priceBox) priceBox.style('display', 'none');
-                    if (priceText) priceText.style('display', 'none');
-                }
+                if (priceBox) priceBox.style('display', 'none');
+                if (priceText) priceText.style('display', 'none');
 
                 // Live P&L for open (non-pending) positions
                 if (!isPending && pnlBox && pnlText && orderData) {
@@ -24423,7 +24318,7 @@ class OrderManager {
                 if (isPending && pnlText) pnlText.style('display', 'none');
 
                 if (labelText && closeBtn && labelBox) {
-                    const boxH = isPending ? 24 : 18;
+                    const boxH = 18;
                     const boxY = y - boxH / 2;
                     const gap = 4;
                     const pad = 8;
@@ -24439,13 +24334,6 @@ class OrderManager {
                     if (!isPending && pnlText?.node()) {
                         const pw = pnlText.node().getBBox().width || 0;
                         pnlBW = pw + pad * 2;
-                    }
-
-                    // Quantity segment width for pending entries
-                    let qtyBW = 0;
-                    if (isPending && priceText?.node() && priceBox) {
-                        const qw = priceText.node().getBBox().width || 0;
-                        qtyBW = Math.max(qw + pad * 2, 44);
                     }
 
                     // Determine badge state
@@ -24475,23 +24363,13 @@ class OrderManager {
 
                     const rightEdge = ch.w - yAxisWidth - 10;
                     const closeBtnX = rightEdge - closeBtnR;
-                    const startX = closeBtnX - closeBtnR - closeBtnGap - totalBadgesW
-                        - (pnlBW > 0 ? pnlBW + gap : 0)
-                        - (qtyBW > 0 ? qtyBW + gap : 0)
-                        - labelBW;
+                    const startX = closeBtnX - closeBtnR - closeBtnGap - totalBadgesW - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
 
                     let cx = startX;
-                    labelBox.attr('x', cx).attr('y', boxY).attr('width', labelBW).attr('height', boxH).attr('rx', 7);
+                    labelBox.attr('x', cx).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
                     labelText.attr('x', cx + pad).attr('y', y + 4);
                     if (arrow) arrow.attr('x', cx + pad + (labelText.node()?.getBBox()?.width || 0) + 4).attr('y', y + 4);
                     cx += labelBW + gap;
-
-                    // Quantity segment for pending entries
-                    if (isPending && priceBox && priceText && qtyBW > 0) {
-                        priceBox.attr('x', cx).attr('y', boxY).attr('width', qtyBW).attr('height', boxH).attr('rx', 7);
-                        priceText.attr('x', cx + qtyBW / 2).attr('y', y + 4).attr('text-anchor', 'middle');
-                        cx += qtyBW + gap;
-                    }
 
                     if (!isPending && pnlBox && pnlText && pnlBW > 0) {
                         pnlBox.attr('x', cx).attr('y', boxY).attr('width', pnlBW).attr('height', boxH).style('display', null);
