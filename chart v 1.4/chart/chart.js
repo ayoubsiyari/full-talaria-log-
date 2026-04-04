@@ -13848,8 +13848,19 @@ class Chart {
                     this.selectedDrawing = null;
                     this.hideContextMenu();
                     this.scheduleRender();
+                } else {
+                    // Nothing actionable on SVG — forward to canvas so panning works
+                    if (this.canvas) {
+                        const fwd = new MouseEvent('mousedown', {
+                            bubbles: true, cancelable: true,
+                            clientX: event.clientX, clientY: event.clientY,
+                            button: event.button, buttons: event.buttons,
+                            shiftKey: event.shiftKey, ctrlKey: event.ctrlKey,
+                            altKey: event.altKey, metaKey: event.metaKey
+                        });
+                        this.canvas.dispatchEvent(fwd);
+                    }
                 }
-                // No drawing found & nothing selected: let event propagate to canvas for panning
             } else {
                 // Drawing mode — always capture
                 event.stopPropagation();
