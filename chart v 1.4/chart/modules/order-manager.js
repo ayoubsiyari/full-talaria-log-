@@ -22058,27 +22058,45 @@ class OrderManager {
                     .attr('text-anchor', 'middle')
                     .attr('dy', '0.35em');
 
-                // Extra width for TP+/X badges on multi-TP targets
+                // Extra width for TP+/X badges (placed LEFT of label)
                 const isMultiTP = !!target.isPendingMultiTP;
-                const xBtnW = isMultiTP ? 20 : 0;
-                const tpPlusW = (target.type === 'TP') ? 40 : 0;
-                const extraW = xBtnW + tpPlusW;
+                const deleteBtnR = 7;
+                const xBtnW = isMultiTP ? (deleteBtnR * 2 + 4) : 0;
+                const plusBW = 36, bH = 16, bGap = 4;
+                const tpPlusW = (target.type === 'TP') ? (plusBW + bGap) : 0;
+                const badgesW = tpPlusW + xBtnW;
 
-                const translateX = ch.w - labelWidth - extraW - marginRight;
+                const translateX = ch.w - labelWidth - marginRight;
+                const badgesStartX = translateX - badgesW;
                 const translateY = y - labelHeight / 2;
                 labelGroup
                     .attr('transform', `translate(${translateX}, ${translateY})`)
                     .style('cursor', isDraggable ? 'ns-resize' : 'default');
 
-                // Add X delete button for multi-TP targets
+                let bx = badgesStartX;
+
+                // TP+ badge (leftmost, before X)
+                if (target.type === 'TP') {
+                    if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} }
+                    const tpb = this._createPlusBadge(ch, entry.pendingOrder.id, 'pending-tp',
+                        '#22c55e', 'TP+', (price) => this._splitTPAtPrice(entry.pendingOrder.id, price, true));
+                    tpb.style('display', null)
+                        .attr('transform', `translate(${bx}, ${y - bH / 2})`);
+                    tpb.select('rect').attr('width', plusBW);
+                    tpb.select('text').attr('x', plusBW / 2).attr('y', bH / 2);
+                    target._tpPlusBadge = tpb;
+                    bx += plusBW + bGap;
+                }
+
+                // X delete button (between TP+ and label)
                 if (isMultiTP) {
                     if (target._deleteBtn) { try { target._deleteBtn.remove(); } catch (_) {} }
                     const dbg = ch.svg.append('g')
                         .attr('class', `pending-tp-delete pending-tp-${entry.pendingOrder.id}`)
                         .attr('pointer-events', 'all')
                         .style('cursor', 'pointer')
-                        .attr('transform', `translate(${translateX + labelWidth + 4}, ${y})`);
-                    dbg.append('circle').attr('r', 7)
+                        .attr('transform', `translate(${bx + deleteBtnR}, ${y})`);
+                    dbg.append('circle').attr('r', deleteBtnR)
                         .attr('fill', '#0f172a').attr('stroke', bgColor).attr('stroke-width', 1);
                     dbg.append('text').attr('fill', '#e2e8f0').attr('font-size', '11px')
                         .attr('font-weight', '700').attr('text-anchor', 'middle').attr('dy', '0.35em')
@@ -22088,20 +22106,6 @@ class OrderManager {
                         this._deleteTPTarget(entry.pendingOrder.id, target.tpTargetIndex, true);
                     });
                     target._deleteBtn = dbg;
-                }
-
-                // Add TP+ badge for TP targets (both single and multi)
-                if (target.type === 'TP') {
-                    if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} }
-                    const tpb = this._createPlusBadge(ch, entry.pendingOrder.id, 'pending-tp',
-                        '#22c55e', 'TP+', (price) => this._splitTPAtPrice(entry.pendingOrder.id, price, true));
-                    const bH = 16, plusBW = 36;
-                    const badgeX = translateX + labelWidth + xBtnW + 6;
-                    tpb.style('display', null)
-                        .attr('transform', `translate(${badgeX}, ${y - bH / 2})`);
-                    tpb.select('rect').attr('width', plusBW);
-                    tpb.select('text').attr('x', plusBW / 2).attr('y', bH / 2);
-                    target._tpPlusBadge = tpb;
                 }
 
                 if (isDraggable && entry.pendingOrder && !target.dragApplied) {
@@ -24574,43 +24578,54 @@ class OrderManager {
                     const yAxisWidth = 70;
                     const closeBtnR = 10;
                     const closeBtnGap = 6;
-                    
+                    const plusBW = 36, bH = 16;
+                    const deleteBtnR = 8;
+
                     const labelTW = labelText.node()?.getBBox()?.width || 0;
                     const labelBW = labelTW + pad * 2;
                     const pnlTW = pnlText?.node()?.getBBox()?.width || 0;
                     const pnlBW = pnlTW > 0 ? pnlTW + pad * 2 : 0;
-                    
+
+                    // Extra space for TP+/X badges (placed left of label)
+                    const tpPlusSpace = tpPlusBadge ? plusBW + gap : 0;
+                    const deleteSpace = deleteBtn ? (deleteBtnR * 2 + gap) : 0;
+                    const badgesW = tpPlusSpace + deleteSpace;
+
                     const rightEdge = ch.w - yAxisWidth - 10;
                     const closeBtnX = rightEdge - closeBtnR;
-                    const startX = closeBtnX - closeBtnR - closeBtnGap - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
-                    
+                    const startX = closeBtnX - closeBtnR - closeBtnGap
+                        - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW - badgesW;
+
                     let cx = startX;
+
+                    // TP+ badge (leftmost)
+                    if (tpPlusBadge) {
+                        tpPlusBadge.style('display', null)
+                            .attr('transform', `translate(${cx}, ${y - bH / 2})`);
+                        tpPlusBadge.select('rect').attr('width', plusBW);
+                        tpPlusBadge.select('text').attr('x', plusBW / 2).attr('y', bH / 2);
+                        cx += plusBW + gap;
+                    }
+
+                    // X delete button
+                    if (deleteBtn) {
+                        deleteBtn.style('display', null)
+                            .attr('transform', `translate(${cx + deleteBtnR}, ${y})`);
+                        cx += deleteBtnR * 2 + gap;
+                    }
+
+                    // Label box
                     labelBox.attr('x', cx).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
                     labelText.attr('x', cx + pad).attr('y', y + 4);
                     cx += labelBW + gap;
-                    
+
+                    // PnL box
                     if (pnlBox && pnlText && pnlBW > 0) {
                         pnlBox.attr('x', cx).attr('y', boxY).attr('width', pnlBW).attr('height', boxH);
                         pnlText.attr('x', cx + pad).attr('y', y + 4);
                     }
-                    
+
                     closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
-
-                    // Position X delete button (for multi-TP targets)
-                    if (deleteBtn) {
-                        deleteBtn.style('display', null)
-                            .attr('transform', `translate(${closeBtnX + closeBtnR + 12}, ${y})`);
-                    }
-
-                    // Position TP+ badge
-                    if (tpPlusBadge) {
-                        const plusBW = 36, bH = 16;
-                        const badgeX = closeBtnX + closeBtnR + (deleteBtn ? 26 : 4);
-                        tpPlusBadge.style('display', null)
-                            .attr('transform', `translate(${badgeX}, ${y - bH / 2})`);
-                        tpPlusBadge.select('rect').attr('width', plusBW);
-                        tpPlusBadge.select('text').attr('x', plusBW / 2).attr('y', bH / 2);
-                    }
                 }
                 
                 yAxisHighlightPrices.tp.add(tpPrice);
