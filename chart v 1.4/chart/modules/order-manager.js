@@ -1326,6 +1326,29 @@ class OrderManager {
         if (Number.isFinite(pip) && pip > 0) this.pipSize = pip;
         if (Number.isFinite(pvl) && pvl > 0) this.pipValuePerLot = pvl;
 
+        // Sync display precision from registry
+        let prec = null;
+        if (window.marketCalcEngine && typeof window.marketCalcEngine.getCalculator === 'function') {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(sym, this.marketType);
+                if (calc && calc.specs && Number.isFinite(calc.specs.precision) && calc.specs.precision >= 0) {
+                    prec = calc.specs.precision;
+                }
+            } catch (_) {}
+        }
+        if (prec == null && this.orderService && typeof this.orderService.getInstrumentSettings === 'function') {
+            const inst = this.orderService.getInstrumentSettings(ticker);
+            if (inst && Number.isFinite(Number(inst.precision))) prec = Number(inst.precision);
+        }
+        if (Number.isFinite(prec) && prec >= 0) {
+            this.symbolPrecision = prec;
+        }
+
+        // Propagate precision to the chart for axis/crosshair consistency
+        if (this.chart && Number.isFinite(this.symbolPrecision)) {
+            this.chart._symbolPrecision = this.symbolPrecision;
+        }
+
         try {
             userStorage.setItem('chart_pipSize', String(this.pipSize));
             userStorage.setItem('chart_pipValuePerLot', String(this.pipValuePerLot));
@@ -2914,11 +2937,11 @@ class OrderManager {
                 ">
                     <div>
                         <div style="color: #787b86; font-size: 9px; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.3px;">Entry</div>
-                        <div style="color: #d1d4dc; font-size: 11px; font-weight: 600;">${entryPrice.toFixed(5)}</div>
+                        <div style="color: #d1d4dc; font-size: 11px; font-weight: 600;">${this.formatPrice(entryPrice)}</div>
                     </div>
                     <div>
                         <div style="color: #787b86; font-size: 9px; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.3px;">Exit</div>
-                        <div style="color: #d1d4dc; font-size: 11px; font-weight: 600;">${exitPrice.toFixed(5)}</div>
+                        <div style="color: #d1d4dc; font-size: 11px; font-weight: 600;">${this.formatPrice(exitPrice)}</div>
                     </div>
                 </div>
                 
@@ -3153,11 +3176,11 @@ class OrderManager {
             <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px 16px; margin-bottom: 28px; padding: 24px; background: rgba(30,41,59,0.3); border: 1px solid rgba(148,163,184,0.15); border-radius: 8px;">
                 <div>
                     <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px; font-weight: 500;">Entry Price</div>
-                    <div style="color: #e5e7eb; font-size: 15px; font-weight: 700;">$${(trade.entryPrice || trade.openPrice || 0).toFixed(5)}</div>
+                    <div style="color: #e5e7eb; font-size: 15px; font-weight: 700;">$${this.formatPrice(trade.entryPrice || trade.openPrice || 0)}</div>
                 </div>
                 <div>
                     <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px; font-weight: 500;">Exit Price</div>
-                    <div style="color: #e5e7eb; font-size: 15px; font-weight: 700;">$${(trade.exitPrice || trade.closePrice || 0).toFixed(5)}</div>
+                    <div style="color: #e5e7eb; font-size: 15px; font-weight: 700;">$${this.formatPrice(trade.exitPrice || trade.closePrice || 0)}</div>
                 </div>
                 <div>
                     <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px; font-weight: 500;">Price Move</div>
@@ -3168,11 +3191,11 @@ class OrderManager {
                 
                 <div>
                     <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px; font-weight: 500;">Stop Loss</div>
-                    <div style="color: #e5e7eb; font-size: 15px; font-weight: 700;">${trade.stopLoss ? '$' + trade.stopLoss.toFixed(5) : '—'}</div>
+                    <div style="color: #e5e7eb; font-size: 15px; font-weight: 700;">${trade.stopLoss ? '$' + this.formatPrice(trade.stopLoss) : '—'}</div>
                 </div>
                 <div>
                     <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px; font-weight: 500;">Take Profit</div>
-                    <div style="color: #e5e7eb; font-size: 15px; font-weight: 700;">${trade.takeProfit ? '$' + trade.takeProfit.toFixed(5) : '—'}</div>
+                    <div style="color: #e5e7eb; font-size: 15px; font-weight: 700;">${trade.takeProfit ? '$' + this.formatPrice(trade.takeProfit) : '—'}</div>
                 </div>
                 <div>
                     <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px; font-weight: 500;">Risk Amount</div>
@@ -3251,19 +3274,19 @@ class OrderManager {
                 <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">
                     <div>
                         <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px; font-weight: 500;">MFE (Maximum Favorable)</div>
-                        <div style="color: #22c55e; font-size: 15px; font-weight: 700;">${trade.mfe ? '$' + trade.mfe.toFixed(5) : '—'}</div>
+                        <div style="color: #22c55e; font-size: 15px; font-weight: 700;">${trade.mfe ? '$' + this.formatPrice(trade.mfe) : '—'}</div>
                     </div>
                     <div>
                         <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px; font-weight: 500;">MAE (Maximum Adverse)</div>
-                        <div style="color: #ef4444; font-size: 15px; font-weight: 700;">${trade.mae ? '$' + trade.mae.toFixed(5) : '—'}</div>
+                        <div style="color: #ef4444; font-size: 15px; font-weight: 700;">${trade.mae ? '$' + this.formatPrice(trade.mae) : '—'}</div>
                     </div>
                     <div>
                         <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px; font-weight: 500;">Highest Price</div>
-                        <div style="color: #e5e7eb; font-size: 15px; font-weight: 700;">${trade.highestPrice ? '$' + trade.highestPrice.toFixed(5) : '—'}</div>
+                        <div style="color: #e5e7eb; font-size: 15px; font-weight: 700;">${trade.highestPrice ? '$' + this.formatPrice(trade.highestPrice) : '—'}</div>
                     </div>
                     <div>
                         <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px; font-weight: 500;">Lowest Price</div>
-                        <div style="color: #e5e7eb; font-size: 15px; font-weight: 700;">${trade.lowestPrice ? '$' + trade.lowestPrice.toFixed(5) : '—'}</div>
+                        <div style="color: #e5e7eb; font-size: 15px; font-weight: 700;">${trade.lowestPrice ? '$' + this.formatPrice(trade.lowestPrice) : '—'}</div>
                     </div>
                 </div>
             </div>
@@ -3303,11 +3326,11 @@ class OrderManager {
                                 </div>
                                 <div>
                                     <div style="color: #94a3b8; font-size: 10px; margin-bottom: 4px;">Entry</div>
-                                    <div style="color: #e5e7eb; font-weight: 700;">$${entry.openPrice.toFixed(5)}</div>
+                                    <div style="color: #e5e7eb; font-weight: 700;">$${this.formatPrice(entry.openPrice)}</div>
                                 </div>
                                 <div>
                                     <div style="color: #94a3b8; font-size: 10px; margin-bottom: 4px;">Exit</div>
-                                    <div style="color: #e5e7eb; font-weight: 700;">$${entry.closePrice.toFixed(5)}</div>
+                                    <div style="color: #e5e7eb; font-weight: 700;">$${this.formatPrice(entry.closePrice)}</div>
                                 </div>
                                 <div>
                                     <div style="color: #94a3b8; font-size: 10px; margin-bottom: 4px;">P&L</div>
@@ -3326,7 +3349,7 @@ class OrderManager {
                         </div>
                         <div>
                             <div style="color: #94a3b8; font-size: 10px; margin-bottom: 6px; font-weight: 500;">Avg Entry</div>
-                            <div style="color: #f59e0b; font-weight: 700;">$${trade.entryPrice.toFixed(5)}</div>
+                            <div style="color: #f59e0b; font-weight: 700;">$${this.formatPrice(trade.entryPrice)}</div>
                         </div>
                         <div>
                             <div style="color: #94a3b8; font-size: 10px; margin-bottom: 6px; font-weight: 500;">Total P&L</div>
@@ -3429,7 +3452,7 @@ class OrderManager {
                                 ${trade.entryScreenshots.map((entry, idx) => `
                                     <div>
                                         <div style="color: #64748b; font-size: 10px; margin-bottom: 6px;">
-                                            Entry #${idx + 1} @ ${entry.openPrice ? entry.openPrice.toFixed(5) : 'N/A'}
+                                            Entry #${idx + 1} @ ${entry.openPrice ? this.formatPrice(entry.openPrice) : 'N/A'}
                                         </div>
                                         <div style="
                                             background: rgba(30,41,59,0.3);
@@ -3819,7 +3842,7 @@ class OrderManager {
                 if (value === null || value === undefined) {
                     value = '—';
                 } else if (col.key.includes('Price') || col.key === 'mfe' || col.key === 'mae' || col.key === 'stopLoss' || col.key === 'takeProfit') {
-                    value = typeof value === 'number' ? value.toFixed(5) : value;
+                    value = typeof value === 'number' ? this.formatPrice(value) : value;
                 } else if (col.key === 'netPnL' || col.key === 'riskAmount') {
                     value = typeof value === 'number' ? (value >= 0 ? '+$' : '-$') + Math.abs(value).toFixed(2) : value;
                 } else if (col.key === 'quantity' || col.key === 'holdingTimeHours') {
@@ -3989,10 +4012,10 @@ class OrderManager {
                 trade.symbol || '',
                 String(trade.ticker || trade.symbol || '').replace('/', '').toUpperCase(),
                 Number.isFinite(Number.parseFloat(trade.quantity)) ? Number.parseFloat(trade.quantity).toFixed(2) : '',
-                trade.entryPrice ? trade.entryPrice.toFixed(5) : '',
-                trade.exitPrice ? trade.exitPrice.toFixed(5) : '',
-                trade.stopLoss ? trade.stopLoss.toFixed(5) : '',
-                trade.takeProfit ? trade.takeProfit.toFixed(5) : '',
+                trade.entryPrice ? this.formatPrice(trade.entryPrice) : '',
+                trade.exitPrice ? this.formatPrice(trade.exitPrice) : '',
+                trade.stopLoss ? this.formatPrice(trade.stopLoss) : '',
+                trade.takeProfit ? this.formatPrice(trade.takeProfit) : '',
                 Number.parseFloat(trade.netPnL ?? trade.realizedPnL ?? trade.pnl ?? 0).toFixed(2),
                 trade.rMultiple || '',
                 trade.rewardToRiskRatio || '',
@@ -4004,10 +4027,10 @@ class OrderManager {
                 trade.month || '',
                 trade.year || '',
                 trade.closeType || '',
-                trade.mfe ? trade.mfe.toFixed(5) : '',
-                trade.mae ? trade.mae.toFixed(5) : '',
-                trade.highestPrice ? trade.highestPrice.toFixed(5) : '',
-                trade.lowestPrice ? trade.lowestPrice.toFixed(5) : '',
+                trade.mfe ? this.formatPrice(trade.mfe) : '',
+                trade.mae ? this.formatPrice(trade.mae) : '',
+                trade.highestPrice ? this.formatPrice(trade.highestPrice) : '',
+                trade.lowestPrice ? this.formatPrice(trade.lowestPrice) : '',
                 Number.parseFloat(trade.spread_pips_at_entry ?? 0).toFixed(4),
                 Number.parseFloat(trade.commission_at_entry ?? 0).toFixed(4),
                 Number.parseFloat(trade.pip_value_at_entry ?? this.pipValuePerLot ?? 0).toFixed(4),
@@ -4364,7 +4387,7 @@ class OrderManager {
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px;">
                 <div>
                     <div style="color: #787b86;">Exit Price</div>
-                    <div style="color: #fff; font-weight: 600;">$${closeData.closePrice.toFixed(5)}</div>
+                    <div style="color: #fff; font-weight: 600;">$${this.formatPrice(closeData.closePrice)}</div>
                 </div>
                 <div>
                     <div style="color: #787b86;">Exit Time</div>
@@ -4408,7 +4431,7 @@ class OrderManager {
                     </div>
                     <div>
                         <div style="color: #787b86;">Entry Price</div>
-                        <div style="color: #e5e7eb; font-weight: 600;">$${order.openPrice.toFixed(5)}</div>
+                        <div style="color: #e5e7eb; font-weight: 600;">$${this.formatPrice(order.openPrice)}</div>
                     </div>
                     <div>
                         <div style="color: #787b86;">Risk Amount</div>
@@ -4416,11 +4439,11 @@ class OrderManager {
                     </div>
                     <div>
                         <div style="color: #787b86;">Stop Loss</div>
-                        <div style="color: #e5e7eb; font-weight: 600;">${order.stopLoss ? '$' + order.stopLoss.toFixed(5) : 'None'}</div>
+                        <div style="color: #e5e7eb; font-weight: 600;">${order.stopLoss ? '$' + this.formatPrice(order.stopLoss) : 'None'}</div>
                     </div>
                     <div>
                         <div style="color: #787b86;">Take Profit</div>
-                        <div style="color: #e5e7eb; font-weight: 600;">${order.takeProfit ? '$' + order.takeProfit.toFixed(5) : 'None'}</div>
+                        <div style="color: #e5e7eb; font-weight: 600;">${order.takeProfit ? '$' + this.formatPrice(order.takeProfit) : 'None'}</div>
                     </div>
                     <div>
                         <div style="color: #787b86;">Entry Time</div>
@@ -4452,11 +4475,11 @@ class OrderManager {
                         </div>
                         <div>
                             <div style="color: #787b86;">MFE (Best Price)</div>
-                            <div style="color: #22c55e; font-weight: 600;">${(order.mfe || order.openPrice).toFixed(5)}</div>
+                            <div style="color: #22c55e; font-weight: 600;">${this.formatPrice(order.mfe || order.openPrice)}</div>
                         </div>
                         <div>
                             <div style="color: #787b86;">MAE (Worst Price)</div>
-                            <div style="color: #ef4444; font-weight: 600;">${(order.mae || order.openPrice).toFixed(5)}</div>
+                            <div style="color: #ef4444; font-weight: 600;">${this.formatPrice(order.mae || order.openPrice)}</div>
                         </div>
                     ` : ''}
                 </div>
@@ -9015,7 +9038,7 @@ class OrderManager {
 
         const entryInput = document.getElementById('orderEntryPrice');
         if (entryInput && typeof order.entryPrice === 'number') {
-            entryInput.value = order.entryPrice.toFixed(5);
+            entryInput.value = this.formatPrice(order.entryPrice);
         }
 
         const quantityInput = document.getElementById('orderQuantity');
@@ -9043,7 +9066,7 @@ class OrderManager {
 
         const tpPriceInput = document.getElementById('tpPrice');
         if (tpPriceInput) {
-            tpPriceInput.value = typeof order.takeProfit === 'number' ? order.takeProfit.toFixed(5) : '';
+            tpPriceInput.value = typeof order.takeProfit === 'number' ? this.formatPrice(order.takeProfit) : '';
         }
 
         const enableSL = document.getElementById('enableSL');
@@ -9059,7 +9082,7 @@ class OrderManager {
 
         const slPriceInput = document.getElementById('slPrice');
         if (slPriceInput) {
-            slPriceInput.value = typeof order.stopLoss === 'number' ? order.stopLoss.toFixed(5) : '';
+            slPriceInput.value = typeof order.stopLoss === 'number' ? this.formatPrice(order.stopLoss) : '';
         }
 
         const autoBreakevenToggle = document.getElementById('autoBreakevenToggle');
@@ -9489,7 +9512,7 @@ class OrderManager {
                     const tp = this._solveTpPriceForTargetRewardUsd(v);
                     if (tp != null && Number.isFinite(tp)) {
                         const inp = document.getElementById('tpPrice');
-                        if (inp) inp.value = parseFloat(tp.toFixed(5));
+                        if (inp) inp.value = this.formatPrice(tp);
                     }
                 }
                 this.calculateAdvancedRiskReward();
@@ -9508,7 +9531,7 @@ class OrderManager {
                     const tp = this._solveTpPriceForTargetRewardUsd(targetUsd);
                     if (tp != null && Number.isFinite(tp)) {
                         const inp = document.getElementById('tpPrice');
-                        if (inp) inp.value = parseFloat(tp.toFixed(5));
+                        if (inp) inp.value = this.formatPrice(tp);
                     }
                 }
                 this.calculateAdvancedRiskReward();
@@ -9532,7 +9555,7 @@ class OrderManager {
                     const tp = this._solveTpPriceForDesiredRR(rr);
                     if (tp != null && Number.isFinite(tp)) {
                         const inp = document.getElementById('tpPrice');
-                        if (inp) inp.value = parseFloat(tp.toFixed(5));
+                        if (inp) inp.value = this.formatPrice(tp);
                     }
                 }
                 this.calculateAdvancedRiskReward();
@@ -10946,7 +10969,7 @@ class OrderManager {
                 
                 this.tpTargets.push({ 
                     id: i, 
-                    price: parseFloat(price.toFixed(5)), 
+                    price: parseFloat(price.toFixed(this.getPricePrecision())), 
                     percentage: value  // Renamed from percentage but stores the distribution value
                 });
             }
@@ -11133,11 +11156,12 @@ class OrderManager {
             // Check direction (BUY: TP > Entry, SELL: TP < Entry)
             if (this.orderSide === 'BUY') {
                 if (target.price <= entryPrice) {
-                    errors.push(`⚠️ TP #${index + 1}: Must be ABOVE entry (${entryPrice.toFixed(5)})`);
+                    errors.push(`⚠️ TP #${index + 1}: Must be ABOVE entry (${this.formatPrice(entryPrice)})`);
+
                 }
             } else {
                 if (target.price >= entryPrice) {
-                    errors.push(`⚠️ TP #${index + 1}: Must be BELOW entry (${entryPrice.toFixed(5)})`);
+                    errors.push(`⚠️ TP #${index + 1}: Must be BELOW entry (${this.formatPrice(entryPrice)})`);
                 }
             }
             
@@ -11281,7 +11305,7 @@ class OrderManager {
         
         const priceInput = document.getElementById('orderEntryPrice');
         if (priceInput) {
-            priceInput.value = currentCandle.c.toFixed(5);
+            priceInput.value = this.formatPrice(currentCandle.c);
         }
         
         // Set default TP and SL aligned with entry
@@ -12359,12 +12383,12 @@ class OrderManager {
                 } else if (lineData.label && lineData.label.startsWith('TP') && lineData.targetIndex !== undefined) {
                     // Handle multiple TP line drag — only update price, preserve user-set percentages
                     if (self.tpTargets && self.tpTargets[lineData.targetIndex]) {
-                        self.tpTargets[lineData.targetIndex].price = parseFloat(newPrice.toFixed(5));
+                        self.tpTargets[lineData.targetIndex].price = parseFloat(newPrice.toFixed(self.getPricePrecision()));
                         
                         // Update the price input field in the UI
                         const tpInput = document.getElementById(`tpTarget${self.tpTargets[lineData.targetIndex].id}Price`);
                         if (tpInput) {
-                            tpInput.value = parseFloat(newPrice.toFixed(5));
+                            tpInput.value = self.formatPrice(newPrice);
                         }
                         
                         // Keep label clean — just "TPn"; the profit is shown in the info segment
@@ -12486,7 +12510,7 @@ class OrderManager {
                     
                     // Sync to first multi-entry level
                     if (self.isMultiEntryMode && self.multiEntryLevels.length > 0) {
-                        self.multiEntryLevels[0].price = parseFloat(newPrice.toFixed(5));
+                        self.multiEntryLevels[0].price = parseFloat(newPrice.toFixed(self.getPricePrecision()));
                         const priceInput = document.querySelector(`.multi-entry-row-input[data-level-id="${self.multiEntryLevels[0].id}"][data-field="price"]`);
                         if (priceInput) priceInput.value = self.formatPrice(newPrice);
                         self.updateMultiEntrySummary();
@@ -12598,7 +12622,7 @@ class OrderManager {
                     if (self.isMultiEntryMode && lineData.multiEntryLevelId !== undefined) {
                         const level = self.multiEntryLevels.find(l => l.id === lineData.multiEntryLevelId);
                         if (level) {
-                            level.price = parseFloat(newPrice.toFixed(5));
+                            level.price = parseFloat(newPrice.toFixed(self.getPricePrecision()));
                             // Update the panel input for this level
                             const priceInput = document.querySelector(`.multi-entry-row-input[data-level-id="${level.id}"][data-field="price"]`);
                             if (priceInput) priceInput.value = self.formatPrice(newPrice);
@@ -13180,7 +13204,7 @@ class OrderManager {
         // Add new split entry with its own order type
         const newSplitEntry = {
             id: this.splitEntryIdCounter++,
-            price: parseFloat(price.toFixed(5)),
+            price: parseFloat(price.toFixed(this.getPricePrecision())),
             percentage: equalPercent,
             orderType: splitOrderType, // Each split entry has its own order type
             lineData: null
@@ -13252,7 +13276,7 @@ class OrderManager {
     updateSplitEntryPrice(entryId, newPrice) {
         const entry = this.splitEntries.find(e => e.id === entryId);
         if (entry) {
-            entry.price = parseFloat(newPrice.toFixed(5));
+            entry.price = parseFloat(newPrice.toFixed(this.getPricePrecision()));
             
             // Also sync to matching multiEntryLevel
             if (this.isMultiEntryMode && entry.multiEntryLevelId !== undefined && this.multiEntryLevels) {
@@ -13332,10 +13356,11 @@ class OrderManager {
      */
     _clampMultiEntryPriceForStop(proposedPrice, siblingPrices) {
         if (!Number.isFinite(proposedPrice) || proposedPrice <= 0) return proposedPrice;
+        const prec = this.getPricePrecision();
         const slOn = document.getElementById('enableSL')?.checked;
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         if (!slOn || !Number.isFinite(slPrice) || slPrice <= 0) {
-            return parseFloat(proposedPrice.toFixed(5));
+            return parseFloat(proposedPrice.toFixed(prec));
         }
         const pip = Number(this.pipSize) > 0 ? Number(this.pipSize) : 0.0001;
         const sep = Math.max(pip * 0.5, 1e-12);
@@ -13343,21 +13368,21 @@ class OrderManager {
 
         if (this.orderSide === 'BUY') {
             const ceiling = sibs.length ? Math.min(...sibs) : Infinity;
-            if (!(slPrice < ceiling)) return parseFloat(proposedPrice.toFixed(5));
+            if (!(slPrice < ceiling)) return parseFloat(proposedPrice.toFixed(prec));
             let p = Math.max(proposedPrice, slPrice + sep);
             if (Number.isFinite(ceiling) && p >= ceiling - sep) {
                 p = Math.max(slPrice + sep, ceiling - Math.max(sep, pip));
             }
-            return parseFloat(p.toFixed(5));
+            return parseFloat(p.toFixed(prec));
         }
 
         const floor = sibs.length ? Math.max(...sibs) : -Infinity;
-        if (!(slPrice > floor)) return parseFloat(proposedPrice.toFixed(5));
+        if (!(slPrice > floor)) return parseFloat(proposedPrice.toFixed(prec));
         let p = Math.min(proposedPrice, slPrice - sep);
         if (Number.isFinite(floor) && p <= floor + sep) {
             p = Math.min(slPrice - sep, floor + Math.max(sep, pip));
         }
-        return parseFloat(p.toFixed(5));
+        return parseFloat(p.toFixed(prec));
     }
 
     /**
@@ -14299,7 +14324,7 @@ class OrderManager {
                 if (slVal > 0) this.slManuallyPositioned = true;
                 return;
             }
-            const proposed = parseFloat((low - offsetPips * pip).toFixed(5));
+            const proposed = parseFloat((low - offsetPips * pip).toFixed(this.getPricePrecision()));
             if (slInput) slInput.value = this.formatPrice(proposed);
         } else {
             const need = !(slVal > 0) || slVal <= high + pad;
@@ -14307,7 +14332,7 @@ class OrderManager {
                 if (slVal > 0) this.slManuallyPositioned = true;
                 return;
             }
-            const proposed = parseFloat((high + offsetPips * pip).toFixed(5));
+            const proposed = parseFloat((high + offsetPips * pip).toFixed(this.getPricePrecision()));
             if (slInput) slInput.value = this.formatPrice(proposed);
         }
         this.slManuallyPositioned = true;
@@ -14362,7 +14387,7 @@ class OrderManager {
 
             this.splitEntries.push({
                 id: this.splitEntryIdCounter++,
-                price: parseFloat(lvl.price.toFixed(5)),
+                price: parseFloat(lvl.price.toFixed(this.getPricePrecision())),
                 percentage: pct,
                 orderType: orderType,
                 multiEntryLevelId: lvl.id,
@@ -14566,7 +14591,7 @@ class OrderManager {
                     // Multi-entry mode: add new level to panel and sync
                     self.multiEntryLevels.push({
                         id: Date.now(),
-                        price: parseFloat(newPrice.toFixed(5)),
+                        price: parseFloat(newPrice.toFixed(self.getPricePrecision())),
                         amount: 0
                     });
                     // Equalize amounts across all levels (includes render + sync)
@@ -14619,8 +14644,8 @@ class OrderManager {
             if (originalTPPrice > 0) {
                 // Add the original TP as the first target
                 this.tpTargets.push({
-                    id: Date.now() - 1, // Slightly earlier ID to preserve ordering
-                    price: parseFloat(originalTPPrice.toFixed(5)),
+                    id: Date.now() - 1,
+                    price: parseFloat(originalTPPrice.toFixed(this.getPricePrecision())),
                     percentage: 50 // Will be recalculated below
                 });
                 console.log(`📊 Preserved original TP at ${originalTPPrice.toFixed(5)}`);
@@ -14639,7 +14664,7 @@ class OrderManager {
         // Add new target
         const newTarget = {
             id: Date.now(),
-            price: parseFloat(price.toFixed(5)),
+            price: parseFloat(price.toFixed(this.getPricePrecision())),
             percentage: 100 - (equalPercent * (numTargets - 1)) // Remainder goes to last
         };
         
@@ -15156,17 +15181,17 @@ class OrderManager {
             // Limit Buy must be BELOW current price
             // Limit Sell must be ABOVE current price
             if (orderSide === 'BUY' && entryPrice >= currentPrice) {
-                errors.push(`⚠️ Limit BUY must be BELOW current price (${currentPrice.toFixed(5)})`);
+                errors.push(`⚠️ Limit BUY must be BELOW current price (${this.formatPrice(currentPrice)})`);
             } else if (orderSide === 'SELL' && entryPrice <= currentPrice) {
-                errors.push(`⚠️ Limit SELL must be ABOVE current price (${currentPrice.toFixed(5)})`);
+                errors.push(`⚠️ Limit SELL must be ABOVE current price (${this.formatPrice(currentPrice)})`);
             }
         } else if (orderType === 'stop') {
             // Stop Buy must be ABOVE current price
             // Stop Sell must be BELOW current price
             if (orderSide === 'BUY' && entryPrice <= currentPrice) {
-                errors.push(`⚠️ Stop BUY must be ABOVE current price (${currentPrice.toFixed(5)})`);
+                errors.push(`⚠️ Stop BUY must be ABOVE current price (${this.formatPrice(currentPrice)})`);
             } else if (orderSide === 'SELL' && entryPrice >= currentPrice) {
-                errors.push(`⚠️ Stop SELL must be BELOW current price (${currentPrice.toFixed(5)})`);
+                errors.push(`⚠️ Stop SELL must be BELOW current price (${this.formatPrice(currentPrice)})`);
             }
         }
         
@@ -15983,7 +16008,7 @@ class OrderManager {
         console.log(`   SL: ${order.stopLoss ? '$' + order.stopLoss.toFixed(5) : 'none'} | TP: ${order.takeProfit ? '$' + order.takeProfit.toFixed(5) : 'none'}`);
         
         // Show notification
-        this.showNotification(`${this.orderSide === 'BUY' ? '📈' : '📉'} ${this.orderSide} Order #${order.id} opened @ ${entryPrice.toFixed(5)}`, 'info');
+        this.showNotification(`${this.orderSide === 'BUY' ? '📈' : '📉'} ${this.orderSide} Order #${order.id} opened @ ${this.formatPrice(entryPrice)}`, 'info');
         
         // Play order execution sound
         this.playOrderSound(this.orderSide.toLowerCase());
@@ -16071,7 +16096,7 @@ class OrderManager {
         
         // Show notification
         const orderTypeLabel = this.orderType === 'limit' ? 'Limit' : 'Stop';
-        this.showNotification(`📋 ${orderTypeLabel} ${this.orderSide} Order #${pendingOrder.id} placed @ ${entryPrice.toFixed(5)}`, 'info');
+        this.showNotification(`📋 ${orderTypeLabel} ${this.orderSide} Order #${pendingOrder.id} placed @ ${this.formatPrice(entryPrice)}`, 'info');
         
         // Draw pending order line and targets
         this.drawPendingOrderLine(pendingOrder);
@@ -16260,7 +16285,7 @@ class OrderManager {
             
             const orderTypeLabel = orderType === 'limit' ? 'Limit' : 'Stop';
             console.log(`📋 ${orderTypeLabel} ${this.orderSide} Order #${pendingOrder.id} placed from tool @ ${entryPrice.toFixed(5)} (PENDING)`);
-            this.showNotification(`🎨 ${orderTypeLabel} ${this.orderSide} Order #${pendingOrder.id} placed from drawing tool @ ${entryPrice.toFixed(5)}`, 'info');
+            this.showNotification(`🎨 ${orderTypeLabel} ${this.orderSide} Order #${pendingOrder.id} placed from drawing tool @ ${this.formatPrice(entryPrice)}`, 'info');
             
             // Draw pending order line + targets
             this.drawPendingOrderLine(pendingOrder);
@@ -16319,7 +16344,7 @@ class OrderManager {
             }
             
             console.log(`✅ ${this.orderSide} MARKET order opened from tool: #${order.id} @ ${entryPrice.toFixed(5)}`);
-            this.showNotification(`🎨 ${this.orderSide} Order #${order.id} placed from drawing tool @ ${entryPrice.toFixed(5)}`, 'success');
+            this.showNotification(`🎨 ${this.orderSide} Order #${order.id} placed from drawing tool @ ${this.formatPrice(entryPrice)}`, 'success');
             
             // Draw order lines on chart
             this.drawOrderLine(order);
@@ -16453,7 +16478,7 @@ class OrderManager {
         console.log(`   SL: ${order.stopLoss ? '$' + order.stopLoss.toFixed(2) : 'null'} | TP: ${order.takeProfit ? '$' + order.takeProfit.toFixed(2) : 'null'}`);
         
         // Show notification
-        this.showNotification(`📈 BUY Order #${order.id} opened @ ${entryPrice.toFixed(5)}`, 'info');
+        this.showNotification(`📈 BUY Order #${order.id} opened @ ${this.formatPrice(entryPrice)}`, 'info');
         
         this.drawOrderLine(order);
         this.drawSLTPLines(order);
@@ -16543,7 +16568,7 @@ class OrderManager {
         console.log(`   SL: ${order.stopLoss ? '$' + order.stopLoss.toFixed(2) : 'null'} | TP: ${order.takeProfit ? '$' + order.takeProfit.toFixed(2) : 'null'}`);
         
         // Show notification
-        this.showNotification(`📉 SELL Order #${order.id} opened @ ${entryPrice.toFixed(5)}`, 'info');
+        this.showNotification(`📉 SELL Order #${order.id} opened @ ${this.formatPrice(entryPrice)}`, 'info');
         
         this.drawOrderLine(order);
         this.drawSLTPLines(order);
@@ -17470,8 +17495,8 @@ class OrderManager {
         // Show notification
         const orderTypeLabel = order.wasLimitOrder ? 'Limit' : 'Stop';
         const toolLabel = order.createdFromTool ? ' (from drawing tool)' : '';
-        const gapLabel = order.hadGap ? ` ⚠️ GAP (pending @ ${order.pendingOrderPrice.toFixed(5)})` : '';
-        this.showNotification(`✅ ${orderTypeLabel} ${order.type} Order #${order.id} executed @ ${order.openPrice.toFixed(5)}${gapLabel}${toolLabel}`, 'success');
+        const gapLabel = order.hadGap ? ` ⚠️ GAP (pending @ ${this.formatPrice(order.pendingOrderPrice)})` : '';
+        this.showNotification(`✅ ${orderTypeLabel} ${order.type} Order #${order.id} executed @ ${this.formatPrice(order.openPrice)}${gapLabel}${toolLabel}`, 'success');
         
         // Play order execution sound
         this.playOrderSound('pending');
@@ -17640,7 +17665,7 @@ class OrderManager {
                         console.log(`   ⚡ BREAKEVEN TRIGGERED! (${triggerType}) SL moved from ${oldSL.toFixed(5)} to ${position.stopLoss.toFixed(5)}${offsetText} for BUY #${position.id}`);
                         console.log(`   Position #${position.id} is STILL OPEN with quantity ${position.quantity}`);
                         console.log(`   ⚠️ Skipping TP checks for this candle to let BE take effect`);
-                        this.showNotification(`⚡ Breakeven Hit! Order #${position.id} | SL moved to ${position.stopLoss.toFixed(5)}${offsetText}`, 'success');
+                        this.showNotification(`⚡ Breakeven Hit! Order #${position.id} | SL moved to ${this.formatPrice(position.stopLoss)}${offsetText}`, 'success');
                         
                         this.removeSLTPLines(position.id);
                         this.drawSLTPLines(position);
@@ -17709,7 +17734,7 @@ class OrderManager {
                                 console.log(`   ✅ New SL/TP lines drawn at ${position.stopLoss.toFixed(5)}`);
                                 
                                 // Show notification
-                                this.showNotification(`📈 Trailing SL: ${oldSL.toFixed(5)} → ${newSL.toFixed(5)} | #${position.id}`, 'info');
+                                this.showNotification(`📈 Trailing SL: ${this.formatPrice(oldSL)} → ${this.formatPrice(newSL)} | #${position.id}`, 'info');
                             }
                         }
                     }
@@ -17843,7 +17868,7 @@ class OrderManager {
                         console.log(`   ⚡ BREAKEVEN TRIGGERED! (${triggerType}) SL moved from ${oldSL.toFixed(5)} to ${position.stopLoss.toFixed(5)}${offsetText} for SELL #${position.id}`);
                         console.log(`   Position #${position.id} is STILL OPEN with quantity ${position.quantity}`);
                         console.log(`   ⚠️ Skipping TP checks for this candle to let BE take effect`);
-                        this.showNotification(`⚡ Breakeven Hit! Order #${position.id} | SL moved to ${position.stopLoss.toFixed(5)}${offsetText}`, 'success');
+                        this.showNotification(`⚡ Breakeven Hit! Order #${position.id} | SL moved to ${this.formatPrice(position.stopLoss)}${offsetText}`, 'success');
                         
                         this.removeSLTPLines(position.id);
                         this.drawSLTPLines(position);
@@ -17912,7 +17937,7 @@ class OrderManager {
                                 console.log(`   ✅ New SL/TP lines drawn at ${position.stopLoss.toFixed(5)}`);
                                 
                                 // Show notification
-                                this.showNotification(`📉 Trailing SL: ${oldSL.toFixed(5)} → ${newSL.toFixed(5)} | #${position.id}`, 'info');
+                                this.showNotification(`📉 Trailing SL: ${this.formatPrice(oldSL)} → ${this.formatPrice(newSL)} | #${position.id}`, 'info');
                             }
                         }
                     }
@@ -18937,7 +18962,7 @@ class OrderManager {
                 
                 // Update price text element
                 if (extraElements.priceText) {
-                    extraElements.priceText.text(newPrice.toFixed(5));
+                    extraElements.priceText.text(self.formatPrice(newPrice));
                 }
                 
                 // Show live pip distance indicator
@@ -19156,7 +19181,7 @@ class OrderManager {
                 
                 // Update price text
                 if (priceText) {
-                    priceText.text(newPrice.toFixed(5));
+                    priceText.text(self.formatPrice(newPrice));
                 }
                 
                 // Show live pip distance indicator
@@ -19727,7 +19752,7 @@ class OrderManager {
             .attr('text-anchor', 'middle')
             .attr('pointer-events', 'all')
             .style('cursor', 'ns-resize')
-            .text(order.openPrice.toFixed(5));
+            .text(this.formatPrice(order.openPrice));
 
         const closeBtn = chart.svg.append('g')
             .attr('class', `order-close-btn order-${order.id}`)
@@ -20417,7 +20442,7 @@ class OrderManager {
                 .attr('font-weight', '700')
                 .attr('text-anchor', 'middle')
                 .style('cursor', 'pointer')
-                .text(pendingOrder.entryPrice.toFixed(5));
+                .text(this.formatPrice(pendingOrder.entryPrice));
         }
         
         // Close button (X) for pending orders
@@ -21568,7 +21593,7 @@ class OrderManager {
 
         if (!this.exitMarkers) this.exitMarkers = [];
 
-        const priceKey = closeData.closePrice.toFixed(5);
+        const priceKey = this.formatPrice(closeData.closePrice);
         const existingMarker = this.exitMarkers.find(m =>
             m.priceKey === priceKey && m.time === closeData.closeTime
         );
@@ -21668,7 +21693,7 @@ class OrderManager {
             if (opts.role) t.attr('data-role', opts.role);
         };
 
-        ttLine(1, closeData.closePrice.toFixed(5), { role: 'exit-price-text', fill: '#f8fafc', bold: true });
+        ttLine(1, this.formatPrice(closeData.closePrice), { role: 'exit-price-text', fill: '#f8fafc', bold: true });
         ttLine(2, `${order.quantity.toFixed(2)} lots`, { role: 'exit-lots-text' });
         ttLine(3, tag, { role: 'exit-tag-text', fill: color, bold: true });
 
@@ -21766,7 +21791,7 @@ class OrderManager {
 
         if (!this.partialCloseMarkers) this.partialCloseMarkers = [];
 
-        const priceKey = closeData.closePrice.toFixed(5);
+        const priceKey = this.formatPrice(closeData.closePrice);
         const existingMarker = this.partialCloseMarkers.find(m =>
             m.priceKey === priceKey && m.time === closeData.closeTime
         );
@@ -21867,7 +21892,7 @@ class OrderManager {
             if (opts.role) t.attr('data-role', opts.role);
         };
 
-        ttLine(1, closeData.closePrice.toFixed(5), { role: 'exit-price-text', fill: '#f8fafc', bold: true });
+        ttLine(1, this.formatPrice(closeData.closePrice), { role: 'exit-price-text', fill: '#f8fafc', bold: true });
         ttLine(2, `${closeQuantity.toFixed(2)} lots`, { role: 'exit-lots-text' });
         ttLine(3, tag, { role: 'exit-tag-text', fill: color, bold: true });
 
@@ -22386,7 +22411,7 @@ class OrderManager {
                 .attr('text-anchor', 'middle')
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize')
-                .text(order.stopLoss.toFixed(5));
+                .text(this.formatPrice(order.stopLoss));
             
             // Make SL line draggable (pass all elements for full drag area)
             this.makeLineDraggable(slLine, slLabelBox, order, 'sl', {
@@ -22494,7 +22519,7 @@ class OrderManager {
                         .attr('text-anchor', 'middle')
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize')
-                        .text(target.price.toFixed(5));
+                        .text(this.formatPrice(target.price));
                     
                     // Make multiple TP line draggable
                     this.makeLineDraggableMultiTP(tpLine, tpLabelBox, tpLabelText, tpPriceBox, tpPriceText, order, index, target, chart);
@@ -22627,7 +22652,7 @@ class OrderManager {
                 .attr('text-anchor', 'middle')
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize')
-                .text(order.takeProfit.toFixed(5));
+                .text(this.formatPrice(order.takeProfit));
             
             // Make TP line draggable (pass all elements for full drag area)
             this.makeLineDraggable(tpLine, tpLabelBox, order, 'tp', {
@@ -22721,7 +22746,7 @@ class OrderManager {
                 .attr('font-weight', '700')
                 .attr('text-anchor', 'middle')
                 .style('cursor', 'ns-resize')
-                .text(beTriggerPrice.toFixed(5));
+                .text(this.formatPrice(beTriggerPrice));
             
             // Make BE line draggable
             this.makeLineDraggable(beLine, beLabelBox, order, 'be', {}, chart);

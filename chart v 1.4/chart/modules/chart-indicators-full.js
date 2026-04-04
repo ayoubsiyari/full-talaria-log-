@@ -3298,7 +3298,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             ctx.fillStyle = style.textColor || '#5c71af';
             ctx.font = '10px Roboto';
             ctx.textAlign = 'left';
-            const priceText = midnight.price.toFixed(this.pricePrecision || 5);
+            const priceText = midnight.price.toFixed(this._symbolPrecision ?? this.pricePrecision ?? 5);
             ctx.fillText(`NY Open ${priceText}`, x + 5, y - 5);
         });
     }

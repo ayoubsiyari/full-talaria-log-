@@ -505,7 +505,10 @@ class AlertSystem {
      */
     formatPrice(price) {
         if (price === null || price === undefined) return '—';
-        // Detect if forex (5 decimals) or other (2 decimals)
+        if (this.chart && typeof this.chart.getPriceDecimals === 'function' && this.chart.yScale) {
+            const range = Math.abs(this.chart.yScale.domain()[1] - this.chart.yScale.domain()[0]);
+            return price.toFixed(this.chart.getPriceDecimals(range));
+        }
         const decimals = price < 100 ? 5 : 2;
         return price.toFixed(decimals);
     }

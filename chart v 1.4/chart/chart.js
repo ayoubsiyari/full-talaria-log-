@@ -3893,9 +3893,11 @@ class Chart {
             .style('color', '#131722')
             .style('min-width', '150px')
             .text('Precision');
-        const precisionDropdown = this.addDropdown(precisionRow, ['Default', '0', '1', '2', '3', '4', '5'], this.chartSettings.precision);
+        const precisionDropdown = this.addDropdown(precisionRow, ['Default', '0', '1', '2', '3', '4', '5'], this.chartSettings.pricePrecision || 'default');
         precisionDropdown.on('change', () => {
-            this.chartSettings.precision = precisionDropdown.property('value');
+            const val = precisionDropdown.property('value');
+            this.chartSettings.precision = val;
+            this.chartSettings.pricePrecision = val === 'Default' ? 'default' : val;
             this.scheduleRender();
         });
         
@@ -7295,19 +7297,12 @@ class Chart {
         // Skip UI updates for panel instances
         if (this.isPanel) return;
         
+        const _toolbarDec = this.getPriceDecimals(
+            this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0
+        );
         const formatPrice = (price, decimalOverride) => {
             if (!isFinite(price)) return '—';
-            const abs = Math.abs(price);
-            let decimals;
-            if (typeof decimalOverride === 'number') {
-                decimals = decimalOverride;
-            } else if (abs >= 1000) {
-                decimals = 3;
-            } else if (abs >= 1) {
-                decimals = 4;
-            } else {
-                decimals = 5;
-            }
+            const decimals = typeof decimalOverride === 'number' ? decimalOverride : _toolbarDec;
             return Number(price).toLocaleString(undefined, {
                 minimumFractionDigits: decimals,
                 maximumFractionDigits: decimals
@@ -7325,9 +7320,8 @@ class Chart {
                 return;
             }
 
-            const ticketDecimals = Math.abs(buyValue) >= 1000 ? 3 : 4;
-            sellElem.textContent = formatPrice(sellValue, ticketDecimals);
-            buyElem.textContent = formatPrice(buyValue, ticketDecimals);
+            sellElem.textContent = formatPrice(sellValue, _toolbarDec);
+            buyElem.textContent = formatPrice(buyValue, _toolbarDec);
         };
 
         const openElem = document.getElementById('toolbarOpen');
@@ -11120,13 +11114,28 @@ class Chart {
     }
 
     /**
-     * Get appropriate decimal places based on price range
+     * Get appropriate decimal places based on price range.
+     * Priority: manual override > per-symbol registry > price-range heuristic.
      */
     getPriceDecimals(priceRange) {
         const override = this.chartSettings && this.chartSettings.pricePrecision;
         if (override && override !== 'default') {
             const n = parseInt(override, 10);
             if (!isNaN(n)) return n;
+        }
+        // Per-symbol precision synced from INSTRUMENT_REGISTRY via order-manager
+        if (Number.isFinite(this._symbolPrecision) && this._symbolPrecision >= 0) {
+            return this._symbolPrecision;
+        }
+        // Fallback: try marketCalcEngine directly
+        if (this.currentSymbol && window.marketCalcEngine) {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(this.currentSymbol);
+                if (calc && calc.specs && Number.isFinite(calc.specs.precision)) {
+                    this._symbolPrecision = calc.specs.precision;
+                    return calc.specs.precision;
+                }
+            } catch (_) {}
         }
         if (priceRange < 0.01) return 6;
         if (priceRange < 0.1) return 4;
@@ -11275,16 +11284,8 @@ class Chart {
         // Match the price line color so label and line are always the same color
         const bgColor = this.chartSettings.priceLineColor || '#787B86';
         
-        // Format price — respect explicit precision setting, else match the axis
-        let decimals;
-        const precisionSetting = this.chartSettings ? this.chartSettings.precision : 'Default';
-        if (precisionSetting && precisionSetting !== 'Default') {
-            const parsed = parseInt(precisionSetting, 10);
-            decimals = Number.isFinite(parsed) ? Math.max(0, Math.min(8, parsed)) : 4;
-        } else {
-            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-            decimals = this.getPriceDecimals(priceRange);
-        }
+        const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+        const decimals = this.getPriceDecimals(priceRange);
         const priceText = Number(currentPrice).toFixed(decimals);
 
         // Use fixed width matching the price axis area
@@ -11594,8 +11595,10 @@ class Chart {
         this.ctx.stroke();
         this.ctx.setLineDash([]);
         
-        // Draw price label with modern style
-        const text = price.toFixed(2);
+        const _hoverDec = this.getPriceDecimals(
+            this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0
+        );
+        const text = price.toFixed(_hoverDec);
         this.ctx.font = `500 ${this.chartSettings.scaleTextSize}px Roboto`;
         this.ctx.textAlign = 'left';
         const textWidth = this.ctx.measureText(text).width;
@@ -15180,16 +15183,8 @@ class Chart {
         
         if (priceLabel && this.yScale) {
             const price = Number.isFinite(crosshairPrice) ? crosshairPrice : this.yScale.invert(y);
-            // Format price — respect explicit precision setting, else match the axis
-            let decimals;
-            const _xhPrec = this.chartSettings ? this.chartSettings.precision : 'Default';
-            if (_xhPrec && _xhPrec !== 'Default') {
-                const _parsed = parseInt(_xhPrec, 10);
-                decimals = Number.isFinite(_parsed) ? Math.max(0, Math.min(8, _parsed)) : 4;
-            } else {
-                const _priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-                decimals = this.getPriceDecimals(_priceRange);
-            }
+            const _priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+            const decimals = this.getPriceDecimals(_priceRange);
             priceLabel.textContent = price.toFixed(decimals);
             
             // Position label to match canvas current price label
@@ -15276,12 +15271,10 @@ class Chart {
                     this.broadcastCrosshairSync(candle.t, price);
                 }
                 
-                // Format prices based on value
-                const formatPrice = (price) => {
-                    if (price > 1000) return price.toFixed(2);
-                    if (price > 1) return price.toFixed(4);
-                    return price.toFixed(5);
-                };
+                const _ohlcDec = this.getPriceDecimals(
+                    this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0
+                );
+                const formatPrice = (price) => price.toFixed(_ohlcDec);
                 
                 // Determine ID suffix for panel charts
                 // Main chart (panel 0 when in multi-layout, or no panel) uses no suffix
@@ -15425,11 +15418,10 @@ class Chart {
             hour12: false
         });
         
-        // Enhanced price formatting
-        const formatPrice = (val) => {
-            const decimals = val < 0.1 ? 6 : val < 1 ? 5 : val < 10 ? 4 : val < 100 ? 3 : 2;
-            return val.toFixed(decimals);
-        };
+        const _tooltipDec = this.getPriceDecimals(
+            this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0
+        );
+        const formatPrice = (val) => val.toFixed(_tooltipDec);
         
         // Enhanced volume formatting
         const formatVol = (val) => {
@@ -15914,7 +15906,8 @@ class Chart {
                 const parsedPrice = this.parseClipboardNumber(clipboardText);
                 if (Number.isFinite(parsedPrice)) {
                     const added = this.addHorizontalLineAtPrice(parsedPrice);
-                    this.showNotification(added ? `Price line added at ${parsedPrice.toFixed(5)} ✓` : 'Could not paste chart element');
+                    const _dec = this.getPriceDecimals(this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0);
+                    this.showNotification(added ? `Price line added at ${parsedPrice.toFixed(_dec)} ✓` : 'Could not paste chart element');
                 } else if (clipboardText) {
                     this.showNotification(`Clipboard text: ${clipboardText.slice(0, 40)}`);
                 } else {
@@ -16091,7 +16084,8 @@ class Chart {
 
             const entryInput = document.getElementById('orderEntryPrice');
             if (entryInput && Number.isFinite(entryPrice)) {
-                entryInput.value = entryPrice.toFixed(5);
+                const _eDec = this.getPriceDecimals(this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0);
+                entryInput.value = entryPrice.toFixed(_eDec);
             }
 
             manager.tpManuallyPositioned = false;
@@ -17591,14 +17585,11 @@ class Chart {
             if (y >= m.t && y <= this.h - m.b) {
                 hLine.style.cssText = hBaseStyle + `top:${y}px;display:block;`;
                 
-                // Update price label with proper styling
                 if (priceLabel) {
-                    const formatPrice = (p) => {
-                        if (p > 1000) return p.toFixed(2);
-                        if (p > 1) return p.toFixed(4);
-                        return p.toFixed(5);
-                    };
-                    priceLabel.textContent = formatPrice(displayPrice);
+                    const _panelDec = this.getPriceDecimals(
+                        this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0
+                    );
+                    priceLabel.textContent = displayPrice.toFixed(_panelDec);
                     priceLabel.style.cssText = `
                         position: absolute;
                         right: 5px;
@@ -17673,12 +17664,10 @@ class Chart {
     updateOHLCFromCandle(candle) {
         if (!candle) return;
         
-        // Format prices based on value
-        const formatPrice = (price) => {
-            if (price > 1000) return price.toFixed(2);
-            if (price > 1) return price.toFixed(4);
-            return price.toFixed(5);
-        };
+        const _ohlcFromDec = this.getPriceDecimals(
+            this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0
+        );
+        const formatPrice = (price) => price.toFixed(_ohlcFromDec);
         
         // Main chart (panel 0 when in multi-layout, or window.chart) uses no suffix
         // Other panels use their index as suffix
