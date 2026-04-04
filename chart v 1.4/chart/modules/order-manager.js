@@ -15723,8 +15723,19 @@ class OrderManager {
                         splitGroupId,
                         splitIndex: idx + 1,
                         splitTotal: validLevels.length,
-                        isSplitEntry: true
+                        isSplitEntry: true,
+                        _slNoTriggerBeforeTime: currentCandle.t,
+                        _slNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick,
+                        _tpNoTriggerBeforeTime: currentCandle.t,
+                        _tpNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick
                     };
+                    if (order.tpTargets && order.tpTargets.length > 0) {
+                        const guardTick = this._getCurrentTickSnapshot().tick;
+                        order.tpTargets.forEach(t => {
+                            t._noTriggerBeforeTime = currentCandle.t;
+                            t._noTriggerBeforeTick = guardTick;
+                        });
+                    }
                     if (this.orderService) {
                         this.orderService.registerOpenOrder(order);
                     } else {
@@ -16082,8 +16093,20 @@ class OrderManager {
             trailingStop: trailingStop, // Trailing stop settings
             tpTargets: tpTargets, // Multiple TP targets
             partialCloses: [], // Track partial closes for multiple TPs
-            partialClosePnL: 0 // Cumulative P&L from partial closes
+            partialClosePnL: 0, // Cumulative P&L from partial closes
+            _slNoTriggerBeforeTime: currentCandle.t,
+            _slNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick,
+            _tpNoTriggerBeforeTime: currentCandle.t,
+            _tpNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick
         };
+
+        if (order.tpTargets && order.tpTargets.length > 0) {
+            const guardTick = this._getCurrentTickSnapshot().tick;
+            order.tpTargets.forEach(t => {
+                t._noTriggerBeforeTime = currentCandle.t;
+                t._noTriggerBeforeTick = guardTick;
+            });
+        }
         
         console.log(`📋 Order #${order.id} created with:`);
         console.log(`   Entry: ${entryPrice.toFixed(5)}, SL: ${slPrice.toFixed(5)}, TP: ${tpPrice.toFixed(5)}`);
@@ -16283,6 +16306,8 @@ class OrderManager {
             trailingStop: trailingStop,
             tpTargets: tpTargets,
             placedTime: timestamp,
+            _noFillBeforeTime: timestamp,
+            _noFillBeforeTick: this._getCurrentTickSnapshot().tick,
             status: 'PENDING',
             // Split entry information
             splitGroupId: splitGroupId,
@@ -17618,8 +17643,22 @@ class OrderManager {
             // OHLC fill-candle protection: skip SL on the fill candle when the
             // assumed price path shows the extreme happened BEFORE entry filled.
             _fillCandleTime: currentCandle.t,
-            _fillOrderType: pendingOrder.orderType
+            _fillOrderType: pendingOrder.orderType,
+            // Guard SL/TP against triggering on the fill candle's pre-existing price action
+            _slNoTriggerBeforeTime: currentCandle.t,
+            _slNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick,
+            _tpNoTriggerBeforeTime: currentCandle.t,
+            _tpNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick
         };
+
+        // Guard multi-TP targets against triggering on the fill candle
+        if (order.tpTargets && order.tpTargets.length > 0) {
+            const fillTick = this._getCurrentTickSnapshot().tick;
+            order.tpTargets.forEach(t => {
+                t._noTriggerBeforeTime = currentCandle.t;
+                t._noTriggerBeforeTick = fillTick;
+            });
+        }
         
         // DEBUG: Log tpTargets to verify they're correct
         console.log(`📊 Order #${order.id} executed with tpTargets:`, order.tpTargets);
