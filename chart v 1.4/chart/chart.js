@@ -10381,10 +10381,10 @@ class Chart {
             this._pendingChartViewSanityCheck = false;
         }
 
-        // Include effective last price in Y domain so the price line/label stay drawable after
-        // manual zoom, restored sessions, or when the right edge has no visible bars but
-        // the latest quote still matters (matches behavior users expect across devices).
-        if (this.chartSettings.showPriceLine !== false) {
+        // Include effective last price in Y domain so the price line/label stay drawable
+        // in auto-scale mode or when the right edge has no visible bars.
+        // Skip when user is manually zooming/panning so the price axis drag is unconstrained.
+        if (this.chartSettings.showPriceLine !== false && this.autoScale) {
             const linePrice = this.resolveEffectiveCurrentPrice(visible);
             if (Number.isFinite(linePrice)) {
                 const span = domainMax - domainMin;
