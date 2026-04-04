@@ -12563,6 +12563,21 @@ class OrderManager {
                         const slY = clampedY - slHeight / 2;
                         self.previewLines.sl.labelGroup.attr('transform', `translate(${slX}, ${slY})`);
                     }
+
+                    // Move multi-TP badges with entry during drag
+                    if (self.previewLines.multiTPBadges && self.previewLines.multiTPBadges.length > 0) {
+                        self.previewLines.multiTPBadges.forEach(bd => {
+                            if (bd && bd.labelGroup) {
+                                bd.price = newPrice;
+                                const bdBbox = bd.labelDimensions;
+                                const bdHeight = bdBbox?.height || 0;
+                                const bdTransform = bd.labelGroup.attr('transform');
+                                const bdX = parseFloat(bdTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
+                                const bdY = clampedY + (bd._stackOffsetY || 0) - bdHeight / 2;
+                                bd.labelGroup.attr('transform', `translate(${bdX}, ${bdY})`);
+                            }
+                        });
+                    }
                     
                     // Recalculate risk/reward since TP/SL are synced to entry
                     self.calculateAdvancedRiskReward();
@@ -14895,7 +14910,7 @@ class OrderManager {
             return orderPriority[lab] ?? 99;
         };
         const gap = 28;
-        const marginRight = 145; // margin from right edge for preview labels
+        const marginRight = 175; // margin from right edge for preview labels
 
         // Refresh dimensions for all items first
         buckets.forEach(bucket => {
