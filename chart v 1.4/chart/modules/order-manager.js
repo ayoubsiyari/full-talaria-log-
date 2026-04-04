@@ -19012,6 +19012,7 @@ class OrderManager {
                 // Still perform cleanup so visual lines don't linger
                 this.removeOrderLine(orderId);
                 this.removeSLTPLines(orderId);
+                this.removeMultiTPAvgLine(orderId);
                 this.removeEntryMarker(orderId);
                 if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
                     this.removeSplitGroupAvgLine(position.splitGroupId);
@@ -19103,6 +19104,7 @@ class OrderManager {
         if (!isPartialClose) {
             this.removeOrderLine(orderId);
             this.removeSLTPLines(orderId);
+            this.removeMultiTPAvgLine(orderId);
             if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
                 this.removeSplitGroupAvgLine(position.splitGroupId);
             }
@@ -19280,18 +19282,26 @@ class OrderManager {
                 if (lineType === 'entry') {
                     order.openPrice = newPrice;
                 } else if (lineType === 'sl') {
-                    order.stopLoss = newPrice;
                     const curBar = self.getCurrentCandle();
-                    if (curBar) {
-                        order._slNoTriggerBeforeTime = curBar.t;
-                        order._slNoTriggerBeforeTick = Infinity;
+                    const siblings = order.isSplitEntry && order.splitGroupId
+                        ? self._getSplitGroupOpenPositions(order) : [order];
+                    for (const sib of siblings) {
+                        sib.stopLoss = newPrice;
+                        if (curBar) {
+                            sib._slNoTriggerBeforeTime = curBar.t;
+                            sib._slNoTriggerBeforeTick = Infinity;
+                        }
                     }
                 } else if (lineType === 'tp') {
-                    order.takeProfit = newPrice;
                     const curBar = self.getCurrentCandle();
-                    if (curBar) {
-                        order._tpNoTriggerBeforeTime = curBar.t;
-                        order._tpNoTriggerBeforeTick = Infinity;
+                    const siblings = order.isSplitEntry && order.splitGroupId
+                        ? self._getSplitGroupOpenPositions(order) : [order];
+                    for (const sib of siblings) {
+                        sib.takeProfit = newPrice;
+                        if (curBar) {
+                            sib._tpNoTriggerBeforeTime = curBar.t;
+                            sib._tpNoTriggerBeforeTick = Infinity;
+                        }
                     }
                 } else if (lineType === 'be') {
                     // BE line is read-only (calculated from entry/SL)
@@ -19473,17 +19483,21 @@ class OrderManager {
                 self._syncSplitGroupProtectionPrices(order, lineType === 'sl' ? 'sl' : 'tp', finalPrice);
             }
 
-            // Refresh guards so the moved SL/TP won't trigger on the current
-            // candle's existing OHLC range — only on the NEXT candle.
+            // Refresh guards on this order AND all split siblings so the moved
+            // SL/TP won't trigger on the current candle for any member.
             if (lineType === 'sl' || lineType === 'tp') {
                 const curBar = self.getCurrentCandle();
                 if (curBar) {
-                    if (lineType === 'sl') {
-                        order._slNoTriggerBeforeTime = curBar.t;
-                        order._slNoTriggerBeforeTick = Infinity;
-                    } else {
-                        order._tpNoTriggerBeforeTime = curBar.t;
-                        order._tpNoTriggerBeforeTick = Infinity;
+                    const siblings = order.isSplitEntry && order.splitGroupId
+                        ? self._getSplitGroupOpenPositions(order) : [order];
+                    for (const sib of siblings) {
+                        if (lineType === 'sl') {
+                            sib._slNoTriggerBeforeTime = curBar.t;
+                            sib._slNoTriggerBeforeTick = Infinity;
+                        } else {
+                            sib._tpNoTriggerBeforeTime = curBar.t;
+                            sib._tpNoTriggerBeforeTick = Infinity;
+                        }
                     }
                 }
             }
@@ -19567,14 +19581,19 @@ class OrderManager {
             if (ctx.scales && ctx.scales.yScale) {
                 const newPrice = ctx.scales.yScale.invert(newY);
                 
-                // Update target price in the order
+                // Update target price in the order (and all split siblings)
                 if (order.tpTargets && order.tpTargets[targetIndex]) {
-                    order.tpTargets[targetIndex].price = newPrice;
-                    // Keep guard fresh so the moved TP doesn't trigger mid-drag
                     const curBar = self.getCurrentCandle();
-                    if (curBar) {
-                        order.tpTargets[targetIndex]._noTriggerBeforeTime = curBar.t;
-                        order.tpTargets[targetIndex]._noTriggerBeforeTick = Infinity;
+                    const siblings = order.isSplitEntry && order.splitGroupId
+                        ? self._getSplitGroupOpenPositions(order) : [order];
+                    for (const sib of siblings) {
+                        if (sib.tpTargets && sib.tpTargets[targetIndex]) {
+                            sib.tpTargets[targetIndex].price = newPrice;
+                            if (curBar) {
+                                sib.tpTargets[targetIndex]._noTriggerBeforeTime = curBar.t;
+                                sib.tpTargets[targetIndex]._noTriggerBeforeTick = Infinity;
+                            }
+                        }
                     }
                 }
                 
@@ -19677,12 +19696,19 @@ class OrderManager {
             
             const finalPrice = target.price;
 
-            // Refresh guard so the moved TP won't trigger on the current candle —
-            // only on the NEXT candle after the drag completes.
+            // Refresh guard on this order AND all split siblings so the moved
+            // TP won't trigger on the current candle for any member.
             const curBar = self.getCurrentCandle();
             if (curBar) {
-                target._noTriggerBeforeTime = curBar.t;
-                target._noTriggerBeforeTick = Infinity;
+                const siblings = order.isSplitEntry && order.splitGroupId
+                    ? self._getSplitGroupOpenPositions(order) : [order];
+                for (const sib of siblings) {
+                    if (sib.tpTargets && sib.tpTargets[targetIndex]) {
+                        sib.tpTargets[targetIndex].price = target.price;
+                        sib.tpTargets[targetIndex]._noTriggerBeforeTime = curBar.t;
+                        sib.tpTargets[targetIndex]._noTriggerBeforeTick = Infinity;
+                    }
+                }
             }
             
             // Final update
@@ -19840,19 +19866,25 @@ class OrderManager {
             }
 
             const curBar = self.getCurrentCandle();
+            const siblings = order.isSplitEntry && order.splitGroupId
+                ? self._getSplitGroupOpenPositions(order) : [order];
             if (dragType === 'tp') {
-                order.takeProfit = newPrice;
-                if (curBar) {
-                    order._tpNoTriggerBeforeTime = curBar.t;
-                    order._tpNoTriggerBeforeTick = Infinity;
+                for (const sib of siblings) {
+                    sib.takeProfit = newPrice;
+                    if (curBar) {
+                        sib._tpNoTriggerBeforeTime = curBar.t;
+                        sib._tpNoTriggerBeforeTick = Infinity;
+                    }
                 }
                 console.log(`✅ TP set to ${newPrice.toFixed(5)} for order #${order.id}`);
                 self.showNotification(`TP set to ${self.formatPrice(newPrice)} for #${order.id}`, 'success');
             } else {
-                order.stopLoss = newPrice;
-                if (curBar) {
-                    order._slNoTriggerBeforeTime = curBar.t;
-                    order._slNoTriggerBeforeTick = Infinity;
+                for (const sib of siblings) {
+                    sib.stopLoss = newPrice;
+                    if (curBar) {
+                        sib._slNoTriggerBeforeTime = curBar.t;
+                        sib._slNoTriggerBeforeTick = Infinity;
+                    }
                 }
                 console.log(`✅ SL set to ${newPrice.toFixed(5)} for order #${order.id}`);
                 self.showNotification(`SL set to ${self.formatPrice(newPrice)} for #${order.id}`, 'success');
@@ -20060,6 +20092,20 @@ class OrderManager {
 
             target.price = newPrice;
             const curBar = self.getCurrentCandle();
+            // Sync price + guard across all split group siblings
+            const siblings = order.isSplitEntry && order.splitGroupId
+                ? self._getSplitGroupOpenPositions(order) : [order];
+            const tgtIdx = order.tpTargets ? order.tpTargets.indexOf(target) : -1;
+            for (const sib of siblings) {
+                if (sib === order) continue;
+                if (sib.tpTargets && tgtIdx >= 0 && sib.tpTargets[tgtIdx]) {
+                    sib.tpTargets[tgtIdx].price = newPrice;
+                    if (curBar) {
+                        sib.tpTargets[tgtIdx]._noTriggerBeforeTime = curBar.t;
+                        sib.tpTargets[tgtIdx]._noTriggerBeforeTick = Infinity;
+                    }
+                }
+            }
             if (curBar) {
                 target._noTriggerBeforeTime = curBar.t;
                 target._noTriggerBeforeTick = Infinity;
