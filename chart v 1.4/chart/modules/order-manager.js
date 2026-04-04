@@ -1383,6 +1383,9 @@ class OrderManager {
         } catch (e) { /* ignore */ }
 
         this._lastSyncedPipSymbol = ticker;
+
+        // Update order panel inputs whenever the instrument precision changes
+        requestAnimationFrame(() => this._applyPrecisionToInputs());
     }
 
     _syncPipFromActiveSymbolIfNeeded() {
@@ -8077,6 +8080,65 @@ class OrderManager {
         return this.symbolPrecision || 5;
     }
 
+    /**
+     * Apply the current pair's price precision to every price input in the order panel.
+     * Sets `step`, `max`/`min` decimals, and enforces clamping on `change`.
+     */
+    _applyPrecisionToInputs() {
+        const prec = this.getPricePrecision();
+        const step = Math.pow(10, -prec).toFixed(prec);
+
+        const priceInputIds = ['orderEntryPrice', 'slPrice', 'tpPrice'];
+        for (const id of priceInputIds) {
+            const el = document.getElementById(id);
+            if (!el) continue;
+            el.setAttribute('step', step);
+            // Clamp decimal count on blur
+            el._precHandler = el._precHandler || (() => {
+                const v = parseFloat(el.value);
+                if (Number.isFinite(v)) el.value = v.toFixed(this.getPricePrecision());
+            });
+            el.removeEventListener('change', el._precHandler);
+            el.addEventListener('change', el._precHandler);
+            el.removeEventListener('blur', el._precHandler);
+            el.addEventListener('blur', el._precHandler);
+        }
+
+        // Also apply to multi-TP target inputs (rendered dynamically)
+        if (this.tpTargets) {
+            for (const target of this.tpTargets) {
+                const el = document.getElementById(`tpTarget${target.id}Price`);
+                if (!el) continue;
+                el.setAttribute('step', step);
+                el._precHandler = el._precHandler || (() => {
+                    const v = parseFloat(el.value);
+                    if (Number.isFinite(v) && v > 0) el.value = v.toFixed(this.getPricePrecision());
+                });
+                el.removeEventListener('change', el._precHandler);
+                el.addEventListener('change', el._precHandler);
+                el.removeEventListener('blur', el._precHandler);
+                el.addEventListener('blur', el._precHandler);
+            }
+        }
+
+        // Multi-entry level inputs
+        if (this.multiEntryLevels) {
+            for (const level of this.multiEntryLevels) {
+                const el = document.getElementById(`multiEntryPrice_${level.id}`);
+                if (!el) continue;
+                el.setAttribute('step', step);
+                el._precHandler = el._precHandler || (() => {
+                    const v = parseFloat(el.value);
+                    if (Number.isFinite(v) && v > 0) el.value = v.toFixed(this.getPricePrecision());
+                });
+                el.removeEventListener('change', el._precHandler);
+                el.addEventListener('change', el._precHandler);
+                el.removeEventListener('blur', el._precHandler);
+                el.addEventListener('blur', el._precHandler);
+            }
+        }
+    }
+
     formatPrice(value, precision) {
         // Ensure precision is a valid number
         if (precision === undefined || precision === null) {
@@ -8822,6 +8884,7 @@ class OrderManager {
             this.updatePlaceButtonText();
             this._updateBreakevenSummary();
             this._updateTrailingSummary();
+            this._applyPrecisionToInputs();
 
             requestAnimationFrame(() => {
                 this.updatePreviewLines();
@@ -11243,6 +11306,9 @@ class OrderManager {
         const list = document.getElementById('multipleTPList');
         if (!list || !this.tpTargets) return;
 
+        const prec = this.getPricePrecision();
+        const stepVal = Math.pow(10, -prec).toFixed(prec);
+
         const entryPrice = this._getReferenceEntryForOrderMath();
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         const slEnabled = document.getElementById('enableSL')?.checked;
@@ -11283,7 +11349,7 @@ class OrderManager {
 
             return `<div class="order-tp-multi__row">
                 <div class="order-tp-multi__row-price">
-                    <input type="number" id="tpTarget${target.id}Price" value="${target.price}" step="0.00001" placeholder="0">
+                    <input type="number" id="tpTarget${target.id}Price" value="${target.price > 0 ? target.price.toFixed(prec) : ''}" step="${stepVal}" placeholder="0">
                 </div>
                 <div class="order-tp-multi__row-rr">
                     <input type="text" value="${rr}" readonly tabindex="-1" style="color:#22c55e;text-align:center;cursor:default;background:transparent;border-color:transparent;">
@@ -11322,8 +11388,21 @@ class OrderManager {
                     this.renderTPTargets();
                     this.updatePreviewLines();
                 };
+                priceInput.onblur = () => {
+                    const v = parseFloat(priceInput.value);
+                    if (Number.isFinite(v) && v > 0) {
+                        const clamped = parseFloat(v.toFixed(this.getPricePrecision()));
+                        priceInput.value = clamped.toFixed(this.getPricePrecision());
+                        target.price = clamped;
+                        this.calculateAdvancedRiskReward();
+                        this.renderTPTargets();
+                    }
+                };
             }
         });
+
+        // Ensure newly-rendered inputs have the correct step attribute
+        this._applyPrecisionToInputs();
     }
     
     /**
