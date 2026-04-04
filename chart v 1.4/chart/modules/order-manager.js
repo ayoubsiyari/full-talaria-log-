@@ -141,7 +141,7 @@ class OrderManager {
         this.splitEntriesEnabled = false; // Tracks if we have split entries active
         this.isPopulatingOrderPanel = false;
         this.tpLastSyncedEntryPrice = null;
-        this.tpDistributionMode = 'amount'; // percent, amount, or lots (synced with positionSizeMode: risk-usd)
+        this.tpDistributionMode = 'percent';
         this.slLastSyncedEntryPrice = null;
         this.pendingPreviewAlignFrame = null;
         this.pendingPreviewAlignFollowupFrame = null;
@@ -9353,31 +9353,8 @@ class OrderManager {
                     if (balToggle) balToggle.style.display = 'none';
                 }
                 
-                // Auto-switch TP distribution mode to match position sizing mode
-                let newTPMode;
-                if (mode === 'risk-usd') {
-                    newTPMode = 'amount';
-                } else if (mode === 'risk-percent') {
-                    newTPMode = 'percent';
-                } else if (mode === 'lot-size') {
-                    newTPMode = 'lots';
-                }
-                
-                // Update TP distribution mode (auto-synced with position sizing mode)
-                if (newTPMode && this.tpDistributionMode !== newTPMode) {
-                    this.tpDistributionMode = newTPMode;
-                    
-                    // Update hint text to show current mode
-                    const hint = document.getElementById('tpDistributionHint');
-                    if (hint) {
-                        if (newTPMode === 'percent') {
-                            hint.textContent = 'TPs will be evenly distributed. Each will close an equal % of position.';
-                        } else if (newTPMode === 'amount') {
-                            hint.textContent = 'TPs will be evenly distributed. Each will close an equal $ amount.';
-                        } else if (newTPMode === 'lots') {
-                            hint.textContent = 'TPs will be evenly distributed. Each will close an equal lot size.';
-                        }
-                    }
+                // TP distribution is always percent-based (equal fraction of position at each level)
+                if (false) {
                 }
                 
                 // Recalculate position size
@@ -12330,15 +12307,12 @@ class OrderManager {
                             tpInput.value = parseFloat(newPrice.toFixed(5));
                         }
                         
-                        // Update the label on the chart to show current percentage
+                        // Keep label clean — just "TPn"; the profit is shown in the info segment
                         const targetNum = lineData.targetIndex + 1;
-                        const newPercentage = self.tpTargets[lineData.targetIndex].percentage;
-                        const newLabel = `TP${targetNum} (${newPercentage.toFixed(0)}%)`;
-                        lineData.label = newLabel;
+                        lineData.label = `TP${targetNum}`;
                         
-                        // Update the label text in the badge/line
+                        // Re-render label so the profit segment updates with new price
                         if (lineData.labelGroup) {
-                            // Re-render the label with updated percentage
                             self.renderPreviewLabel(lineData, clampedY);
                             self.adjustPreviewLineForLabel(lineData);
                         }
@@ -20247,7 +20221,7 @@ class OrderManager {
                     }, 0);
                 }
                 
-                const labelText = `TP${index + 1} (${target.percentage.toFixed(0)}%)  ${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
+                const labelText = `TP${index + 1}  ${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
                 const item = createLine(target.price, 'TP', labelText, tpPnL, target.id || index, target.percentage);
                 if (item) {
                     entries.push(item);
@@ -21955,16 +21929,7 @@ class OrderManager {
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize');
                     
-                    const tpMode = target.distributionMode || 'percent';
-                    const tpOrigVal = target.originalValue != null ? target.originalValue : target.percentage;
-                    let tpLabelStr;
-                    if (tpMode === 'amount') {
-                        tpLabelStr = `TP${index + 1} ($${tpOrigVal.toFixed(0)})`;
-                    } else if (tpMode === 'lots') {
-                        tpLabelStr = `TP${index + 1} (${tpOrigVal.toFixed(2)}L)`;
-                    } else {
-                        tpLabelStr = `TP${index + 1} (${target.percentage.toFixed(0)}%)`;
-                    }
+                    const tpLabelStr = `TP${index + 1}`;
                     const tpLabelText = chart.svg.append('text')
                         .attr('class', `tp-label-text tp-${order.id} tp-target-${target.id || index}`)
                         .attr('fill', '#ffffff')
