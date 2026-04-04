@@ -12911,7 +12911,7 @@ class OrderManager {
         if (!this.chart?.scales?.yScale || !this.chart?.svg) return;
         const self = this;
         const y = this.chart.scales.yScale(entryPrice);
-        const stackOffsetX = 18; // horizontal px spread per badge
+        const stackOffsetX = 5; // horizontal px spread per badge
         const stackOffsetY = 3;  // slight downward angle per badge
 
         // Remove old multi-TP badges
