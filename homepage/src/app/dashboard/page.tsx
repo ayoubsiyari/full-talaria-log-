@@ -237,6 +237,19 @@ export default function GlobalDashboard() {
     return () => { alive = false; };
   }, [jwtFetch]);
 
+  const dailyPnl = useMemo(() => {
+    if (!equity?.equity_curve?.length) return [];
+    const map = new Map<string, number>();
+    for (const pt of equity.equity_curve) {
+      if (!pt.date) continue;
+      const d = pt.date.slice(0, 10);
+      map.set(d, (map.get(d) || 0) + pt.pnl);
+    }
+    return Array.from(map.entries())
+      .map(([date, pnl]) => ({ date, pnl: Math.round(pnl * 100) / 100 }))
+      .slice(-30);
+  }, [equity]);
+
   if (loading || !user) {
     return (
       <div className="flex items-center justify-center py-40">
@@ -261,19 +274,6 @@ export default function GlobalDashboard() {
     equity && equity.initial_balance > 0
       ? ((equity.final_balance - equity.initial_balance) / equity.initial_balance) * 100
       : null;
-
-  const dailyPnl = useMemo(() => {
-    if (!equity?.equity_curve?.length) return [];
-    const map = new Map<string, number>();
-    for (const pt of equity.equity_curve) {
-      if (!pt.date) continue;
-      const d = pt.date.slice(0, 10);
-      map.set(d, (map.get(d) || 0) + pt.pnl);
-    }
-    return Array.from(map.entries())
-      .map(([date, pnl]) => ({ date, pnl: Math.round(pnl * 100) / 100 }))
-      .slice(-30);
-  }, [equity]);
 
   const winCount = stats?.winning_trades ?? 0;
   const lossCount = stats?.losing_trades ?? 0;
