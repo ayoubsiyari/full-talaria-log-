@@ -17745,7 +17745,9 @@ class OrderManager {
                     console.log(`   📊 Checking ${position.tpTargets.length} TP targets for BUY #${position.id}`);
                     position.tpTargets.forEach((target, index) => {
                         console.log(`      Target ${index + 1}: price=${target.price.toFixed(5)}, percentage=${target.percentage}%, hit=${target.hit}, high=${high.toFixed(5)}`);
+                        if (target._noTriggerBeforeTime && currentCandle.t <= target._noTriggerBeforeTime) return;
                         if (!target.hit && high >= target.price) {
+                            target._noTriggerBeforeTime = null;
                             target.hit = true;
                             const closePercentage = target.percentage / 100;
                             const allTargetsHit = position.tpTargets.every(t => t.hit);
@@ -17768,14 +17770,18 @@ class OrderManager {
                 }
                 
                 // Check if SL or TP was hit (skip SL check if BE just triggered this candle!)
-                const skipBuySL = position.beJustTriggered || this._shouldSkipSLOnFillCandle(position, currentCandle);
+                const skipBuySL = position.beJustTriggered || this._shouldSkipSLOnFillCandle(position, currentCandle)
+                    || (position._slNoTriggerBeforeTime && currentCandle.t <= position._slNoTriggerBeforeTime);
+                const skipBuyTP = position._tpNoTriggerBeforeTime && currentCandle.t <= position._tpNoTriggerBeforeTime;
                 if (!skipBuySL) {
+                    position._slNoTriggerBeforeTime = null;
                     if (!position.tpTargets || position.tpTargets.length === 0) {
                         if (position.stopLoss && low <= position.stopLoss) {
                             const fillPx = this._gapFill(position.stopLoss, open, true, false);
                             console.log(`   🛑 STOP LOSS HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
-                        } else if (position.takeProfit && high >= position.takeProfit) {
+                        } else if (!skipBuyTP && position.takeProfit && high >= position.takeProfit) {
+                            position._tpNoTriggerBeforeTime = null;
                             const fillPx = this._gapFill(position.takeProfit, open, true, true);
                             console.log(`   🎯 TAKE PROFIT HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.takeProfit ? ' (gap fill, TP was ' + position.takeProfit.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP' });
@@ -17948,7 +17954,9 @@ class OrderManager {
                     console.log(`   📊 Checking ${position.tpTargets.length} TP targets for SELL #${position.id}`);
                     position.tpTargets.forEach((target, index) => {
                         console.log(`      Target ${index + 1}: price=${target.price.toFixed(5)}, percentage=${target.percentage}%, hit=${target.hit}, low=${low.toFixed(5)}`);
+                        if (target._noTriggerBeforeTime && currentCandle.t <= target._noTriggerBeforeTime) return;
                         if (!target.hit && low <= target.price) {
+                            target._noTriggerBeforeTime = null;
                             target.hit = true;
                             const closePercentage = target.percentage / 100;
                             const allTargetsHit = position.tpTargets.every(t => t.hit);
@@ -17971,14 +17979,18 @@ class OrderManager {
                 }
                 
                 // Check if SL or TP was hit (skip SL check if BE just triggered this candle!)
-                const skipSellSL = position.beJustTriggered || this._shouldSkipSLOnFillCandle(position, currentCandle);
+                const skipSellSL = position.beJustTriggered || this._shouldSkipSLOnFillCandle(position, currentCandle)
+                    || (position._slNoTriggerBeforeTime && currentCandle.t <= position._slNoTriggerBeforeTime);
+                const skipSellTP = position._tpNoTriggerBeforeTime && currentCandle.t <= position._tpNoTriggerBeforeTime;
                 if (!skipSellSL) {
+                    position._slNoTriggerBeforeTime = null;
                     if (!position.tpTargets || position.tpTargets.length === 0) {
                         if (position.stopLoss && high >= position.stopLoss) {
                             const fillPx = this._gapFill(position.stopLoss, open, false, false);
                             console.log(`   🛑 STOP LOSS HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
-                        } else if (position.takeProfit && low <= position.takeProfit) {
+                        } else if (!skipSellTP && position.takeProfit && low <= position.takeProfit) {
+                            position._tpNoTriggerBeforeTime = null;
                             const fillPx = this._gapFill(position.takeProfit, open, false, true);
                             console.log(`   🎯 TAKE PROFIT HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.takeProfit ? ' (gap fill, TP was ' + position.takeProfit.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP' });
@@ -18911,8 +18923,12 @@ class OrderManager {
                     order.openPrice = newPrice;
                 } else if (lineType === 'sl') {
                     order.stopLoss = newPrice;
+                    const curBar = self.getCurrentCandle();
+                    if (curBar) order._slNoTriggerBeforeTime = curBar.t;
                 } else if (lineType === 'tp') {
                     order.takeProfit = newPrice;
+                    const curBar = self.getCurrentCandle();
+                    if (curBar) order._tpNoTriggerBeforeTime = curBar.t;
                 } else if (lineType === 'be') {
                     // BE line is read-only (calculated from entry/SL)
                     return;
@@ -19429,12 +19445,15 @@ class OrderManager {
                 if (!isBuy && newPrice <= order.openPrice) return;
             }
 
+            const curBar = self.getCurrentCandle();
             if (dragType === 'tp') {
                 order.takeProfit = newPrice;
+                if (curBar) order._tpNoTriggerBeforeTime = curBar.t;
                 console.log(`✅ TP set to ${newPrice.toFixed(5)} for order #${order.id}`);
                 self.showNotification(`TP set to ${self.formatPrice(newPrice)} for #${order.id}`, 'success');
             } else {
                 order.stopLoss = newPrice;
+                if (curBar) order._slNoTriggerBeforeTime = curBar.t;
                 console.log(`✅ SL set to ${newPrice.toFixed(5)} for order #${order.id}`);
                 self.showNotification(`SL set to ${self.formatPrice(newPrice)} for #${order.id}`, 'success');
             }
@@ -19640,6 +19659,8 @@ class OrderManager {
             if (!isBuy && newPrice >= order.openPrice) return;
 
             target.price = newPrice;
+            const curBar = self.getCurrentCandle();
+            if (curBar) target._noTriggerBeforeTime = curBar.t;
             console.log(`✅ TP${targetNum} set to ${newPrice.toFixed(5)} for order #${order.id}`);
             self.showNotification(`TP${targetNum} set to ${self.formatPrice(newPrice)} for #${order.id}`, 'success');
 
