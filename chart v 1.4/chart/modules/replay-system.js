@@ -1578,6 +1578,13 @@ class ReplaySystem {
         if (this.isPlaying) {
             this.stop();
         }
+
+        // Clear stale animation state so the price line snaps to the
+        // current bar's close instead of showing a mid-tick price.
+        this._savedTickState = null;
+        this.animatingCandle = null;
+        this.tickProgress = 0;
+        this.tickElapsedMs = 0;
         
         // Keep replay active, just enter pick mode to select earlier point
         this.isPickingPoint = true;
@@ -1817,30 +1824,24 @@ class ReplaySystem {
             this.chart.orderManager.forceCloseAllOrders();
         }
 
-        // Brief delay for visual feedback then update
+        // Kill all animation state and update currentIndex NOW so any
+        // intermediate renders during the delay show the correct price line.
+        this.isPlaying = false;
+        this._savedTickState = null;
+        this.animatingCandle = null;
+        this.tickProgress = 0;
+        this.tickElapsedMs = 0;
+        this.currentIndex = newRawIndex;
+
+        const rawBar = this.fullRawData[newRawIndex];
+        if (rawBar && Number.isFinite(rawBar.t)) {
+            this.replayTimestamp = rawBar.t;
+        }
+
+        // Brief delay for visual feedback then update chart data
         setTimeout(() => {
-            // Exit go back mode
             this.exitGoBackMode();
-
-            // Stop playback and clear stale animation state so the price line
-            // snaps to the new position instead of staying at the old close.
-            this.isPlaying = false;
-            this.animatingCandle = null;
-            this.tickProgress = 0;
-            this.tickElapsedMs = 0;
-            
-            this.currentIndex = newRawIndex;
-
-            // Sync the virtual replay timestamp to the new bar
-            const rawBar = this.fullRawData[newRawIndex];
-            if (rawBar && Number.isFinite(rawBar.t)) {
-                this.replayTimestamp = rawBar.t;
-            }
-            
-            // Update chart data with smooth transition
             this.updateChartData();
-            
-            // Update time display
             this.updateTimeDisplay();
         }, 150);
     }
