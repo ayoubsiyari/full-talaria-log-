@@ -1045,6 +1045,29 @@ class OrderManager {
         }
     }
 
+    _getCurrentTickSnapshot() {
+        const rs = this.replaySystem;
+        if (!rs || !rs.isActive) return { t: null, tick: -1 };
+        const anim = rs.animatingCandle;
+        if (anim) {
+            return { t: Number(anim.t), tick: Number(rs.tickProgress) || 0 };
+        }
+        const curBar = this.getCurrentCandle();
+        return { t: curBar ? Number(curBar.t) : null, tick: -1 };
+    }
+
+    _isNoTriggerGuardActive(guardTime, guardTick, candle) {
+        if (!guardTime) return false;
+        const candleT = Number(candle.t);
+        if (candleT < guardTime) return true;
+        if (candleT > guardTime) return false;
+        const rs = this.replaySystem;
+        if (rs && rs.animatingCandle && Number(rs.animatingCandle.t) === guardTime && guardTick >= 0) {
+            return (Number(rs.tickProgress) || 0) <= guardTick;
+        }
+        return true;
+    }
+
     _getPositionPipSize(position) {
         const raw = position?.instrument_settings?.pip_size ?? position?.instrument_settings?.pipSize ?? this.pipSize;
         const value = Number.parseFloat(raw);
@@ -16056,6 +16079,7 @@ class OrderManager {
             tpTargets: tpTargets,
             placedTime: timestamp,
             _noFillBeforeTime: timestamp,
+            _noFillBeforeTick: this._getCurrentTickSnapshot().tick,
             status: 'PENDING',
             sizingMode: this.positionSizeMode || 'risk-usd',
             // Store scaling intent for when order executes
@@ -17280,9 +17304,9 @@ class OrderManager {
                 return;
             }
 
-            // Don't fill on the candle that was current when the order was
-            // placed or last dragged — only new price action should trigger it.
-            if (pendingOrder._noFillBeforeTime && touchCandle.t <= pendingOrder._noFillBeforeTime) {
+            // Don't fill on price action that already happened when the order was
+            // placed or last dragged — only new ticks should trigger it.
+            if (this._isNoTriggerGuardActive(pendingOrder._noFillBeforeTime, pendingOrder._noFillBeforeTick, touchCandle)) {
                 return;
             }
 
@@ -17726,9 +17750,10 @@ class OrderManager {
                     console.log(`   📊 Checking ${position.tpTargets.length} TP targets for BUY #${position.id}`);
                     position.tpTargets.forEach((target, index) => {
                         console.log(`      Target ${index + 1}: price=${target.price.toFixed(5)}, percentage=${target.percentage}%, hit=${target.hit}, high=${high.toFixed(5)}`);
-                        if (target._noTriggerBeforeTime && currentCandle.t <= target._noTriggerBeforeTime) return;
+                        if (this._isNoTriggerGuardActive(target._noTriggerBeforeTime, target._noTriggerBeforeTick, currentCandle)) return;
                         if (!target.hit && high >= target.price) {
                             target._noTriggerBeforeTime = null;
+                            target._noTriggerBeforeTick = undefined;
                             target.hit = true;
                             const closePercentage = target.percentage / 100;
                             const allTargetsHit = position.tpTargets.every(t => t.hit);
@@ -17752,10 +17777,11 @@ class OrderManager {
                 
                 // Check if SL or TP was hit (skip SL check if BE just triggered this candle!)
                 const skipBuySL = position.beJustTriggered || this._shouldSkipSLOnFillCandle(position, currentCandle)
-                    || (position._slNoTriggerBeforeTime && currentCandle.t <= position._slNoTriggerBeforeTime);
-                const skipBuyTP = position._tpNoTriggerBeforeTime && currentCandle.t <= position._tpNoTriggerBeforeTime;
+                    || this._isNoTriggerGuardActive(position._slNoTriggerBeforeTime, position._slNoTriggerBeforeTick, currentCandle);
+                const skipBuyTP = this._isNoTriggerGuardActive(position._tpNoTriggerBeforeTime, position._tpNoTriggerBeforeTick, currentCandle);
                 if (!skipBuySL) {
                     position._slNoTriggerBeforeTime = null;
+                    position._slNoTriggerBeforeTick = undefined;
                     if (!position.tpTargets || position.tpTargets.length === 0) {
                         if (position.stopLoss && low <= position.stopLoss) {
                             const fillPx = this._gapFill(position.stopLoss, open, true, false);
@@ -17763,6 +17789,7 @@ class OrderManager {
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
                         } else if (!skipBuyTP && position.takeProfit && high >= position.takeProfit) {
                             position._tpNoTriggerBeforeTime = null;
+                            position._tpNoTriggerBeforeTick = undefined;
                             const fillPx = this._gapFill(position.takeProfit, open, true, true);
                             console.log(`   🎯 TAKE PROFIT HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.takeProfit ? ' (gap fill, TP was ' + position.takeProfit.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP' });
@@ -17935,9 +17962,10 @@ class OrderManager {
                     console.log(`   📊 Checking ${position.tpTargets.length} TP targets for SELL #${position.id}`);
                     position.tpTargets.forEach((target, index) => {
                         console.log(`      Target ${index + 1}: price=${target.price.toFixed(5)}, percentage=${target.percentage}%, hit=${target.hit}, low=${low.toFixed(5)}`);
-                        if (target._noTriggerBeforeTime && currentCandle.t <= target._noTriggerBeforeTime) return;
+                        if (this._isNoTriggerGuardActive(target._noTriggerBeforeTime, target._noTriggerBeforeTick, currentCandle)) return;
                         if (!target.hit && low <= target.price) {
                             target._noTriggerBeforeTime = null;
+                            target._noTriggerBeforeTick = undefined;
                             target.hit = true;
                             const closePercentage = target.percentage / 100;
                             const allTargetsHit = position.tpTargets.every(t => t.hit);
@@ -17961,10 +17989,11 @@ class OrderManager {
                 
                 // Check if SL or TP was hit (skip SL check if BE just triggered this candle!)
                 const skipSellSL = position.beJustTriggered || this._shouldSkipSLOnFillCandle(position, currentCandle)
-                    || (position._slNoTriggerBeforeTime && currentCandle.t <= position._slNoTriggerBeforeTime);
-                const skipSellTP = position._tpNoTriggerBeforeTime && currentCandle.t <= position._tpNoTriggerBeforeTime;
+                    || this._isNoTriggerGuardActive(position._slNoTriggerBeforeTime, position._slNoTriggerBeforeTick, currentCandle);
+                const skipSellTP = this._isNoTriggerGuardActive(position._tpNoTriggerBeforeTime, position._tpNoTriggerBeforeTick, currentCandle);
                 if (!skipSellSL) {
                     position._slNoTriggerBeforeTime = null;
+                    position._slNoTriggerBeforeTick = undefined;
                     if (!position.tpTargets || position.tpTargets.length === 0) {
                         if (position.stopLoss && high >= position.stopLoss) {
                             const fillPx = this._gapFill(position.stopLoss, open, false, false);
@@ -17972,6 +18001,7 @@ class OrderManager {
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
                         } else if (!skipSellTP && position.takeProfit && low <= position.takeProfit) {
                             position._tpNoTriggerBeforeTime = null;
+                            position._tpNoTriggerBeforeTick = undefined;
                             const fillPx = this._gapFill(position.takeProfit, open, false, true);
                             console.log(`   🎯 TAKE PROFIT HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.takeProfit ? ' (gap fill, TP was ' + position.takeProfit.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP' });
@@ -18905,11 +18935,19 @@ class OrderManager {
                 } else if (lineType === 'sl') {
                     order.stopLoss = newPrice;
                     const curBar = self.getCurrentCandle();
-                    if (curBar) order._slNoTriggerBeforeTime = curBar.t;
+                    if (curBar) {
+                        const snap = self._getCurrentTickSnapshot();
+                        order._slNoTriggerBeforeTime = curBar.t;
+                        order._slNoTriggerBeforeTick = snap.tick;
+                    }
                 } else if (lineType === 'tp') {
                     order.takeProfit = newPrice;
                     const curBar = self.getCurrentCandle();
-                    if (curBar) order._tpNoTriggerBeforeTime = curBar.t;
+                    if (curBar) {
+                        const snap = self._getCurrentTickSnapshot();
+                        order._tpNoTriggerBeforeTime = curBar.t;
+                        order._tpNoTriggerBeforeTick = snap.tick;
+                    }
                 } else if (lineType === 'be') {
                     // BE line is read-only (calculated from entry/SL)
                     return;
@@ -19427,14 +19465,21 @@ class OrderManager {
             }
 
             const curBar = self.getCurrentCandle();
+            const snap = self._getCurrentTickSnapshot();
             if (dragType === 'tp') {
                 order.takeProfit = newPrice;
-                if (curBar) order._tpNoTriggerBeforeTime = curBar.t;
+                if (curBar) {
+                    order._tpNoTriggerBeforeTime = curBar.t;
+                    order._tpNoTriggerBeforeTick = snap.tick;
+                }
                 console.log(`✅ TP set to ${newPrice.toFixed(5)} for order #${order.id}`);
                 self.showNotification(`TP set to ${self.formatPrice(newPrice)} for #${order.id}`, 'success');
             } else {
                 order.stopLoss = newPrice;
-                if (curBar) order._slNoTriggerBeforeTime = curBar.t;
+                if (curBar) {
+                    order._slNoTriggerBeforeTime = curBar.t;
+                    order._slNoTriggerBeforeTick = snap.tick;
+                }
                 console.log(`✅ SL set to ${newPrice.toFixed(5)} for order #${order.id}`);
                 self.showNotification(`SL set to ${self.formatPrice(newPrice)} for #${order.id}`, 'success');
             }
@@ -19641,7 +19686,11 @@ class OrderManager {
 
             target.price = newPrice;
             const curBar = self.getCurrentCandle();
-            if (curBar) target._noTriggerBeforeTime = curBar.t;
+            if (curBar) {
+                const snap = self._getCurrentTickSnapshot();
+                target._noTriggerBeforeTime = curBar.t;
+                target._noTriggerBeforeTick = snap.tick;
+            }
             console.log(`✅ TP${targetNum} set to ${newPrice.toFixed(5)} for order #${order.id}`);
             self.showNotification(`TP${targetNum} set to ${self.formatPrice(newPrice)} for #${order.id}`, 'success');
 
@@ -20547,10 +20596,13 @@ class OrderManager {
 
                 pendingOrder.entryPrice = newPrice;
 
-                // Record current candle so the order won't fill on a candle
-                // whose range already contained the old/new price.
+                // Record current candle + tick so the order won't fill on price
+                // action that already happened, but WILL fill on new ticks.
                 const curBar = self.getCurrentCandle();
-                if (curBar) pendingOrder._noFillBeforeTime = curBar.t;
+                if (curBar) {
+                    pendingOrder._noFillBeforeTime = curBar.t;
+                    pendingOrder._noFillBeforeTick = self._getCurrentTickSnapshot().tick;
+                }
 
                 const finalY = chart.scales.yScale(newPrice);
 
