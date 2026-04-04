@@ -17178,6 +17178,8 @@ class OrderManager {
                 this.removeSLTPLines(orderId);
                 this.removeMultiTPAvgLine(orderId);
                 this.removeEntryMarker(orderId);
+                this.removeMfeMaeMarkers(orderId);
+                this._cleanupOrphanedYAxisHighlights();
                 // Force a chart redraw to ensure lines are visually removed
                 if (this.chart && this.chart.render) {
                     this.chart.render();
@@ -17306,9 +17308,11 @@ class OrderManager {
         this.removeOrderLine(orderId);
         this.removeSLTPLines(orderId);
         this.removeMultiTPAvgLine(orderId);
+        this.removeMfeMaeMarkers(orderId);
         if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
             this.removeSplitGroupAvgLine(position.splitGroupId);
         }
+        this._cleanupOrphanedYAxisHighlights();
         
         // Clean up any preview lines that might be lingering
         this.removePreviewLines();
@@ -18495,6 +18499,9 @@ class OrderManager {
                     if (hitLine.priceBox) hitLine.priceBox.remove();
                     if (hitLine.priceText) hitLine.priceText.remove();
                     if (hitLine.closeBtn) hitLine.closeBtn.remove();
+                    if (hitLine.deleteBtn) hitLine.deleteBtn.remove();
+                    if (hitLine.tpPlusBadge) hitLine.tpPlusBadge.remove();
+                    if (hitLine.yAxisHighlight) hitLine.yAxisHighlight.remove();
                     
                     // Remove from array
                     this.tpLines = this.tpLines.filter(tpLine => !(tpLine.orderId === orderId && tpLine.targetId === targetId));
@@ -18650,9 +18657,11 @@ class OrderManager {
                 this.removeSLTPLines(orderId);
                 this.removeMultiTPAvgLine(orderId);
                 this.removeEntryMarker(orderId);
+                this.removeMfeMaeMarkers(orderId);
                 if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
                     this.removeSplitGroupAvgLine(position.splitGroupId);
                 }
+                this._cleanupOrphanedYAxisHighlights();
                 this.updatePositionsPanel();
                 return;
             }
@@ -18983,6 +18992,8 @@ class OrderManager {
                 this.removeSLTPLines(orderId);
                 this.removeMultiTPAvgLine(orderId);
                 this.removeEntryMarker(orderId);
+                this.removeMfeMaeMarkers(orderId);
+                this._cleanupOrphanedYAxisHighlights();
                 if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
                     this.removeSplitGroupAvgLine(position.splitGroupId);
                 }
@@ -19074,9 +19085,11 @@ class OrderManager {
             this.removeOrderLine(orderId);
             this.removeSLTPLines(orderId);
             this.removeMultiTPAvgLine(orderId);
+            this.removeMfeMaeMarkers(orderId);
             if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
                 this.removeSplitGroupAvgLine(position.splitGroupId);
             }
+            this._cleanupOrphanedYAxisHighlights();
         }
         
         // Clean up any preview lines that might be lingering
@@ -22281,6 +22294,7 @@ class OrderManager {
                 if (lineData.priceText) lineData.priceText.remove();
                 if (lineData.closeBtn) lineData.closeBtn.remove();
                 if (lineData.entryPlusBadge) lineData.entryPlusBadge.remove();
+                if (lineData.yAxisHighlight) lineData.yAxisHighlight.remove();
             } catch (e) {
                 console.error('Error removing lineData elements:', e);
             }
@@ -23478,6 +23492,7 @@ class OrderManager {
             if (orderLine.tpBadge) orderLine.tpBadge.remove();
             if (orderLine.tpBadgesContainer) orderLine.tpBadgesContainer.remove();
             if (orderLine.entryPlusBadge) orderLine.entryPlusBadge.remove();
+            if (orderLine.yAxisHighlight) orderLine.yAxisHighlight.remove();
         });
         
         // Remove from array
@@ -24127,6 +24142,7 @@ class OrderManager {
                     if (slLine.closeBtn) slLine.closeBtn.remove();
                     if (slLine.priceBox) slLine.priceBox.remove();
                     if (slLine.priceText) slLine.priceText.remove();
+                    if (slLine.yAxisHighlight) slLine.yAxisHighlight.remove();
                 });
                 this.slLines = this.slLines.filter((sl) => sl.orderId !== orderId);
             }
@@ -24148,6 +24164,7 @@ class OrderManager {
                     if (tpLine.priceText) tpLine.priceText.remove();
                     if (tpLine.deleteBtn) tpLine.deleteBtn.remove();
                     if (tpLine.tpPlusBadge) tpLine.tpPlusBadge.remove();
+                    if (tpLine.yAxisHighlight) tpLine.yAxisHighlight.remove();
                 });
                 this.tpLines = this.tpLines.filter(tp => tp.orderId !== orderId);
             }
@@ -24164,12 +24181,53 @@ class OrderManager {
                     if (beLine.labelText) beLine.labelText.remove();
                     if (beLine.priceBox) beLine.priceBox.remove();
                     if (beLine.priceText) beLine.priceText.remove();
+                    if (beLine.yAxisHighlight) beLine.yAxisHighlight.remove();
                 });
                 this.beLines = this.beLines.filter((be) => be.orderId !== orderId);
             }
         }
         
         console.log(`✅ All SL/TP/BE lines removed for order #${orderId}`);
+    }
+
+    /**
+     * Remove MFE/MAE arrow markers for a specific order.
+     */
+    removeMfeMaeMarkers(orderId) {
+        if (!this.mfeMaeMarkers || !this.mfeMaeMarkers.length) return;
+        const toRemove = this.mfeMaeMarkers.filter(m => m.orderId === orderId);
+        toRemove.forEach(m => {
+            if (m.arrow) m.arrow.remove();
+            if (m.label) m.label.remove();
+        });
+        if (toRemove.length) {
+            this.mfeMaeMarkers = this.mfeMaeMarkers.filter(m => m.orderId !== orderId);
+        }
+    }
+
+    /**
+     * Remove any Y-axis price highlights that no longer have a corresponding
+     * open/pending position.  Called after individual line removal to sweep up
+     * orphaned highlights that updateSLTPLines/updateOrderLines would normally
+     * repaint but won't if no lines remain.
+     */
+    _cleanupOrphanedYAxisHighlights() {
+        const charts = typeof this._collectLayoutCharts === 'function'
+            ? this._collectLayoutCharts() : (this.chart ? [this.chart] : []);
+        const hasOpenSL = (this.slLines || []).length > 0;
+        const hasOpenTP = (this.tpLines || []).length > 0;
+        const hasOpenBE = (this.beLines || []).length > 0;
+        const hasActiveEntry = (this.orderLines || []).some(ol => !ol.isPending);
+        const hasPendingEntry = (this.orderLines || []).some(ol => ol.isPending);
+
+        charts.forEach(ch => {
+            if (!ch?.svg) return;
+            if (!hasOpenSL) ch.svg.selectAll('.y-axis-sl-highlight').remove();
+            if (!hasOpenTP) ch.svg.selectAll('.y-axis-tp-highlight').remove();
+            if (!hasOpenBE) ch.svg.selectAll('.y-axis-be-highlight').remove();
+            if (!hasActiveEntry) ch.svg.selectAll('.y-axis-entry-highlight').remove();
+            if (!hasPendingEntry) ch.svg.selectAll('.y-axis-pending-highlight').remove();
+        });
     }
     
     /**
@@ -24438,6 +24496,8 @@ class OrderManager {
         const tpForChart = (this.tpLines || []).filter((tp) => (tp.chart || this.chart) === ch);
 
         if (slForChart.length === 0 && tpForChart.length === 0) {
+            ch.svg.selectAll('.y-axis-sl-highlight').remove();
+            ch.svg.selectAll('.y-axis-tp-highlight').remove();
             return;
         }
 
