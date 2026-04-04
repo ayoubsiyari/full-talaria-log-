@@ -353,7 +353,7 @@ class OrderManager {
     _stripOrderDrawingLayersFromChart(chart) {
         if (!chart?.svg?.selectAll) return;
         const s = chart.svg;
-        s.selectAll('.order-line,.order-drag-hit,.order-label-box,.order-label-text,.order-arrow,.order-price-box,.order-price-text,.order-close-btn,.order-pnl-box,.order-pnl-text,.order-sl-badge,.order-tp-badge').remove();
+        s.selectAll('.order-line,.order-drag-hit,.order-label-box,.order-label-text,.order-arrow,.order-price-box,.order-price-text,.order-close-btn,.order-pnl-box,.order-pnl-text,.order-sl-badge,.order-tp-badge,.order-tp-badges').remove();
         s.selectAll('.pending-order-line,.pending-order-label-box,.pending-order-label-text,.pending-order-price-box,.pending-order-price-text,.pending-order-close-btn').remove();
         s.selectAll('.pending-tp-line,.pending-sl-line,.pending-be-line,.pending-tp-label,.pending-sl-label,.pending-be-label').remove();
         s.selectAll('.sl-line,.sl-label-box,.sl-label-text,.sl-pnl-box,.sl-pnl-text,.sl-close-btn,.sl-price-box,.sl-price-text').remove();
@@ -19299,6 +19299,209 @@ class OrderManager {
     }
 
     /**
+     * Render stacked multi-TP badges inside the container group.
+     * Each unset target gets its own badge; badges stack with a slight
+     * offset so the user sees depth (like layered cards).
+     * Returns the total width consumed by the badge stack.
+     */
+    _renderMultiTPBadges(olEntry, order, containerG, targets, y, chart) {
+        const bW = 28, bH = 16, bR = 3, stackOffset = 5;
+        const fontSize = '9px';
+        const self = this;
+
+        // Determine which targets still need badges (no price set, not hit)
+        const unsetTargets = targets.filter(t => !(t.price > 0) || t.hit);
+        // Also include set-but-not-hit targets so user can see them
+        const allActiveTargets = targets.filter(t => !t.hit);
+
+        // Only rebuild if the target signature changed
+        const sig = allActiveTargets.map(t => `${t.id}:${t.price > 0 ? 1 : 0}`).join(',');
+        if (olEntry._tpBadgeSig === sig) {
+            return olEntry._tpBadgesTotalW || 0;
+        }
+        olEntry._tpBadgeSig = sig;
+
+        // Clear previous badges
+        containerG.selectAll('*').remove();
+
+        if (allActiveTargets.length === 0) {
+            containerG.style('display', 'none');
+            olEntry._tpBadgesTotalW = 0;
+            return 0;
+        }
+
+        containerG.style('display', null);
+
+        // Render back-to-front so the first target is on top (last drawn = on top in SVG)
+        const totalW = bW + stackOffset * (allActiveTargets.length - 1);
+
+        for (let i = allActiveTargets.length - 1; i >= 0; i--) {
+            const target = allActiveTargets[i];
+            const targetNum = targets.indexOf(target) + 1;
+            const isSet = target.price > 0;
+            const ox = stackOffset * i;
+            const oy = 0;
+
+            const g = containerG.append('g')
+                .attr('transform', `translate(${ox}, ${oy})`)
+                .attr('pointer-events', 'all')
+                .style('cursor', 'ns-resize');
+
+            g.append('rect')
+                .attr('width', bW).attr('height', bH).attr('rx', bR)
+                .attr('fill', isSet ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.10)')
+                .attr('stroke', '#22c55e')
+                .attr('stroke-width', 1)
+                .attr('stroke-dasharray', isSet ? null : '3 2')
+                .style('pointer-events', 'all');
+
+            g.append('text')
+                .attr('x', bW / 2).attr('y', bH / 2)
+                .attr('fill', '#22c55e')
+                .attr('font-size', fontSize).attr('font-weight', '700')
+                .attr('dy', '0.35em').attr('text-anchor', 'middle')
+                .attr('opacity', isSet ? 1 : 0.7)
+                .style('pointer-events', 'none')
+                .text(`TP${targetNum}`);
+
+            // Hover effect
+            g.on('mouseenter', function() {
+                d3.select(this).select('rect')
+                    .attr('fill', 'rgba(34,197,94,0.4)')
+                    .attr('stroke-dasharray', null);
+                d3.select(this).select('text').attr('opacity', 1);
+            }).on('mouseleave', function() {
+                d3.select(this).select('rect')
+                    .attr('fill', isSet ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.10)')
+                    .attr('stroke-dasharray', isSet ? null : '3 2');
+                d3.select(this).select('text').attr('opacity', isSet ? 1 : 0.7);
+            });
+
+            // Per-badge drag handler (only for unset targets)
+            if (!isSet) {
+                this._setupBadgeDragForTPTarget(order, g, target, chart);
+            }
+        }
+
+        olEntry._tpBadgesTotalW = totalW;
+        return totalW;
+    }
+
+    /**
+     * Drag handler for an individual multi-TP badge.
+     * Dragging creates a preview TP line; releasing sets that target's price.
+     */
+    _setupBadgeDragForTPTarget(order, badgeGroup, target, chart) {
+        const self = this;
+        const ctx = chart || this.chart;
+        const isBuy = order.type === 'BUY';
+        let isDragging = false;
+        let previewLine = null, previewLabelBg = null, previewLabel = null;
+        let previewPnlBg = null, previewPnlText = null;
+        const color = '#22c55e';
+        const targetNum = (order.tpTargets || []).indexOf(target) + 1;
+
+        const onMouseDown = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            isDragging = true;
+            self._isDraggingOrderLine = true;
+
+            previewLine = ctx.svg.append('line')
+                .attr('stroke', color).attr('stroke-width', 1.5)
+                .attr('stroke-dasharray', '6 3').attr('opacity', 0.9)
+                .attr('x1', 0).attr('x2', ctx.w - (ctx.margin?.r || 70))
+                .style('pointer-events', 'none');
+            previewLabelBg = ctx.svg.append('rect')
+                .attr('fill', color).attr('rx', 3).attr('height', 20)
+                .style('pointer-events', 'none');
+            previewLabel = ctx.svg.append('text')
+                .attr('fill', '#fff').attr('font-size', '11px').attr('font-weight', '700')
+                .attr('dy', '0.35em').style('pointer-events', 'none');
+            previewPnlBg = ctx.svg.append('rect')
+                .attr('fill', '#0f172a').attr('stroke', color).attr('stroke-width', 1)
+                .attr('rx', 3).attr('height', 20).style('pointer-events', 'none');
+            previewPnlText = ctx.svg.append('text')
+                .attr('fill', color).attr('font-size', '11px').attr('font-weight', '700')
+                .attr('dy', '0.35em').style('pointer-events', 'none');
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        };
+
+        const onMouseMove = (e) => {
+            if (!isDragging || !ctx.scales?.yScale) return;
+            const svgRect = ctx.svg.node().getBoundingClientRect();
+            const mouseY = e.clientY - svgRect.top;
+            const newPrice = ctx.scales.yScale.invert(mouseY);
+            const precision = self.getPricePrecision();
+            const priceStr = newPrice.toFixed(precision);
+            const sym = order.ticker || order.symbol || self._getSymbol();
+            const pct = target.percentage || (100 / (order.tpTargets || []).length);
+            const shareQty = order.quantity * (pct / 100);
+            const pnl = self.estimatePnLForPriceLevel(order.type, order.openPrice, newPrice, shareQty, sym);
+            const pnlStr = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+
+            previewLine.attr('y1', mouseY).attr('y2', mouseY);
+
+            const pad = 6;
+            const rightMargin = ctx.margin?.r || 70;
+            const xRight = ctx.w - rightMargin - 4;
+            const labelFullStr = `TP${targetNum}  ${priceStr}`;
+            previewLabel.text(labelFullStr);
+            const labelW = (previewLabel.node()?.getBBox()?.width || 60) + pad * 2;
+            const pnlW = 80;
+            const totalW = labelW + 4 + pnlW;
+            const xStart = xRight - totalW;
+
+            previewLabelBg.attr('x', xStart).attr('y', mouseY - 10).attr('width', labelW);
+            previewLabel.attr('x', xStart + pad).attr('y', mouseY);
+            previewPnlBg.attr('x', xStart + labelW + 4).attr('y', mouseY - 10).attr('width', pnlW);
+            previewPnlText.text(pnlStr).attr('x', xStart + labelW + 4 + pad).attr('y', mouseY);
+        };
+
+        const onMouseUp = (e) => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            if (!isDragging) return;
+            isDragging = false;
+            self._isDraggingOrderLine = false;
+
+            if (previewLine) previewLine.remove();
+            if (previewLabelBg) previewLabelBg.remove();
+            if (previewLabel) previewLabel.remove();
+            if (previewPnlBg) previewPnlBg.remove();
+            if (previewPnlText) previewPnlText.remove();
+
+            if (!ctx.scales?.yScale) return;
+            const svgRect = ctx.svg.node().getBoundingClientRect();
+            const mouseY = e.clientY - svgRect.top;
+            const newPrice = ctx.scales.yScale.invert(mouseY);
+
+            // Validate direction
+            if (isBuy && newPrice <= order.openPrice) return;
+            if (!isBuy && newPrice >= order.openPrice) return;
+
+            target.price = newPrice;
+            console.log(`✅ TP${targetNum} set to ${newPrice.toFixed(5)} for order #${order.id}`);
+            self.showNotification(`TP${targetNum} set to ${self.formatPrice(newPrice)} for #${order.id}`, 'success');
+
+            // Force badge signature refresh
+            const olEntry = (self.orderLines || []).find(ol => ol.orderId === order.id);
+            if (olEntry) olEntry._tpBadgeSig = null;
+
+            self.removeSLTPLines(order.id);
+            self.drawSLTPLines(order);
+            self.updateSLTPLines();
+            if (typeof self.updatePositionsPanel === 'function') self.updatePositionsPanel();
+            if (ctx.render) { ctx.renderPending = true; ctx.render(); }
+        };
+
+        const node = badgeGroup.node();
+        if (node) node.addEventListener('mousedown', onMouseDown);
+    }
+
+    /**
      * Draw order line on chart
      */
     drawOrderLine(order, targetChart = null) {
@@ -19507,6 +19710,11 @@ class OrderManager {
                 d3.select(this).select('text').attr('opacity', 0.8);
             });
 
+        // Container for multi-TP stacked badges (populated dynamically in updateOrderLines)
+        const tpBadgesContainer = chart.svg.append('g')
+            .attr('class', `order-tp-badges order-${order.id}`)
+            .style('display', 'none');
+
         this._setupEntryDragToCreateTPSL(order, line, labelBox, chart,
             [dragHitLine, labelText, arrow, priceBox, priceText, slBadgeGroup, tpBadgeGroup]);
 
@@ -19524,6 +19732,8 @@ class OrderManager {
             pnlText,
             slBadge: slBadgeGroup,
             tpBadge: tpBadgeGroup,
+            tpBadgesContainer,
+            _tpBadgeTargetCount: 0,
             chart
         });
 
@@ -19907,50 +20117,68 @@ class OrderManager {
                 ml.labelText?.attr('x', labelBoxX + pad).attr('y', oy + 4);
                 ml.arrow?.attr('x', labelBoxX + pad + (ml.labelText?.node()?.getBBox()?.width || 0) + 4).attr('y', oy + 4);
 
+                let memberCx = labelBoxX + lbw + gap;
                 if (!isPending && ml.pnlBox && ml.pnlText && actualPbw > 0) {
-                    const pnlX = labelBoxX + lbw + gap;
                     ml.pnlBox
-                        .attr('x', pnlX)
+                        .attr('x', memberCx)
                         .attr('y', boxY)
                         .attr('width', actualPbw)
                         .attr('height', boxH)
                         .style('display', null);
                     ml.pnlText
-                        .attr('x', pnlX + pad)
+                        .attr('x', memberCx + pad)
                         .attr('y', oy + 4)
                         .attr('text-anchor', 'start')
                         .style('display', null);
+                    memberCx += actualPbw + gap;
                 }
 
-                // SL/TP re-add badges for split-group members
-                if (!isPending && (ml.slBadge || ml.tpBadge)) {
+                // SL/TP re-add badges (after PnL) for split-group members
+                if (!isPending) {
                     const hasSL = od.stopLoss && od.stopLoss > 0;
-                    const hasTP = (od.takeProfit && od.takeProfit > 0) ||
-                        (od.tpTargets && od.tpTargets.some(t => t.price > 0 && !t.hit));
+                    const hasMultiTP = od.tpTargets && od.tpTargets.length > 0;
+                    const hasSingleTP = !hasMultiTP && od.takeProfit && od.takeProfit > 0;
+                    const allTPsSet = hasMultiTP && od.tpTargets.every(t => (t.price > 0) || t.hit);
                     const bH = 16, bGap2 = 3, bW = 24;
-                    let bx = labelBoxX - bGap2;
 
-                    if (ml.tpBadge) {
-                        if (hasTP) {
-                            ml.tpBadge.style('display', 'none');
-                        } else {
-                            bx -= bW;
-                            ml.tpBadge.style('display', null)
-                                .attr('transform', `translate(${bx}, ${oy - bH / 2})`);
-                            ml.tpBadge.select('rect').attr('width', bW);
-                            ml.tpBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
-                            bx -= bGap2;
-                        }
-                    }
                     if (ml.slBadge) {
                         if (hasSL) {
                             ml.slBadge.style('display', 'none');
                         } else {
-                            bx -= bW;
                             ml.slBadge.style('display', null)
-                                .attr('transform', `translate(${bx}, ${oy - bH / 2})`);
+                                .attr('transform', `translate(${memberCx}, ${oy - bH / 2})`);
                             ml.slBadge.select('rect').attr('width', bW);
                             ml.slBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
+                            memberCx += bW + bGap2;
+                        }
+                    }
+                    if (hasMultiTP) {
+                        if (ml.tpBadge) ml.tpBadge.style('display', 'none');
+                        if (ml.tpBadgesContainer) {
+                            if (allTPsSet) {
+                                ml.tpBadgesContainer.style('display', 'none');
+                            } else {
+                                const renderedW = this._renderMultiTPBadges(
+                                    ml, od, ml.tpBadgesContainer,
+                                    od.tpTargets, oy, ch
+                                );
+                                ml.tpBadgesContainer.style('display', null)
+                                    .attr('transform', `translate(${memberCx}, ${oy - bH / 2})`);
+                                memberCx += renderedW + bGap2;
+                            }
+                        }
+                    } else {
+                        if (ml.tpBadgesContainer) ml.tpBadgesContainer.style('display', 'none');
+                        if (ml.tpBadge) {
+                            if (hasSingleTP) {
+                                ml.tpBadge.style('display', 'none');
+                            } else {
+                                ml.tpBadge.style('display', null)
+                                    .attr('transform', `translate(${memberCx}, ${oy - bH / 2})`);
+                                ml.tpBadge.select('rect').attr('width', bW);
+                                ml.tpBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
+                                memberCx += bW + bGap2;
+                            }
                         }
                     }
                 }
@@ -21798,6 +22026,7 @@ class OrderManager {
             if (orderLine.pnlText) orderLine.pnlText.remove();
             if (orderLine.slBadge) orderLine.slBadge.remove();
             if (orderLine.tpBadge) orderLine.tpBadge.remove();
+            if (orderLine.tpBadgesContainer) orderLine.tpBadgesContainer.remove();
         });
         
         // Remove from array
@@ -23174,9 +23403,34 @@ class OrderManager {
                         pnlBW = pw + pad * 2;
                     }
 
+                    // Determine badge state
+                    const hasSL = !isPending && orderData.stopLoss && orderData.stopLoss > 0;
+                    const hasMultiTP = !isPending && orderData.tpTargets && orderData.tpTargets.length > 0;
+                    const hasSingleTP = !isPending && !hasMultiTP && orderData.takeProfit && orderData.takeProfit > 0;
+                    const allTPsSet = hasMultiTP && orderData.tpTargets.every(t => (t.price > 0) || t.hit);
+
+                    const bW = 24, bGap2 = 3, bH = 16;
+
+                    // Calculate multi-TP badge width (stacked)
+                    let multiTPBadgesW = 0;
+                    if (hasMultiTP && !allTPsSet && olEntry.tpBadgesContainer) {
+                        const stackOffset = 5, singleBadgeW = 28;
+                        const activeTargets = orderData.tpTargets.filter(t => !t.hit);
+                        multiTPBadgesW = activeTargets.length > 0
+                            ? singleBadgeW + stackOffset * (activeTargets.length - 1) + bGap2
+                            : 0;
+                    }
+
+                    // Space for SL badge
+                    let slBadgeW = (!isPending && !hasSL) ? bW + bGap2 : 0;
+                    // Space for single TP badge (only when no multi-TP)
+                    let singleTPBadgeW = (!isPending && !hasMultiTP && !hasSingleTP) ? bW + bGap2 : 0;
+
+                    let totalBadgesW = slBadgeW + (hasMultiTP ? multiTPBadgesW : singleTPBadgeW);
+
                     const rightEdge = ch.w - yAxisWidth - 10;
                     const closeBtnX = rightEdge - closeBtnR;
-                    const startX = closeBtnX - closeBtnR - closeBtnGap - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
+                    const startX = closeBtnX - closeBtnR - closeBtnGap - totalBadgesW - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
 
                     let cx = startX;
                     labelBox.attr('x', cx).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
@@ -23187,43 +23441,58 @@ class OrderManager {
                     if (!isPending && pnlBox && pnlText && pnlBW > 0) {
                         pnlBox.attr('x', cx).attr('y', boxY).attr('width', pnlBW).attr('height', boxH).style('display', null);
                         pnlText.attr('x', cx + pad).attr('y', y + 4).attr('text-anchor', 'start').style('display', null);
+                        cx += pnlBW + gap;
+                    }
+
+                    // --- SL badge ---
+                    if (!isPending && slBadge) {
+                        if (hasSL) {
+                            slBadge.style('display', 'none');
+                        } else {
+                            slBadge.style('display', null)
+                                .attr('transform', `translate(${cx}, ${y - bH / 2})`);
+                            slBadge.select('rect').attr('width', bW);
+                            slBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
+                            cx += bW + bGap2;
+                        }
+                    }
+
+                    // --- TP badges ---
+                    if (!isPending) {
+                        if (hasMultiTP) {
+                            // Hide single TP badge; show stacked multi-TP badges
+                            if (tpBadge) tpBadge.style('display', 'none');
+                            if (olEntry.tpBadgesContainer) {
+                                if (allTPsSet) {
+                                    olEntry.tpBadgesContainer.style('display', 'none');
+                                } else {
+                                    const renderedW = this._renderMultiTPBadges(
+                                        olEntry, orderData, olEntry.tpBadgesContainer,
+                                        orderData.tpTargets, y, ch
+                                    );
+                                    olEntry.tpBadgesContainer.style('display', null)
+                                        .attr('transform', `translate(${cx}, ${y - bH / 2})`);
+                                    cx += renderedW + bGap2;
+                                }
+                            }
+                        } else {
+                            // Hide multi-TP container; show single TP badge
+                            if (olEntry.tpBadgesContainer) olEntry.tpBadgesContainer.style('display', 'none');
+                            if (tpBadge) {
+                                if (hasSingleTP) {
+                                    tpBadge.style('display', 'none');
+                                } else {
+                                    tpBadge.style('display', null)
+                                        .attr('transform', `translate(${cx}, ${y - bH / 2})`);
+                                    tpBadge.select('rect').attr('width', bW);
+                                    tpBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
+                                    cx += bW + bGap2;
+                                }
+                            }
+                        }
                     }
 
                     closeBtn.attr('transform', `translate(${closeBtnX}, ${y})`);
-
-                    // --- SL / TP re-add badges (left of label, only for open positions) ---
-                    if (!isPending && (slBadge || tpBadge)) {
-                        const hasSL = orderData.stopLoss && orderData.stopLoss > 0;
-                        const hasTP = (orderData.takeProfit && orderData.takeProfit > 0) ||
-                            (orderData.tpTargets && orderData.tpTargets.some(t => t.price > 0 && !t.hit));
-                        const bH = 16, bPad = 5, bGap = 3, bW = 24;
-
-                        let bx = startX - bGap;
-
-                        if (tpBadge) {
-                            if (hasTP) {
-                                tpBadge.style('display', 'none');
-                            } else {
-                                bx -= bW;
-                                tpBadge.style('display', null)
-                                    .attr('transform', `translate(${bx}, ${y - bH / 2})`);
-                                tpBadge.select('rect').attr('width', bW);
-                                tpBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
-                                bx -= bGap;
-                            }
-                        }
-                        if (slBadge) {
-                            if (hasSL) {
-                                slBadge.style('display', 'none');
-                            } else {
-                                bx -= bW;
-                                slBadge.style('display', null)
-                                    .attr('transform', `translate(${bx}, ${y - bH / 2})`);
-                                slBadge.select('rect').attr('width', bW);
-                                slBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
-                            }
-                        }
-                    }
                 }
 
                 const highlightColor = isPending
