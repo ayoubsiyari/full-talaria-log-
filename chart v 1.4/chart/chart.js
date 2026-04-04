@@ -11139,13 +11139,13 @@ class Chart {
         const lastDigit = text.slice(-1);
         const wt = fontWeight || '400';
         const mainFont = `${wt} ${fontSize}px Roboto`;
-        const superFont = `${wt} ${Math.round(fontSize * 0.75)}px Roboto`;
+        const superFont = `700 ${Math.round(fontSize * 1.25)}px Roboto`;
 
         this.ctx.font = mainFont;
         const mainW = this.ctx.measureText(mainPart).width;
         this.ctx.font = superFont;
         const superW = this.ctx.measureText(lastDigit).width;
-        const totalW = mainW + superW + 1;
+        const totalW = mainW + superW;
 
         let startX;
         if (align === 'center') startX = x - totalW / 2;
@@ -11157,7 +11157,7 @@ class Chart {
         this.ctx.fillText(mainPart, startX, y);
 
         this.ctx.font = superFont;
-        this.ctx.fillText(lastDigit, startX + mainW + 1, y - Math.round(fontSize * 0.18));
+        this.ctx.fillText(lastDigit, startX + mainW, y - Math.round(fontSize * 0.15));
     }
 
     /**
@@ -11178,9 +11178,9 @@ class Chart {
         const wt = fontWeight || '400';
         this.ctx.font = `${wt} ${fontSize}px Roboto`;
         const mainW = this.ctx.measureText(mainPart).width;
-        this.ctx.font = `${wt} ${Math.round(fontSize * 0.75)}px Roboto`;
+        this.ctx.font = `700 ${Math.round(fontSize * 1.25)}px Roboto`;
         const superW = this.ctx.measureText(lastDigit).width;
-        return mainW + superW + 1;
+        return mainW + superW;
     }
 
     /**
