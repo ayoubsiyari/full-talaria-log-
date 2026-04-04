@@ -353,7 +353,7 @@ class OrderManager {
     _stripOrderDrawingLayersFromChart(chart) {
         if (!chart?.svg?.selectAll) return;
         const s = chart.svg;
-        s.selectAll('.order-line,.order-drag-hit,.order-label-box,.order-label-text,.order-arrow,.order-price-box,.order-price-text,.order-close-btn,.order-pnl-box,.order-pnl-text').remove();
+        s.selectAll('.order-line,.order-drag-hit,.order-label-box,.order-label-text,.order-arrow,.order-price-box,.order-price-text,.order-close-btn,.order-pnl-box,.order-pnl-text,.order-sl-badge,.order-tp-badge').remove();
         s.selectAll('.pending-order-line,.pending-order-label-box,.pending-order-label-text,.pending-order-price-box,.pending-order-price-text,.pending-order-close-btn').remove();
         s.selectAll('.pending-tp-line,.pending-sl-line,.pending-be-line,.pending-tp-label,.pending-sl-label,.pending-be-label').remove();
         s.selectAll('.sl-line,.sl-label-box,.sl-label-text,.sl-pnl-box,.sl-pnl-text,.sl-close-btn,.sl-price-box,.sl-price-text').remove();
@@ -19448,8 +19448,67 @@ class OrderManager {
             .style('pointer-events', 'none')
             .text('$0.00');
 
+        // --- SL / TP "re-add" badges (visible when SL or TP is missing) ---
+        const badgeH = 16, badgeR = 3, badgePad = 4, badgeFontSize = '10px';
+
+        const slBadgeGroup = chart.svg.append('g')
+            .attr('class', `order-sl-badge order-${order.id}`)
+            .attr('pointer-events', 'all')
+            .style('cursor', 'ns-resize')
+            .style('display', 'none');
+        slBadgeGroup.append('rect')
+            .attr('height', badgeH).attr('rx', badgeR)
+            .attr('fill', 'rgba(242,54,69,0.12)')
+            .attr('stroke', '#f23645').attr('stroke-width', 1)
+            .attr('stroke-dasharray', '3 2')
+            .style('pointer-events', 'all');
+        slBadgeGroup.append('text')
+            .attr('fill', '#f23645')
+            .attr('font-size', badgeFontSize).attr('font-weight', '700')
+            .attr('dy', '0.35em').attr('text-anchor', 'middle')
+            .attr('opacity', 0.8)
+            .style('pointer-events', 'all')
+            .text('SL');
+        slBadgeGroup
+            .on('mouseenter', function() {
+                d3.select(this).select('rect').attr('fill', 'rgba(242,54,69,0.35)').attr('stroke-dasharray', null);
+                d3.select(this).select('text').attr('opacity', 1);
+            })
+            .on('mouseleave', function() {
+                d3.select(this).select('rect').attr('fill', 'rgba(242,54,69,0.12)').attr('stroke-dasharray', '3 2');
+                d3.select(this).select('text').attr('opacity', 0.8);
+            });
+
+        const tpBadgeGroup = chart.svg.append('g')
+            .attr('class', `order-tp-badge order-${order.id}`)
+            .attr('pointer-events', 'all')
+            .style('cursor', 'ns-resize')
+            .style('display', 'none');
+        tpBadgeGroup.append('rect')
+            .attr('height', badgeH).attr('rx', badgeR)
+            .attr('fill', 'rgba(34,197,94,0.12)')
+            .attr('stroke', '#22c55e').attr('stroke-width', 1)
+            .attr('stroke-dasharray', '3 2')
+            .style('pointer-events', 'all');
+        tpBadgeGroup.append('text')
+            .attr('fill', '#22c55e')
+            .attr('font-size', badgeFontSize).attr('font-weight', '700')
+            .attr('dy', '0.35em').attr('text-anchor', 'middle')
+            .attr('opacity', 0.8)
+            .style('pointer-events', 'all')
+            .text('TP');
+        tpBadgeGroup
+            .on('mouseenter', function() {
+                d3.select(this).select('rect').attr('fill', 'rgba(34,197,94,0.35)').attr('stroke-dasharray', null);
+                d3.select(this).select('text').attr('opacity', 1);
+            })
+            .on('mouseleave', function() {
+                d3.select(this).select('rect').attr('fill', 'rgba(34,197,94,0.12)').attr('stroke-dasharray', '3 2');
+                d3.select(this).select('text').attr('opacity', 0.8);
+            });
+
         this._setupEntryDragToCreateTPSL(order, line, labelBox, chart,
-            [dragHitLine, labelText, arrow, priceBox, priceText]);
+            [dragHitLine, labelText, arrow, priceBox, priceText, slBadgeGroup, tpBadgeGroup]);
 
         this.orderLines.push({
             orderId: order.id,
@@ -19463,6 +19522,8 @@ class OrderManager {
             closeBtn,
             pnlBox,
             pnlText,
+            slBadge: slBadgeGroup,
+            tpBadge: tpBadgeGroup,
             chart
         });
 
@@ -19859,6 +19920,39 @@ class OrderManager {
                         .attr('y', oy + 4)
                         .attr('text-anchor', 'start')
                         .style('display', null);
+                }
+
+                // SL/TP re-add badges for split-group members
+                if (!isPending && (ml.slBadge || ml.tpBadge)) {
+                    const hasSL = od.stopLoss && od.stopLoss > 0;
+                    const hasTP = (od.takeProfit && od.takeProfit > 0) ||
+                        (od.tpTargets && od.tpTargets.some(t => t.price > 0 && !t.hit));
+                    const bH = 16, bGap2 = 3, bW = 24;
+                    let bx = labelBoxX - bGap2;
+
+                    if (ml.tpBadge) {
+                        if (hasTP) {
+                            ml.tpBadge.style('display', 'none');
+                        } else {
+                            bx -= bW;
+                            ml.tpBadge.style('display', null)
+                                .attr('transform', `translate(${bx}, ${oy - bH / 2})`);
+                            ml.tpBadge.select('rect').attr('width', bW);
+                            ml.tpBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
+                            bx -= bGap2;
+                        }
+                    }
+                    if (ml.slBadge) {
+                        if (hasSL) {
+                            ml.slBadge.style('display', 'none');
+                        } else {
+                            bx -= bW;
+                            ml.slBadge.style('display', null)
+                                .attr('transform', `translate(${bx}, ${oy - bH / 2})`);
+                            ml.slBadge.select('rect').attr('width', bW);
+                            ml.slBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
+                        }
+                    }
                 }
 
                 ml._handledBySplitGroup = true;
@@ -21702,6 +21796,8 @@ class OrderManager {
             if (orderLine.closeBtn) orderLine.closeBtn.remove();
             if (orderLine.pnlBox) orderLine.pnlBox.remove();
             if (orderLine.pnlText) orderLine.pnlText.remove();
+            if (orderLine.slBadge) orderLine.slBadge.remove();
+            if (orderLine.tpBadge) orderLine.tpBadge.remove();
         });
         
         // Remove from array
@@ -22404,6 +22500,7 @@ class OrderManager {
         console.log(`✅ Stop Loss removed from order #${orderId}`);
         this.showNotification(`Stop Loss removed from order #${orderId}`, 'info');
         if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
+        if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
     }
     
     /**
@@ -22445,6 +22542,7 @@ class OrderManager {
         console.log(`✅ Take Profit removed from order #${orderId}`);
         this.showNotification(`Take Profit removed from order #${orderId}`, 'info');
         if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
+        if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
     }
     
     /**
@@ -22997,7 +23095,7 @@ class OrderManager {
             console.log(`📍 updateOrderLines: Updating ${lines.length} order lines`);
 
             lines.forEach((olEntry) => {
-                const { orderId, isPending, line, dragHitLine, labelBox, labelText, arrow, priceBox, priceText, closeBtn, pnlBox, pnlText } = olEntry;
+                const { orderId, isPending, line, dragHitLine, labelBox, labelText, arrow, priceBox, priceText, closeBtn, pnlBox, pnlText, slBadge, tpBadge } = olEntry;
 
                 // Skip orders that belong to a split group — they are positioned by _updateSplitGroupAvgLines
                 const inSplitGroup = (this.splitGroupAvgLines || []).some(g => g.orderIds.includes(orderId) && g.chart === ch);
@@ -23092,6 +23190,40 @@ class OrderManager {
                     }
 
                     closeBtn.attr('transform', `translate(${closeBtnX}, ${y})`);
+
+                    // --- SL / TP re-add badges (left of label, only for open positions) ---
+                    if (!isPending && (slBadge || tpBadge)) {
+                        const hasSL = orderData.stopLoss && orderData.stopLoss > 0;
+                        const hasTP = (orderData.takeProfit && orderData.takeProfit > 0) ||
+                            (orderData.tpTargets && orderData.tpTargets.some(t => t.price > 0 && !t.hit));
+                        const bH = 16, bPad = 5, bGap = 3, bW = 24;
+
+                        let bx = startX - bGap;
+
+                        if (tpBadge) {
+                            if (hasTP) {
+                                tpBadge.style('display', 'none');
+                            } else {
+                                bx -= bW;
+                                tpBadge.style('display', null)
+                                    .attr('transform', `translate(${bx}, ${y - bH / 2})`);
+                                tpBadge.select('rect').attr('width', bW);
+                                tpBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
+                                bx -= bGap;
+                            }
+                        }
+                        if (slBadge) {
+                            if (hasSL) {
+                                slBadge.style('display', 'none');
+                            } else {
+                                bx -= bW;
+                                slBadge.style('display', null)
+                                    .attr('transform', `translate(${bx}, ${y - bH / 2})`);
+                                slBadge.select('rect').attr('width', bW);
+                                slBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
+                            }
+                        }
+                    }
                 }
 
                 const highlightColor = isPending
