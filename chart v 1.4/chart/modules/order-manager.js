@@ -8601,7 +8601,7 @@ class OrderManager {
                 x = this.chart.w - rightMargin - (bbox.width || tpWidth) - gap;
             }
         } else {
-            const pad = 145;
+            const pad = 175;
             // Align all non-badge labels to the same left-edge X by using the widest label's width
             let maxW = bbox.width;
             const keysToCheck = ['entry', 'tp', 'sl', 'avgEntry'];
