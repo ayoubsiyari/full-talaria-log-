@@ -10199,6 +10199,12 @@ class OrderManager {
                 this.slManuallyPositioned = false;
                 this._resetMultiEntryStateForNewOrder();
 
+                // Reset order type back to market for the new order
+                this.orderType = 'market';
+                document.querySelectorAll('.order-type-btn').forEach(b => {
+                    b.classList.toggle('active', b.dataset.type === 'market');
+                });
+
                 const multipleTPToggle = document.getElementById('multipleTPToggle');
                 const multipleTPSettings = document.getElementById('multipleTPSettings');
         if (multipleTPToggle) multipleTPToggle.checked = false;
