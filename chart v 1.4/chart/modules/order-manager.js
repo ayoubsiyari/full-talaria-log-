@@ -15404,30 +15404,7 @@ class OrderManager {
             }
         }
         
-        // Validate SL/TP logic
-        if (slPrice > 0) {
-            if (orderSide === 'BUY') {
-                if (slPrice >= entryPrice) {
-                    errors.push('⚠️ Stop Loss for BUY must be BELOW entry price');
-                }
-            } else {
-                if (slPrice <= entryPrice) {
-                    errors.push('⚠️ Stop Loss for SELL must be ABOVE entry price');
-                }
-            }
-        }
-        
-        if (tpPrice > 0) {
-            if (orderSide === 'BUY') {
-                if (tpPrice <= entryPrice) {
-                    errors.push('⚠️ Take Profit for BUY must be ABOVE entry price');
-                }
-            } else {
-                if (tpPrice >= entryPrice) {
-                    errors.push('⚠️ Take Profit for SELL must be BELOW entry price');
-                }
-            }
-        }
+        // SL/TP side validation removed — allow any SL/TP placement
         
         return errors;
     }
