@@ -10880,12 +10880,13 @@ class Chart {
         const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
         const decimals = this.getPriceDecimals(priceRange);
         
+        const _axFontSize = this.chartSettings.scaleTextSize;
         yTicks.forEach(price => {
             const y = this.yScale(price);
             if (y > m.t + 8 && y < this.h - m.b - volumeAreaHeight - 8) {
                 const text = price.toFixed(decimals);
                 this.ctx.fillStyle = this.chartSettings.scaleTextColor;
-                this.ctx.fillText(text, axisMidX, y + 4);
+                this._drawPriceSuperscript(text, axisMidX, y + 4, 'center', _axFontSize, '400');
             }
         });
         
@@ -11111,6 +11112,75 @@ class Chart {
             }
         }
         return ticks;
+    }
+
+    /**
+     * Draw price text with the last digit rendered smaller and raised (superscript),
+     * like TradingView's pipette display.
+     * @param {string} text - Full price string e.g. "1.26702"
+     * @param {number} x - Center x position
+     * @param {number} y - Baseline y position
+     * @param {string} align - 'center' | 'left' | 'right'
+     * @param {number} fontSize - Base font size in px
+     * @param {string} fontWeight - e.g. '400', '500'
+     */
+    _drawPriceSuperscript(text, x, y, align, fontSize, fontWeight) {
+        if (!text || text.length < 2) {
+            this.ctx.fillText(text, x, y);
+            return;
+        }
+        const dotIdx = text.indexOf('.');
+        if (dotIdx === -1 || text.length - dotIdx - 1 < 2) {
+            this.ctx.fillText(text, x, y);
+            return;
+        }
+
+        const mainPart = text.slice(0, -1);
+        const lastDigit = text.slice(-1);
+        const wt = fontWeight || '400';
+        const mainFont = `${wt} ${fontSize}px Roboto`;
+        const superFont = `${wt} ${Math.round(fontSize * 0.75)}px Roboto`;
+
+        this.ctx.font = mainFont;
+        const mainW = this.ctx.measureText(mainPart).width;
+        this.ctx.font = superFont;
+        const superW = this.ctx.measureText(lastDigit).width;
+        const totalW = mainW + superW + 1;
+
+        let startX;
+        if (align === 'center') startX = x - totalW / 2;
+        else if (align === 'right') startX = x - totalW;
+        else startX = x;
+
+        this.ctx.font = mainFont;
+        this.ctx.textAlign = 'left';
+        this.ctx.fillText(mainPart, startX, y);
+
+        this.ctx.font = superFont;
+        this.ctx.fillText(lastDigit, startX + mainW + 1, y - Math.round(fontSize * 0.18));
+    }
+
+    /**
+     * Measure the total width of a price string rendered with superscript last digit.
+     */
+    _measurePriceSuperscript(text, fontSize, fontWeight) {
+        if (!text || text.length < 2) {
+            this.ctx.font = `${fontWeight || '400'} ${fontSize}px Roboto`;
+            return this.ctx.measureText(text || '').width;
+        }
+        const dotIdx = text.indexOf('.');
+        if (dotIdx === -1 || text.length - dotIdx - 1 < 2) {
+            this.ctx.font = `${fontWeight || '400'} ${fontSize}px Roboto`;
+            return this.ctx.measureText(text).width;
+        }
+        const mainPart = text.slice(0, -1);
+        const lastDigit = text.slice(-1);
+        const wt = fontWeight || '400';
+        this.ctx.font = `${wt} ${fontSize}px Roboto`;
+        const mainW = this.ctx.measureText(mainPart).width;
+        this.ctx.font = `${wt} ${Math.round(fontSize * 0.75)}px Roboto`;
+        const superW = this.ctx.measureText(lastDigit).width;
+        return mainW + superW + 1;
     }
 
     /**
@@ -11360,12 +11430,10 @@ class Chart {
         this.ctx.closePath();
         this.ctx.fill();
 
-        // Draw price text centered in top section
+        // Draw price text centered in top section with superscript last digit
         this.ctx.fillStyle = '#FFFFFF';
-        this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
-        this.ctx.font = `500 ${this.chartSettings.scaleTextSize}px Roboto`;
-        this.ctx.fillText(priceText, labelX + labelWidth / 2, labelY + priceHeight / 2);
+        this._drawPriceSuperscript(priceText, labelX + labelWidth / 2, labelY + priceHeight / 2, 'center', this.chartSettings.scaleTextSize, '500');
 
         // Draw countdown text in bottom section if in replay mode
         if (inReplayMode) {
@@ -11599,10 +11667,9 @@ class Chart {
             this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0
         );
         const text = price.toFixed(_hoverDec);
-        this.ctx.font = `500 ${this.chartSettings.scaleTextSize}px Roboto`;
-        this.ctx.textAlign = 'left';
-        const textWidth = this.ctx.measureText(text).width;
-        const labelW = textWidth + 8;
+        const _hFs = this.chartSettings.scaleTextSize;
+        const textWidth = this._measurePriceSuperscript(text, _hFs, '500');
+        const labelW = textWidth + 10;
         const axisLeft = !!this.priceAxisLeft;
         const labelX = axisLeft ? 2 : this.w - m.r + 2;
         const textX  = axisLeft ? 6 : this.w - m.r + 6;
@@ -11613,7 +11680,7 @@ class Chart {
         
         // Draw text - white on blue
         this.ctx.fillStyle = '#ffffff';
-        this.ctx.fillText(text, textX, y + 4);
+        this._drawPriceSuperscript(text, textX, y + 4, 'left', _hFs, '500');
     }
     
     updatePriceHoverLine() {
