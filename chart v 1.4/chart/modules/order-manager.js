@@ -8579,41 +8579,26 @@ class OrderManager {
         // Calculate X position with horizontal offsets for badges
         let x;
         if (lineData.isBadge) {
-            // Layout from right edge: ... [SL] [gap] [TP1] [gap] [TP2] [gap] [rightMargin]
-            // Or for single TP:      ... [SL] [gap] [TP] [gap] [rightMargin]
             const gap = 8;
             const rightMargin = 65;
+
+            const slWidth = this.previewLines?.sl?.labelDimensions?.width || 40;
+
+            // TP zone width: either single TP badge or the widest multi-TP badge (they stack)
             const mtpBadges = this.previewLines?.multiTPBadges || [];
-            const hasMTP = mtpBadges.length > 0;
+            let tpWidth;
+            if (mtpBadges.length > 0) {
+                tpWidth = Math.max(...mtpBadges.map(b => b.labelDimensions?.width || 30));
+            } else {
+                tpWidth = this.previewLines?.tp?.labelDimensions?.width || 40;
+            }
 
-            // Build ordered list of TP badges from rightmost to leftmost
-            // Rightmost badge is last in the array (highest index)
-            let cursor = this.chart.w - rightMargin;
-
-            if (lineData.isMultiTPBadge) {
-                // Place multi-TP badges: rightmost (last index) is closest to price axis
-                let rightOffset = 0;
-                for (let j = mtpBadges.length - 1; j >= 0; j--) {
-                    const w = mtpBadges[j].labelDimensions?.width || 30;
-                    if (j === lineData.multiTPIndex) {
-                        x = cursor - rightOffset - w;
-                        break;
-                    }
-                    rightOffset += w + gap;
-                }
-            } else if (lineData.label === 'TP' && !hasMTP) {
-                const myW = bbox.width;
-                x = cursor - myW;
-            } else if (lineData.label === 'SL') {
-                // SL goes to the left of all TP badges
-                let tpZoneW = 0;
-                if (hasMTP) {
-                    mtpBadges.forEach(b => { tpZoneW += (b.labelDimensions?.width || 30) + gap; });
-                } else if (this.previewLines?.tp?.isBadge) {
-                    tpZoneW = (this.previewLines.tp.labelDimensions?.width || 30) + gap;
-                }
-                const myW = bbox.width;
-                x = cursor - tpZoneW - myW;
+            if (lineData.label === 'SL') {
+                x = this.chart.w - rightMargin - slWidth - gap - tpWidth - gap;
+            } else if (lineData.label === 'TP') {
+                x = this.chart.w - rightMargin - tpWidth - gap;
+            } else if (lineData.isMultiTPBadge) {
+                x = this.chart.w - rightMargin - (bbox.width || tpWidth) - gap;
             }
         } else {
             const pad = 145;
@@ -11654,7 +11639,7 @@ class OrderManager {
             updateYAxisHighlight(this.previewLines.sl, slY);
         }
         
-        // Update multi-TP badge positions (follow entry Y)
+        // Update multi-TP badge positions (follow entry Y, stacked)
         if (this.previewLines.multiTPBadges && this.previewLines.multiTPBadges.length > 0) {
             const entryPx = this.previewLines.entry?.price;
             if (entryPx > 0 && this.chart.scales?.yScale) {
@@ -11662,7 +11647,7 @@ class OrderManager {
                 this.previewLines.multiTPBadges.forEach(bd => {
                     if (bd && bd.labelGroup) {
                         bd.price = entryPx;
-                        this.positionPreviewLabel(bd, ey);
+                        this.positionPreviewLabel(bd, ey + (bd._stackOffsetY || 0));
                     }
                 });
             }
@@ -12903,20 +12888,22 @@ class OrderManager {
     }
 
     /**
-     * Draw multi-TP preview badges using the same badge system as SL/TP badges.
-     * Each unset TP target gets its own badge that can be dragged to set its price.
+     * Draw multi-TP preview badges stacked at the same position as the single TP badge.
+     * Badges are layered on top of each other with a small vertical offset per badge.
      */
     _drawMultiTPPreviewBadges(entryPrice, unsetTargets) {
         if (!this.chart?.scales?.yScale || !this.chart?.svg) return;
         const self = this;
         const y = this.chart.scales.yScale(entryPrice);
+        const stackOffsetY = 4; // vertical px offset per badge layer
 
         // Remove old multi-TP badges
         this.chart.svg.selectAll('.multi-tp-preview-badge').remove();
         if (!this.previewLines.multiTPBadges) this.previewLines.multiTPBadges = [];
         this.previewLines.multiTPBadges = [];
 
-        for (let i = 0; i < unsetTargets.length; i++) {
+        // Draw back-to-front: last badge first (bottom of stack), first badge last (on top)
+        for (let i = unsetTargets.length - 1; i >= 0; i--) {
             const target = unsetTargets[i];
             const targetNum = (this.tpTargets || []).indexOf(target) + 1;
             const label = `TP${targetNum}`;
@@ -12936,13 +12923,14 @@ class OrderManager {
                 isBadge: true,
                 isMultiTPBadge: true,
                 multiTPIndex: i,
+                _stackOffsetY: -i * stackOffsetY,
                 _target: target,
                 priceText: null,
                 labelDimensions: { width: 0, height: 0 },
                 yAxisHighlight: null
             };
 
-            this.renderPreviewLabel(badgeData, y);
+            this.renderPreviewLabel(badgeData, y + badgeData._stackOffsetY);
             this.previewLines.multiTPBadges.push(badgeData);
 
             // Drag to set this target's price
