@@ -8579,20 +8579,39 @@ class OrderManager {
         // Calculate X position with horizontal offsets for badges
         let x;
         if (lineData.isBadge) {
-            // Badges positioned horizontally to the left of entry badge
-            const gap = 8; // Gap between badges
-            const rightMargin = 65; // Space from price axis (avoid overlap with price label)
+            const gap = 6;
+            const rightMargin = 65;
             
-            // Get widths of all badges for proper spacing
-            const slWidth = this.previewLines?.sl?.labelDimensions?.width || 40;
-            const tpWidth = this.previewLines?.tp?.labelDimensions?.width || 40;
-            
+            // Gather all badge widths for layout
+            const slWidth = this.previewLines?.sl?.labelDimensions?.width || 0;
+            const slActive = this.previewLines?.sl?.isBadge ? slWidth : 0;
+
+            // Collect multi-TP badge widths
+            const mtpBadges = this.previewLines?.multiTPBadges || [];
+            let mtpTotalW = 0;
+            mtpBadges.forEach(b => { mtpTotalW += (b.labelDimensions?.width || 30) + gap; });
+
+            // Single TP badge width
+            const tpWidth = this.previewLines?.tp?.labelDimensions?.width || 0;
+            const tpActive = (this.previewLines?.tp?.isBadge && mtpBadges.length === 0) ? tpWidth : 0;
+
+            // Layout from right: [SL] [TP1] [TP2] ... or [SL] [TP]
+            // Rightmost badges first
             if (lineData.label === 'SL') {
-                // SL badge: furthest left
-                x = this.chart.w - rightMargin - slWidth - gap - tpWidth - gap;
-            } else if (lineData.label === 'TP') {
-                // TP badge: next to SL
-                x = this.chart.w - rightMargin - tpWidth - gap;
+                const rightOf = tpActive > 0 ? tpActive + gap : mtpTotalW;
+                x = this.chart.w - rightMargin - slActive - gap - rightOf;
+            } else if (lineData.label === 'TP' && mtpBadges.length === 0) {
+                x = this.chart.w - rightMargin - tpActive - gap;
+            } else if (lineData.isMultiTPBadge) {
+                // Position multi-TP badges in a row from right
+                const myIdx = lineData.multiTPIndex || 0;
+                let rightOffset = 0;
+                // Badges after this one (higher index = further right)
+                for (let j = mtpBadges.length - 1; j > myIdx; j--) {
+                    rightOffset += (mtpBadges[j].labelDimensions?.width || 30) + gap;
+                }
+                const myW = lineData.labelDimensions?.width || 30;
+                x = this.chart.w - rightMargin - myW - gap - rightOffset;
             }
         } else {
             const pad = 145;
@@ -11633,22 +11652,16 @@ class OrderManager {
             updateYAxisHighlight(this.previewLines.sl, slY);
         }
         
-        // Update multi-TP badge positions (they follow entry Y)
+        // Update multi-TP badge positions (follow entry Y)
         if (this.previewLines.multiTPBadges && this.previewLines.multiTPBadges.length > 0) {
-            const bH = 18;
             const entryPx = this.previewLines.entry?.price;
             if (entryPx > 0 && this.chart.scales?.yScale) {
                 const ey = this.chart.scales.yScale(entryPx);
-                this.previewLines.multiTPBadges.forEach(c => {
-                    c.selectAll('g').each(function(d, i) {
-                        const cur = d3.select(this).attr('transform');
-                        if (cur) {
-                            const xMatch = cur.match(/translate\(\s*([\d.]+)/);
-                            if (xMatch) {
-                                d3.select(this).attr('transform', `translate(${xMatch[1]}, ${ey - bH / 2})`);
-                            }
-                        }
-                    });
+                this.previewLines.multiTPBadges.forEach(bd => {
+                    if (bd && bd.labelGroup) {
+                        bd.price = entryPx;
+                        this.positionPreviewLabel(bd, ey);
+                    }
                 });
             }
         }
@@ -12888,79 +12901,52 @@ class OrderManager {
     }
 
     /**
-     * Draw stacked multi-TP preview badges on the entry line.
-     * Each unset TP target gets a small badge the user can drag to set its price.
+     * Draw multi-TP preview badges using the same badge system as SL/TP badges.
+     * Each unset TP target gets its own badge that can be dragged to set its price.
      */
     _drawMultiTPPreviewBadges(entryPrice, unsetTargets) {
         if (!this.chart?.scales?.yScale || !this.chart?.svg) return;
         const self = this;
         const y = this.chart.scales.yScale(entryPrice);
-        const bW = 32, bH = 18, bR = 4, stackOffset = 6;
-        const fontSize = '10px';
 
         // Remove old multi-TP badges
         this.chart.svg.selectAll('.multi-tp-preview-badge').remove();
+        if (!this.previewLines.multiTPBadges) this.previewLines.multiTPBadges = [];
+        this.previewLines.multiTPBadges = [];
 
-        // Create container for all badges
-        const container = this.chart.svg.append('g')
-            .attr('class', 'multi-tp-preview-badge');
-
-        // Position to the right of the entry label action badges
-        const entryLabelData = this.previewLines?.entry;
-        let baseX;
-        if (entryLabelData?.labelGroup) {
-            const bb = entryLabelData.labelGroup.node()?.getBBox();
-            baseX = bb ? bb.x + bb.width + 8 : 100;
-        } else {
-            baseX = 100;
-        }
-
-        const totalW = bW + stackOffset * (unsetTargets.length - 1);
-
-        // Draw back-to-front so the first target is on top
-        for (let i = unsetTargets.length - 1; i >= 0; i--) {
+        for (let i = 0; i < unsetTargets.length; i++) {
             const target = unsetTargets[i];
             const targetNum = (this.tpTargets || []).indexOf(target) + 1;
-            const ox = baseX + stackOffset * i;
+            const label = `TP${targetNum}`;
 
-            const g = container.append('g')
-                .attr('transform', `translate(${ox}, ${y - bH / 2})`)
-                .attr('pointer-events', 'all')
-                .style('cursor', 'ns-resize');
+            const badgeGroup = this.chart.svg.append('g')
+                .attr('class', 'multi-tp-preview-badge preview-badge-group')
+                .style('cursor', 'ns-resize')
+                .style('pointer-events', 'all');
 
-            g.append('rect')
-                .attr('width', bW).attr('height', bH).attr('rx', bR)
-                .attr('fill', 'rgba(34,197,94,0.12)')
-                .attr('stroke', '#22c55e')
-                .attr('stroke-width', 1)
-                .attr('stroke-dasharray', '3 2');
+            const badgeData = {
+                line: null,
+                labelGroup: badgeGroup,
+                price: entryPrice,
+                label: label,
+                color: '#22c55e',
+                targetPrice: 0,
+                isBadge: true,
+                isMultiTPBadge: true,
+                multiTPIndex: i,
+                _target: target,
+                priceText: null,
+                labelDimensions: { width: 0, height: 0 },
+                yAxisHighlight: null
+            };
 
-            g.append('text')
-                .attr('x', bW / 2).attr('y', bH / 2)
-                .attr('fill', '#22c55e')
-                .attr('font-size', fontSize).attr('font-weight', '700')
-                .attr('dy', '0.35em').attr('text-anchor', 'middle')
-                .attr('opacity', 0.8)
-                .style('pointer-events', 'none')
-                .text(`TP${targetNum}`);
-
-            // Hover
-            g.on('mouseenter', function() {
-                d3.select(this).select('rect')
-                    .attr('fill', 'rgba(34,197,94,0.4)')
-                    .attr('stroke-dasharray', null);
-                d3.select(this).select('text').attr('opacity', 1);
-            }).on('mouseleave', function() {
-                d3.select(this).select('rect')
-                    .attr('fill', 'rgba(34,197,94,0.12)')
-                    .attr('stroke-dasharray', '3 2');
-                d3.select(this).select('text').attr('opacity', 0.8);
-            });
+            this.renderPreviewLabel(badgeData, y);
+            this.previewLines.multiTPBadges.push(badgeData);
 
             // Drag to set this target's price
             const drag = d3.drag()
-                .on('start', () => { g.style('opacity', 0.8); })
-                .on('drag', function(event) {
+                .on('start', () => { badgeGroup.style('opacity', 0.8); })
+                .on('drag', (event) => {
                     if (!self.chart?.scales?.yScale) return;
                     const chartH = Number(self.chart.h ?? self.chart.svg?.attr('height') ?? 0) || 0;
                     const clampedY = Math.max(0, Math.min(chartH, event.y));
@@ -12968,7 +12954,6 @@ class OrderManager {
 
                     target.price = parseFloat(newPrice.toFixed(self.getPricePrecision()));
 
-                    // Update the panel input
                     const priceInput = document.getElementById(`tpTarget${target.id}Price`);
                     if (priceInput) priceInput.value = self.formatPrice(target.price);
 
@@ -12977,19 +12962,15 @@ class OrderManager {
                     self.updatePreviewLines();
                 })
                 .on('end', () => {
-                    g.style('opacity', 1);
+                    badgeGroup.style('opacity', 1);
                     requestAnimationFrame(() => {
                         self.calculateAdvancedRiskReward();
                         self.updatePlaceButtonText();
                     });
                 });
 
-            g.call(drag);
+            badgeGroup.call(drag);
         }
-
-        // Store reference for cleanup
-        if (!this.previewLines.multiTPBadges) this.previewLines.multiTPBadges = [];
-        this.previewLines.multiTPBadges.push(container);
     }
 
     drawPreviewBadge(entryPrice, color, label, targetPrice) {
@@ -14813,7 +14794,9 @@ class OrderManager {
             
             // Remove multi-TP preview badges
             if (this.previewLines.multiTPBadges && Array.isArray(this.previewLines.multiTPBadges)) {
-                this.previewLines.multiTPBadges.forEach(c => { try { c.remove(); } catch (_) {} });
+                this.previewLines.multiTPBadges.forEach(bd => {
+                    try { if (bd.labelGroup) bd.labelGroup.remove(); } catch (_) {}
+                });
             }
             if (this.chart?.svg) {
                 this.chart.svg.selectAll('.multi-tp-preview-badge').remove();
