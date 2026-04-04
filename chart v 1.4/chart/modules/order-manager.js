@@ -1383,7 +1383,6 @@ class OrderManager {
         } catch (e) { /* ignore */ }
 
         this._lastSyncedPipSymbol = ticker;
-        this._applyPricePrecisionToInputs();
     }
 
     _syncPipFromActiveSymbolIfNeeded() {
@@ -2231,8 +2230,6 @@ class OrderManager {
         userStorage.setItem('chart_pipSize', config.pipSize);
         userStorage.setItem('chart_pipValuePerLot', config.pipValuePerLot);
         
-        this._applyPricePrecisionToInputs();
-
         console.log(`📊 Switched from ${this.marketConfigs[oldType].name} to ${config.name}`);
         console.log(`   Pip Size: ${config.pipSize} | Pip Value: $${config.pipValuePerLot} | Position: ${config.positionLabel}`);
         
@@ -8098,63 +8095,6 @@ class OrderManager {
         return numeric.toFixed(precision);
     }
 
-    _enforcePricePrecisionOnInput(inputEl) {
-        if (!inputEl) return;
-        const prec = this.getPricePrecision();
-        const step = (1 / Math.pow(10, prec)).toFixed(prec);
-        inputEl.setAttribute('step', step);
-
-        const truncate = () => {
-            const raw = inputEl.value;
-            if (!raw || raw === '' || raw === '0') return;
-            const dotIdx = raw.indexOf('.');
-            if (dotIdx === -1) return;
-            const decimals = raw.length - dotIdx - 1;
-            if (decimals > prec) {
-                inputEl.value = raw.slice(0, dotIdx + 1 + prec);
-            }
-        };
-
-        if (inputEl._precInput) inputEl.removeEventListener('input', inputEl._precInput);
-        inputEl._precInput = truncate;
-        inputEl.addEventListener('input', truncate);
-
-        if (inputEl._precBlur) inputEl.removeEventListener('blur', inputEl._precBlur);
-        inputEl._precBlur = () => {
-            const num = parseFloat(inputEl.value);
-            if (Number.isFinite(num) && inputEl.value !== '') {
-                inputEl.value = num.toFixed(prec);
-            }
-        };
-        inputEl.addEventListener('blur', inputEl._precBlur);
-
-        if (inputEl._precKey) inputEl.removeEventListener('keydown', inputEl._precKey);
-        inputEl._precKey = (e) => { if (e.key === 'Enter') inputEl._precBlur(); };
-        inputEl.addEventListener('keydown', inputEl._precKey);
-
-        truncate();
-    }
-
-    _applyPricePrecisionToInputs() {
-        const ids = ['orderEntryPrice', 'slPrice', 'tpPrice'];
-        for (const id of ids) {
-            const el = document.getElementById(id);
-            if (el) this._enforcePricePrecisionOnInput(el);
-        }
-        if (this.tpTargets) {
-            for (const t of this.tpTargets) {
-                const el = document.getElementById(`tpTarget${t.id}Price`);
-                if (el) this._enforcePricePrecisionOnInput(el);
-            }
-        }
-        if (this.multiEntryLevels) {
-            for (const l of this.multiEntryLevels) {
-                const el = document.getElementById(`multiEntryPrice_${l.id}`);
-                if (el) this._enforcePricePrecisionOnInput(el);
-            }
-        }
-    }
-
     formatQuantity(value) {
         // Handle null/undefined
         if (value === null || value === undefined || value === '') {
@@ -9716,7 +9656,7 @@ class OrderManager {
                         newValue = Math.max(0, newValue);
                         newValue = Math.round(newValue);
                     }
-                } else if (targetId.startsWith('multiEntryPrice_') || targetId.startsWith('tpTarget') || ['orderEntryPrice', 'slPrice', 'tpPrice'].includes(targetId)) {
+                } else if (targetId.startsWith('multiEntryPrice_') || ['orderEntryPrice', 'slPrice', 'tpPrice'].includes(targetId)) {
                     const p = this.getPricePrecision();
                     newValue = parseFloat(this.formatPrice(newValue, p));
                 }
@@ -10130,9 +10070,6 @@ class OrderManager {
             }
         });
         
-        // Enforce pair precision on all price inputs
-        this._applyPricePrecisionToInputs();
-
         // Position scaling checkbox
         const scaleCheckbox = document.getElementById('scalePositionCheckbox');
         if (scaleCheckbox) {
@@ -11344,13 +11281,9 @@ class OrderManager {
 
             const profitText = profitUsd > 0 ? profitUsd.toFixed(2) : '0.00';
 
-            const _prec = this.getPricePrecision();
-            const _step = (1 / Math.pow(10, _prec)).toFixed(_prec);
-            const _fmtPrice = target.price ? Number(target.price).toFixed(_prec) : '';
-
             return `<div class="order-tp-multi__row">
                 <div class="order-tp-multi__row-price">
-                    <input type="number" id="tpTarget${target.id}Price" value="${_fmtPrice}" step="${_step}" placeholder="0">
+                    <input type="number" id="tpTarget${target.id}Price" value="${target.price}" step="0.00001" placeholder="0">
                 </div>
                 <div class="order-tp-multi__row-rr">
                     <input type="text" value="${rr}" readonly tabindex="-1" style="color:#22c55e;text-align:center;cursor:default;background:transparent;border-color:transparent;">
@@ -11383,7 +11316,6 @@ class OrderManager {
         this.tpTargets.forEach(target => {
             const priceInput = document.getElementById(`tpTarget${target.id}Price`);
             if (priceInput) {
-                this._enforcePricePrecisionOnInput(priceInput);
                 priceInput.oninput = () => {
                     target.price = parseFloat(priceInput.value) || 0;
                     this.calculateAdvancedRiskReward();
@@ -13648,10 +13580,6 @@ class OrderManager {
                 ? (Number.isFinite(level.amount) ? level.amount : '')
                 : level.amount || '';
 
-            const _mPrec = this.getPricePrecision();
-            const _mStep = (1 / Math.pow(10, _mPrec)).toFixed(_mPrec);
-            const _mFmt = level.price ? Number(level.price).toFixed(_mPrec) : '';
-
             const row = document.createElement('div');
             row.className = 'multi-entry-row';
             const lockFirstTwo = this.isMultiEntryMode && idx < 2;
@@ -13661,7 +13589,7 @@ class OrderManager {
             row.innerHTML = `
                 <div class="multi-entry-row-inputs">
                     <div style="display:flex; gap:4px; align-items:center; min-width:0;">
-                        <input type="number" class="multi-entry-row-input" id="multiEntryPrice_${level.id}" value="${_mFmt}" step="${_mStep}" placeholder="0.00" data-level-id="${level.id}" data-field="price" style="flex:1; min-width:0;">
+                        <input type="number" class="multi-entry-row-input" id="multiEntryPrice_${level.id}" value="${level.price || ''}" step="0.00001" placeholder="0.00" data-level-id="${level.id}" data-field="price" style="flex:1; min-width:0;">
                         <span class="input-stepper-group">
                         <button type="button" class="input-stepper" data-target="multiEntryPrice_${level.id}" data-step-mode="pip" data-step="-1">−</button>
                         <button type="button" class="input-stepper" data-target="multiEntryPrice_${level.id}" data-step-mode="pip" data-step="1">+</button>
@@ -13740,12 +13668,6 @@ class OrderManager {
                 const id = parseInt(e.currentTarget.dataset.levelId);
                 this.removeMultiEntryLevel(id);
             });
-        });
-
-        // Enforce precision on multi-entry price inputs
-        this.multiEntryLevels.forEach(level => {
-            const el = document.getElementById(`multiEntryPrice_${level.id}`);
-            if (el) this._enforcePricePrecisionOnInput(el);
         });
 
         this.updateMultiEntrySummary();
@@ -18882,7 +18804,6 @@ class OrderManager {
                 // Still perform cleanup so visual lines don't linger
                 this.removeOrderLine(orderId);
                 this.removeSLTPLines(orderId);
-                this.removeMultiTPAvgLine(orderId);
                 this.removeEntryMarker(orderId);
                 if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
                     this.removeSplitGroupAvgLine(position.splitGroupId);
@@ -18974,7 +18895,6 @@ class OrderManager {
         if (!isPartialClose) {
             this.removeOrderLine(orderId);
             this.removeSLTPLines(orderId);
-            this.removeMultiTPAvgLine(orderId);
             if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
                 this.removeSplitGroupAvgLine(position.splitGroupId);
             }
