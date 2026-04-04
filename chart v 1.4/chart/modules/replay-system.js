@@ -1821,8 +1821,21 @@ class ReplaySystem {
         setTimeout(() => {
             // Exit go back mode
             this.exitGoBackMode();
+
+            // Stop playback and clear stale animation state so the price line
+            // snaps to the new position instead of staying at the old close.
+            this.isPlaying = false;
+            this.animatingCandle = null;
+            this.tickProgress = 0;
+            this.tickElapsedMs = 0;
             
             this.currentIndex = newRawIndex;
+
+            // Sync the virtual replay timestamp to the new bar
+            const rawBar = this.fullRawData[newRawIndex];
+            if (rawBar && Number.isFinite(rawBar.t)) {
+                this.replayTimestamp = rawBar.t;
+            }
             
             // Update chart data with smooth transition
             this.updateChartData();
@@ -3777,6 +3790,8 @@ class ReplaySystem {
             this.pause();
         }
         this._savedTickState = null;
+        this.animatingCandle = null;
+        this.tickProgress = 0;
         this.stepForward();
     }
 
@@ -3789,6 +3804,8 @@ class ReplaySystem {
             this.pause();
         }
         this._savedTickState = null;
+        this.animatingCandle = null;
+        this.tickProgress = 0;
         this.stepBackward();
     }
 
@@ -4038,8 +4055,12 @@ class ReplaySystem {
         // === UPDATE VIRTUAL TIME: Sync replayTimestamp with new position ===
         if (this.fullRawData && this.fullRawData[this.currentIndex]) {
             this.replayTimestamp = this.fullRawData[this.currentIndex].t;
-            this.tickElapsedMs = 0; // Reset elapsed time when seeking
+            this.tickElapsedMs = 0;
         }
+        // Clear stale animation state so the price line reflects the
+        // seeked-to candle, not the old animation close.
+        this.animatingCandle = null;
+        this.tickProgress = 0;
 
         // Pre-arm guards before updateChartData so updatePositions() doesn't
         // fire SL/TP on the seeked-to candle's stale OHLC.  We use the raw
@@ -4097,6 +4118,8 @@ class ReplaySystem {
         this.currentIndex = idx;
         this.replayTimestamp = this.fullRawData[idx]?.t ?? ts;
         this.tickElapsedMs = 0;
+        this.animatingCandle = null;
+        this.tickProgress = 0;
 
         // Pre-arm guards before chart update
         const om2 = this.chart?.orderManager;
