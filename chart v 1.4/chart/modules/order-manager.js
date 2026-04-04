@@ -20481,40 +20481,6 @@ class OrderManager {
             g.pnlBox.attr('x', cx).attr('y', y - boxH / 2).attr('width', pnlBW).attr('height', boxH)
                 .attr('stroke', pnlColor);
             g.pnlText.attr('x', cx + pad).attr('y', y + 4);
-
-            // --- Connector from entry line to Avg TP ---
-            if (g._connector) { try { g._connector.remove(); } catch (_) {} }
-            const connGroup = ch.svg.append('g')
-                .attr('class', `multi-tp-avg-connector multi-tp-avg-${g.orderId}`)
-                .style('pointer-events', 'none');
-            g._connector = connGroup;
-            const connX = rightEdge + 4;
-
-            let entryY = null;
-            if (g.mode === 'open' && source) {
-                entryY = yScale(source.openPrice);
-            } else if (g.mode === 'pending' && source) {
-                entryY = yScale(source.entryPrice);
-            } else if (g.mode === 'preview') {
-                const previewEntry = parseFloat(document.getElementById('orderEntryPrice')?.value) || 0;
-                if (previewEntry > 0) entryY = yScale(previewEntry);
-            }
-
-            if (Number.isFinite(entryY) && Number.isFinite(y) && Math.abs(entryY - y) > 1) {
-                connGroup.append('line')
-                    .attr('x1', connX).attr('x2', connX)
-                    .attr('y1', entryY).attr('y2', y)
-                    .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
-                connGroup.append('circle')
-                    .attr('cx', connX).attr('cy', entryY).attr('r', 2.5)
-                    .attr('fill', '#3b82f6').attr('stroke', '#0f172a').attr('stroke-width', 1);
-            }
-            if (Number.isFinite(y)) {
-                connGroup.append('circle')
-                    .attr('cx', connX).attr('cy', y).attr('r', 2.5)
-                    .attr('fill', '#eab308').attr('stroke', '#0f172a').attr('stroke-width', 1);
-            }
-            try { connGroup.lower(); } catch (_) {}
         }
 
         for (const id of toRemove) this.removeMultiTPAvgLine(id);
@@ -24158,13 +24124,33 @@ class OrderManager {
         for (const pos of this.openPositions) {
             if (!this._positionTickerMatchesChartSymbol(pos, ch)) continue;
             if (pos.isSplitEntry) continue;
+            const hasMultiTP = pos.tpTargets && pos.tpTargets.length >= 2;
             const tpPx = pos.takeProfit || 0;
             const slPx = pos.stopLoss || 0;
-            if (tpPx <= 0 && slPx <= 0) continue;
+            if (tpPx <= 0 && slPx <= 0 && !hasMultiTP) continue;
             const entryY = yScale(pos.openPrice);
             if (!Number.isFinite(entryY)) continue;
             const cg = ch.svg.append('g').attr('class', 'exec-order-connector').style('pointer-events', 'none');
-            if (tpPx > 0) {
+            if (hasMultiTP) {
+                for (const t of pos.tpTargets) {
+                    if (t.hit || !(t.price > 0)) continue;
+                    const tpY = yScale(t.price);
+                    if (Number.isFinite(tpY)) {
+                        cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
+                            .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
+                        cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
+                            .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                    }
+                }
+                const avgG = this.multiTPAvgLines.find(g => g.orderId === pos.id);
+                if (avgG && Number.isFinite(avgG.avgTP)) {
+                    const avgY = yScale(avgG.avgTP);
+                    if (Number.isFinite(avgY)) {
+                        cg.append('circle').attr('cx', connX).attr('cy', avgY).attr('r', 2.5)
+                            .attr('fill', '#eab308').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                    }
+                }
+            } else if (tpPx > 0) {
                 const tpY = yScale(tpPx);
                 if (Number.isFinite(tpY)) {
                     cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
@@ -24190,13 +24176,33 @@ class OrderManager {
 
         for (const po of this.pendingOrders) {
             if (!this._positionTickerMatchesChartSymbol(po, ch)) continue;
+            const hasMultiTP = po.tpTargets && po.tpTargets.length >= 2;
             const tpPx = po.takeProfit || 0;
             const slPx = po.stopLoss || 0;
-            if (tpPx <= 0 && slPx <= 0) continue;
+            if (tpPx <= 0 && slPx <= 0 && !hasMultiTP) continue;
             const entryY = yScale(po.entryPrice);
             if (!Number.isFinite(entryY)) continue;
             const cg = ch.svg.append('g').attr('class', 'exec-order-connector').style('pointer-events', 'none');
-            if (tpPx > 0) {
+            if (hasMultiTP) {
+                for (const t of po.tpTargets) {
+                    if (t.hit || !(t.price > 0)) continue;
+                    const tpY = yScale(t.price);
+                    if (Number.isFinite(tpY)) {
+                        cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
+                            .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
+                        cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
+                            .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                    }
+                }
+                const avgG = this.multiTPAvgLines.find(g => g.orderId === po.id);
+                if (avgG && Number.isFinite(avgG.avgTP)) {
+                    const avgY = yScale(avgG.avgTP);
+                    if (Number.isFinite(avgY)) {
+                        cg.append('circle').attr('cx', connX).attr('cy', avgY).attr('r', 2.5)
+                            .attr('fill', '#eab308').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                    }
+                }
+            } else if (tpPx > 0) {
                 const tpY = yScale(tpPx);
                 if (Number.isFinite(tpY)) {
                     cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
