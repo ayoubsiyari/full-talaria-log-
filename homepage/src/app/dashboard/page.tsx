@@ -19,7 +19,6 @@ import {
   User,
   Calendar,
   Flame,
-  Zap,
   DollarSign,
   Percent,
   Scale,
@@ -150,7 +149,7 @@ function cn(...c: (string | false | undefined | null)[]): string {
 }
 
 const CARD =
-  "rounded-xl bg-white/[0.02] ring-1 ring-white/[0.06] hover:ring-white/[0.10] transition-all";
+  "rounded-lg border border-white/[0.08] bg-white/[0.015] hover:border-white/[0.12] transition-colors";
 
 /* ═══════════ MAIN ═══════════ */
 
@@ -254,11 +253,11 @@ export default function GlobalDashboard() {
     return (
       <div className="flex items-center justify-center py-40">
         <div className="text-center">
-          <div className="relative w-14 h-14 mx-auto mb-4">
-            <div className="absolute inset-0 border-[3px] border-blue-500/20 rounded-full animate-pulse" />
-            <div className="absolute inset-1.5 border-[3px] border-blue-500/40 border-t-transparent rounded-full animate-spin" />
+          <div className="relative w-12 h-12 mx-auto mb-4">
+            <div className="absolute inset-0 rounded-full border-2 border-white/[0.08]" />
+            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white/35 animate-spin" />
           </div>
-          <p className="text-sm text-white/30">Loading your dashboard…</p>
+          <p className="text-[13px] text-white/40 tracking-tight">Loading your dashboard…</p>
         </div>
       </div>
     );
@@ -281,68 +280,75 @@ export default function GlobalDashboard() {
   const winPct = (winCount / totalWL) * 100;
 
   return (
-    <div className="space-y-6 pb-16">
+    <div className="space-y-8 pb-16">
       {/* ═══ HEADER ═══ */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6 border-b border-white/[0.06] pb-8">
         <div>
-          <h1 className="text-[26px] font-bold text-white tracking-tight leading-tight">
+          <h1 className="text-2xl sm:text-[26px] font-semibold text-white/95 tracking-tight leading-snug">
             {greeting},{" "}
-            <span className="bg-gradient-to-r from-blue-400 to-violet-400 bg-clip-text text-transparent">
-              {user.name || "Trader"}
-            </span>
+            <span className="text-white">{user.name || "Trader"}</span>
           </h1>
-          <p className="text-[13px] text-white/25 mt-1">{todayStr}</p>
-          <div className="flex items-center gap-3 mt-2">
+          <p className="text-[13px] text-white/40 mt-1.5 font-normal">{todayStr}</p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-3">
             {planName ? (
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400">
-                <Crown className="w-3 h-3" /> {planName}
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded border border-white/[0.1] bg-white/[0.03] text-white/55">
+                <Crown className="w-3 h-3 text-white/35" /> {planName}
               </span>
             ) : hasSub ? (
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                <Shield className="w-3 h-3" /> Active
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded border border-white/[0.1] bg-white/[0.03] text-white/55">
+                <Shield className="w-3 h-3 text-white/35" /> Active
               </span>
             ) : null}
-            {memberSince && <span className="text-[11px] text-white/15">Member since {memberSince}</span>}
+            {memberSince && <span className="text-[11px] text-white/30">Member since {memberSince}</span>}
           </div>
         </div>
         <div className="flex items-center gap-2 self-start">
-          <a href="/journal/settings" className="inline-flex items-center gap-1.5 text-[12px] text-white/30 hover:text-white/60 border border-white/[0.06] hover:border-white/[0.12] rounded-lg px-3 py-1.5 transition-all">
-            <Settings className="w-3.5 h-3.5" /> Settings
+          <a href="/journal/settings" className="inline-flex items-center gap-1.5 text-[12px] font-medium text-white/45 hover:text-white/75 border border-white/[0.08] rounded-md px-3 py-1.5 hover:bg-white/[0.03] transition-colors">
+            <Settings className="w-3.5 h-3.5 opacity-70" /> Settings
           </a>
-          <a href="/journal/pricing" className="inline-flex items-center gap-1.5 text-[12px] text-white/30 hover:text-white/60 border border-white/[0.06] hover:border-white/[0.12] rounded-lg px-3 py-1.5 transition-all">
-            <CreditCard className="w-3.5 h-3.5" /> Plans
+          <a href="/journal/pricing" className="inline-flex items-center gap-1.5 text-[12px] font-medium text-white/45 hover:text-white/75 border border-white/[0.08] rounded-md px-3 py-1.5 hover:bg-white/[0.03] transition-colors">
+            <CreditCard className="w-3.5 h-3.5 opacity-70" /> Plans
           </a>
         </div>
       </div>
 
       {/* ═══ QUICK NAV ═══ */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {[
-          { icon: BarChart3, title: "Backtesting", desc: "Practice strategies on historical data", href: "/backtest/", gradient: "from-blue-600 to-blue-700" },
-          { icon: BookOpen, title: "Trade Journal", desc: "Log, analyze and improve your trades", href: "/journal/dashboard", gradient: "from-indigo-600 to-indigo-700" },
-          { icon: GraduationCap, title: "Mentorship", desc: "Learn from professional traders", href: "/bootcamp/", gradient: "from-violet-600 to-violet-700" },
-        ].map((item) => (
-          <a key={item.title} href={item.href} className={cn("group relative overflow-hidden rounded-xl p-4 transition-all bg-gradient-to-br", item.gradient, "hover:shadow-lg hover:shadow-blue-500/5 hover:scale-[1.01]")}>
-            <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-            <div className="relative flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0 backdrop-blur-sm">
-                <item.icon className="w-5 h-5 text-white" />
+      <div>
+        <h2 className="text-[11px] font-medium text-white/35 uppercase tracking-[0.12em] mb-3">Shortcuts</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[
+            { icon: BarChart3, title: "Backtesting", desc: "Historical strategy practice", href: "/backtest/" },
+            { icon: BookOpen, title: "Trade Journal", desc: "Log and review trades", href: "/journal/dashboard" },
+            { icon: GraduationCap, title: "Mentorship", desc: "Learn from professionals", href: "/bootcamp/" },
+          ].map((item) => (
+            <a
+              key={item.title}
+              href={item.href}
+              className={cn(
+                CARD,
+                "group flex items-start gap-3.5 p-4 no-underline"
+              )}
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.02]">
+                <item.icon className="h-[18px] w-[18px] text-white/45 group-hover:text-white/65 transition-colors" />
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-white">{item.title}</div>
-                <div className="text-[11px] text-white/50">{item.desc}</div>
+              <div className="min-w-0 flex-1 pt-0.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[13px] font-medium text-white/80 group-hover:text-white/95 transition-colors">{item.title}</span>
+                  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-white/25 group-hover:text-white/45 group-hover:translate-x-0.5 transition-all" />
+                </div>
+                <p className="text-[11px] text-white/35 mt-0.5 leading-relaxed">{item.desc}</p>
               </div>
-              <ArrowRight className="w-4 h-4 text-white/30 group-hover:text-white/70 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
-            </div>
-          </a>
-        ))}
+            </a>
+          ))}
+        </div>
       </div>
 
       {/* ═══ METRICS ═══ */}
       {hasTrades && stats ? (
         <>
           <div>
-            <h2 className="text-[13px] font-semibold text-white/30 uppercase tracking-wider mb-3">Performance Overview</h2>
+            <h2 className="text-[11px] font-medium text-white/35 uppercase tracking-[0.12em] mb-3">Performance overview</h2>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <MetricCard icon={Activity} label="Total Trades" value={String(stats.total_trades ?? 0)} sub={`${stats.winning_trades ?? 0}W / ${stats.losing_trades ?? 0}L`} />
               <MetricCard icon={DollarSign} label="Net P&L" value={fmt(stats.total_pnl)} valueColor={(stats.total_pnl ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"} sub={`Avg ${fmt(stats.avg_pnl)}/trade`} trend={(stats.total_pnl ?? 0) >= 0 ? "up" : "down"} />
@@ -360,18 +366,18 @@ export default function GlobalDashboard() {
           </div>
         </>
       ) : (
-        <div className={cn(CARD, "p-8 text-center")}>
-          <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-blue-500/10 flex items-center justify-center">
-            <Activity className="w-6 h-6 text-blue-400/60" />
+        <div className={cn(CARD, "p-10 text-center")}>
+          <div className="w-11 h-11 mx-auto mb-4 rounded-md border border-white/[0.1] bg-white/[0.02] flex items-center justify-center">
+            <Activity className="w-5 h-5 text-white/35" />
           </div>
-          <h3 className="text-sm font-semibold text-white/50 mb-1">No trades recorded yet</h3>
-          <p className="text-[12px] text-white/20 mb-4 max-w-xs mx-auto">Start by importing your trades or adding them manually to see your full performance dashboard.</p>
-          <div className="flex items-center justify-center gap-3">
-            <a href="/journal/import-trades" className="inline-flex items-center gap-1.5 text-[12px] font-medium text-blue-400 bg-blue-500/10 border border-blue-500/20 rounded-lg px-4 py-2 hover:bg-blue-500/15 transition-colors">
-              Import Trades <ArrowRight className="w-3 h-3" />
+          <h3 className="text-[15px] font-medium text-white/70 mb-1.5 tracking-tight">No trades yet</h3>
+          <p className="text-[12px] text-white/35 mb-6 max-w-sm mx-auto leading-relaxed">Import trades or add them manually to unlock performance metrics and charts.</p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <a href="/journal/import-trades" className="inline-flex items-center gap-1.5 text-[12px] font-medium text-white/90 bg-white/[0.08] border border-white/[0.12] rounded-md px-4 py-2 hover:bg-white/[0.11] transition-colors">
+              Import trades <ArrowRight className="w-3 h-3 opacity-60" />
             </a>
-            <a href="/journal/journal" className="inline-flex items-center gap-1.5 text-[12px] font-medium text-white/40 border border-white/[0.06] rounded-lg px-4 py-2 hover:border-white/[0.12] transition-colors">
-              Add Manually
+            <a href="/journal/journal" className="inline-flex items-center gap-1.5 text-[12px] font-medium text-white/45 border border-white/[0.08] rounded-md px-4 py-2 hover:bg-white/[0.03] hover:text-white/60 transition-colors">
+              Add manually
             </a>
           </div>
         </div>
@@ -384,7 +390,7 @@ export default function GlobalDashboard() {
           <div className={cn(CARD, "lg:col-span-2 p-5")}>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-[13px] font-semibold text-white/40 uppercase tracking-wider">Equity Curve</h3>
+                <h3 className="text-[11px] font-medium text-white/35 uppercase tracking-[0.12em]">Equity curve</h3>
                 {equity && (
                   <div className="flex items-center gap-3 mt-1">
                     <span className="text-lg font-bold text-white/80">{fmt(equity.final_balance)}</span>
@@ -416,7 +422,7 @@ export default function GlobalDashboard() {
           {/* Win/Loss + Streaks */}
           <div className="flex flex-col gap-3">
             <div className={cn(CARD, "p-5 flex-1")}>
-              <h3 className="text-[13px] font-semibold text-white/40 uppercase tracking-wider mb-3">Win / Loss</h3>
+              <h3 className="text-[11px] font-medium text-white/35 uppercase tracking-[0.12em] mb-3">Win / loss</h3>
               <div className="flex items-center gap-4">
                 {/* CSS donut */}
                 <div className="relative w-[90px] h-[90px] flex-shrink-0">
@@ -452,7 +458,7 @@ export default function GlobalDashboard() {
             </div>
             {streakData && (
               <div className={cn(CARD, "p-5")}>
-                <h3 className="text-[13px] font-semibold text-white/40 uppercase tracking-wider mb-3">Streaks</h3>
+                <h3 className="text-[11px] font-medium text-white/35 uppercase tracking-[0.12em] mb-3">Streaks</h3>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <div className="text-[11px] text-white/20 mb-0.5">Current</div>
@@ -475,10 +481,10 @@ export default function GlobalDashboard() {
       {dailyPnl.length > 0 && (
         <div className={cn(CARD, "p-5")}>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[13px] font-semibold text-white/40 uppercase tracking-wider">
-              Daily P&L <span className="text-white/15 normal-case font-normal">(last 30 days)</span>
+            <h3 className="text-[11px] font-medium text-white/35 uppercase tracking-[0.12em]">
+              Daily P&amp;L <span className="text-white/25 normal-case font-normal tracking-normal">· last 30 days</span>
             </h3>
-            <a href="/journal/analytics/calendar" className="text-[11px] text-white/20 hover:text-white/40 transition-colors">Full Calendar →</a>
+            <a href="/journal/analytics/calendar" className="text-[11px] text-white/30 hover:text-white/50 transition-colors">Calendar →</a>
           </div>
           <CSSBarChart data={dailyPnl} />
         </div>
@@ -489,8 +495,8 @@ export default function GlobalDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
           <div className={cn(CARD, "lg:col-span-2 p-5")}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[13px] font-semibold text-white/40 uppercase tracking-wider">Recent Trades</h3>
-              <a href="/journal/trades" className="text-[11px] text-white/20 hover:text-white/40 transition-colors">View all →</a>
+              <h3 className="text-[11px] font-medium text-white/35 uppercase tracking-[0.12em]">Recent trades</h3>
+              <a href="/journal/trades" className="text-[11px] text-white/30 hover:text-white/50 transition-colors">View all →</a>
             </div>
             {recentTrades.length > 0 ? (
               <div className="overflow-x-auto">
@@ -531,8 +537,8 @@ export default function GlobalDashboard() {
           {/* Strategy */}
           <div className={cn(CARD, "p-5")}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[13px] font-semibold text-white/40 uppercase tracking-wider">By Strategy</h3>
-              <a href="/journal/analytics/performance-analysis" className="text-[11px] text-white/20 hover:text-white/40 transition-colors">Details →</a>
+              <h3 className="text-[11px] font-medium text-white/35 uppercase tracking-[0.12em]">By strategy</h3>
+              <a href="/journal/analytics/performance-analysis" className="text-[11px] text-white/30 hover:text-white/50 transition-colors">Details →</a>
             </div>
             {strategies.length > 0 ? (
               <div className="space-y-3">
@@ -568,12 +574,12 @@ export default function GlobalDashboard() {
         {symbols.length > 0 && (
           <div className={cn(CARD, "p-5")}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[13px] font-semibold text-white/40 uppercase tracking-wider">Top Symbols</h3>
-              <a href="/journal/analytics/symbols" className="text-[11px] text-white/20 hover:text-white/40 transition-colors">All symbols →</a>
+              <h3 className="text-[11px] font-medium text-white/35 uppercase tracking-[0.12em]">Top symbols</h3>
+              <a href="/journal/analytics/symbols" className="text-[11px] text-white/30 hover:text-white/50 transition-colors">All symbols →</a>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {symbols.map((s) => (
-                <div key={s.symbol} className="rounded-lg bg-white/[0.02] ring-1 ring-white/[0.04] p-3">
+                <div key={s.symbol} className="rounded-md border border-white/[0.06] bg-white/[0.02] p-3">
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-[12px] font-semibold text-white/60">{s.symbol}</span>
                     <span className={cn("text-[11px] font-bold", s.total_pnl >= 0 ? "text-emerald-400" : "text-red-400")}>{fmt(s.total_pnl)}</span>
@@ -590,15 +596,15 @@ export default function GlobalDashboard() {
 
         <div className={cn(CARD, "p-5")}>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[13px] font-semibold text-white/40 uppercase tracking-wider">Backtest Sessions</h3>
-            {sessions.length > 0 && <a href="/backtest/" className="text-[11px] text-white/20 hover:text-white/40 transition-colors">View all →</a>}
+            <h3 className="text-[11px] font-medium text-white/35 uppercase tracking-[0.12em]">Backtest sessions</h3>
+            {sessions.length > 0 && <a href="/backtest/" className="text-[11px] text-white/30 hover:text-white/50 transition-colors">View all →</a>}
           </div>
           {sessions.length > 0 ? (
             <div className="space-y-2">
               {sessions.map((s) => (
-                <a key={s.id} href={`/chart/index.html?mode=${s.session_type === "propfirm" ? "propfirm" : "backtest"}&sessionId=${s.id}`} className="group flex items-center gap-3 rounded-lg bg-white/[0.02] ring-1 ring-white/[0.04] hover:ring-white/[0.10] p-3 transition-all">
-                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-                    <Play className="w-3.5 h-3.5 text-blue-400 ml-0.5" fill="currentColor" />
+                <a key={s.id} href={`/chart/index.html?mode=${s.session_type === "propfirm" ? "propfirm" : "backtest"}&sessionId=${s.id}`} className="group flex items-center gap-3 rounded-md border border-white/[0.06] bg-white/[0.02] hover:border-white/[0.1] hover:bg-white/[0.03] p-3 transition-colors">
+                  <div className="w-8 h-8 rounded-md border border-white/[0.08] bg-white/[0.02] flex items-center justify-center flex-shrink-0">
+                    <Play className="w-3.5 h-3.5 text-white/40 ml-0.5 group-hover:text-white/55 transition-colors" fill="currentColor" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-[12px] font-medium text-white/60 truncate group-hover:text-white/80 transition-colors">{s.name}</div>
@@ -611,8 +617,8 @@ export default function GlobalDashboard() {
           ) : (
             <div className="py-6 text-center">
               <p className="text-sm text-white/20 mb-3">No sessions yet</p>
-              <a href="/backtest/" className="inline-flex items-center gap-1.5 text-[12px] font-medium text-blue-400/80 hover:text-blue-400 transition-colors">
-                Start your first backtest <ArrowRight className="w-3 h-3" />
+              <a href="/backtest/" className="inline-flex items-center gap-1.5 text-[12px] font-medium text-white/45 hover:text-white/70 transition-colors">
+                Start your first backtest <ArrowRight className="w-3 h-3 opacity-50" />
               </a>
             </div>
           )}
@@ -621,7 +627,7 @@ export default function GlobalDashboard() {
 
       {/* ═══ ACCOUNT ═══ */}
       <div className={cn(CARD, "p-5")}>
-        <h3 className="text-[13px] font-semibold text-white/30 uppercase tracking-wider mb-4">Account</h3>
+        <h3 className="text-[11px] font-medium text-white/35 uppercase tracking-[0.12em] mb-4">Account</h3>
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <AccountField icon={User} label="Email" value={user.email} />
           {memberSince && <AccountField icon={Calendar} label="Member Since" value={memberSince} />}
@@ -639,15 +645,16 @@ export default function GlobalDashboard() {
 
 function MetricCard({ icon: Icon, label, value, valueColor, sub, trend }: { icon: React.ElementType; label: string; value: string; valueColor?: string; sub?: string; trend?: "up" | "down" }) {
   return (
-    <div className={cn(CARD, "p-4 relative overflow-hidden")}>
-      <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-white/[0.02] to-transparent rounded-bl-full" />
+    <div className={cn(CARD, "p-4")}>
       <div className="flex items-center gap-2 mb-3">
-        <div className="p-1.5 rounded-lg bg-blue-500/10"><Icon className="w-3.5 h-3.5 text-blue-400/70" /></div>
-        <span className="text-[11px] font-semibold text-white/25 uppercase tracking-wide">{label}</span>
-        {trend && <span className="ml-auto">{trend === "up" ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400/50" /> : <ArrowDownRight className="w-3.5 h-3.5 text-red-400/50" />}</span>}
+        <div className="flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.02]">
+          <Icon className="w-3.5 h-3.5 text-white/40" />
+        </div>
+        <span className="text-[10px] font-medium text-white/35 uppercase tracking-[0.08em]">{label}</span>
+        {trend && <span className="ml-auto">{trend === "up" ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-500/45" /> : <ArrowDownRight className="w-3.5 h-3.5 text-red-500/45" />}</span>}
       </div>
-      <div className={cn("text-xl font-bold", valueColor || "text-white/80")}>{value}</div>
-      {sub && <div className="text-[11px] text-white/15 mt-1">{sub}</div>}
+      <div className={cn("text-lg font-semibold tracking-tight", valueColor || "text-white/85")}>{value}</div>
+      {sub && <div className="text-[11px] text-white/30 mt-1">{sub}</div>}
     </div>
   );
 }
@@ -656,10 +663,10 @@ function MiniMetric({ icon: Icon, label, value, color }: { icon: React.ElementTy
   return (
     <div className={cn(CARD, "p-3")}>
       <div className="flex items-center gap-1.5 mb-1.5">
-        <Icon className="w-3 h-3 text-white/15" />
-        <span className="text-[10px] text-white/20 uppercase tracking-wide font-medium">{label}</span>
+        <Icon className="w-3 h-3 text-white/25" />
+        <span className="text-[10px] text-white/30 uppercase tracking-[0.06em] font-medium">{label}</span>
       </div>
-      <div className={cn("text-[15px] font-bold", color || "text-white/70")}>{value}</div>
+      <div className={cn("text-[15px] font-semibold tracking-tight", color || "text-white/75")}>{value}</div>
     </div>
   );
 }
@@ -667,10 +674,12 @@ function MiniMetric({ icon: Icon, label, value, color }: { icon: React.ElementTy
 function AccountField({ icon: Icon, label, value, valueColor }: { icon: React.ElementType; label: string; value: string; valueColor?: string }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center flex-shrink-0"><Icon className="w-4 h-4 text-white/20" /></div>
+      <div className="w-8 h-8 rounded-md border border-white/[0.06] bg-white/[0.02] flex items-center justify-center flex-shrink-0">
+        <Icon className="w-4 h-4 text-white/30" />
+      </div>
       <div>
-        <div className="text-[10px] text-white/20 uppercase tracking-wide">{label}</div>
-        <div className={cn("text-[12px] truncate max-w-[180px]", valueColor || "text-white/50")}>{value}</div>
+        <div className="text-[10px] text-white/30 uppercase tracking-[0.06em] font-medium">{label}</div>
+        <div className={cn("text-[12px] truncate max-w-[180px] font-medium", valueColor || "text-white/55")}>{value}</div>
       </div>
     </div>
   );
@@ -693,18 +702,13 @@ function SVGSparkline({ data, height = 160 }: { data: number[]; height?: number 
   const line = points.join(" ");
   const areaPath = `M${points[0]} L${line} L${w - pad},${h} L${pad},${h} Z`;
   const isUp = data[data.length - 1] >= data[0];
-  const color = isUp ? "#3b82f6" : "#ef4444";
+  const stroke = isUp ? "#94a3b8" : "#cbd5e1";
+  const fill = isUp ? "rgba(148, 163, 184, 0.12)" : "rgba(203, 213, 225, 0.1)";
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ height }} preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="spkGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity={0.2} />
-          <stop offset="100%" stopColor={color} stopOpacity={0} />
-        </linearGradient>
-      </defs>
-      <path d={areaPath} fill="url(#spkGrad)" />
-      <polyline points={line} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+      <path d={areaPath} fill={fill} />
+      <polyline points={line} fill="none" stroke={stroke} strokeWidth={1.75} strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );
 }
