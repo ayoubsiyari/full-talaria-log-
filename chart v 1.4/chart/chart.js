@@ -13849,7 +13849,10 @@ class Chart {
                     this.hideContextMenu();
                     this.scheduleRender();
                 } else {
-                    // Nothing actionable on SVG — forward to canvas so panning works
+                    // Nothing actionable on SVG — make SVG transparent and
+                    // forward this mousedown to canvas so panning/drag works
+                    // (subsequent mousemove/mouseup will reach canvas directly)
+                    this.svg.style('pointer-events', 'none');
                     if (this.canvas) {
                         const fwd = new MouseEvent('mousedown', {
                             bubbles: true, cancelable: true,

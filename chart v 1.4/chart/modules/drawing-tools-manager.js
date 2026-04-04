@@ -1910,9 +1910,10 @@ class DrawingToolsManager {
             } else {
                 // Clicked on empty space - deselect all (unless Shift is held)
                 if (!event.shiftKey) {
-                    // [debug removed]
                     this.deselectAll();
                 }
+                // Ensure SVG is transparent so canvas can receive panning events
+                this.svg.style('pointer-events', 'none');
             }
             return;
         }
