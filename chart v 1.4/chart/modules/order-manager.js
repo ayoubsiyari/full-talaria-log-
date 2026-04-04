@@ -1004,9 +1004,44 @@ class OrderManager {
         const rs = this.replaySystem;
         if (rs && rs.isActive && rs.isPlaying) {
             console.log(`⏸️ Pausing replay${reason ? ` (${reason})` : ''}`);
+
+            // If mid-tick-animation, commit the current candle to its final
+            // OHLCV and advance the index so resuming starts on the NEXT
+            // candle instead of replaying the same one from its open.
+            if (rs.animatingCandle && rs.animatingCandle.target) {
+                const tc = rs.animatingCandle.target;
+                rs.animatingCandle.close  = tc.c;
+                rs.animatingCandle.high   = tc.h;
+                rs.animatingCandle.low    = tc.l;
+                rs.animatingCandle.volume = tc.v || 0;
+                rs.updateChartWithAnimatedCandle();
+
+                rs.isPlaying = false;
+
+                rs.currentIndex++;
+                if (rs.fullRawData && rs.fullRawData[rs.currentIndex]) {
+                    rs.replayTimestamp = rs.fullRawData[rs.currentIndex].t;
+                }
+                rs.tickElapsedMs = 0;
+
+                rs.animatingCandle = null;
+                rs.tickProgress    = 0;
+                rs._animSlice      = null;
+                rs._animSliceIdx   = -1;
+                rs.volumeTickData  = null;
+
+                const committed = rs.fullRawData.slice(0, rs.currentIndex + 1);
+                rs.chart.rawData = committed;
+                rs.chart.data = rs.chart.resampleData(committed, rs.chart.currentTimeframe);
+                if (rs.chart.recalculateAllIndicators) rs.chart.recalculateAllIndicators();
+                if (rs.chart.render) rs.chart.render();
+
+                if (typeof rs.syncPanelCharts === 'function') rs.syncPanelCharts();
+                if (typeof rs.updateSlider === 'function') rs.updateSlider();
+                if (typeof rs.updateTimeDisplay === 'function') rs.updateTimeDisplay();
+            }
+
             rs.pause();
-            // Discard saved tick state so the partially-animated candle stays
-            // frozen at the exact tick where the hit occurred instead of resuming.
             rs._savedTickState = null;
         }
     }
@@ -4982,12 +5017,12 @@ class OrderManager {
                 /* ── BACKDROP ────────────────────────────────────────────────────── */
                 .order-panel-backdrop {
                     position: fixed; inset: 0;
-                    background: rgba(0,0,0,0.18);
+                    background: transparent;
                     z-index: 9998; opacity: 0;
                     pointer-events: none;
                     transition: opacity 0.28s ease;
                 }
-                .order-panel-backdrop.visible { opacity: 1; pointer-events: none; }
+                .order-panel-backdrop.visible { opacity: 0; pointer-events: none; }
 
                 /* ── HEADER ──────────────────────────────────────────────────────── */
                 .order-panel__content {
@@ -10854,22 +10889,31 @@ class OrderManager {
     calculateTPTargetsFromNumber(numTargets) {
         this.tpTargets = [];
         
-        // Get entry and original TP price (multi-entry: anchor from weighted Avg Entry)
         const entryPrice = this._getReferenceEntryForOrderMath();
         const originalTP = parseFloat(document.getElementById('tpPrice')?.value || 0);
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
-        
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const side = (this.orderSide || 'BUY').toUpperCase();
+
+        // Determine the TP distance to distribute across targets.
+        // Priority: explicit TP > SL-based R:R > small pip fallback
+        let distance = 0;
         if (entryPrice > 0 && originalTP > 0) {
-            const distance = Math.abs(originalTP - entryPrice);
-            
-            // Calculate distribution based on mode
+            distance = Math.abs(originalTP - entryPrice);
+        } else if (entryPrice > 0 && slPrice > 0) {
+            // No explicit TP — use SL distance so targets default to 1R..NR
+            distance = Math.abs(entryPrice - slPrice);
+        } else if (entryPrice > 0) {
+            // Neither TP nor SL — use a small default: 50 pips
+            distance = (this.pipSize || 0.0001) * 50;
+        }
+
+        if (entryPrice > 0 && distance > 0) {
             let distributionValue;
             if (this.tpDistributionMode === 'percent') {
                 distributionValue = 100 / numTargets;
             } else if (this.tpDistributionMode === 'amount') {
-                // Calculate total reward and divide by number of targets
-                const priceDiff = this.orderSide === 'BUY' ? (originalTP - entryPrice) : (entryPrice - originalTP);
-                const pipsMove = priceDiff / this.pipSize;
+                const pipsMove = distance / this.pipSize;
                 const totalReward = pipsMove * quantity * this.pipValuePerLot;
                 distributionValue = totalReward / numTargets;
             } else if (this.tpDistributionMode === 'lots') {
@@ -10877,16 +10921,14 @@ class OrderManager {
             }
             
             for (let i = 1; i <= numTargets; i++) {
-                // Distribute evenly from entry to original TP
                 const ratio = i / numTargets;
                 let price;
-                if (this.orderSide === 'BUY') {
+                if (side === 'BUY') {
                     price = entryPrice + (distance * ratio);
                 } else {
                     price = entryPrice - (distance * ratio);
                 }
                 
-                // Store distribution value with appropriate precision
                 let value;
                 if (this.tpDistributionMode === 'percent') {
                     value = parseFloat(distributionValue.toFixed(1));
@@ -10899,11 +10941,10 @@ class OrderManager {
                 this.tpTargets.push({ 
                     id: i, 
                     price: parseFloat(price.toFixed(5)), 
-                    percentage: value  // Renamed from percentage but stores the distribution value
+                    percentage: value
                 });
             }
         } else {
-            // Fallback if no prices set - create empty targets
             let distributionValue;
             if (this.tpDistributionMode === 'percent') {
                 distributionValue = 100 / numTargets;
@@ -15371,6 +15412,7 @@ class OrderManager {
                         type: this.orderSide,
                         openPrice: fillPx,
                         openTime: currentCandle.t,
+                        _entryBarTime: currentCandle.t,
                         quantity: qtyRounded,
                         originalQuantity: qtyRounded,
                         riskAmount: riskUsdForLevel,
@@ -15726,23 +15768,23 @@ class OrderManager {
             type: this.orderSide,
             openPrice: entryPrice,
             openTime: currentCandle.t,
+            _entryBarTime: currentCandle.t,
             quantity: quantity,
-            originalQuantity: quantity, // Store original quantity for journal (before partial closes)
-            riskAmount: actualRisk, // Store the ACTUAL calculated risk
-            originalRiskAmount: actualRisk, // Also store original for R-multiple after trailing
+            originalQuantity: quantity,
+            riskAmount: actualRisk,
+            originalRiskAmount: actualRisk,
             status: 'OPEN',
             stopLoss: slPrice > 0 ? slPrice : null,
             takeProfit: tpPrice > 0 ? tpPrice : null,
             autoBreakeven: autoBreakeven,
             breakevenSettings: breakevenSettings,
-            // MFE/MAE tracking (price levels, not dollar amounts)
             highestPrice: entryPrice,
             lowestPrice: entryPrice,
-            mfe: entryPrice, // Max Favorable Excursion (price level)
-            mae: entryPrice, // Max Adverse Excursion (price level)
-            mfeTime: currentCandle.t, // Timestamp when MFE occurred
-            maeTime: currentCandle.t, // Timestamp when MAE occurred
-            mfeMaeTrackingEndTime: currentCandle.t + (this.mfeMaeTrackingHours * 60 * 60 * 1000), // End time for MFE/MAE tracking
+            mfe: entryPrice,
+            mae: entryPrice,
+            mfeTime: currentCandle.t,
+            maeTime: currentCandle.t,
+            mfeMaeTrackingEndTime: currentCandle.t + (this.mfeMaeTrackingHours * 60 * 60 * 1000),
             postExitTrackingMode: this.postExitTrackingMode,
             postExitTrackingCandles: this.postExitTrackingCandles,
             postExitProcessedCandles: 0,
@@ -16423,6 +16465,7 @@ class OrderManager {
             type: 'BUY',
             openPrice: price,
             openTime: timestamp,
+            _entryBarTime: timestamp,
             quantity: 1,
             status: 'OPEN',
             stopLoss: defaultSL,
@@ -16481,6 +16524,7 @@ class OrderManager {
             type: 'SELL',
             openPrice: price,
             openTime: timestamp,
+            _entryBarTime: timestamp,
             quantity: 1,
             status: 'OPEN',
             stopLoss: defaultSL,
@@ -17077,8 +17121,12 @@ class OrderManager {
             }
 
             // While the trader is dragging this entry line, do NOT check for execution.
-            // The order will be evaluated on drag-end instead.
             if (this._draggingPendingOrderIds && this._draggingPendingOrderIds.has(pendingOrder.id)) {
+                return;
+            }
+
+            // Skip activation on the same candle where the user just dragged the entry.
+            if (pendingOrder._movedOnBarTime && pendingOrder._movedOnBarTime === currentCandle.t) {
                 return;
             }
 
@@ -17202,8 +17250,9 @@ class OrderManager {
             sourceFileId: pendingOrder.sourceFileId || this._chartSourceFileId(),
             instrument_settings: pendingOrder.instrument_settings || this._getActiveInstrumentSettings(),
             type: pendingOrder.direction,
-            openPrice: executionPrice, // Use actual execution price (accounts for gaps)
+            openPrice: executionPrice,
             openTime: currentCandle.t,
+            _entryBarTime: currentCandle.t,
             quantity: pendingOrder.quantity,
             riskAmount: pendingOrder.riskAmount,
             originalRiskAmount: pendingOrder.originalRiskAmount || pendingOrder.riskAmount, // Preserve original
@@ -17419,8 +17468,8 @@ class OrderManager {
                 
                 console.log(`   📊 BUY #${position.id}: Entry=${position.openPrice.toFixed(5)}, Mark=${markPx.toFixed(5)}, Diff=${priceDiff.toFixed(5)}, Qty=${position.quantity}, P&L=${position.unrealizedPnL >= 0 ? '+' : ''}$${position.unrealizedPnL.toFixed(2)}`);
                 
-                // Check for auto breakeven trigger (skip if trailing stop is already activated)
-                if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered && position.stopLoss && 
+                // Check for auto breakeven trigger (skip on entry bar and if trailing stop is already activated)
+                if (!isEntryBarBuy && position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered && position.stopLoss && 
                     !(position.trailingStop && position.trailingStop.activated)) {
                     let shouldTrigger = false;
                     const posPipSize = this._getPositionPipSize(position);
@@ -17469,8 +17518,8 @@ class OrderManager {
                     }
                 }
                 
-                // Check for step-based trailing stop activation and adjustment
-                if (position.trailingStop && position.trailingStop.enabled && position.stopLoss && !position.trailingStop.beSupersedesTrailing) {
+                // Check for step-based trailing stop activation and adjustment (skip on entry bar)
+                if (!isEntryBarBuy && position.trailingStop && position.trailingStop.enabled && position.stopLoss && !position.trailingStop.beSupersedesTrailing) {
                     // Check if trailing should activate (reach threshold first)
                     if (!position.trailingStop.activated) {
                         const shouldActivate = currentPrice >= position.trailingStop.activationThreshold;
@@ -17537,8 +17586,14 @@ class OrderManager {
                     }
                 }
                 
+                // Skip all SL/TP/multi-TP checks on the candle where the order was placed
+                const isEntryBarBuy = position._entryBarTime && position._entryBarTime === currentCandle.t;
+                if (isEntryBarBuy) {
+                    console.log(`   ⏭️ Skipping SL/TP checks for BUY #${position.id} - entry bar`);
+                }
+
                 // Check for multiple TP hits (skip if BE was just triggered this candle)
-                if (position.tpTargets && position.tpTargets.length > 0 && !position.beJustTriggered) {
+                if (!isEntryBarBuy && position.tpTargets && position.tpTargets.length > 0 && !position.beJustTriggered) {
                     console.log(`   📊 Checking ${position.tpTargets.length} TP targets for BUY #${position.id}`);
                     position.tpTargets.forEach((target, index) => {
                         console.log(`      Target ${index + 1}: price=${target.price.toFixed(5)}, percentage=${target.percentage}%, hit=${target.hit}, high=${high.toFixed(5)}`);
@@ -17564,8 +17619,8 @@ class OrderManager {
                     console.log(`   ⏭️ Skipping TP checks for BUY #${position.id} - BE was just triggered`);
                 }
                 
-                // Check if SL or TP was hit (skip SL check if BE just triggered this candle!)
-                if (!position.beJustTriggered) {
+                // Check if SL or TP was hit (skip on entry bar and if BE just triggered)
+                if (!isEntryBarBuy && !position.beJustTriggered) {
                     if (!position.tpTargets || position.tpTargets.length === 0) {
                         if (position.stopLoss && low <= position.stopLoss) {
                             const fillPx = this._gapFill(position.stopLoss, open, true, false);
@@ -17584,7 +17639,7 @@ class OrderManager {
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
                         }
                     }
-                } else {
+                } else if (!isEntryBarBuy) {
                     console.log(`   ⏭️ Skipping SL checks for BUY #${position.id} - BE was just triggered, new SL needs next candle`);
                 }
                 
@@ -17613,8 +17668,8 @@ class OrderManager {
                 
                 console.log(`   📊 SELL #${position.id}: Entry=${position.openPrice.toFixed(5)}, Mark=${markPx.toFixed(5)}, Diff=${priceDiff.toFixed(5)}, Qty=${position.quantity}, P&L=${position.unrealizedPnL >= 0 ? '+' : ''}$${position.unrealizedPnL.toFixed(2)}`);
                 
-                // Check for auto breakeven trigger (skip if trailing stop is already activated)
-                if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered && position.stopLoss && 
+                // Check for auto breakeven trigger (skip on entry bar and if trailing stop is already activated)
+                if (!isEntryBarSell && position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered && position.stopLoss && 
                     !(position.trailingStop && position.trailingStop.activated)) {
                     let shouldTrigger = false;
                     const posPipSize = this._getPositionPipSize(position);
@@ -17663,8 +17718,8 @@ class OrderManager {
                     }
                 }
                 
-                // Check for step-based trailing stop activation and adjustment
-                if (position.trailingStop && position.trailingStop.enabled && position.stopLoss && !position.trailingStop.beSupersedesTrailing) {
+                // Check for step-based trailing stop activation and adjustment (skip on entry bar)
+                if (!isEntryBarSell && position.trailingStop && position.trailingStop.enabled && position.stopLoss && !position.trailingStop.beSupersedesTrailing) {
                     // Check if trailing should activate (reach threshold first)
                     if (!position.trailingStop.activated) {
                         const shouldActivate = currentPrice <= position.trailingStop.activationThreshold;
@@ -17732,7 +17787,13 @@ class OrderManager {
                 }
                 
                 // Check for multiple TP hits (skip if BE was just triggered this candle)
-                if (position.tpTargets && position.tpTargets.length > 0 && !position.beJustTriggered) {
+                // Skip all SL/TP/multi-TP checks on the candle where the order was placed
+                const isEntryBarSell = position._entryBarTime && position._entryBarTime === currentCandle.t;
+                if (isEntryBarSell) {
+                    console.log(`   ⏭️ Skipping SL/TP checks for SELL #${position.id} - entry bar`);
+                }
+
+                if (!isEntryBarSell && position.tpTargets && position.tpTargets.length > 0 && !position.beJustTriggered) {
                     console.log(`   📊 Checking ${position.tpTargets.length} TP targets for SELL #${position.id}`);
                     position.tpTargets.forEach((target, index) => {
                         console.log(`      Target ${index + 1}: price=${target.price.toFixed(5)}, percentage=${target.percentage}%, hit=${target.hit}, low=${low.toFixed(5)}`);
@@ -17758,8 +17819,8 @@ class OrderManager {
                     console.log(`   ⏭️ Skipping TP checks for SELL #${position.id} - BE was just triggered`);
                 }
                 
-                // Check if SL or TP was hit (skip SL check if BE just triggered this candle!)
-                if (!position.beJustTriggered) {
+                // Check if SL or TP was hit (skip on entry bar and if BE just triggered)
+                if (!isEntryBarSell && !position.beJustTriggered) {
                     if (!position.tpTargets || position.tpTargets.length === 0) {
                         if (position.stopLoss && high >= position.stopLoss) {
                             const fillPx = this._gapFill(position.stopLoss, open, false, false);
@@ -17778,7 +17839,7 @@ class OrderManager {
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
                         }
                     }
-                } else {
+                } else if (!isEntryBarSell) {
                     console.log(`   ⏭️ Skipping SL checks for SELL #${position.id} - BE was just triggered, new SL needs next candle`);
                 }
                 
@@ -20071,30 +20132,10 @@ class OrderManager {
                     }
                 }
 
-                // Only auto-execute on release if replay is actively playing
-                // (otherwise, wait for the next candle tick to check activation normally)
-                const replayPlaying = self.replaySystem && self.replaySystem.isActive && self.replaySystem.isPlaying;
-                if (replayPlaying && curCandle) {
-                    const high = Number.parseFloat(curCandle.h);
-                    const low = Number.parseFloat(curCandle.l);
-                    let shouldExec = false;
-                    if (pendingOrder.orderType === 'limit') {
-                        if (pendingOrder.direction === 'BUY' && low <= pendingOrder.entryPrice) shouldExec = true;
-                        else if (pendingOrder.direction === 'SELL' && high >= pendingOrder.entryPrice) shouldExec = true;
-                    } else if (pendingOrder.orderType === 'stop') {
-                        if (pendingOrder.direction === 'BUY' && high >= pendingOrder.entryPrice) shouldExec = true;
-                        else if (pendingOrder.direction === 'SELL' && low <= pendingOrder.entryPrice) shouldExec = true;
-                    }
-                    if (shouldExec) {
-                        console.log(`⚡ Price already past entry — executing #${pendingOrder.id} on release`);
-                        if (self.orderService) {
-                            self.orderService.removePendingOrder(pendingOrder.id);
-                        } else {
-                            self.pendingOrders = self.pendingOrders.filter(o => o.id !== pendingOrder.id);
-                        }
-                        self.executePendingOrder(pendingOrder, curCandle);
-                        return;
-                    }
+                // Mark the candle where the user moved the order so
+                // checkPendingOrders skips activation on this same bar.
+                if (curCandle) {
+                    pendingOrder._movedOnBarTime = curCandle.t;
                 }
                 
                 // Redraw targets to update P&L with new lot size
