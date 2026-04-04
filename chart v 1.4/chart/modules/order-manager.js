@@ -7299,7 +7299,6 @@ class OrderManager {
                     border-color: rgba(34, 197, 94, 0.55);
                     box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.18);
                 }
-                .order-tp-multi__row-pct { flex: 0 0 44px; }
                 .order-tp-multi__row-price { flex: 1; }
                 .order-tp-multi__row-rr { flex: 0 0 40px; }
                 .order-tp-multi__row-profit { flex: 1; }
@@ -7812,7 +7811,6 @@ class OrderManager {
                         <!-- Multiple TP mode -->
                         <div id="multipleTPSettings" class="order-tp-multi is-hidden">
                             <div class="order-tp-multi__cols">
-                                <span class="order-tp-col-label" style="flex:0 0 44px;">%</span>
                                 <span class="order-tp-col-label" style="flex:1;">Price</span>
                                 <span class="order-tp-col-label" style="flex:0 0 40px;">R:R</span>
                                 <span class="order-tp-col-label" style="flex:1;">Profit</span>
@@ -11213,9 +11211,6 @@ class OrderManager {
             const profitText = profitUsd > 0 ? profitUsd.toFixed(2) : '0.00';
 
             return `<div class="order-tp-multi__row">
-                <div class="order-tp-multi__row-pct">
-                    <input type="number" id="tpTarget${target.id}Pct" value="${pctShare}" min="1" step="1">
-                </div>
                 <div class="order-tp-multi__row-price">
                     <input type="number" id="tpTarget${target.id}Price" value="${target.price}" step="0.00001" placeholder="0">
                 </div>
@@ -11249,18 +11244,9 @@ class OrderManager {
         // Wire input listeners — also trigger calculateAdvancedRiskReward for panel sync
         this.tpTargets.forEach(target => {
             const priceInput = document.getElementById(`tpTarget${target.id}Price`);
-            const pctInput = document.getElementById(`tpTarget${target.id}Pct`);
             if (priceInput) {
                 priceInput.oninput = () => {
                     target.price = parseFloat(priceInput.value) || 0;
-                    this.calculateAdvancedRiskReward();
-                    this.renderTPTargets();
-                    this.updatePreviewLines();
-                };
-            }
-            if (pctInput) {
-                pctInput.oninput = () => {
-                    target.percentage = parseFloat(pctInput.value) || 0;
                     this.calculateAdvancedRiskReward();
                     this.renderTPTargets();
                     this.updatePreviewLines();
