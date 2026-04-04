@@ -1010,11 +1010,17 @@ class OrderManager {
             // candle instead of replaying the same one from its open.
             if (rs.animatingCandle && rs.animatingCandle.target) {
                 const tc = rs.animatingCandle.target;
-                rs.animatingCandle.close  = tc.c;
-                rs.animatingCandle.high   = tc.h;
-                rs.animatingCandle.low    = tc.l;
-                rs.animatingCandle.volume = tc.v || 0;
-                rs.updateChartWithAnimatedCandle();
+
+                // Build the finalized candle data for the chart directly
+                // (avoid rs.updateChartWithAnimatedCandle which re-enters updatePositions)
+                const finalCandle = {
+                    t: rs.animatingCandle.t,
+                    o: rs.animatingCandle.open,
+                    h: tc.h,
+                    l: tc.l,
+                    c: tc.c,
+                    v: tc.v || 0
+                };
 
                 rs.isPlaying = false;
 

@@ -2193,7 +2193,11 @@ class ReplaySystem {
         
         // Update order manager positions after each candle
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
-            this.chart.orderManager.updatePositions();
+            try {
+                this.chart.orderManager.updatePositions();
+            } catch (e) {
+                console.error('updatePositions error during candle step:', e);
+            }
         }
         
         // Sync all panel charts with the current replay position
@@ -3143,7 +3147,11 @@ class ReplaySystem {
 
         // Same as updateChartData: floating PnL / SL-TP logic must track the latest candle.
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
-            this.chart.orderManager.updatePositions();
+            try {
+                this.chart.orderManager.updatePositions();
+            } catch (e) {
+                console.error('updatePositions error during fast mode:', e);
+            }
         }
 
         // Sync panels (throttle every 3rd update to keep fast mode responsive)
@@ -3524,7 +3532,11 @@ class ReplaySystem {
         }
 
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
-            this.chart.orderManager.updatePositions();
+            try {
+                this.chart.orderManager.updatePositions();
+            } catch (e) {
+                console.error('updatePositions error during tick:', e);
+            }
         }
     }
     
