@@ -20347,6 +20347,7 @@ class OrderManager {
         try { g.lotsText?.remove(); } catch (_) {}
         try { g.pnlBox?.remove(); } catch (_) {}
         try { g.pnlText?.remove(); } catch (_) {}
+        try { g._connector?.remove(); } catch (_) {}
         this.multiTPAvgLines.splice(idx, 1);
     }
 
@@ -20455,7 +20456,13 @@ class OrderManager {
 
             const totalW = lotsBW + gap + pnlBW;
             const rightEdge = ch.w - yAxisWidth - 10;
-            let cx = rightEdge - totalW;
+
+            // Align with TP labels: match the startX used in updateSLTPLines
+            const closeBtnR = 10;
+            const closeBtnGap = 6;
+            const closeBtnX = rightEdge - closeBtnR;
+            const alignX = closeBtnX - closeBtnR - closeBtnGap - totalW;
+            let cx = alignX;
 
             g.line
                 .attr('x1', 0).attr('x2', ch.w)
@@ -20468,6 +20475,31 @@ class OrderManager {
             g.pnlBox.attr('x', cx).attr('y', y - boxH / 2).attr('width', pnlBW).attr('height', boxH)
                 .attr('stroke', pnlColor);
             g.pnlText.attr('x', cx + pad).attr('y', y + 4);
+
+            // --- Connector lines from Avg TP to each individual TP level ---
+            if (g._connector) { try { g._connector.remove(); } catch (_) {} }
+            const connGroup = ch.svg.append('g')
+                .attr('class', `multi-tp-avg-connector multi-tp-avg-${g.orderId}`)
+                .style('pointer-events', 'none');
+            g._connector = connGroup;
+            const connX = rightEdge + 4;
+
+            for (const t of priced) {
+                if (t.hit) continue;
+                const tpY = yScale(t.price);
+                if (!Number.isFinite(tpY) || Math.abs(tpY - y) < 1) continue;
+                connGroup.append('line')
+                    .attr('x1', connX).attr('x2', connX)
+                    .attr('y1', y).attr('y2', tpY)
+                    .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
+                connGroup.append('circle')
+                    .attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
+                    .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
+            }
+            connGroup.append('circle')
+                .attr('cx', connX).attr('cy', y).attr('r', 2.5)
+                .attr('fill', '#eab308').attr('stroke', '#0f172a').attr('stroke-width', 1);
+            try { connGroup.lower(); } catch (_) {}
         }
 
         for (const id of toRemove) this.removeMultiTPAvgLine(id);
