@@ -8082,59 +8082,60 @@ class OrderManager {
 
     /**
      * Apply the current pair's price precision to every price input in the order panel.
-     * Sets `step`, `max`/`min` decimals, and enforces clamping on `change`.
+     * Sets `step` and enforces the max decimal count live on every keystroke.
      */
     _applyPrecisionToInputs() {
         const prec = this.getPricePrecision();
         const step = Math.pow(10, -prec).toFixed(prec);
 
+        const attachPrecision = (el) => {
+            if (!el) return;
+            el.setAttribute('step', step);
+
+            // Remove stale handlers by replacing with fresh ones keyed to current prec
+            if (el._precApplied === prec) return; // already up-to-date for this precision
+            el._precApplied = prec;
+
+            // Remove old listeners if stored
+            if (el._precInputHandler) el.removeEventListener('input', el._precInputHandler);
+            if (el._precBlurHandler)  el.removeEventListener('blur',  el._precBlurHandler);
+
+            // Input handler: truncate extra decimals while typing (cursor-safe)
+            el._precInputHandler = () => {
+                const raw = el.value;
+                const dot = raw.indexOf('.');
+                if (dot !== -1 && raw.length - dot - 1 > prec) {
+                    const sel = el.selectionStart;
+                    el.value = raw.slice(0, dot + prec + 1);
+                    // Restore cursor position (clamped to new length)
+                    el.setSelectionRange(Math.min(sel, el.value.length), Math.min(sel, el.value.length));
+                }
+            };
+
+            // Blur handler: format to exact decimal places on leave
+            el._precBlurHandler = () => {
+                const v = parseFloat(el.value);
+                if (Number.isFinite(v) && v > 0) el.value = v.toFixed(prec);
+            };
+
+            el.addEventListener('input', el._precInputHandler);
+            el.addEventListener('blur',  el._precBlurHandler);
+        };
+
         const priceInputIds = ['orderEntryPrice', 'slPrice', 'tpPrice'];
         for (const id of priceInputIds) {
-            const el = document.getElementById(id);
-            if (!el) continue;
-            el.setAttribute('step', step);
-            // Clamp decimal count on blur
-            el._precHandler = el._precHandler || (() => {
-                const v = parseFloat(el.value);
-                if (Number.isFinite(v)) el.value = v.toFixed(this.getPricePrecision());
-            });
-            el.removeEventListener('change', el._precHandler);
-            el.addEventListener('change', el._precHandler);
-            el.removeEventListener('blur', el._precHandler);
-            el.addEventListener('blur', el._precHandler);
+            attachPrecision(document.getElementById(id));
         }
 
-        // Also apply to multi-TP target inputs (rendered dynamically)
         if (this.tpTargets) {
             for (const target of this.tpTargets) {
-                const el = document.getElementById(`tpTarget${target.id}Price`);
-                if (!el) continue;
-                el.setAttribute('step', step);
-                el._precHandler = el._precHandler || (() => {
-                    const v = parseFloat(el.value);
-                    if (Number.isFinite(v) && v > 0) el.value = v.toFixed(this.getPricePrecision());
-                });
-                el.removeEventListener('change', el._precHandler);
-                el.addEventListener('change', el._precHandler);
-                el.removeEventListener('blur', el._precHandler);
-                el.addEventListener('blur', el._precHandler);
+                attachPrecision(document.getElementById(`tpTarget${target.id}Price`));
             }
         }
 
-        // Multi-entry level inputs
         if (this.multiEntryLevels) {
             for (const level of this.multiEntryLevels) {
-                const el = document.getElementById(`multiEntryPrice_${level.id}`);
-                if (!el) continue;
-                el.setAttribute('step', step);
-                el._precHandler = el._precHandler || (() => {
-                    const v = parseFloat(el.value);
-                    if (Number.isFinite(v) && v > 0) el.value = v.toFixed(this.getPricePrecision());
-                });
-                el.removeEventListener('change', el._precHandler);
-                el.addEventListener('change', el._precHandler);
-                el.removeEventListener('blur', el._precHandler);
-                el.addEventListener('blur', el._precHandler);
+                attachPrecision(document.getElementById(`multiEntryPrice_${level.id}`));
             }
         }
     }
