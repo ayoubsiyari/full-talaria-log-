@@ -11322,27 +11322,15 @@ class OrderManager {
             }
         });
         
-        // Check TP ordering (should be progressive)
-        const sortedTargets = [...this.tpTargets].sort((a, b) => {
+        // Auto-sort TPs into progressive order (closest to entry first)
+        // so the execution engine processes them correctly.
+        this.tpTargets.sort((a, b) => {
             if (this.orderSide === 'BUY') {
-                return a.price - b.price; // Ascending for BUY
+                return a.price - b.price;
             } else {
-                return b.price - a.price; // Descending for SELL
+                return b.price - a.price;
             }
         });
-        
-        // Warn if TPs are not in progressive order
-        let isOrdered = true;
-        for (let i = 0; i < this.tpTargets.length; i++) {
-            if (this.tpTargets[i].price !== sortedTargets[i].price) {
-                isOrdered = false;
-                break;
-            }
-        }
-        
-        if (!isOrdered) {
-            errors.push('⚠️ TP targets should be in progressive order from entry');
-        }
         
         return errors;
     }
