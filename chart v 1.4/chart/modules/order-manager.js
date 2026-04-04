@@ -8584,23 +8584,25 @@ class OrderManager {
 
             const slWidth = this.previewLines?.sl?.labelDimensions?.width || 40;
 
-            // TP zone width: for horizontal fan, account for spread of all badges
             const mtpBadges = this.previewLines?.multiTPBadges || [];
             let tpWidth;
             if (mtpBadges.length > 0) {
-                const singleW = Math.max(...mtpBadges.map(b => b.labelDimensions?.width || 30));
-                const fanSpread = (mtpBadges.length - 1) * 18; // matches stackOffsetX
-                tpWidth = singleW + fanSpread;
+                tpWidth = Math.max(...mtpBadges.map(b => b.labelDimensions?.width || 30));
             } else {
                 tpWidth = this.previewLines?.tp?.labelDimensions?.width || 40;
             }
 
-            if (lineData.label === 'SL') {
-                x = this.chart.w - rightMargin - slWidth - gap - tpWidth - gap;
+            // Base X for the frontmost TP badge (TP1, offset=0)
+            const tpBaseX = this.chart.w - rightMargin - tpWidth - gap;
+
+            if (lineData.isMultiTPBadge) {
+                x = tpBaseX + (lineData._stackOffsetX || 0);
             } else if (lineData.label === 'TP') {
-                x = this.chart.w - rightMargin - tpWidth - gap;
-            } else if (lineData.isMultiTPBadge) {
-                x = this.chart.w - rightMargin - (bbox.width || tpWidth) - gap + (lineData._stackOffsetX || 0);
+                x = tpBaseX;
+            } else if (lineData.label === 'SL') {
+                // SL sits just left of the leftmost multi-TP badge (or single TP)
+                const leftmostOffset = mtpBadges.length > 1 ? (mtpBadges.length - 1) * 18 : 0;
+                x = tpBaseX - leftmostOffset - gap - slWidth;
             }
         } else {
             const pad = 175;
