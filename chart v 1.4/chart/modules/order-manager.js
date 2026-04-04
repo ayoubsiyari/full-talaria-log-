@@ -1004,10 +1004,33 @@ class OrderManager {
         const rs = this.replaySystem;
         if (rs && rs.isActive && rs.isPlaying) {
             console.log(`⏸️ Pausing replay${reason ? ` (${reason})` : ''}`);
+
+            const wasAnimating = !!rs.animatingCandle;
+
             rs.pause();
-            // Discard saved tick state so the partially-animated candle stays
-            // frozen at the exact tick where the hit occurred instead of resuming.
             rs._savedTickState = null;
+
+            // Finalize the candle that was mid-animation so pressing play
+            // advances to the NEXT candle instead of re-drawing this one from open.
+            if (wasAnimating && rs.fullRawData) {
+                rs.animatingCandle = null;
+                rs.tickProgress = 0;
+                rs.tickElapsedMs = 0;
+
+                const nextIdx = rs.currentIndex + 1;
+                if (nextIdx < rs.fullRawData.length) {
+                    rs.currentIndex = nextIdx;
+                    rs.edgeProbeRetryCount = 0;
+                    if (rs.fullRawData[rs.currentIndex]) {
+                        rs.replayTimestamp = rs.fullRawData[rs.currentIndex].t;
+                    }
+                }
+
+                rs.updateChartData(true);
+                rs.updateTimeDisplay();
+                rs.updateSlider();
+                rs.syncPanelCharts();
+            }
         }
     }
 
