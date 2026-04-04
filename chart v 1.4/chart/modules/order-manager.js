@@ -999,6 +999,36 @@ class OrderManager {
         return Number.isFinite(bgT) && Number.isFinite(animT) && bgT === animT;
     }
 
+    /**
+     * OHLC fill-candle protection: on the candle where a pending order just filled,
+     * determine whether the SL extreme happened BEFORE the entry filled.
+     *
+     * Assumed price paths:
+     *   Bullish (C >= O): O → L → H → C
+     *   Bearish (C <  O): O → H → L → C
+     *
+     * For a STOP BUY (entry > O) on a bullish candle the low occurs first (before
+     * price rises to entry), so SL should NOT trigger.
+     * For a STOP SELL (entry < O) on a bearish candle the high occurs first (before
+     * price drops to entry), so SL should NOT trigger.
+     * All other combos: SL extreme happens after entry → check normally.
+     */
+    _shouldSkipSLOnFillCandle(position, candle) {
+        if (!position._fillCandleTime || position._fillCandleTime !== candle.t) return false;
+
+        const o = candle.o;
+        const c = candle.c;
+        const isBullish = c >= o;
+
+        if (position.type === 'BUY' && position._fillOrderType === 'stop' && isBullish) {
+            return true;
+        }
+        if (position.type === 'SELL' && position._fillOrderType === 'stop' && !isBullish) {
+            return true;
+        }
+        return false;
+    }
+
     /** Pause replay playback when limit/stop fills or TP/SL fires so the chart does not keep advancing. */
     _pauseReplayIfPlaying(reason) {
         const rs = this.replaySystem;
@@ -17248,7 +17278,11 @@ class OrderManager {
             splitGroupId: pendingOrder.splitGroupId || null,
             splitIndex: pendingOrder.splitIndex || null,
             splitTotal: pendingOrder.splitTotal || null,
-            isSplitEntry: pendingOrder.isSplitEntry || false
+            isSplitEntry: pendingOrder.isSplitEntry || false,
+            // OHLC fill-candle protection: skip SL on the fill candle when the
+            // assumed price path shows the extreme happened BEFORE entry filled.
+            _fillCandleTime: currentCandle.t,
+            _fillOrderType: pendingOrder.orderType
         };
         
         // DEBUG: Log tpTargets to verify they're correct
@@ -17570,7 +17604,8 @@ class OrderManager {
                 }
                 
                 // Check if SL or TP was hit (skip SL check if BE just triggered this candle!)
-                if (!position.beJustTriggered) {
+                const skipBuySL = position.beJustTriggered || this._shouldSkipSLOnFillCandle(position, currentCandle);
+                if (!skipBuySL) {
                     if (!position.tpTargets || position.tpTargets.length === 0) {
                         if (position.stopLoss && low <= position.stopLoss) {
                             const fillPx = this._gapFill(position.stopLoss, open, true, false);
@@ -17590,12 +17625,20 @@ class OrderManager {
                         }
                     }
                 } else {
-                    console.log(`   ⏭️ Skipping SL checks for BUY #${position.id} - BE was just triggered, new SL needs next candle`);
+                    if (position.beJustTriggered) {
+                        console.log(`   ⏭️ Skipping SL checks for BUY #${position.id} - BE was just triggered, new SL needs next candle`);
+                    } else {
+                        console.log(`   ⏭️ Skipping SL on fill candle for BUY #${position.id} - OHLC path: low occurred before entry filled`);
+                    }
                 }
                 
-                // Clear the BE just triggered flag AFTER all checks (it only applies to current candle)
+                // Clear single-candle flags
                 if (position.beJustTriggered) {
                     position.beJustTriggered = false;
+                }
+                if (position._fillCandleTime && position._fillCandleTime !== currentCandle.t) {
+                    delete position._fillCandleTime;
+                    delete position._fillOrderType;
                 }
             } else {
                 const priceDiff = position.openPrice - markPx;
@@ -17764,7 +17807,8 @@ class OrderManager {
                 }
                 
                 // Check if SL or TP was hit (skip SL check if BE just triggered this candle!)
-                if (!position.beJustTriggered) {
+                const skipSellSL = position.beJustTriggered || this._shouldSkipSLOnFillCandle(position, currentCandle);
+                if (!skipSellSL) {
                     if (!position.tpTargets || position.tpTargets.length === 0) {
                         if (position.stopLoss && high >= position.stopLoss) {
                             const fillPx = this._gapFill(position.stopLoss, open, false, false);
@@ -17784,12 +17828,20 @@ class OrderManager {
                         }
                     }
                 } else {
-                    console.log(`   ⏭️ Skipping SL checks for SELL #${position.id} - BE was just triggered, new SL needs next candle`);
+                    if (position.beJustTriggered) {
+                        console.log(`   ⏭️ Skipping SL checks for SELL #${position.id} - BE was just triggered, new SL needs next candle`);
+                    } else {
+                        console.log(`   ⏭️ Skipping SL on fill candle for SELL #${position.id} - OHLC path: high occurred before entry filled`);
+                    }
                 }
                 
-                // Clear the BE just triggered flag AFTER all checks (it only applies to current candle)
+                // Clear single-candle flags
                 if (position.beJustTriggered) {
                     position.beJustTriggered = false;
+                }
+                if (position._fillCandleTime && position._fillCandleTime !== currentCandle.t) {
+                    delete position._fillCandleTime;
+                    delete position._fillOrderType;
                 }
             }
             
