@@ -231,7 +231,7 @@ export default function SubscriptionManager() {
   const getStatusBadge = (status) => {
     const styles = {
       active: 'bg-green-500/20 text-green-400 border-green-500/30',
-      trialing: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+      trialing: 'bg-cyan-500/20 text-cyan-300 border-cyan-400/30',
       cancelled: 'bg-red-500/20 text-red-400 border-red-500/30',
       past_due: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
       succeeded: 'bg-green-500/20 text-green-400 border-green-500/30',
@@ -255,12 +255,12 @@ export default function SubscriptionManager() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-          <CreditCard className="w-5 h-5 text-blue-400" />
+          <CreditCard className="w-5 h-5 text-cyan-300" />
           Subscription & Payments
         </h2>
         <button
           onClick={() => { fetchStats(); fetchPlans(); }}
-          className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+          className="p-2 text-gray-400 hover:text-white hover:bg-cyan-500/10 rounded-lg transition-colors"
         >
           <RefreshCw className="w-4 h-4" />
         </button>
@@ -277,8 +277,8 @@ export default function SubscriptionManager() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
                 isActive
-                  ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/30'
+                  : 'text-gray-400 hover:text-white hover:bg-cyan-950/15'
               }`}
             >
               <Icon className="w-4 h-4" />
@@ -316,8 +316,8 @@ export default function SubscriptionManager() {
             
             <div className="bg-[#0a1628] rounded-lg border border-[#2d4a6f] p-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
-                  <TrendingUp className="w-5 h-5 text-blue-400" />
+                <div className="w-10 h-10 bg-cyan-500/20 rounded-lg flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-cyan-300" />
                 </div>
                 <div>
                   <p className="text-gray-400 text-xs">ARR</p>
@@ -380,7 +380,7 @@ export default function SubscriptionManager() {
             <h3 className="text-sm font-medium text-white">Subscription Plans</h3>
             <button
               onClick={() => setShowPlanModal(true)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg text-sm hover:bg-blue-500/30 transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 rounded-lg text-sm hover:bg-cyan-500/20 transition-colors"
             >
               <Plus className="w-4 h-4" />
               New Plan
@@ -531,7 +531,7 @@ export default function SubscriptionManager() {
             <h3 className="text-sm font-medium text-white">Coupons</h3>
             <button
               onClick={() => setShowCouponModal(true)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg text-sm hover:bg-blue-500/30 transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 rounded-lg text-sm hover:bg-cyan-500/20 transition-colors"
             >
               <Plus className="w-4 h-4" />
               New Coupon
@@ -547,13 +547,13 @@ export default function SubscriptionManager() {
                     {coupon.valid ? 'Valid' : 'Expired'}
                   </span>
                 </div>
-                <p className="text-2xl font-bold text-blue-400 mb-2">
+                <p className="text-2xl font-bold text-cyan-300 mb-2">
                   {coupon.percent_off ? `${coupon.percent_off}% OFF` : formatCurrency(coupon.amount_off / 100)}
                 </p>
                 {coupon.promotion_codes && coupon.promotion_codes.length > 0 && (
                   <div className="flex flex-wrap gap-1 mb-2">
                     {coupon.promotion_codes.map((code, i) => (
-                      <span key={i} className="px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded text-xs font-mono">
+                      <span key={i} className="px-2 py-0.5 bg-cyan-500/20 text-cyan-200 rounded text-xs font-mono">
                         {code}
                       </span>
                     ))}
@@ -686,7 +686,7 @@ export default function SubscriptionManager() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  className="flex-1 px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-colors"
                 >
                   Create Plan
                 </button>
@@ -767,7 +767,7 @@ export default function SubscriptionManager() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  className="flex-1 px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-colors"
                 >
                   Create Coupon
                 </button>

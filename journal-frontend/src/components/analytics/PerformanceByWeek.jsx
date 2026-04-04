@@ -329,11 +329,11 @@ const PerformanceByWeek = ({ weeklyPerformance = [], dailyPerformance = [], trad
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
+      <div className="bg-cyan-950/40 dark:bg-gray-900 rounded-xl border border-cyan-500/15 dark:border-gray-800 p-6">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{getPeriodTitle()}</h3>
           <div className="flex items-center space-x-2">
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-cyan-100 dark:bg-blue-900/30 dark:text-cyan-200">
               <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
               Loading...
             </span>
@@ -349,7 +349,7 @@ const PerformanceByWeek = ({ weeklyPerformance = [], dailyPerformance = [], trad
   // No data state
   if (chartData.length === 0) {
     return (
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
+      <div className="bg-cyan-950/40 dark:bg-gray-900 rounded-xl border border-cyan-500/15 dark:border-gray-800 p-6">
         <div className="flex flex-col items-center justify-center h-64 text-center">
           <p className="text-gray-500 dark:text-gray-400 mb-2">No {periodType}ly performance data available</p>
           <p className="text-sm text-gray-400">Trade during different periods to see performance metrics</p>
@@ -362,7 +362,7 @@ const PerformanceByWeek = ({ weeklyPerformance = [], dailyPerformance = [], trad
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
+        <div className="bg-cyan-950/40 dark:bg-gray-800 p-3 rounded-lg shadow-lg border border-cyan-500/15 dark:border-gray-700">
           <p className="font-semibold text-gray-900 dark:text-white">{data.formatted_range}</p>
           <p className="text-sm">
             <span className="text-gray-500">P&L: </span>
@@ -402,7 +402,7 @@ const PerformanceByWeek = ({ weeklyPerformance = [], dailyPerformance = [], trad
   };
 
   return (
-    <div className="bg-white rounded-xl border border-blue-200/60 p-6">
+    <div className="bg-cyan-950/40 rounded-xl border border-cyan-500/20 p-6">
       <div className="flex flex-col space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between">
@@ -411,20 +411,20 @@ const PerformanceByWeek = ({ weeklyPerformance = [], dailyPerformance = [], trad
               {getPeriodIcon()}
               {getPeriodTitle()}
             </h3>
-            <p className="text-sm text-slate-600 mt-1">
+            <p className="text-sm text-cyan-100/60 mt-1">
               Track your performance across different {periodType === PERIOD_TYPES.DAY_OF_WEEK ? 'days of the week' : periodType === PERIOD_TYPES.WEEK ? 'weeks' : periodType + 's'}
             </p>
           </div>
           
           {/* Period Selector */}
           <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
-            <div className="flex bg-slate-100 rounded-md p-1">
+            <div className="flex bg-cyan-950/35 rounded-md p-1">
             <button
               onClick={() => setPeriodType(PERIOD_TYPES.DAY_OF_WEEK)}
               className={`px-3 py-1.5 text-sm rounded-md flex items-center ${
                 periodType === PERIOD_TYPES.DAY_OF_WEEK 
-                  ? 'bg-white shadow text-blue-600' 
-                  : 'text-slate-600 hover:bg-slate-200'
+                  ? 'bg-cyan-950/40 shadow text-cyan-300' 
+                  : 'text-cyan-100/60 hover:bg-slate-200'
               }`}
             >
               <Calendar className="w-3.5 h-3.5 mr-1.5" /> Day of Week
@@ -433,8 +433,8 @@ const PerformanceByWeek = ({ weeklyPerformance = [], dailyPerformance = [], trad
               onClick={() => setPeriodType(PERIOD_TYPES.WEEK)}
               className={`px-3 py-1.5 text-sm rounded-md flex items-center ${
                 periodType === PERIOD_TYPES.WEEK 
-                  ? 'bg-white shadow text-blue-600' 
-                  : 'text-slate-600 hover:bg-slate-200'
+                  ? 'bg-cyan-950/40 shadow text-cyan-300' 
+                  : 'text-cyan-100/60 hover:bg-slate-200'
               }`}
             >
               <Clock className="w-3.5 h-3.5 mr-1.5" /> Week
@@ -443,8 +443,8 @@ const PerformanceByWeek = ({ weeklyPerformance = [], dailyPerformance = [], trad
               onClick={() => setPeriodType(PERIOD_TYPES.MONTH)}
               className={`px-3 py-1.5 text-sm rounded-md flex items-center ${
                 periodType === PERIOD_TYPES.MONTH 
-                  ? 'bg-white shadow text-blue-600' 
-                  : 'text-slate-600 hover:bg-slate-200'
+                  ? 'bg-cyan-950/40 shadow text-cyan-300' 
+                  : 'text-cyan-100/60 hover:bg-slate-200'
               }`}
             >
               <CalendarDays className="w-3.5 h-3.5 mr-1.5" /> Month
@@ -453,8 +453,8 @@ const PerformanceByWeek = ({ weeklyPerformance = [], dailyPerformance = [], trad
               onClick={() => setPeriodType(PERIOD_TYPES.QUARTER)}
               className={`px-3 py-1.5 text-sm rounded-md flex items-center ${
                 periodType === PERIOD_TYPES.QUARTER 
-                  ? 'bg-white shadow text-blue-600' 
-                  : 'text-slate-600 hover:bg-slate-200'
+                  ? 'bg-cyan-950/40 shadow text-cyan-300' 
+                  : 'text-cyan-100/60 hover:bg-slate-200'
               }`}
             >
               <CalendarRange className="w-3.5 h-3.5 mr-1.5" /> Quarter
@@ -463,8 +463,8 @@ const PerformanceByWeek = ({ weeklyPerformance = [], dailyPerformance = [], trad
               onClick={() => setPeriodType(PERIOD_TYPES.YEAR)}
               className={`px-3 py-1.5 text-sm rounded-md flex items-center ${
                 periodType === PERIOD_TYPES.YEAR 
-                  ? 'bg-white shadow text-blue-600' 
-                  : 'text-slate-600 hover:bg-slate-200'
+                  ? 'bg-cyan-950/40 shadow text-cyan-300' 
+                  : 'text-cyan-100/60 hover:bg-slate-200'
               }`}
             >
               <CalendarCheck className="w-3.5 h-3.5 mr-1.5" /> Year
@@ -527,8 +527,8 @@ const PerformanceByWeek = ({ weeklyPerformance = [], dailyPerformance = [], trad
         
         {/* Stats Summary */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-2">
-          <div className="bg-slate-50 p-4 rounded-lg">
-            <div className="flex items-center text-sm text-slate-600 mb-1">
+          <div className="bg-jf-bg p-4 rounded-lg">
+            <div className="flex items-center text-sm text-cyan-100/60 mb-1">
               <BarChart3 className="w-4 h-4 mr-1.5" />
               <span>Total Trades</span>
             </div>
@@ -536,8 +536,8 @@ const PerformanceByWeek = ({ weeklyPerformance = [], dailyPerformance = [], trad
               {chartData.reduce((sum, week) => sum + week.trades, 0)}
             </p>
           </div>
-          <div className="bg-slate-50 p-4 rounded-lg">
-            <div className="flex items-center text-sm text-slate-600 mb-1">
+          <div className="bg-jf-bg p-4 rounded-lg">
+            <div className="flex items-center text-sm text-cyan-100/60 mb-1">
               <TrendingUp className="w-4 h-4 mr-1.5" />
               <span>Avg. {periodType === PERIOD_TYPES.DAY_OF_WEEK ? 'Day of Week' : periodType === PERIOD_TYPES.WEEK ? 'Weekly' : periodType === PERIOD_TYPES.MONTH ? 'Monthly' : periodType === PERIOD_TYPES.QUARTER ? 'Quarterly' : 'Yearly'} P&L</span>
             </div>
@@ -547,8 +547,8 @@ const PerformanceByWeek = ({ weeklyPerformance = [], dailyPerformance = [], trad
                 : '$0.00'}
             </p>
           </div>
-          <div className="bg-slate-50 p-4 rounded-lg">
-            <div className="flex items-center text-sm text-slate-600 mb-1">
+          <div className="bg-jf-bg p-4 rounded-lg">
+            <div className="flex items-center text-sm text-cyan-100/60 mb-1">
               <Target className="w-4 h-4 mr-1.5" />
               <span>Win Rate</span>
             </div>
@@ -558,8 +558,8 @@ const PerformanceByWeek = ({ weeklyPerformance = [], dailyPerformance = [], trad
                 : '0%'}
             </p>
           </div>
-          <div className="bg-slate-50 p-4 rounded-lg">
-            <div className="flex items-center text-sm text-slate-600 mb-1">
+          <div className="bg-jf-bg p-4 rounded-lg">
+            <div className="flex items-center text-sm text-cyan-100/60 mb-1">
               <CalendarDays className="w-4 h-4 mr-1.5" />
               <span>{periodType === PERIOD_TYPES.DAY_OF_WEEK ? 'Days of Week' : periodType === PERIOD_TYPES.WEEK ? 'Weeks' : periodType === PERIOD_TYPES.MONTH ? 'Months' : periodType === PERIOD_TYPES.QUARTER ? 'Quarters' : 'Years'}</span>
             </div>
@@ -571,11 +571,11 @@ const PerformanceByWeek = ({ weeklyPerformance = [], dailyPerformance = [], trad
 
         {/* Best and Worst Periods */}
         <div className="mt-4">
-          <h4 className="text-sm font-medium text-slate-600 mb-2">Performance Extremes</h4>
+          <h4 className="text-sm font-medium text-cyan-100/60 mb-2">Performance Extremes</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {bestPeriod && (
-              <div className="bg-blue-50 rounded-lg p-3">
-                <div className="flex items-center text-sm text-slate-600 mb-1">
+              <div className="bg-cyan-950/25 rounded-lg p-3">
+                <div className="flex items-center text-sm text-cyan-100/60 mb-1">
                   <TrendingUp className="w-4 h-4 mr-1.5 text-blue-500" />
                   <span>Best {periodType === PERIOD_TYPES.DAY_OF_WEEK ? 'Day of Week' : periodType === PERIOD_TYPES.WEEK ? 'Week' : periodType === PERIOD_TYPES.MONTH ? 'Month' : periodType === PERIOD_TYPES.QUARTER ? 'Quarter' : 'Year'}</span>
                 </div>
@@ -595,7 +595,7 @@ const PerformanceByWeek = ({ weeklyPerformance = [], dailyPerformance = [], trad
             )}
             {worstPeriod && (
               <div className="bg-red-50 rounded-lg p-3">
-                <div className="flex items-center text-sm text-slate-600 mb-1">
+                <div className="flex items-center text-sm text-cyan-100/60 mb-1">
                   <TrendingUp className="w-4 h-4 mr-1.5 transform rotate-180 text-red-500" />
                   <span>Worst {periodType === PERIOD_TYPES.DAY_OF_WEEK ? 'Day of Week' : periodType === PERIOD_TYPES.WEEK ? 'Week' : periodType === PERIOD_TYPES.MONTH ? 'Month' : periodType === PERIOD_TYPES.QUARTER ? 'Quarter' : 'Year'}</span>
                 </div>

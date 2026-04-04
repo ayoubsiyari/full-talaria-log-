@@ -86,7 +86,7 @@ export default function SubscriptionSuccess() {
             animate={{ opacity: 1 }}
             className="text-center space-y-6"
           >
-            <Loader2 className="w-12 h-12 text-blue-400 animate-spin mx-auto" />
+            <Loader2 className="w-12 h-12 text-cyan-300 animate-spin mx-auto" />
             <div>
               <h1 className="text-xl font-semibold text-white mb-2">Processing your subscription...</h1>
               <p className="text-white/35 text-sm">Please wait while we confirm your payment.</p>
@@ -134,7 +134,7 @@ export default function SubscriptionSuccess() {
                       initial={{ opacity: 0, x: -12 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.4 + idx * 0.08 }}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.02]"
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-cyan-950/40/[0.02]"
                     >
                       <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
                         <f.icon className="w-4 h-4 text-emerald-400" />
@@ -150,7 +150,7 @@ export default function SubscriptionSuccess() {
             <div className="flex flex-col sm:flex-row gap-3 justify-center mb-6">
               <Link
                 to="/dashboard"
-                className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:brightness-110 transition-all shadow-[0_0_24px_rgba(59,130,246,0.2)]"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-cyan-500 via-indigo-600 to-cyan-500 hover:brightness-110 transition-all shadow-[0_0_24px_rgba(59,130,246,0.2)]"
               >
                 Go to Dashboard Now
                 <ArrowRight className="w-4 h-4" />
@@ -167,7 +167,7 @@ export default function SubscriptionSuccess() {
             {/* Help */}
             <p className="text-white/25 text-xs">
               A confirmation email has been sent to your address.{' '}
-              <Link to="/contact" className="text-blue-400/60 hover:text-blue-400 transition-colors">Need help?</Link>
+              <Link to="/contact" className="text-cyan-300/60 hover:text-cyan-300 transition-colors">Need help?</Link>
             </p>
           </motion.div>
         )}

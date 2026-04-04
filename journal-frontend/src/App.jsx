@@ -95,18 +95,17 @@ function LayoutWithSidebar() {
   const { isFilterVisible, updateFilters, toggleFilterVisibility } = useFilter();
   const { toggleSidebar } = useSidebar();
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-screen bg-jf-bg">
       <Sidebar />
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         <UnifiedHeader />
-        {/* Top bar with Sidebar Toggle and Filter Toggle */}
-        <div className="px-4 py-3 border-b border-blue-200/60 bg-white shadow-sm flex justify-between items-center">
+        <div className="px-4 py-3 border-b border-cyan-500/15 bg-[#050a10]/90 backdrop-blur-xl flex justify-between items-center">
           <button 
             onClick={toggleSidebar} 
-            className="p-2 rounded-lg hover:bg-slate-100 transition-colors duration-200"
+            className="p-2 rounded-lg border border-cyan-500/20 bg-cyan-950/30 text-cyan-200 hover:bg-cyan-500/10 hover:border-cyan-400/35 transition-colors duration-200"
             aria-label="Toggle sidebar"
           >
-            <Menu className="h-5 w-5 text-[#040028]" />
+            <Menu className="h-5 w-5" />
           </button>
           <div className="flex justify-end">
             <FilterToggle />
@@ -118,7 +117,9 @@ function LayoutWithSidebar() {
           onToggleVisibility={toggleFilterVisibility}
         />
         
-        <div className="flex-1 overflow-y-auto bg-slate-50">
+        <div className="flex-1 overflow-y-auto bg-jf-bg relative">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_0%,rgba(34,211,238,0.08),transparent_55%)]" aria-hidden />
+          <div className="relative">
           <Routes>
             {/* Core Features */}
             <Route path="/dashboard" element={
@@ -375,6 +376,7 @@ function LayoutWithSidebar() {
             {/* If none of the above match under "protected," redirect to /dashboard */}
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
+          </div>
         </div>
       </div>
     </div>
@@ -438,8 +440,8 @@ function ProtectedLayout() {
 
   if (!isInitialized || loading || (token && !subChecked)) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#030014]">
-        <div className="text-white/40 text-sm">Loading...</div>
+      <div className="flex items-center justify-center min-h-screen bg-jf-bg">
+        <div className="text-cyan-200/45 text-sm">Loading...</div>
       </div>
     );
   }
@@ -457,8 +459,8 @@ function ProtectedLayout() {
     const localStorageToken = localStorage.getItem('token');
     if ((localStorageToken && isAdminLoginSession) || isAdminLoginSession) {
       return (
-        <div className="flex items-center justify-center min-h-screen bg-[#030014]">
-          <div className="text-white/40 text-sm">Initializing session...</div>
+        <div className="flex items-center justify-center min-h-screen bg-jf-bg">
+          <div className="text-cyan-200/45 text-sm">Initializing session...</div>
         </div>
       );
     }
@@ -531,7 +533,7 @@ function AppRoutes() {
   return (
     <TooltipProvider>
       {isPublicPath || location.pathname === '/' ? (
-        <div className="min-h-screen bg-[#060611]">
+        <div className="min-h-screen bg-jf-bg">
           <Routes>
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/resend-verification" element={<ResendVerification />} />

@@ -13,11 +13,11 @@ const VariableSelector = ({ onSelectionChange, initialSelections = {} }) => {
 
   return (
     <div className="space-y-4">
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div className="bg-cyan-950/25 border border-cyan-500/20 rounded-lg p-4">
         <h3 className="text-lg font-semibold text-blue-900 mb-2">
           Select Custom Variables
         </h3>
-        <p className="text-blue-700 text-sm">
+        <p className="text-cyan-200 text-sm">
           Check the boxes below to select which custom variable values you want to include in your analysis or filters.
         </p>
       </div>

@@ -87,20 +87,20 @@ const DayTradeModal = ({ isOpen, onClose, selectedDate, trades = [] }) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-hidden border border-blue-200/60" onClick={e => e.stopPropagation()}>
+      <div className="bg-cyan-950/40 rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-hidden border border-cyan-500/20" onClick={e => e.stopPropagation()}>
         {/* Modal Header */}
-        <div className="p-6 border-b border-blue-200/60 relative">
+        <div className="p-6 border-b border-cyan-500/20 relative">
           <div className="flex items-start justify-between">
             <div>
               <h2 className="text-2xl font-bold text-[#040028] mb-1">
                 📊 Trading Summary
               </h2>
-              <div className="text-sm text-slate-600">
+              <div className="text-sm text-cyan-100/60">
                 {selectedDate ? format(selectedDate, 'EEEE, MMMM d, yyyy') : ''}
               </div>
             </div>
             <button 
-              className="p-2 text-slate-400 hover:text-[#040028] hover:bg-slate-100 rounded-lg transition-colors"
+              className="p-2 text-slate-400 hover:text-[#040028] hover:bg-cyan-950/35 rounded-lg transition-colors"
               onClick={onClose}
               aria-label="Close modal"
             >
@@ -115,7 +115,7 @@ const DayTradeModal = ({ isOpen, onClose, selectedDate, trades = [] }) => {
             <div className="text-center py-12">
               <div className="text-6xl mb-4">📭</div>
               <h3 className="text-xl font-semibold text-[#040028] mb-2">No trades on this day</h3>
-              <p className="text-slate-600">You didn't execute any trades on this date.</p>
+              <p className="text-cyan-100/60">You didn't execute any trades on this date.</p>
             </div>
           ) : (
             <>
@@ -123,8 +123,8 @@ const DayTradeModal = ({ isOpen, onClose, selectedDate, trades = [] }) => {
               {dayStats && (
                 <div className="mb-8">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="bg-slate-50 rounded-xl p-4 border border-blue-200/60 text-center">
-                      <div className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
+                    <div className="bg-jf-bg rounded-xl p-4 border border-cyan-500/20 text-center">
+                      <div className="text-xs font-semibold text-cyan-100/60 uppercase tracking-wide mb-2">
                         Total P&L
                       </div>
                       <div className={`text-lg font-bold ${
@@ -134,8 +134,8 @@ const DayTradeModal = ({ isOpen, onClose, selectedDate, trades = [] }) => {
                       </div>
                     </div>
                     
-                    <div className="bg-slate-50 rounded-xl p-4 border border-blue-200/60 text-center">
-                      <div className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
+                    <div className="bg-jf-bg rounded-xl p-4 border border-cyan-500/20 text-center">
+                      <div className="text-xs font-semibold text-cyan-100/60 uppercase tracking-wide mb-2">
                         Total Trades
                       </div>
                       <div className="text-lg font-bold text-[#040028]">
@@ -143,8 +143,8 @@ const DayTradeModal = ({ isOpen, onClose, selectedDate, trades = [] }) => {
                       </div>
                     </div>
                     
-                    <div className="bg-slate-50 rounded-xl p-4 border border-blue-200/60 text-center">
-                      <div className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
+                    <div className="bg-jf-bg rounded-xl p-4 border border-cyan-500/20 text-center">
+                      <div className="text-xs font-semibold text-cyan-100/60 uppercase tracking-wide mb-2">
                         Win Rate
                       </div>
                       <div className="text-lg font-bold text-[#040028]">
@@ -160,7 +160,7 @@ const DayTradeModal = ({ isOpen, onClose, selectedDate, trades = [] }) => {
                 <h3 className="text-lg font-semibold text-[#040028] mb-4">Trade Details</h3>
                 <div className="space-y-4">
                   {dayTrades.map((trade, index) => (
-                    <div key={index} className="bg-white border border-blue-200/60 rounded-xl p-4 shadow-sm">
+                    <div key={index} className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl p-4 shadow-sm">
                       <div className="flex justify-between items-center mb-4">
                         <div className="flex items-center gap-3">
                           <span className="text-lg font-bold text-[#040028]">{trade.symbol}</span>
@@ -181,27 +181,27 @@ const DayTradeModal = ({ isOpen, onClose, selectedDate, trades = [] }) => {
                       
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="flex justify-between items-center">
-                          <span className="text-sm text-slate-600 font-medium">Strategy:</span>
+                          <span className="text-sm text-cyan-100/60 font-medium">Strategy:</span>
                           <span className="text-sm text-[#040028] font-semibold">{trade.strategy || 'N/A'}</span>
                         </div>
                         
                         <div className="flex justify-between items-center">
-                          <span className="text-sm text-slate-600 font-medium">Entry:</span>
+                          <span className="text-sm text-cyan-100/60 font-medium">Entry:</span>
                           <span className="text-sm text-[#040028] font-semibold">{formatCurrency(parseFloat(trade.entry_price || 0))}</span>
                         </div>
                         
                         <div className="flex justify-between items-center">
-                          <span className="text-sm text-slate-600 font-medium">Exit:</span>
+                          <span className="text-sm text-cyan-100/60 font-medium">Exit:</span>
                           <span className="text-sm text-[#040028] font-semibold">{formatCurrency(parseFloat(trade.exit_price || 0))}</span>
                         </div>
                         
                         <div className="flex justify-between items-center">
-                          <span className="text-sm text-slate-600 font-medium">Quantity:</span>
+                          <span className="text-sm text-cyan-100/60 font-medium">Quantity:</span>
                           <span className="text-sm text-[#040028] font-semibold">{trade.quantity || 'N/A'}</span>
                         </div>
                         
                         <div className="flex justify-between items-center">
-                          <span className="text-sm text-slate-600 font-medium">R:R Ratio:</span>
+                          <span className="text-sm text-cyan-100/60 font-medium">R:R Ratio:</span>
                           <span className="text-sm text-[#040028] font-semibold">
                             {trade.rr ? `${parseFloat(trade.rr).toFixed(2)}:1` : 'N/A'}
                           </span>
@@ -210,7 +210,7 @@ const DayTradeModal = ({ isOpen, onClose, selectedDate, trades = [] }) => {
                         {trade.notes && (
                           <div className="sm:col-span-2">
                             <div className="flex flex-col gap-1">
-                              <span className="text-sm text-slate-600 font-medium">Notes:</span>
+                              <span className="text-sm text-cyan-100/60 font-medium">Notes:</span>
                               <span className="text-sm text-[#040028] font-medium">{trade.notes}</span>
                             </div>
                           </div>
@@ -220,16 +220,16 @@ const DayTradeModal = ({ isOpen, onClose, selectedDate, trades = [] }) => {
                         {(trade.entry_screenshot || trade.exit_screenshot) && (
                           <div className="sm:col-span-2">
                             <div className="flex flex-col gap-3">
-                              <span className="text-sm text-slate-600 font-medium">Screenshots:</span>
+                              <span className="text-sm text-cyan-100/60 font-medium">Screenshots:</span>
                               <div className="flex gap-3">
                                 {trade.entry_screenshot && (
                                   <div className="flex items-center gap-2">
-                                    <Camera className="w-4 h-4 text-blue-600" />
+                                    <Camera className="w-4 h-4 text-cyan-300" />
                                     <a
                                       href={getAbsoluteUrl(trade.entry_screenshot)}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 hover:underline"
+                                      className="text-sm text-cyan-300 hover:text-cyan-100 font-medium flex items-center gap-1 hover:underline"
                                     >
                                       Entry
                                       <ExternalLink className="w-3 h-3" />
@@ -238,12 +238,12 @@ const DayTradeModal = ({ isOpen, onClose, selectedDate, trades = [] }) => {
                                 )}
                                 {trade.exit_screenshot && (
                                   <div className="flex items-center gap-2">
-                                    <Camera className="w-4 h-4 text-blue-600" />
+                                    <Camera className="w-4 h-4 text-cyan-300" />
                                     <a
                                       href={getAbsoluteUrl(trade.exit_screenshot)}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 hover:underline"
+                                      className="text-sm text-cyan-300 hover:text-cyan-100 font-medium flex items-center gap-1 hover:underline"
                                     >
                                       Exit
                                       <ExternalLink className="w-3 h-3" />

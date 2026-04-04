@@ -67,7 +67,7 @@ export default function StrategyAnalysis() {
         <div className="flex items-center justify-center h-96">
           <div className="flex flex-col items-center space-y-4">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <p className="text-slate-600 dark:text-slate-400 font-medium">Loading strategy analytics...</p>
+            <p className="text-cyan-100/60 dark:text-slate-400 font-medium">Loading strategy analytics...</p>
           </div>
         </div>
       </div>
@@ -105,8 +105,8 @@ export default function StrategyAnalysis() {
   const getSortIcon = (column) => {
     if (sortBy !== column) return <ArrowUpDown className="h-4 w-4 text-slate-400" />;
     return sortDir === 'asc' ? 
-      <TrendingUp className="h-4 w-4 text-blue-600" /> : 
-      <TrendingDown className="h-4 w-4 text-blue-600" />;
+      <TrendingUp className="h-4 w-4 text-cyan-300" /> : 
+      <TrendingDown className="h-4 w-4 text-cyan-300" />;
   };
 
   return (
@@ -115,52 +115,52 @@ export default function StrategyAnalysis() {
         {/* Header Section */}
         <div className="mb-8">
           <div className="flex items-center space-x-3 mb-2">
-            <div className="p-2 bg-blue-600 rounded-lg">
+            <div className="p-2 bg-cyan-600 rounded-lg">
               <BarChart3 className="h-6 w-6 text-white" />
             </div>
             <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Strategy Analytics</h1>
           </div>
-          <p className="text-slate-600 dark:text-slate-400 text-lg">
+          <p className="text-cyan-100/60 dark:text-slate-400 text-lg">
             Comprehensive analysis of your trading strategies performance
           </p>
         </div>
 
         {/* Key Metrics Summary */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 hover:shadow-xl transition-shadow duration-300">
+          <div className="bg-cyan-950/40 dark:bg-slate-800 rounded-xl shadow-lg border border-cyan-500/15 dark:border-slate-700 p-6 hover:shadow-xl transition-shadow duration-300">
             <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                <Settings className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              <div className="p-3 bg-cyan-950/25 dark:bg-blue-900/20 rounded-lg">
+                <Settings className="h-6 w-6 text-cyan-300 dark:text-cyan-300" />
               </div>
               <span className="text-2xl font-bold text-slate-900 dark:text-white">{totalStrategies}</span>
             </div>
-            <h3 className="text-slate-600 dark:text-slate-400 font-medium">Total Strategies</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-500 mt-1">Active trading strategies</p>
+            <h3 className="text-cyan-100/60 dark:text-slate-400 font-medium">Total Strategies</h3>
+            <p className="text-sm text-cyan-200/45 dark:text-cyan-200/45 mt-1">Active trading strategies</p>
           </div>
 
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 hover:shadow-xl transition-shadow duration-300">
+          <div className="bg-cyan-950/40 dark:bg-slate-800 rounded-xl shadow-lg border border-cyan-500/15 dark:border-slate-700 p-6 hover:shadow-xl transition-shadow duration-300">
             <div className="flex items-center justify-between mb-4">
               <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
                 <TrendingUp className="h-6 w-6 text-green-600 dark:text-green-400" />
               </div>
               <span className="text-2xl font-bold text-green-600 dark:text-green-400">{formatCurrency(best?.pnl || 0)}</span>
             </div>
-            <h3 className="text-slate-600 dark:text-slate-400 font-medium">Best Performer</h3>
+            <h3 className="text-cyan-100/60 dark:text-slate-400 font-medium">Best Performer</h3>
             <p className="text-sm text-slate-900 dark:text-white font-semibold mt-1">{best?.strategy || 'N/A'}</p>
           </div>
 
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 hover:shadow-xl transition-shadow duration-300">
+          <div className="bg-cyan-950/40 dark:bg-slate-800 rounded-xl shadow-lg border border-cyan-500/15 dark:border-slate-700 p-6 hover:shadow-xl transition-shadow duration-300">
             <div className="flex items-center justify-between mb-4">
               <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
                 <TrendingDown className="h-6 w-6 text-red-600 dark:text-red-400" />
               </div>
               <span className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(worst?.pnl || 0)}</span>
             </div>
-            <h3 className="text-slate-600 dark:text-slate-400 font-medium">Worst Performer</h3>
+            <h3 className="text-cyan-100/60 dark:text-slate-400 font-medium">Worst Performer</h3>
             <p className="text-sm text-slate-900 dark:text-white font-semibold mt-1">{worst?.strategy || 'N/A'}</p>
           </div>
 
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 hover:shadow-xl transition-shadow duration-300">
+          <div className="bg-cyan-950/40 dark:bg-slate-800 rounded-xl shadow-lg border border-cyan-500/15 dark:border-slate-700 p-6 hover:shadow-xl transition-shadow duration-300">
             <div className="flex items-center justify-between mb-4">
               <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
                 <DollarSign className="h-6 w-6 text-purple-600 dark:text-purple-400" />
@@ -169,23 +169,23 @@ export default function StrategyAnalysis() {
                 {formatCurrency(totalPnL)}
               </span>
             </div>
-            <h3 className="text-slate-600 dark:text-slate-400 font-medium">Total P&L</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-500 mt-1">Avg Win Rate: {formatPercent(avgWinRate)}</p>
+            <h3 className="text-cyan-100/60 dark:text-slate-400 font-medium">Total P&L</h3>
+            <p className="text-sm text-cyan-200/45 dark:text-cyan-200/45 mt-1">Avg Win Rate: {formatPercent(avgWinRate)}</p>
           </div>
         </div>
 
         {/* Strategy Performance Table */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 mb-8 overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
+        <div className="bg-cyan-950/40 dark:bg-slate-800 rounded-xl shadow-lg border border-cyan-500/15 dark:border-slate-700 mb-8 overflow-hidden">
+          <div className="px-6 py-4 border-b border-cyan-500/15 dark:border-slate-700">
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white flex items-center space-x-2">
-              <Activity className="h-5 w-5 text-blue-600" />
+              <Activity className="h-5 w-5 text-cyan-300" />
               <span>Strategy Performance Overview</span>
             </h2>
           </div>
           
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
-              <thead className="bg-slate-50 dark:bg-slate-900/50">
+              <thead className="bg-jf-bg dark:bg-slate-900/50">
                 <tr>
                   {[
                     { key: 'strategy', label: 'Strategy' },
@@ -196,7 +196,7 @@ export default function StrategyAnalysis() {
                   ].map(col => (
                     <th 
                       key={col.key}
-                      className="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors duration-200"
+                      className="px-6 py-4 text-left text-xs font-semibold text-cyan-100/60 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-cyan-950/35 dark:hover:bg-slate-800 transition-colors duration-200"
                       onClick={() => handleSort(col.key)}
                     >
                       <div className="flex items-center space-x-2">
@@ -207,20 +207,20 @@ export default function StrategyAnalysis() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
+              <tbody className="bg-cyan-950/40 dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
                 {sorted.map((row, i) => (
                   <tr 
                     key={i} 
-                    className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors duration-200"
+                    className="hover:bg-jf-bg dark:hover:bg-slate-700/50 transition-colors duration-200"
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <div className="w-2 h-2 bg-blue-600 rounded-full mr-3"></div>
+                        <div className="w-2 h-2 bg-cyan-600 rounded-full mr-3"></div>
                         <span className="text-sm font-semibold text-slate-900 dark:text-white">{row.strategy}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-slate-600 dark:text-slate-400 font-medium">{row.trades}</span>
+                      <span className="text-sm text-cyan-100/60 dark:text-slate-400 font-medium">{row.trades}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -253,9 +253,9 @@ export default function StrategyAnalysis() {
         {/* Charts Section */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
           {/* Win Rate vs Risk Reward Chart */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 p-6">
+          <div className="bg-cyan-950/40 dark:bg-slate-800 rounded-xl shadow-lg border border-cyan-500/15 dark:border-slate-700 p-6">
             <div className="flex items-center space-x-2 mb-6">
-              <Target className="h-5 w-5 text-blue-600" />
+              <Target className="h-5 w-5 text-cyan-300" />
               <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Win Rate vs Risk:Reward</h2>
             </div>
             <div className="h-80">
@@ -295,9 +295,9 @@ export default function StrategyAnalysis() {
           </div>
 
           {/* P&L by Strategy Chart */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 p-6">
+          <div className="bg-cyan-950/40 dark:bg-slate-800 rounded-xl shadow-lg border border-cyan-500/15 dark:border-slate-700 p-6">
             <div className="flex items-center space-x-2 mb-6">
-              <BarChart3 className="h-5 w-5 text-blue-600" />
+              <BarChart3 className="h-5 w-5 text-cyan-300" />
               <h2 className="text-xl font-semibold text-slate-900 dark:text-white">P&L by Strategy</h2>
             </div>
             <div className="h-80">

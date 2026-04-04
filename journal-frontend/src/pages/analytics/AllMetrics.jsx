@@ -286,7 +286,7 @@ export default function AllMetrics() {
   if (!activeProfile) {
     return (
       <div className="flex justify-center items-center min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-        <div className="text-center bg-white p-8 rounded-2xl shadow-lg">
+        <div className="text-center bg-cyan-950/40 p-8 rounded-2xl shadow-lg">
           <Briefcase className="h-16 w-16 text-gray-400 mx-auto mb-4" />
           <p className="text-xl text-gray-600 font-medium mb-2">No Profile Selected</p>
           <p className="text-gray-500">Please select a profile to view metrics.</p>
@@ -298,7 +298,7 @@ export default function AllMetrics() {
   if (error) {
     return (
       <div className="flex justify-center items-center min-h-screen bg-gradient-to-br from-red-50 to-pink-50">
-        <div className="text-center bg-white p-8 rounded-2xl shadow-lg">
+        <div className="text-center bg-cyan-950/40 p-8 rounded-2xl shadow-lg">
           <AlertCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
           <p className="text-xl text-red-600 font-semibold">Error: {error}</p>
         </div>
@@ -309,7 +309,7 @@ export default function AllMetrics() {
   if (!stats) {
     return (
       <div className="flex justify-center items-center min-h-screen bg-gradient-to-br from-gray-50 to-slate-50">
-        <div className="text-center bg-white p-8 rounded-2xl shadow-lg">
+        <div className="text-center bg-cyan-950/40 p-8 rounded-2xl shadow-lg">
           <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
           <p className="text-xl text-gray-600 font-medium">No metrics data available.</p>
         </div>
@@ -327,14 +327,14 @@ export default function AllMetrics() {
         
         {/* Header Section */}
         <div className="text-center mb-12">
-          <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 mb-4">
+          <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 via-purple-600 to-cyan-700 mb-4">
             Trading Analytics Dashboard
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto mb-4">
             Comprehensive analysis of your trading performance with advanced metrics and visualizations
           </p>
           {activeProfile && (
-            <div className="inline-flex items-center px-4 py-2 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+            <div className="inline-flex items-center px-4 py-2 bg-blue-100 text-cyan-100 rounded-full text-sm font-medium">
               <Briefcase className="w-4 h-4 mr-2" />
               Profile: {activeProfile.name}
             </div>
@@ -344,18 +344,18 @@ export default function AllMetrics() {
         {/* SUMMARY METRICS */}
         <section className="mb-16">
           <div className="flex items-center mb-8">
-            <div className="h-1 w-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full mr-4"></div>
+            <div className="h-1 w-12 bg-gradient-to-r from-cyan-400 to-cyan-600 rounded-full mr-4"></div>
             <h2 className="text-3xl font-bold text-gray-800">Summary Metrics</h2>
-            <Activity className="ml-3 h-8 w-8 text-blue-600" />
+            <Activity className="ml-3 h-8 w-8 text-cyan-300" />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
             <MetricCard 
-              icon={<DollarSign className="h-7 w-7 text-blue-600" />} 
+              icon={<DollarSign className="h-7 w-7 text-cyan-300" />} 
               label="Total Trades" 
               value={safe(stats, 'total_trades', 'N/A')} 
               desc="Total number of trades executed."
               chart={<MiniBarChart data={generateChartData(safe(stats, 'total_trades', 0), 'bar')} color="#3B82F6" />}
-              gradient="from-blue-500 to-blue-600"
+              gradient="from-cyan-400 to-cyan-600"
               tooltip={
                 <>
                   <div><strong>What it measures:</strong> Total number of completed trades in your journal.</div>
@@ -477,7 +477,7 @@ export default function AllMetrics() {
               value={formatNumber(safe(stats, 'avg_rr'))} 
               desc="Average risk-reward ratio per trade."
               chart={<MiniLineChart data={generateChartData(safe(stats, 'avg_rr', 0), 'line')} color="#6366F1" id="avg-rr" />}
-              gradient="from-indigo-500 to-indigo-600"
+              gradient="from-indigo-500 to-cyan-700"
               tooltip={
                 <>
                   <div><strong>What it measures:</strong> Average ratio of potential reward to risk per trade.</div>
@@ -531,12 +531,12 @@ export default function AllMetrics() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             <MetricCard 
-              icon={<Gauge className="h-7 w-7 text-blue-600" />}
+              icon={<Gauge className="h-7 w-7 text-cyan-300" />}
               label="Profit Factor" 
               value={formatNumber(safe(stats, 'profit_factor'))} 
               desc="Gross profit divided by gross loss."
               chart={<MiniLineChart data={generateChartData(safe(stats, 'profit_factor', 0), 'line')} color="#3B82F6" id="profit-factor" />}
-              gradient="from-blue-500 to-blue-600"
+              gradient="from-cyan-400 to-cyan-600"
               tooltip={
                 <>
                   <div><strong>What it measures:</strong> Ratio of gross profits to gross losses.</div>
@@ -602,7 +602,7 @@ export default function AllMetrics() {
               value={formatNumber(safe(stats, 'sharpe_ratio'))} 
               desc="Risk-adjusted return (annualized)."
               chart={<MiniLineChart data={generateChartData(safe(stats, 'sharpe_ratio', 0), 'line')} color="#6366F1" id="sharpe-ratio" />}
-              gradient="from-indigo-500 to-indigo-600"
+              gradient="from-indigo-500 to-cyan-700"
               tooltip={
                 <>
                   <div><strong>What it measures:</strong> Risk-adjusted return relative to volatility.</div>
@@ -729,12 +729,12 @@ export default function AllMetrics() {
               }
             />
             <MetricCard 
-              icon={<Activity className="h-7 w-7 text-blue-600" />}
+              icon={<Activity className="h-7 w-7 text-cyan-300" />}
               label="Recovery Factor" 
               value={formatNumber(safe(stats, 'recovery_factor'))} 
               desc="Net profit divided by max drawdown."
               chart={<MiniLineChart data={generateChartData(safe(stats, 'recovery_factor', 0), 'line')} color="#3B82F6" id="recovery-factor" />}
-              gradient="from-blue-500 to-blue-600"
+              gradient="from-cyan-400 to-cyan-600"
               tooltip={
                 <>
                   <div><strong>What it measures:</strong> How quickly profits recover from drawdowns.</div>
@@ -782,7 +782,7 @@ export default function AllMetrics() {
               value={formatNumber(safe(stats, 'avg_holding_time_per_unit'))} 
               desc="Average holding time per unit of trade."
               chart={<MiniLineChart data={generateChartData(safe(stats, 'avg_holding_time_per_unit', 0), 'line')} color="#6366F1" id="avg-holding" />}
-              gradient="from-indigo-500 to-indigo-600"
+              gradient="from-indigo-500 to-cyan-700"
               tooltip={
                 <>
                   <div><strong>What it measures:</strong> Average time held per unit of quantity.</div>
@@ -799,7 +799,7 @@ export default function AllMetrics() {
               value={formatNumber(safe(stats, 'win_loss_ratio'))} 
               desc="Ratio of winning to losing trades."
               chart={<MiniLineChart data={generateChartData(safe(stats, 'win_loss_ratio', 0), 'line')} color="#3B82F6" id="win-loss-ratio" />}
-              gradient="from-blue-500 to-blue-600"
+              gradient="from-cyan-400 to-cyan-600"
               tooltip={
                 <>
                   <div><strong>What it measures:</strong> Ratio of number of wins to number of losses.</div>
@@ -929,7 +929,7 @@ export default function AllMetrics() {
               value={safe(stats, 'best_hour.hour') != null ? `${safe(stats, 'best_hour.hour')}:00` : 'N/A'} 
               desc={`Best hour: ${formatCurrency(safe(stats, 'best_hour.pnl'))}`}
               chart={<MiniBarChart data={generateChartData(safe(stats, 'best_hour.pnl', 0), 'bar', 'positive')} color="#3B82F6" />}
-              gradient="from-blue-500 to-blue-600"
+              gradient="from-cyan-400 to-cyan-600"
               tooltip={
                 <>
                   <div><strong>What it measures:</strong> Hour of day with highest average P&L.</div>
@@ -980,7 +980,7 @@ function MetricCard({ icon, label, value, desc, chart, gradient, tooltip }) {
       >
         {/* FRONT SIDE */}
         <div 
-          className={`flip-card-front bg-white rounded-3xl shadow-lg p-6 flex flex-col min-h-[220px] border border-gray-100`} 
+          className={`flip-card-front bg-cyan-950/40 rounded-3xl shadow-lg p-6 flex flex-col min-h-[220px] border border-gray-100`} 
           style={{
             position: 'absolute',
             width: '100%',
@@ -1012,7 +1012,7 @@ function MetricCard({ icon, label, value, desc, chart, gradient, tooltip }) {
           <p className="text-xs text-gray-500 mb-3 flex-grow leading-relaxed relative z-10">{desc}</p>
           
           {/* Chart Container */}
-          <div className="mt-auto relative z-10 w-full h-[50px] overflow-hidden bg-gray-50 rounded-lg p-1">
+          <div className="mt-auto relative z-10 w-full h-[50px] overflow-hidden bg-cyan-950/25 rounded-lg p-1">
             <div className="w-full h-full">
               {chart}
             </div>
@@ -1041,7 +1041,7 @@ function MetricCard({ icon, label, value, desc, chart, gradient, tooltip }) {
         >
           {/* Header - Fixed at top */}
           <div className="flex items-center mb-4 flex-shrink-0">
-            <div className="p-2 bg-white/20 rounded-xl mr-3">
+            <div className="p-2 bg-cyan-950/20 rounded-xl mr-3">
               <div className="w-7 h-7 flex items-center justify-center">
                 {icon}
               </div>

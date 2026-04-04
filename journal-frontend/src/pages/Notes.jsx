@@ -88,7 +88,7 @@ export default function Notes() {
         </header>
         <div className="flex-grow overflow-y-auto pr-2">
           {notes.map(note => (
-            <div key={note.id} onClick={() => setActiveNoteId(note.id)} className={`flex items-center justify-between p-3 rounded-lg cursor-pointer mb-2 transition-colors ${activeNoteId === note.id ? 'bg-blue-600/30' : 'hover:bg-gray-800'}`}>
+            <div key={note.id} onClick={() => setActiveNoteId(note.id)} className={`flex items-center justify-between p-3 rounded-lg cursor-pointer mb-2 transition-colors ${activeNoteId === note.id ? 'bg-cyan-600/30' : 'hover:bg-gray-800'}`}>
               <div className="flex items-center gap-3">
                 <FileText size={18} />
                 <span className="truncate font-medium">{note.title}</span>
@@ -109,11 +109,11 @@ export default function Notes() {
                 type="text"
                 value={activeNote.title}
                 onChange={(e) => handleNoteUpdate({ title: e.target.value })}
-                className="text-2xl font-bold bg-transparent border-b-2 border-transparent focus:border-blue-500 focus:outline-none transition-colors w-full"
+                className="text-2xl font-bold bg-transparent border-b-2 border-transparent focus:border-cyan-400 focus:outline-none transition-colors w-full"
               />
               <div className="flex items-center gap-4">
                 <span className="text-sm text-gray-400 italic w-28 text-right">{saveStatus}</span>
-                <button onClick={triggerSave} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-500 transition-colors" disabled={saveStatus !== 'Unsaved changes'}>
+                <button onClick={triggerSave} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-cyan-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-500 transition-colors" disabled={saveStatus !== 'Unsaved changes'}>
                   <Save size={16} />
                   Save
                 </button>

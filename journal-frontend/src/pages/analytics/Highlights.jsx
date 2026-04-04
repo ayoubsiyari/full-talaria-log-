@@ -53,7 +53,7 @@ export default function Highlights() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto bg-white shadow-lg rounded-xl">
+    <div className="p-8 max-w-7xl mx-auto bg-cyan-950/40 shadow-lg rounded-xl">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900">📊 Time-Based Performance</h1>
         <div className="flex space-x-4">
@@ -61,7 +61,7 @@ export default function Highlights() {
             <select
               value={selectedTimeframe}
               onChange={(e) => setSelectedTimeframe(e.target.value)}
-              className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+              className="bg-cyan-950/25 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-cyan-400 focus:border-cyan-400 block w-full p-2.5"
             >
               <option value="all">All Time</option>
               <option value="month">Last Month</option>
@@ -71,7 +71,7 @@ export default function Highlights() {
           </div>
           <button
             onClick={() => setShowAdvancedStats(!showAdvancedStats)}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-cyan-600 hover:bg-blue-700"
           >
             <Filter className="h-5 w-5 mr-2" />
             {showAdvancedStats ? 'Hide Advanced' : 'Show Advanced'}
@@ -81,9 +81,9 @@ export default function Highlights() {
 
       {/* Main Highlights Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-8">
-        <div className="bg-white rounded-xl shadow-md p-6">
+        <div className="bg-cyan-950/40 rounded-xl shadow-md p-6">
           <div className="flex items-center space-x-4 mb-4">
-            <Calendar className="h-6 w-6 text-blue-600" />
+            <Calendar className="h-6 w-6 text-cyan-300" />
             <h3 className="text-xl font-semibold text-gray-900">Best Day of Week</h3>
           </div>
           <div className="flex items-center space-x-4">
@@ -102,7 +102,7 @@ export default function Highlights() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-md p-6">
+        <div className="bg-cyan-950/40 rounded-xl shadow-md p-6">
           <div className="flex items-center space-x-4 mb-4">
             <Calendar className="h-6 w-6 text-red-600" />
             <h3 className="text-xl font-semibold text-gray-900">Worst Day of Week</h3>
@@ -123,7 +123,7 @@ export default function Highlights() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-md p-6">
+        <div className="bg-cyan-950/40 rounded-xl shadow-md p-6">
           <div className="flex items-center space-x-4 mb-4">
             <Clock className="h-6 w-6 text-green-600" />
             <h3 className="text-xl font-semibold text-gray-900">Best Trading Hour</h3>
@@ -144,7 +144,7 @@ export default function Highlights() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-md p-6">
+        <div className="bg-cyan-950/40 rounded-xl shadow-md p-6">
           <div className="flex items-center space-x-4 mb-4">
             <Clock className="h-6 w-6 text-red-600" />
             <h3 className="text-xl font-semibold text-gray-900">Worst Trading Hour</h3>
@@ -165,7 +165,7 @@ export default function Highlights() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-md p-6">
+        <div className="bg-cyan-950/40 rounded-xl shadow-md p-6">
           <div className="flex items-center space-x-4 mb-4">
             <TrendingDown className="h-6 w-6 text-red-600" />
             <h3 className="text-xl font-semibold text-gray-900">Max Drawdown</h3>
@@ -188,9 +188,9 @@ export default function Highlights() {
 
       {/* Advanced Stats */}
       {showAdvancedStats && (
-        <div className="bg-white rounded-xl shadow-md p-6">
+        <div className="bg-cyan-950/40 rounded-xl shadow-md p-6">
           <h3 className="text-xl font-semibold text-gray-900 mb-4">
-            <Filter className="h-6 w-6 text-blue-600 mr-2" />
+            <Filter className="h-6 w-6 text-cyan-300 mr-2" />
             Advanced Time Metrics
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -199,7 +199,7 @@ export default function Highlights() {
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">Avg Daily P&L</span>
-                  <span className="font-medium text-blue-600">
+                  <span className="font-medium text-cyan-300">
                     {formatCurrency(stats.avg_daily_pnl)}
                   </span>
                 </div>
@@ -216,7 +216,7 @@ export default function Highlights() {
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">Avg Hourly P&L</span>
-                  <span className="font-medium text-blue-600">
+                  <span className="font-medium text-cyan-300">
                     {formatCurrency(stats.avg_hourly_pnl)}
                   </span>
                 </div>

@@ -3,61 +3,62 @@ import { motion } from 'framer-motion';
 
 const Blob = ({ style, animate, transition }) => (
   <motion.div
-    className={`absolute rounded-full mix-blend-lighten filter blur-3xl opacity-30`}
+    className="absolute rounded-full mix-blend-screen filter blur-3xl opacity-[0.18]"
     style={{
-      width: '30rem',
-      height: '30rem',
-      ...style
+      width: '28rem',
+      height: '28rem',
+      ...style,
     }}
     animate={animate}
     transition={transition}
   />
 );
 
+/** Ambient neon cyan blobs – matches journal / homepage dashboard */
 export default function BackgroundGlow() {
   return (
     <>
       <Blob
-        style={{ background: 'rgba(139, 92, 246, 0.5)' }} // purple
+        style={{ background: 'rgba(34, 211, 238, 0.45)' }}
         animate={{
-          x: ['-20vw', '30vw', '-20vw'],
-          y: ['-20vh', '40vh', '-20vh'],
-          rotate: [0, 90, 0]
+          x: ['-15vw', '25vw', '-15vw'],
+          y: ['-15vh', '35vh', '-15vh'],
+          rotate: [0, 45, 0],
         }}
         transition={{
-          duration: 35,
+          duration: 38,
           repeat: Infinity,
           repeatType: 'mirror',
           ease: 'easeInOut',
         }}
       />
       <Blob
-        style={{ background: 'rgba(59, 130, 246, 0.6)' }} // blue
+        style={{ background: 'rgba(6, 182, 212, 0.4)' }}
         animate={{
-          x: ['90vw', '40vw', '90vw'],
-          y: ['-10vh', '50vh', '-10vh'],
-          rotate: [0, -90, 0]
+          x: ['85vw', '45vw', '85vw'],
+          y: ['-8vh', '45vh', '-8vh'],
+          rotate: [0, -40, 0],
         }}
         transition={{
-          duration: 30,
+          duration: 32,
           repeat: Infinity,
           repeatType: 'mirror',
           ease: 'easeInOut',
-          delay: 5
+          delay: 4,
         }}
       />
-       <Blob
-        style={{ background: 'rgba(22, 163, 74, 0.4)' }} // green
+      <Blob
+        style={{ background: 'rgba(103, 232, 249, 0.25)' }}
         animate={{
-          x: ['30vw', '0vw', '30vw'],
-          y: ['90vh', '30vh', '90vh'],
+          x: ['25vw', '-5vw', '25vw'],
+          y: ['85vh', '25vh', '85vh'],
         }}
         transition={{
-          duration: 40,
+          duration: 42,
           repeat: Infinity,
           repeatType: 'mirror',
           ease: 'easeInOut',
-          delay: 10
+          delay: 8,
         }}
       />
     </>

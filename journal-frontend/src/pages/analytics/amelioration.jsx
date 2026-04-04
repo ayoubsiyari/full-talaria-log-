@@ -107,7 +107,7 @@ const getPnLColor = (pnl) => {
 };
 
 const MetricCard = ({ children, className = "" }) => (
-  <div className={`bg-white border border-gray-200 rounded-xl p-6 shadow-lg ${className}`}>
+  <div className={`bg-cyan-950/40 border border-cyan-500/15 rounded-xl p-6 shadow-lg ${className}`}>
     {children}
   </div>
 );
@@ -116,7 +116,7 @@ const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
-      <div className="bg-white p-4 rounded-xl shadow-xl border border-gray-200">
+      <div className="bg-cyan-950/40 p-4 rounded-xl shadow-xl border border-cyan-500/15">
         <p className="font-semibold text-gray-900 mb-2">
           {data.symbol} ({data.direction})
         </p>
@@ -148,26 +148,26 @@ const LoadingSkeleton = () => (
   <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-24 bg-white rounded-xl animate-pulse border border-gray-200" />
+          <div key={i} className="h-24 bg-cyan-950/40 rounded-xl animate-pulse border border-cyan-500/15" />
         ))}
       </div>
-      <div className="h-96 bg-white rounded-xl animate-pulse border border-gray-200" />
+      <div className="h-96 bg-cyan-950/40 rounded-xl animate-pulse border border-cyan-500/15" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="h-80 bg-white rounded-xl animate-pulse border border-gray-200" />
-        <div className="h-80 bg-white rounded-xl animate-pulse border border-gray-200" />
+        <div className="h-80 bg-cyan-950/40 rounded-xl animate-pulse border border-cyan-500/15" />
+        <div className="h-80 bg-cyan-950/40 rounded-xl animate-pulse border border-cyan-500/15" />
       </div>
   </div>
 );
 
 const ErrorDisplay = ({ error, onRetry }) => (
   <div className="text-center py-12">
-    <div className="bg-white rounded-xl p-8 border border-red-200">
+    <div className="bg-cyan-950/40 rounded-xl p-8 border border-red-200">
       <XCircle className="mx-auto h-12 w-12 text-red-500 mb-4" />
       <h3 className="text-lg font-semibold text-gray-900 mb-2">
         Error Loading Data
       </h3>
       <p className="text-gray-600 mb-4">{error}</p>
-      <Button onClick={onRetry} variant="outline" className="bg-white border-gray-200 hover:bg-gray-50 text-gray-700">
+      <Button onClick={onRetry} variant="outline" className="bg-cyan-950/40 border-cyan-500/15 hover:bg-cyan-950/25 text-gray-700">
         <RefreshCw className="h-4 w-4 mr-2" />
         Try Again
       </Button>
@@ -274,7 +274,7 @@ export default function Amelioration() {
   if (!data) return <div>No data available</div>;
 
   return (
-    <div className="space-y-6 p-6 bg-white min-h-screen">
+    <div className="space-y-6 p-6 bg-cyan-950/40 min-h-screen">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -290,7 +290,7 @@ export default function Amelioration() {
             variant="outline"
             size="sm"
             onClick={() => setShowSettings(!showSettings)}
-            className="bg-white border-gray-200 hover:bg-gray-50 text-gray-700"
+            className="bg-cyan-950/40 border-cyan-500/15 hover:bg-cyan-950/25 text-gray-700"
           >
             <Settings className="h-4 w-4 mr-2" />
             Settings
@@ -299,7 +299,7 @@ export default function Amelioration() {
             variant="outline" 
             size="sm" 
             onClick={fetchData}
-            className="bg-white border-gray-200 hover:bg-gray-50 text-gray-700"
+            className="bg-cyan-950/40 border-cyan-500/15 hover:bg-cyan-950/25 text-gray-700"
           >
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
@@ -309,7 +309,7 @@ export default function Amelioration() {
 
       {/* Settings Panel */}
       {showSettings && (
-        <Card className="bg-white border-gray-200 shadow-xl">
+        <Card className="bg-cyan-950/40 border-cyan-500/15 shadow-xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-gray-900">
               <Settings className="h-5 w-5 text-[#3090FF]" />
@@ -328,7 +328,7 @@ export default function Amelioration() {
                   value={customRRThreshold || ''}
                   onChange={(e) => setCustomRRThreshold(e.target.value ? parseFloat(e.target.value) : null)}
                   placeholder={`Current avg: ${formatNumber(data.summary.avg_rr)}`}
-                  className="bg-white border-gray-200 focus:ring-[#3090FF] focus:border-[#3090FF] text-gray-900 placeholder-gray-400"
+                  className="bg-cyan-950/40 border-cyan-500/15 focus:ring-[#3090FF] focus:border-[#3090FF] text-gray-900 placeholder-gray-400"
                 />
                 <p className="text-sm text-gray-500 mt-1">
                   Set a custom risk/reward threshold to analyze performance
@@ -339,7 +339,7 @@ export default function Amelioration() {
                   variant="outline"
                   onClick={() => setCustomRRThreshold(null)}
                   disabled={!customRRThreshold}
-                  className="bg-white border-gray-200 hover:bg-gray-50 text-gray-700"
+                  className="bg-cyan-950/40 border-cyan-500/15 hover:bg-cyan-950/25 text-gray-700"
                 >
                   Reset to Average
                 </Button>
@@ -410,7 +410,7 @@ export default function Amelioration() {
 
       {/* Threshold Performance Analysis */}
       {performanceWithThreshold && (
-        <Card className="bg-white border-gray-200 shadow-xl">
+        <Card className="bg-cyan-950/40 border-cyan-500/15 shadow-xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-gray-900">
               <Target className="h-5 w-5 text-[#3090FF]" />
@@ -466,7 +466,7 @@ export default function Amelioration() {
       )}
 
       {/* Main RR vs PnL Scatter Chart */}
-      <Card className="bg-white border-gray-200 shadow-xl">
+      <Card className="bg-cyan-950/40 border-cyan-500/15 shadow-xl">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-gray-900">
             <PieChart className="h-5 w-5 text-[#3090FF]" />
@@ -519,7 +519,7 @@ export default function Amelioration() {
 
       {/* Performance by RR Range */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="bg-white border-gray-200 shadow-xl">
+        <Card className="bg-cyan-950/40 border-cyan-500/15 shadow-xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-gray-900">
               <BarChart3 className="h-5 w-5 text-[#3090FF]" />
@@ -543,7 +543,7 @@ export default function Amelioration() {
           </CardContent>
         </Card>
 
-        <Card className="bg-white border-gray-200 shadow-xl">
+        <Card className="bg-cyan-950/40 border-cyan-500/15 shadow-xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-gray-900">
               <TrendingUp className="h-5 w-5 text-[#10B981]" />
@@ -569,7 +569,7 @@ export default function Amelioration() {
       </div>
 
       {/* Insights */}
-      <Card className="bg-white border-gray-200 shadow-xl">
+      <Card className="bg-cyan-950/40 border-cyan-500/15 shadow-xl">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-gray-900">
             <Info className="h-5 w-5 text-[#3090FF]" />
@@ -610,13 +610,13 @@ export default function Amelioration() {
             )}
 
             {data.summary.win_rate < 50 && (
-              <div className="flex items-start gap-3 p-4 bg-blue-50 rounded-xl border border-blue-200">
+              <div className="flex items-start gap-3 p-4 bg-cyan-950/25 rounded-xl border border-cyan-500/20">
                 <Info className="h-5 w-5 text-[#3090FF] mt-0.5" />
                 <div>
-                  <h4 className="font-semibold text-blue-800">
+                  <h4 className="font-semibold text-cyan-100">
                     Win Rate Optimization Opportunity
                   </h4>
-                  <p className="text-blue-700">
+                  <p className="text-cyan-200">
                     With a {formatPercent(data.summary.win_rate)} win rate, focus on improving entry quality 
                     and risk management. Consider using the RR threshold analysis to filter out low-quality setups.
                   </p>

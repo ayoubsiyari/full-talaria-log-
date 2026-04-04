@@ -8,7 +8,7 @@ const StatCard = ({ title, value, change, isCurrency = false, isPositive = null 
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
+    <div className="bg-cyan-950/40 dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
       <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{title}</p>
       <div className="flex items-baseline justify-between">
         <p className={`text-xl font-semibold ${getColorClass()}`}>

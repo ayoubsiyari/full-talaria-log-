@@ -184,11 +184,11 @@ export default function VerifyEmail() {
       `}</style>
 
       <div className={`w-full max-w-md transition-all duration-1000 ${mounted ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
-        <div className="bg-white/5 backdrop-blur-sm rounded-xl p-8 border border-white/10 shadow-2xl relative overflow-hidden">
+        <div className="bg-cyan-950/15 backdrop-blur-sm rounded-xl p-8 border border-white/10 shadow-2xl relative overflow-hidden">
           {/* Header */}
           <div className="text-center mb-8">
             <Link to="/" className="inline-flex items-center space-x-2 mb-4">
-              <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center border border-white/10">
+              <div className="w-10 h-10 bg-cyan-500/10 rounded-lg flex items-center justify-center border border-white/10">
                 <img src={logo} alt="Journal Logo" className="w-8 h-8 rounded-sm" />
               </div>
               <span className="text-2xl font-semibold text-white">Journal</span>
@@ -217,7 +217,7 @@ export default function VerifyEmail() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
-                    className="w-full pl-10 pr-3 py-2 rounded-md bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    className="w-full pl-10 pr-3 py-2 rounded-md bg-cyan-500/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-cyan-400 focus:border-cyan-400 text-sm"
                     required
                   />
                 </div>
@@ -234,7 +234,7 @@ export default function VerifyEmail() {
                   value={code}
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   placeholder="000000"
-                  className="w-full px-3 py-2 rounded-md bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm text-center tracking-widest"
+                  className="w-full px-3 py-2 rounded-md bg-cyan-500/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-cyan-400 focus:border-cyan-400 text-sm text-center tracking-widest"
                   maxLength={6}
                   required
                 />
@@ -255,7 +255,7 @@ export default function VerifyEmail() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full bg-white text-black py-2 rounded-md text-sm font-medium hover:bg-white/90 transition-colors flex items-center justify-center space-x-2"
+                className="w-full bg-cyan-400 text-cyan-950 py-2 rounded-md text-sm font-medium hover:bg-cyan-950/50 transition-colors flex items-center justify-center space-x-2"
               >
                 <span>{isLoading ? 'Verifying...' : 'Verify Code'}</span>
                 <ChevronRight className="w-4 h-4" />
@@ -266,7 +266,7 @@ export default function VerifyEmail() {
                   type="button"
                   onClick={handleCheckVerification}
                   disabled={isLoading}
-                  className="w-full bg-white/10 text-white/70 py-2 rounded-md text-sm font-medium hover:bg-white/20 transition-colors"
+                  className="w-full bg-cyan-500/10 text-white/70 py-2 rounded-md text-sm font-medium hover:bg-cyan-950/20 transition-colors"
                 >
                   Check Status
                 </button>
@@ -275,7 +275,7 @@ export default function VerifyEmail() {
                   type="button"
                   onClick={handleResendCode}
                   disabled={isResending}
-                  className="w-full bg-white/10 text-white/70 py-2 rounded-md text-sm font-medium hover:bg-white/20 transition-colors flex items-center justify-center space-x-2"
+                  className="w-full bg-cyan-500/10 text-white/70 py-2 rounded-md text-sm font-medium hover:bg-cyan-950/20 transition-colors flex items-center justify-center space-x-2"
                 >
                   <RefreshCw className={`w-4 h-4 ${isResending ? 'animate-spin' : ''}`} />
                   <span>Resend Code</span>
@@ -297,7 +297,7 @@ export default function VerifyEmail() {
             <p className="text-white/60 text-sm">
               <Link 
                 to="/login" 
-                className="text-blue-400 hover:underline"
+                className="text-cyan-300 hover:underline"
               >
                 Back to Login
               </Link>

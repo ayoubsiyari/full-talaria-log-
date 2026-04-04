@@ -411,27 +411,27 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
   if (!isVisible) return null;
 
   const tabs = [
-    { id: 'basic', label: 'Basic', icon: Zap, gradient: 'from-blue-500 to-cyan-500' },
+    { id: 'basic', label: 'Basic', icon: Zap, gradient: 'from-cyan-400 to-cyan-500' },
     { id: 'performance', label: 'Performance', icon: Flame, gradient: 'from-orange-500 to-red-500' },
     { id: 'variables', label: 'Variables', icon: Cpu, gradient: 'from-purple-500 to-pink-500' },
     { id: 'advanced', label: 'Advanced', icon: Wand2, gradient: 'from-emerald-500 to-teal-500' }
   ];
 
   return (
-    <div className="relative bg-white border-b border-blue-200/60 shadow-sm">
+    <div className="relative bg-cyan-950/40 border-b border-cyan-500/20 shadow-sm">
       {/* Header */}
-      <div className="relative bg-white border-b border-blue-200/60">
+      <div className="relative bg-cyan-950/40 border-b border-cyan-500/20">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="p-2 bg-blue-100 rounded-lg">
-                <SlidersHorizontal className="w-5 h-5 text-blue-600" />
+                <SlidersHorizontal className="w-5 h-5 text-cyan-300" />
               </div>
               <div>
                 <h1 className="text-xl font-bold text-[#040028]">
                   Trading Filters
                 </h1>
-                <p className="text-sm text-slate-600">Advanced analytics</p>
+                <p className="text-sm text-cyan-100/60">Advanced analytics</p>
               </div>
               {hasActiveFilters() && (
                 <div className="flex items-center space-x-2 px-3 py-1 bg-green-50 rounded-full border border-green-200">
@@ -453,7 +453,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
               )}
               <button
                 onClick={onToggleVisibility}
-                className="p-2 text-slate-600 hover:text-[#040028] hover:bg-slate-100 rounded-lg transition-all duration-200"
+                className="p-2 text-cyan-100/60 hover:text-[#040028] hover:bg-cyan-950/35 rounded-lg transition-all duration-200"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -463,7 +463,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
       </div>
 
       {/* Tab Navigation */}
-      <div className="relative px-6 py-3 bg-slate-50 border-b border-blue-200/60">
+      <div className="relative px-6 py-3 bg-jf-bg border-b border-cyan-500/20">
         <div className="flex items-center space-x-2">
           {tabs.map((tab) => {
             const Icon = tab.icon;
@@ -474,8 +474,8 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                 onClick={() => setActiveTab(tab.id)}
                 className={`group relative px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 ${
                   isActive
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-[#040028] hover:bg-slate-100'
+                    ? 'bg-cyan-600 text-white shadow-sm'
+                    : 'text-cyan-100/60 hover:text-[#040028] hover:bg-cyan-950/35'
                 }`}
               >
                 <div className="flex items-center space-x-2">
@@ -494,10 +494,10 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
         {activeTab === 'basic' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {/* Date Range */}
-            <div className="bg-white border border-blue-200/60 rounded-lg p-4 hover:shadow-md transition-all duration-200">
+            <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-lg p-4 hover:shadow-md transition-all duration-200">
               <div className="flex items-center space-x-2 mb-3">
                 <div className="p-1.5 bg-blue-100 rounded-lg">
-                  <Calendar className="w-4 h-4 text-blue-600" />
+                  <Calendar className="w-4 h-4 text-cyan-300" />
                 </div>
                 <h3 className="text-sm font-bold text-[#040028]">Date Range</h3>
               </div>
@@ -506,19 +506,19 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                     type="date"
                     value={filters.dateRange.start}
                     onChange={(e) => handleFilterChange('dateRange.start', e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-blue-200/60 rounded-lg text-[#040028] text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 bg-cyan-950/40 border border-cyan-500/20 rounded-lg text-[#040028] text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent"
                   />
                   <input
                     type="date"
                     value={filters.dateRange.end}
                     onChange={(e) => handleFilterChange('dateRange.end', e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-blue-200/60 rounded-lg text-[#040028] text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 bg-cyan-950/40 border border-cyan-500/20 rounded-lg text-[#040028] text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent"
                   />
                 </div>
               </div>
 
             {/* Symbols */}
-            <div className="bg-white border border-blue-200/60 rounded-lg p-4 hover:shadow-md transition-all duration-200">
+            <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-lg p-4 hover:shadow-md transition-all duration-200">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center space-x-2">
                   <div className="p-1.5 bg-emerald-100 rounded-lg">
@@ -530,7 +530,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                   {filters.symbol.length}/{availableOptions.symbols.length}
                 </span>
               </div>
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 max-h-32 overflow-y-auto">
+              <div className="bg-jf-bg border border-cyan-500/15 rounded-lg p-3 max-h-32 overflow-y-auto">
                 <div className="flex items-center justify-between mb-2">
                   <button
                     onClick={() => handleFilterChange('symbol', availableOptions.symbols)}
@@ -540,7 +540,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                   </button>
                   <button
                     onClick={() => handleFilterChange('symbol', [])}
-                    className="text-xs px-2 py-1 bg-slate-200 hover:bg-slate-300 rounded text-slate-700 transition-colors"
+                    className="text-xs px-2 py-1 bg-slate-200 hover:bg-slate-300 rounded text-slate-200 transition-colors"
                   >
                     Clear
                   </button>
@@ -549,7 +549,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                   {availableOptions.symbols.map(symbol => {
                     const isSelected = filters.symbol.includes(symbol);
                     return (
-                      <label key={symbol} className="flex items-center space-x-2 cursor-pointer hover:bg-slate-100 rounded p-1">
+                      <label key={symbol} className="flex items-center space-x-2 cursor-pointer hover:bg-cyan-950/35 rounded p-1">
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -559,7 +559,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                               : filters.symbol.filter(s => s !== symbol);
                             handleFilterChange('symbol', newSymbols);
                           }}
-                          className="rounded border-slate-300 bg-white text-emerald-600 focus:ring-emerald-500 focus:ring-2 w-3 h-3"
+                          className="rounded border-slate-300 bg-cyan-950/40 text-emerald-600 focus:ring-emerald-500 focus:ring-2 w-3 h-3"
                         />
                         <span className="text-xs text-[#040028]">{symbol}</span>
                       </label>
@@ -577,7 +577,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
         {activeTab === 'performance' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {/* P&L Range */}
-            <div className="bg-white border border-blue-200/60 rounded-lg p-4 hover:shadow-md transition-all duration-200">
+            <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-lg p-4 hover:shadow-md transition-all duration-200">
               <div className="flex items-center space-x-2 mb-3">
                 <div className="p-1.5 bg-orange-100 rounded-lg">
                   <DollarSign className="w-4 h-4 text-orange-600" />
@@ -590,20 +590,20 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                   value={filters.pnlRange.min}
                   onChange={(e) => handleFilterChange('pnlRange.min', e.target.value)}
                   placeholder="Min"
-                  className="w-full px-3 py-2 bg-white border border-blue-200/60 rounded-lg text-[#040028] text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  className="w-full px-3 py-2 bg-cyan-950/40 border border-cyan-500/20 rounded-lg text-[#040028] text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                 />
                 <input
                   type="number"
                   value={filters.pnlRange.max}
                   onChange={(e) => handleFilterChange('pnlRange.max', e.target.value)}
                   placeholder="Max"
-                  className="w-full px-3 py-2 bg-white border border-blue-200/60 rounded-lg text-[#040028] text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  className="w-full px-3 py-2 bg-cyan-950/40 border border-cyan-500/20 rounded-lg text-[#040028] text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                 />
               </div>
             </div>
 
             {/* R:R Range */}
-            <div className="bg-white border border-blue-200/60 rounded-lg p-4 hover:shadow-md transition-all duration-200">
+            <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-lg p-4 hover:shadow-md transition-all duration-200">
               <div className="flex items-center space-x-2 mb-3">
                 <div className="p-1.5 bg-yellow-100 rounded-lg">
                   <BarChart3 className="w-4 h-4 text-yellow-600" />
@@ -617,7 +617,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                   value={filters.rrRange.min}
                   onChange={(e) => handleFilterChange('rrRange.min', e.target.value)}
                   placeholder="Min"
-                  className="w-full px-3 py-2 bg-white border border-blue-200/60 rounded-lg text-[#040028] text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 bg-cyan-950/40 border border-cyan-500/20 rounded-lg text-[#040028] text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
                 />
                 <input
                   type="number"
@@ -625,7 +625,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                   value={filters.rrRange.max}
                   onChange={(e) => handleFilterChange('rrRange.max', e.target.value)}
                   placeholder="Max"
-                  className="w-full px-3 py-2 bg-white border border-blue-200/60 rounded-lg text-[#040028] text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-3 py-2 bg-cyan-950/40 border border-cyan-500/20 rounded-lg text-[#040028] text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
                 />
               </div>
             </div>
@@ -648,7 +648,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
             </div>
 
             {/* Direction */}
-            <div className="bg-white border border-blue-200/60 rounded-lg p-4 hover:shadow-md transition-all duration-200">
+            <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-lg p-4 hover:shadow-md transition-all duration-200">
               <div className="flex items-center space-x-2 mb-3">
                 <div className="p-1.5 bg-purple-100 rounded-lg">
                   <Target className="w-4 h-4 text-purple-600" />
@@ -659,7 +659,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                 {['long', 'short'].map(direction => {
                   const isSelected = filters.direction.includes(direction);
                   return (
-                    <label key={direction} className="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 rounded p-1">
+                    <label key={direction} className="flex items-center space-x-2 cursor-pointer hover:bg-jf-bg rounded p-1">
                       <input
                         type="checkbox"
                         checked={isSelected}
@@ -669,7 +669,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                             : filters.direction.filter(d => d !== direction);
                           handleFilterChange('direction', newDirections);
                         }}
-                        className="rounded border-slate-300 bg-white text-purple-600 focus:ring-purple-500 focus:ring-2 w-3 h-3"
+                        className="rounded border-slate-300 bg-cyan-950/40 text-purple-600 focus:ring-purple-500 focus:ring-2 w-3 h-3"
                       />
                       <span className="text-xs text-[#040028] capitalize">{direction}</span>
                     </label>
@@ -682,10 +682,10 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
               <div className="space-y-4">
                 <div className="flex items-center space-x-2">
                   <div className="p-1.5 bg-blue-100 rounded-lg">
-                    <Sparkles className="w-4 h-4 text-blue-600" />
+                    <Sparkles className="w-4 h-4 text-cyan-300" />
                   </div>
                   <h3 className="text-sm font-bold text-[#040028]">Variables from Trades</h3>
-                  <span className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                  <span className="text-xs text-cyan-200 bg-cyan-950/25 px-2 py-1 rounded border border-cyan-500/20">
                     {Object.keys(filters.variables).filter(varName => 
                       filters.variables[varName] && filters.variables[varName].length > 0
                     ).length}/{availableOptions.variables.length}
@@ -693,18 +693,18 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {availableOptions.variables.map(varName => (
-                    <div key={varName} className="bg-white border border-blue-200/60 rounded-lg p-4 hover:shadow-md transition-all duration-200">
+                    <div key={varName} className="bg-cyan-950/40 border border-cyan-500/20 rounded-lg p-4 hover:shadow-md transition-all duration-200">
                       <div className="flex items-center space-x-2 mb-3">
                         <div className="p-1 bg-indigo-100 rounded-lg">
                           <Sparkles className="w-3 h-3 text-indigo-600" />
                         </div>
                         <h3 className="text-sm font-bold text-[#040028] truncate">{varName}</h3>
                       </div>
-                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 max-h-32 overflow-y-auto">
+                      <div className="bg-jf-bg border border-cyan-500/15 rounded-lg p-3 max-h-32 overflow-y-auto">
                         {availableOptions.variableValues[varName]?.map(value => {
                           const isSelected = filters.variables[varName]?.includes(value) || false;
                           return (
-                            <label key={value} className="flex items-center space-x-2 cursor-pointer hover:bg-slate-100 rounded p-1">
+                            <label key={value} className="flex items-center space-x-2 cursor-pointer hover:bg-cyan-950/35 rounded p-1">
                               <input
                                 type="checkbox"
                                 checked={isSelected}
@@ -718,7 +718,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                                     [varName]: newValues
                                   });
                                 }}
-                                className="rounded border-slate-300 bg-white text-indigo-600 focus:ring-indigo-500 focus:ring-2 w-3 h-3"
+                                className="rounded border-slate-300 bg-cyan-950/40 text-indigo-600 focus:ring-indigo-500 focus:ring-2 w-3 h-3"
                               />
                               <span className="text-xs text-[#040028] truncate">{value}</span>
                             </label>
@@ -747,18 +747,18 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {Object.entries(availableOptions.customVariables).map(([varName, values]) => (
-                    <div key={varName} className="bg-white border border-blue-200/60 rounded-lg p-4 hover:shadow-md transition-all duration-200">
+                    <div key={varName} className="bg-cyan-950/40 border border-cyan-500/20 rounded-lg p-4 hover:shadow-md transition-all duration-200">
                       <div className="flex items-center space-x-2 mb-3">
                         <div className="p-1 bg-green-100 rounded-lg">
                           <CheckSquare className="w-3 h-3 text-green-600" />
                         </div>
                         <h3 className="text-sm font-bold text-[#040028] truncate capitalize">{varName}</h3>
                       </div>
-                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 max-h-32 overflow-y-auto">
+                      <div className="bg-jf-bg border border-cyan-500/15 rounded-lg p-3 max-h-32 overflow-y-auto">
                         {values.map(value => {
                           const isSelected = filters.variables[varName]?.includes(value) || false;
                           return (
-                            <label key={value} className="flex items-center space-x-2 cursor-pointer hover:bg-slate-100 rounded p-1">
+                            <label key={value} className="flex items-center space-x-2 cursor-pointer hover:bg-cyan-950/35 rounded p-1">
                               <input
                                 type="checkbox"
                                 checked={isSelected}
@@ -772,7 +772,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                                     [varName]: newValues
                                   });
                                 }}
-                                className="rounded border-slate-300 bg-white text-green-600 focus:ring-green-500 focus:ring-2 w-3 h-3"
+                                className="rounded border-slate-300 bg-cyan-950/40 text-green-600 focus:ring-green-500 focus:ring-2 w-3 h-3"
                               />
                               <span className="text-xs text-[#040028] truncate">{value}</span>
                             </label>
@@ -792,7 +792,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                   <Cpu className="w-8 h-8 text-purple-600" />
                 </div>
                 <h3 className="text-lg font-semibold text-[#040028] mb-2">No Variables Available</h3>
-                <p className="text-slate-600 text-sm">
+                <p className="text-cyan-100/60 text-sm">
                   Create custom variables in the Journal page to start filtering by them.
                 </p>
               </div>
@@ -800,7 +800,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
 
             {/* Variable Combinations */}
             {availableOptions.variables.length > 1 && (
-              <div className="bg-white border border-blue-200/60 rounded-lg p-6 hover:shadow-md transition-all duration-200">
+              <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-lg p-6 hover:shadow-md transition-all duration-200">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center space-x-2">
                     <div className="p-1.5 bg-violet-100 rounded-lg">
@@ -830,7 +830,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                               ? 'bg-violet-600' 
                               : 'bg-slate-200'
                           }`}>
-                            <div className={`w-3 h-3 bg-white rounded-full shadow-lg transform transition-transform duration-300 ${
+                            <div className={`w-3 h-3 bg-cyan-950/40 rounded-full shadow-lg transform transition-transform duration-300 ${
                               filters.variableCombinations.enabled ? 'translate-x-4' : 'translate-x-0.5'
                             } mt-0.5`}></div>
                           </div>
@@ -842,14 +842,14 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                           <select
                             value={filters.variableCombinations.level}
                             onChange={(e) => handleFilterChange('variableCombinations.level', parseInt(e.target.value))}
-                            className="px-3 py-2 bg-white border border-blue-200/60 rounded-lg text-[#040028] text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                            className="px-3 py-2 bg-cyan-950/40 border border-cyan-500/20 rounded-lg text-[#040028] text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                           >
                             <option value={2}>Pairs (2 variables)</option>
                             <option value={3}>Trios (3 variables)</option>
                             <option value={4}>Quartets (4 variables)</option>
                             <option value={5}>Quintets (5 variables)</option>
                           </select>
-                          <div className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded">
+                          <div className="text-xs text-cyan-200/45 bg-cyan-950/35 px-2 py-1 rounded">
                             {availableOptions.combinations.length} combinations
                           </div>
                         </div>
@@ -868,7 +868,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                         </button>
                         <button
                           onClick={() => handleFilterChange('variableCombinations.combinations', [])}
-                          className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-medium transition-colors"
+                          className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-200 rounded-lg text-xs font-medium transition-colors"
                         >
                           Clear All
                         </button>
@@ -879,7 +879,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                   {filters.variableCombinations.enabled && (
                     <div className="space-y-4">
                       {/* Manual Input */}
-                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                      <div className="bg-jf-bg border border-cyan-500/15 rounded-lg p-4">
                         <div className="flex items-center space-x-2 mb-3">
                           <div className="p-1 bg-violet-100 rounded-lg">
                             <Plus className="w-3 h-3 text-violet-600" />
@@ -915,7 +915,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                               }
                             }}
                             placeholder="Variable1=Value1,Variable2=Value2"
-                            className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-[#040028] text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                            className="flex-1 px-3 py-2 bg-cyan-950/40 border border-cyan-500/15 rounded-lg text-[#040028] text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                           />
                           <button
                             onClick={() => {
@@ -947,7 +947,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                             <span>Add</span>
                           </button>
                         </div>
-                        <p className="text-xs text-slate-500 mt-2">
+                        <p className="text-xs text-cyan-200/45 mt-2">
                           Format: VariableName=Value,VariableName=Value (e.g., Market=Bullish,Timeframe=1H)
                         </p>
                       </div>
@@ -968,7 +968,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                           </div>
                           <div className="space-y-2">
                             {filters.variableCombinations.combinations.map((combo, index) => (
-                              <div key={index} className="flex items-center justify-between bg-white border border-emerald-200 rounded-lg p-3">
+                              <div key={index} className="flex items-center justify-between bg-cyan-950/40 border border-emerald-200 rounded-lg p-3">
                                 <span className="text-sm text-[#040028] font-medium">{combo}</span>
                                 <button
                                   onClick={() => {
@@ -987,7 +987,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
 
                       {/* Available Combinations */}
                       {availableOptions.combinations.length > 0 && (
-                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                        <div className="bg-jf-bg border border-cyan-500/15 rounded-lg p-4">
                           <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center space-x-2">
                               <div className="p-1 bg-violet-100 rounded-lg">
@@ -1003,7 +1003,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                             {availableOptions.combinations.map((combo, index) => {
                               const isSelected = filters.variableCombinations.combinations.includes(combo.combination);
                               return (
-                                <label key={index} className="flex items-start space-x-3 cursor-pointer hover:bg-white rounded-lg p-3 border border-transparent hover:border-slate-200 transition-all">
+                                <label key={index} className="flex items-start space-x-3 cursor-pointer hover:bg-cyan-950/40 rounded-lg p-3 border border-transparent hover:border-cyan-500/15 transition-all">
                                   <input
                                     type="checkbox"
                                     checked={isSelected}
@@ -1014,14 +1014,14 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                                         : currentCombinations.filter(c => c !== combo.combination);
                                       handleFilterChange('variableCombinations.combinations', newCombinations);
                                     }}
-                                    className="rounded border-slate-300 bg-white text-violet-600 focus:ring-violet-500 focus:ring-2 w-4 h-4 mt-0.5"
+                                    className="rounded border-slate-300 bg-cyan-950/40 text-violet-600 focus:ring-violet-500 focus:ring-2 w-4 h-4 mt-0.5"
                                   />
                                   <div className="flex-1">
                                     <div className="text-sm font-medium text-[#040028] break-words">
                                       {combo.combination}
                                     </div>
                                     <div className="flex items-center space-x-4 mt-1">
-                                      <span className="text-xs text-slate-600 bg-slate-100 px-2 py-1 rounded">
+                                      <span className="text-xs text-cyan-100/60 bg-cyan-950/35 px-2 py-1 rounded">
                                         {combo.trades || 0} trades
                                       </span>
                                       <span className={`text-xs px-2 py-1 rounded ${
@@ -1031,7 +1031,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                                       }`}>
                                         {combo.pnl >= 0 ? '+' : ''}{combo.pnl?.toFixed(2) || '0.00'} P&L
                                       </span>
-                                      <span className="text-xs text-blue-700 bg-blue-100 px-2 py-1 rounded">
+                                      <span className="text-xs text-cyan-200 bg-blue-100 px-2 py-1 rounded">
                                         {combo.win_rate ? `${(combo.win_rate * 100).toFixed(1)}%` : '0%'} WR
                                       </span>
                                     </div>
@@ -1045,12 +1045,12 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
 
                       {/* No Combinations Available */}
                       {availableOptions.combinations.length === 0 && (
-                        <div className="text-center py-6 bg-slate-50 border border-slate-200 rounded-lg">
+                        <div className="text-center py-6 bg-jf-bg border border-cyan-500/15 rounded-lg">
                           <div className="w-12 h-12 bg-violet-100 rounded-full flex items-center justify-center mx-auto mb-3">
                             <Layers className="w-6 h-6 text-violet-600" />
                           </div>
                           <h3 className="text-sm font-semibold text-[#040028] mb-1">No Combinations Available</h3>
-                          <p className="text-xs text-slate-600">
+                          <p className="text-xs text-cyan-100/60">
                             Change the combination level or add custom combinations above.
                           </p>
                         </div>
@@ -1069,7 +1069,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
             {/* Strategy, Setup, Import Batch */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {/* Strategy */}
-              <div className="bg-white border border-blue-200/60 rounded-lg p-4 hover:shadow-md transition-all duration-200">
+              <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-lg p-4 hover:shadow-md transition-all duration-200">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center space-x-2">
                     <div className="p-1.5 bg-teal-100 rounded-lg">
@@ -1081,7 +1081,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                     {filters.strategy.length}/{availableOptions.strategies.length}
                   </span>
                 </div>
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 max-h-32 overflow-y-auto">
+                <div className="bg-jf-bg border border-cyan-500/15 rounded-lg p-3 max-h-32 overflow-y-auto">
                   <div className="flex items-center justify-between mb-2">
                     <button
                       onClick={() => handleFilterChange('strategy', availableOptions.strategies)}
@@ -1091,7 +1091,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                     </button>
                     <button
                       onClick={() => handleFilterChange('strategy', [])}
-                      className="text-xs px-2 py-1 bg-slate-200 hover:bg-slate-300 rounded text-slate-700 transition-colors"
+                      className="text-xs px-2 py-1 bg-slate-200 hover:bg-slate-300 rounded text-slate-200 transition-colors"
                     >
                       Clear
                     </button>
@@ -1100,7 +1100,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                     {availableOptions.strategies.map(strategy => {
                       const isSelected = filters.strategy.includes(strategy);
                       return (
-                        <label key={strategy} className="flex items-center space-x-2 cursor-pointer hover:bg-slate-100 rounded p-1">
+                        <label key={strategy} className="flex items-center space-x-2 cursor-pointer hover:bg-cyan-950/35 rounded p-1">
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -1110,7 +1110,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                                 : filters.strategy.filter(s => s !== strategy);
                               handleFilterChange('strategy', newStrategies);
                             }}
-                            className="rounded border-slate-300 bg-white text-teal-600 focus:ring-teal-500 focus:ring-2 w-3 h-3"
+                            className="rounded border-slate-300 bg-cyan-950/40 text-teal-600 focus:ring-teal-500 focus:ring-2 w-3 h-3"
                           />
                           <span className="text-xs text-[#040028]">{strategy}</span>
                         </label>
@@ -1121,7 +1121,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
               </div>
 
               {/* Setup */}
-              <div className="bg-white border border-blue-200/60 rounded-lg p-4 hover:shadow-md transition-all duration-200">
+              <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-lg p-4 hover:shadow-md transition-all duration-200">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center space-x-2">
                     <div className="p-1.5 bg-rose-100 rounded-lg">
@@ -1133,7 +1133,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                     {filters.setup.length}/{availableOptions.setups.length}
                   </span>
                 </div>
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 max-h-32 overflow-y-auto">
+                <div className="bg-jf-bg border border-cyan-500/15 rounded-lg p-3 max-h-32 overflow-y-auto">
                   <div className="flex items-center justify-between mb-2">
                     <button
                       onClick={() => handleFilterChange('setup', availableOptions.setups)}
@@ -1143,7 +1143,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                     </button>
                     <button
                       onClick={() => handleFilterChange('setup', [])}
-                      className="text-xs px-2 py-1 bg-slate-200 hover:bg-slate-300 rounded text-slate-700 transition-colors"
+                      className="text-xs px-2 py-1 bg-slate-200 hover:bg-slate-300 rounded text-slate-200 transition-colors"
                     >
                       Clear
                     </button>
@@ -1152,7 +1152,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                     {availableOptions.setups.map(setup => {
                       const isSelected = filters.setup.includes(setup);
                       return (
-                        <label key={setup} className="flex items-center space-x-2 cursor-pointer hover:bg-slate-100 rounded p-1">
+                        <label key={setup} className="flex items-center space-x-2 cursor-pointer hover:bg-cyan-950/35 rounded p-1">
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -1162,7 +1162,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                                 : filters.setup.filter(s => s !== setup);
                               handleFilterChange('setup', newSetups);
                             }}
-                            className="rounded border-slate-300 bg-white text-rose-600 focus:ring-rose-500 focus:ring-2 w-3 h-3"
+                            className="rounded border-slate-300 bg-cyan-950/40 text-rose-600 focus:ring-rose-500 focus:ring-2 w-3 h-3"
                           />
                           <span className="text-xs text-[#040028]">{setup}</span>
                         </label>
@@ -1173,7 +1173,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
               </div>
 
               {/* Import Batch */}
-              <div className="bg-white border border-blue-200/60 rounded-lg p-4 hover:shadow-md transition-all duration-200">
+              <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-lg p-4 hover:shadow-md transition-all duration-200">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center space-x-2">
                     <div className="p-1.5 bg-amber-100 rounded-lg">
@@ -1185,7 +1185,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                     {filters.importBatch.length}/{availableOptions.importBatches.length}
                   </span>
                 </div>
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 max-h-32 overflow-y-auto">
+                <div className="bg-jf-bg border border-cyan-500/15 rounded-lg p-3 max-h-32 overflow-y-auto">
                   <div className="flex items-center justify-between mb-2">
                     <button
                       onClick={() => handleFilterChange('importBatch', availableOptions.importBatches.map(b => b.id))}
@@ -1195,7 +1195,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                     </button>
                     <button
                       onClick={() => handleFilterChange('importBatch', [])}
-                      className="text-xs px-2 py-1 bg-slate-200 hover:bg-slate-300 rounded text-slate-700 transition-colors"
+                      className="text-xs px-2 py-1 bg-slate-200 hover:bg-slate-300 rounded text-slate-200 transition-colors"
                     >
                       Clear
                     </button>
@@ -1204,7 +1204,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                     {availableOptions.importBatches.map(batch => {
                       const isSelected = filters.importBatch.includes(batch.id);
                       return (
-                        <label key={batch.id} className="flex items-center space-x-2 cursor-pointer hover:bg-slate-100 rounded p-1">
+                        <label key={batch.id} className="flex items-center space-x-2 cursor-pointer hover:bg-cyan-950/35 rounded p-1">
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -1214,7 +1214,7 @@ const AdvancedFilter = ({ onFilterChange, isVisible, onToggleVisibility }) => {
                                 : filters.importBatch.filter(b => b !== batch.id);
                               handleFilterChange('importBatch', newBatches);
                             }}
-                            className="rounded border-slate-300 bg-white text-amber-600 focus:ring-amber-500 focus:ring-2 w-3 h-3"
+                            className="rounded border-slate-300 bg-cyan-950/40 text-amber-600 focus:ring-amber-500 focus:ring-2 w-3 h-3"
                           />
                           <span className="text-xs text-[#040028] truncate">
                             {batch.name}

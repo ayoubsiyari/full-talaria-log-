@@ -83,10 +83,10 @@ const PerformanceAnalysis = () => {
           <div className="h-10 bg-gray-200 dark:bg-gray-800 rounded w-1/3"></div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-64 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6"></div>
+              <div key={i} className="h-64 bg-cyan-950/40 dark:bg-gray-900 rounded-xl border border-cyan-500/15 dark:border-gray-800 p-6"></div>
             ))}
           </div>
-          <div className="h-96 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6"></div>
+          <div className="h-96 bg-cyan-950/40 dark:bg-gray-900 rounded-xl border border-cyan-500/15 dark:border-gray-800 p-6"></div>
         </div>
       </div>
     );

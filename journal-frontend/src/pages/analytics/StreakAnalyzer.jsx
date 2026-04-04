@@ -47,22 +47,22 @@ const MinimalCard = ({
 }) => {
   if (isLoading) {
     return (
-      <div className={`bg-white border border-blue-200/60 rounded-xl p-6 animate-pulse ${className}`}>
+      <div className={`bg-cyan-950/40 border border-cyan-500/20 rounded-xl p-6 animate-pulse ${className}`}>
         <div className="h-4 bg-slate-200 rounded w-3/4 mb-4"></div>
         <div className="h-8 bg-slate-200 rounded w-1/2 mb-2"></div>
-        <div className="h-3 bg-slate-100 rounded w-5/6"></div>
+        <div className="h-3 bg-cyan-950/35 rounded w-5/6"></div>
       </div>
     );
   }
 
   return (
-    <div className={`group bg-white border border-blue-200/60 rounded-xl p-6 hover:shadow-md transition-all duration-200 ${className}`}>
+    <div className={`group bg-cyan-950/40 border border-cyan-500/20 rounded-xl p-6 hover:shadow-md transition-all duration-200 ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-medium text-slate-600 uppercase tracking-wider">{title}</h3>
+        <h3 className="text-xs font-medium text-cyan-100/60 uppercase tracking-wider">{title}</h3>
         {Icon && (
-          <div className="p-1.5 rounded-lg bg-slate-100">
-            <Icon className="h-4 w-4 text-slate-600" />
+          <div className="p-1.5 rounded-lg bg-cyan-950/35">
+            <Icon className="h-4 w-4 text-cyan-100/60" />
           </div>
         )}
       </div>
@@ -84,12 +84,12 @@ const MinimalCard = ({
 
       {/* Subtitle */}
       {subtitle && (
-        <p className="text-slate-600 text-sm leading-relaxed mb-3">{subtitle}</p>
+        <p className="text-cyan-100/60 text-sm leading-relaxed mb-3">{subtitle}</p>
       )}
 
       {/* Trend Text */}
       {trendText && (
-        <div className="flex items-center space-x-2 text-xs text-slate-500">
+        <div className="flex items-center space-x-2 text-xs text-cyan-200/45">
           <Activity className="h-3 w-3 text-slate-400" />
           <span>{trendText}</span>
         </div>
@@ -107,13 +107,13 @@ const MinimalProgressBar = ({ value, max = 100, className = '' }) => {
 
   return (
     <div className={`space-y-2 ${className}`}>
-      <div className="flex justify-between text-xs text-slate-600">
+      <div className="flex justify-between text-xs text-cyan-100/60">
         <span>Progress</span>
         <span className="font-medium">{Math.round(percentage)}%</span>
       </div>
       <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
         <div 
-          className="bg-blue-500 h-1.5 rounded-full transition-all duration-500 ease-out"
+          className="bg-cyan-500 h-1.5 rounded-full transition-all duration-500 ease-out"
           style={{ width: `${percentage}%` }}
         ></div>
       </div>
@@ -284,7 +284,7 @@ const StreakAnalyzer = () => {
     const isWin = type === 'winning';
     
     return (
-      <div key={`${type}-${index}`} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover:shadow-md transition-all duration-200">
+      <div key={`${type}-${index}`} className="bg-cyan-950/40 dark:bg-gray-900 border border-cyan-500/15 dark:border-gray-800 rounded-xl p-4 hover:shadow-md transition-all duration-200">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-3">
             <div className={`p-2 rounded-lg ${isWin ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
@@ -325,10 +325,10 @@ const StreakAnalyzer = () => {
 
     if (distributionData.length === 0) {
       return (
-        <div className="bg-white border border-blue-200/60 rounded-xl p-8 text-center">
+        <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl p-8 text-center">
           <TrendingUp className="h-12 w-12 text-green-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-[#040028] mb-2">No Winning Streak Data</h3>
-          <p className="text-slate-600 text-sm">Start winning trades to see your winning streak distribution</p>
+          <p className="text-cyan-100/60 text-sm">Start winning trades to see your winning streak distribution</p>
         </div>
       );
     }
@@ -336,9 +336,9 @@ const StreakAnalyzer = () => {
     const CustomTooltip = ({ active, payload, label }) => {
       if (active && payload && payload.length) {
         return (
-          <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-lg">
+          <div className="bg-cyan-950/40 border border-cyan-500/15 rounded-lg p-3 shadow-lg">
             <p className="text-[#040028] font-medium">{`Win Streak Length: ${label}`}</p>
-            <p className="text-slate-600">{`Count: ${payload[0].value}`}</p>
+            <p className="text-cyan-100/60">{`Count: ${payload[0].value}`}</p>
           </div>
         );
       }
@@ -346,16 +346,16 @@ const StreakAnalyzer = () => {
     };
 
     return (
-      <div className="bg-white border border-blue-200/60 rounded-xl p-6">
+      <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-lg font-medium text-[#040028] mb-1 flex items-center">
               <TrendingUp className="h-5 w-5 mr-2 text-green-500" />
               Winning Streak Distribution
             </h3>
-            <p className="text-slate-600 text-sm">Frequency of different winning streak lengths</p>
+            <p className="text-cyan-100/60 text-sm">Frequency of different winning streak lengths</p>
           </div>
-          <div className="text-xs text-slate-600 bg-slate-100 px-3 py-1 rounded-full">
+          <div className="text-xs text-cyan-100/60 bg-cyan-950/35 px-3 py-1 rounded-full">
             {distributionData.reduce((sum, item) => sum + item.count, 0)} winning streaks
           </div>
         </div>
@@ -406,10 +406,10 @@ const StreakAnalyzer = () => {
 
     if (distributionData.length === 0) {
       return (
-        <div className="bg-white border border-blue-200/60 rounded-xl p-8 text-center">
+        <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl p-8 text-center">
           <TrendingDown className="h-12 w-12 text-red-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-[#040028] mb-2">No Losing Streak Data</h3>
-          <p className="text-slate-600 text-sm">Great! No losing streaks to display</p>
+          <p className="text-cyan-100/60 text-sm">Great! No losing streaks to display</p>
         </div>
       );
     }
@@ -417,7 +417,7 @@ const StreakAnalyzer = () => {
     const CustomTooltip = ({ active, payload, label }) => {
       if (active && payload && payload.length) {
         return (
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3 shadow-lg">
+          <div className="bg-cyan-950/40 dark:bg-gray-900 border border-cyan-500/15 dark:border-gray-800 rounded-lg p-3 shadow-lg">
             <p className="text-gray-900 dark:text-white font-medium">{`Loss Streak Length: ${label}`}</p>
             <p className="text-gray-600 dark:text-gray-400">{`Count: ${payload[0].value}`}</p>
           </div>
@@ -427,7 +427,7 @@ const StreakAnalyzer = () => {
     };
 
     return (
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
+      <div className="bg-cyan-950/40 dark:bg-gray-900 border border-cyan-500/15 dark:border-gray-800 rounded-xl p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1 flex items-center">
@@ -538,12 +538,12 @@ const StreakAnalyzer = () => {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold text-[#040028] flex items-center">
-                <div className="p-2 rounded-md bg-slate-100 mr-3">
-                  <TrendingUp className="h-5 w-5 text-slate-600" />
+                <div className="p-2 rounded-md bg-cyan-950/35 mr-3">
+                  <TrendingUp className="h-5 w-5 text-cyan-100/60" />
                 </div>
                 Winning Streaks
               </h2>
-              <div className="text-xs text-slate-600 bg-slate-100 px-3 py-1 rounded">
+              <div className="text-xs text-cyan-100/60 bg-cyan-950/35 px-3 py-1 rounded">
                 {recentWinningStreaks.length} recent
               </div>
             </div>
@@ -563,12 +563,12 @@ const StreakAnalyzer = () => {
 
             {/* Recent Wins - Hidden in backtest mode */}
             {!isBacktest && (
-              <div className="bg-white border border-blue-200/60 rounded-lg p-6">
+              <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-lg p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-medium text-[#040028]">Recent Wins</h3>
                   <button 
                     onClick={() => setShowDetails(!showDetails)}
-                    className="flex items-center space-x-1 text-xs text-slate-600 hover:text-[#040028] transition-colors"
+                    className="flex items-center space-x-1 text-xs text-cyan-100/60 hover:text-[#040028] transition-colors"
                   >
                     {showDetails ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
                     <span>{showDetails ? 'Show Less' : 'Show More'}</span>
@@ -581,7 +581,7 @@ const StreakAnalyzer = () => {
                       renderStreakHistoryItem(streak, index, 'winning')
                     )
                   ) : (
-                    <div className="text-center py-8 text-slate-500">
+                    <div className="text-center py-8 text-cyan-200/45">
                       <TrendingUp className="h-8 w-8 mx-auto mb-2 opacity-50" />
                       <p className="text-sm">No winning streaks yet</p>
                       <p className="text-xs">Start trading to build your first winning streak</p>
@@ -596,12 +596,12 @@ const StreakAnalyzer = () => {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold text-[#040028] flex items-center">
-                <div className="p-2 rounded-md bg-slate-100 mr-3">
-                  <TrendingDown className="h-5 w-5 text-slate-600" />
+                <div className="p-2 rounded-md bg-cyan-950/35 mr-3">
+                  <TrendingDown className="h-5 w-5 text-cyan-100/60" />
                 </div>
                 Losing Streaks
               </h2>
-              <div className="text-xs text-slate-600 bg-slate-100 px-3 py-1 rounded">
+              <div className="text-xs text-cyan-100/60 bg-cyan-950/35 px-3 py-1 rounded">
                 {recentLosingStreaks.length} recent
               </div>
             </div>
@@ -621,10 +621,10 @@ const StreakAnalyzer = () => {
 
             {/* Recent Losses - Hidden in backtest mode */}
             {!isBacktest && (
-              <div className="bg-white border border-blue-200/60 rounded-lg p-6">
+              <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-lg p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-medium text-[#040028]">Recent Losses</h3>
-                  <div className="text-xs text-slate-600 bg-slate-100 px-2 py-1 rounded">
+                  <div className="text-xs text-cyan-100/60 bg-cyan-950/35 px-2 py-1 rounded">
                     Risk Analysis
                   </div>
                 </div>
@@ -635,7 +635,7 @@ const StreakAnalyzer = () => {
                       renderStreakHistoryItem(streak, index, 'losing')
                     )
                   ) : (
-                    <div className="text-center py-8 text-slate-500">
+                    <div className="text-center py-8 text-cyan-200/45">
                       <Shield className="h-8 w-8 mx-auto mb-2 opacity-50" />
                       <p className="text-sm">No losing streaks</p>
                       <p className="text-xs">Excellent risk management</p>
@@ -655,7 +655,7 @@ const StreakAnalyzer = () => {
   // Render main component
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-jf-bg">
         <div className="w-full px-6 py-4">
           <div className="bg-red-50 border border-red-200 rounded-xl p-6">
             <div className="flex items-start gap-4">
@@ -683,13 +683,13 @@ const StreakAnalyzer = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-jf-bg">
       <div className="w-full px-6 py-4 space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-[#040028]">Streak Analysis</h1>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-cyan-100/60">
               Track your trading consistency and performance patterns
             </p>
           </div>
@@ -697,7 +697,7 @@ const StreakAnalyzer = () => {
             <button 
               onClick={fetchStreakData}
               disabled={loading}
-              className={`inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+              className={`inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-cyan-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-400 transition-colors ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
             >
               <RefreshCw className={`-ml-1 mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               {loading ? 'Refreshing...' : 'Refresh'}

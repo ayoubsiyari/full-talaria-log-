@@ -76,7 +76,7 @@ export default function AIDashboard() {
     switch (type) {
       case 'positive': return <ArrowUpRight className="w-5 h-5 text-emerald-400" />;
       case 'negative': return <ArrowDownRight className="w-5 h-5 text-red-400" />;
-      case 'neutral': return <Minus className="w-5 h-5 text-blue-400" />;
+      case 'neutral': return <Minus className="w-5 h-5 text-cyan-300" />;
       default: return <Lightbulb className="w-5 h-5 text-cyan-400" />;
     }
   };
@@ -85,7 +85,7 @@ export default function AIDashboard() {
     switch (type) {
       case 'positive': return 'border-emerald-500/30 bg-emerald-500/10 backdrop-blur-sm';
       case 'negative': return 'border-red-500/30 bg-red-500/10 backdrop-blur-sm';
-      case 'neutral': return 'border-blue-500/30 bg-blue-500/10 backdrop-blur-sm';
+      case 'neutral': return 'border-cyan-400/30 bg-cyan-500/10 backdrop-blur-sm';
       default: return 'border-cyan-500/30 bg-cyan-500/10 backdrop-blur-sm';
     }
   };
@@ -141,7 +141,7 @@ export default function AIDashboard() {
               </div>
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" style={{ animationDelay: '0.5s' }}></div>
-                <span className="text-blue-300">Pattern Recognition</span>
+                <span className="text-cyan-200">Pattern Recognition</span>
               </div>
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse" style={{ animationDelay: '1s' }}></div>
@@ -200,7 +200,7 @@ export default function AIDashboard() {
               
               <button
                 onClick={fetchAIInsights}
-                className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-lg hover:from-cyan-600 hover:to-blue-600 transition-all duration-300 shadow-lg hover:shadow-cyan-500/25"
+                className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-lg hover:from-cyan-600 hover:to-cyan-600 transition-all duration-300 shadow-lg hover:shadow-cyan-500/25"
               >
                 <div className="flex items-center space-x-2">
                   <Cpu className="w-4 h-4" />
@@ -397,7 +397,7 @@ export default function AIDashboard() {
                             ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                             : pattern.impact === 'negative'
                             ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                            : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                            : 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/30'
                         }`}>
                           {pattern.impact}
                         </span>
@@ -444,7 +444,7 @@ export default function AIDashboard() {
                               <Target className="w-4 h-4 mr-1" />
                               Priority: {rec.priority}
                             </span>
-                            <span className="flex items-center text-blue-300">
+                            <span className="flex items-center text-cyan-200">
                               <TrendingUp className="w-4 h-4 mr-1" />
                               Expected Impact: {rec.expectedImpact}
                             </span>
@@ -464,10 +464,10 @@ export default function AIDashboard() {
             </div>
 
             {/* Market Timing Analysis */}
-            <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-blue-500/30 mb-8">
-              <div className="p-6 border-b border-blue-500/30">
+            <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-cyan-400/30 mb-8">
+              <div className="p-6 border-b border-cyan-400/30">
                 <h3 className="text-lg font-semibold text-white flex items-center">
-                  <Clock className="w-5 h-5 text-blue-400 mr-2" />
+                  <Clock className="w-5 h-5 text-cyan-300 mr-2" />
                   Optimal Trading Times
                 </h3>
               </div>
@@ -475,7 +475,7 @@ export default function AIDashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   {aiInsights.optimalTimes?.map((time, index) => (
                     <div key={index} className="text-center p-4 bg-slate-700/50 rounded-xl hover:scale-105 transition-all duration-300 group">
-                      <p className="text-sm font-medium text-white mb-1 group-hover:text-blue-300 transition-colors">
+                      <p className="text-sm font-medium text-white mb-1 group-hover:text-cyan-200 transition-colors">
                         {time.period}
                       </p>
                       <p className="text-2xl font-bold text-emerald-400 group-hover:text-emerald-300 transition-colors">

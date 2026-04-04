@@ -909,7 +909,7 @@ const BulkEmailManager = ({ users = [] }) => {
       <div className="bg-gradient-to-r from-[#1e3a5f] to-[#0a1628] p-6 border-b border-[#2d4a6f]">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <div className="w-14 h-14 bg-gradient-to-br from-cyan-400 to-cyan-700 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20">
               <Mail className="w-7 h-7 text-white" />
             </div>
             <div>
@@ -919,7 +919,7 @@ const BulkEmailManager = ({ users = [] }) => {
           </div>
           <div className="flex items-center gap-6">
             <div className="text-center px-4 py-2 bg-[#0a1628] rounded-xl border border-[#2d4a6f]">
-              <p className="text-2xl font-bold text-blue-400">{selectedEmails.length}</p>
+              <p className="text-2xl font-bold text-cyan-300">{selectedEmails.length}</p>
               <p className="text-[10px] text-gray-500 uppercase tracking-wider">Selected</p>
             </div>
             <div className="text-center px-4 py-2 bg-[#0a1628] rounded-xl border border-[#2d4a6f]">
@@ -944,7 +944,7 @@ const BulkEmailManager = ({ users = [] }) => {
             }}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               activeFilter === 'all' 
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
+                ? 'bg-cyan-600 text-white shadow-lg shadow-blue-500/20' 
                 : 'bg-[#1e3a5f] text-gray-300 hover:bg-[#2d4a6f] border border-[#2d4a6f]'
             }`}
           >
@@ -1033,7 +1033,7 @@ const BulkEmailManager = ({ users = [] }) => {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search users..."
-            className="w-64 pl-10 pr-4 py-2.5 rounded-xl bg-[#1e3a5f] border border-[#2d4a6f] text-white placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-sm"
+            className="w-64 pl-10 pr-4 py-2.5 rounded-xl bg-[#1e3a5f] border border-[#2d4a6f] text-white placeholder-gray-500 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all text-sm"
           />
         </div>
       </div>
@@ -1045,7 +1045,7 @@ const BulkEmailManager = ({ users = [] }) => {
           <div className="p-4 border-b border-[#2d4a6f]">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-white flex items-center gap-2">
-                <Users className="w-5 h-5 text-blue-400" />
+                <Users className="w-5 h-5 text-cyan-300" />
                 Recipients
               </h3>
               <span className="text-xs text-gray-400 bg-[#1e3a5f] px-3 py-1 rounded-full border border-[#2d4a6f]">
@@ -1065,7 +1065,7 @@ const BulkEmailManager = ({ users = [] }) => {
                   key={user.id}
                   className={`flex items-center gap-3 p-3 cursor-pointer border-b border-[#1e3a5f] transition-all ${
                     selectedEmails.includes(user.email) 
-                      ? 'bg-blue-500/10 border-l-4 border-l-blue-500' 
+                      ? 'bg-cyan-500/10 border-l-4 border-l-blue-500' 
                       : 'hover:bg-[#1e3a5f] border-l-4 border-l-transparent'
                   }`}
                 >
@@ -1073,7 +1073,7 @@ const BulkEmailManager = ({ users = [] }) => {
                     type="checkbox"
                     checked={selectedEmails.includes(user.email)}
                     onChange={() => toggleUser(user.email)}
-                    className="h-4 w-4 rounded bg-[#1e3a5f] border-[#2d4a6f] text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+                    className="h-4 w-4 rounded bg-[#1e3a5f] border-[#2d4a6f] text-blue-500 focus:ring-cyan-400 focus:ring-offset-0"
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white truncate">{user.email}</p>
@@ -1109,7 +1109,7 @@ const BulkEmailManager = ({ users = [] }) => {
                 className="flex items-center gap-2 px-4 py-3 bg-[#1e3a5f] border border-[#2d4a6f] rounded-xl text-white font-medium hover:bg-[#2d4a6f] transition-all w-full justify-between"
               >
                 <div className="flex items-center gap-3">
-                  <FileText className="w-5 h-5 text-blue-400" />
+                  <FileText className="w-5 h-5 text-cyan-300" />
                   <span>Load Email Template</span>
                 </div>
                 <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${showTemplates ? 'rotate-180' : ''}`} />
@@ -1120,7 +1120,7 @@ const BulkEmailManager = ({ users = [] }) => {
                   <div className="max-h-[400px] overflow-y-auto">
                     {/* Email Templates Section */}
                     <div className="p-3 bg-[#0d1f35] border-b border-[#2d4a6f] sticky top-0">
-                      <p className="text-xs font-medium text-blue-400 uppercase tracking-wider flex items-center gap-2">
+                      <p className="text-xs font-medium text-cyan-300 uppercase tracking-wider flex items-center gap-2">
                         <Mail className="w-3.5 h-3.5" /> Email Templates
                       </p>
                     </div>
@@ -1166,7 +1166,7 @@ const BulkEmailManager = ({ users = [] }) => {
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
                 placeholder="Enter a compelling subject line..."
-                className="w-full px-4 py-3 rounded-xl bg-[#1e3a5f] border border-[#2d4a6f] text-white placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-base"
+                className="w-full px-4 py-3 rounded-xl bg-[#1e3a5f] border border-[#2d4a6f] text-white placeholder-gray-500 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all text-base"
               />
             </div>
 
@@ -1182,7 +1182,7 @@ const BulkEmailManager = ({ users = [] }) => {
                     onClick={() => setShowPreview(!showPreview)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
                       showPreview 
-                        ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' 
+                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/30' 
                         : 'bg-[#1e3a5f] text-gray-400 border border-[#2d4a6f] hover:bg-[#2d4a6f]'
                     }`}
                   >
@@ -1196,7 +1196,7 @@ const BulkEmailManager = ({ users = [] }) => {
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="Write your email content here. You can use HTML tags for formatting..."
                 rows={showPreview ? 8 : 12}
-                className="w-full px-4 py-3 rounded-xl bg-[#0d1f35] border border-[#2d4a6f] text-gray-200 placeholder-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono text-sm"
+                className="w-full px-4 py-3 rounded-xl bg-[#0d1f35] border border-[#2d4a6f] text-gray-200 placeholder-gray-600 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all font-mono text-sm"
               />
             </div>
 
@@ -1210,7 +1210,7 @@ const BulkEmailManager = ({ users = [] }) => {
                   </button>
                 </div>
                 <div 
-                  className="p-6 bg-white max-h-[300px] overflow-y-auto"
+                  className="p-6 bg-cyan-950/40 max-h-[300px] overflow-y-auto"
                   dangerouslySetInnerHTML={{ __html: content }}
                 />
               </div>
@@ -1237,7 +1237,7 @@ const BulkEmailManager = ({ users = [] }) => {
               <button
                 onClick={handleSendEmail}
                 disabled={sending || selectedEmails.length === 0 || !subject.trim() || !content.trim()}
-                className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold text-base hover:from-blue-700 hover:to-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 disabled:shadow-none"
+                className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-cyan-500 to-cyan-700 text-white rounded-xl font-semibold text-base hover:from-blue-700 hover:to-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 disabled:shadow-none"
               >
                 {sending ? (
                   <>

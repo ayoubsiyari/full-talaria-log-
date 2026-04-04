@@ -234,7 +234,7 @@ const EnhancedCalendar = ({ stats }) => {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-[#3090FF]/20 p-6">
+    <div className="bg-cyan-950/40 rounded-lg shadow-sm border border-[#3090FF]/20 p-6">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-bold text-[#040028] flex items-center gap-2">
           <Calendar className="w-5 h-5 text-[#3090FF]" />
@@ -244,7 +244,7 @@ const EnhancedCalendar = ({ stats }) => {
           <select
             value={selectedMonth}
             onChange={handleMonthChange}
-            className="px-3 py-1.5 rounded-md bg-white border border-[#3090FF]/30 text-[#040028] text-sm font-medium cursor-pointer focus:ring-2 focus:ring-[#3090FF] outline-none transition-all duration-200"
+            className="px-3 py-1.5 rounded-md bg-cyan-950/40 border border-[#3090FF]/30 text-[#040028] text-sm font-medium cursor-pointer focus:ring-2 focus:ring-[#3090FF] outline-none transition-all duration-200"
           >
             {MONTHS.map((month, index) => (
               <option key={index} value={index}>{month}</option>
@@ -253,14 +253,14 @@ const EnhancedCalendar = ({ stats }) => {
           <div className="flex items-center gap-1 bg-[#3090FF]/10 rounded-md p-1">
             <button 
               onClick={() => navigateYear('prev')}
-              className="p-1.5 rounded-md bg-white hover:bg-[#3090FF]/10 transition-colors"
+              className="p-1.5 rounded-md bg-cyan-950/40 hover:bg-[#3090FF]/10 transition-colors"
             >
               <ChevronLeft className="w-4 h-4 text-[#3090FF]" />
             </button>
             <span className="font-bold text-[#040028] w-18 text-center text-sm">{selectedYear}</span>
             <button 
               onClick={() => navigateYear('next')}
-              className="p-1.5 rounded-md bg-white hover:bg-[#3090FF]/10 transition-colors"
+              className="p-1.5 rounded-md bg-cyan-950/40 hover:bg-[#3090FF]/10 transition-colors"
             >
               <ChevronRight className="w-4 h-4 text-[#3090FF]" />
             </button>
@@ -322,7 +322,7 @@ const EnhancedCalendar = ({ stats }) => {
         {/* Selected Period Details */}
         <div className="lg:col-span-2">
           {selectedPeriodData ? (
-            <div className="bg-white rounded-lg shadow-sm border border-[#3090FF]/20 p-4 h-full">
+            <div className="bg-cyan-950/40 rounded-lg shadow-sm border border-[#3090FF]/20 p-4 h-full">
               <h4 className="text-lg font-bold text-[#040028] mb-4">{selectedPeriodData.title}</h4>
               
               {/* Chart Container */}
@@ -446,7 +446,7 @@ const EnhancedCalendar = ({ stats }) => {
                   ];
                 }
                 return (
-                  <div className="bg-white rounded-lg shadow-sm border border-[#3090FF]/20 p-4 h-full">
+                  <div className="bg-cyan-950/40 rounded-lg shadow-sm border border-[#3090FF]/20 p-4 h-full">
                     <h4 className="text-lg font-bold text-[#040028] mb-4">All Trades Summary</h4>
                     {/* Chart Container */}
                     <div className="h-64 mb-4">

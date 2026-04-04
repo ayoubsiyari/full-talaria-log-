@@ -24,7 +24,7 @@ const MockCalendarDay = ({ day, onClick }) => {
         {dayNumber}
       </div>
       {isCurrentMonth && trades > 0 && (
-        <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-semibold shadow-sm">
+        <div className="absolute top-2 right-2 bg-cyan-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-semibold shadow-sm">
           <span className="text-[10px]">{trades}</span>
         </div>
       )}
@@ -164,22 +164,22 @@ const CalendarDaysView = ({ stats }) => {
     }
     
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-blue-200/60 overflow-hidden">
-        <div className="p-6 border-b border-blue-200/60">
+      <div className="bg-cyan-950/40 rounded-xl shadow-sm border border-cyan-500/20 overflow-hidden">
+        <div className="p-6 border-b border-cyan-500/20">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <h2 className="text-2xl font-bold text-[#040028]">{format(currentDate, 'MMMM yyyy')}</h2>
             <div className="flex gap-4 items-center">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-[#10B981]"></div>
-                <span className="text-sm font-medium text-slate-600">Profit</span>
+                <span className="text-sm font-medium text-cyan-100/60">Profit</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-[#EF4444]"></div>
-                <span className="text-sm font-medium text-slate-600">Loss</span>
+                <span className="text-sm font-medium text-cyan-100/60">Loss</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-blue-600"></div>
-                <span className="text-sm font-medium text-slate-600">Trades</span>
+                <div className="w-3 h-3 rounded-full bg-cyan-600"></div>
+                <span className="text-sm font-medium text-cyan-100/60">Trades</span>
               </div>
             </div>
           </div>
@@ -187,7 +187,7 @@ const CalendarDaysView = ({ stats }) => {
         <div className="p-6">
           <div className="grid grid-cols-7 gap-2 mb-4">
             {WEEKDAYS.map(day => (
-              <div key={day} className="text-center text-sm font-semibold text-slate-600 uppercase tracking-wide">
+              <div key={day} className="text-center text-sm font-semibold text-cyan-100/60 uppercase tracking-wide">
                 {day}
               </div>
             ))}
@@ -198,14 +198,14 @@ const CalendarDaysView = ({ stats }) => {
                 {week.map((day, dayIndex) => (
                   <div 
                     key={dayIndex}
-                    className={`h-24 bg-white border border-blue-200/60 rounded-lg transition-all duration-200 cursor-default ${
-                      !day.isCurrentMonth ? 'bg-slate-50 text-slate-400' : ''
+                    className={`h-24 bg-cyan-950/40 border border-cyan-500/20 rounded-lg transition-all duration-200 cursor-default ${
+                      !day.isCurrentMonth ? 'bg-jf-bg text-slate-400' : ''
                     } ${
-                      day.isToday ? 'border-blue-500 bg-blue-50' : ''
+                      day.isToday ? 'border-cyan-400 bg-cyan-950/25' : ''
                     } ${
-                      day.isPreviousDay ? 'bg-blue-50 border-blue-200' : ''
+                      day.isPreviousDay ? 'bg-cyan-950/25 border-cyan-500/20' : ''
                     } ${
-                      day.isFuture ? 'bg-slate-50 text-slate-400' : ''
+                      day.isFuture ? 'bg-jf-bg text-slate-400' : ''
                     }`}
                   >
                     <MockCalendarDay day={day} onClick={() => {}} />
@@ -220,22 +220,22 @@ const CalendarDaysView = ({ stats }) => {
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-blue-200/60 overflow-hidden">
-      <div className="p-6 border-b border-blue-200/60">
+    <div className="bg-cyan-950/40 rounded-xl shadow-sm border border-cyan-500/20 overflow-hidden">
+      <div className="p-6 border-b border-cyan-500/20">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <h2 className="text-2xl font-bold text-[#040028]">{format(currentDate, 'MMMM yyyy')}</h2>
           <div className="flex gap-4 items-center">
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-[#10B981]"></div>
-              <span className="text-sm font-medium text-slate-600">Profit</span>
+              <span className="text-sm font-medium text-cyan-100/60">Profit</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-[#EF4444]"></div>
-              <span className="text-sm font-medium text-slate-600">Loss</span>
+              <span className="text-sm font-medium text-cyan-100/60">Loss</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-blue-600"></div>
-              <span className="text-sm font-medium text-slate-600">Trades</span>
+              <div className="w-3 h-3 rounded-full bg-cyan-600"></div>
+              <span className="text-sm font-medium text-cyan-100/60">Trades</span>
             </div>
           </div>
         </div>
@@ -245,7 +245,7 @@ const CalendarDaysView = ({ stats }) => {
         {/* Weekday headers */}
         <div className="grid grid-cols-7 gap-2 mb-4">
           {WEEKDAYS.map(day => (
-            <div key={day} className="text-center text-sm font-semibold text-slate-600 uppercase tracking-wide">
+            <div key={day} className="text-center text-sm font-semibold text-cyan-100/60 uppercase tracking-wide">
               {day}
             </div>
           ))}
@@ -258,14 +258,14 @@ const CalendarDaysView = ({ stats }) => {
               {week.map((day, dayIndex) => (
                 <div 
                   key={dayIndex} 
-                  className={`h-24 bg-white border border-blue-200/60 rounded-lg transition-all duration-200 cursor-default hover:transform hover:-translate-y-1 hover:shadow-md hover:border-blue-300 ${
-                    !day.isCurrentMonth ? 'bg-slate-50 text-slate-400' : ''
+                  className={`h-24 bg-cyan-950/40 border border-cyan-500/20 rounded-lg transition-all duration-200 cursor-default hover:transform hover:-translate-y-1 hover:shadow-md hover:border-cyan-400/25 ${
+                    !day.isCurrentMonth ? 'bg-jf-bg text-slate-400' : ''
                   } ${
-                    day.isToday ? 'border-blue-500 bg-blue-50' : ''
+                    day.isToday ? 'border-cyan-400 bg-cyan-950/25' : ''
                   } ${
-                    day.isPreviousDay ? 'bg-blue-50 border-blue-200' : ''
+                    day.isPreviousDay ? 'bg-cyan-950/25 border-cyan-500/20' : ''
                   } ${
-                    day.isFuture ? 'bg-slate-50 text-slate-400' : ''
+                    day.isFuture ? 'bg-jf-bg text-slate-400' : ''
                   } ${
                     day.isCurrentMonth && day.trades > 0 ? 'cursor-pointer' : ''
                   }`}

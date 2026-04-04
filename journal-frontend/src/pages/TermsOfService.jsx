@@ -51,7 +51,7 @@ export default function TermsOfService() {
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <Link to="/" className="flex items-center space-x-3 group">
-              <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10 group-hover:bg-white/15 transition-all duration-300">
+              <div className="w-8 h-8 bg-cyan-500/10 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10 group-hover:bg-cyan-500/12 transition-all duration-300">
                 <img src={logo} alt="Journal Logo" className="w-6 h-6 rounded-sm" />
               </div>
               <span className="text-xl font-semibold text-white">
@@ -71,7 +71,7 @@ export default function TermsOfService() {
         <div className="max-w-4xl mx-auto">
           {/* Header */}
           <div className="text-center mb-16">
-            <div className="w-12 h-12 bg-white/10 rounded-lg flex items-center justify-center mx-auto mb-6 border border-white/10">
+            <div className="w-12 h-12 bg-cyan-500/10 rounded-lg flex items-center justify-center mx-auto mb-6 border border-white/10">
               <FileText className="w-6 h-6 text-white/80" />
             </div>
             <h1 className="text-4xl md:text-5xl font-normal mb-6 text-white leading-tight">
@@ -99,7 +99,7 @@ export default function TermsOfService() {
               </h2>
               <div className="space-y-4">
                 <p className="font-light">Permission is granted to temporarily use Journal for personal, non-commercial transitory viewing only. This is the grant of a license, not a transfer of title, and under this license you may not:</p>
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <ul className="list-disc list-inside space-y-1 text-sm">
                     <li>modify or copy the materials</li>
                     <li>use the materials for any commercial purpose or for any public display</li>
@@ -167,7 +167,7 @@ export default function TermsOfService() {
 
             <section>
               <h2 className="text-2xl font-medium text-white mb-4">Contact Information</h2>
-              <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+              <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                 <p className="mb-4 font-light">If you have any questions about these Terms of Service, please contact us:</p>
                 <div className="space-y-2 text-sm">
                   <p><strong className="text-white/90">Email:</strong> legal@journal.com</p>

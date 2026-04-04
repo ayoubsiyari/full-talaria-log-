@@ -73,7 +73,7 @@ export default function RiskDashboard() {
       </div>
 
       {/* Histogram */}
-      <div className="bg-white rounded-2xl shadow p-6">
+      <div className="bg-cyan-950/40 rounded-2xl shadow p-6">
         <h2 className="text-xl font-bold mb-4">R-Multiple Distribution</h2>
         {histogram.length === 0 ? (
           <p>No trades to display.</p>
@@ -102,7 +102,7 @@ export default function RiskDashboard() {
 
 function Card({ title, value, accent }) {
   const colorMap = {
-    blue: 'text-blue-600 bg-blue-50',
+    blue: 'text-cyan-300 bg-cyan-950/25',
     green: 'text-green-600 bg-green-50',
     red: 'text-red-600 bg-red-50',
     purple: 'text-purple-600 bg-purple-50',

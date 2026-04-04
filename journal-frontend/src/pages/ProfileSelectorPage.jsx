@@ -62,7 +62,7 @@ const ProfileSelectorPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-cyan-950/25 flex items-center justify-center p-4">
       <div className="w-full max-w-4xl">
         {step === 1 ? (
           <div className="text-center">
@@ -75,7 +75,7 @@ const ProfileSelectorPage = () => {
                   className={`p-8 rounded-xl shadow-lg transition-all duration-300 border-2 ${
                     mode.locked 
                       ? 'bg-gray-100 cursor-not-allowed opacity-60 border-gray-300' 
-                      : 'bg-white hover:shadow-2xl transform hover:-translate-y-2 cursor-pointer border-transparent hover:border-blue-500'
+                      : 'bg-cyan-950/40 hover:shadow-2xl transform hover:-translate-y-2 cursor-pointer border-transparent hover:border-cyan-400'
                   }`}
                   onClick={() => handleModeSelect(mode)}
                 >
@@ -97,7 +97,7 @@ const ProfileSelectorPage = () => {
         ) : (
           <div className="max-w-md mx-auto">
             <button onClick={() => setStep(1)} className="text-sm text-gray-500 hover:text-gray-800 mb-6">&larr; Back to mode selection</button>
-            <div className="bg-white p-8 rounded-xl shadow-lg text-center">
+            <div className="bg-cyan-950/40 p-8 rounded-xl shadow-lg text-center">
               <div className="mb-6">
                 {selectedMode.icon}
                 <h2 className="text-3xl font-bold">Create '{selectedMode.label}' Profile</h2>
@@ -109,14 +109,14 @@ const ProfileSelectorPage = () => {
                   value={profileName}
                   onChange={(e) => setProfileName(e.target.value)}
                   placeholder="e.g., 'My Day Trading Journal'"
-                  className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:border-blue-500 focus:outline-none transition-colors duration-300"
+                  className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:border-cyan-400 focus:outline-none transition-colors duration-300"
                   autoFocus
                 />
                 {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg mt-6 hover:bg-blue-700 disabled:bg-blue-300 transition-all duration-300 flex items-center justify-center"
+                  className="w-full bg-cyan-600 text-white font-bold py-3 px-6 rounded-lg mt-6 hover:bg-blue-700 disabled:bg-blue-300 transition-all duration-300 flex items-center justify-center"
                 >
                   {loading ? 'Creating...' : 'Create Profile'}
                   {!loading && <ArrowRight className="ml-2 w-5 h-5" />}

@@ -190,15 +190,15 @@ const Calendar = () => {
   return (
     <div className="space-y-6">
       {/* Calendar Header */}
-      <div className="bg-white border border-blue-200/60 rounded-xl shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-blue-200/60">
+      <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-cyan-500/20">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-4">
               <h2 className="text-xl font-bold text-[#040028]">Calendar View</h2>
               <div className="flex items-center gap-2">
                 <button 
                   onClick={navigateToPreviousMonth} 
-                  className="p-2 text-slate-600 hover:text-[#040028] hover:bg-slate-100 rounded-lg transition-colors"
+                  className="p-2 text-cyan-100/60 hover:text-[#040028] hover:bg-cyan-950/35 rounded-lg transition-colors"
                   aria-label="Previous month"
                 >
                   ‹
@@ -208,14 +208,14 @@ const Calendar = () => {
                 </span>
                 <button 
                   onClick={navigateToNextMonth} 
-                  className="p-2 text-slate-600 hover:text-[#040028] hover:bg-slate-100 rounded-lg transition-colors"
+                  className="p-2 text-cyan-100/60 hover:text-[#040028] hover:bg-cyan-950/35 rounded-lg transition-colors"
                   aria-label="Next month"
                 >
                   ›
                 </button>
                 <button 
                   onClick={navigateToToday}
-                  className="ml-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                  className="ml-2 px-3 py-1.5 bg-cyan-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
                 >
                   Today
                 </button>
@@ -223,7 +223,7 @@ const Calendar = () => {
             </div>
             <button 
               onClick={handleDataExport} 
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors"
+              className="px-4 py-2 bg-cyan-950/35 hover:bg-slate-200 text-slate-200 text-sm font-medium rounded-lg transition-colors"
             >
               Export CSV
             </button>
@@ -236,11 +236,11 @@ const Calendar = () => {
         <div className="p-6">
           <div className="grid grid-cols-8 gap-1 mb-4">
             {WEEKDAYS.map(day => (
-              <div key={day} className="p-3 text-center text-sm font-semibold text-slate-600 bg-slate-50 rounded-lg">
+              <div key={day} className="p-3 text-center text-sm font-semibold text-cyan-100/60 bg-jf-bg rounded-lg">
                 {day}
               </div>
             ))}
-            <div className="p-3 text-center text-sm font-semibold text-slate-600 bg-slate-50 rounded-lg">
+            <div className="p-3 text-center text-sm font-semibold text-cyan-100/60 bg-jf-bg rounded-lg">
               Week
             </div>
           </div>
@@ -255,19 +255,19 @@ const Calendar = () => {
                       onClick={() => handleDateClick(day)}
                     />
                   ) : (
-                    <div key={`${i}-${j}`} className="h-24 bg-slate-50 rounded-lg" />
+                    <div key={`${i}-${j}`} className="h-24 bg-jf-bg rounded-lg" />
                   )
                 )}
                 {/* Weekly Summary Card */}
-                <div className={`h-24 p-2 border border-blue-200/60 rounded-lg transition-all duration-200 cursor-pointer hover:transform hover:-translate-y-1 hover:shadow-md hover:border-blue-300 ${
+                <div className={`h-24 p-2 border border-cyan-500/20 rounded-lg transition-all duration-200 cursor-pointer hover:transform hover:-translate-y-1 hover:shadow-md hover:border-cyan-400/25 ${
                   (() => {
                     const weekStat = weeklyStats.find(ws => ws.weekNumber === i + 1);
                     if (!weekStat || (weekStat.tradingDays === 0 && weekStat.totalPnl === 0)) {
-                      return 'bg-white';
+                      return 'bg-cyan-950/40';
                     }
                     const isProfit = weekStat.totalPnl > 0;
                     const isLoss = weekStat.totalPnl < 0;
-                    return isProfit ? 'bg-gradient-to-b from-green-50 to-white' : isLoss ? 'bg-gradient-to-b from-red-50 to-white' : 'bg-white';
+                    return isProfit ? 'bg-gradient-to-b from-green-50 to-white' : isLoss ? 'bg-gradient-to-b from-red-50 to-white' : 'bg-cyan-950/40';
                   })()
                 }`}>
                   {(() => {
@@ -294,10 +294,10 @@ const Calendar = () => {
                         <div className="text-xs font-semibold text-[#040028] text-center mb-1">
                           Week {weekStat.weekNumber}
                         </div>
-                        <div className={`text-lg font-bold text-center ${isProfit ? 'text-[#10B981]' : isLoss ? 'text-[#EF4444]' : 'text-slate-600'}`}>
+                        <div className={`text-lg font-bold text-center ${isProfit ? 'text-[#10B981]' : isLoss ? 'text-[#EF4444]' : 'text-cyan-100/60'}`}>
                           {formatWeeklyPnl(weekStat.totalPnl)}
                         </div>
-                        <div className="text-xs text-slate-600 text-center bg-slate-100 px-2 py-1 rounded-full mt-1">
+                        <div className="text-xs text-cyan-100/60 text-center bg-cyan-950/35 px-2 py-1 rounded-full mt-1">
                           {weekStat.totalTrades} {weekStat.totalTrades === 1 ? 'trade' : 'trades'}
                         </div>
                       </div>

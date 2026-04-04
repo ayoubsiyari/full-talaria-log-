@@ -105,7 +105,7 @@ export default function Settings() {
                   flex items-center gap-2 px-4 py-2 rounded-lg transition-all
                   ${isActive 
                     ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' 
-                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                    : 'text-gray-400 hover:text-white hover:bg-cyan-950/15'
                   }
                 `}
               >

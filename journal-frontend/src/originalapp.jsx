@@ -89,15 +89,15 @@ function LayoutWithSidebar() {
   const { isFilterVisible, updateFilters, toggleFilterVisibility } = useFilter();
   const { toggleSidebar } = useSidebar();
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-screen bg-jf-bg">
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <UnifiedHeader />
         {/* Top bar with Sidebar Toggle and Filter Toggle */}
-        <div className="px-4 py-3 border-b border-blue-200/60 bg-white shadow-sm flex justify-between items-center">
+        <div className="px-4 py-3 border-b border-cyan-500/20 bg-cyan-950/40 shadow-sm flex justify-between items-center">
           <button 
             onClick={toggleSidebar} 
-            className="p-2 rounded-lg hover:bg-slate-100 transition-colors duration-200"
+            className="p-2 rounded-lg hover:bg-cyan-950/35 transition-colors duration-200"
             aria-label="Toggle sidebar"
           >
             <Menu className="h-5 w-5 text-[#040028]" />
@@ -112,7 +112,7 @@ function LayoutWithSidebar() {
           onToggleVisibility={toggleFilterVisibility}
         />
         
-        <div className="flex-1 overflow-y-auto bg-slate-50">
+        <div className="flex-1 overflow-y-auto bg-jf-bg">
           <Routes>
             {/* Core Features */}
             <Route path="/dashboard" element={
@@ -328,7 +328,7 @@ function ProtectedLayout() {
   if (!isInitialized || loading) {
     console.log('🔄 ProtectedLayout - Showing loading screen (auth initializing or profiles loading)');
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+      <div className="flex items-center justify-center min-h-screen bg-jf-bg">
         <div className="text-[#040028] font-medium">Loading...</div>
       </div>
     );
@@ -388,8 +388,8 @@ function AppRoutes() {
   return (
     <TooltipProvider>
       {isPublicPath ? (
-        <div className="min-h-screen bg-slate-50">
-          <div className="pt-4 px-4 bg-white shadow-sm">
+        <div className="min-h-screen bg-jf-bg">
+          <div className="pt-4 px-4 bg-cyan-950/40 shadow-sm">
             <Routes>
               {/* <Route path="/register" element={<Register />} /> */}
               <Route path="/verify-email" element={<VerifyEmail />} />

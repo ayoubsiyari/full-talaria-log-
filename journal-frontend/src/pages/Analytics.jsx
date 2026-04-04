@@ -332,7 +332,7 @@ export default function Analytics() {
   // ─── Loading / Error / No-Data States ──────────────────────────────────────
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-cyan-950/25 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto" />
           <p className="mt-4 text-gray-600">Loading analytics...</p>
@@ -343,7 +343,7 @@ export default function Analytics() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-cyan-950/25 flex items-center justify-center">
         <p className="text-red-500">{error}</p>
       </div>
     );
@@ -351,7 +351,7 @@ export default function Analytics() {
 
   if (!stats || stats.total_trades === 0) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-cyan-950/25 flex items-center justify-center">
         <div className="text-center max-w-md">
           <Target className="h-16 w-16 text-gray-400 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-900 mb-2">No Trading Data</h2>
@@ -462,7 +462,7 @@ export default function Analytics() {
 
   // ─── RENDER ──────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-cyan-950/25">
       {/* HEADER */}
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900" />
@@ -477,7 +477,7 @@ export default function Analytics() {
                 Trading <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Analytics</span>
               </h1>
               <p className="text-xl text-blue-200 font-medium">Professional Performance Intelligence & Market Insights</p>
-              <div className="mt-4 flex flex-wrap items-center space-x-6 text-blue-300">
+              <div className="mt-4 flex flex-wrap items-center space-x-6 text-cyan-200">
                 <div className="flex items-center space-x-2">
                   <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse" />
                   <span className="font-semibold">Live Data</span>
@@ -487,7 +487,7 @@ export default function Analytics() {
               </div>
             </div>
             <div className="mt-6 md:mt-0">
-              <div className="bg-white rounded-full px-5 py-3 flex items-center space-x-3 shadow-lg">
+              <div className="bg-cyan-950/40 rounded-full px-5 py-3 flex items-center space-x-3 shadow-lg">
                 <Award className="h-6 w-6 text-yellow-500" />
                 <div><p className="text-sm font-medium text-gray-600 uppercase">Performance Rating</p><p className="text-2xl font-bold text-gray-900">{performanceRating}/100</p></div>
               </div>
@@ -503,7 +503,7 @@ export default function Analytics() {
           id="batchFilter"
           value={selectedBatch}
           onChange={(e) => setSelectedBatch(e.target.value)}
-          className="border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+          className="border-gray-300 rounded-md shadow-sm focus:ring-cyan-400 focus:border-cyan-400"
         >
           <option value="">All Trades</option>
           {importHistory.map((batch) => (
@@ -515,7 +515,7 @@ export default function Analytics() {
           id="instrumentFilter"
           value={selectedInstrument}
           onChange={(e) => onInstrumentFilterChange(e.target.value)}
-          className="border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+          className="border-gray-300 rounded-md shadow-sm focus:ring-cyan-400 focus:border-cyan-400"
         >
           <option value="ALL">All Instruments</option>
           {instrumentOptions.map((symbol) => (
@@ -531,8 +531,8 @@ export default function Analytics() {
           <h2 className="text-xl font-semibold text-gray-800 mb-4">Summary Metrics ({batchLabel})</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
             {/* Total Trades */}
-            <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
-              <DollarSign className="h-6 w-6 text-blue-600" />
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
+              <DollarSign className="h-6 w-6 text-cyan-300" />
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Total Trades
@@ -544,7 +544,7 @@ export default function Analytics() {
             </div>
 
             {/* Total Net P&L */}
-            <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
               <ArrowUpRight className="h-6 w-6 text-green-600" />
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -562,7 +562,7 @@ export default function Analytics() {
             </div>
 
             {/* Avg P&L per Trade */}
-            <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
               <ArrowUpRight className="h-6 w-6 text-purple-600" />
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -584,13 +584,13 @@ export default function Analytics() {
             </div>
 
             {/* Win Rate */}
-            <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
-              <TrendingUp className="h-6 w-6 text-blue-600" />
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
+              <TrendingUp className="h-6 w-6 text-cyan-300" />
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Win Rate (%)
                 </p>
-                <p className="text-2xl font-bold text-blue-600">
+                <p className="text-2xl font-bold text-cyan-300">
                   {formatPercent(stats.win_rate)}
                 </p>
                 <p className="text-xs text-gray-400">Fraction of profitable trades</p>
@@ -598,7 +598,7 @@ export default function Analytics() {
             </div>
 
             {/* Loss Rate */}
-            <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
               <TrendingDown className="h-6 w-6 text-red-600" />
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -622,7 +622,7 @@ export default function Analytics() {
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
             {/* Avg Win */}
-            <div className="bg-white rounded-2xl shadow p-5">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5">
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Avg Win
               </p>
@@ -632,7 +632,7 @@ export default function Analytics() {
               <p className="text-xs text-gray-400">Mean profit on winning trades</p>
             </div>
             {/* Avg Loss */}
-            <div className="bg-white rounded-2xl shadow p-5">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5">
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Avg Loss
               </p>
@@ -642,7 +642,7 @@ export default function Analytics() {
               <p className="text-xs text-gray-400">Mean loss on losing trades</p>
             </div>
             {/* Avg R:R */}
-            <div className="bg-white rounded-2xl shadow p-5">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5">
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Avg R:R
               </p>
@@ -652,7 +652,7 @@ export default function Analytics() {
               <p className="text-xs text-gray-400">Average risk‐reward per trade</p>
             </div>
             {/* Best/Worst Trade */}
-            <div className="bg-white rounded-2xl shadow p-5">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5">
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Best Trade (P&L)
               </p>
@@ -688,7 +688,7 @@ export default function Analytics() {
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
             {/* Profit Factor */}
-            <div className="bg-white rounded-2xl shadow p-5">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5">
               <div className="flex items-center space-x-2 mb-2">
                 <Award className="h-5 w-5 text-green-600" />
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -705,7 +705,7 @@ export default function Analytics() {
               <p className="text-xs text-gray-400">Gross Profit ÷ Gross Loss</p>
             </div>
             {/* Expectancy */}
-            <div className="bg-white rounded-2xl shadow p-5">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5">
               <div className="flex items-center space-x-2 mb-2">
                 <TrendingDown className="h-5 w-5 text-purple-600" />
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -726,7 +726,7 @@ export default function Analytics() {
               <p className="text-xs text-gray-400">Average return per trade</p>
             </div>
             {/* Gross Profit */}
-            <div className="bg-white rounded-2xl shadow p-5">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5">
               <div className="flex items-center space-x-2 mb-2">
                 <ArrowUpRight className="h-5 w-5 text-green-600" />
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -739,7 +739,7 @@ export default function Analytics() {
               <p className="text-xs text-gray-400">Sum of winning trades</p>
             </div>
             {/* Gross Loss */}
-            <div className="bg-white rounded-2xl shadow p-5">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5">
               <div className="flex items-center space-x-2 mb-2">
                 <ArrowUpRight className="h-5 w-5 text-red-600 transform rotate-90" />
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -754,9 +754,9 @@ export default function Analytics() {
               </p>
             </div>
             {/* Sharpe Ratio */}
-            <div className="bg-white rounded-2xl shadow p-5">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5">
               <div className="flex items-center space-x-2 mb-2">
-                <TrendingUp className="h-5 w-5 text-blue-600" />
+                <TrendingUp className="h-5 w-5 text-cyan-300" />
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Sharpe Ratio
                 </p>
@@ -769,7 +769,7 @@ export default function Analytics() {
               <p className="text-xs text-gray-400">Risk-adjusted return</p>
             </div>
             {/* Sortino Ratio */}
-            <div className="bg-white rounded-2xl shadow p-5">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5">
               <div className="flex items-center space-x-2 mb-2">
                 <TrendingDown className="h-5 w-5 text-purple-600" />
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -786,7 +786,7 @@ export default function Analytics() {
               </p>
             </div>
             {/* Kelly % */}
-            <div className="bg-white rounded-2xl shadow p-5">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5">
               <div className="flex items-center space-x-2 mb-2">
                 <Target className="h-5 w-5 text-indigo-600" />
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -808,7 +808,7 @@ export default function Analytics() {
           <h2 className="text-xl font-semibold text-gray-800 mb-4">Risk Metrics</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
             {/* Max Drawdown */}
-            <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
               <TrendingDown className="h-6 w-6 text-red-600" />
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -826,7 +826,7 @@ export default function Analytics() {
               </div>
             </div>
             {/* Max Consecutive Wins */}
-            <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
               <Award className="h-6 w-6 text-green-600" />
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -839,7 +839,7 @@ export default function Analytics() {
               </div>
             </div>
             {/* Max Consecutive Losses */}
-            <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
               <AlertCircle className="h-6 w-6 text-red-600" />
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -852,7 +852,7 @@ export default function Analytics() {
               </div>
             </div>
             {/* Recovery Factor */}
-            <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
               <Award className="h-6 w-6 text-green-600" />
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -876,8 +876,8 @@ export default function Analytics() {
           <h2 className="text-xl font-semibold text-gray-800 mb-4">Time-Based Highlights</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
             {/* Best Day of Week */}
-            <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
-              <Calendar className="h-6 w-6 text-blue-600" />
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
+              <Calendar className="h-6 w-6 text-cyan-300" />
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Best Day (Week)
@@ -893,7 +893,7 @@ export default function Analytics() {
               </div>
             </div>
             {/* Worst Day */}
-            <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
               <Calendar className="h-6 w-6 text-red-600" />
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -910,7 +910,7 @@ export default function Analytics() {
               </div>
             </div>
             {/* Best Hour */}
-            <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
               <Clock className="h-6 w-6 text-green-600" />
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -927,7 +927,7 @@ export default function Analytics() {
               </div>
             </div>
             {/* Worst Hour */}
-            <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
               <Clock className="h-6 w-6 text-red-600" />
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -944,7 +944,7 @@ export default function Analytics() {
               </div>
             </div>
             {/* Max Drawdown % */}
-            <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
               <TrendingDown className="h-6 w-6 text-red-600" />
               <div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -969,13 +969,13 @@ export default function Analytics() {
           <div className="flex items-center space-x-4 mb-4">
             <button
               onClick={goPrev}
-              className="p-2 bg-white rounded-full shadow hover:bg-gray-100"
+              className="p-2 bg-cyan-950/40 rounded-full shadow hover:bg-gray-100"
             >
               <ChevronLeft className="h-5 w-5 text-gray-600" />
             </button>
             <button
               onClick={goNext}
-              className="p-2 bg-white rounded-full shadow hover:bg-gray-100"
+              className="p-2 bg-cyan-950/40 rounded-full shadow hover:bg-gray-100"
             >
               <ChevronRight className="h-5 w-5 text-gray-600" />
             </button>
@@ -987,14 +987,14 @@ export default function Analytics() {
               name="calendarView"
               value={calendarView}
               onChange={(e) => setCalendarView(e.target.value)}
-              className="block w-32 pl-3 pr-10 py-2 text-base border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+              className="block w-32 pl-3 pr-10 py-2 text-base border border-gray-300 focus:outline-none focus:ring-cyan-400 focus:border-cyan-400 sm:text-sm rounded-md"
             >
               <option value="month">Month</option>
               <option value="week">Week</option>
               <option value="day">Day</option>
             </select>
           </div>
-          <div className="bg-white rounded-2xl shadow p-6">
+          <div className="bg-cyan-950/40 rounded-2xl shadow p-6">
             {/* Weekday headers */}
             <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-gray-600">
               {weekdays.map((wd) => (
@@ -1011,7 +1011,7 @@ export default function Analytics() {
                     }
                     const { day, pnl, isFuture } = cell;
                     let bg = 'bg-gray-100';
-                    if (isFuture) bg = 'bg-gray-50';
+                    if (isFuture) bg = 'bg-cyan-950/25';
                     else if (pnl != null) bg = pnl > 0 ? 'bg-green-200' : pnl < 0 ? 'bg-red-200' : 'bg-gray-200';
                     return (
                       <div
@@ -1039,7 +1039,7 @@ export default function Analytics() {
                   if (!cell) return <div key={i} className="h-12 bg-gray-100"></div>;
                   const { day, pnl, isFuture } = cell;
                   let bg = 'bg-gray-100';
-                  if (isFuture) bg = 'bg-gray-50';
+                  if (isFuture) bg = 'bg-cyan-950/25';
                   else if (pnl != null) bg = pnl > 0 ? 'bg-green-200' : pnl < 0 ? 'bg-red-200' : 'bg-gray-200';
                   return (
                     <div
@@ -1070,7 +1070,7 @@ export default function Analytics() {
                   const cell = slots[idx];
                   if (cell == null) return <div key={idx} className="h-12 bg-gray-100"></div>;
                   let bg = 'bg-gray-100';
-                  if (cell.isFuture) bg = 'bg-gray-50';
+                  if (cell.isFuture) bg = 'bg-cyan-950/25';
                   else if (cell.pnl != null) bg = cell.pnl > 0 ? 'bg-green-200' : cell.pnl < 0 ? 'bg-red-200' : 'bg-gray-200';
                   return (
                     <div
@@ -1094,7 +1094,7 @@ export default function Analytics() {
               <span className="inline-block w-3 h-3 bg-green-200 mr-1 rounded-full"></span> Profit &nbsp;
               <span className="inline-block w-3 h-3 bg-red-200 mr-1 ml-4 rounded-full"></span> Loss &nbsp;
               <span className="inline-block w-3 h-3 bg-gray-200 mr-1 ml-4 rounded-full"></span> No Trades &nbsp;
-              <span className="inline-block w-3 h-3 bg-gray-50 mr-1 ml-4 rounded-full"></span> Upcoming
+              <span className="inline-block w-3 h-3 bg-cyan-950/25 mr-1 ml-4 rounded-full"></span> Upcoming
             </p>
           </div>
         </section>
@@ -1102,9 +1102,9 @@ export default function Analytics() {
         {/* 7. EQUITY CURVE & DAILY P&L */}
         <section>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="bg-white rounded-2xl shadow p-6">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-6">
               <div className="flex items-center space-x-2 mb-4">
-                <TrendingUp className="h-5 w-5 text-blue-600" />
+                <TrendingUp className="h-5 w-5 text-cyan-300" />
                 <h3 className="text-lg font-semibold text-gray-900">Equity Curve</h3>
               </div>
               <ResponsiveContainer width="100%" height={300}>
@@ -1145,7 +1145,7 @@ export default function Analytics() {
               </ResponsiveContainer>
             </div>
 
-            <div className="bg-white rounded-2xl shadow p-6">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-6">
               <div className="flex items-center space-x-2 mb-4">
                 <Calendar className="h-5 w-5 text-green-600" />
                 <h3 className="text-lg font-semibold text-gray-900">Daily P&L</h3>
@@ -1180,9 +1180,9 @@ export default function Analytics() {
             Performance Breakdowns
           </h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="bg-white rounded-2xl shadow p-6">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
-                <PieIcon className="h-5 w-5 text-blue-600 mr-2" /> Win/Loss Distribution
+                <PieIcon className="h-5 w-5 text-cyan-300 mr-2" /> Win/Loss Distribution
               </h3>
               <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
@@ -1205,7 +1205,7 @@ export default function Analytics() {
               </ResponsiveContainer>
             </div>
 
-            <div className="bg-white rounded-2xl shadow p-6">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
                 <TrendingUp className="h-5 w-5 text-green-600 mr-2" /> Long vs Short P&L
               </h3>
@@ -1241,16 +1241,16 @@ export default function Analytics() {
             Instrument Breakdowns
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="bg-white rounded-2xl shadow p-6">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                <PieIcon className="h-5 w-5 text-blue-600 mr-2" /> Top Performing Symbols
+                <PieIcon className="h-5 w-5 text-cyan-300 mr-2" /> Top Performing Symbols
               </h3>
               {topSymbols.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {topSymbols.map(([symbol, data]) => (
                     <div
                       key={symbol}
-                      className="bg-gray-50 rounded-lg p-4 text-center"
+                      className="bg-cyan-950/25 rounded-lg p-4 text-center"
                     >
                       <p className="font-semibold text-lg text-gray-900">
                         {symbol}
@@ -1274,7 +1274,7 @@ export default function Analytics() {
               )}
             </div>
 
-            <div className="bg-white rounded-2xl shadow p-6">
+            <div className="bg-cyan-950/40 rounded-2xl shadow p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                 <AlertCircle className="h-5 w-5 text-red-600 mr-2" /> Worst Performing Symbols
               </h3>
@@ -1283,7 +1283,7 @@ export default function Analytics() {
                   {worstSymbols.map(([symbol, data]) => (
                     <div
                       key={symbol}
-                      className="bg-gray-50 rounded-lg p-4 text-center"
+                      className="bg-cyan-950/25 rounded-lg p-4 text-center"
                     >
                       <p className="font-semibold text-lg text-gray-900">
                         {symbol}
@@ -1314,7 +1314,7 @@ export default function Analytics() {
           <h2 className="text-xl font-semibold text-gray-800 mb-4">
             Performance by Pair
           </h2>
-          <div className="bg-white rounded-2xl shadow p-6">
+          <div className="bg-cyan-950/40 rounded-2xl shadow p-6">
             <ResponsiveContainer width="100%" height={300}>
               {symbolPerformanceData.length > 0 ? (
                 <BarChart data={symbolPerformanceData}>
@@ -1345,9 +1345,9 @@ export default function Analytics() {
           <h2 className="text-xl font-semibold text-gray-800 mb-4">
             Per-Instrument Breakdown
           </h2>
-          <div className="bg-white rounded-2xl shadow overflow-hidden border border-gray-200">
+          <div className="bg-cyan-950/40 rounded-2xl shadow overflow-hidden border border-cyan-500/15">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-cyan-950/25 border-b border-cyan-500/15">
                 <tr>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider cursor-pointer" onClick={() => onSortInstrument('ticker')}>Ticker</th>
                   <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider cursor-pointer" onClick={() => onSortInstrument('trade_count')}>Trades</th>
@@ -1364,7 +1364,7 @@ export default function Analytics() {
               <tbody className="divide-y divide-gray-100">
                 {sortedPerInstrumentRows.map((row) => {
                   return (
-                    <tr key={row.ticker} className="hover:bg-gray-50 transition-colors duration-200">
+                    <tr key={row.ticker} className="hover:bg-cyan-950/25 transition-colors duration-200">
                       <td className="py-3 px-4 font-medium text-gray-900">{row.ticker}</td>
                       <td className="py-3 px-4 text-right text-gray-700">{row.trade_count}</td>
                       <td className="py-3 px-4 text-right text-gray-700">{row.win_rate.toFixed(1)}%</td>
@@ -1386,9 +1386,9 @@ export default function Analytics() {
         {/* 11. RECENT TRADES */}
         <section>
           <h2 className="text-xl font-semibold text-gray-800 mb-4">Recent Trades</h2>
-          <div className="bg-white rounded-2xl shadow overflow-hidden border border-gray-200">
+          <div className="bg-cyan-950/40 rounded-2xl shadow overflow-hidden border border-cyan-500/15">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-cyan-950/25 border-b border-cyan-500/15">
                 <tr>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Symbol
@@ -1411,7 +1411,7 @@ export default function Analytics() {
                 {stats.recent_trades.map((t, idx) => (
                   <tr
                     key={idx}
-                    className="hover:bg-gray-50 transition-colors duration-200"
+                    className="hover:bg-cyan-950/25 transition-colors duration-200"
                   >
                     <td className="py-3 px-4 font-medium text-gray-900">
                       {t.symbol}

@@ -217,7 +217,7 @@ const CustomVariablesManager = ({ selectionMode = false, onSelectionChange = nul
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-blue-200/60 p-6">
+    <div className="bg-cyan-950/40 rounded-xl shadow-sm border border-cyan-500/20 p-6">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-2xl font-bold text-[#040028]">
           {selectionMode ? 'Select Custom Variables' : 'Custom Variables'}
@@ -225,7 +225,7 @@ const CustomVariablesManager = ({ selectionMode = false, onSelectionChange = nul
         {!selectionMode && (
           <button
             onClick={() => setShowAddForm(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 font-medium"
+            className="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 font-medium"
           >
             <Plus className="w-4 h-4 mr-2" />
             Add Variable
@@ -241,7 +241,7 @@ const CustomVariablesManager = ({ selectionMode = false, onSelectionChange = nul
 
       {/* Add Variable Form */}
       {showAddForm && !selectionMode && (
-        <div className="mb-6 p-6 bg-slate-50 rounded-xl border border-blue-200/60">
+        <div className="mb-6 p-6 bg-jf-bg rounded-xl border border-cyan-500/20">
           <div className="flex items-center justify-between mb-4">
             <h4 className="font-semibold text-[#040028]">Add New Variable</h4>
             <button
@@ -250,7 +250,7 @@ const CustomVariablesManager = ({ selectionMode = false, onSelectionChange = nul
                 setNewVariable({ name: '', values: [''] });
                 setError('');
               }}
-              className="text-slate-600 hover:text-[#040028] transition-colors"
+              className="text-cyan-100/60 hover:text-[#040028] transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -265,7 +265,7 @@ const CustomVariablesManager = ({ selectionMode = false, onSelectionChange = nul
                 type="text"
                 value={newVariable.name}
                 onChange={(e) => setNewVariable(prev => ({ ...prev, name: e.target.value }))}
-                className="w-full px-3 py-2 border border-blue-200/60 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-[#040028] placeholder-slate-500"
+                className="w-full px-3 py-2 border border-cyan-500/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-cyan-950/40 text-[#040028] placeholder-slate-500"
                 placeholder="e.g., setup, emotion, market_condition"
               />
             </div>
@@ -281,7 +281,7 @@ const CustomVariablesManager = ({ selectionMode = false, onSelectionChange = nul
                       type="text"
                       value={value}
                       onChange={(e) => updateValueField(index, e.target.value)}
-                      className="flex-1 px-3 py-2 border border-blue-200/60 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-[#040028] placeholder-slate-500"
+                      className="flex-1 px-3 py-2 border border-cyan-500/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-cyan-950/40 text-[#040028] placeholder-slate-500"
                       placeholder={`Value ${index + 1}`}
                     />
                     {newVariable.values.length > 1 && (
@@ -296,7 +296,7 @@ const CustomVariablesManager = ({ selectionMode = false, onSelectionChange = nul
                 ))}
                 <button
                   onClick={addValueField}
-                  className="flex items-center text-blue-600 hover:text-blue-700 text-sm transition-colors"
+                  className="flex items-center text-cyan-300 hover:text-cyan-200 text-sm transition-colors"
                 >
                   <Plus className="w-4 h-4 mr-1" />
                   Add another value
@@ -318,7 +318,7 @@ const CustomVariablesManager = ({ selectionMode = false, onSelectionChange = nul
                   setNewVariable({ name: '', values: [''] });
                   setError('');
                 }}
-                className="px-4 py-2 bg-slate-200 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-300 transition-all duration-200"
+                className="px-4 py-2 bg-slate-200 text-slate-200 border border-slate-300 rounded-lg hover:bg-slate-300 transition-all duration-200"
               >
                 Cancel
               </button>
@@ -330,12 +330,12 @@ const CustomVariablesManager = ({ selectionMode = false, onSelectionChange = nul
       {/* Variables List */}
       <div className="space-y-4">
         {Object.keys(customVariables).length === 0 ? (
-          <p className="text-slate-600 text-center py-8">
+          <p className="text-cyan-100/60 text-center py-8">
             No custom variables created yet. Click "Add Variable" to create your first one.
           </p>
         ) : (
           Object.entries(customVariables).map(([varName, values]) => (
-            <div key={varName} className="bg-white border border-blue-200/60 rounded-xl p-4 hover:bg-slate-50 hover:border-blue-300 transition-all duration-300">
+            <div key={varName} className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl p-4 hover:bg-jf-bg hover:border-cyan-400/25 transition-all duration-300">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="font-semibold text-[#040028] capitalize">{varName}</h4>
                 {!selectionMode && (
@@ -350,7 +350,7 @@ const CustomVariablesManager = ({ selectionMode = false, onSelectionChange = nul
                         </button>
                         <button
                           onClick={() => setEditingVariable(null)}
-                          className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                          className="p-2 text-cyan-100/60 hover:bg-cyan-950/35 rounded-lg transition-colors"
                         >
                           <X className="w-4 h-4" />
                         </button>
@@ -359,7 +359,7 @@ const CustomVariablesManager = ({ selectionMode = false, onSelectionChange = nul
                       <>
                         <button
                           onClick={() => setEditingVariable({ name: varName, values: [...values] })}
-                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          className="p-2 text-cyan-300 hover:bg-cyan-500/10 rounded-lg transition-colors"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
@@ -387,7 +387,7 @@ const CustomVariablesManager = ({ selectionMode = false, onSelectionChange = nul
                           newValues[index] = e.target.value;
                           setEditingVariable(prev => ({ ...prev, values: newValues }));
                         }}
-                        className="flex-1 px-3 py-2 border border-blue-200/60 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-[#040028] placeholder-slate-500"
+                        className="flex-1 px-3 py-2 border border-cyan-500/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-cyan-950/40 text-[#040028] placeholder-slate-500"
                       />
                                               {editingVariable.values.length > 1 && (
                           <button
@@ -407,7 +407,7 @@ const CustomVariablesManager = ({ selectionMode = false, onSelectionChange = nul
                       const newValues = [...editingVariable.values, ''];
                       setEditingVariable(prev => ({ ...prev, values: newValues }));
                     }}
-                    className="flex items-center text-blue-600 hover:text-blue-700 text-sm transition-colors"
+                    className="flex items-center text-cyan-300 hover:text-cyan-200 text-sm transition-colors"
                   >
                     <Plus className="w-4 h-4 mr-1" />
                     Add another value
@@ -418,12 +418,12 @@ const CustomVariablesManager = ({ selectionMode = false, onSelectionChange = nul
                   {values.map((value) => {
                     const isSelected = selectedValues[varName]?.includes(value) || false;
                     return (
-                      <label key={value} className="flex items-center gap-3 cursor-pointer hover:bg-slate-100 p-3 rounded-lg transition-colors">
+                      <label key={value} className="flex items-center gap-3 cursor-pointer hover:bg-cyan-950/35 p-3 rounded-lg transition-colors">
                         <input
                           type="checkbox"
                           checked={isSelected}
                           onChange={(e) => handleSelectionChange(varName, value, e.target.checked)}
-                          className="w-4 h-4 text-blue-600 bg-white border-slate-300 rounded focus:ring-blue-500 focus:ring-2"
+                          className="w-4 h-4 text-cyan-300 bg-cyan-950/40 border-slate-300 rounded focus:ring-cyan-400 focus:ring-2"
                         />
                         <span className="text-sm text-[#040028]">{value}</span>
                       </label>
@@ -435,7 +435,7 @@ const CustomVariablesManager = ({ selectionMode = false, onSelectionChange = nul
                   {values.map((value) => (
                     <span
                       key={value}
-                      className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 border border-blue-200 text-blue-700"
+                      className="px-3 py-1.5 rounded-lg text-sm font-medium bg-cyan-950/25 border border-cyan-500/20 text-cyan-200"
                     >
                       {value}
                     </span>

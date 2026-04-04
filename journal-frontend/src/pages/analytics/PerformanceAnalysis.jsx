@@ -27,19 +27,19 @@ const PerformanceAnalysis = () => {
   // Loading state
   if (loading || performanceLoading) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-jf-bg">
         <div className="w-full px-6 py-4 space-y-6">
           <div className="animate-pulse space-y-6">
             <div className="h-8 bg-slate-200 rounded w-1/3"></div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-64 bg-white rounded-xl border border-blue-200/60 p-6"></div>
+                <div key={i} className="h-64 bg-cyan-950/40 rounded-xl border border-cyan-500/20 p-6"></div>
               ))}
             </div>
-            <div className="h-96 bg-white rounded-xl border border-blue-200/60 p-6"></div>
+            <div className="h-96 bg-cyan-950/40 rounded-xl border border-cyan-500/20 p-6"></div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="h-80 bg-white rounded-xl border border-blue-200/60 p-6"></div>
-              <div className="h-80 bg-white rounded-xl border border-blue-200/60 p-6"></div>
+              <div className="h-80 bg-cyan-950/40 rounded-xl border border-cyan-500/20 p-6"></div>
+              <div className="h-80 bg-cyan-950/40 rounded-xl border border-cyan-500/20 p-6"></div>
             </div>
           </div>
         </div>
@@ -51,7 +51,7 @@ const PerformanceAnalysis = () => {
   if (error || performanceError) {
     const errorMessage = error || performanceError;
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-jf-bg">
         <div className="w-full px-6 py-4">
           <div className="bg-red-50 border border-red-200 rounded-xl p-6">
             <div className="flex items-start gap-4">
@@ -83,7 +83,7 @@ const PerformanceAnalysis = () => {
   // Validate performance data
   if (!performanceData) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-jf-bg">
         <div className="w-full px-6 py-4">
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
             <div className="flex items-start gap-4">
@@ -115,20 +115,20 @@ const PerformanceAnalysis = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-jf-bg">
       <div className="w-full px-6 py-4 space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-[#040028]">Performance Analysis</h1>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-cyan-100/60">
               Analyze your trading performance and identify your strengths and weaknesses
             </p>
           </div>
           <div className="flex items-center space-x-2 mt-4 md:mt-0">
             <button 
               onClick={() => console.log('Performance Data:', performanceData)}
-              className="p-2 text-slate-600 hover:text-[#040028] hover:bg-slate-100 rounded-lg transition-colors"
+              className="p-2 text-cyan-100/60 hover:text-[#040028] hover:bg-cyan-950/35 rounded-lg transition-colors"
               title="Debug Data"
             >
               <Settings className="w-5 h-5" />
@@ -137,7 +137,7 @@ const PerformanceAnalysis = () => {
             <button 
               onClick={handleRefresh}
               disabled={loading || performanceLoading}
-              className={`inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors ${(loading || performanceLoading) ? 'opacity-70 cursor-not-allowed' : ''}`}
+              className={`inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-cyan-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-400 transition-colors ${(loading || performanceLoading) ? 'opacity-70 cursor-not-allowed' : ''}`}
             >
               <RefreshCw className={`-ml-1 mr-2 h-4 w-4 ${(loading || performanceLoading) ? 'animate-spin' : ''}`} />
               {(loading || performanceLoading) ? 'Refreshing...' : 'Refresh'}

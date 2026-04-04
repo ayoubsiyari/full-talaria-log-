@@ -118,7 +118,7 @@ export default function SetupAnalysis() {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto bg-white shadow-lg rounded-xl">
+    <div className="p-8 max-w-7xl mx-auto bg-cyan-950/40 shadow-lg rounded-xl">
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">
@@ -131,7 +131,7 @@ export default function SetupAnalysis() {
             <select
               value={selectedTimeframe}
               onChange={(e) => setSelectedTimeframe(e.target.value)}
-              className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+              className="bg-cyan-950/25 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-cyan-400 focus:border-cyan-400 block w-full p-2.5"
             >
               <option value="all">All Time</option>
               <option value="month">Current Month</option>
@@ -140,7 +140,7 @@ export default function SetupAnalysis() {
           </div>
           <button
             onClick={() => setShowAdvancedStats(!showAdvancedStats)}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-cyan-600 hover:bg-blue-700"
           >
             <Settings className="h-5 w-5 mr-2" />
             {showAdvancedStats ? 'Hide Advanced' : 'Show Advanced'}
@@ -151,7 +151,7 @@ export default function SetupAnalysis() {
       {/* Main Metrics */}
       {showAdvancedStats && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow-md p-6">
+          <div className="bg-cyan-950/40 rounded-xl shadow-md p-6">
             <div className="flex items-center space-x-2 mb-4">
               <TrendingUp className="h-6 w-6 text-green-600" />
               <h3 className="text-xl font-semibold text-gray-900">Total P&L</h3>
@@ -166,12 +166,12 @@ export default function SetupAnalysis() {
             </p>
           </div>
 
-          <div className="bg-white rounded-xl shadow-md p-6">
+          <div className="bg-cyan-950/40 rounded-xl shadow-md p-6">
             <div className="flex items-center space-x-2 mb-4">
-              <TrendingDown className="h-6 w-6 text-blue-600" />
+              <TrendingDown className="h-6 w-6 text-cyan-300" />
               <h3 className="text-xl font-semibold text-gray-900">Avg Win Rate</h3>
             </div>
-            <p className="text-3xl font-bold text-blue-600">
+            <p className="text-3xl font-bold text-cyan-300">
               {formatPercent(
                 data.reduce((sum, d) => sum + (d.win_rate || 0), 0) / data.length
               )}
@@ -181,7 +181,7 @@ export default function SetupAnalysis() {
             </p>
           </div>
 
-          <div className="bg-white rounded-xl shadow-md p-6">
+          <div className="bg-cyan-950/40 rounded-xl shadow-md p-6">
             <div className="flex items-center space-x-2 mb-4">
               <Filter className="h-6 w-6 text-purple-600" />
               <h3 className="text-xl font-semibold text-gray-900">Avg R:R</h3>
@@ -200,7 +200,7 @@ export default function SetupAnalysis() {
 
       {/* Summary Table */}
       <div className="overflow-x-auto mb-10">
-        <table className="min-w-full bg-white border border-gray-200">
+        <table className="min-w-full bg-cyan-950/40 border border-cyan-500/15">
           <thead className="bg-gray-100">
             <tr>
               <th className="py-3 px-4 text-left text-sm font-semibold text-gray-600">Strategy</th>
@@ -212,7 +212,7 @@ export default function SetupAnalysis() {
           </thead>
           <tbody>
             {data.map((row, idx) => (
-              <tr key={idx} className="border-t border-gray-200">
+              <tr key={idx} className="border-t border-cyan-500/15">
                 <td className="py-2 px-4 font-medium text-gray-800">{row.strategy || '—'}</td>
                 <td className="py-2 px-4 text-gray-700">{row.trades}</td>
                 <td className="py-2 px-4 text-gray-700">{formatPercent(row.win_rate)}</td>
@@ -230,7 +230,7 @@ export default function SetupAnalysis() {
 
       {/* Bar Chart */}
       <h2 className="text-lg font-semibold text-gray-800 mb-4">P&L by Strategy</h2>
-      <div className="bg-gray-50 p-4 rounded-lg">
+      <div className="bg-cyan-950/25 p-4 rounded-lg">
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={data}>
             <CartesianGrid strokeDasharray="3 3" />

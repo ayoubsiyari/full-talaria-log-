@@ -30,7 +30,7 @@ export default function StrategyStep3({ strategy, updateStrategy }) {
               value={rule}
               onChange={(e) => handleRuleChange(index, e.target.value)}
               placeholder={`e.g., 'Take profit at +3R or stop loss at -1R'`}
-              className="w-full bg-[#1f1f1f] border border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-[#1f1f1f] border border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-400"
             />
             <button onClick={() => handleRemoveRule(index)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-md">
               <Trash2 size={16} />
@@ -38,7 +38,7 @@ export default function StrategyStep3({ strategy, updateStrategy }) {
           </div>
         ))}
       </div>
-      <button onClick={handleAddRule} className="mt-4 flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300">
+      <button onClick={handleAddRule} className="mt-4 flex items-center gap-2 text-sm text-cyan-300 hover:text-cyan-200">
         <Plus size={16} />
         Add Exit Rule
       </button>

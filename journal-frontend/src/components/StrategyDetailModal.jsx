@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 
 const DetailSection = ({ title, children }) => (
   <div className="mb-4">
-    <h4 className="text-lg font-semibold text-blue-400 mb-2 border-b border-gray-700 pb-1">{title}</h4>
+    <h4 className="text-lg font-semibold text-cyan-300 mb-2 border-b border-gray-700 pb-1">{title}</h4>
     {children}
   </div>
 );

@@ -128,7 +128,7 @@ const GroupFeatureFlagManager = () => {
   // Only show for admins
   if (!isAdmin) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+      <div className="flex items-center justify-center min-h-screen bg-jf-bg">
         <div className="text-center">
           <Shield className="w-16 h-16 text-red-500 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
@@ -140,7 +140,7 @@ const GroupFeatureFlagManager = () => {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+      <div className="flex items-center justify-center min-h-screen bg-jf-bg">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading groups...</p>
@@ -150,14 +150,14 @@ const GroupFeatureFlagManager = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
+    <div className="min-h-screen bg-jf-bg p-6">
       <div className="max-w-6xl mx-auto">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-cyan-950/40 rounded-lg shadow-sm border border-cyan-500/15">
           {/* Header */}
-          <div className="px-6 py-4 border-b border-gray-200">
+          <div className="px-6 py-4 border-b border-cyan-500/15">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
-                <Users className="w-6 h-6 text-blue-600" />
+                <Users className="w-6 h-6 text-cyan-300" />
                 <h1 className="text-2xl font-bold text-gray-900">Group Feature Flag Manager</h1>
               </div>
               <div className="flex items-center space-x-3">
@@ -188,10 +188,10 @@ const GroupFeatureFlagManager = () => {
             ) : (
               <div className="space-y-4">
                 {groups.map(group => (
-                  <div key={group.id} className="border border-gray-200 rounded-lg">
+                  <div key={group.id} className="border border-cyan-500/15 rounded-lg">
                     {/* Group Header */}
                     <div 
-                      className="px-4 py-3 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
+                      className="px-4 py-3 bg-cyan-950/25 cursor-pointer hover:bg-gray-100 transition-colors"
                       onClick={() => handleToggleGroup(group.id)}
                     >
                       <div className="flex items-center justify-between">
@@ -218,7 +218,7 @@ const GroupFeatureFlagManager = () => {
                               handleSaveGroup(group.id);
                             }}
                             disabled={isSaving}
-                            className="flex items-center px-3 py-1 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                            className="flex items-center px-3 py-1 text-sm font-medium text-white bg-cyan-600 rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
                           >
                             <Save className="w-4 h-4 mr-1" />
                             {isSaving ? 'Saving...' : 'Save'}
@@ -233,7 +233,7 @@ const GroupFeatureFlagManager = () => {
                         {groupFlags[group.id]?.length > 0 ? (
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {groupFlags[group.id].map(flag => (
-                              <div key={flag.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
+                              <div key={flag.id} className="flex items-center justify-between p-3 bg-cyan-950/25 rounded-md">
                                 <div>
                                   <p className="font-medium text-gray-900">
                                     {flag.feature_name.replace(/_/g, ' ')}
@@ -245,11 +245,11 @@ const GroupFeatureFlagManager = () => {
                                 <button
                                   onClick={() => handleToggleFeature(group.id, flag.feature_name, flag.enabled)}
                                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                    flag.enabled ? 'bg-blue-600' : 'bg-gray-200'
+                                    flag.enabled ? 'bg-cyan-600' : 'bg-gray-200'
                                   }`}
                                 >
                                   <span
-                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-cyan-950/40 transition-transform ${
                                       flag.enabled ? 'translate-x-6' : 'translate-x-1'
                                     }`}
                                   />

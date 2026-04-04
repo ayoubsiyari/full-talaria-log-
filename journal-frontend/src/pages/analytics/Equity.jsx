@@ -128,8 +128,8 @@ const benchmarkOptions = [
 const MetricCard = ({ children, className = "" }) => (
   <div className={`
     group relative overflow-hidden rounded-xl 
-    bg-white border border-blue-200/60
-    hover:border-blue-300 hover:shadow-lg hover:-translate-y-1
+    bg-cyan-950/40 border border-cyan-500/20
+    hover:border-cyan-400/25 hover:shadow-lg hover:-translate-y-1
     transition-all duration-300 ease-out
     p-5 min-h-[100px] font-['Inter'] shadow-sm
     ${className}
@@ -146,7 +146,7 @@ const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload || !payload.length) return null;
   
   return (
-    <div className="bg-white p-4 shadow-xl rounded-xl border border-slate-200 min-w-[220px]">
+    <div className="bg-cyan-950/40 p-4 shadow-xl rounded-xl border border-cyan-500/15 min-w-[220px]">
       <p className="text-sm font-semibold text-[#040028] mb-3">
         {format(new Date(label), 'MMM d, yyyy')}
       </p>
@@ -181,7 +181,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 // Loading Skeleton Component
 const LoadingSkeleton = () => (
-  <div className="min-h-screen bg-slate-50">
+  <div className="min-h-screen bg-jf-bg">
     <div className="w-full px-6 py-4 space-y-6">
       <div className="animate-pulse">
         <div className="flex justify-between items-center mb-8">
@@ -194,11 +194,11 @@ const LoadingSkeleton = () => (
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-32 bg-white border border-blue-200/60 rounded-xl"></div>
+            <div key={i} className="h-32 bg-cyan-950/40 border border-cyan-500/20 rounded-xl"></div>
           ))}
         </div>
         
-        <div className="h-96 bg-white border border-blue-200/60 rounded-xl"></div>
+        <div className="h-96 bg-cyan-950/40 border border-cyan-500/20 rounded-xl"></div>
       </div>
     </div>
   </div>
@@ -206,7 +206,7 @@ const LoadingSkeleton = () => (
 
 // Error Component
 const ErrorDisplay = ({ error, onRetry }) => (
-  <div className="min-h-screen bg-slate-50">
+  <div className="min-h-screen bg-jf-bg">
     <div className="w-full px-6 py-4">
       <div className="bg-red-50 border border-red-200 rounded-xl p-6">
         <div className="flex items-start gap-4">
@@ -760,7 +760,7 @@ export default function Equitys() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-slate-50">
+    <div className="min-h-screen w-full bg-jf-bg">
       <div className="w-full px-6 py-4 space-y-6">
         
         {/* Header Section */}
@@ -768,11 +768,11 @@ export default function Equitys() {
           <div>
             <h1 className="text-3xl font-bold text-[#040028] flex items-center gap-3">
               <div className="p-2 bg-blue-100 rounded-xl">
-                <TrendingUp className="h-8 w-8 text-blue-600" />
+                <TrendingUp className="h-8 w-8 text-cyan-300" />
               </div>
               Equity
             </h1>
-            <p className="text-slate-600 mt-2">
+            <p className="text-cyan-100/60 mt-2">
               Comprehensive analysis of your trading performance and equity curve
             </p>
           </div>
@@ -781,7 +781,7 @@ export default function Equitys() {
             <select
               value={timeframe}
               onChange={(e) => setTimeframe(e.target.value)}
-              className="px-4 py-2 bg-white border border-blue-200/60 rounded-lg text-sm font-medium text-[#040028] hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+              className="px-4 py-2 bg-cyan-950/40 border border-cyan-500/20 rounded-lg text-sm font-medium text-[#040028] hover:bg-jf-bg focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition-colors"
             >
               {timeframes.map((tf) => (
                 <option key={tf.value} value={tf.value}>
@@ -790,7 +790,7 @@ export default function Equitys() {
               ))}
             </select>
             
-            <div className="text-xs text-slate-600 flex items-center">
+            <div className="text-xs text-cyan-100/60 flex items-center">
               <RefreshCw className="h-3 w-3 mr-1" />
               Auto-updating every 30s
             </div>
@@ -807,15 +807,15 @@ export default function Equitys() {
             <div className="flex items-center justify-between h-full">
               <div className="flex flex-col">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200/50">
-                    <DollarSign className="w-4 h-4 text-blue-600" />
+                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-cyan-500/20">
+                    <DollarSign className="w-4 h-4 text-cyan-300" />
                   </div>
-                  <h4 className="text-sm font-semibold text-blue-700 uppercase tracking-wide">Total P&L</h4>
+                  <h4 className="text-sm font-semibold text-cyan-200 uppercase tracking-wide">Total P&L</h4>
                 </div>
                 <p className={`text-lg font-bold ${metrics.totalPnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                   {formatCurrency(metrics.totalPnl || 0)}
                 </p>
-                <p className="text-xs font-normal text-slate-600 mt-1">
+                <p className="text-xs font-normal text-cyan-100/60 mt-1">
                   {formatPercent(metrics.totalReturn || 0)} return
                 </p>
               </div>
@@ -827,10 +827,10 @@ export default function Equitys() {
             <div className="flex items-center justify-between h-full">
               <div className="flex flex-col">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200/50">
-                    <Target className="w-4 h-4 text-blue-600" />
+                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-cyan-500/20">
+                    <Target className="w-4 h-4 text-cyan-300" />
                   </div>
-                  <h4 className="text-sm font-semibold text-blue-700 uppercase tracking-wide">Win Rate</h4>
+                  <h4 className="text-sm font-semibold text-cyan-200 uppercase tracking-wide">Win Rate</h4>
                 </div>
                 <span className="text-lg font-bold text-[#040028] mb-1">{formatPercent(metrics.winRate || 0)}</span>
                 <div className="flex gap-3 text-xs">
@@ -846,16 +846,16 @@ export default function Equitys() {
             <div className="flex items-center justify-between h-full">
               <div className="flex flex-col">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200/50">
-                    <BarChart3 className="w-4 h-4 text-blue-600" />
+                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-cyan-500/20">
+                    <BarChart3 className="w-4 h-4 text-cyan-300" />
                   </div>
-                  <h4 className="text-sm font-semibold text-blue-700 uppercase tracking-wide">Profit Factor</h4>
+                  <h4 className="text-sm font-semibold text-cyan-200 uppercase tracking-wide">Profit Factor</h4>
                 </div>
                 <div>
                   <span className={`text-lg font-bold ${metrics.profitFactor >= 1 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                     {formatNumber(metrics.profitFactor || 0)}
                   </span>
-                  <p className="text-xs font-normal text-slate-600 mt-1">
+                  <p className="text-xs font-normal text-cyan-100/60 mt-1">
                     Gross profit / Gross loss
                   </p>
                 </div>
@@ -868,14 +868,14 @@ export default function Equitys() {
             <div className="flex items-center justify-between h-full">
               <div className="flex flex-col">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200/50">
-                    <TrendingDown className="w-4 h-4 text-blue-600" />
+                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-cyan-500/20">
+                    <TrendingDown className="w-4 h-4 text-cyan-300" />
                   </div>
-                  <h4 className="text-sm font-semibold text-blue-700 uppercase tracking-wide">Max Drawdown</h4>
+                  <h4 className="text-sm font-semibold text-cyan-200 uppercase tracking-wide">Max Drawdown</h4>
                 </div>
                 <span className="text-lg font-bold text-[#EF4444]">{formatCurrency(metrics.maxDrawdown || 0)}</span>
                 <span className="text-sm text-red-500 font-medium">{formatPercent(metrics.maxDrawdownPct || 0)}</span>
-                <p className="text-xs font-normal text-slate-600 mt-1">
+                <p className="text-xs font-normal text-cyan-100/60 mt-1">
                   Maximum peak-to-trough decline
                 </p>
               </div>
@@ -887,15 +887,15 @@ export default function Equitys() {
             <div className="flex items-center justify-between h-full">
               <div className="flex flex-col">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200/50">
-                    <BarChart3 className="w-4 h-4 text-blue-600" />
+                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-cyan-500/20">
+                    <BarChart3 className="w-4 h-4 text-cyan-300" />
                   </div>
-                  <h4 className="text-sm font-semibold text-blue-700 uppercase tracking-wide">Sharpe Ratio</h4>
+                  <h4 className="text-sm font-semibold text-cyan-200 uppercase tracking-wide">Sharpe Ratio</h4>
                 </div>
-                <span className={`text-lg font-bold ${metrics.sharpeRatio !== null ? (metrics.sharpeRatio >= 2 ? 'text-[#10B981]' : metrics.sharpeRatio >= 1 ? 'text-blue-600' : 'text-[#EF4444]') : 'text-slate-600'}`}>
+                <span className={`text-lg font-bold ${metrics.sharpeRatio !== null ? (metrics.sharpeRatio >= 2 ? 'text-[#10B981]' : metrics.sharpeRatio >= 1 ? 'text-cyan-300' : 'text-[#EF4444]') : 'text-cyan-100/60'}`}>
                   {metrics.sharpeRatio !== null ? metrics.sharpeRatio.toFixed(2) : 'N/A'}
                 </span>
-                <p className="text-xs font-normal text-slate-600 mt-1">
+                <p className="text-xs font-normal text-cyan-100/60 mt-1">
                   {metrics.sharpeRatio !== null ? (
                     metrics.sharpeRatio >= 2 ? "Excellent" :
                     metrics.sharpeRatio >= 1.5 ? "Very Good" :
@@ -912,15 +912,15 @@ export default function Equitys() {
             <div className="flex items-center justify-between h-full">
               <div className="flex flex-col">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200/50">
-                    <BarChart3 className="w-4 h-4 text-blue-600" />
+                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-cyan-500/20">
+                    <BarChart3 className="w-4 h-4 text-cyan-300" />
                   </div>
-                  <h4 className="text-sm font-semibold text-blue-700 uppercase tracking-wide">Volatility</h4>
+                  <h4 className="text-sm font-semibold text-cyan-200 uppercase tracking-wide">Volatility</h4>
                 </div>
                 <span className="text-lg font-bold text-[#040028]">
                   {metrics.volatility !== null ? formatPercent(metrics.volatility) : 'N/A'}
                 </span>
-                <p className="text-xs font-normal text-slate-600 mt-1">
+                <p className="text-xs font-normal text-cyan-100/60 mt-1">
                   {!initialBalance ? "Enter initial balance" : "Annualized volatility"}
                 </p>
               </div>
@@ -932,15 +932,15 @@ export default function Equitys() {
             <div className="flex items-center justify-between h-full">
               <div className="flex flex-col">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200/50">
-                    <Calendar className="w-4 h-4 text-blue-600" />
+                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-cyan-500/20">
+                    <Calendar className="w-4 h-4 text-cyan-300" />
                   </div>
-                  <h4 className="text-sm font-semibold text-blue-700 uppercase tracking-wide">Avg Daily Return</h4>
+                  <h4 className="text-sm font-semibold text-cyan-200 uppercase tracking-wide">Avg Daily Return</h4>
                 </div>
                 <span className={`text-lg font-bold ${metrics.avgDailyReturn >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                   {formatPercent(metrics.avgDailyReturn || 0)}
                 </span>
-                <p className="text-xs font-normal text-slate-600 mt-1">
+                <p className="text-xs font-normal text-cyan-100/60 mt-1">
                   Average daily performance
                 </p>
               </div>
@@ -952,15 +952,15 @@ export default function Equitys() {
             <div className="flex items-center justify-between h-full">
               <div className="flex flex-col">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200/50">
-                    <GitCompare className="w-4 h-4 text-blue-600" />
+                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-cyan-500/20">
+                    <GitCompare className="w-4 h-4 text-cyan-300" />
                   </div>
-                  <h4 className="text-sm font-semibold text-blue-700 uppercase tracking-wide">Total Trades</h4>
+                  <h4 className="text-sm font-semibold text-cyan-200 uppercase tracking-wide">Total Trades</h4>
                 </div>
                 <span className="text-lg font-bold text-[#040028]">
                   {formatNumber(metrics.totalTrades || 0)}
                 </span>
-                <p className="text-xs font-normal text-slate-600 mt-1">
+                <p className="text-xs font-normal text-cyan-100/60 mt-1">
                   Number of completed trades
                 </p>
               </div>
@@ -972,15 +972,15 @@ export default function Equitys() {
             <div className="flex items-center justify-between h-full">
               <div className="flex flex-col">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200/50">
-                    <TrendingUp className="w-4 h-4 text-blue-600" />
+                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-cyan-500/20">
+                    <TrendingUp className="w-4 h-4 text-cyan-300" />
                   </div>
-                  <h4 className="text-sm font-semibold text-blue-700 uppercase tracking-wide">Recovery Factor</h4>
+                  <h4 className="text-sm font-semibold text-cyan-200 uppercase tracking-wide">Recovery Factor</h4>
                 </div>
                 <span className={`text-lg font-bold ${metrics.recoveryFactor >= 1 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                   {metrics.recoveryFactor ? metrics.recoveryFactor.toFixed(2) : 'N/A'}
                 </span>
-                <p className="text-xs font-normal text-slate-600 mt-1">
+                <p className="text-xs font-normal text-cyan-100/60 mt-1">
                   Total P&L / Max Drawdown
                 </p>
               </div>
@@ -992,15 +992,15 @@ export default function Equitys() {
             <div className="flex items-center justify-between h-full">
               <div className="flex flex-col">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200/50">
-                    <BarChart3 className="w-4 h-4 text-blue-600" />
+                  <div className="p-1.5 rounded bg-gradient-to-br from-blue-50 to-blue-100 border border-cyan-500/20">
+                    <BarChart3 className="w-4 h-4 text-cyan-300" />
                   </div>
-                  <h4 className="text-sm font-semibold text-blue-700 uppercase tracking-wide">SQN</h4>
+                  <h4 className="text-sm font-semibold text-cyan-200 uppercase tracking-wide">SQN</h4>
                 </div>
                 <span className={`text-lg font-bold ${metrics.sqn !== null && metrics.sqn >= 2 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                   {metrics.sqn !== null ? metrics.sqn.toFixed(2) : 'N/A'}
                 </span>
-                <p className="text-xs font-normal text-slate-600 mt-1">
+                <p className="text-xs font-normal text-cyan-100/60 mt-1">
                   System Quality Number
                 </p>
               </div>
@@ -1010,15 +1010,15 @@ export default function Equitys() {
         
 
         {/* Equity Curve Chart */}
-        <div className="bg-white rounded-xl shadow-sm border border-blue-200/60 overflow-hidden">
-          <div className="p-6 border-b border-blue-200/60">
+        <div className="bg-cyan-950/40 rounded-xl shadow-sm border border-cyan-500/20 overflow-hidden">
+          <div className="p-6 border-b border-cyan-500/20">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
                 <h2 className="text-2xl font-bold text-[#040028] flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5 text-blue-600" />
+                  <BarChart3 className="h-5 w-5 text-cyan-300" />
                   Equity Curve
                 </h2>
-                <p className="text-sm text-slate-600 mt-1">
+                <p className="text-sm text-cyan-100/60 mt-1">
                   Track your portfolio performance over time
                 </p>
               </div>
@@ -1026,15 +1026,15 @@ export default function Equitys() {
               <div className="flex items-center gap-3">
                 
                 {/* Chart Type Selector */}
-                <div className="flex bg-slate-100 rounded-lg p-1">
+                <div className="flex bg-cyan-950/35 rounded-lg p-1">
                   {chartTypes.map((type) => (
                     <button
                       key={type.value}
                       onClick={() => setChartType(type.value)}
                       className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                         chartType === type.value
-                          ? 'bg-white text-blue-600 shadow-sm'
-                          : 'text-slate-600 hover:text-slate-900'
+                          ? 'bg-cyan-950/40 text-cyan-300 shadow-sm'
+                          : 'text-cyan-100/60 hover:text-slate-900'
                       }`}
                     >
                       <type.icon className="h-4 w-4" />
@@ -1064,8 +1064,8 @@ export default function Equitys() {
             
 
             {/* Performance Summary */}
-            <div className="bg-white rounded-xl shadow-sm border border-blue-200/60 overflow-hidden">
-              <div className="p-6 border-b border-blue-200/60">
+            <div className="bg-cyan-950/40 rounded-xl shadow-sm border border-cyan-500/20 overflow-hidden">
+              <div className="p-6 border-b border-cyan-500/20">
                 <h2 className="text-2xl font-bold text-[#040028] flex items-center gap-2">
                   <Target className="h-5 w-5 text-green-600" />
                   Performance Summary
@@ -1073,41 +1073,41 @@ export default function Equitys() {
               </div>
               <div className="p-6">
                 <div className="space-y-4">
-                  <div className="py-2 border-b border-slate-200">
+                  <div className="py-2 border-b border-cyan-500/15">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-slate-600">Best Day</span>
+                      <span className="text-sm font-medium text-cyan-100/60">Best Day</span>
                       <span className="text-sm font-semibold text-green-600">
                         {formatCurrency(metrics.bestDay || metrics.bestTrade || 0)}
                       </span>
                     </div>
                     {metrics.bestDayDate && (
-                      <div className="text-xs text-slate-500 text-right mt-1">
+                      <div className="text-xs text-cyan-200/45 text-right mt-1">
                         {format(new Date(metrics.bestDayDate), 'MMM d, yyyy')}
                       </div>
                     )}
                   </div>
-                  <div className="py-2 border-b border-slate-200">
+                  <div className="py-2 border-b border-cyan-500/15">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-slate-600">Worst Day</span>
+                      <span className="text-sm font-medium text-cyan-100/60">Worst Day</span>
                       <span className="text-sm font-semibold text-red-600">
                         {formatCurrency(metrics.worstDay || metrics.worstTrade || 0)}
                       </span>
                     </div>
                     {metrics.worstDayDate && (
-                      <div className="text-xs text-slate-500 text-right mt-1">
+                      <div className="text-xs text-cyan-200/45 text-right mt-1">
                         {format(new Date(metrics.worstDayDate), 'MMM d, yyyy')}
                       </div>
                     )}
                   </div>
-                  <div className="flex justify-between items-center py-2 border-b border-slate-200">
-                    <span className="text-sm font-medium text-slate-600">Avg Trade Size</span>
+                  <div className="flex justify-between items-center py-2 border-b border-cyan-500/15">
+                    <span className="text-sm font-medium text-cyan-100/60">Avg Trade Size</span>
                     <span className="text-sm font-semibold text-[#040028]">
                       {formatCurrency(metrics.avgTradeSize || metrics.avgTradePnl || 0)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center py-2">
-                    <span className="text-sm font-medium text-slate-600">Recovery Factor</span>
-                    <span className="text-sm font-semibold text-blue-600">
+                    <span className="text-sm font-medium text-cyan-100/60">Recovery Factor</span>
+                    <span className="text-sm font-semibold text-cyan-300">
                       {formatNumber(metrics.recoveryFactor || 0)}
                       {metrics.recoveryFactor > 1 ? ' (Good)' : metrics.recoveryFactor > 0 ? ' (Needs Improvement)' : ' (High Risk)'}
                     </span>

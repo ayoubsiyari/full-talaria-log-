@@ -52,7 +52,7 @@ const CreateProfileForm = ({ onSuccess, onCancel }) => {
           type="text"
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+          className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 transition"
           placeholder="e.g., My Swing Strategy"
           required
         />
@@ -64,7 +64,7 @@ const CreateProfileForm = ({ onSuccess, onCancel }) => {
           type="text"
           value={formData.description}
           onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+          className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 transition"
           placeholder="(Optional) A brief description"
         />
       </div>
@@ -74,7 +74,7 @@ const CreateProfileForm = ({ onSuccess, onCancel }) => {
           id="profileMode"
           value={formData.mode}
           onChange={(e) => setFormData({ ...formData, mode: e.target.value })}
-          className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+          className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 transition"
         >
           <option value="backtest">Backtest</option>
           <option value="journal" disabled>Journal (Coming Soon)</option>
@@ -84,7 +84,7 @@ const CreateProfileForm = ({ onSuccess, onCancel }) => {
       </div>
       <div className="flex items-center justify-end space-x-4 pt-4">
         <button type="button" onClick={onCancel} className="px-6 py-3 bg-slate-600 text-white rounded-lg hover:bg-slate-500 transition-colors font-semibold">Cancel</button>
-        <button type="submit" disabled={isSubmitting} className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-semibold">
+        <button type="submit" disabled={isSubmitting} className="px-6 py-3 bg-cyan-600 text-white rounded-lg hover:bg-cyan-500/100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-semibold">
           {isSubmitting ? 'Creating...' : 'Create Profile'}
         </button>
       </div>
@@ -101,7 +101,7 @@ const NewProfileSelector = ({ className = "" }) => {
 
   const getModeConfig = (mode) => {
     const configs = {
-      backtest: { icon: TrendingUp, color: 'bg-blue-500', name: 'Backtest' },
+      backtest: { icon: TrendingUp, color: 'bg-cyan-500', name: 'Backtest' },
       journal: { icon: Lock, color: 'bg-amber-500', name: 'Journal' },
       journal_live: { icon: Database, color: 'bg-emerald-500', name: 'Journal Live' },
     };
@@ -128,7 +128,7 @@ const NewProfileSelector = ({ className = "" }) => {
     <div className={`relative w-full ${className}`}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+        className="w-full flex items-center justify-between px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-400 transition-all duration-200"
       >
         <div className="flex items-center space-x-3">
           <div className={`p-2 rounded-lg ${activeProfileColor}`}>
@@ -156,12 +156,12 @@ const NewProfileSelector = ({ className = "" }) => {
                 <button
                   key={profile.id}
                   onClick={() => handleProfileSelect(profile)}
-                  className={`w-full flex items-center justify-between px-3 py-2 text-left rounded-md transition-colors ${isActive ? 'bg-blue-600/50' : 'hover:bg-slate-700'}`}>
+                  className={`w-full flex items-center justify-between px-3 py-2 text-left rounded-md transition-colors ${isActive ? 'bg-cyan-600/50' : 'hover:bg-slate-700'}`}>
                   <div className="flex items-center space-x-3">
                     <span className={`w-2.5 h-2.5 rounded-full ${color}`}></span>
                     <span className={`font-medium ${isActive ? 'text-white' : 'text-slate-200'}`}>{profile.name}</span>
                   </div>
-                  {isActive && <Check className="w-5 h-5 text-blue-300" />}
+                  {isActive && <Check className="w-5 h-5 text-cyan-200" />}
                 </button>
               );
             })}

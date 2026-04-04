@@ -61,7 +61,7 @@ export default function Home() {
       title: "Performance Tracking",
       description: "200+ performance metrics including Sharpe ratio, profit factor, max drawdown, equity curves, and custom calculations.",
       badge: "Analytics",
-      color: "border-blue-500/30"
+      color: "border-cyan-400/30"
     },
     {
       icon: Brain,
@@ -165,7 +165,7 @@ export default function Home() {
           <div className="flex items-center justify-between">
             <motion.div whileHover={{ scale: 1.05, rotate: -5 }} transition={{ type: 'spring', stiffness: 400, damping: 10 }}>
               <Link to="/" className="flex items-center space-x-3 group">
-                <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10 group-hover:bg-white/15 transition-all duration-300">
+                <div className="w-8 h-8 bg-cyan-500/10 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10 group-hover:bg-cyan-500/12 transition-all duration-300">
                   <img src={logo} alt="Talaria Logo" className="w-6 h-6 rounded-sm" />
                 </div>
                 <span className={`text-xl font-semibold ${colors.text.primary}`}>
@@ -190,7 +190,7 @@ export default function Home() {
               <Link to="/login" className={`px-3 py-1.5 text-sm ${colors.components.nav.link} hover:${colors.components.nav.linkHover} transition-all duration-200`}>
                 Log in
               </Link>
-              <Link to="/login " className="px-4 py-2 bg-white text-black text-sm font-medium rounded-md hover:bg-white/90 transition-all duration-200 shadow-sm">
+              <Link to="/login " className="px-4 py-2 bg-cyan-400 text-cyan-950 text-sm font-medium rounded-md hover:bg-cyan-950/50 transition-all duration-200 shadow-sm">
                 Sign up
               </Link>
             </div>
@@ -332,7 +332,7 @@ export default function Home() {
                   
                   <div className="flex items-center justify-between text-sm">
                     <span className={colors.text.secondary}>Profit Factor</span>
-                    <span className="text-blue-400">2.34</span>
+                    <span className="text-cyan-300">2.34</span>
                   </div>
                   <div className={`w-full ${colors.backgrounds.secondary} rounded-full h-2`}>
                     <div className="bg-blue-400 h-2 rounded-full" style={{ width: '85%' }} />
@@ -362,10 +362,10 @@ export default function Home() {
                 className={`group ${colors.components.card.background} rounded-xl p-6 border ${colors.components.card.border} transition-all duration-300 ${colors.components.card.hover} ${feature.color}`}
               >
                 <div className="flex items-center justify-between mb-4">
-                  <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center">
+                  <div className="w-10 h-10 bg-cyan-500/10 rounded-lg flex items-center justify-center">
                     <feature.icon className="w-5 h-5 text-white/80" />
                   </div>
-                  <span className="text-xs px-2 py-1 bg-white/10 rounded-full text-white/60 border border-white/10">
+                  <span className="text-xs px-2 py-1 bg-cyan-500/10 rounded-full text-white/60 border border-white/10">
                     {feature.badge}
                   </span>
                 </div>
@@ -416,9 +416,9 @@ export default function Home() {
       <Section>
         <div className="container mx-auto px-6">
           <div className="flex items-center space-x-4 mb-12">
-            <div className="flex items-center space-x-2 bg-blue-500/10 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-blue-500/20">
-              <Upload className="w-4 h-4 text-blue-400" />
-              <span className="text-sm text-blue-300 font-medium">Integrations</span>
+            <div className="flex items-center space-x-2 bg-cyan-500/10 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-cyan-400/20">
+              <Upload className="w-4 h-4 text-cyan-300" />
+              <span className="text-sm text-cyan-200 font-medium">Integrations</span>
             </div>
           </div>
           
@@ -457,7 +457,7 @@ export default function Home() {
                       platform.status === 'Connected' 
                         ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
                         : platform.status === 'Available'
-                        ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/30'
                         : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
                     }`}>
                       {platform.status}
@@ -494,7 +494,7 @@ export default function Home() {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className={colors.text.secondary}>Duplicate detection</span>
-                    <span className="text-blue-400">12 found, 12 merged</span>
+                    <span className="text-cyan-300">12 found, 12 merged</span>
                   </div>
                 </div>
               </div>

@@ -10,21 +10,19 @@
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
-/* Talaria-Log Brand CSS Variables - Matching Homepage */
+/* Talaria Journal – neon cyan dark (matches homepage /dashboard) */
 :root {
-  /* Brand Primary Colors (from homepage) */
-  --brand-primary: #3b82f6;
-  --brand-primary-dark: #1e3a8a;
-  --brand-navy: #030014;
-  --brand-bg-alt: #0a0a1a;
-  --brand-bg-card: #0f0f14;
-  --brand-white: #FFFFFF;
+  --brand-primary: #22d3ee;
+  --brand-primary-dark: #0891b2;
+  --brand-navy: #050a10;
+  --brand-bg-alt: #071218;
+  --brand-bg-card: rgba(6, 78, 94, 0.35);
+  --brand-white: #f8fafc;
   
-  /* Brand Secondary Colors (from homepage) */
-  --brand-light-blue: #06b6d4;
-  --brand-indigo: #6366f1;
-  --brand-purple: #8b5cf6;
-  --brand-cyan: #06b6d4;
+  --brand-light-blue: #67e8f9;
+  --brand-indigo: #06b6d4;
+  --brand-purple: #a5f3fc;
+  --brand-cyan: #22d3ee;
   --brand-black: #000000;
   
   /* Light Mode Colors (keeping for compatibility) */
@@ -62,23 +60,22 @@
   --warning-dark: #92400e;
 }
 
-/* Dark mode variables - Talaria-Log Brand */
+/* Dark mode variables – cyan-tinted panels */
 .dark {
-  /* Talaria-Log Dark Mode Colors */
-  --bg-primary: var(--brand-navy);
-  --bg-secondary: #1a1a2e;
-  --bg-tertiary: #16213e;
-  --bg-card: #1a1a2e;
-  --bg-overlay: rgba(0, 0, 0, 0.7);
+  --bg-primary: #050a10;
+  --bg-secondary: rgba(6, 45, 55, 0.55);
+  --bg-tertiary: rgba(8, 51, 63, 0.65);
+  --bg-card: rgba(6, 78, 94, 0.3);
+  --bg-overlay: rgba(0, 0, 0, 0.75);
   
-  --text-primary: var(--brand-white);
-  --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
-  --text-inverse: var(--brand-navy);
+  --text-primary: #f1f5f9;
+  --text-secondary: rgba(207, 250, 254, 0.55);
+  --text-muted: rgba(165, 243, 252, 0.4);
+  --text-inverse: #050a10;
   
-  --border-primary: #2d2d3a;
-  --border-secondary: #3f3f46;
-  --border-accent: var(--brand-primary);
+  --border-primary: rgba(34, 211, 238, 0.15);
+  --border-secondary: rgba(34, 211, 238, 0.22);
+  --border-accent: #22d3ee;
   
   /* Enhanced shadows for dark mode with brand colors */
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
@@ -114,12 +111,17 @@
 }
 
 body {
-  background: var(--brand-navy);
-  color: var(--text-primary);
+  background: #050a10;
+  color: #e2e8f0;
   font-family: 'Zain', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   font-weight: 400;
   line-height: 1.6;
   min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+  background: #050a10;
 }
 
 /* Talaria-Log brand gradient backgrounds */
@@ -208,44 +210,43 @@ body {
   box-shadow: var(--shadow-xl);
 }
 
-/* Enhanced card styles with brand colors */
+/* Cards – flat neon cyan border (no heavy gradients) */
 .card {
-  @apply bg-theme-card border border-theme-primary rounded-xl shadow-theme-lg;
+  @apply rounded-lg shadow-jf-card;
+  background: rgba(6, 78, 94, 0.3);
+  border: 1px solid rgba(34, 211, 238, 0.2);
   backdrop-filter: blur(10px);
-  background: rgba(26, 26, 46, 0.8);
 }
 
 .card-hover {
   @apply transition-all duration-300 ease-out;
 }
 .card-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-xl);
-  border-color: var(--brand-primary);
+  border-color: rgba(34, 211, 238, 0.45);
+  box-shadow: 0 0 28px -8px rgba(34, 211, 238, 0.2);
 }
 
 .card-glow {
   @apply card;
-  box-shadow: 0 0 20px rgba(48, 144, 255, 0.1), var(--shadow-lg);
 }
 
 .card-glow:hover {
-  box-shadow: 0 0 30px rgba(48, 144, 255, 0.2), var(--shadow-xl);
+  border-color: rgba(34, 211, 238, 0.5);
+  box-shadow: 0 0 32px -8px rgba(34, 211, 238, 0.22);
 }
 
-/* Talaria-Log brand button styles */
 .btn-primary {
-  @apply font-medium py-3 px-6 rounded-xl transition-all duration-300 ease-out;
-  background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-primary-dark) 100%);
-  color: white;
-  border: none;
-  box-shadow: 0 4px 15px rgba(48, 144, 255, 0.3);
+  @apply font-medium py-3 px-6 rounded-lg transition-all duration-300 ease-out;
+  background: rgba(34, 211, 238, 0.15);
+  color: #ecfeff;
+  border: 1px solid rgba(34, 211, 238, 0.45);
+  box-shadow: 0 0 20px -6px rgba(34, 211, 238, 0.25);
 }
 
 .btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(48, 144, 255, 0.4);
-  background: linear-gradient(135deg, var(--brand-primary-dark) 0%, var(--brand-purple) 100%);
+  background: rgba(34, 211, 238, 0.22);
+  border-color: rgba(34, 211, 238, 0.6);
+  box-shadow: 0 0 28px -6px rgba(34, 211, 238, 0.35);
 }
 
 .btn-secondary {
@@ -262,8 +263,8 @@ body {
   @apply bg-transparent text-theme-primary font-medium py-3 px-6 rounded-xl transition-all duration-300 ease-out;
 }
 .btn-ghost:hover {
-  background: rgba(48, 144, 255, 0.1);
-  color: var(--brand-primary);
+  background: rgba(34, 211, 238, 0.1);
+  color: var(--brand-cyan);
 }
 
 .btn-outline {
@@ -272,10 +273,10 @@ body {
   border-color: var(--brand-light-blue);
 }
 .btn-outline:hover {
-  background: var(--brand-primary);
-  color: white;
-  border-color: var(--brand-primary);
-  box-shadow: 0 4px 15px rgba(48, 144, 255, 0.3);
+  background: rgba(34, 211, 238, 0.12);
+  color: #ecfeff;
+  border-color: rgba(34, 211, 238, 0.55);
+  box-shadow: 0 0 20px -6px rgba(34, 211, 238, 0.25);
 }
 
 /* Enhanced input styles */
@@ -307,7 +308,7 @@ body {
 }
 
 .table-theme tr:hover {
-  background: rgba(48, 144, 255, 0.05);
+  background: rgba(34, 211, 238, 0.06);
 }
 
 /* Enhanced scrollbar styles with brand colors */
@@ -322,12 +323,13 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(135deg, var(--brand-primary), var(--brand-primary-dark));
+  background: rgba(34, 211, 238, 0.35);
   border-radius: 4px;
+  border: 2px solid rgba(5, 10, 16, 0.8);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(135deg, var(--brand-primary-dark), var(--brand-purple));
+  background: rgba(34, 211, 238, 0.55);
 }
 
 /* Enhanced focus styles */
@@ -440,22 +442,20 @@ body {
 }
 
 .nav-item:hover {
-  background: rgba(48, 144, 255, 0.1);
+  background: rgba(34, 211, 238, 0.08);
   transform: translateX(4px);
 }
 
 .nav-item.active {
-  background: linear-gradient(135deg, rgba(48, 144, 255, 0.2) 0%, rgba(35, 44, 244, 0.1) 100%);
-  border-left: 3px solid var(--brand-primary);
+  background: rgba(34, 211, 238, 0.12);
+  border-left: 3px solid var(--brand-cyan);
 }
 
 /* Typography enhancements with brand colors */
 .heading-xl {
-  @apply text-4xl font-bold text-theme-primary;
-  background: linear-gradient(135deg, var(--text-primary) 0%, var(--brand-primary) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  @apply text-4xl font-bold;
+  color: #ecfeff;
+  text-shadow: 0 0 24px rgba(34, 211, 238, 0.2);
 }
 
 .heading-lg {
@@ -472,21 +472,20 @@ body {
 
 /* Glassmorphism effects */
 .glass {
-  background: rgba(26, 26, 46, 0.3);
+  background: rgba(6, 78, 94, 0.25);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(48, 144, 255, 0.1);
+  border: 1px solid rgba(34, 211, 238, 0.15);
 }
 
 .glass-strong {
-  background: rgba(26, 26, 46, 0.6);
+  background: rgba(6, 45, 55, 0.55);
   backdrop-filter: blur(30px);
-  border: 1px solid rgba(48, 144, 255, 0.2);
+  border: 1px solid rgba(34, 211, 238, 0.22);
 }
 
-/* Sidebar specific styles */
 .sidebar-gradient {
-  background: linear-gradient(180deg, #030014 0%, #0a0a1a 50%, #0f0f14 100%);
-  border-right: 1px solid rgba(59, 130, 246, 0.1);
+  background: linear-gradient(180deg, #050a10 0%, #071218 45%, #050a10 100%);
+  border-right: 1px solid rgba(34, 211, 238, 0.15);
 }
 
 /* Dashboard grid enhancements */
@@ -499,21 +498,16 @@ body {
 /* Metric card styles */
 .metric-card {
   @apply card-glow p-6;
-  background: linear-gradient(135deg, rgba(26, 26, 46, 0.8) 0%, rgba(22, 33, 62, 0.6) 100%);
 }
 
 .metric-value {
-  @apply text-3xl font-bold;
-  background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-primary-dark) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  @apply text-3xl font-bold text-cyan-200;
+  text-shadow: 0 0 20px rgba(34, 211, 238, 0.25);
 }
 
 /* Chart container styles */
 .chart-container {
   @apply card p-6;
-  background: linear-gradient(135deg, rgba(26, 26, 46, 0.9) 0%, rgba(22, 33, 62, 0.7) 100%);
 }
 
 /* Mobile responsiveness */

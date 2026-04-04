@@ -31,12 +31,12 @@ const CalendarDay = React.memo(({ day, onClick = () => {} }) => {
 
   return (
     <div 
-      className={`h-24 p-2 bg-white border border-blue-200/60 rounded-lg transition-all duration-200 cursor-default ${
-        !day.isCurrentMonth ? 'bg-slate-50 text-slate-400' : ''
+      className={`h-24 p-2 bg-cyan-950/40 border border-cyan-500/20 rounded-lg transition-all duration-200 cursor-default ${
+        !day.isCurrentMonth ? 'bg-jf-bg text-slate-400' : ''
       } ${
-        day.isToday ? 'border-blue-500 bg-blue-50' : ''
+        day.isToday ? 'border-cyan-400 bg-cyan-950/25' : ''
       } ${
-        hasTrades ? 'cursor-pointer hover:transform hover:-translate-y-1 hover:shadow-md hover:border-blue-300' : ''
+        hasTrades ? 'cursor-pointer hover:transform hover:-translate-y-1 hover:shadow-md hover:border-cyan-400/25' : ''
       } ${
         isProfit ? 'bg-gradient-to-b from-green-50 to-white' : ''
       } ${
@@ -50,8 +50,8 @@ const CalendarDay = React.memo(({ day, onClick = () => {} }) => {
       <div className="flex justify-between items-start">
         <span className={`text-sm font-semibold ${
           !day.isCurrentMonth ? 'text-slate-400' : 
-          day.isToday ? 'text-blue-600 font-bold' : 
-          'text-slate-700'
+          day.isToday ? 'text-cyan-300 font-bold' : 
+          'text-slate-200'
         }`}>
           {day.day}
         </span>
@@ -63,11 +63,11 @@ const CalendarDay = React.memo(({ day, onClick = () => {} }) => {
             <span className={`text-lg font-bold ${
               isProfit ? 'text-[#10B981]' : 
               isLoss ? 'text-[#EF4444]' : 
-              'text-slate-600'
+              'text-cyan-100/60'
             }`}>
               {pnlFormatted}
             </span>
-            <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded-full">
+            <span className="text-xs font-medium text-cyan-100/60 bg-cyan-950/35 px-2 py-1 rounded-full">
               {day.trades} {day.trades === 1 ? 'trade' : 'trades'}
             </span>
           </>

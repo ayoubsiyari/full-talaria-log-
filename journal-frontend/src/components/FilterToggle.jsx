@@ -20,10 +20,11 @@ const FilterToggle = () => {
       )}
       <button
         onClick={toggleFilterVisibility}
-        className={`group relative inline-flex items-center px-4 py-2 border border-white/10 text-sm leading-4 font-medium rounded-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 focus:ring-offset-[#0a0a0f] ${isFilterVisible
-            ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg'
-            : 'bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white'}
-        `}
+        className={`group relative inline-flex items-center px-4 py-2 border text-sm leading-4 font-medium rounded-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-400 focus:ring-offset-[#050a10] ${
+          isFilterVisible
+            ? 'border-cyan-400/45 bg-cyan-500/15 text-cyan-50 shadow-glow'
+            : 'border-cyan-500/20 bg-cyan-950/30 text-cyan-200/80 hover:bg-cyan-500/10 hover:text-cyan-50'
+        }`}
       >
         <div className="relative flex items-center">
           {isFilterVisible ? (

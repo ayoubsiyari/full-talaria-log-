@@ -249,20 +249,20 @@ const TradeDuration = () => {
   }
 
   return (
-    <div className="p-4 md:p-6 bg-slate-100 dark:bg-theme-bg-dark text-slate-800 dark:text-theme-text-primary-dark min-h-screen">
+    <div className="p-4 md:p-6 bg-cyan-950/35 dark:bg-theme-bg-dark text-slate-100 dark:text-theme-text-primary-dark min-h-screen">
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex items-center gap-3">
             <Clock className="h-8 w-8 text-primary" />
             <div>
-              <h1 className="text-3xl font-bold text-slate-800 dark:text-theme-text-primary-dark">Trade Duration Analysis</h1>
-              <p className="text-slate-600 dark:text-theme-text-secondary-dark">Analyze your performance based on how long you hold your trades.</p>
+              <h1 className="text-3xl font-bold text-slate-100 dark:text-theme-text-primary-dark">Trade Duration Analysis</h1>
+              <p className="text-cyan-100/60 dark:text-theme-text-secondary-dark">Analyze your performance based on how long you hold your trades.</p>
             </div>
           </div>
           <button
             onClick={fetchData}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-theme-divider-dark text-slate-800 dark:text-white rounded-lg hover:bg-slate-200 dark:hover:bg-opacity-80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 bg-cyan-950/35 dark:bg-theme-divider-dark text-slate-100 dark:text-white rounded-lg hover:bg-slate-200 dark:hover:bg-opacity-80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             <span>{loading ? 'Refreshing...' : 'Refresh'}</span>

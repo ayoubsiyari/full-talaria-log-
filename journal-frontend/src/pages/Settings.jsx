@@ -1320,7 +1320,7 @@ export default function Settings() {
                   ? 'bg-emerald-50/90 border-emerald-500 text-emerald-800'
                   : getMessageType() === 'error'
                   ? 'bg-red-50/90 border-red-500 text-red-800'
-                  : 'bg-blue-50/90 border-blue-500 text-blue-800'
+                  : 'bg-cyan-950/35 border-cyan-400 text-cyan-100'
               }`}
             >
               <div className={`p-2 rounded-full ${
@@ -1329,7 +1329,7 @@ export default function Settings() {
               }`}>
                 {getMessageType() === 'success' && <Check className="w-5 h-5 text-emerald-600" />}
                 {getMessageType() === 'error' && <X className="w-5 h-5 text-red-600" />}
-                {getMessageType() === 'info' && <AlertCircle className="w-5 h-5 text-blue-600" />}
+                {getMessageType() === 'info' && <AlertCircle className="w-5 h-5 text-cyan-300" />}
               </div>
               <span className="font-semibold text-lg">{msg}</span>
             </div>
@@ -1350,7 +1350,7 @@ export default function Settings() {
                 onClick={() => setAutoRefresh(!autoRefresh)}
                 className={`px-4 py-2 rounded-lg text-sm transition-all ${
                   autoRefresh 
-                    ? 'bg-blue-500/20 text-blue-400' 
+                    ? 'bg-cyan-500/20 text-cyan-300' 
                     : 'bg-[#1e3a5f] text-gray-400 hover:text-white'
                 }`}
               >
@@ -1381,7 +1381,7 @@ export default function Settings() {
                       onClick={() => setActiveAdminTab(tab.id)}
                       className={`px-5 py-3 text-sm font-medium transition-all whitespace-nowrap ${
                         isActive
-                          ? 'text-white border-b-2 border-blue-500'
+                          ? 'text-white border-b-2 border-cyan-400'
                           : 'text-gray-500 hover:text-gray-300'
                       }`}
                     >
@@ -1496,7 +1496,7 @@ export default function Settings() {
                                 </div>
                                 <div className="w-full bg-[#0a1628] rounded-full h-2">
                                   <div 
-                                    className="bg-blue-500 h-2 rounded-full transition-all duration-300" 
+                                    className="bg-cyan-500 h-2 rounded-full transition-all duration-300" 
                                     style={{ width: `${systemMetrics.cpu?.percent || 0}%` }}
                                   ></div>
                                 </div>
@@ -1614,7 +1614,7 @@ export default function Settings() {
                                 type="email"
                                 value={newEmail}
                                 onChange={(e) => setNewEmail(e.target.value)}
-                                className="w-full px-3 py-2 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white text-sm focus:border-blue-500 focus:outline-none"
+                                className="w-full px-3 py-2 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white text-sm focus:border-cyan-400 focus:outline-none"
                                 placeholder="user@example.com"
                                 required
                               />
@@ -1625,7 +1625,7 @@ export default function Settings() {
                                 type="text"
                                 value={newFullName}
                                 onChange={(e) => setNewFullName(e.target.value)}
-                                className="w-full px-3 py-2 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white text-sm focus:border-blue-500 focus:outline-none"
+                                className="w-full px-3 py-2 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white text-sm focus:border-cyan-400 focus:outline-none"
                                 placeholder="John Doe"
                               />
                             </div>
@@ -1664,7 +1664,7 @@ export default function Settings() {
                                 type="tel"
                                 value={newPhone}
                                 onChange={e => setNewPhone(e.target.value)}
-                                className="w-full px-3 py-2 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white text-sm focus:border-blue-500 focus:outline-none"
+                                className="w-full px-3 py-2 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white text-sm focus:border-cyan-400 focus:outline-none"
                                 placeholder="123-456-7890"
                               />
                             </div>
@@ -1702,7 +1702,7 @@ export default function Settings() {
                                 type="password"
                                 value={newPassword}
                                 onChange={(e) => setNewPassword(e.target.value)}
-                                className="w-full px-3 py-2 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white text-sm focus:border-blue-500 focus:outline-none"
+                                className="w-full px-3 py-2 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white text-sm focus:border-cyan-400 focus:outline-none"
                                 placeholder="••••••••"
                                 required
                               />
@@ -1722,7 +1722,7 @@ export default function Settings() {
                           <button
                             type="submit"
                             disabled={isCreating}
-                            className="w-full bg-blue-600 text-white font-medium py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 text-sm"
+                            className="w-full bg-cyan-600 text-white font-medium py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 text-sm"
                           >
                             {isCreating ? 'Creating...' : 'Create User'}
                           </button>
@@ -1742,9 +1742,9 @@ export default function Settings() {
                           value={searchTerm}
                           onChange={(e) => setSearchTerm(e.target.value)}
                           placeholder="Search users..."
-                          className="flex-1 px-3 py-2 bg-[#0a1628] border border-[#2d4a6f] rounded-lg text-white text-sm focus:border-blue-500 focus:outline-none"
+                          className="flex-1 px-3 py-2 bg-[#0a1628] border border-[#2d4a6f] rounded-lg text-white text-sm focus:border-cyan-400 focus:outline-none"
                         />
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+                        <button type="submit" className="px-4 py-2 bg-cyan-600 text-white rounded-lg text-sm hover:bg-blue-700">
                           Search
                         </button>
                       </form>
@@ -1797,7 +1797,7 @@ export default function Settings() {
                     {/* Users List */}
                     {loadingUsers ? (
                       <div className="text-center py-8">
-                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent mx-auto mb-4"></div>
+                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-cyan-400 border-t-transparent mx-auto mb-4"></div>
                         <p className="text-gray-500 text-sm">Loading...</p>
                       </div>
                     ) : users.length === 0 ? (
@@ -1814,7 +1814,7 @@ export default function Settings() {
                             return true;
                           })
                           .map(user => (
-                          <div key={user.id} className="bg-[#0a1628] rounded-lg p-4 border border-[#2d4a6f] hover:border-blue-500/50 transition-all">
+                          <div key={user.id} className="bg-[#0a1628] rounded-lg p-4 border border-[#2d4a6f] hover:border-cyan-400/50 transition-all">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3 flex-1 min-w-0">
                                 <input
@@ -1838,7 +1838,7 @@ export default function Settings() {
                                   </div>
                                   <button
                                     onClick={() => loginAsUser(user.id)}
-                                    className="text-xs text-gray-500 hover:text-blue-400 truncate block"
+                                    className="text-xs text-gray-500 hover:text-cyan-300 truncate block"
                                   >
                                     {user.email}
                                   </button>
@@ -1848,7 +1848,7 @@ export default function Settings() {
                                 <button onClick={() => loginAsUser(user.id)} className="p-2 text-gray-500 hover:text-white" title="Login as">
                                   <User className="w-4 h-4" />
                                 </button>
-                                <button onClick={() => handleEditUser(user)} className="p-2 text-gray-500 hover:text-blue-400" title="Edit">
+                                <button onClick={() => handleEditUser(user)} className="p-2 text-gray-500 hover:text-cyan-300" title="Edit">
                                   <Edit className="w-4 h-4" />
                                 </button>
                                 <button
@@ -1936,7 +1936,7 @@ export default function Settings() {
                       <button
                         onClick={() => { fetchSystemHealth(); fetchServerMonitoring(); }}
                         disabled={serverMonitoringLoading}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50"
+                        className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50"
                       >
                         <RefreshCw className={`w-4 h-4 ${serverMonitoringLoading ? 'animate-spin' : ''}`} />
                         Refresh
@@ -1994,7 +1994,7 @@ export default function Settings() {
                                 />
                               </svg>
                               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                <Cpu className="w-5 h-5 text-blue-400 mb-1" />
+                                <Cpu className="w-5 h-5 text-cyan-300 mb-1" />
                                 <span className="text-2xl font-bold text-white">{serverMonitoring.system.cpu?.percent?.toFixed(0) || 0}%</span>
                               </div>
                             </div>
@@ -2083,12 +2083,12 @@ export default function Settings() {
                     <div className="bg-[#0a1628] rounded-lg p-5 border border-[#2d4a6f]">
                       <div className="flex items-center justify-between mb-4">
                         <h4 className="text-sm font-medium text-white flex items-center gap-2">
-                          <Shield className="w-4 h-4 text-blue-400" />
+                          <Shield className="w-4 h-4 text-cyan-300" />
                           Security & Threat Protection
                         </h4>
                         <button
                           onClick={fetchSecurityData}
-                          className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                          className="text-xs px-2 py-1 rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/20"
                         >
                           Load Security Data
                         </button>
@@ -2176,7 +2176,7 @@ export default function Settings() {
                                     <td className="py-2 px-3"><span className="text-red-400 font-mono text-xs">{item.ip_address}</span></td>
                                     <td className="py-2 px-3"><span className="text-xs text-gray-400">{item.reason}</span></td>
                                     <td className="py-2 px-3">
-                                      <button onClick={() => handleUnblockIP(item.id)} className="text-xs text-blue-400 hover:text-blue-300">Unblock</button>
+                                      <button onClick={() => handleUnblockIP(item.id)} className="text-xs text-cyan-300 hover:text-cyan-200">Unblock</button>
                                     </td>
                                   </tr>
                                 ))}
@@ -2280,7 +2280,7 @@ export default function Settings() {
                       <button
                         onClick={fetchAnalytics}
                         disabled={analyticsLoading}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                        className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                       >
                         <RefreshCw className={`w-4 h-4 ${analyticsLoading ? 'animate-spin' : ''}`} />
                         {analyticsLoading ? 'Loading...' : 'Load Analytics'}
@@ -2291,9 +2291,9 @@ export default function Settings() {
                       <>
                         {/* Overview Stats */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 rounded-xl p-5 border border-blue-500/30">
+                          <div className="bg-gradient-to-br from-cyan-400/20 to-cyan-600/10 rounded-xl p-5 border border-cyan-400/30">
                             <div className="flex items-center gap-3 mb-3">
-                              <Users className="w-5 h-5 text-blue-400" />
+                              <Users className="w-5 h-5 text-cyan-300" />
                               <span className="text-xs text-gray-400">Total Users</span>
                             </div>
                             <p className="text-3xl font-bold text-white">{analyticsOverview.users?.total || 0}</p>
@@ -2357,12 +2357,12 @@ export default function Settings() {
                               {topSymbols.length > 0 ? topSymbols.map((symbol, idx) => (
                                 <div key={idx} className="flex items-center justify-between p-3 bg-[#1e3a5f] rounded-lg">
                                   <div className="flex items-center gap-3">
-                                    <span className="w-6 h-6 flex items-center justify-center bg-blue-500/20 text-blue-400 rounded text-xs font-bold">{idx + 1}</span>
+                                    <span className="w-6 h-6 flex items-center justify-center bg-cyan-500/20 text-cyan-300 rounded text-xs font-bold">{idx + 1}</span>
                                     <span className="font-medium text-white">{symbol.symbol}</span>
                                   </div>
                                   <div className="flex items-center gap-4 text-sm">
                                     <span className="text-gray-400">{symbol.trades} trades</span>
-                                    <span className="text-blue-400">{symbol.total_pnl}</span>
+                                    <span className="text-cyan-300">{symbol.total_pnl}</span>
                                   </div>
                                 </div>
                               )) : <p className="text-gray-500 text-center py-4">No trade data</p>}
@@ -2377,7 +2377,7 @@ export default function Settings() {
                               {topUsers.length > 0 ? topUsers.map((user, idx) => (
                                 <div key={idx} className="flex items-center justify-between p-3 bg-[#1e3a5f] rounded-lg">
                                   <div className="flex items-center gap-3">
-                                    <span className={`w-6 h-6 flex items-center justify-center rounded text-xs font-bold ${idx === 0 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-blue-500/20 text-blue-400'}`}>{idx + 1}</span>
+                                    <span className={`w-6 h-6 flex items-center justify-center rounded text-xs font-bold ${idx === 0 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-cyan-500/20 text-cyan-300'}`}>{idx + 1}</span>
                                     <div>
                                       <p className="font-medium text-white text-sm">{user.name}</p>
                                       <p className="text-xs text-gray-500">{user.email}</p>
@@ -2385,7 +2385,7 @@ export default function Settings() {
                                   </div>
                                   <div className="text-right">
                                     <p className="text-sm text-white">{user.trades} trades</p>
-                                    <p className="text-xs text-blue-400">{user.total_pnl}</p>
+                                    <p className="text-xs text-cyan-300">{user.total_pnl}</p>
                                   </div>
                                 </div>
                               )) : <p className="text-gray-500 text-center py-4">No user activity</p>}
@@ -2408,7 +2408,7 @@ export default function Settings() {
                                   </div>
                                   <div className="flex justify-between text-sm">
                                     <span className="text-gray-400">{group.user_count} users</span>
-                                    <span className="text-blue-400">{group.trade_count} trades</span>
+                                    <span className="text-cyan-300">{group.trade_count} trades</span>
                                   </div>
                                 </div>
                               ))}
@@ -2420,7 +2420,7 @@ export default function Settings() {
                       <div className="text-center py-16 bg-[#0a1628] rounded-xl border border-[#2d4a6f]">
                         <TrendingUp className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                         <p className="text-gray-500 mb-4">Click "Load Analytics" to view data</p>
-                        <button onClick={fetchAnalytics} disabled={analyticsLoading} className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                        <button onClick={fetchAnalytics} disabled={analyticsLoading} className="px-6 py-3 bg-cyan-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
                           {analyticsLoading ? 'Loading...' : 'Load Analytics'}
                         </button>
                       </div>
@@ -2461,7 +2461,7 @@ export default function Settings() {
                             type="text"
                             value={emailPrefix}
                             onChange={(e) => setEmailPrefix(e.target.value)}
-                            className="w-full px-5 py-4 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-red-500/20 focus:border-red-500 transition-all duration-300 text-lg bg-white"
+                            className="w-full px-5 py-4 border-2 border-cyan-500/15 rounded-xl focus:ring-4 focus:ring-red-500/20 focus:border-red-500 transition-all duration-300 text-lg bg-cyan-950/40"
                             placeholder="Enter prefix (e.g., 'w', 'test', 'admin')"
                           />
                         </div>
@@ -2478,7 +2478,7 @@ export default function Settings() {
 
                       {/* Results */}
                       {emailCountResult && (
-                        <div className="mt-8 bg-white rounded-xl p-6 border border-gray-200">
+                        <div className="mt-8 bg-cyan-950/40 rounded-xl p-6 border border-cyan-500/15">
                           <div className="flex items-center gap-4 mb-4">
                             <div className="p-3 bg-green-100 rounded-xl">
                               <CheckCircle className="w-6 h-6 text-green-600" />
@@ -2498,12 +2498,12 @@ export default function Settings() {
                               </div>
                             </div>
                             
-                            <div className="bg-gray-50 rounded-xl p-6">
+                            <div className="bg-cyan-950/25 rounded-xl p-6">
                               <h5 className="font-semibold text-gray-900 mb-3">Sample Emails</h5>
                               <div className="space-y-2">
                                 {emailCountResult.sample_emails && emailCountResult.sample_emails.length > 0 ? (
                                   emailCountResult.sample_emails.map((email, index) => (
-                                    <div key={index} className="text-sm text-gray-600 bg-white px-3 py-2 rounded-lg border">
+                                    <div key={index} className="text-sm text-gray-600 bg-cyan-950/40 px-3 py-2 rounded-lg border">
                                       {email}
                                     </div>
                                   ))
@@ -2514,15 +2514,15 @@ export default function Settings() {
                             </div>
                           </div>
                           
-                          <div className="mt-6 p-4 bg-blue-50 rounded-xl border border-blue-200">
-                            <p className="text-blue-800 font-medium">{emailCountResult.message}</p>
+                          <div className="mt-6 p-4 bg-cyan-950/25 rounded-xl border border-cyan-500/20">
+                            <p className="text-cyan-100 font-medium">{emailCountResult.message}</p>
                           </div>
                         </div>
                       )}
                     </div>
 
                     {/* Quick Count Examples */}
-                    <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-8 border border-gray-200">
+                    <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-8 border border-cyan-500/15">
                       <h4 className="text-lg font-bold text-gray-900 mb-6">Quick Count Examples</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         {['w', 'test', 'admin', 'user'].map((prefix) => (
@@ -2532,7 +2532,7 @@ export default function Settings() {
                               setEmailPrefix(prefix);
                               handleEmailCount(prefix);
                             }}
-                            className="p-4 bg-white rounded-xl border border-gray-200 hover:border-red-300 hover:bg-red-50 transition-all duration-300 text-center"
+                            className="p-4 bg-cyan-950/40 rounded-xl border border-cyan-500/15 hover:border-red-300 hover:bg-red-50 transition-all duration-300 text-center"
                           >
                             <Mail className="w-6 h-6 text-red-600 mx-auto mb-2" />
                             <p className="font-semibold text-gray-900">"{prefix}"</p>
@@ -2551,14 +2551,14 @@ export default function Settings() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="p-3 bg-gradient-to-br from-[#1e3a5f] to-[#2d4a6f] rounded-xl">
-                          <Globe className="w-6 h-6 text-blue-400" />
+                          <Globe className="w-6 h-6 text-cyan-300" />
                         </div>
                         <div>
                           <h3 className="text-xl font-bold text-white">User Geography & Demographics</h3>
                           <p className="text-gray-400 text-sm">Analyze user distribution by location</p>
                         </div>
                       </div>
-                      <button onClick={() => fetchGeographyData(geographyFilter)} disabled={geographyLoading} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm flex items-center gap-2 disabled:opacity-50">
+                      <button onClick={() => fetchGeographyData(geographyFilter)} disabled={geographyLoading} className="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-blue-700 text-sm flex items-center gap-2 disabled:opacity-50">
                         {geographyLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                         Refresh
                       </button>
@@ -2567,7 +2567,7 @@ export default function Settings() {
                     {/* Filter Buttons */}
                     <div className="flex flex-wrap gap-2">
                       {[{ id: 'all', label: 'All Users' }, { id: 'journal', label: 'Journal Users' }, { id: 'no-journal', label: 'No Journal' }, { id: 'mentorship', label: 'Mentorship' }].map(filter => (
-                        <button key={filter.id} onClick={() => { setGeographyFilter(filter.id); fetchGeographyData(filter.id); }} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${geographyFilter === filter.id ? 'bg-blue-600 text-white' : 'bg-[#1e3a5f] text-gray-400 hover:bg-[#2d4a6f] border border-[#2d4a6f]'}`}>
+                        <button key={filter.id} onClick={() => { setGeographyFilter(filter.id); fetchGeographyData(filter.id); }} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${geographyFilter === filter.id ? 'bg-cyan-600 text-white' : 'bg-[#1e3a5f] text-gray-400 hover:bg-[#2d4a6f] border border-[#2d4a6f]'}`}>
                           {filter.label}
                         </button>
                       ))}
@@ -2577,13 +2577,13 @@ export default function Settings() {
                       <div className="text-center py-12">
                         <Globe className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                         <p className="text-gray-400 mb-4">Click refresh to load geography data</p>
-                        <button onClick={() => fetchGeographyData(geographyFilter)} className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Load Data</button>
+                        <button onClick={() => fetchGeographyData(geographyFilter)} className="px-6 py-3 bg-cyan-600 text-white rounded-lg hover:bg-blue-700">Load Data</button>
                       </div>
                     )}
 
                     {geographyLoading && (
                       <div className="text-center py-12">
-                        <RefreshCw className="w-10 h-10 text-blue-400 animate-spin mx-auto" />
+                        <RefreshCw className="w-10 h-10 text-cyan-300 animate-spin mx-auto" />
                         <p className="text-gray-400 mt-4">Loading...</p>
                       </div>
                     )}
@@ -2597,7 +2597,7 @@ export default function Settings() {
                           </div>
                           <div className="bg-[#0d1f35] rounded-xl p-5 border border-[#2d4a6f]">
                             <p className="text-gray-500 text-xs uppercase">Countries</p>
-                            <p className="text-3xl font-bold text-blue-400 mt-2">{geographyData.all_countries?.length || 0}</p>
+                            <p className="text-3xl font-bold text-cyan-300 mt-2">{geographyData.all_countries?.length || 0}</p>
                           </div>
                           <div className="bg-[#0d1f35] rounded-xl p-5 border border-[#2d4a6f]">
                             <p className="text-gray-500 text-xs uppercase">Active (30d)</p>
@@ -2611,7 +2611,7 @@ export default function Settings() {
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                           <div className="bg-[#0d1f35] rounded-xl p-6 border border-[#2d4a6f]">
-                            <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2"><MapPin className="w-5 h-5 text-blue-400" />Top Countries</h4>
+                            <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2"><MapPin className="w-5 h-5 text-cyan-300" />Top Countries</h4>
                             <div className="space-y-3 max-h-80 overflow-y-auto">
                               {geographyData.countries?.map((country, idx) => (
                                 <div key={idx} className="flex items-center justify-between p-3 bg-[#1e3a5f] rounded-lg">
@@ -2620,7 +2620,7 @@ export default function Settings() {
                                     <span className="text-white font-medium">{country.country}</span>
                                   </div>
                                   <div className="flex items-center gap-3">
-                                    <div className="w-24 bg-[#0a1628] rounded-full h-2"><div className="bg-blue-500 h-2 rounded-full" style={{ width: `${country.percentage}%` }}></div></div>
+                                    <div className="w-24 bg-[#0a1628] rounded-full h-2"><div className="bg-cyan-500 h-2 rounded-full" style={{ width: `${country.percentage}%` }}></div></div>
                                     <span className="text-gray-400 text-sm w-20 text-right">{country.count} ({country.percentage}%)</span>
                                   </div>
                                 </div>
@@ -2634,7 +2634,7 @@ export default function Settings() {
                               <div className="flex items-center justify-between p-3 bg-[#1e3a5f] rounded-lg"><span className="text-gray-300">Journal Users</span><span className="text-green-400 font-bold">{geographyData.user_breakdown?.journal_users || 0}</span></div>
                               <div className="flex items-center justify-between p-3 bg-[#1e3a5f] rounded-lg"><span className="text-gray-300">No Journal</span><span className="text-purple-400 font-bold">{geographyData.user_breakdown?.no_journal_users || 0}</span></div>
                               <div className="flex items-center justify-between p-3 bg-[#1e3a5f] rounded-lg"><span className="text-gray-300">Admins</span><span className="text-red-400 font-bold">{geographyData.user_breakdown?.admin_users || 0}</span></div>
-                              <div className="flex items-center justify-between p-3 bg-[#1e3a5f] rounded-lg"><span className="text-gray-300">Active (30d)</span><span className="text-blue-400 font-bold">{geographyData.user_breakdown?.active_users || 0}</span></div>
+                              <div className="flex items-center justify-between p-3 bg-[#1e3a5f] rounded-lg"><span className="text-gray-300">Active (30d)</span><span className="text-cyan-300 font-bold">{geographyData.user_breakdown?.active_users || 0}</span></div>
                             </div>
                           </div>
 
@@ -2694,7 +2694,7 @@ export default function Settings() {
                         <button
                           onClick={handleSaveFeatureFlags}
                           disabled={isSavingFlags}
-                          className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                          className="flex items-center px-4 py-2 text-sm font-medium text-white bg-cyan-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
                         >
                           <Save className="w-4 h-4 mr-2" />
                           {isSavingFlags ? 'Saving...' : 'Save Changes'}
@@ -2715,7 +2715,7 @@ export default function Settings() {
 
                     {/* Feature Flags Summary */}
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                      <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white">
+                      <div className="bg-gradient-to-br from-cyan-400 to-cyan-600 rounded-xl p-6 text-white">
                         <div className="text-center">
                           <p className="text-blue-100 text-sm font-semibold">Total Flags</p>
                           <p className="text-3xl font-bold mt-2">{Object.keys(localFeatureFlags).length}</p>
@@ -2747,7 +2747,7 @@ export default function Settings() {
                     {/* Feature Groups */}
                     <div className="space-y-6">
                       {Object.entries(FEATURE_GROUPS).map(([groupName, features]) => (
-                        <div key={groupName} className="border border-gray-200 rounded-xl p-6 bg-white/50">
+                        <div key={groupName} className="border border-cyan-500/15 rounded-xl p-6 bg-cyan-950/150">
                           <div className="flex items-center justify-between mb-4">
                             <h4 className="text-lg font-semibold text-gray-900 capitalize">
                               {groupName.replace('_', ' ')} Features
@@ -2769,7 +2769,7 @@ export default function Settings() {
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {features.map(feature => (
-                              <div key={feature} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                              <div key={feature} className="flex items-center justify-between p-4 bg-cyan-950/25 rounded-lg">
                                 <div>
                                   <p className="font-medium text-gray-900">
                                     {feature.replace(/_/g, ' ')}
@@ -2781,11 +2781,11 @@ export default function Settings() {
                                 <button
                                   onClick={() => handleToggleFeature(feature)}
                                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                    localFeatureFlags[feature] ? 'bg-blue-600' : 'bg-gray-200'
+                                    localFeatureFlags[feature] ? 'bg-cyan-600' : 'bg-gray-200'
                                   }`}
                                 >
                                   <span
-                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-cyan-950/40 transition-transform ${
                                       localFeatureFlags[feature] ? 'translate-x-6' : 'translate-x-1'
                                     }`}
                                   />
@@ -2798,13 +2798,13 @@ export default function Settings() {
                     </div>
 
                     {/* Individual Features (not in groups) */}
-                    <div className="border border-gray-200 rounded-xl p-6 bg-white/50">
+                    <div className="border border-cyan-500/15 rounded-xl p-6 bg-cyan-950/150">
                       <h4 className="text-lg font-semibold text-gray-900 mb-4">Other Features</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {Object.entries(localFeatureFlags)
                           .filter(([feature]) => !Object.values(FEATURE_GROUPS).flat().includes(feature))
                           .map(([feature, enabled]) => (
-                            <div key={feature} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                            <div key={feature} className="flex items-center justify-between p-4 bg-cyan-950/25 rounded-lg">
                               <div>
                                 <p className="font-medium text-gray-900">
                                   {feature.replace(/_/g, ' ')}
@@ -2816,11 +2816,11 @@ export default function Settings() {
                               <button
                                 onClick={() => handleToggleFeature(feature)}
                                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                  enabled ? 'bg-blue-600' : 'bg-gray-200'
+                                  enabled ? 'bg-cyan-600' : 'bg-gray-200'
                                 }`}
                               >
                                 <span
-                                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                  className={`inline-block h-4 w-4 transform rounded-full bg-cyan-950/40 transition-transform ${
                                     enabled ? 'translate-x-6' : 'translate-x-1'
                                   }`}
                                 />
@@ -2849,7 +2849,7 @@ export default function Settings() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="p-3 bg-gradient-to-br from-[#1e3a5f] to-[#2d4a6f] rounded-xl">
-                          <Shield className="w-6 h-6 text-blue-400" />
+                          <Shield className="w-6 h-6 text-cyan-300" />
                         </div>
                         <div>
                           <h3 className="text-xl font-bold text-white">Security Settings</h3>
@@ -2866,7 +2866,7 @@ export default function Settings() {
                         <button
                           onClick={saveSecuritySettings}
                           disabled={savingSettings}
-                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all text-sm flex items-center gap-2 disabled:opacity-50"
+                          className="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-blue-700 transition-all text-sm flex items-center gap-2 disabled:opacity-50"
                         >
                           {savingSettings ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                           Save Changes
@@ -2876,7 +2876,7 @@ export default function Settings() {
 
                     {Object.keys(securitySettings).length === 0 && !securitySettingsLoading && (
                       <div className="text-center py-8">
-                        <button onClick={fetchSecuritySettings} className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all">
+                        <button onClick={fetchSecuritySettings} className="px-6 py-3 bg-cyan-600 text-white rounded-lg hover:bg-blue-700 transition-all">
                           Load Security Settings
                         </button>
                       </div>
@@ -2884,7 +2884,7 @@ export default function Settings() {
 
                     {securitySettingsLoading && (
                       <div className="text-center py-8">
-                        <RefreshCw className="w-8 h-8 text-blue-400 animate-spin mx-auto" />
+                        <RefreshCw className="w-8 h-8 text-cyan-300 animate-spin mx-auto" />
                         <p className="text-gray-400 mt-2">Loading settings...</p>
                       </div>
                     )}
@@ -2900,16 +2900,16 @@ export default function Settings() {
                           <div className="space-y-4">
                             <div>
                               <label className="block text-sm text-gray-400 mb-1">Max Failed Attempts Before Block</label>
-                              <input type="number" value={securitySettings.max_failed_attempts?.value || '10'} onChange={(e) => updateSecuritySetting('max_failed_attempts', e.target.value)} className="w-full px-4 py-2.5 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white focus:border-blue-500" />
+                              <input type="number" value={securitySettings.max_failed_attempts?.value || '10'} onChange={(e) => updateSecuritySetting('max_failed_attempts', e.target.value)} className="w-full px-4 py-2.5 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white focus:border-cyan-400" />
                             </div>
                             <div>
                               <label className="block text-sm text-gray-400 mb-1">Block Duration (hours)</label>
-                              <input type="number" value={securitySettings.block_duration_hours?.value || '24'} onChange={(e) => updateSecuritySetting('block_duration_hours', e.target.value)} className="w-full px-4 py-2.5 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white focus:border-blue-500" />
+                              <input type="number" value={securitySettings.block_duration_hours?.value || '24'} onChange={(e) => updateSecuritySetting('block_duration_hours', e.target.value)} className="w-full px-4 py-2.5 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white focus:border-cyan-400" />
                             </div>
                             <div className="flex items-center justify-between pt-2">
                               <span className="text-gray-300">Auto-Block Enabled</span>
-                              <button onClick={() => updateSecuritySetting('auto_block_enabled', securitySettings.auto_block_enabled?.value === 'true' ? 'false' : 'true')} className={`relative w-12 h-6 rounded-full transition-colors ${securitySettings.auto_block_enabled?.value === 'true' ? 'bg-blue-600' : 'bg-gray-600'}`}>
-                                <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${securitySettings.auto_block_enabled?.value === 'true' ? 'left-7' : 'left-1'}`} />
+                              <button onClick={() => updateSecuritySetting('auto_block_enabled', securitySettings.auto_block_enabled?.value === 'true' ? 'false' : 'true')} className={`relative w-12 h-6 rounded-full transition-colors ${securitySettings.auto_block_enabled?.value === 'true' ? 'bg-cyan-600' : 'bg-gray-600'}`}>
+                                <span className={`absolute top-1 w-4 h-4 bg-cyan-950/40 rounded-full transition-transform ${securitySettings.auto_block_enabled?.value === 'true' ? 'left-7' : 'left-1'}`} />
                               </button>
                             </div>
                           </div>
@@ -2924,12 +2924,12 @@ export default function Settings() {
                           <div className="space-y-4">
                             <div>
                               <label className="block text-sm text-gray-400 mb-1">Alert Threshold (attempts before alert)</label>
-                              <input type="number" value={securitySettings.alert_threshold?.value || '5'} onChange={(e) => updateSecuritySetting('alert_threshold', e.target.value)} className="w-full px-4 py-2.5 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white focus:border-blue-500" />
+                              <input type="number" value={securitySettings.alert_threshold?.value || '5'} onChange={(e) => updateSecuritySetting('alert_threshold', e.target.value)} className="w-full px-4 py-2.5 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white focus:border-cyan-400" />
                             </div>
                             <div className="flex items-center justify-between pt-2">
                               <span className="text-gray-300">Email Alerts Enabled</span>
-                              <button onClick={() => updateSecuritySetting('alert_email_enabled', securitySettings.alert_email_enabled?.value === 'true' ? 'false' : 'true')} className={`relative w-12 h-6 rounded-full transition-colors ${securitySettings.alert_email_enabled?.value === 'true' ? 'bg-blue-600' : 'bg-gray-600'}`}>
-                                <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${securitySettings.alert_email_enabled?.value === 'true' ? 'left-7' : 'left-1'}`} />
+                              <button onClick={() => updateSecuritySetting('alert_email_enabled', securitySettings.alert_email_enabled?.value === 'true' ? 'false' : 'true')} className={`relative w-12 h-6 rounded-full transition-colors ${securitySettings.alert_email_enabled?.value === 'true' ? 'bg-cyan-600' : 'bg-gray-600'}`}>
+                                <span className={`absolute top-1 w-4 h-4 bg-cyan-950/40 rounded-full transition-transform ${securitySettings.alert_email_enabled?.value === 'true' ? 'left-7' : 'left-1'}`} />
                               </button>
                             </div>
                           </div>
@@ -2944,7 +2944,7 @@ export default function Settings() {
                           <div className="space-y-4">
                             <div>
                               <label className="block text-sm text-gray-400 mb-1">Session Timeout (minutes)</label>
-                              <input type="number" value={securitySettings.session_timeout_minutes?.value || '60'} onChange={(e) => updateSecuritySetting('session_timeout_minutes', e.target.value)} className="w-full px-4 py-2.5 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white focus:border-blue-500" />
+                              <input type="number" value={securitySettings.session_timeout_minutes?.value || '60'} onChange={(e) => updateSecuritySetting('session_timeout_minutes', e.target.value)} className="w-full px-4 py-2.5 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white focus:border-cyan-400" />
                             </div>
                           </div>
                         </div>
@@ -2958,12 +2958,12 @@ export default function Settings() {
                           <div className="space-y-4">
                             <div>
                               <label className="block text-sm text-gray-400 mb-1">Minimum Password Length</label>
-                              <input type="number" value={securitySettings.min_password_length?.value || '8'} onChange={(e) => updateSecuritySetting('min_password_length', e.target.value)} className="w-full px-4 py-2.5 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white focus:border-blue-500" />
+                              <input type="number" value={securitySettings.min_password_length?.value || '8'} onChange={(e) => updateSecuritySetting('min_password_length', e.target.value)} className="w-full px-4 py-2.5 bg-[#1e3a5f] border border-[#2d4a6f] rounded-lg text-white focus:border-cyan-400" />
                             </div>
                             <div className="flex items-center justify-between pt-2">
                               <span className="text-gray-300">Require Strong Password</span>
-                              <button onClick={() => updateSecuritySetting('require_strong_password', securitySettings.require_strong_password?.value === 'true' ? 'false' : 'true')} className={`relative w-12 h-6 rounded-full transition-colors ${securitySettings.require_strong_password?.value === 'true' ? 'bg-blue-600' : 'bg-gray-600'}`}>
-                                <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${securitySettings.require_strong_password?.value === 'true' ? 'left-7' : 'left-1'}`} />
+                              <button onClick={() => updateSecuritySetting('require_strong_password', securitySettings.require_strong_password?.value === 'true' ? 'false' : 'true')} className={`relative w-12 h-6 rounded-full transition-colors ${securitySettings.require_strong_password?.value === 'true' ? 'bg-cyan-600' : 'bg-gray-600'}`}>
+                                <span className={`absolute top-1 w-4 h-4 bg-cyan-950/40 rounded-full transition-transform ${securitySettings.require_strong_password?.value === 'true' ? 'left-7' : 'left-1'}`} />
                               </button>
                             </div>
                           </div>
@@ -2980,13 +2980,13 @@ export default function Settings() {
         {/* Profile Information Section - Hidden for admin users */}
         {!isAdmin && (
         <div className="max-w-4xl mx-auto mb-12">
-            <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-white/50 overflow-hidden">
+            <div className="bg-cyan-950/45 backdrop-blur-sm rounded-3xl shadow-2xl border border-white/50 overflow-hidden">
               {/* Card Header */}
-              <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-8 py-6 border-b border-gray-200/50">
+              <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-8 py-6 border-b border-cyan-500/15">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div className="p-3 bg-blue-100 rounded-xl">
-                      <User className="w-6 h-6 text-blue-600" />
+                      <User className="w-6 h-6 text-cyan-300" />
                     </div>
                     <div>
                       <h2 className="text-xl font-bold text-gray-900">Profile Information</h2>
@@ -3019,7 +3019,7 @@ export default function Settings() {
                         <User className="w-20 h-20 text-white" />
                       )}
                     </div>
-                    <div className="absolute -bottom-3 -right-3 w-12 h-12 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full flex items-center justify-center shadow-xl group-hover:scale-110 transition-transform">
+                    <div className="absolute -bottom-3 -right-3 w-12 h-12 bg-gradient-to-r from-cyan-500 to-cyan-700 rounded-full flex items-center justify-center shadow-xl group-hover:scale-110 transition-transform">
                       <Camera className="w-6 h-6 text-white" />
                     </div>
                   </div>
@@ -3042,7 +3042,7 @@ export default function Settings() {
                         type="url"
                         value={profileImage}
                         onChange={handleImageChange}
-                        className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 text-lg bg-gray-50/50"
+                        className="w-full px-5 py-4 border-2 border-cyan-500/15 rounded-2xl focus:ring-4 focus:ring-cyan-400/20 focus:border-cyan-400 transition-all duration-300 text-lg bg-cyan-950/30"
                         placeholder="https://example.com/your-photo.jpg"
                       />
                       <p className="text-sm text-gray-500 ml-1">Paste a URL to your profile image</p>
@@ -3060,7 +3060,7 @@ export default function Settings() {
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 text-lg bg-gray-50/50"
+                        className="w-full px-5 py-4 border-2 border-cyan-500/15 rounded-2xl focus:ring-4 focus:ring-cyan-400/20 focus:border-cyan-400 transition-all duration-300 text-lg bg-cyan-950/30"
                         required
                         placeholder="your@email.com"
                       />
@@ -3083,7 +3083,7 @@ export default function Settings() {
                           type={showPassword ? 'text' : 'password'}
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          className="w-full px-5 py-4 pr-14 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 text-lg bg-gray-50/50"
+                          className="w-full px-5 py-4 pr-14 border-2 border-cyan-500/15 rounded-2xl focus:ring-4 focus:ring-cyan-400/20 focus:border-cyan-400 transition-all duration-300 text-lg bg-cyan-950/30"
                           placeholder="Enter new password"
                         />
                         <button
@@ -3130,7 +3130,7 @@ export default function Settings() {
                     className={`w-full flex items-center justify-center gap-3 py-5 px-8 rounded-2xl font-bold text-lg transition-all duration-300 transform ${
                       loading || !hasChanges
                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-2xl hover:shadow-3xl hover:scale-105 active:scale-95'
+                        : 'bg-gradient-to-r from-cyan-500 to-cyan-700 text-white hover:from-blue-700 hover:to-indigo-700 shadow-2xl hover:shadow-3xl hover:scale-105 active:scale-95'
                     }`}
                   >
                     {loading ? (
@@ -3151,7 +3151,7 @@ export default function Settings() {
           </div>
         )}
         {/* Footer */}
-        <div className="text-center mt-12 p-6 bg-white/50 backdrop-blur-sm rounded-2xl border border-white/50">
+        <div className="text-center mt-12 p-6 bg-cyan-950/150 backdrop-blur-sm rounded-2xl border border-white/50">
           <p className="text-gray-600 text-lg">Your data is encrypted and secure. We never share your information.</p>
           <div className="flex items-center justify-center gap-2 mt-2 text-sm text-gray-500">
             <Shield className="w-4 h-4" />
@@ -3161,9 +3161,9 @@ export default function Settings() {
       </div>
       {showEditModal && (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-    <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md relative">
+    <div className="bg-cyan-950/40 rounded-2xl shadow-2xl p-8 w-full max-w-md relative">
       <button onClick={() => setShowEditModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-700"><X className="w-6 h-6" /></button>
-      <h3 className="text-2xl font-bold mb-6 flex items-center gap-2"><Edit className="w-6 h-6 text-blue-600" /> Edit User</h3>
+      <h3 className="text-2xl font-bold mb-6 flex items-center gap-2"><Edit className="w-6 h-6 text-cyan-300" /> Edit User</h3>
       {editError && <div className="mb-4 text-red-600 text-sm">{editError}</div>}
       {editUser ? (
         <div className="space-y-4">
@@ -3192,7 +3192,7 @@ export default function Settings() {
       ) : (
         <div className="text-gray-500">No user data loaded.</div>
       )}
-      <button onClick={handleSaveEditUser} disabled={editLoading} className="mt-8 w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50">
+      <button onClick={handleSaveEditUser} disabled={editLoading} className="mt-8 w-full bg-cyan-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50">
         {editLoading ? <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" /> : <Edit className="w-5 h-5" />} Save Changes
       </button>
     </div>

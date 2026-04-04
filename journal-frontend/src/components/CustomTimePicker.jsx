@@ -154,7 +154,7 @@ const CustomTimePicker = ({
         <div className="flex flex-col items-center">
           <div className="text-xs font-medium text-gray-500 mb-1">Hour</div>
           <div className="relative">
-            <div className="w-12 h-16 bg-white border border-gray-200 rounded-md overflow-hidden shadow-sm">
+            <div className="w-12 h-16 bg-cyan-950/40 border border-cyan-500/15 rounded-md overflow-hidden shadow-sm">
               <div 
                 ref={hourScrollRef}
                 className="h-full overflow-y-auto scrollbar-hide"
@@ -171,7 +171,7 @@ const CustomTimePicker = ({
                     }}
                     className={`w-full h-4 flex items-center justify-center text-xs font-medium transition-all duration-200 ${
                       selectedHour === hour 
-                        ? 'bg-blue-500 text-white' 
+                        ? 'bg-cyan-500 text-white' 
                         : 'hover:bg-gray-100 text-gray-700'
                     }`}
                   >
@@ -193,7 +193,7 @@ const CustomTimePicker = ({
         <div className="flex flex-col items-center">
           <div className="text-xs font-medium text-gray-500 mb-1">Minute</div>
           <div className="relative">
-            <div className="w-12 h-16 bg-white border border-gray-200 rounded-md overflow-hidden shadow-sm">
+            <div className="w-12 h-16 bg-cyan-950/40 border border-cyan-500/15 rounded-md overflow-hidden shadow-sm">
               <div 
                 ref={minuteScrollRef}
                 className="h-full overflow-y-auto scrollbar-hide"
@@ -210,7 +210,7 @@ const CustomTimePicker = ({
                     }}
                     className={`w-full h-4 flex items-center justify-center text-xs font-medium transition-all duration-200 ${
                       selectedMinute === minute 
-                        ? 'bg-blue-500 text-white' 
+                        ? 'bg-cyan-500 text-white' 
                         : 'hover:bg-gray-100 text-gray-700'
                     }`}
                   >
@@ -232,7 +232,7 @@ const CustomTimePicker = ({
               e.stopPropagation();
               handleSetTime();
             }}
-            className="w-12 h-16 bg-blue-500 hover:bg-blue-600 text-white rounded-md shadow-sm transition-colors duration-200 flex items-center justify-center"
+            className="w-12 h-16 bg-cyan-500 hover:bg-cyan-600 text-white rounded-md shadow-sm transition-colors duration-200 flex items-center justify-center"
           >
             <Check size={16} />
           </button>
@@ -250,8 +250,8 @@ const CustomTimePicker = ({
           e.stopPropagation();
           if (!disabled) setIsOpen(!isOpen);
         }}
-        className={`w-full p-3 bg-white border border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-[#040028] transition-all duration-200 cursor-pointer flex items-center justify-between ${
-          disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-blue-300'
+        className={`w-full p-3 bg-cyan-950/40 border border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 text-[#040028] transition-all duration-200 cursor-pointer flex items-center justify-between ${
+          disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-cyan-400/25'
         } ${className}`}
       >
         <span className={`${value ? 'text-[#040028]' : 'text-gray-500'} truncate flex-1 mr-2`}>
@@ -281,7 +281,7 @@ const CustomTimePicker = ({
       {/* Dropdown */}
       {isOpen && !disabled && (
         <div 
-          className="absolute top-full left-0 right-0 sm:right-auto mt-2 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-4 sm:min-w-[280px] backdrop-blur-sm"
+          className="absolute top-full left-0 right-0 sm:right-auto mt-2 bg-cyan-950/40 border border-cyan-500/15 rounded-xl shadow-xl z-50 p-4 sm:min-w-[280px] backdrop-blur-sm"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
@@ -318,7 +318,7 @@ const CustomTimePicker = ({
                   e.stopPropagation();
                 }
               }}
-              className="w-full p-2 text-sm border border-gray-200 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50 hover:bg-white transition-colors"
+              className="w-full p-2 text-sm border border-cyan-500/15 rounded-md focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 bg-cyan-950/25 hover:bg-cyan-950/40 transition-colors"
             />
           </div>
 
@@ -344,7 +344,7 @@ const CustomTimePicker = ({
                 updateValue(now);
                 setIsOpen(false);
               }}
-              className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+              className="text-xs text-cyan-300 hover:text-cyan-100 font-medium px-2 py-1 rounded hover:bg-cyan-500/10 transition-colors"
             >
               ⚡ Now
             </button>

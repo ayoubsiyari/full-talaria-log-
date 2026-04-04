@@ -46,7 +46,7 @@ export default function Contact() {
       description: "Get help with your account or technical questions",
       contact: "support@talaria-trading.com",
       response: "Response within 24 hours",
-      color: "from-blue-500 to-cyan-500"
+      color: "from-cyan-400 to-cyan-500"
     },
     {
       icon: MessageSquare,
@@ -124,11 +124,11 @@ export default function Contact() {
             </Link>
             
             <div className="hidden md:flex items-center space-x-1">
-              <Link to="/features" className="px-3 py-1.5 text-sm text-white/70 hover:text-white hover:bg-white/5 rounded-md transition-all duration-200 border border-transparent hover:border-white/10">
+              <Link to="/features" className="px-3 py-1.5 text-sm text-white/70 hover:text-white hover:bg-cyan-950/15 rounded-md transition-all duration-200 border border-transparent hover:border-white/10">
                 Features
               </Link>
               
-              <Link to="/contact" className="px-3 py-1.5 text-sm text-white/70 hover:text-white hover:bg-white/5 rounded-md transition-all duration-200 border border-transparent hover:border-white/10">
+              <Link to="/contact" className="px-3 py-1.5 text-sm text-white/70 hover:text-white hover:bg-cyan-950/15 rounded-md transition-all duration-200 border border-transparent hover:border-white/10">
                 Contact
               </Link>
             </div>
@@ -137,7 +137,7 @@ export default function Contact() {
               <Link to="/login" className="px-3 py-1.5 text-sm text-white/70 hover:text-white transition-all duration-200">
                 Log in
               </Link>
-              <Link to="/login" className="px-4 py-2 bg-white text-black text-sm font-medium rounded-md hover:bg-white/90 transition-all duration-200 shadow-sm">
+              <Link to="/login" className="px-4 py-2 bg-cyan-400 text-cyan-950 text-sm font-medium rounded-md hover:bg-cyan-950/50 transition-all duration-200 shadow-sm">
                 Sign up
               </Link>
             </div>
@@ -149,7 +149,7 @@ export default function Contact() {
       <section className="pt-32 pb-20">
         <div className="container mx-auto px-6">
           <div className="text-center max-w-4xl mx-auto">
-            <div className="inline-flex items-center space-x-2 bg-white/5 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/10 mb-8">
+            <div className="inline-flex items-center space-x-2 bg-cyan-950/15 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/10 mb-8">
               <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
               <span className="text-sm text-white/80">Get in Touch</span>
             </div>
@@ -157,7 +157,7 @@ export default function Contact() {
             <h1 className="text-5xl md:text-7xl font-normal mb-8 text-white leading-tight">
               Let's discuss your
               <br />
-                              <span className="bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">
+                              <span className="bg-gradient-to-r from-blue-400 to-cyan-600 bg-clip-text text-transparent">
                   trading needs
                 </span>
             </h1>
@@ -175,7 +175,7 @@ export default function Contact() {
         <div className="container mx-auto px-6">
           <div className="grid md:grid-cols-3 gap-8 mb-20">
             {contactMethods.map((method, index) => (
-              <div key={index} className="bg-white/5 backdrop-blur-sm rounded-xl p-8 border border-white/10 hover:border-white/20 transition-all duration-300">
+              <div key={index} className="bg-cyan-950/15 backdrop-blur-sm rounded-xl p-8 border border-white/10 hover:border-white/20 transition-all duration-300">
                 <div className={`w-12 h-12 bg-gradient-to-r ${method.color} rounded-lg flex items-center justify-center mb-6`}>
                   <method.icon className="w-6 h-6 text-white" />
                 </div>
@@ -192,7 +192,7 @@ export default function Contact() {
       </section>
 
       {/* Contact Form & Office Locations */}
-      <section className="py-20 bg-white/5">
+      <section className="py-20 bg-cyan-950/15">
         <div className="container mx-auto px-6">
           <div className="grid lg:grid-cols-2 gap-16">
             {/* Contact Form */}
@@ -200,7 +200,7 @@ export default function Contact() {
               <h2 className="text-4xl md:text-5xl font-normal mb-6 text-white leading-tight">
                 Send us a
                 <br />
-                <span className="bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">
+                <span className="bg-gradient-to-r from-blue-400 to-cyan-600 bg-clip-text text-transparent">
                   message
                 </span>
               </h2>
@@ -218,7 +218,7 @@ export default function Contact() {
                       name="name"
                       value={formData.name}
                       onChange={handleChange}
-                      className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-purple-500 transition-colors"
+                      className="w-full px-4 py-3 bg-cyan-950/15 border border-white/10 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-purple-500 transition-colors"
                       placeholder="Your full name"
                       required
                     />
@@ -230,7 +230,7 @@ export default function Contact() {
                       name="email"
                       value={formData.email}
                       onChange={handleChange}
-                      className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-purple-500 transition-colors"
+                      className="w-full px-4 py-3 bg-cyan-950/15 border border-white/10 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-purple-500 transition-colors"
                       placeholder="your@email.com"
                       required
                     />
@@ -244,7 +244,7 @@ export default function Contact() {
                     name="company"
                     value={formData.company}
                     onChange={handleChange}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-purple-500 transition-colors"
+                    className="w-full px-4 py-3 bg-cyan-950/15 border border-white/10 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-purple-500 transition-colors"
                     placeholder="Your company (optional)"
                   />
                 </div>
@@ -255,7 +255,7 @@ export default function Contact() {
                     name="type"
                     value={formData.type}
                     onChange={handleChange}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-purple-500 transition-colors"
+                    className="w-full px-4 py-3 bg-cyan-950/15 border border-white/10 rounded-lg text-white focus:outline-none focus:border-purple-500 transition-colors"
                   >
                     <option value="general">General Inquiry</option>
                     <option value="support">Technical Support</option>
@@ -272,7 +272,7 @@ export default function Contact() {
                     value={formData.message}
                     onChange={handleChange}
                     rows={6}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-purple-500 transition-colors resize-none"
+                    className="w-full px-4 py-3 bg-cyan-950/15 border border-white/10 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-purple-500 transition-colors resize-none"
                     placeholder="Tell us how we can help you..."
                     required
                   />
@@ -280,7 +280,7 @@ export default function Contact() {
 
                 <button
                   type="submit"
-                                     className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-blue-700 text-white px-8 py-4 rounded-lg hover:from-blue-600 hover:to-blue-800 transition-all duration-200 text-sm font-medium shadow-lg hover:shadow-xl"
+                                     className="inline-flex items-center space-x-2 bg-gradient-to-r from-cyan-400 to-blue-700 text-white px-8 py-4 rounded-lg hover:from-cyan-500 hover:to-blue-800 transition-all duration-200 text-sm font-medium shadow-lg hover:shadow-xl"
                 >
                   <Send className="w-4 h-4" />
                   <span>Send Message</span>
@@ -293,7 +293,7 @@ export default function Contact() {
               <h2 className="text-4xl md:text-5xl font-normal mb-6 text-white leading-tight">
                 Global
                 <br />
-                <span className="bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">
+                <span className="bg-gradient-to-r from-blue-400 to-cyan-600 bg-clip-text text-transparent">
                   presence
                 </span>
               </h2>
@@ -304,9 +304,9 @@ export default function Contact() {
 
               <div className="space-y-6">
                 {officeLocations.map((office, index) => (
-                  <div key={index} className="bg-white/5 backdrop-blur-sm rounded-xl p-6 border border-white/10">
+                  <div key={index} className="bg-cyan-950/15 backdrop-blur-sm rounded-xl p-6 border border-white/10">
                     <div className="flex items-start space-x-4">
-                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-700 rounded-lg flex items-center justify-center">
+                      <div className="w-10 h-10 bg-gradient-to-br from-cyan-400 to-blue-700 rounded-lg flex items-center justify-center">
                         <office.icon className="w-5 h-5 text-white" />
                       </div>
                       <div className="flex-1">
@@ -335,7 +335,7 @@ export default function Contact() {
             <h2 className="text-4xl md:text-5xl font-normal mb-6 text-white leading-tight">
               Why choose our
               <br />
-                              <span className="bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">
+                              <span className="bg-gradient-to-r from-blue-400 to-cyan-600 bg-clip-text text-transparent">
                   support?
                 </span>
             </h2>
@@ -347,7 +347,7 @@ export default function Contact() {
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
             {supportFeatures.map((feature, index) => (
               <div key={index} className="text-center">
-                                 <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center mx-auto mb-6">
+                                 <div className="w-16 h-16 bg-gradient-to-br from-cyan-400 to-blue-700 rounded-xl flex items-center justify-center mx-auto mb-6">
                   <feature.icon className="w-8 h-8 text-white" />
                 </div>
                 <h3 className="text-lg font-medium mb-3 text-white">{feature.title}</h3>
@@ -359,13 +359,13 @@ export default function Contact() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 bg-white/5">
+      <section className="py-20 bg-cyan-950/15">
         <div className="container mx-auto px-6">
           <div className="text-center max-w-3xl mx-auto">
             <h2 className="text-4xl md:text-5xl font-normal mb-6 text-white leading-tight">
               Ready to get
               <br />
-                              <span className="bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">
+                              <span className="bg-gradient-to-r from-blue-400 to-cyan-600 bg-clip-text text-transparent">
                   started?
                 </span>
             </h2>
@@ -374,11 +374,11 @@ export default function Contact() {
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-                             <Link to="/login" className="group inline-flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-blue-700 text-white px-8 py-4 rounded-lg hover:from-blue-600 hover:to-blue-800 transition-all duration-200 text-sm font-medium shadow-lg hover:shadow-xl">
+                             <Link to="/login" className="group inline-flex items-center space-x-2 bg-gradient-to-r from-cyan-400 to-blue-700 text-white px-8 py-4 rounded-lg hover:from-cyan-500 hover:to-blue-800 transition-all duration-200 text-sm font-medium shadow-lg hover:shadow-xl">
                 <Sparkles className="w-4 h-4" />
                 <span>Start Free Trial</span>
               </Link>
-              <Link to="/pricing" className="group inline-flex items-center space-x-2 bg-white/10 backdrop-blur-sm text-white px-6 py-3 rounded-lg border border-white/20 hover:bg-white/15 hover:border-white/30 transition-all duration-200 text-sm">
+              <Link to="/pricing" className="group inline-flex items-center space-x-2 bg-cyan-500/10 backdrop-blur-sm text-white px-6 py-3 rounded-lg border border-white/20 hover:bg-cyan-500/12 hover:border-white/30 transition-all duration-200 text-sm">
                 <ExternalLink className="w-4 h-4" />
                 <span>View Pricing</span>
               </Link>

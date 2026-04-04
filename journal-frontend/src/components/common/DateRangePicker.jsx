@@ -30,7 +30,7 @@ const DateRangePicker = ({ ranges, onChange, staticRanges = [] }) => {
             <button
               key={index}
               onClick={() => handleRangeClick(range.range())}
-              className="text-sm px-3 py-1.5 text-left rounded border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+              className="text-sm px-3 py-1.5 text-left rounded border border-cyan-500/15 dark:border-gray-600 hover:bg-cyan-950/25 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
             >
               {range.label}
             </button>
@@ -79,7 +79,7 @@ const DateRangePicker = ({ ranges, onChange, staticRanges = [] }) => {
               }}
               className={`w-8 h-8 rounded-full text-sm flex items-center justify-center ${
                 isSelected
-                  ? 'bg-blue-500 text-white'
+                  ? 'bg-cyan-500 text-white'
                   : isToday
                   ? 'bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white'
                   : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-white'

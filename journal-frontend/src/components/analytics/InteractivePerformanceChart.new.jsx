@@ -63,7 +63,7 @@ const ChartTooltip = ({ active, payload, label, metric }) => {
   
   const data = payload[0].payload;
   return (
-    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
+    <div className="bg-cyan-950/40 dark:bg-gray-800 p-4 rounded-lg shadow-lg border border-cyan-500/15 dark:border-gray-700">
       <p className="font-medium text-gray-900 dark:text-white">
         {data.formatted_range || format(new Date(label), 'MMM d, yyyy')}
       </p>
@@ -102,7 +102,7 @@ const ChartLegend = ({ payload, onClick, activeMetric }) => (
         onClick={() => onClick(entry.dataKey)}
         className={`flex items-center px-3 py-1 rounded-full text-sm cursor-pointer transition-colors ${
           activeMetric === entry.dataKey 
-            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' 
+            ? 'bg-blue-100 text-cyan-200 dark:bg-blue-900 dark:text-blue-200' 
             : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'
         }`}
       >
@@ -349,7 +349,7 @@ const InteractivePerformanceChart = ({
   // Render loading state
   const renderLoading = () => (
     <div className="flex items-center justify-center h-full">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-400"></div>
     </div>
   );
 
@@ -514,7 +514,7 @@ const InteractivePerformanceChart = ({
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <div className="bg-cyan-950/40 dark:bg-gray-800 rounded-lg shadow p-4">
       <div className="flex flex-col h-full">
         {/* Header */}
         <div className="flex justify-between items-start mb-4">
@@ -538,7 +538,7 @@ const InteractivePerformanceChart = ({
                   onClick={toggleCumulativeView}
                   className={`p-2 rounded-full ${
                     isCumulativeView 
-                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' 
+                      ? 'bg-blue-100 text-cyan-200 dark:bg-blue-900 dark:text-blue-200' 
                       : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'
                   }`}
                   title={isCumulativeView ? 'Show individual P&L' : 'Show cumulative P&L'}
@@ -551,7 +551,7 @@ const InteractivePerformanceChart = ({
                 onClick={toggleMovingAverage}
                 className={`p-2 rounded-full ${
                   showMovingAverage 
-                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' 
+                    ? 'bg-blue-100 text-cyan-200 dark:bg-blue-900 dark:text-blue-200' 
                     : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'
                 }`}
                 title={showMovingAverage ? 'Hide moving average' : 'Show moving average'}
@@ -578,7 +578,7 @@ const InteractivePerformanceChart = ({
                 onClick={() => setTimeRange(range.value)}
                 className={`px-3 py-1 text-sm rounded-full ${
                   timeRange === range.value
-                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200'
+                    ? 'bg-blue-100 text-cyan-200 dark:bg-blue-900 dark:text-blue-200'
                     : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'
                 }`}
               >

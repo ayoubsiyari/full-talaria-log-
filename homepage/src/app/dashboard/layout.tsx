@@ -54,20 +54,21 @@ export default function DashboardLayout({
       };
 
   return (
-    <div className="min-h-screen bg-[#060611] text-foreground">
+    <div className="min-h-screen bg-[#050a10] text-foreground">
       <div className="pointer-events-none fixed inset-0 -z-10">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(59,130,246,0.06),transparent_50%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_120%_80%_at_50%_-10%,rgba(34,211,238,0.11),transparent_55%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_100%_0%,rgba(6,182,212,0.06),transparent_45%)]" />
       </div>
 
-      <header className="sticky top-0 z-[100] border-b border-white/[0.06] bg-[#060611]/80 backdrop-blur-xl">
+      <header className="sticky top-0 z-[100] border-b border-cyan-500/15 bg-[#050a10]/85 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-3">
           <a href="/" className="flex items-center gap-3">
             <img src="/logo-08.png" alt="Talaria Log" className="h-8 w-8" />
             <div className="leading-tight">
-              <div className="text-sm font-semibold text-white/80">
+              <div className="text-sm font-semibold text-slate-100">
                 Talaria Log
               </div>
-              <div className="text-[11px] text-white/25">
+              <div className="text-[11px] text-cyan-200/45">
                 {user ? user.email : ""}
               </div>
             </div>
@@ -90,7 +91,7 @@ export default function DashboardLayout({
               <a
                 key={item.label}
                 href={item.href}
-                className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-white/40 hover:text-white/70 hover:bg-white/[0.05] hover:border-white/[0.10] transition-all"
+                className="rounded-lg border border-cyan-500/20 bg-cyan-950/20 px-3 py-1.5 text-cyan-100/50 hover:text-cyan-200 hover:bg-cyan-500/10 hover:border-cyan-400/35 transition-all"
               >
                 {item.label}
               </a>
@@ -98,7 +99,7 @@ export default function DashboardLayout({
             {user?.role === "admin" && (
               <a
                 href="/dashboard/admin/"
-                className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-white/40 hover:text-white/70 hover:bg-white/[0.05] hover:border-white/[0.10] transition-all"
+                className="rounded-lg border border-cyan-500/20 bg-cyan-950/20 px-3 py-1.5 text-cyan-100/50 hover:text-cyan-200 hover:bg-cyan-500/10 hover:border-cyan-400/35 transition-all"
               >
                 {nav.admin}
               </a>

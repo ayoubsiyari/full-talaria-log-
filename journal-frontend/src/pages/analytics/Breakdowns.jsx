@@ -100,7 +100,7 @@ export default function Breakdowns() {
     Math.abs((stats.total_pnl / stats.win_loss.wins) / (stats.total_pnl / stats.win_loss.losses)).toFixed(2) : 0;
 
   return (
-    <div className="p-6 max-w-6xl mx-auto bg-white shadow-lg rounded-xl space-y-12">
+    <div className="p-6 max-w-6xl mx-auto bg-cyan-950/40 shadow-lg rounded-xl space-y-12">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Advanced Analytics Breakdown</h1>
         <div className="flex space-x-4">
@@ -108,7 +108,7 @@ export default function Breakdowns() {
             <select
               value={selectedTimeframe}
               onChange={(e) => setSelectedTimeframe(e.target.value)}
-              className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+              className="bg-cyan-950/25 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-cyan-400 focus:border-cyan-400 block w-full p-2.5"
             >
               <option value="all">All Time</option>
               <option value="month">Last Month</option>
@@ -118,7 +118,7 @@ export default function Breakdowns() {
           </div>
           <button
             onClick={() => setShowAdvancedStats(!showAdvancedStats)}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-cyan-600 hover:bg-blue-700"
           >
             <Settings className="h-5 w-5 mr-2" />
             {showAdvancedStats ? 'Hide Advanced' : 'Show Advanced'}
@@ -128,10 +128,10 @@ export default function Breakdowns() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Win/Loss Distribution */}
-        <div className="bg-white rounded-xl shadow-md p-6">
+        <div className="bg-cyan-950/40 rounded-xl shadow-md p-6">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-xl font-semibold text-gray-900 flex items-center">
-              <PieIcon className="h-6 w-6 text-blue-600 mr-2" />
+              <PieIcon className="h-6 w-6 text-cyan-300 mr-2" />
               Win/Loss Distribution
             </h3>
             <div className="flex space-x-2">
@@ -169,11 +169,11 @@ export default function Breakdowns() {
           </div>
           {showAdvancedStats && (
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="bg-cyan-950/25 p-4 rounded-lg">
                 <h4 className="text-sm font-medium text-gray-500">Average Win</h4>
                 <p className="text-lg font-semibold text-green-600">{formatCurrency(avgWin)}</p>
               </div>
-              <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="bg-cyan-950/25 p-4 rounded-lg">
                 <h4 className="text-sm font-medium text-gray-500">Average Loss</h4>
                 <p className="text-lg font-semibold text-red-600">{formatCurrency(avgLoss)}</p>
               </div>
@@ -182,14 +182,14 @@ export default function Breakdowns() {
         </div>
 
         {/* Directional Analysis */}
-        <div className="bg-white rounded-xl shadow-md p-6">
+        <div className="bg-cyan-950/40 rounded-xl shadow-md p-6">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-xl font-semibold text-gray-900 flex items-center">
-              <ArrowUpDown className="h-6 w-6 text-blue-600 mr-2" />
+              <ArrowUpDown className="h-6 w-6 text-cyan-300 mr-2" />
               Directional Analysis
             </h3>
             <div className="flex space-x-2">
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-cyan-100">
                 <ArrowLeftRight className="h-3 w-3 mr-1" />
                 Risk/Reward: {riskReward}x
               </span>
@@ -224,13 +224,13 @@ export default function Breakdowns() {
           </div>
           {showAdvancedStats && (
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="bg-cyan-950/25 p-4 rounded-lg">
                 <h4 className="text-sm font-medium text-gray-500">Long %</h4>
                 <p className="text-lg font-semibold text-green-600">{directionData[0].percentage}%</p>
               </div>
-              <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="bg-cyan-950/25 p-4 rounded-lg">
                 <h4 className="text-sm font-medium text-gray-500">Short %</h4>
-                <p className="text-lg font-semibold text-blue-600">{directionData[1].percentage}%</p>
+                <p className="text-lg font-semibold text-cyan-300">{directionData[1].percentage}%</p>
               </div>
             </div>
           )}

@@ -51,7 +51,7 @@ export default function Disclaimer() {
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <Link to="/" className="flex items-center space-x-3 group">
-              <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10 group-hover:bg-white/15 transition-all duration-300">
+              <div className="w-8 h-8 bg-cyan-500/10 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10 group-hover:bg-cyan-500/12 transition-all duration-300">
                 <img src={logo} alt="Journal Logo" className="w-6 h-6 rounded-sm" />
               </div>
               <span className="text-xl font-semibold text-white">
@@ -71,7 +71,7 @@ export default function Disclaimer() {
         <div className="max-w-4xl mx-auto">
           {/* Header */}
           <div className="text-center mb-16">
-            <div className="w-12 h-12 bg-white/10 rounded-lg flex items-center justify-center mx-auto mb-6 border border-white/10">
+            <div className="w-12 h-12 bg-cyan-500/10 rounded-lg flex items-center justify-center mx-auto mb-6 border border-white/10">
               <AlertTriangle className="w-6 h-6 text-white/80" />
             </div>
             <h1 className="text-4xl md:text-5xl font-normal mb-6 text-white leading-tight">
@@ -116,7 +116,7 @@ export default function Disclaimer() {
               </h2>
               <div className="space-y-4">
                 <p className="font-light">Journal is a trading journal and analytics platform. We do not provide investment advice, recommendations, or suggestions about specific securities or trading strategies.</p>
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">What We Don't Provide</h3>
                   <ul className="list-disc list-inside space-y-1 text-sm">
                     <li>Investment recommendations or advice</li>
@@ -152,7 +152,7 @@ export default function Disclaimer() {
               </h2>
               <div className="space-y-4">
                 <p className="font-light">In no event will Journal be liable for any loss or damage including without limitation, indirect or consequential loss or damage, or any loss or damage whatsoever arising from loss of data or profits arising out of, or in connection with, the use of this website.</p>
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Excluded Damages</h3>
                   <ul className="list-disc list-inside space-y-1 text-sm">
                     <li>Trading losses or missed opportunities</li>
@@ -169,7 +169,7 @@ export default function Disclaimer() {
               <h2 className="text-2xl font-medium text-white mb-4">Accuracy of Information</h2>
               <div className="space-y-4">
                 <p className="font-light">Through this website you are able to link to other websites which are not under the control of Journal. We have no control over the nature, content and availability of those sites.</p>
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Data Sources</h3>
                   <ul className="list-disc list-inside space-y-1 text-sm">
                     <li>Market data may be delayed or inaccurate</li>
@@ -185,7 +185,7 @@ export default function Disclaimer() {
               <h2 className="text-2xl font-medium text-white mb-4">Regulatory Compliance</h2>
               <div className="space-y-4">
                 <p className="font-light">Journal is not a registered investment advisor, broker-dealer, or financial institution. We do not provide regulated financial services.</p>
-                <div className="bg-blue-500/10 border border-blue-500/30 p-6 rounded-lg">
+                <div className="bg-cyan-500/10 border border-cyan-400/30 p-6 rounded-lg">
                   <h3 className="text-lg font-medium text-white mb-2">Important Notice</h3>
                   <p className="text-sm font-light">
                     Users are responsible for ensuring their trading activities comply with applicable laws and regulations 
@@ -199,7 +199,7 @@ export default function Disclaimer() {
               <h2 className="text-2xl font-medium text-white mb-4">Third-Party Services</h2>
               <div className="space-y-4">
                 <p className="font-light">Journal may integrate with third-party services and platforms. We are not responsible for the availability, accuracy, or reliability of these external services.</p>
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <ul className="list-disc list-inside space-y-1 text-sm">
                     <li>Broker integrations and data feeds</li>
                     <li>Market data providers</li>
@@ -224,7 +224,7 @@ export default function Disclaimer() {
 
             <section>
               <h2 className="text-2xl font-medium text-white mb-4">Contact Information</h2>
-              <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+              <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                 <p className="mb-4 font-light">If you have questions about this disclaimer or need clarification:</p>
                 <div className="space-y-2 text-sm">
                   <p><strong className="text-white/90">Email:</strong> legal@journal.com</p>

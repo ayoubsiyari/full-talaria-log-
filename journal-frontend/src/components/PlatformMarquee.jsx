@@ -29,7 +29,7 @@ const MarqueeContent = () => (
 
 export default function PlatformMarquee() {
   return (
-    <div className="w-full py-12 bg-white/5 overflow-hidden">
+    <div className="w-full py-12 bg-cyan-950/15 overflow-hidden">
       <div className="flex animate-marquee whitespace-nowrap">
         <MarqueeContent />
         <MarqueeContent />

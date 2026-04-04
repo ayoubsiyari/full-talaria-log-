@@ -110,13 +110,13 @@ const CombinationFilterTest = () => {
   };
 
   return (
-    <div className="p-6 bg-white rounded-lg shadow-lg max-w-4xl mx-auto">
+    <div className="p-6 bg-cyan-950/40 rounded-lg shadow-lg max-w-4xl mx-auto">
       <h2 className="text-2xl font-bold mb-4">Combination Filter Test</h2>
       
       <button
         onClick={runTests}
         disabled={loading}
-        className="mb-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+        className="mb-4 px-4 py-2 bg-cyan-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
       >
         {loading ? 'Running Tests...' : 'Run Tests'}
       </button>
@@ -140,7 +140,7 @@ const CombinationFilterTest = () => {
         </div>
       )}
 
-      <div className="mt-6 p-4 bg-gray-50 rounded">
+      <div className="mt-6 p-4 bg-cyan-950/25 rounded">
         <h4 className="font-semibold mb-2">Instructions:</h4>
         <ol className="list-decimal list-inside space-y-1 text-sm">
           <li>Make sure the backend is running on port 5000</li>

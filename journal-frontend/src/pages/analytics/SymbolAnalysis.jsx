@@ -228,9 +228,9 @@ export default function SymbolAnalysis() {
   const sortIcon = (column) => {
     if (sortBy === column) {
       return sortDirection === 'asc' ? (
-        <ChevronUp className="h-4 w-4 text-blue-600" />
+        <ChevronUp className="h-4 w-4 text-cyan-300" />
       ) : (
-        <ChevronDown className="h-4 w-4 text-blue-600" />
+        <ChevronDown className="h-4 w-4 text-cyan-300" />
       );
     }
     return null;
@@ -387,7 +387,7 @@ export default function SymbolAnalysis() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 p-8">
         <div className="max-w-7xl mx-auto">
-          <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-200 p-12">
+          <div className="bg-cyan-950/50 backdrop-blur-sm rounded-3xl shadow-2xl border border-cyan-500/15 p-12">
             <div className="animate-pulse space-y-8">
               <div className="flex items-center space-x-6">
                 <div className="h-16 w-16 bg-gradient-to-r from-blue-200 to-indigo-200 rounded-2xl animate-pulse"></div>
@@ -417,7 +417,7 @@ export default function SymbolAnalysis() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-red-50 to-orange-50 p-8">
         <div className="max-w-4xl mx-auto">
-          <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl border border-red-200 p-12">
+          <div className="bg-cyan-950/50 backdrop-blur-sm rounded-3xl shadow-2xl border border-red-200 p-12">
             <div className="flex items-center justify-center space-x-6 text-red-600">
               <div className="p-4 bg-red-100 rounded-2xl border border-red-200">
                 <Info className="h-10 w-10" />
@@ -458,11 +458,11 @@ export default function SymbolAnalysis() {
       <div className="p-6 lg:p-8">
         <div className="max-w-7xl mx-auto">
           {/* Header Section */}
-          <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-200 mb-8 p-8 relative overflow-hidden">
+          <div className="bg-cyan-950/50 backdrop-blur-sm rounded-3xl shadow-2xl border border-cyan-500/15 mb-8 p-8 relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-r from-blue-50/50 to-indigo-50/50"></div>
             <div className="relative flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
               <div className="flex items-center space-x-6">
-                <div className="p-4 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl shadow-xl">
+                <div className="p-4 bg-gradient-to-r from-cyan-500 to-cyan-700 rounded-2xl shadow-xl">
                   <Sparkles className="h-10 w-10 text-white" />
                 </div>
                 <div>
@@ -475,7 +475,7 @@ export default function SymbolAnalysis() {
               <div className="flex items-center space-x-4">
                 <button
                   onClick={() => window.location.reload()}
-                  className="group inline-flex items-center px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-2xl shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-300"
+                  className="group inline-flex items-center px-8 py-4 bg-gradient-to-r from-cyan-500 to-cyan-700 text-white font-semibold rounded-2xl shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-300"
                 >
                   <Settings className="h-6 w-6 mr-3 group-hover:rotate-90 transition-transform duration-300" />
                   Refresh Data
@@ -492,10 +492,10 @@ export default function SymbolAnalysis() {
           </div>
 
           {/* Tab Navigation */}
-          <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-200 mb-8 p-8">
+          <div className="bg-cyan-950/50 backdrop-blur-sm rounded-3xl shadow-2xl border border-cyan-500/15 mb-8 p-8">
             <div className="flex flex-wrap gap-4 mb-8">
               {[
-                { key: 'dashboard', label: 'Dashboard', icon: BarChart3, gradient: 'from-blue-500 to-cyan-500' },
+                { key: 'dashboard', label: 'Dashboard', icon: BarChart3, gradient: 'from-cyan-400 to-cyan-500' },
                 { key: 'equity', label: 'Equity Curve', icon: Activity, gradient: 'from-emerald-500 to-teal-500' },
                 { key: 'radar', label: 'Performance Radar', icon: Target, gradient: 'from-orange-500 to-red-500' }
               ].map((tab) => {
@@ -548,12 +548,12 @@ export default function SymbolAnalysis() {
               {/* Summary Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
                 {/* Pairs Traded */}
-                <div className="group bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-gray-200 hover:shadow-2xl transition-all duration-300 hover:scale-105 relative overflow-hidden">
+                <div className="group bg-cyan-950/50 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-cyan-500/15 hover:shadow-2xl transition-all duration-300 hover:scale-105 relative overflow-hidden">
                   <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-cyan-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   <div className="relative">
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Pairs Traded</h3>
-                      <div className="p-3 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-xl shadow-lg">
+                      <div className="p-3 bg-gradient-to-r from-cyan-400 to-cyan-500 rounded-xl shadow-lg">
                         <Database className="h-6 w-6 text-white" />
                       </div>
                     </div>
@@ -563,7 +563,7 @@ export default function SymbolAnalysis() {
                 </div>
 
                 {/* Total P&L */}
-                <div className="group bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-gray-200 hover:shadow-2xl transition-all duration-300 hover:scale-105 relative overflow-hidden">
+                <div className="group bg-cyan-950/50 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-cyan-500/15 hover:shadow-2xl transition-all duration-300 hover:scale-105 relative overflow-hidden">
                   <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/50 to-teal-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   <div className="relative">
                     <div className="flex items-center justify-between mb-4">
@@ -579,7 +579,7 @@ export default function SymbolAnalysis() {
                 </div>
 
                 {/* Avg Win Rate */}
-                <div className="group bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-gray-200 hover:shadow-2xl transition-all duration-300 hover:scale-105 relative overflow-hidden">
+                <div className="group bg-cyan-950/50 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-cyan-500/15 hover:shadow-2xl transition-all duration-300 hover:scale-105 relative overflow-hidden">
                   <div className="absolute inset-0 bg-gradient-to-br from-purple-50/50 to-pink-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   <div className="relative">
                     <div className="flex items-center justify-between mb-4">
@@ -595,7 +595,7 @@ export default function SymbolAnalysis() {
                 </div>
 
                 {/* Avg R:R */}
-                <div className="group bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-gray-200 hover:shadow-2xl transition-all duration-300 hover:scale-105 relative overflow-hidden">
+                <div className="group bg-cyan-950/50 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-cyan-500/15 hover:shadow-2xl transition-all duration-300 hover:scale-105 relative overflow-hidden">
                   <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 to-blue-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   <div className="relative">
                     <div className="flex items-center justify-between mb-4">
@@ -611,7 +611,7 @@ export default function SymbolAnalysis() {
                 </div>
 
                 {/* Best Pair */}
-                <div className="group bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-gray-200 hover:shadow-2xl transition-all duration-300 hover:scale-105 relative overflow-hidden">
+                <div className="group bg-cyan-950/50 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-cyan-500/15 hover:shadow-2xl transition-all duration-300 hover:scale-105 relative overflow-hidden">
                   <div className="absolute inset-0 bg-gradient-to-br from-green-50/50 to-emerald-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   <div className="relative">
                     <div className="flex items-center justify-between mb-4">
@@ -626,7 +626,7 @@ export default function SymbolAnalysis() {
                 </div>
 
                 {/* Worst Pair */}
-                <div className="group bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-gray-200 hover:shadow-2xl transition-all duration-300 hover:scale-105 relative overflow-hidden">
+                <div className="group bg-cyan-950/50 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-cyan-500/15 hover:shadow-2xl transition-all duration-300 hover:scale-105 relative overflow-hidden">
                   <div className="absolute inset-0 bg-gradient-to-br from-red-50/50 to-orange-50/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   <div className="relative">
                     <div className="flex items-center justify-between mb-4">
@@ -642,15 +642,15 @@ export default function SymbolAnalysis() {
               </div>
 
               {/* Charts Grid */}
-              <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-gray-200 hover:shadow-3xl transition-all duration-300">
+              <div className="bg-cyan-950/50 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-cyan-500/15 hover:shadow-3xl transition-all duration-300">
                 {/* Gross Profit vs Loss */}
                 
 
                 {/* Win Rate by Symbol */}
-                <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-gray-200 hover:shadow-3xl transition-all duration-300">
+                <div className="bg-cyan-950/50 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-cyan-500/15 hover:shadow-3xl transition-all duration-300">
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="text-xl font-bold text-gray-800">Win Rate by Symbol ({filteredData.length} symbols)</h3>
-                    <div className="p-3 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-xl shadow-lg">
+                    <div className="p-3 bg-gradient-to-r from-cyan-400 to-cyan-500 rounded-xl shadow-lg">
                       <Target className="h-6 w-6 text-white" />
                     </div>
                   </div>
@@ -697,7 +697,7 @@ export default function SymbolAnalysis() {
               </div>
 
               {/* P&L by Symbol */}
-              <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-gray-200 hover:shadow-3xl transition-all duration-300">
+              <div className="bg-cyan-950/50 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-cyan-500/15 hover:shadow-3xl transition-all duration-300">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-xl font-bold text-gray-800">P&L by Symbol ({filteredData.length} symbols)</h3>
                   <div className="p-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl shadow-lg">
@@ -744,7 +744,7 @@ export default function SymbolAnalysis() {
               </div>
 
               {/* Trade Distribution */}
-              <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-gray-200 hover:shadow-3xl transition-all duration-300">
+              <div className="bg-cyan-950/50 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-cyan-500/15 hover:shadow-3xl transition-all duration-300">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-xl font-bold text-gray-800">Trade Distribution ({data.length} symbols)</h3>
                   <div className="p-3 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl shadow-lg">
@@ -791,8 +791,8 @@ export default function SymbolAnalysis() {
               </div>
 
               {/* Data Table */}
-              <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
-                <div className="p-8 flex items-center justify-between border-b border-gray-200">
+              <div className="bg-cyan-950/50 backdrop-blur-sm rounded-3xl shadow-2xl border border-cyan-500/15 overflow-hidden">
+                <div className="p-8 flex items-center justify-between border-b border-cyan-500/15">
                   <h3 className="text-xl font-bold text-gray-800">Detailed Symbol Data ({filteredData.length} symbols)</h3>
                   <div className="p-3 bg-gradient-to-r from-gray-600 to-gray-700 rounded-xl shadow-lg">
                     <Database className="h-6 w-6 text-white" />
@@ -801,7 +801,7 @@ export default function SymbolAnalysis() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-left">
                     <thead>
-                      <tr className="bg-gray-50/80 border-b border-gray-200">
+                      <tr className="bg-cyan-950/30 border-b border-cyan-500/15">
                         <th className="py-4 px-6 text-sm font-bold text-gray-600 uppercase tracking-wider cursor-pointer hover:text-gray-800 transition-colors" onClick={() => handleSort('symbol')}>
                           <div className="flex items-center space-x-2"><span>Symbol</span>{sortIcon('symbol')}</div>
                         </th>
@@ -836,7 +836,7 @@ export default function SymbolAnalysis() {
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {sortedData().map((row, index) => (
-                        <tr key={row.symbol} className="hover:bg-gray-50/60 transition-colors duration-200">
+                        <tr key={row.symbol} className="hover:bg-cyan-950/25 transition-colors duration-200">
                           <td className="py-4 px-6 font-bold text-gray-800">{row.symbol}</td>
                           <td className="py-4 px-6 text-gray-600 font-medium">{row.trades}</td>
                           <td className={`py-4 px-6 font-bold ${row.pnl >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(row.pnl)}</td>
@@ -861,7 +861,7 @@ export default function SymbolAnalysis() {
           )}
 
           {activeTab === 'equity' && (
-            <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-gray-200">
+            <div className="bg-cyan-950/50 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-cyan-500/15">
               <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between mb-8 gap-6">
                 <div className="flex items-center">
                   <div className="p-3 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-xl shadow-lg mr-4">
@@ -874,8 +874,8 @@ export default function SymbolAnalysis() {
                     <span className="text-sm font-medium text-gray-600">Accumulative</span>
                     <button
                       onClick={() => setCompareMode(!compareMode)}
-                      className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-300 ${compareMode ? 'bg-gradient-to-r from-blue-500 to-indigo-500' : 'bg-gray-300'}`}>
-                      <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform duration-300 ease-in-out ${compareMode ? 'translate-x-6' : 'translate-x-1'} shadow-lg`}/>
+                      className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-300 ${compareMode ? 'bg-gradient-to-r from-cyan-400 to-indigo-500' : 'bg-gray-300'}`}>
+                      <span className={`inline-block h-5 w-5 transform rounded-full bg-cyan-950/40 transition-transform duration-300 ease-in-out ${compareMode ? 'translate-x-6' : 'translate-x-1'} shadow-lg`}/>
                     </button>
                     <span className="text-sm font-medium text-gray-600">Compare</span>
                   </div>
@@ -883,13 +883,13 @@ export default function SymbolAnalysis() {
                     <label className="text-sm font-medium text-gray-600 block mb-2">Symbols:</label>
                     <button
                         onClick={() => setIsSymbolDropdownOpen(!isSymbolDropdownOpen)}
-                        className="w-full lg:w-64 flex justify-between items-center px-4 py-3 border border-gray-300 rounded-xl bg-white/80 backdrop-blur-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-300 text-gray-800"
+                        className="w-full lg:w-64 flex justify-between items-center px-4 py-3 border border-gray-300 rounded-xl bg-cyan-950/45 backdrop-blur-sm focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 transition-all duration-300 text-gray-800"
                     >
                         <span className="block truncate">{selectedSymbols.length > 0 ? selectedSymbols.join(', ') : 'Select symbols'}</span>
                         {isSymbolDropdownOpen ? <ChevronUp className="h-5 w-5 text-gray-500" /> : <ChevronDown className="h-5 w-5 text-gray-500" />} 
                     </button>
                     {isSymbolDropdownOpen && (
-                        <div className="absolute z-10 mt-2 w-full bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-200 p-4">
+                        <div className="absolute z-10 mt-2 w-full bg-cyan-950/55 backdrop-blur-sm rounded-2xl shadow-2xl border border-cyan-500/15 p-4">
                             <div className="flex justify-between items-center mb-4">
                                 <div className="flex items-center">
                                     <input
@@ -897,7 +897,7 @@ export default function SymbolAnalysis() {
                                         type="checkbox"
                                         onChange={handleSelectAll}
                                         checked={selectedSymbols.length === symbolsForDropdown.length && symbolsForDropdown.length > 0}
-                                        className="h-4 w-4 rounded border-gray-300 bg-gray-100 text-blue-600 focus:ring-blue-500"
+                                        className="h-4 w-4 rounded border-gray-300 bg-gray-100 text-cyan-300 focus:ring-cyan-400"
                                     />
                                     <label htmlFor="select-all" className="ml-3 text-sm font-medium text-gray-800 cursor-pointer">
                                         Select All
@@ -913,7 +913,7 @@ export default function SymbolAnalysis() {
                                             value={d.symbol}
                                             checked={selectedSymbols.includes(d.symbol)}
                                             onChange={handleSymbolSelection}
-                                            className="h-4 w-4 rounded border-gray-300 bg-gray-100 text-blue-600 focus:ring-blue-500 flex-shrink-0"
+                                            className="h-4 w-4 rounded border-gray-300 bg-gray-100 text-cyan-300 focus:ring-cyan-400 flex-shrink-0"
                                         />
                                         <label htmlFor={`symbol-${d.symbol}`} title={d.symbol} className="ml-3 text-sm font-medium text-gray-800 cursor-pointer">
                                             {d.symbol}
@@ -992,7 +992,7 @@ export default function SymbolAnalysis() {
 
           {activeTab === 'radar' && (
             <>
-              <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-gray-200 mb-8">
+              <div className="bg-cyan-950/50 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-cyan-500/15 mb-8">
                 <div className="flex items-center mb-8">
                   <div className="p-3 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl shadow-lg mr-4">
                     <Target className="h-6 w-6 text-white" />
@@ -1043,7 +1043,7 @@ export default function SymbolAnalysis() {
                 )}
               </div>
 
-              <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-gray-200">
+              <div className="bg-cyan-950/50 backdrop-blur-sm rounded-3xl shadow-2xl p-8 border border-cyan-500/15">
                 <div className="flex items-center mb-8">
                   <div className="p-3 bg-gradient-to-r from-red-500 to-pink-500 rounded-xl shadow-lg mr-4">
                     <Target className="h-6 w-6 text-white" />

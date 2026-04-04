@@ -45,9 +45,9 @@ const PERFORMANCE_RATINGS = {
   },
   good: { 
     color: 'blue', 
-    bgColor: 'bg-blue-50', 
-    textColor: 'text-blue-700',
-    borderColor: 'border-blue-200',
+    bgColor: 'bg-cyan-950/25', 
+    textColor: 'text-cyan-200',
+    borderColor: 'border-cyan-500/20',
     threshold: { pnl: 0, winRate: 50 } 
   },
   fair: { 
@@ -85,7 +85,7 @@ const calculatePerformanceRating = (stats) => {
 };
 
 const StatCard = ({ title, value, subtitle, icon: Icon, iconColor, valueColor, trend, isLoading }) => (
-  <div className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-all duration-300 group">
+  <div className="bg-cyan-950/40 rounded-xl border border-cyan-500/15 p-6 hover:shadow-lg transition-all duration-300 group">
     <div className="flex items-start justify-between">
       <div className="flex-1">
         <div className="flex items-center mb-3">
@@ -156,7 +156,7 @@ const ErrorState = ({ error }) => (
 
 const EmptyState = () => (
   <div className="p-8 max-w-7xl mx-auto">
-    <div className="bg-gray-50 border border-gray-200 rounded-xl p-12 text-center">
+    <div className="bg-cyan-950/25 border border-cyan-500/15 rounded-xl p-12 text-center">
       <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
       <h3 className="text-lg font-medium text-gray-900 mb-2">No Trading Data Available</h3>
       <p className="text-gray-500">Start trading to see your performance metrics here.</p>
@@ -201,10 +201,10 @@ export default function Overview() {
   const profitFactor = stats?.profit_factor || 0;
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen bg-cyan-950/25 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+        <div className="bg-cyan-950/40 rounded-xl shadow-sm border border-cyan-500/15 p-6 mb-8">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Trading Performance</h1>
@@ -216,7 +216,7 @@ export default function Overview() {
                 <select
                   value={selectedTimeframe}
                   onChange={(e) => setSelectedTimeframe(e.target.value)}
-                  className="appearance-none bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block w-full pl-3 pr-10 py-2.5 cursor-pointer hover:border-gray-400 transition-colors"
+                  className="appearance-none bg-cyan-950/40 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 block w-full pl-3 pr-10 py-2.5 cursor-pointer hover:border-gray-400 transition-colors"
                 >
                   {TIMEFRAME_OPTIONS.map(option => (
                     <option key={option.value} value={option.value}>
@@ -229,7 +229,7 @@ export default function Overview() {
               
               <button
                 onClick={() => setShowAdvancedStats(!showAdvancedStats)}
-                className="inline-flex items-center px-4 py-2.5 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                className="inline-flex items-center px-4 py-2.5 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-cyan-950/40 hover:bg-cyan-950/25 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 transition-colors"
               >
                 {showAdvancedStats ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
                 {showAdvancedStats ? 'Hide Advanced' : 'Show Advanced'}
@@ -267,7 +267,7 @@ export default function Overview() {
             value={formatInteger(stats.total_trades)}
             subtitle="Total number of executed trades"
             icon={Activity}
-            iconColor="text-blue-600"
+            iconColor="text-cyan-300"
             valueColor="text-gray-900"
           />
           
@@ -285,8 +285,8 @@ export default function Overview() {
             value={formatPercent(stats.win_rate)}
             subtitle="Percentage of profitable trades"
             icon={Target}
-            iconColor="text-blue-600"
-            valueColor="text-blue-600"
+            iconColor="text-cyan-300"
+            valueColor="text-cyan-300"
           />
           
           <StatCard
@@ -301,14 +301,14 @@ export default function Overview() {
 
         {/* Advanced Stats */}
         {showAdvancedStats && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+          <div className="bg-cyan-950/40 rounded-xl shadow-sm border border-cyan-500/15 p-6 mb-8">
             <div className="flex items-center mb-6">
               <Settings className="h-5 w-5 text-gray-600 mr-2" />
               <h3 className="text-lg font-semibold text-gray-900">Advanced Analytics</h3>
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <div className="bg-cyan-950/25 rounded-lg p-4 border border-cyan-500/15">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="text-sm font-medium text-gray-600 uppercase tracking-wide">Average Win</h4>
                   <TrendingUp className="h-4 w-4 text-emerald-600" />
@@ -319,7 +319,7 @@ export default function Overview() {
                 <p className="text-xs text-gray-500 mt-1">Per winning trade</p>
               </div>
               
-              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <div className="bg-cyan-950/25 rounded-lg p-4 border border-cyan-500/15">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="text-sm font-medium text-gray-600 uppercase tracking-wide">Average Loss</h4>
                   <TrendingDown className="h-4 w-4 text-red-600" />
@@ -330,18 +330,18 @@ export default function Overview() {
                 <p className="text-xs text-gray-500 mt-1">Per losing trade</p>
               </div>
               
-              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <div className="bg-cyan-950/25 rounded-lg p-4 border border-cyan-500/15">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="text-sm font-medium text-gray-600 uppercase tracking-wide">Profit Factor</h4>
-                  <BarChart3 className="h-4 w-4 text-blue-600" />
+                  <BarChart3 className="h-4 w-4 text-cyan-300" />
                 </div>
-                <p className="text-xl font-bold text-blue-600">
+                <p className="text-xl font-bold text-cyan-300">
                   {profitFactor > 0 ? formatNumber(profitFactor) : 'N/A'}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">Gross profit / Gross loss</p>
               </div>
               
-              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <div className="bg-cyan-950/25 rounded-lg p-4 border border-cyan-500/15">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="text-sm font-medium text-gray-600 uppercase tracking-wide">Total Wins/Losses</h4>
                   <Activity className="h-4 w-4 text-gray-600" />

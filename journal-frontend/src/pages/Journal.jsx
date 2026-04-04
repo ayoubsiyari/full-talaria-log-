@@ -58,8 +58,8 @@ const formatPercent = (val) => `${parseFloat(val || 0).toFixed(2)}%`;
 const MetricCard = ({ children, className = "" }) => (
   <div className={`
     group relative overflow-hidden rounded-xl 
-    bg-white border border-blue-200/60
-    hover:border-blue-300 hover:shadow-lg hover:-translate-y-1
+    bg-cyan-950/40 border border-cyan-500/20
+    hover:border-cyan-400/25 hover:shadow-lg hover:-translate-y-1
     transition-all duration-300 ease-out
     p-5 min-h-[100px] font-['Inter'] shadow-sm
     ${className}
@@ -996,8 +996,8 @@ export default function ProfessionalTradingJournal() {
   };
 
   return (
-    <div className="flex min-h-screen bg-gradient-reflect dark bg-slate-50">
-      <div className="w-full px-8 py-4 relative z-10 bg-slate-50">
+    <div className="flex min-h-screen bg-gradient-reflect dark bg-jf-bg">
+      <div className="w-full px-8 py-4 relative z-10 bg-jf-bg">
         {/* ─── Header ──────────────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -1014,7 +1014,7 @@ export default function ProfessionalTradingJournal() {
                     ? 'bg-purple-100 text-purple-800 border border-purple-200' 
                     : activeProfile.mode === 'journal_live'
                     ? 'bg-green-100 text-green-800 border border-green-200'
-                    : 'bg-blue-100 text-blue-800 border border-blue-200'
+                    : 'bg-blue-100 text-cyan-100 border border-cyan-500/20'
                 }`}>
                   {activeProfile.mode === 'backtest' ? '🔬 Backtest Mode' : 
                    activeProfile.mode === 'journal_live' ? '📡 Live Journal Mode' : 
@@ -1026,7 +1026,7 @@ export default function ProfessionalTradingJournal() {
 
           <div className="flex gap-4 items-center">
             {/* Import Input */}
-            <label className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-4 py-2 rounded-lg font-medium text-sm shadow-md transition-all duration-200 hover:shadow-lg cursor-pointer">
+            <label className="bg-gradient-to-r from-cyan-500 to-cyan-700 hover:from-blue-700 hover:to-indigo-700 text-white px-4 py-2 rounded-lg font-medium text-sm shadow-md transition-all duration-200 hover:shadow-lg cursor-pointer">
               📂 Import
               <input
                 type="file"
@@ -1126,7 +1126,7 @@ export default function ProfessionalTradingJournal() {
             {/* Toggle Form */}
             <button
               onClick={resetFormForNewTrade}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-4 py-2 rounded-lg font-medium text-sm shadow-md transition-all duration-200 hover:shadow-lg flex items-center gap-2"
+              className="bg-gradient-to-r from-cyan-500 to-cyan-700 hover:from-blue-700 hover:to-indigo-700 text-white px-4 py-2 rounded-lg font-medium text-sm shadow-md transition-all duration-200 hover:shadow-lg flex items-center gap-2"
             >
               <span className="text-lg">+</span> Add Trade
             </button>
@@ -1167,11 +1167,11 @@ export default function ProfessionalTradingJournal() {
         )}
 
 {/* ─── Account Setup ────────────────────────────────────────────────────────── */}
-<div className="bg-white rounded-xl shadow-sm border border-blue-200/60 p-6 mb-8">
+<div className="bg-cyan-950/40 rounded-xl shadow-sm border border-cyan-500/20 p-6 mb-8">
           <h2 className="text-2xl font-bold text-[#040028] mb-6">Account Setup</h2>
           
           {/* Initial Balance Section */}
-          <div className="bg-slate-50 rounded-xl p-6 border border-blue-200/60">
+          <div className="bg-jf-bg rounded-xl p-6 border border-cyan-500/20">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-3">
                 <div className="p-2 bg-emerald-500 rounded-lg shadow-sm">
@@ -1179,7 +1179,7 @@ export default function ProfessionalTradingJournal() {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-[#040028]">Initial Account Balance</h3>
-                  <p className="text-sm text-slate-600">Set your starting balance for accurate performance calculations</p>
+                  <p className="text-sm text-cyan-100/60">Set your starting balance for accurate performance calculations</p>
                 </div>
               </div>
             </div>
@@ -1197,7 +1197,7 @@ export default function ProfessionalTradingJournal() {
                   value={initialBalance}
                   onChange={handleBalanceChange}
                   onKeyDown={handleBalanceKeyDown}
-                  className="w-48 h-12 pl-8 pr-4 text-lg font-bold text-[#040028] placeholder-slate-600 bg-white border-2 border-blue-200/60 rounded-lg focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200 shadow-sm"
+                  className="w-48 h-12 pl-8 pr-4 text-lg font-bold text-[#040028] placeholder-slate-600 bg-cyan-950/40 border-2 border-cyan-500/20 rounded-lg focus:border-cyan-400 focus:ring-4 focus:ring-blue-100 transition-all duration-200 shadow-sm"
                 />
               </div>
               
@@ -1208,12 +1208,12 @@ export default function ProfessionalTradingJournal() {
                 disabled={isSavingBalance || !initialBalance || isNaN(Number(initialBalance)) || Number(initialBalance) <= 0}
                 className={`h-12 px-6 font-semibold transition-all duration-300 rounded-lg ${
                   isSavingBalance 
-                    ? 'bg-slate-200 text-slate-600 cursor-not-allowed' 
+                    ? 'bg-slate-200 text-cyan-100/60 cursor-not-allowed' 
                     : saveBalanceStatus.success === true 
                       ? 'bg-green-600 hover:bg-green-700 text-white' 
                       : saveBalanceStatus.success === false 
                         ? 'bg-red-600 hover:bg-red-700 text-white' 
-                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                        : 'bg-cyan-600 hover:bg-blue-700 text-white'
                 }`}
               >
                 {isSavingBalance ? (
@@ -1247,7 +1247,7 @@ export default function ProfessionalTradingJournal() {
                   ? 'bg-green-50 text-green-700 border border-green-200' 
                   : saveBalanceStatus.success === false 
                     ? 'bg-red-50 text-red-700 border border-red-200' 
-                    : 'bg-blue-50 text-blue-700 border border-blue-200'
+                    : 'bg-cyan-950/25 text-cyan-200 border border-cyan-500/20'
               }`}>
                 <div className="flex items-center space-x-2">
                   {saveBalanceStatus.success === true ? (
@@ -1260,8 +1260,8 @@ export default function ProfessionalTradingJournal() {
               </div>
             )}
             
-            <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <p className="text-sm text-blue-700">
+            <div className="mt-4 p-3 bg-cyan-950/25 rounded-lg border border-cyan-500/20">
+              <p className="text-sm text-cyan-200">
                 <strong>Why set an initial balance?</strong> This value is used to calculate accurate performance metrics including Sharpe ratio, drawdown analysis, and equity curves. Set this to your actual starting account balance for precise analytics.
               </p>
             </div>
@@ -1269,12 +1269,12 @@ export default function ProfessionalTradingJournal() {
         </div>
 
         {/* ─── Custom Variables Manager ─────────────────────────────────────────────── */}
-        <div className="bg-white rounded-xl shadow-sm border border-blue-200/60 p-6 mb-8">
+        <div className="bg-cyan-950/40 rounded-xl shadow-sm border border-cyan-500/20 p-6 mb-8">
           <div className="flex items-center justify-between mb-4">
                           <h2 className="text-2xl font-bold text-[#040028]">Custom Variables</h2>
             <button
               onClick={() => setShowVariablesManager(!showVariablesManager)}
-              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="flex items-center px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               <PlusCircle className="w-4 h-4 mr-2" />
               {showVariablesManager ? 'Hide Variables' : 'Manage Variables'}
@@ -1289,16 +1289,16 @@ export default function ProfessionalTradingJournal() {
         
 
         {/* ─── Import History ───────────────────────────────────────────────────────── */}
-<div className="bg-white rounded-xl shadow-sm border border-blue-200/60 p-6 mb-8">
+<div className="bg-cyan-950/40 rounded-xl shadow-sm border border-cyan-500/20 p-6 mb-8">
   <h2 className="text-2xl font-bold text-[#040028] mb-4">
     Import History
   </h2>
 
   {importHistory.length === 0 ? (
-    <p className="text-slate-600">No import history available.</p>
+    <p className="text-cyan-100/60">No import history available.</p>
   ) : (
     <table className="w-full mb-4">
-      <thead className="bg-white border-b border-blue-200/60">
+      <thead className="bg-cyan-950/40 border-b border-cyan-500/20">
         <tr>
           <th className="text-left p-3 font-semibold text-[#040028]">
             Filename
@@ -1319,8 +1319,8 @@ export default function ProfessionalTradingJournal() {
           <tr
             key={batch.id}
             className={`${
-              idx % 2 === 0 ? "bg-white" : "bg-slate-50"
-            } border-b border-blue-200/60`}
+              idx % 2 === 0 ? "bg-cyan-950/40" : "bg-jf-bg"
+            } border-b border-cyan-500/20`}
           >
             <td className="p-3 text-[#040028]">{batch.filename}</td>
             <td className="p-3 text-[#040028]">
@@ -1374,7 +1374,7 @@ export default function ProfessionalTradingJournal() {
                     alert(`Failed to download file:\n${err.message}`);
                   }
                 }}
-                className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200"
+                className="px-3 py-1 bg-cyan-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200"
               >
                 Download
               </button>
@@ -1402,7 +1402,7 @@ export default function ProfessionalTradingJournal() {
             <div className="fixed inset-0 bg-black bg-opacity-40 z-40" onClick={() => { setShowForm(false); setEditingTrade(null); }} />
             {/* Modal Content */}
             <div className="fixed inset-0 z-50 flex items-center justify-center">
-              <div className="bg-white rounded-xl shadow-xl border border-blue-200/60 p-8 mb-8 max-w-4xl w-full relative max-h-[90vh] overflow-y-auto">
+              <div className="bg-cyan-950/40 rounded-xl shadow-xl border border-cyan-500/20 p-8 mb-8 max-w-4xl w-full relative max-h-[90vh] overflow-y-auto">
                 <button
                   className="absolute top-4 right-4 text-[#040028] text-2xl font-bold hover:text-red-500 focus:outline-none"
                   onClick={() => { setShowForm(false); setEditingTrade(null); }}
@@ -1429,7 +1429,7 @@ export default function ProfessionalTradingJournal() {
                             symbol: '' // Reset symbol when category changes
                           }));
                         }}
-                        className="w-full p-3 bg-white border border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                        className="w-full p-3 bg-cyan-950/40 border border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 transition-all duration-200"
                         disabled={isLocked('symbol_category')}
                       >
                         <option value="">Select a category</option>
@@ -1456,7 +1456,7 @@ export default function ProfessionalTradingJournal() {
                           name="symbol"
                           value={form.symbol}
                           onChange={handleChange}
-                          className="w-full p-3 bg-white border border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                          className="w-full p-3 bg-cyan-950/40 border border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 transition-all duration-200"
                           disabled={isLocked('symbol')}
                         >
                           <option value="">Select a symbol</option>
@@ -1605,7 +1605,7 @@ export default function ProfessionalTradingJournal() {
                         name="direction"
                         value={form.direction}
                         onChange={handleChange}
-                        className="w-full p-3 border bg-white border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-[#040028] transition-all duration-200"
+                        className="w-full p-3 border bg-cyan-950/40 border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 text-[#040028] transition-all duration-200"
                         disabled={isLocked('direction')}
                       >
                         <option value="long">Long</option>
@@ -1623,7 +1623,7 @@ export default function ProfessionalTradingJournal() {
                           name="instrument_type"
                           value={form.instrument_type}
                           onChange={handleChange}
-                          className="w-full p-3 border bg-white border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-[#040028] transition-all duration-200"
+                          className="w-full p-3 border bg-cyan-950/40 border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 text-[#040028] transition-all duration-200"
                           disabled={isLocked('instrument_type')}
                         >
                           <option value="crypto">Crypto</option>
@@ -1645,7 +1645,7 @@ export default function ProfessionalTradingJournal() {
                           value={form.custom_symbol || ''}
                           onChange={handleChange}
                           placeholder="Enter your custom symbol (e.g., BTCUSDT, EURUSD)"
-                          className="w-full p-3 bg-white border border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-[#040028] transition-all duration-200"
+                          className="w-full p-3 bg-cyan-950/40 border border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 text-[#040028] transition-all duration-200"
                           disabled={isLocked('custom_symbol')}
                         />
                       </div>
@@ -1663,7 +1663,7 @@ export default function ProfessionalTradingJournal() {
                           onChange={handleChange}
                           type="number"
                           step="any"
-                          className="w-full p-3 border bg-white border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-[#040028] transition-all duration-200"
+                          className="w-full p-3 border bg-cyan-950/40 border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 text-[#040028] transition-all duration-200"
                           required
                           disabled={isLocked('quantity')}
                         />
@@ -1685,7 +1685,7 @@ export default function ProfessionalTradingJournal() {
                           onChange={handleChange}
                           type="number"
                           step="any"
-                          className="w-full p-3 border bg-white border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-[#040028] transition-all duration-200"
+                          className="w-full p-3 border bg-cyan-950/40 border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 text-[#040028] transition-all duration-200"
                           required
                           disabled={isLocked('contract_size')}
                         />
@@ -1706,13 +1706,13 @@ export default function ProfessionalTradingJournal() {
                           onChange={handleChange}
                           type="number"
                           step="any"
-                          className="w-full p-3 border bg-white border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-[#040028] transition-all duration-200"
+                          className="w-full p-3 border bg-cyan-950/40 border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 text-[#040028] transition-all duration-200"
                           required
                           disabled={isLocked('risk_amount')}
                         />
                       {initialBalance && form.risk_amount && (
                         <div className="mt-1">
-                          <span className="text-xs text-slate-600">
+                          <span className="text-xs text-cyan-100/60">
                             {calculatePercentageOfBalance(form.risk_amount, initialBalance)}% of balance
                           </span>
                         </div>
@@ -1730,10 +1730,10 @@ export default function ProfessionalTradingJournal() {
                           onChange={handleChange}
                           type="number"
                           step="any"
-                          className={`w-full p-3 border bg-white rounded-lg focus:ring-2 focus:border-blue-500 text-[#040028] transition-all duration-200 ${
+                          className={`w-full p-3 border bg-cyan-950/40 rounded-lg focus:ring-2 focus:border-cyan-400 text-[#040028] transition-all duration-200 ${
                             form.validationErrors?.entry_price 
                               ? 'border-red-500 focus:ring-red-500' 
-                              : 'border-blue-200/60 focus:ring-blue-500 focus:border-blue-500'
+                              : 'border-cyan-500/20 focus:ring-cyan-400 focus:border-cyan-400'
                           }`}
                           required
                           disabled={isLocked('entry_price')}
@@ -1754,7 +1754,7 @@ export default function ProfessionalTradingJournal() {
                           onChange={handleChange}
                           type="number"
                           step="any"
-                          className="w-full p-3 border bg-white border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-[#040028] transition-all duration-200"
+                          className="w-full p-3 border bg-cyan-950/40 border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 text-[#040028] transition-all duration-200"
                           required
                           disabled={isLocked('exit_price')}
                         />
@@ -1774,12 +1774,12 @@ export default function ProfessionalTradingJournal() {
                         onChange={handleChange}
                         type="number"
                         step="any"
-                        className="w-full p-3 border bg-white border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-[#040028] transition-all duration-200"
+                        className="w-full p-3 border bg-cyan-950/40 border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 text-[#040028] transition-all duration-200"
                         disabled={isLocked('pnl')}
                       />
                       {initialBalance && form.pnl && (
                         <div className="mt-1">
-                          <span className="text-xs text-slate-600">
+                          <span className="text-xs text-cyan-100/60">
                             {calculatePercentageOfBalance(form.pnl, initialBalance)}% of balance
                           </span>
                         </div>
@@ -1795,7 +1795,7 @@ export default function ProfessionalTradingJournal() {
     onChange={handleChange}
     type="number"
     step="any"
-    className="w-full p-3 border bg-white border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-[#040028] transition-all duration-200"
+    className="w-full p-3 border bg-cyan-950/40 border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 text-[#040028] transition-all duration-200"
     disabled={isLocked('rr')}
   />
 </div>
@@ -1811,7 +1811,7 @@ export default function ProfessionalTradingJournal() {
                         name="strategy"
                         value={form.strategy}
                         onChange={handleChange}
-                        className="w-full p-3 border bg-white border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-[#040028] transition-all duration-200"
+                        className="w-full p-3 border bg-cyan-950/40 border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 text-[#040028] transition-all duration-200"
                         disabled={isLocked('strategy')}
                       >
                         <option value="">Select a Strategy</option>
@@ -1830,7 +1830,7 @@ export default function ProfessionalTradingJournal() {
                         name="setup"
                         value={form.setup}
                         onChange={handleChange}
-                        className="w-full p-3 border bg-white border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-[#040028] transition-all duration-200"
+                        className="w-full p-3 border bg-cyan-950/40 border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 text-[#040028] transition-all duration-200"
                         disabled={isLocked('setup')}
                       />
                     </div>
@@ -1845,7 +1845,7 @@ export default function ProfessionalTradingJournal() {
                       <button
                         type="button"
                         onClick={() => setShowVariableSelector(!showVariableSelector)}
-                        className="flex items-center px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                        className="flex items-center px-3 py-1 bg-cyan-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
                       >
                         <CheckSquare className="w-4 h-4 mr-1" />
                         {showVariableSelector ? 'Hide Selector' : 'Select Variables'}
@@ -1853,7 +1853,7 @@ export default function ProfessionalTradingJournal() {
                     </div>
                     
                     {showVariableSelector && (
-                      <div className="border border-blue-200/60 rounded-lg p-4 bg-white">
+                      <div className="border border-cyan-500/20 rounded-lg p-4 bg-cyan-950/40">
                         <VariableSelector
                           onSelectionChange={handleCustomVariablesChange}
                           initialSelections={selectedCustomVariables}
@@ -1863,7 +1863,7 @@ export default function ProfessionalTradingJournal() {
                     
                     {/* Display selected variables */}
                     {Object.keys(selectedCustomVariables).length > 0 && (
-                      <div className="bg-white border border-blue-200/60 rounded-lg p-3">
+                      <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-lg p-3">
                         <h4 className="text-sm font-semibold text-[#040028] mb-2">Selected Variables:</h4>
                         <div className="space-y-2">
                           {Object.entries(selectedCustomVariables).map(([varName, values]) => (
@@ -1873,7 +1873,7 @@ export default function ProfessionalTradingJournal() {
                                 {values.map((value, index) => (
                                   <span
                                     key={index}
-                                    className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
+                                    className="px-2 py-1 bg-blue-100 text-cyan-100 text-xs rounded-full"
                                   >
                                     {value}
                                   </span>
@@ -1890,7 +1890,7 @@ export default function ProfessionalTradingJournal() {
                   <div className="my-4">
                     <button
                       type="button"
-                      className="px-4 py-2 rounded-lg bg-white text-[#040028] border border-blue-200/60 hover:bg-blue-50 font-medium transition-all duration-200"
+                      className="px-4 py-2 rounded-lg bg-cyan-950/40 text-[#040028] border border-cyan-500/20 hover:bg-cyan-500/10 font-medium transition-all duration-200"
                       onClick={() => setShowAdvanced((v) => !v)}
                     >
                       {showAdvanced ? 'Hide Advanced Input' : 'Show Advanced Input'}
@@ -1898,7 +1898,7 @@ export default function ProfessionalTradingJournal() {
                   </div>
                   {/* Advanced Input Section */}
                   {showAdvanced && (
-                    <div className="space-y-6 border border-blue-200/60 rounded-lg p-4 bg-white">
+                    <div className="space-y-6 border border-cyan-500/20 rounded-lg p-4 bg-cyan-950/40">
                       {/* High Price, Low Price, Take Profit, Stop Loss */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {/* High Price */}
@@ -1912,10 +1912,10 @@ export default function ProfessionalTradingJournal() {
                             onChange={handleChange}
                             type="number"
                             step="any"
-                            className={`w-full p-3 border bg-white rounded-lg focus:ring-2 focus:border-blue-500 text-[#040028] transition-all duration-200 ${
+                            className={`w-full p-3 border bg-cyan-950/40 rounded-lg focus:ring-2 focus:border-cyan-400 text-[#040028] transition-all duration-200 ${
                               form.validationErrors?.high_price 
                                 ? 'border-red-500 focus:ring-red-500' 
-                                : 'border-blue-200/60 focus:ring-blue-500 focus:border-blue-500'
+                                : 'border-cyan-500/20 focus:ring-cyan-400 focus:border-cyan-400'
                             }`}
                             disabled={isLocked('high_price')}
                           />
@@ -1934,10 +1934,10 @@ export default function ProfessionalTradingJournal() {
                             onChange={handleChange}
                             type="number"
                             step="any"
-                            className={`w-full p-3 border bg-white rounded-lg focus:ring-2 focus:border-blue-500 text-[#040028] transition-all duration-200 ${
+                            className={`w-full p-3 border bg-cyan-950/40 rounded-lg focus:ring-2 focus:border-cyan-400 text-[#040028] transition-all duration-200 ${
                               form.validationErrors?.low_price 
                                 ? 'border-red-500 focus:ring-red-500' 
-                                : 'border-blue-200/60 focus:ring-blue-500 focus:border-blue-500'
+                                : 'border-cyan-500/20 focus:ring-cyan-400 focus:border-cyan-400'
                             }`}
                             disabled={isLocked('low_price')}
                           />
@@ -1956,10 +1956,10 @@ export default function ProfessionalTradingJournal() {
                             onChange={handleChange}
                             type="number"
                             step="any"
-                            className={`w-full p-3 border bg-white rounded-lg focus:ring-2 focus:border-blue-500 text-[#040028] transition-all duration-200 ${
+                            className={`w-full p-3 border bg-cyan-950/40 rounded-lg focus:ring-2 focus:border-cyan-400 text-[#040028] transition-all duration-200 ${
                               form.validationErrors?.take_profit 
                                 ? 'border-red-500 focus:ring-red-500' 
-                                : 'border-blue-200/60 focus:ring-blue-500 focus:border-blue-500'
+                                : 'border-cyan-500/20 focus:ring-cyan-400 focus:border-cyan-400'
                             }`}
                             disabled={isLocked('take_profit')}
                           />
@@ -1978,10 +1978,10 @@ export default function ProfessionalTradingJournal() {
                             onChange={handleChange}
                             type="number"
                             step="any"
-                            className={`w-full p-3 border bg-white rounded-lg focus:ring-2 focus:border-blue-500 text-[#040028] transition-all duration-200 ${
+                            className={`w-full p-3 border bg-cyan-950/40 rounded-lg focus:ring-2 focus:border-cyan-400 text-[#040028] transition-all duration-200 ${
                               form.validationErrors?.stop_loss 
                                 ? 'border-red-500 focus:ring-red-500' 
-                                : 'border-blue-200/60 focus:ring-blue-500 focus:border-blue-500'
+                                : 'border-cyan-500/20 focus:ring-cyan-400 focus:border-cyan-400'
                             }`}
                             disabled={isLocked('stop_loss')}
                           />
@@ -2004,7 +2004,7 @@ export default function ProfessionalTradingJournal() {
                             onChange={handleChange}
                             type="number"
                             step="any"
-                            className="w-full p-3 bg-white border border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-[#040028] transition-all duration-200"
+                            className="w-full p-3 bg-cyan-950/40 border border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 text-[#040028] transition-all duration-200"
                             disabled={isLocked('commission')}
                           />
                         </div>
@@ -2019,7 +2019,7 @@ export default function ProfessionalTradingJournal() {
                             onChange={handleChange}
                             type="number"
                             step="any"
-                            className="w-full p-3 bg-white border border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-[#040028] transition-all duration-200"
+                            className="w-full p-3 bg-cyan-950/40 border border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 text-[#040028] transition-all duration-200"
                             disabled={isLocked('slippage')}
                           />
                         </div>
@@ -2063,7 +2063,7 @@ export default function ProfessionalTradingJournal() {
                           onChange={handleChange}
                           placeholder="Add your trading notes, observations, and lessons learned..."
                           rows="4"
-                          className="w-full p-3 bg-white border border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-[#040028] transition-all duration-200"
+                          className="w-full p-3 bg-cyan-950/40 border border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 text-[#040028] transition-all duration-200"
                           disabled={isLocked('notes')}
                         />
                       </div>
@@ -2082,16 +2082,16 @@ export default function ProfessionalTradingJournal() {
                               onChange={handleChange}
                               type="url"
                               placeholder="https://example.com/screenshot1.jpg"
-                              className="w-full p-3 bg-white border border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-[#040028] transition-all duration-200"
+                              className="w-full p-3 bg-cyan-950/40 border border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 text-[#040028] transition-all duration-200"
                               disabled={isLocked('entry_screenshot')}
                             />
 
                             
                                                         {/* Image Preview */}
                             {form.entry_screenshot && isImageUrl(form.entry_screenshot) && (
-                              <div className="p-3 rounded-lg border bg-blue-50 border-blue-200">
+                              <div className="p-3 rounded-lg border bg-cyan-950/25 border-cyan-500/20">
                                   <div className="space-y-2">
-                                    <div className="flex items-center gap-2 text-blue-700">
+                                    <div className="flex items-center gap-2 text-cyan-200">
                                       <span className="text-sm font-medium">📷 Image Preview</span>
                                     </div>
                                       <div className="mt-2">
@@ -2126,16 +2126,16 @@ export default function ProfessionalTradingJournal() {
                               onChange={handleChange}
                               type="url"
                               placeholder="https://example.com/screenshot2.jpg"
-                              className="w-full p-3 bg-white border border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-[#040028] transition-all duration-200"
+                              className="w-full p-3 bg-cyan-950/40 border border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 text-[#040028] transition-all duration-200"
                               disabled={isLocked('exit_screenshot')}
                             />
 
                             
                                                         {/* Image Preview */}
                             {form.exit_screenshot && isImageUrl(form.exit_screenshot) && (
-                              <div className="p-3 rounded-lg border bg-blue-50 border-blue-200">
+                              <div className="p-3 rounded-lg border bg-cyan-950/25 border-cyan-500/20">
                                   <div className="space-y-2">
-                                    <div className="flex items-center gap-2 text-blue-700">
+                                    <div className="flex items-center gap-2 text-cyan-200">
                                       <span className="text-sm font-medium">📷 Image Preview</span>
                                     </div>
                                       <div className="mt-2">
@@ -2183,7 +2183,7 @@ export default function ProfessionalTradingJournal() {
                         setSelectedCustomVariables({});
 
                       }}
-                      className="bg-white hover:bg-blue-50 text-[#040028] px-6 py-2 rounded-lg font-medium text-sm border border-blue-200/60 transition-all duration-200"
+                      className="bg-cyan-950/40 hover:bg-cyan-500/10 text-[#040028] px-6 py-2 rounded-lg font-medium text-sm border border-cyan-500/20 transition-all duration-200"
                     >
                       Cancel
                     </button>
@@ -2195,7 +2195,7 @@ export default function ProfessionalTradingJournal() {
         )}
 
         {/* ─── Filters & Search ───────────────────────────────────────────────────────── */}
-        <div className="bg-white rounded-xl shadow-sm border border-blue-200/60 p-6 mb-4">
+        <div className="bg-cyan-950/40 rounded-xl shadow-sm border border-cyan-500/20 p-6 mb-4">
           <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
             <div className="flex flex-wrap gap-2">
               {["all", "wins", "losses", "long", "short"].map((filterType) => (
@@ -2204,8 +2204,8 @@ export default function ProfessionalTradingJournal() {
                   onClick={() => setFilter(filterType)}
                   className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 capitalize ${
                     filter === filterType
-                      ? "bg-blue-600 text-white shadow-md"
-                      : "bg-white text-[#040028] hover:bg-blue-50 border border-blue-200/60"
+                      ? "bg-cyan-600 text-white shadow-md"
+                      : "bg-cyan-950/40 text-[#040028] hover:bg-cyan-500/10 border border-cyan-500/20"
                   }`}
                 >
                   {filterType}
@@ -2214,7 +2214,7 @@ export default function ProfessionalTradingJournal() {
             </div>
 
             <div className="relative">
-              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-600">
+              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-cyan-100/60">
                 🔍
               </span>
               <input
@@ -2222,7 +2222,7 @@ export default function ProfessionalTradingJournal() {
                 placeholder="Search trades..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 py-2 bg-white border border-blue-200/60 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-64 text-[#040028] placeholder-slate-600 transition-all duration-200"
+                className="pl-10 pr-4 py-2 bg-cyan-950/40 border border-cyan-500/20 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 w-64 text-[#040028] placeholder-slate-600 transition-all duration-200"
               />
             </div>
           </div>
@@ -2236,7 +2236,7 @@ export default function ProfessionalTradingJournal() {
           <select
             value={pageSize}
             onChange={changePageSize}
-            className="pl-3 pr-10 py-2 bg-theme-secondary border border-theme-primary focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md text-theme-primary"
+            className="pl-3 pr-10 py-2 bg-theme-secondary border border-theme-primary focus:outline-none focus:ring-cyan-400 focus:border-cyan-400 sm:text-sm rounded-md text-theme-primary"
           >
             <option value={20}>20</option>
             <option value={50}>50</option>
@@ -2246,8 +2246,8 @@ export default function ProfessionalTradingJournal() {
         </div>
 
         {/* ─── Trade History Table ───────────────────────────────────────────────────── */}
-        <div className="bg-white rounded-xl shadow-sm border border-blue-200/60 overflow-hidden">
-          <div className="p-6 border-b border-blue-200/60">
+        <div className="bg-cyan-950/40 rounded-xl shadow-sm border border-cyan-500/20 overflow-hidden">
+          <div className="p-6 border-b border-cyan-500/20">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold text-[#040028]">
                 Trade History
@@ -2257,7 +2257,7 @@ export default function ProfessionalTradingJournal() {
 
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-white border-b border-blue-200/60">
+              <thead className="bg-cyan-950/40 border-b border-cyan-500/20">
                 <tr>
                   <th className="text-left p-4 font-semibold text-[#040028]">
                     Date
@@ -2325,8 +2325,8 @@ export default function ProfessionalTradingJournal() {
                 {displayedTrades.map((trade, index) => (
                   <tr
                     key={trade.id}
-                    className={`border-b border-blue-200/60 hover:bg-blue-50 transition-all duration-200 ${
-                      index % 2 === 0 ? "bg-white" : "bg-slate-50"
+                    className={`border-b border-cyan-500/20 hover:bg-cyan-500/10 transition-all duration-200 ${
+                      index % 2 === 0 ? "bg-cyan-950/40" : "bg-jf-bg"
                     }`}
                   >
                     <td className="p-4 text-[#040028]">
@@ -2434,7 +2434,7 @@ export default function ProfessionalTradingJournal() {
                             href={getAbsoluteUrl(trade.entry_screenshot)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-600 hover:text-blue-800 text-sm"
+                            className="text-cyan-300 hover:text-cyan-100 text-sm"
                             title="View Entry Screenshot"
                           >
                             📷 Entry
@@ -2445,14 +2445,14 @@ export default function ProfessionalTradingJournal() {
                             href={getAbsoluteUrl(trade.exit_screenshot)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-600 hover:text-blue-800 text-sm"
+                            className="text-cyan-300 hover:text-cyan-100 text-sm"
                             title="View Exit Screenshot"
                           >
                             📷 Exit
                           </a>
                         )}
                         {!trade.entry_screenshot && !trade.exit_screenshot && (
-                          <span className="text-slate-600 text-sm">-</span>
+                          <span className="text-cyan-100/60 text-sm">-</span>
                         )}
                       </div>
                     </td>
@@ -2460,7 +2460,7 @@ export default function ProfessionalTradingJournal() {
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleEdit(trade)}
-                          className="p-2 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900 rounded-lg transition-all duration-200"
+                          className="p-2 text-cyan-300 hover:bg-blue-100 dark:hover:bg-blue-900 rounded-lg transition-all duration-200"
                         >
                           <span className="text-sm">✏️</span>
                         </button>
@@ -2479,11 +2479,11 @@ export default function ProfessionalTradingJournal() {
               {filteredTrades.length === 0 && (
                 <tr>
                   <td colSpan={activeProfile?.mode === 'backtest' ? 16 : 17} className="text-center py-12">
-                    <div className="text-slate-600 mb-2">
+                    <div className="text-cyan-100/60 mb-2">
                       <span className="text-6xl">📊</span>
                     </div>
                     <p className="text-[#040028] text-lg">No trades found</p>
-                    <p className="text-slate-600">
+                    <p className="text-cyan-100/60">
                       Add your first trade to get started
                     </p>
                   </td>
@@ -2494,14 +2494,14 @@ export default function ProfessionalTradingJournal() {
 
           {/* ─── Pagination Controls ─────────────────────────────────────────────────── */}
           {!isAll && totalTrades > effectivePageSize && (
-            <div className="flex items-center justify-between bg-white border-t border-blue-200/60 p-4">
+            <div className="flex items-center justify-between bg-cyan-950/40 border-t border-cyan-500/20 p-4">
               <button
                 onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                 disabled={currentPage === 1}
                 className={`px-4 py-2 rounded-lg ${
                   currentPage === 1
-                    ? "bg-slate-200 text-slate-600 cursor-not-allowed"
-                    : "bg-blue-600 text-white hover:bg-blue-700"
+                    ? "bg-slate-200 text-cyan-100/60 cursor-not-allowed"
+                    : "bg-cyan-600 text-white hover:bg-blue-700"
                 }`}
               >
                 Previous
@@ -2518,8 +2518,8 @@ export default function ProfessionalTradingJournal() {
                 disabled={currentPage === totalPages}
                 className={`px-4 py-2 rounded-lg ${
                   currentPage === totalPages
-                    ? "bg-slate-200 text-slate-600 cursor-not-allowed"
-                    : "bg-blue-600 text-white hover:bg-blue-700"
+                    ? "bg-slate-200 text-cyan-100/60 cursor-not-allowed"
+                    : "bg-cyan-600 text-white hover:bg-blue-700"
                 }`}
               >
                 Next

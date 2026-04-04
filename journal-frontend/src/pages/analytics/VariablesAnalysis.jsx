@@ -278,19 +278,19 @@ function SummaryCard({ title, value, icon: Icon, trend, color = "slate", subtitl
   const valueSize = size === "large" ? "text-2xl" : "text-xl";
   
   const colorClasses = {
-    slate: "bg-white border-slate-200 text-slate-900",
-    green: "bg-white border-emerald-200 text-emerald-900",
-    red: "bg-white border-red-200 text-red-900",
-    blue: "bg-white border-blue-200 text-blue-900",
-    purple: "bg-white border-purple-200 text-purple-900",
-    gray: "bg-white border-gray-200 text-gray-900"
+    slate: "bg-cyan-950/40 border-cyan-500/15 text-slate-900",
+    green: "bg-cyan-950/40 border-emerald-200 text-emerald-900",
+    red: "bg-cyan-950/40 border-red-200 text-red-900",
+    blue: "bg-cyan-950/40 border-cyan-500/20 text-blue-900",
+    purple: "bg-cyan-950/40 border-purple-200 text-purple-900",
+    gray: "bg-cyan-950/40 border-cyan-500/15 text-gray-900"
   };
   
   const iconColors = {
-    slate: "text-slate-600",
+    slate: "text-cyan-100/60",
     green: "text-emerald-600",
     red: "text-red-600",
-    blue: "text-blue-600",
+    blue: "text-cyan-300",
     purple: "text-purple-600",
     gray: "text-gray-600"
   };
@@ -337,7 +337,7 @@ const CustomCombinationTooltip = ({ active, payload, label }) => {
     console.log('Tooltip Payload:', payload);
     const data = payload[0].payload;
     return (
-      <div className="bg-white p-3 border border-gray-300 rounded-lg shadow-xl text-sm" style={{ color: '#333' }}>
+      <div className="bg-cyan-950/40 p-3 border border-gray-300 rounded-lg shadow-xl text-sm" style={{ color: '#333' }}>
         <p className="font-bold text-gray-900 mb-2" style={{ maxWidth: '300px', whiteWhite: 'normal' }}>{data.name}</p>
         <p className="text-gray-800">
           <span className="font-semibold">P&L:</span>
@@ -368,7 +368,7 @@ function PerformanceDistribution({ data, title }) {
   // Add error handling and data validation
   if (!data || !Array.isArray(data) || data.length === 0) {
     return (
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 h-full">
+      <div className="bg-cyan-950/40 p-6 rounded-lg shadow-sm border border-cyan-500/15 h-full">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">{title}</h3>
         <div className="flex items-center justify-center h-64 text-gray-500">
           <div className="text-center">
@@ -394,7 +394,7 @@ function PerformanceDistribution({ data, title }) {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-white/95 backdrop-blur-sm p-4 rounded-xl shadow-2xl border border-gray-200 text-sm">
+        <div className="bg-cyan-950/55 backdrop-blur-sm p-4 rounded-xl shadow-2xl border border-cyan-500/15 text-sm">
           <p className="font-bold text-gray-800 mb-2">{`${label} Variables`}</p>
           <div className="space-y-1">
             <p className="text-gray-600">
@@ -411,7 +411,7 @@ function PerformanceDistribution({ data, title }) {
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 h-full">
+    <div className="bg-cyan-950/40 p-6 rounded-lg shadow-sm border border-cyan-500/15 h-full">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
         <div className="flex items-center space-x-2 text-sm text-gray-500">
@@ -491,7 +491,7 @@ function RiskReturnBubble({ data, title }) {
   }, [data]);
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow duration-200">
+    <div className="bg-cyan-950/40 p-6 rounded-lg shadow-sm border border-cyan-500/15 hover:shadow-md transition-shadow duration-200">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
         <Activity className="h-5 w-5 text-gray-400" />
@@ -592,7 +592,7 @@ function PerformanceRadar({ data, title }) {
     const original = data._original || {};
     
     return (
-      <div className="bg-white p-4 border border-gray-200 rounded-lg shadow-lg">
+      <div className="bg-cyan-950/40 p-4 border border-cyan-500/15 rounded-lg shadow-lg">
         <div className="font-semibold text-gray-900 mb-2">{data.variable}</div>
         <div className="space-y-1">
           <div className="flex justify-between">
@@ -621,7 +621,7 @@ function PerformanceRadar({ data, title }) {
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow duration-200">
+    <div className="bg-cyan-950/40 p-6 rounded-lg shadow-sm border border-cyan-500/15 hover:shadow-md transition-shadow duration-200">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
         <Compass className="h-5 w-5 text-gray-400" />
@@ -741,7 +741,7 @@ function VariableTreemap({ data, title }) {
   }, [data]);
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow duration-200">
+    <div className="bg-cyan-950/40 p-6 rounded-lg shadow-sm border border-cyan-500/15 hover:shadow-md transition-shadow duration-200">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
         <Layers className="h-5 w-5 text-gray-400" />
@@ -845,11 +845,11 @@ function FilterSidebar({
       )}
       
       {/* Sidebar */}
-      <div className={`fixed inset-y-0 right-0 w-96 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out z-50 overflow-y-auto ${
+      <div className={`fixed inset-y-0 right-0 w-96 bg-cyan-950/40 shadow-2xl transform transition-transform duration-300 ease-in-out z-50 overflow-y-auto ${
         showFilters ? 'translate-x-0' : 'translate-x-full'
       }`}>
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 z-10">
+        <div className="sticky top-0 bg-cyan-950/40 border-b border-cyan-500/15 px-6 py-4 z-10">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <Filter className="h-5 w-5 text-gray-600" />
@@ -879,9 +879,9 @@ function FilterSidebar({
                   {values.length} options
                 </span>
               </div>
-              <div className="space-y-2 max-h-48 overflow-y-auto bg-gray-50 rounded-lg p-3">
+              <div className="space-y-2 max-h-48 overflow-y-auto bg-cyan-950/25 rounded-lg p-3">
                 {values.map(value => (
-                  <label key={value} className="flex items-center space-x-3 p-2 hover:bg-white rounded-md transition-colors duration-150 cursor-pointer">
+                  <label key={value} className="flex items-center space-x-3 p-2 hover:bg-cyan-950/40 rounded-md transition-colors duration-150 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={combinationFilters[varName]?.includes(value) || false}
@@ -898,7 +898,7 @@ function FilterSidebar({
                           };
                         });
                       }}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
+                      className="rounded border-gray-300 text-cyan-300 focus:ring-cyan-400 h-4 w-4"
                     />
                     <span className="text-sm text-gray-700 flex-1">{value}</span>
                   </label>
@@ -909,18 +909,18 @@ function FilterSidebar({
         </div>
         
         {/* Footer */}
-        <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 p-6">
+        <div className="sticky bottom-0 bg-cyan-950/25 border-t border-cyan-500/15 p-6">
           <div className="flex space-x-3">
             <button
               onClick={() => setCombinationFilters({})}
-              className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 hover:border-gray-400 transition-colors duration-200"
+              className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-cyan-950/40 border border-gray-300 rounded-lg shadow-sm hover:bg-cyan-950/25 hover:border-gray-400 transition-colors duration-200"
               disabled={activeFilterCount === 0}
             >
               Reset All
             </button>
             <button
               onClick={() => setShowFilters(false)}
-              className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200"
+              className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-cyan-600 border border-transparent rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-400 transition-colors duration-200"
             >
               Apply Filters
             </button>
@@ -1299,7 +1299,7 @@ export default function VariablesAnalysis() {
         {filters.map(filter => (
           <span 
             key={filter.key}
-            className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200"
+            className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-cyan-100 border border-cyan-500/20"
           >
             <span className="font-semibold">{filter.varName}:</span>
             <span className="ml-1">{filter.value}</span>
@@ -1315,7 +1315,7 @@ export default function VariablesAnalysis() {
                   };
                 });
               }}
-              className="ml-2 inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-200 hover:bg-blue-300 text-blue-600 hover:text-blue-900 focus:outline-none transition-colors duration-150"
+              className="ml-2 inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-200 hover:bg-blue-300 text-cyan-300 hover:text-blue-900 focus:outline-none transition-colors duration-150"
             >
               <X className="h-2.5 w-2.5" />
             </button>
@@ -1546,9 +1546,9 @@ export default function VariablesAnalysis() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-cyan-950/25 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-500 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-cyan-400 mx-auto mb-4"></div>
           <p className="text-gray-600 font-medium">Loading variables analysis...</p>
         </div>
       </div>
@@ -1557,7 +1557,7 @@ export default function VariablesAnalysis() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 p-8">
+      <div className="min-h-screen bg-cyan-950/25 p-8">
         <div className="max-w-4xl mx-auto">
           <div className="bg-red-50 border-l-4 border-red-400 rounded-lg p-6 shadow-sm">
             <div className="flex">
@@ -1580,13 +1580,13 @@ export default function VariablesAnalysis() {
   // Show message if no data available
   if (!data || data.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50 p-8">
+      <div className="min-h-screen bg-cyan-950/25 p-8">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center space-x-3 mb-2">
               <div className="p-3 bg-blue-100 rounded-lg">
-                <BarChart3 className="h-8 w-8 text-blue-600" />
+                <BarChart3 className="h-8 w-8 text-cyan-300" />
               </div>
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">Variables Analysis</h1>
@@ -1619,7 +1619,7 @@ export default function VariablesAnalysis() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-cyan-950/25">
       {/* Filter Sidebar */}
       <FilterSidebar 
         showFilters={showFilters}
@@ -1635,7 +1635,7 @@ export default function VariablesAnalysis() {
         <div className="mb-8">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
             <div className="flex items-center space-x-4">
-              <div className="p-3 bg-blue-600 rounded-lg shadow-sm">
+              <div className="p-3 bg-cyan-600 rounded-lg shadow-sm">
                 <BarChart3 className="h-8 w-8 text-white" />
               </div>
               <div>
@@ -1647,7 +1647,7 @@ export default function VariablesAnalysis() {
             {/* Enhanced Controls */}
             <div className="flex flex-wrap items-center gap-3">
               {/* Date Range */}
-              <div className="flex items-center space-x-2 bg-white rounded-lg p-2 shadow-sm border border-gray-200">
+              <div className="flex items-center space-x-2 bg-cyan-950/40 rounded-lg p-2 shadow-sm border border-cyan-500/15">
                 <Calendar className="h-4 w-4 text-gray-400" />
                 <input
                   type="date"
@@ -1670,7 +1670,7 @@ export default function VariablesAnalysis() {
               <select
                 value={selectedTimeframe}
                 onChange={(e) => setSelectedTimeframe(e.target.value)}
-                className="bg-white border border-gray-200 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 px-3 py-2 shadow-sm"
+                className="bg-cyan-950/40 border border-cyan-500/15 text-gray-900 text-sm rounded-lg focus:ring-cyan-400 focus:border-cyan-400 px-3 py-2 shadow-sm"
               >
                 <option value="all">All Time</option>
                 <option value="30">Last 30 Days</option>
@@ -1686,14 +1686,14 @@ export default function VariablesAnalysis() {
                   placeholder="Filter variables..."
                   value={variableFilter}
                   onChange={(e) => setVariableFilter(e.target.value)}
-                  className="bg-white border border-gray-200 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 pl-10 pr-4 py-2 w-48 shadow-sm"
+                  className="bg-cyan-950/40 border border-cyan-500/15 text-gray-900 text-sm rounded-lg focus:ring-cyan-400 focus:border-cyan-400 pl-10 pr-4 py-2 w-48 shadow-sm"
                 />
               </div>
               
               {/* Refresh Button */}
               <button
                 onClick={() => window.location.reload()}
-                className="flex items-center space-x-2 bg-white hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-lg border border-gray-200 shadow-sm transition-colors duration-200"
+                className="flex items-center space-x-2 bg-cyan-950/40 hover:bg-cyan-950/25 text-gray-700 font-medium py-2 px-4 rounded-lg border border-cyan-500/15 shadow-sm transition-colors duration-200"
               >
                 <RefreshCw className="h-4 w-4" />
                 <span>Refresh</span>
@@ -1706,12 +1706,12 @@ export default function VariablesAnalysis() {
 
         {/* Enhanced Tabs */}
         <div className="mb-6">
-          <div className="border-b border-gray-200 bg-white rounded-t-lg shadow-sm">
+          <div className="border-b border-cyan-500/15 bg-cyan-950/40 rounded-t-lg shadow-sm">
             <nav className="-mb-px flex space-x-8 px-6">
               <button
                 onClick={() => setActiveTab('overview')}
                 className={`${activeTab === 'overview' 
-                  ? 'border-blue-500 text-blue-600 bg-blue-50' 
+                  ? 'border-cyan-400 text-cyan-300 bg-cyan-950/25' 
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 } whitespace-nowrap py-4 px-4 border-b-2 font-medium text-sm rounded-t-lg transition-all duration-200 flex items-center space-x-2`}
               >
@@ -1721,7 +1721,7 @@ export default function VariablesAnalysis() {
               <button
                 onClick={() => setActiveTab('table')}
                 className={`${activeTab === 'table' 
-                  ? 'border-blue-500 text-blue-600 bg-blue-50' 
+                  ? 'border-cyan-400 text-cyan-300 bg-cyan-950/25' 
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 } whitespace-nowrap py-4 px-4 border-b-2 font-medium text-sm rounded-t-lg transition-all duration-200 flex items-center space-x-2`}
               >
@@ -1740,7 +1740,7 @@ export default function VariablesAnalysis() {
           <div className="space-y-8">
             {/* Top Performers Section */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="bg-white rounded-lg p-6 border border-emerald-200 shadow-sm">
+              <div className="bg-cyan-950/40 rounded-lg p-6 border border-emerald-200 shadow-sm">
                 <div className="flex items-center space-x-3 mb-4">
                   <div className="p-2 bg-emerald-100 rounded-lg">
                     <Star className="h-6 w-6 text-emerald-600" />
@@ -1761,7 +1761,7 @@ export default function VariablesAnalysis() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-lg p-6 border border-red-200 shadow-sm">
+              <div className="bg-cyan-950/40 rounded-lg p-6 border border-red-200 shadow-sm">
                 <div className="flex items-center space-x-3 mb-4">
                   <div className="p-2 bg-red-100 rounded-lg">
                     <AlertTriangle className="h-6 w-6 text-red-600" />
@@ -1782,22 +1782,22 @@ export default function VariablesAnalysis() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-lg p-6 border border-blue-200 shadow-sm">
+              <div className="bg-cyan-950/40 rounded-lg p-6 border border-cyan-500/20 shadow-sm">
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex items-center space-x-3">
                     <div className="p-2 bg-blue-100 rounded-lg">
-                      <Shield className="h-6 w-6 text-blue-600" />
+                      <Shield className="h-6 w-6 text-cyan-300" />
                     </div>
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900">Best Combination Metrics</h3>
                       {summaryStats.bestVariable && summaryStats.bestVariable.variable && (
-                        <div className="text-xs text-blue-600 mt-1">
+                        <div className="text-xs text-cyan-300 mt-1">
                           {summaryStats.bestVariable.variable}
                         </div>
                       )}
                     </div>
                   </div>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-cyan-100">
                     Top Performer
                   </span>
                 </div>
@@ -1809,7 +1809,7 @@ export default function VariablesAnalysis() {
                         <span className="text-sm text-gray-700">Avg Expectancy</span>
                         <div className="ml-1 text-gray-400 group-hover:text-gray-600 cursor-help">
                           <Info className="h-3.5 w-3.5" />
-                          <div className="hidden group-hover:block absolute z-10 w-64 p-2 mt-1 -ml-2 text-xs text-gray-600 bg-white border border-gray-200 rounded shadow-lg">
+                          <div className="hidden group-hover:block absolute z-10 w-64 p-2 mt-1 -ml-2 text-xs text-gray-600 bg-cyan-950/40 border border-cyan-500/15 rounded shadow-lg">
                             Average profit per trade relative to risk. Higher values indicate better risk-adjusted returns.
                           </div>
                         </div>
@@ -1826,7 +1826,7 @@ export default function VariablesAnalysis() {
                         <span className="text-sm text-gray-700">Avg Drawdown</span>
                         <div className="ml-1 text-gray-400 group-hover:text-gray-600 cursor-help">
                           <Info className="h-3.5 w-3.5" />
-                          <div className="hidden group-hover:block absolute z-10 w-64 p-2 mt-1 -ml-2 text-xs text-gray-600 bg-white border border-gray-200 rounded shadow-lg">
+                          <div className="hidden group-hover:block absolute z-10 w-64 p-2 mt-1 -ml-2 text-xs text-gray-600 bg-cyan-950/40 border border-cyan-500/15 rounded shadow-lg">
                             Average peak-to-trough decline. Lower (more negative) values indicate larger losses from peak values.
                           </div>
                         </div>
@@ -1845,7 +1845,7 @@ export default function VariablesAnalysis() {
                         <span className="text-xs font-medium text-gray-600">Ann. Volatility</span>
                         <div className="ml-1 text-gray-400 group-hover:text-gray-600 cursor-help">
                           <Info className="h-3 w-3" />
-                          <div className="hidden group-hover:block absolute z-10 w-64 p-2 mt-1 -ml-2 text-xs text-gray-600 bg-white border border-gray-200 rounded shadow-lg">
+                          <div className="hidden group-hover:block absolute z-10 w-64 p-2 mt-1 -ml-2 text-xs text-gray-600 bg-cyan-950/40 border border-cyan-500/15 rounded shadow-lg">
                             Annualized standard deviation of returns. Measures the dispersion of returns.
                           </div>
                         </div>
@@ -1875,7 +1875,7 @@ export default function VariablesAnalysis() {
 
             {/* Quick Charts Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow duration-200">
+              <div className="bg-cyan-950/40 p-6 rounded-lg shadow-sm border border-cyan-500/15 hover:shadow-md transition-shadow duration-200">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-lg font-semibold text-gray-900">Top 10 Variables by P&L</h3>
                   <BarChart2 className="h-5 w-5 text-gray-400" />
@@ -1913,7 +1913,7 @@ export default function VariablesAnalysis() {
                 </div>
               </div>
 
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow duration-200">
+              <div className="bg-cyan-950/40 p-6 rounded-lg shadow-sm border border-cyan-500/15 hover:shadow-md transition-shadow duration-200">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-lg font-semibold text-gray-900">Performance Distribution</h3>
                   <PieChartIcon className="h-5 w-5 text-gray-400" />
@@ -1951,34 +1951,34 @@ export default function VariablesAnalysis() {
                 </div>
               </div>
             </div>
-            <div className="bg-gradient-to-br from-slate-50 to-white p-8 rounded-2xl shadow-lg border border-slate-200/60 hover:shadow-xl transition-all duration-300">
+            <div className="bg-gradient-to-br from-slate-50 to-white p-8 rounded-2xl shadow-lg border border-cyan-500/15 hover:shadow-xl transition-all duration-300">
   <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-4">
     <div className="flex items-center space-x-3">
-      <div className="w-2 h-8 bg-gradient-to-b from-blue-500 to-blue-600 rounded-full"></div>
+      <div className="w-2 h-8 bg-gradient-to-b from-cyan-400 to-cyan-600 rounded-full"></div>
       <h3 className="text-2xl font-bold text-slate-900 tracking-tight">Top Combinations by P&L</h3>
     </div>
     
     <div className="flex flex-wrap items-center gap-3">
-      <div className="flex items-center space-x-3 bg-slate-100/80 backdrop-blur-sm px-4 py-2 rounded-xl border border-slate-200/50">
-        <span className="text-sm font-medium text-slate-600">
+      <div className="flex items-center space-x-3 bg-cyan-950/35 backdrop-blur-sm px-4 py-2 rounded-xl border border-cyan-500/15">
+        <span className="text-sm font-medium text-cyan-100/60">
           Top 10 of {combinationsData.length}
         </span>
         <div className="w-px h-4 bg-slate-300"></div>
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-1.5">
             <div className="w-3 h-3 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full shadow-sm"></div>
-            <span className="text-xs font-medium text-slate-600">Profitable</span>
+            <span className="text-xs font-medium text-cyan-100/60">Profitable</span>
           </div>
           <div className="flex items-center space-x-1.5">
             <div className="w-3 h-3 bg-gradient-to-r from-red-500 to-red-600 rounded-full shadow-sm"></div>
-            <span className="text-xs font-medium text-slate-600">Loss</span>
+            <span className="text-xs font-medium text-cyan-100/60">Loss</span>
           </div>
         </div>
       </div>
       
       <button
         onClick={() => navigate('/analytics/top-combinations')}
-        className="group flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-sm font-semibold py-3 px-5 rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+        className="group flex items-center space-x-2 bg-gradient-to-r from-cyan-500 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-sm font-semibold py-3 px-5 rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
       >
         <Maximize2 className="h-4 w-4 group-hover:scale-110 transition-transform duration-200" />
         <span>Full View</span>
@@ -1986,14 +1986,14 @@ export default function VariablesAnalysis() {
     </div>
   </div>
   
-  <div className="mb-4 flex items-center justify-between bg-white/30 backdrop-blur-sm rounded-lg border border-slate-200/30 p-3">
+  <div className="mb-4 flex items-center justify-between bg-cyan-950/25 backdrop-blur-sm rounded-lg border border-cyan-500/15 p-3">
     <div className="flex items-center space-x-4">
       <div className="flex items-center space-x-2">
-        <label className="text-sm font-medium text-slate-700">Min Trades:</label>
+        <label className="text-sm font-medium text-slate-200">Min Trades:</label>
         <select 
           value={minTrades} 
           onChange={(e) => setMinTrades(parseInt(e.target.value))}
-          className="bg-white/80 border border-slate-200 rounded-md px-2 py-1 text-sm"
+          className="bg-cyan-950/45 border border-cyan-500/15 rounded-md px-2 py-1 text-sm"
         >
           <option value={3}>3+</option>
           <option value={5}>5+</option>
@@ -2001,13 +2001,13 @@ export default function VariablesAnalysis() {
           <option value={20}>20+</option>
         </select>
       </div>
-      <div className="text-sm text-slate-600">
+      <div className="text-sm text-cyan-100/60">
         Showing top 10 of {combinationsData.filter(combo => (combo.trades || 0) >= minTrades).length} combinations
       </div>
     </div>
   </div>
   
-  <div className="h-[700px] bg-white/50 backdrop-blur-sm rounded-xl border border-slate-200/50 p-4">
+  <div className="h-[700px] bg-cyan-950/150 backdrop-blur-sm rounded-xl border border-cyan-500/15 p-4">
     <ResponsiveContainer width="100%" height="100%">
       <BarChart
         data={(() => {
@@ -2209,7 +2209,7 @@ export default function VariablesAnalysis() {
             const variables = parseCombination(data.name);
             
             return (
-              <div className="bg-white/95 backdrop-blur-sm p-5 border border-slate-200 rounded-xl shadow-2xl text-sm max-w-sm">
+              <div className="bg-cyan-950/55 backdrop-blur-sm p-5 border border-cyan-500/15 rounded-xl shadow-2xl text-sm max-w-sm">
                 <div className="mb-4 pb-3 border-b border-slate-100">
                   <p className="font-bold text-slate-900 text-base leading-relaxed">
                     {data.name}
@@ -2217,29 +2217,29 @@ export default function VariablesAnalysis() {
                 </div>
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-600 font-medium">P&L:</span>
+                    <span className="text-cyan-100/60 font-medium">P&L:</span>
                     <span className={`font-bold text-lg ${data.pnl >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                       {formatCurrency(data.pnl)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-600">Trades:</span>
-                    <span className="font-semibold text-slate-800">{data.trades ?? 'N/A'}</span>
+                    <span className="text-cyan-100/60">Trades:</span>
+                    <span className="font-semibold text-slate-100">{data.trades ?? 'N/A'}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-600">Win Rate:</span>
-                    <span className="font-semibold text-slate-800">
+                    <span className="text-cyan-100/60">Win Rate:</span>
+                    <span className="font-semibold text-slate-100">
                       {typeof data.winRate === 'number' ? `${data.winRate.toFixed(1)}%` : 'N/A'}
                     </span>
                   </div>
                   {variables.length > 0 && (
                     <div className="pt-3 border-t border-slate-100">
-                      <div className="text-xs text-slate-500 mb-2 font-medium">Variables ({variables.length}):</div>
+                      <div className="text-xs text-cyan-200/45 mb-2 font-medium">Variables ({variables.length}):</div>
                       <div className="space-y-2">
                         {variables.map((v, idx) => (
-                          <div key={idx} className="flex justify-between text-xs bg-slate-50 px-2 py-1 rounded-md">
-                            <span className="text-slate-600 font-medium">{v.name}:</span>
-                            <span className="text-slate-800 font-semibold">{v.value}</span>
+                          <div key={idx} className="flex justify-between text-xs bg-jf-bg px-2 py-1 rounded-md">
+                            <span className="text-cyan-100/60 font-medium">{v.name}:</span>
+                            <span className="text-slate-100 font-semibold">{v.value}</span>
                           </div>
                         ))}
                       </div>
@@ -2285,27 +2285,27 @@ export default function VariablesAnalysis() {
 </div>
 
 {/* Combination Controls */}
-<div className="bg-gradient-to-br from-white to-slate-50/50 p-8 rounded-2xl shadow-lg border border-slate-200/60 backdrop-blur-sm">
+<div className="bg-gradient-to-br from-white to-slate-50/50 p-8 rounded-2xl shadow-lg border border-cyan-500/15 backdrop-blur-sm">
   <div className="flex items-center justify-between mb-8">
     <div className="flex items-center space-x-3">
-      <div className="w-2 h-8 bg-gradient-to-b from-indigo-500 to-indigo-600 rounded-full"></div>
+      <div className="w-2 h-8 bg-gradient-to-b from-indigo-500 to-cyan-700 rounded-full"></div>
       <h3 className="text-2xl font-bold text-slate-900 tracking-tight">Combination Settings</h3>
     </div>
-    <div className="p-3 bg-slate-100/80 rounded-xl border border-slate-200/50">
-      <Settings className="h-5 w-5 text-slate-500" />
+    <div className="p-3 bg-cyan-950/35 rounded-xl border border-cyan-500/15">
+      <Settings className="h-5 w-5 text-cyan-200/45" />
     </div>
   </div>
   
   <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
     <div className="space-y-2">
-      <label className="block text-sm font-semibold text-slate-700 mb-3">
+      <label className="block text-sm font-semibold text-slate-200 mb-3">
         Combination Level
       </label>
       <div className="relative">
         <select
           value={combinationLevel}
           onChange={(e) => setCombinationLevel(parseInt(e.target.value))}
-          className="appearance-none bg-white border border-slate-200 text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 block w-full p-3.5 shadow-sm hover:border-slate-300 transition-colors duration-200 font-medium"
+          className="appearance-none bg-cyan-950/40 border border-cyan-500/15 text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-cyan-400/20 focus:border-cyan-400 block w-full p-3.5 shadow-sm hover:border-slate-300 transition-colors duration-200 font-medium"
         >
           <option value={2}>Pairs (2 variables)</option>
           <option value={3}>Trios (3 variables)</option>
@@ -2320,27 +2320,27 @@ export default function VariablesAnalysis() {
     </div>
     
     <div className="space-y-2">
-      <label className="block text-sm font-semibold text-slate-700 mb-3">
-        Minimum Trades: <span className="text-blue-600 font-bold">{minTrades}</span> trade{minTrades !== 1 ? 's' : ''}
+      <label className="block text-sm font-semibold text-slate-200 mb-3">
+        Minimum Trades: <span className="text-cyan-300 font-bold">{minTrades}</span> trade{minTrades !== 1 ? 's' : ''}
       </label>
       <input
         type="number"
         min="1"
         value={minTrades}
         onChange={(e) => setMinTrades(parseInt(e.target.value) || 1)}
-        className="bg-white border border-slate-200 text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 block w-full p-3.5 shadow-sm hover:border-slate-300 transition-colors duration-200 font-medium"
+        className="bg-cyan-950/40 border border-cyan-500/15 text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-cyan-400/20 focus:border-cyan-400 block w-full p-3.5 shadow-sm hover:border-slate-300 transition-colors duration-200 font-medium"
       />
     </div>
     
     <div className="flex items-end">
       <button
         onClick={() => setShowFilters(true)}
-        className="group relative flex items-center justify-center space-x-2 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold py-3.5 px-4 rounded-xl text-sm transition-all duration-200 shadow-sm hover:shadow-md w-full"
+        className="group relative flex items-center justify-center space-x-2 bg-cyan-950/40 border border-cyan-500/15 hover:border-slate-300 hover:bg-jf-bg text-slate-200 font-semibold py-3.5 px-4 rounded-xl text-sm transition-all duration-200 shadow-sm hover:shadow-md w-full"
       >
         <Filter className="h-4 w-4 group-hover:scale-110 transition-transform duration-200" />
         <span>Filter Combinations</span>
         {activeFilterCount > 0 && (
-          <div className="absolute -top-2 -right-2 inline-flex items-center justify-center h-6 min-w-6 px-2 py-1 text-xs font-bold bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-full shadow-lg">
+          <div className="absolute -top-2 -right-2 inline-flex items-center justify-center h-6 min-w-6 px-2 py-1 text-xs font-bold bg-gradient-to-r from-cyan-500 to-blue-700 text-white rounded-full shadow-lg">
             {activeFilterCount}
           </div>
         )}
@@ -2353,7 +2353,7 @@ export default function VariablesAnalysis() {
           const event = new Event('refresh-combinations');
           window.dispatchEvent(event);
         }}
-        className="group flex items-center justify-center space-x-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-3.5 px-4 rounded-xl text-sm transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 w-full"
+        className="group flex items-center justify-center space-x-2 bg-gradient-to-r from-cyan-500 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-3.5 px-4 rounded-xl text-sm transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 w-full"
       >
         <RefreshCw className="h-4 w-4 group-hover:rotate-180 group-hover:scale-110 transition-all duration-300" />
         <span>Refresh Analysis</span>
@@ -2365,7 +2365,7 @@ export default function VariablesAnalysis() {
             {combinationsLoading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-blue-500 mx-auto mb-4"></div>
+                  <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-cyan-400 mx-auto mb-4"></div>
                   <span className="text-gray-600 font-medium">Analyzing combinations...</span>
                 </div>
               </div>
@@ -2392,15 +2392,15 @@ export default function VariablesAnalysis() {
               <>
                 {/* Active Filters */}
                 {activeFilterCount > 0 && (
-                  <div className="bg-blue-50 border-l-4 border-blue-400 rounded-lg p-4 shadow-sm">
+                  <div className="bg-cyan-950/25 border-l-4 border-blue-400 rounded-lg p-4 shadow-sm">
                     <div className="flex items-start">
                       <div className="flex-shrink-0">
-                        <svg className="h-5 w-5 text-blue-400 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <svg className="h-5 w-5 text-cyan-300 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                           <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H4a1 1 0 01-.8-1.6L5.75 8 3.2 4.6A1 1 0 013 3zm4 8a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
                         </svg>
                       </div>
                       <div className="ml-3 flex-1">
-                        <p className="text-sm text-blue-700 font-medium">
+                        <p className="text-sm text-cyan-200 font-medium">
                           Showing {filterCombinations.length} of {combinationsData.length} combinations matching {activeFilterCount} filter{activeFilterCount !== 1 ? 's' : ''}
                         </p>
                         {renderActiveFilters()}
@@ -2472,7 +2472,7 @@ export default function VariablesAnalysis() {
                   
 
                   {/* Win Rate vs P&L Scatter Plot */}
-                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow duration-200">
+                  <div className="bg-cyan-950/40 p-6 rounded-lg shadow-sm border border-cyan-500/15 hover:shadow-md transition-shadow duration-200">
                     <div className="flex justify-between items-center mb-6">
                         <h3 className="text-lg font-semibold text-gray-900">Win Rate vs P&L (Trades as Bubble Size)</h3>
                         <div className="flex items-center space-x-2">
@@ -2511,7 +2511,7 @@ export default function VariablesAnalysis() {
                                         if (active && payload && payload.length) {
                                             const data = payload[0].payload;
                                             return (
-                                                <div className="bg-white p-3 border border-gray-300 rounded-lg shadow-xl text-sm">
+                                                <div className="bg-cyan-950/40 p-3 border border-gray-300 rounded-lg shadow-xl text-sm">
                                                     <p className="font-bold text-gray-900 mb-2" style={{ maxWidth: '300px', whiteSpace: 'normal' }}>
                                                         {data.combination}
                                                     </p>
@@ -2551,8 +2551,8 @@ export default function VariablesAnalysis() {
                 
 
                 {/* Combinations Table */}
-                <div className="bg-white shadow-sm rounded-lg overflow-hidden border border-gray-200">
-                  <div className="px-6 py-4 border-b border-gray-200">
+                <div className="bg-cyan-950/40 shadow-sm rounded-lg overflow-hidden border border-cyan-500/15">
+                  <div className="px-6 py-4 border-b border-cyan-500/15">
                     <h3 className="text-lg font-semibold text-gray-900">All Combinations</h3>
                     <p className="text-sm text-gray-600 mt-1">
                       Showing {filterCombinations.length} of {combinationsData.length} combinations
@@ -2560,7 +2560,7 @@ export default function VariablesAnalysis() {
                   </div>
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
+                      <thead className="bg-cyan-950/25">
                         <tr>
                           <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                             Combination
@@ -2582,12 +2582,12 @@ export default function VariablesAnalysis() {
                           </th>
                         </tr>
                       </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
+                      <tbody className="bg-cyan-950/40 divide-y divide-gray-200">
                         {filterCombinations
                           .sort((a, b) => b.pnl - a.pnl)
                           .slice(0, 50) // Limit to top 50 for performance
                           .map((combo, index) => (
-                          <tr key={index} className="hover:bg-gray-50 transition-colors duration-150">
+                          <tr key={index} className="hover:bg-cyan-950/25 transition-colors duration-150">
                             <td className="px-6 py-4">
                               <div className="text-sm font-medium text-gray-900 max-w-xs truncate">
                                 {combo.combination}
@@ -2624,7 +2624,7 @@ export default function VariablesAnalysis() {
                     </table>
                   </div>
                   {filterCombinations.length > 50 && (
-                    <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+                    <div className="px-6 py-4 bg-cyan-950/25 border-t border-cyan-500/15">
                       <p className="text-sm text-gray-600 text-center">
                         Showing top 50 results. Use filters to narrow down the results.
                       </p>
@@ -2636,10 +2636,10 @@ export default function VariablesAnalysis() {
           </div>
         ) : activeTab === 'table' ? (
           /* Enhanced Data Table */
-          <div className="bg-white shadow-sm rounded-lg overflow-hidden border border-gray-200">
+          <div className="bg-cyan-950/40 shadow-sm rounded-lg overflow-hidden border border-cyan-500/15">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+                <thead className="bg-cyan-950/25">
                   <tr>
                     <th 
                       scope="col" 
@@ -2723,9 +2723,9 @@ export default function VariablesAnalysis() {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-cyan-950/40 divide-y divide-gray-200">
                   {sortedAndFilteredData.map((item, index) => (
-                    <tr key={index} className="hover:bg-gray-50 transition-colors duration-150">
+                    <tr key={index} className="hover:bg-cyan-950/25 transition-colors duration-150">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">
                           {item.variable || 'Unknown'}

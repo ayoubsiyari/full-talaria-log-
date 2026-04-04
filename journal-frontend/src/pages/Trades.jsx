@@ -34,7 +34,7 @@ const formatDate = (dateStr) => {
 // Professional action button component
 const ActionButton = ({ onClick, type, children, disabled = false }) => {
   const styles = {
-    edit: 'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white',
+    edit: 'bg-gradient-to-r from-cyan-400 to-cyan-700 hover:from-cyan-500 hover:to-indigo-700 text-white',
     delete: 'bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white',
     view: 'bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white'
   };
@@ -234,10 +234,10 @@ export default function Trades() {
         <div className="text-center">
           <div className="relative">
             <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-400 mx-auto"></div>
-            <div className="animate-ping absolute inset-0 rounded-full h-16 w-16 border-4 border-blue-300 opacity-30"></div>
+            <div className="animate-ping absolute inset-0 rounded-full h-16 w-16 border-4 border-cyan-400/25 opacity-30"></div>
           </div>
           <p className="mt-6 text-xl font-semibold text-white">Loading Trades...</p>
-          <p className="mt-2 text-blue-300">Fetching your trading history</p>
+          <p className="mt-2 text-cyan-200">Fetching your trading history</p>
         </div>
       </div>
     );
@@ -255,7 +255,7 @@ export default function Trades() {
           <p className="text-red-300 text-lg">{error}</p>
           <button 
             onClick={() => window.location.reload()}
-            className="mt-6 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300"
+            className="mt-6 bg-gradient-to-r from-cyan-500 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300"
           >
             Try Again
           </button>
@@ -266,7 +266,7 @@ export default function Trades() {
 
   // 6. Render the professional trades interface
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
+    <div className="min-h-screen bg-jf-bg">
       {/* Professional Header */}
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900"></div>
@@ -280,7 +280,7 @@ export default function Trades() {
                 Trading <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">History</span>
               </h1>
               <p className="text-xl text-blue-200 font-medium">Complete Trade Management & Analysis</p>
-              <div className="mt-4 flex items-center space-x-6 text-blue-300">
+              <div className="mt-4 flex items-center space-x-6 text-cyan-200">
                 <div className="flex items-center space-x-2">
                   <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
                   <span className="font-semibold">{totalTrades} Total Trades</span>
@@ -301,21 +301,21 @@ export default function Trades() {
       <div className="max-w-7xl mx-auto px-6 py-12 -mt-8 relative z-10">
         {trades.length === 0 ? (
           <div className="text-center max-w-lg mx-auto">
-            <div className="w-32 h-32 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-8 shadow-2xl">
+            <div className="w-32 h-32 bg-gradient-to-br from-cyan-400 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-8 shadow-2xl">
               <span className="text-6xl">📋</span>
             </div>
             <h2 className="text-4xl font-bold text-gray-800 mb-4">No Trades Yet</h2>
             <p className="text-xl text-gray-600 leading-relaxed mb-8">
               Start building your trading history by adding your first trade from the Journal page.
             </p>
-            <button className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-4 rounded-xl font-semibold text-lg shadow-2xl hover:shadow-3xl hover:scale-105 transition-all duration-300">
+            <button className="bg-gradient-to-r from-cyan-500 to-purple-600 text-white px-8 py-4 rounded-xl font-semibold text-lg shadow-2xl hover:shadow-3xl hover:scale-105 transition-all duration-300">
               Add Your First Trade
             </button>
           </div>
         ) : (
           <>
             {/* Filters and Search */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6 mb-8">
+            <div className="bg-cyan-950/45 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-6 mb-8">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Search Trades</label>
@@ -324,7 +324,7 @@ export default function Trades() {
                     placeholder="Search by symbol, notes, or screenshot URLs..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium"
+                    className="w-full px-4 py-3 rounded-xl border-2 border-cyan-500/15 focus:border-cyan-400 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium"
                   />
                 </div>
                 <div>
@@ -332,7 +332,7 @@ export default function Trades() {
                   <select
                     value={filterDirection}
                     onChange={(e) => setFilterDirection(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium bg-white"
+                    className="w-full px-4 py-3 rounded-xl border-2 border-cyan-500/15 focus:border-cyan-400 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium bg-cyan-950/40"
                   >
                     <option value="all">All Directions</option>
                     <option value="long">Long Only</option>
@@ -344,7 +344,7 @@ export default function Trades() {
                   <select
                     value={sortField}
                     onChange={(e) => setSortField(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium bg-white"
+                    className="w-full px-4 py-3 rounded-xl border-2 border-cyan-500/15 focus:border-cyan-400 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium bg-cyan-950/40"
                   >
                     <option value="created_at">Date</option>
                     <option value="symbol">Symbol</option>
@@ -357,7 +357,7 @@ export default function Trades() {
                   <select
                     value={sortDirection}
                     onChange={(e) => setSortDirection(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium bg-white"
+                    className="w-full px-4 py-3 rounded-xl border-2 border-cyan-500/15 focus:border-cyan-400 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium bg-cyan-950/40"
                   >
                     <option value="desc">Newest First</option>
                     <option value="asc">Oldest First</option>
@@ -367,10 +367,10 @@ export default function Trades() {
             </div>
 
             {/* Professional Trades Table */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 overflow-hidden">
-              <div className="px-6 py-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+            <div className="bg-cyan-950/45 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 overflow-hidden">
+              <div className="px-6 py-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-cyan-500/15">
                 <h3 className="text-xl font-bold text-gray-900 flex items-center">
-                  <div className="w-6 h-6 bg-gradient-to-r from-blue-500 to-purple-600 rounded mr-3"></div>
+                  <div className="w-6 h-6 bg-gradient-to-r from-cyan-400 to-purple-600 rounded mr-3"></div>
                   Trading History ({filteredTrades.length} trades)
                 </h3>
               </div>
@@ -386,7 +386,7 @@ export default function Trades() {
                         <div className="flex items-center space-x-1">
                           <span>Date</span>
                           {sortField === 'date' && (
-                            <span className="text-blue-600">
+                            <span className="text-cyan-300">
                               {sortDirection === 'asc' ? '↑' : '↓'}
                             </span>
                           )}
@@ -399,7 +399,7 @@ export default function Trades() {
                         <div className="flex items-center space-x-1">
                           <span>Symbol</span>
                           {sortField === 'symbol' && (
-                            <span className="text-blue-600">
+                            <span className="text-cyan-300">
                               {sortDirection === 'asc' ? '↑' : '↓'}
                             </span>
                           )}
@@ -415,7 +415,7 @@ export default function Trades() {
                         <div className="flex items-center space-x-1">
                           <span>P&L</span>
                           {sortField === 'pnl' && (
-                            <span className="text-blue-600">
+                            <span className="text-cyan-300">
                               {sortDirection === 'asc' ? '↑' : '↓'}
                             </span>
                           )}
@@ -428,7 +428,7 @@ export default function Trades() {
                         <div className="flex items-center space-x-1">
                           <span>R:R</span>
                           {sortField === 'rr' && (
-                            <span className="text-blue-600">
+                            <span className="text-cyan-300">
                               {sortDirection === 'asc' ? '↑' : '↓'}
                             </span>
                           )}
@@ -443,7 +443,7 @@ export default function Trades() {
 
                   <tbody className="divide-y divide-gray-100">
                     {filteredTrades.map((trade, idx) => (
-                      <tr key={trade.id} className="hover:bg-blue-50/50 transition-colors duration-200">
+                      <tr key={trade.id} className="hover:bg-cyan-500/10 transition-colors duration-200">
                         <td className="py-4 px-6 text-gray-700 font-medium">
                           {formatDate(trade.date)}
                         </td>
@@ -486,7 +486,7 @@ export default function Trades() {
                                 href={getAbsoluteUrl(trade.entry_screenshot)}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                className="text-cyan-300 hover:text-cyan-100 text-sm font-medium"
                                 title="View Entry Screenshot"
                               >
                                 📷 Entry
@@ -497,7 +497,7 @@ export default function Trades() {
                                 href={getAbsoluteUrl(trade.exit_screenshot)}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                className="text-cyan-300 hover:text-cyan-100 text-sm font-medium"
                                 title="View Exit Screenshot"
                               >
                                 📷 Exit
@@ -537,7 +537,7 @@ export default function Trades() {
             <div className="bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 rounded-2xl shadow-2xl p-6 mt-8 text-white">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6 text-center">
                 <div>
-                  <div className="text-2xl font-black text-blue-400">{totalTrades}</div>
+                  <div className="text-2xl font-black text-cyan-300">{totalTrades}</div>
                   <div className="text-sm font-semibold text-blue-200 uppercase tracking-wider">Total Trades</div>
                 </div>
                 <div>

@@ -51,14 +51,14 @@ export default function StrategyModal({ isOpen, onClose, onSave }) {
         <div className="mb-6">
           <div className="flex justify-between mb-1">
             {steps.map(step => (
-              <div key={step.id} className={`text-sm ${currentStep >= step.id ? 'text-blue-400' : 'text-gray-500'}`}>
+              <div key={step.id} className={`text-sm ${currentStep >= step.id ? 'text-cyan-300' : 'text-gray-500'}`}>
                 {step.title}
               </div>
             ))}
           </div>
           <div className="bg-gray-700 rounded-full h-2">
             <div 
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              className="bg-cyan-600 h-2 rounded-full transition-all duration-300"
               style={{ width: `${((currentStep - 1) / (steps.length - 1)) * 100}%` }}
             ></div>
           </div>
@@ -77,7 +77,7 @@ export default function StrategyModal({ isOpen, onClose, onSave }) {
             Back
           </button>
           {currentStep < steps.length ? (
-            <button onClick={handleNext} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+            <button onClick={handleNext} className="px-4 py-2 text-sm font-medium text-white bg-cyan-600 rounded-lg hover:bg-blue-700">
               Next
             </button>
           ) : (

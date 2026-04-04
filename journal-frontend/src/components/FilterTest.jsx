@@ -66,13 +66,13 @@ const FilterTest = () => {
   };
 
   return (
-    <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+    <div className="p-6 bg-cyan-950/40 dark:bg-gray-800 rounded-lg shadow-lg">
       <h2 className="text-2xl font-bold mb-4">Filter Test</h2>
       
       <div className="mb-4">
         <button 
           onClick={testFilter}
-          className="bg-blue-500 text-white px-4 py-2 rounded mr-2"
+          className="bg-cyan-500 text-white px-4 py-2 rounded mr-2"
         >
           Set Test Filters
         </button>

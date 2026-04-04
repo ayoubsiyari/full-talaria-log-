@@ -116,7 +116,7 @@ const MagneticCursor = ({
           className={`w-full h-full rounded-full border-2 transition-all duration-300 ${
             isHovering 
               ? 'border-blue-400 bg-blue-400/20 backdrop-blur-sm' 
-              : 'border-white/50 bg-white/10'
+              : 'border-white/50 bg-cyan-500/10'
           }`}
         />
         
@@ -140,7 +140,7 @@ const MagneticCursor = ({
         }}
       >
         <div className={`w-full h-full rounded-full transition-all duration-200 ${
-          isHovering ? 'bg-blue-400' : 'bg-white'
+          isHovering ? 'bg-blue-400' : 'bg-cyan-950/40'
         }`} />
       </div>
     </>
@@ -205,7 +205,7 @@ export const MagneticButton = ({
       {/* Ripple effect */}
       {isHovering && (
         <div
-          className="absolute rounded-full bg-white/20 pointer-events-none animate-ping"
+          className="absolute rounded-full bg-cyan-950/20 pointer-events-none animate-ping"
           style={{
             left: mousePosition.x - 10,
             top: mousePosition.y - 10,
@@ -249,7 +249,7 @@ export const FloatingActionButton = ({
   return (
     <MagneticButton
       onClick={onClick}
-      className={`magnetic fixed ${positionClasses[position]} w-14 h-14 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full shadow-2xl flex items-center justify-center text-white hover:shadow-blue-500/25 transition-all duration-300 ${className}`}
+      className={`magnetic fixed ${positionClasses[position]} w-14 h-14 bg-gradient-to-r from-cyan-400 to-purple-600 rounded-full shadow-2xl flex items-center justify-center text-white hover:shadow-blue-500/25 transition-all duration-300 ${className}`}
       cursorText="Click me"
     >
       {icon}

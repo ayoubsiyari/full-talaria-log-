@@ -16,9 +16,9 @@ import {
 import { fetchWithAuth } from '../../utils/fetchUtils';
 
 const StatCard = ({ title, value, tooltip }) => (
-  <div className="bg-white border border-blue-200/60 rounded-xl p-6 text-center h-full flex flex-col justify-center">
+  <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl p-6 text-center h-full flex flex-col justify-center">
     <div className="flex items-center justify-center mb-2">
-      <h4 className="text-xs font-medium text-slate-600 uppercase tracking-wider">{title}</h4>
+      <h4 className="text-xs font-medium text-cyan-100/60 uppercase tracking-wider">{title}</h4>
       {tooltip && (
         <div className="ml-1 group relative">
           <Info size={16} className="text-slate-400 cursor-pointer" />
@@ -87,7 +87,7 @@ const ExitAnalysis = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-jf-bg">
         <div className="w-full px-6 py-4 space-y-6">
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -99,7 +99,7 @@ const ExitAnalysis = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-jf-bg">
         <div className="w-full px-6 py-4">
           <div className="bg-red-50 border border-red-200 rounded-xl p-6">
             <div className="flex items-start gap-4">
@@ -128,23 +128,23 @@ const ExitAnalysis = () => {
 
   if (!data || !data.chart_data || data.chart_data.length === 0) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-jf-bg">
         <div className="w-full px-6 py-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+          <div className="bg-cyan-950/30 border border-cyan-500/20 rounded-xl p-6">
             <div className="flex items-start gap-4">
               <div className="flex-shrink-0">
                 <div className="h-6 w-6 text-blue-500">📊</div>
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-semibold text-blue-800 mb-2">
+                <h3 className="text-lg font-semibold text-cyan-100 mb-2">
                   No Data Available
                 </h3>
-                <p className="text-blue-700 mb-4">
+                <p className="text-cyan-200 mb-4">
                   No exit analysis data available for the current filters.
                 </p>
                 <button
                   onClick={fetchData}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  className="bg-cyan-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                 >
                   <RefreshCw className="h-4 w-4 inline mr-2" />
                   Refresh
@@ -186,7 +186,7 @@ const ExitAnalysis = () => {
   const avgDrawdownLoser = summary_stats.avg_drawdown_loser;
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-jf-bg">
       <div className="w-full px-6 py-4 space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -194,20 +194,20 @@ const ExitAnalysis = () => {
             <h1 className="text-3xl font-bold text-[#040028] mb-2">
               Exit Analysis Summary
             </h1>
-            <p className="text-slate-600">
+            <p className="text-cyan-100/60">
               Analyze your trade exit patterns and performance
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             {/* Calculation Mode Toggle */}
-            <div className="bg-slate-100 rounded-lg p-1">
+            <div className="bg-cyan-950/35 rounded-lg p-1">
               <div className="flex">
                 <button
                   onClick={() => setCalcMode('average')}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                     calcMode === 'average'
-                      ? 'bg-white shadow text-blue-600'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-cyan-950/40 shadow text-cyan-300'
+                      : 'text-cyan-100/60 hover:text-slate-900'
                   }`}
                 >
                   Average
@@ -216,8 +216,8 @@ const ExitAnalysis = () => {
                   onClick={() => setCalcMode('median')}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                     calcMode === 'median'
-                      ? 'bg-white shadow text-blue-600'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-cyan-950/40 shadow text-cyan-300'
+                      : 'text-cyan-100/60 hover:text-slate-900'
                   }`}
                 >
                   Median
@@ -230,10 +230,10 @@ const ExitAnalysis = () => {
         </div>
 
         {/* Chart Container */}
-        <div className="bg-white border border-blue-200/60 rounded-xl shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-blue-200/60">
+        <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-cyan-500/20">
             <h2 className="text-xl font-bold text-[#040028]">Exit Analysis Chart</h2>
-            <p className="text-sm text-slate-600 mt-1">
+            <p className="text-sm text-cyan-100/60 mt-1">
               Visual representation of trade updraw, drawdown, and exit points
             </p>
           </div>

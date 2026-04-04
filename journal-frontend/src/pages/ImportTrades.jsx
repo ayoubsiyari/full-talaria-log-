@@ -182,12 +182,12 @@ const PlatformSelector = ({ selectedPlatform, onSelect }) => {
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-left focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
+        className="w-full bg-cyan-950/40 border border-gray-300 rounded-lg px-4 py-3 text-left focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 flex items-center justify-between"
       >
         <div className="flex items-center">
           {selectedPlatform ? (
             <>
-              <Icon className="w-5 h-5 mr-3 text-blue-600" />
+              <Icon className="w-5 h-5 mr-3 text-cyan-300" />
               <span className="font-medium">{PLATFORM_PROFILES[selectedPlatform].name}</span>
               <span className="ml-2 text-sm text-gray-500">
                 {PLATFORM_PROFILES[selectedPlatform].description}
@@ -201,20 +201,20 @@ const PlatformSelector = ({ selectedPlatform, onSelect }) => {
       </button>
       
       {isOpen && (
-        <div className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 focus:outline-none max-h-96 overflow-auto">
+        <div className="absolute z-10 mt-1 w-full bg-cyan-950/40 shadow-lg rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 focus:outline-none max-h-96 overflow-auto">
           {Object.entries(PLATFORM_PROFILES).map(([key, platform]) => {
             const PlatformIcon = platform.icon;
             return (
               <button
                 key={key}
                 type="button"
-                className={`w-full text-left px-4 py-2 text-sm flex items-center hover:bg-gray-100 ${selectedPlatform === key ? 'bg-blue-50' : ''}`}
+                className={`w-full text-left px-4 py-2 text-sm flex items-center hover:bg-gray-100 ${selectedPlatform === key ? 'bg-cyan-950/25' : ''}`}
                 onClick={() => {
                   onSelect(key);
                   setIsOpen(false);
                 }}
               >
-                <PlatformIcon className="w-5 h-5 mr-3 text-blue-600" />
+                <PlatformIcon className="w-5 h-5 mr-3 text-cyan-300" />
                 <div>
                   <div className="font-medium">{platform.name}</div>
                   <div className="text-xs text-gray-500">{platform.description}</div>
@@ -237,7 +237,7 @@ const SummaryMetrics = ({ stats }) => {
       label: "Total Trades",
       value: stats.total_trades,
       icon: BarChart3,
-      color: "bg-blue-500",
+      color: "bg-cyan-500",
       change: "+12%",
     },
     {
@@ -270,7 +270,7 @@ const SummaryMetrics = ({ stats }) => {
         return (
           <div
             key={index}
-            className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-all duration-200"
+            className="bg-cyan-950/40 rounded-xl border border-cyan-500/15 p-6 shadow-sm hover:shadow-md transition-all duration-200"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
@@ -1217,7 +1217,7 @@ export default function ImportTrades() {
     return (
       <div
         key={fieldName}
-        className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-all duration-200"
+        className="bg-cyan-950/40 rounded-xl border border-cyan-500/15 p-6 shadow-sm hover:shadow-md transition-all duration-200"
       >
         <div className="flex items-start space-x-4">
           <div className="bg-indigo-50 p-3 rounded-lg">
@@ -1255,7 +1255,7 @@ export default function ImportTrades() {
               })}
             </select>
             {sel && preview.length > 0 && (
-              <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+              <div className="mt-3 p-3 bg-cyan-950/25 rounded-lg">
                 <p className="text-xs font-medium text-gray-700 mb-2">
                   Sample values:
                 </p>
@@ -1263,7 +1263,7 @@ export default function ImportTrades() {
                   {preview.map((v, i) => (
                     <span
                       key={i}
-                      className="inline-block px-2 py-1 bg-white border border-gray-200 rounded text-xs text-gray-600"
+                      className="inline-block px-2 py-1 bg-cyan-950/40 border border-cyan-500/15 rounded text-xs text-gray-600"
                     >
                       {String(v).length > 15
                         ? `${String(v).substr(0, 15)}…`
@@ -1280,8 +1280,8 @@ export default function ImportTrades() {
   };
 
   const renderPreviewTable = () => (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-200">
+    <div className="bg-cyan-950/40 rounded-xl border border-cyan-500/15 shadow-sm overflow-hidden">
+      <div className="px-6 py-4 border-b border-cyan-500/15">
         <h3 className="text-lg font-semibold text-gray-900 flex items-center">
           <Eye className="w-5 h-5 mr-2 text-indigo-600" />
           Data Preview
@@ -1292,7 +1292,7 @@ export default function ImportTrades() {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className="bg-gray-50">
+          <thead className="bg-cyan-950/25">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Symbol
@@ -1311,7 +1311,7 @@ export default function ImportTrades() {
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className="bg-cyan-950/40 divide-y divide-gray-200">
             {csvData.slice(0, 3).map((row, idx) => {
               const rawSymbol = row[mapping.symbol] || "";
               const rawDir = row[mapping.direction] || "";
@@ -1336,7 +1336,7 @@ export default function ImportTrades() {
                     .trim()
                 ) || 0;
               return (
-                <tr key={idx} className="hover:bg-gray-50">
+                <tr key={idx} className="hover:bg-cyan-950/25">
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {String(rawSymbol).toUpperCase()}
                   </td>
@@ -1377,7 +1377,7 @@ export default function ImportTrades() {
   // (omitted for brevity, same as your existing code)
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen bg-cyan-950/25 py-8">
       <div className="max-w-4xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-extrabold text-gray-900 sm:text-5xl sm:tracking-tight lg:text-6xl">
@@ -1472,7 +1472,7 @@ export default function ImportTrades() {
 
         {/* Step 1: File Upload */}
         {step === 1 && (
-          <div className="bg-white rounded-xl border-2 border-dashed border-gray-300 p-12 text-center hover:border-indigo-400 transition-colors">
+          <div className="bg-cyan-950/40 rounded-xl border-2 border-dashed border-gray-300 p-12 text-center hover:border-indigo-400 transition-colors">
             <div
               onDragEnter={handleDrag}
               onDragLeave={handleDrag}
@@ -1562,7 +1562,7 @@ export default function ImportTrades() {
             <div className="flex justify-center space-x-4">
               <button
                 onClick={() => setStep(1)}
-                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-cyan-950/25 transition-colors"
               >
                 Back to Upload
               </button>
@@ -1600,7 +1600,7 @@ export default function ImportTrades() {
             <div className="flex justify-center space-x-4">
               <button
                 onClick={() => setStep(2)}
-                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-cyan-950/25 transition-colors"
               >
                 Back to Mapping
               </button>
@@ -1626,8 +1626,8 @@ export default function ImportTrades() {
             <p className="text-xl text-gray-600 mb-8">
               {analysis?.totalTrades} trades have been successfully imported to your database with all fields preserved.
             </p>
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-              <p className="text-sm text-blue-700">
+            <div className="bg-cyan-950/25 border border-cyan-500/20 rounded-lg p-4 mb-6">
+              <p className="text-sm text-cyan-200">
                 <strong>💡 Tip:</strong> You can now export your complete trading data including all fields, variables, and custom metrics using the "Export All Data" button in your Journal.
               </p>
             </div>
@@ -1672,7 +1672,7 @@ export default function ImportTrades() {
                   setAnalysis(null);
                   setCsvFileName("");
                 }}
-                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-cyan-950/25 transition-colors"
               >
                 Import Another File
               </button>

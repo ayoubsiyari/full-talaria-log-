@@ -10,24 +10,30 @@ module.exports = {
         boxShadow: {
           'card': '0 2px 8px rgba(0,0,0,0.04)',
           'card-hover': '0 6px 20px rgba(0,0,0,0.12)',
-          'glow': '0 0 20px rgba(59,130,246,0.3)',
-          'glow-lg': '0 0 40px rgba(59,130,246,0.4)',
+          'glow': '0 0 24px rgba(34,211,238,0.18)',
+          'glow-lg': '0 0 40px rgba(34,211,238,0.22)',
+          'jf-card': 'inset 0 1px 0 0 rgba(34,211,238,0.06), 0 0 28px -8px rgba(34,211,238,0.12)',
         },
         backdropBlur: {
           xs: '2px',
         },
         colors: {
-          // Homepage color scheme
-          primary: '#3b82f6',
+          jf: {
+            bg: '#050a10',
+            surface: '#071218',
+            neon: '#22d3ee',
+          },
+          // Homepage color scheme (legacy – prefer cyan / jf.*)
+          primary: '#22d3ee',
           brand: {
-            blue: '#3b82f6',
-            'blue-dark': '#1e3a8a',
-            indigo: '#6366f1',
-            purple: '#8b5cf6',
-            cyan: '#06b6d4',
-            'dark-bg': '#030014',
-            'alt-bg': '#0a0a1a',
-            'card-bg': '#0f0f14',
+            blue: '#22d3ee',
+            'blue-dark': '#0891b2',
+            indigo: '#06b6d4',
+            purple: '#67e8f9',
+            cyan: '#22d3ee',
+            'dark-bg': '#050a10',
+            'alt-bg': '#071218',
+            'card-bg': 'rgba(6, 78, 94, 0.3)',
             white: '#FFFFFF',
           },
           theme: {

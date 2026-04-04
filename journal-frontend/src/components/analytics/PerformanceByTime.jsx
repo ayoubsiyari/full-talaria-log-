@@ -61,18 +61,18 @@ const PerformanceByTime = ({ hourlyPerformance = [], loading = false }) => {
   // Loading state
   if (loading) {
     return (
-      <div className="bg-white rounded-xl border border-blue-200/60 p-6">
+      <div className="bg-cyan-950/40 rounded-xl border border-cyan-500/20 p-6">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold text-[#040028]">Performance by Time of Day</h3>
           <div className="flex items-center space-x-2">
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-cyan-200">
               <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
               Loading...
             </span>
           </div>
         </div>
         <div className="h-64 flex items-center justify-center">
-          <div className="animate-pulse w-full h-full bg-slate-100 rounded-lg"></div>
+          <div className="animate-pulse w-full h-full bg-cyan-950/35 rounded-lg"></div>
         </div>
       </div>
     );
@@ -81,10 +81,10 @@ const PerformanceByTime = ({ hourlyPerformance = [], loading = false }) => {
   // No data state
   if (chartData.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-blue-200/60 p-6">
+      <div className="bg-cyan-950/40 rounded-xl border border-cyan-500/20 p-6">
         <div className="flex flex-col items-center justify-center h-64 text-center">
-          <p className="text-slate-600 mb-2">No performance data available</p>
-          <p className="text-sm text-slate-500">Trade during different hours to see performance metrics</p>
+          <p className="text-cyan-100/60 mb-2">No performance data available</p>
+          <p className="text-sm text-cyan-200/45">Trade during different hours to see performance metrics</p>
         </div>
       </div>
     );
@@ -94,19 +94,19 @@ const PerformanceByTime = ({ hourlyPerformance = [], loading = false }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-white p-3 rounded-lg shadow-lg border border-slate-200">
+        <div className="bg-cyan-950/40 p-3 rounded-lg shadow-lg border border-cyan-500/15">
           <p className="font-semibold text-[#040028]">{label}</p>
           <p className="text-sm">
-            <span className="text-slate-600">P&L: </span>
+            <span className="text-cyan-100/60">P&L: </span>
             <span className={data.pnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}>
               {data.pnl >= 0 ? '+' : ''}{data.pnl.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
             </span>
           </p>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-cyan-100/60">
             {data.trades} {data.trades === 1 ? 'Trade' : 'Trades'}
           </p>
           {data.winRate > 0 && (
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-cyan-100/60">
               {data.winRate.toFixed(1)}% Win Rate
             </p>
           )}
@@ -117,11 +117,11 @@ const PerformanceByTime = ({ hourlyPerformance = [], loading = false }) => {
   };
 
   return (
-    <div className="bg-white rounded-xl border border-blue-200/60 p-6">
+    <div className="bg-cyan-950/40 rounded-xl border border-cyan-500/20 p-6">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold text-[#040028]">Performance by Time of Day</h3>
         <div className="flex items-center space-x-3">
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-cyan-200">
             <Clock className="mr-1.5 h-3 w-3" />
             24-Hour View
           </span>
@@ -175,32 +175,32 @@ const PerformanceByTime = ({ hourlyPerformance = [], loading = false }) => {
       </div>
       
       {bestHour && (
-        <div className="mt-6 pt-6 border-t border-blue-200/60">
+        <div className="mt-6 pt-6 border-t border-cyan-500/20">
           <div className="flex flex-col sm:flex-row justify-between gap-4">
             <div>
-              <p className="text-sm font-medium text-slate-600">Best Performing Hour</p>
+              <p className="text-sm font-medium text-cyan-100/60">Best Performing Hour</p>
               <p className="text-lg font-semibold text-[#10B981]">
                 {formatTimeRange(bestHour.hour)}
               </p>
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-cyan-100/60">
                 {bestHour.pnl >= 0 ? '+' : ''}{bestHour.pnl.toLocaleString(undefined, { style: 'currency', currency: 'USD' })} P&L
               </p>
             </div>
             <div className="text-right sm:text-left">
-              <p className="text-sm font-medium text-slate-600">Win Rate</p>
+              <p className="text-sm font-medium text-cyan-100/60">Win Rate</p>
               <p className="text-lg font-semibold text-[#10B981]">
                 {bestHour.win_rate ? bestHour.win_rate.toFixed(1) + '%' : 'N/A'}
               </p>
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-cyan-100/60">
                 {bestHour.trades} {bestHour.trades === 1 ? 'Trade' : 'Trades'}
               </p>
             </div>
             <div className="text-right sm:text-left">
-              <p className="text-sm font-medium text-slate-600">Avg. P&L per Trade</p>
+              <p className="text-sm font-medium text-cyan-100/60">Avg. P&L per Trade</p>
               <p className={`text-lg font-semibold ${avgPnlPerTrade >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                 {avgPnlPerTrade >= 0 ? '+' : ''}{avgPnlPerTrade.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
               </p>
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-cyan-100/60">
                 {bestHour.avg_win ? `Avg. Win: $${bestHour.avg_win.toFixed(2)}` : ''}
               </p>
             </div>

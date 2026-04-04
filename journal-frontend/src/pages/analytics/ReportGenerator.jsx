@@ -74,7 +74,7 @@ export default function ReportGenerator() {
         <h1 className="text-2xl font-bold">📄 Trading Performance Report</h1>
         <button
           onClick={handleDownload}
-          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          className="inline-flex items-center px-4 py-2 bg-cyan-600 text-white rounded hover:bg-blue-700"
         >
           <Download className="h-5 w-5 mr-2" />
           Download PDF
@@ -82,7 +82,7 @@ export default function ReportGenerator() {
       </div>
 
       {/* Report content */}
-      <div ref={reportRef} className="space-y-8 bg-white p-8 shadow-lg rounded">
+      <div ref={reportRef} className="space-y-8 bg-cyan-950/40 p-8 shadow-lg rounded">
         {/* Overall */}
         <section>
           <h2 className="text-xl font-semibold mb-4">Overall Statistics</h2>
@@ -167,7 +167,7 @@ export default function ReportGenerator() {
             <div key={gIdx} className="mb-6">
               <h3 className="font-semibold mb-2 capitalize">{group.tag.replace(/_/g,' ')}</h3>
               <table className="w-full text-sm border">
-                <thead className="bg-gray-50">
+                <thead className="bg-cyan-950/25">
                   <tr>
                     <th className="p-2">Label</th>
                     <th className="p-2">Trades</th>

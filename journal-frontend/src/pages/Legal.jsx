@@ -84,7 +84,7 @@ export default function Legal() {
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <Link to="/" className="flex items-center space-x-3 group">
-              <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10 group-hover:bg-white/15 transition-all duration-300">
+              <div className="w-8 h-8 bg-cyan-500/10 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10 group-hover:bg-cyan-500/12 transition-all duration-300">
                 <img src={logo} alt="Journal Logo" className="w-6 h-6 rounded-sm" />
               </div>
               <span className="text-xl font-semibold text-white">
@@ -118,10 +118,10 @@ export default function Legal() {
               <Link 
                 key={index}
                 to={page.path}
-                className="group bg-white/5 backdrop-blur-sm rounded-xl p-6 border border-white/10 transition-all duration-300 hover:bg-white/10 hover:border-white/20"
+                className="group bg-cyan-950/15 backdrop-blur-sm rounded-xl p-6 border border-white/10 transition-all duration-300 hover:bg-cyan-500/10 hover:border-white/20"
               >
                 <div className="flex items-start space-x-4">
-                  <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-10 bg-cyan-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
                     <page.icon className="w-5 h-5 text-white/80" />
                   </div>
                   <div className="flex-1">
@@ -143,7 +143,7 @@ export default function Legal() {
 
           {/* Additional Information */}
           <div className="space-y-8">
-            <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+            <div className="bg-cyan-950/15 rounded-xl p-6 border border-white/10">
               <h2 className="text-xl font-medium text-white mb-4">Last Updated</h2>
               <div className="space-y-2 text-sm text-white/70">
                 <p><strong className="text-white/90">Privacy Policy:</strong> {new Date().toLocaleDateString()}</p>
@@ -154,7 +154,7 @@ export default function Legal() {
               </div>
             </div>
 
-            <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+            <div className="bg-cyan-950/15 rounded-xl p-6 border border-white/10">
               <h2 className="text-xl font-medium text-white mb-4">Contact Information</h2>
               <div className="space-y-2 text-sm text-white/70">
                 <p><strong className="text-white/90">Legal Questions:</strong> legal@journal.com</p>
@@ -164,7 +164,7 @@ export default function Legal() {
               </div>
             </div>
 
-            <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-6">
+            <div className="bg-cyan-500/10 border border-cyan-400/30 rounded-xl p-6">
               <h2 className="text-xl font-medium text-white mb-4">Important Notice</h2>
               <p className="text-white/70 text-sm leading-relaxed font-light">
                 These legal documents are regularly updated to reflect changes in our services and applicable laws. 

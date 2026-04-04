@@ -13,7 +13,7 @@ export default function StrategyStep1({ strategy, updateStrategy }) {
             value={strategy.name || ''}
             onChange={(e) => updateStrategy({ ...strategy, name: e.target.value })}
             placeholder="e.g., 'My Golden Cross Strategy'"
-            className="w-full bg-[#1f1f1f] border border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-[#1f1f1f] border border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-400"
           />
         </div>
         <div>
@@ -24,7 +24,7 @@ export default function StrategyStep1({ strategy, updateStrategy }) {
             onChange={(e) => updateStrategy({ ...strategy, description: e.target.value })}
             rows="4"
             placeholder="Describe the core idea of your strategy..."
-            className="w-full bg-[#1f1f1f] border border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-[#1f1f1f] border border-gray-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-400"
           />
         </div>
       </div>

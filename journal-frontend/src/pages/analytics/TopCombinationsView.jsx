@@ -212,7 +212,7 @@ const CustomTooltip = ({ active, payload, label }) => {
   const variables = parseCombination(data.name);
   
   return (
-    <div className="bg-white/95 backdrop-blur-sm p-6 border border-slate-200 rounded-xl shadow-2xl text-sm max-w-md">
+    <div className="bg-cyan-950/55 backdrop-blur-sm p-6 border border-cyan-500/15 rounded-xl shadow-2xl text-sm max-w-md">
       
     </div>
   );
@@ -387,10 +387,10 @@ export default function TopCombinationsView() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
-        <div className="text-center bg-white/80 backdrop-blur-sm p-12 rounded-3xl shadow-2xl border border-slate-200/50">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-gradient-to-r from-blue-600 to-blue-700 mx-auto mb-6"></div>
-          <p className="text-slate-700 font-semibold text-lg">Loading top combinations...</p>
-          <p className="text-slate-500 text-sm mt-2">Analyzing variable performance data</p>
+        <div className="text-center bg-cyan-950/45 backdrop-blur-sm p-12 rounded-3xl shadow-2xl border border-cyan-500/15">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-gradient-to-r from-cyan-500 to-blue-700 mx-auto mb-6"></div>
+          <p className="text-slate-200 font-semibold text-lg">Loading top combinations...</p>
+          <p className="text-cyan-200/45 text-sm mt-2">Analyzing variable performance data</p>
         </div>
       </div>
     );
@@ -421,23 +421,23 @@ export default function TopCombinationsView() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Header */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-slate-200/60 sticky top-0 z-10 shadow-sm">
+      <div className="bg-cyan-950/45 backdrop-blur-sm border-b border-cyan-500/15 sticky top-0 z-10 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => navigate('/analytics/variables')}
-                className="group p-3 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-all duration-200"
+                className="group p-3 text-cyan-200/45 hover:text-slate-200 hover:bg-cyan-950/35 rounded-xl transition-all duration-200"
               >
                 <ArrowLeft className="h-5 w-5 group-hover:transform group-hover:-translate-x-1 transition-transform duration-200" />
               </button>
               <div className="flex items-center space-x-4">
-                <div className="p-3 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl shadow-lg">
+                <div className="p-3 bg-gradient-to-r from-cyan-500 to-blue-700 rounded-xl shadow-lg">
                   <BarChart3 className="h-7 w-7 text-white" />
                 </div>
                 <div>
                   <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Top Combinations Analysis</h1>
-                  <p className="text-slate-600 font-medium">Full view of the best performing variable combinations</p>
+                  <p className="text-cyan-100/60 font-medium">Full view of the best performing variable combinations</p>
                 </div>
               </div>
             </div>
@@ -445,14 +445,14 @@ export default function TopCombinationsView() {
             <div className="flex items-center space-x-3">
               <button
                 onClick={() => window.print()}
-                className="group flex items-center space-x-2 bg-white/80 hover:bg-white text-slate-700 font-semibold py-3 px-5 rounded-xl border border-slate-200/60 shadow-sm hover:shadow-md transition-all duration-200"
+                className="group flex items-center space-x-2 bg-cyan-950/45 hover:bg-cyan-950/40 text-slate-200 font-semibold py-3 px-5 rounded-xl border border-cyan-500/15 shadow-sm hover:shadow-md transition-all duration-200"
               >
                 <Download className="h-4 w-4 group-hover:scale-110 transition-transform duration-200" />
                 <span>Export</span>
               </button>
               <button
                 onClick={() => window.location.reload()}
-                className="group flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-3 px-5 rounded-xl shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200"
+                className="group flex items-center space-x-2 bg-gradient-to-r from-cyan-500 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-3 px-5 rounded-xl shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200"
               >
                 <RefreshCw className="h-4 w-4 group-hover:rotate-180 transition-all duration-300" />
                 <span>Refresh</span>
@@ -464,21 +464,21 @@ export default function TopCombinationsView() {
 
              <div className="max-w-full mx-auto px-6 py-4">
                  {/* Controls */}
-         <div className="bg-gradient-to-br from-white to-slate-50/50 p-6 rounded-xl shadow-lg border border-slate-200/60 backdrop-blur-sm mb-4">
+         <div className="bg-gradient-to-br from-white to-slate-50/50 p-6 rounded-xl shadow-lg border border-cyan-500/15 backdrop-blur-sm mb-4">
           <div className="flex items-center space-x-3 mb-6">
-            <div className="w-2 h-8 bg-gradient-to-b from-indigo-500 to-indigo-600 rounded-full"></div>
+            <div className="w-2 h-8 bg-gradient-to-b from-indigo-500 to-cyan-700 rounded-full"></div>
             <h3 className="text-xl font-bold text-slate-900">Analysis Controls</h3>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div className="space-y-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-3">
+              <label className="block text-sm font-semibold text-slate-200 mb-3">
                 Combination Level
               </label>
               <div className="relative">
                 <select
                   value={combinationLevel}
                   onChange={(e) => setCombinationLevel(parseInt(e.target.value))}
-                  className="appearance-none bg-white border border-slate-200 text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 block w-full p-3.5 shadow-sm hover:border-slate-300 transition-colors duration-200 font-medium"
+                  className="appearance-none bg-cyan-950/40 border border-cyan-500/15 text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-cyan-400/20 focus:border-cyan-400 block w-full p-3.5 shadow-sm hover:border-slate-300 transition-colors duration-200 font-medium"
                 >
                   <option value={2}>Pairs (2 variables)</option>
                   <option value={3}>Trios (3 variables)</option>
@@ -493,27 +493,27 @@ export default function TopCombinationsView() {
             </div>
             
             <div className="space-y-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-3">
-                Minimum Trades: <span className="text-blue-600 font-bold">{minTrades}</span>
+              <label className="block text-sm font-semibold text-slate-200 mb-3">
+                Minimum Trades: <span className="text-cyan-300 font-bold">{minTrades}</span>
               </label>
               <input
                 type="number"
                 min="1"
                 value={minTrades}
                 onChange={(e) => setMinTrades(parseInt(e.target.value) || 1)}
-                className="bg-white border border-slate-200 text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 block w-full p-3.5 shadow-sm hover:border-slate-300 transition-colors duration-200 font-medium"
+                className="bg-cyan-950/40 border border-cyan-500/15 text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-cyan-400/20 focus:border-cyan-400 block w-full p-3.5 shadow-sm hover:border-slate-300 transition-colors duration-200 font-medium"
               />
             </div>
             
             <div className="space-y-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-3">
+              <label className="block text-sm font-semibold text-slate-200 mb-3">
                 Show Top: <span className="text-purple-600 font-bold">{showTop}</span>
               </label>
               <div className="relative">
                 <select
                   value={showTop}
                   onChange={(e) => setShowTop(parseInt(e.target.value))}
-                  className="appearance-none bg-white border border-slate-200 text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 block w-full p-3.5 shadow-sm hover:border-slate-300 transition-colors duration-200 font-medium"
+                  className="appearance-none bg-cyan-950/40 border border-cyan-500/15 text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-cyan-400/20 focus:border-cyan-400 block w-full p-3.5 shadow-sm hover:border-slate-300 transition-colors duration-200 font-medium"
                 >
                   <option value={10}>Top 10</option>
                   <option value={20}>Top 20</option>
@@ -529,14 +529,14 @@ export default function TopCombinationsView() {
             </div>
             
             <div className="space-y-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-3">
+              <label className="block text-sm font-semibold text-slate-200 mb-3">
                 Sort By
               </label>
               <div className="relative">
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  className="appearance-none bg-white border border-slate-200 text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 block w-full p-3.5 shadow-sm hover:border-slate-300 transition-colors duration-200 font-medium"
+                  className="appearance-none bg-cyan-950/40 border border-cyan-500/15 text-slate-900 text-sm rounded-xl focus:ring-2 focus:ring-cyan-400/20 focus:border-cyan-400 block w-full p-3.5 shadow-sm hover:border-slate-300 transition-colors duration-200 font-medium"
                 >
                   <option value="pnl">P&L</option>
                   <option value="winRate">Win Rate</option>
@@ -561,7 +561,7 @@ export default function TopCombinationsView() {
         )}
 
                  {/* Main Chart */}
-         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+         <div className="bg-cyan-950/40 p-6 rounded-lg shadow-sm border border-cyan-500/15">
                      <div className="flex justify-between items-center mb-4">
             <div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Top Combinations by P&L</h2>
@@ -625,8 +625,8 @@ export default function TopCombinationsView() {
         </div>
 
                  {/* Data Table */}
-         <div className="bg-white rounded-lg shadow-sm border border-gray-200 mt-4">
-          <div className="px-6 py-4 border-b border-gray-200">
+         <div className="bg-cyan-950/40 rounded-lg shadow-sm border border-cyan-500/15 mt-4">
+          <div className="px-6 py-4 border-b border-cyan-500/15">
             <h3 className="text-lg font-semibold text-gray-900">Detailed Results</h3>
             <p className="text-sm text-gray-600 mt-1">
               Complete breakdown of all combinations
@@ -634,7 +634,7 @@ export default function TopCombinationsView() {
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+              <thead className="bg-cyan-950/25">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Combination
@@ -656,9 +656,9 @@ export default function TopCombinationsView() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-cyan-950/40 divide-y divide-gray-200">
                 {sortedData.map((combo, index) => (
-                  <tr key={index} className="hover:bg-gray-50 transition-colors duration-150">
+                  <tr key={index} className="hover:bg-cyan-950/25 transition-colors duration-150">
                     <td className="px-6 py-4">
                       <div className="text-sm font-medium text-gray-900 max-w-md truncate">
                         {combo.name}

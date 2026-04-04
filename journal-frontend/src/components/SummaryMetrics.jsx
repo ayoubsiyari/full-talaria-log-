@@ -34,8 +34,8 @@ export default function SummaryMetrics({ stats, pnlHistory }) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
         {/* Total Trades */}
-        <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
-          <DollarSign className="h-6 w-6 text-blue-600" />
+        <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
+          <DollarSign className="h-6 w-6 text-cyan-300" />
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
               Total Trades
@@ -58,7 +58,7 @@ export default function SummaryMetrics({ stats, pnlHistory }) {
         </div>
 
         {/* Total Net P&L */}
-        <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
+        <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
           <ArrowUpRight className="h-6 w-6 text-green-600" />
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -78,7 +78,7 @@ export default function SummaryMetrics({ stats, pnlHistory }) {
         </div>
 
         {/* Avg P&L per Trade */}
-        <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
+        <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
           <ArrowUpRight className="h-6 w-6 text-purple-600" />
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -102,13 +102,13 @@ export default function SummaryMetrics({ stats, pnlHistory }) {
         </div>
 
         {/* Win Rate */}
-        <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
-          <TrendingUp className="h-6 w-6 text-blue-600" />
+        <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
+          <TrendingUp className="h-6 w-6 text-cyan-300" />
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
               Win Rate (%)
             </p>
-            <p className="text-2xl font-bold text-blue-600">
+            <p className="text-2xl font-bold text-cyan-300">
               {stats.win_rate != null
                 ? formatPercent(stats.win_rate)
                 : "N/A"}
@@ -120,7 +120,7 @@ export default function SummaryMetrics({ stats, pnlHistory }) {
         </div>
 
         {/* Loss Rate */}
-        <div className="bg-white rounded-2xl shadow p-5 flex items-center space-x-4">
+        <div className="bg-cyan-950/40 rounded-2xl shadow p-5 flex items-center space-x-4">
           <TrendingDown className="h-6 w-6 text-red-600" />
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">

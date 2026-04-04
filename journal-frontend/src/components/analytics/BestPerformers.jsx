@@ -79,7 +79,7 @@ const BestPerformers = ({ bestSetup, bestInstrument, bestTimeOfDay, loading }) =
   const renderLoadingSkeleton = () => (
     <div className="animate-pulse space-y-4">
       {[1, 2, 3].map((i) => (
-        <div key={i} className="h-24 bg-slate-100 rounded-lg"></div>
+        <div key={i} className="h-24 bg-cyan-950/35 rounded-lg"></div>
       ))}
     </div>
   );
@@ -89,9 +89,9 @@ const BestPerformers = ({ bestSetup, bestInstrument, bestTimeOfDay, loading }) =
       {performanceData.map((item) => (
         <div 
           key={item.id}
-          className="flex items-start p-4 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors"
+          className="flex items-start p-4 rounded-lg bg-jf-bg hover:bg-cyan-950/35 transition-colors"
         >
-          <div className="flex-shrink-0 p-2.5 rounded-lg bg-white shadow-sm border border-blue-200/60 mr-4">
+          <div className="flex-shrink-0 p-2.5 rounded-lg bg-cyan-950/40 shadow-sm border border-cyan-500/20 mr-4">
             {item.icon}
           </div>
           <div className="flex-1 min-w-0">
@@ -115,11 +115,11 @@ const BestPerformers = ({ bestSetup, bestInstrument, bestTimeOfDay, loading }) =
               </p>
               <span className="mx-2 text-slate-300 hidden sm:inline">•</span>
               <div className="flex items-center space-x-2">
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-cyan-100/60">
                   {item.winRate.toFixed(1)}% Win Rate
                 </p>
                 <span className="text-slate-300">•</span>
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-cyan-100/60">
                   {item.trades} {item.trades === 1 ? 'Trade' : 'Trades'}
                 </p>
               </div>
@@ -131,11 +131,11 @@ const BestPerformers = ({ bestSetup, bestInstrument, bestTimeOfDay, loading }) =
   );
 
   return (
-    <div className="bg-white rounded-xl border border-blue-200/60 p-6">
+    <div className="bg-cyan-950/40 rounded-xl border border-cyan-500/20 p-6">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold text-[#040028]">Performance Highlights</h3>
         <div className="flex items-center space-x-2">
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-cyan-200">
             {loading ? (
               <>
                 <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />

@@ -28,7 +28,7 @@ const TradingMetricsGuide = () => {
       id: 1,
       title_en: 'Summary Metrics',
       title_ar: 'المقاييس المُلخّصة',
-      color: 'from-blue-500 to-indigo-600',
+      color: 'from-cyan-400 to-cyan-700',
       icon: ChartBar,
       items: [
         {
@@ -333,7 +333,7 @@ const TradingMetricsGuide = () => {
       id: 6,
       title_en: 'Time & Period-Based Metrics',
       title_ar: 'مقاييس مبنية على الزمن والفترة',
-      color: 'from-sky-500 to-blue-600',
+      color: 'from-sky-500 to-cyan-600',
       icon: Clock,
       items: [
         {
@@ -473,7 +473,7 @@ const TradingMetricsGuide = () => {
       case 'critical': return 'bg-red-100 text-red-800 border-red-200';
       case 'high': return 'bg-orange-100 text-orange-800 border-orange-200';
       case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+      default: return 'bg-gray-100 text-gray-800 border-cyan-500/15';
     }
   };
 
@@ -504,7 +504,7 @@ const TradingMetricsGuide = () => {
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2 relative">
                 {lang === 'en' ? 'Trading Metrics Guide' : 'دليل مقاييس التداول'}
-                <div className="absolute -bottom-1 left-0 w-16 h-1 bg-blue-600 rounded-full"></div>
+                <div className="absolute -bottom-1 left-0 w-16 h-1 bg-cyan-600 rounded-full"></div>
               </h1>
               <p className="text-gray-600">
                 {lang === 'en' 
@@ -514,8 +514,8 @@ const TradingMetricsGuide = () => {
             </div>
             
             {/* Language Toggle with refined design */}
-            <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-full shadow-sm border border-gray-100">
-              <span className={`text-sm font-medium ${lang === 'en' ? 'text-blue-600' : 'text-gray-400'}`}>EN</span>
+            <div className="flex items-center gap-3 bg-cyan-950/40 px-4 py-2 rounded-full shadow-sm border border-gray-100">
+              <span className={`text-sm font-medium ${lang === 'en' ? 'text-cyan-300' : 'text-gray-400'}`}>EN</span>
               <button
                 onClick={() => setLang(lang === 'en' ? 'ar' : 'en')}
                 className="relative w-12 h-6 rounded-full bg-gray-200 transition-colors duration-300"
@@ -524,20 +524,20 @@ const TradingMetricsGuide = () => {
                 }}
               >
                 <span 
-                  className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-300"
+                  className="absolute top-1 w-4 h-4 bg-cyan-950/40 rounded-full shadow-sm transition-transform duration-300"
                   style={{
                     left: lang === 'ar' ? '7px' : '1px',
                     transform: lang === 'ar' ? 'translateX(16px)' : 'translateX(0)'
                   }}
                 ></span>
               </button>
-              <span className={`text-sm font-medium ${lang === 'ar' ? 'text-blue-600' : 'text-gray-400'}`}>AR</span>
+              <span className={`text-sm font-medium ${lang === 'ar' ? 'text-cyan-300' : 'text-gray-400'}`}>AR</span>
             </div>
           </div>
         </div>
 
         {/* Search and Filter with refined design */}
-        <div className="mb-10 bg-white rounded-2xl shadow-md p-6 border border-gray-50">
+        <div className="mb-10 bg-cyan-950/40 rounded-2xl shadow-md p-6 border border-gray-50">
           <div className="flex flex-col sm:flex-row gap-4">
             {/* Search */}
             <div className="flex-1 relative">
@@ -547,7 +547,7 @@ const TradingMetricsGuide = () => {
                 placeholder={lang === 'en' ? 'Search metrics...' : 'البحث في المقاييس...'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50 hover:bg-white"
+                className="w-full pl-10 pr-4 py-3 border border-cyan-500/15 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition-all duration-200 bg-cyan-950/25 hover:bg-cyan-950/40"
               />
             </div>
             
@@ -556,7 +556,7 @@ const TradingMetricsGuide = () => {
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="appearance-none pl-4 pr-10 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 hover:bg-white transition-all duration-200"
+                className="appearance-none pl-4 pr-10 py-3 border border-cyan-500/15 rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-transparent bg-cyan-950/25 hover:bg-cyan-950/40 transition-all duration-200"
               >
                 <option value="all">{lang === 'en' ? 'All Importance' : 'جميع المستويات'}</option>
                 <option value="critical">{lang === 'en' ? 'Critical' : 'حرج'}</option>
@@ -577,12 +577,12 @@ const TradingMetricsGuide = () => {
           {filteredSections.map((section) => {
             const IconComponent = section.icon;
             return (
-              <div key={section.id} className="bg-white rounded-2xl shadow-md overflow-hidden border border-gray-50">
+              <div key={section.id} className="bg-cyan-950/40 rounded-2xl shadow-md overflow-hidden border border-gray-50">
                 {/* Section Header with refined gradient */}
                 <div className={`bg-gradient-to-r ${section.color} p-6 text-white relative`}>
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-950/40 opacity-5 rounded-full -translate-y-1/2 translate-x-1/2"></div>
                   <div className="flex items-center gap-4">
-                    <div className="bg-white bg-opacity-20 p-2.5 rounded-lg backdrop-blur-sm">
+                    <div className="bg-cyan-950/40 bg-opacity-20 p-2.5 rounded-lg backdrop-blur-sm">
                       <IconComponent className="w-6 h-6" />
                     </div>
                     <h2 className="text-xl font-bold">
@@ -595,7 +595,7 @@ const TradingMetricsGuide = () => {
                 <div className="p-6 md:p-8">
                   <div className="grid gap-6">
                     {section.items.map((item) => (
-                      <div key={item.key} className="border border-gray-100 rounded-xl p-5 hover:shadow-lg transition-shadow duration-300 bg-white">
+                      <div key={item.key} className="border border-gray-100 rounded-xl p-5 hover:shadow-lg transition-shadow duration-300 bg-cyan-950/40">
                         <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-3">
                           <h3 className="text-lg font-semibold text-gray-900">
                             {lang === 'en' ? item.label_en : item.label_ar}
@@ -618,8 +618,8 @@ const TradingMetricsGuide = () => {
 
         {/* No Results with refined empty state */}
         {filteredSections.length === 0 && (
-          <div className="text-center py-16 bg-white rounded-2xl shadow-md border border-gray-50">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gray-50 mb-6">
+          <div className="text-center py-16 bg-cyan-950/40 rounded-2xl shadow-md border border-gray-50">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-cyan-950/25 mb-6">
               <Search className="w-10 h-10 text-gray-300" />
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">
@@ -632,7 +632,7 @@ const TradingMetricsGuide = () => {
             </p>
             <button 
               onClick={() => { setSearchQuery(''); setSelectedCategory('all'); }}
-              className="mt-6 px-5 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors duration-200 font-medium text-sm"
+              className="mt-6 px-5 py-2 bg-cyan-950/25 text-cyan-300 rounded-lg hover:bg-blue-100 transition-colors duration-200 font-medium text-sm"
             >
               {lang === 'en' ? 'Reset filters' : 'إعادة ضبط المرشحات'}
             </button>

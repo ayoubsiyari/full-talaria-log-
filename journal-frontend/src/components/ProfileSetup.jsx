@@ -104,10 +104,10 @@ const ProfileSetup = () => {
         <div className="relative mb-8">
           <div className="absolute top-1/2 left-0 w-full h-0.5 bg-gray-700"></div>
           <div className="relative flex justify-between w-1/2 mx-auto">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center z-10 ${step >= 1 ? 'bg-blue-500' : 'bg-gray-700'}`}>
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center z-10 ${step >= 1 ? 'bg-cyan-500' : 'bg-gray-700'}`}>
               <span className="text-white font-bold">1</span>
             </div>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center z-10 ${step >= 2 ? 'bg-blue-500' : 'bg-gray-700'}`}>
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center z-10 ${step >= 2 ? 'bg-cyan-500' : 'bg-gray-700'}`}>
               <span className="text-white font-bold">2</span>
             </div>
           </div>
@@ -125,7 +125,7 @@ const ProfileSetup = () => {
                     mode.locked 
                       ? 'border-gray-600 bg-gray-800/30 cursor-not-allowed opacity-60' 
                       : selectedMode === mode.value 
-                        ? 'border-blue-500 bg-blue-500/10 cursor-pointer' 
+                        ? 'border-cyan-400 bg-cyan-500/10 cursor-pointer' 
                         : 'border-gray-700 hover:border-gray-500 cursor-pointer'
                   }`}>
                   {mode.icon}
@@ -152,7 +152,7 @@ const ProfileSetup = () => {
             </div>
             <div className="flex justify-between items-center mt-10">
               <button className="text-gray-400 hover:text-white transition-colors" onClick={() => navigate('/dashboard')}>Skip for now</button>
-              <button onClick={handleNext} className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">Next &rarr;</button>
+              <button onClick={handleNext} className="px-6 py-2 bg-cyan-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">Next &rarr;</button>
             </div>
           </div>
         )}
@@ -164,7 +164,7 @@ const ProfileSetup = () => {
                   Back
               </button>
             <h2 className="text-2xl font-semibold text-center text-white mb-2">Set Up Your Profile</h2>
-            <p className="text-center text-gray-400 mb-8">You chose the <span className="font-semibold text-blue-400">{profileModes.find(m => m.value === selectedMode).name}</span> mode.</p>
+            <p className="text-center text-gray-400 mb-8">You chose the <span className="font-semibold text-cyan-300">{profileModes.find(m => m.value === selectedMode).name}</span> mode.</p>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label htmlFor="profileName" className="block text-sm font-medium text-gray-300 mb-2">Profile Name</label>
@@ -173,7 +173,7 @@ const ProfileSetup = () => {
                   type="text"
                   value={profileName}
                   onChange={(e) => setProfileName(e.target.value)}
-                  className="w-full px-4 py-2 bg-gray-900/50 border border-gray-600 rounded-lg text-white focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-4 py-2 bg-gray-900/50 border border-gray-600 rounded-lg text-white focus:ring-cyan-400 focus:border-cyan-400"
                   placeholder="e.g., My Swing Strategy"
                   required
                 />
@@ -184,12 +184,12 @@ const ProfileSetup = () => {
                   id="profileDescription"
                   value={profileDescription}
                   onChange={(e) => setProfileDescription(e.target.value)}
-                  className="w-full px-4 py-2 bg-gray-900/50 border border-gray-600 rounded-lg text-white focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-4 py-2 bg-gray-900/50 border border-gray-600 rounded-lg text-white focus:ring-cyan-400 focus:border-cyan-400"
                   rows="3"
                   placeholder="A few words about this profile's purpose"
                 ></textarea>
               </div>
-              <button type="submit" className="w-full px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">Create Profile & Start</button>
+              <button type="submit" className="w-full px-6 py-3 bg-cyan-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">Create Profile & Start</button>
             </form>
           </div>
         )}
@@ -220,7 +220,7 @@ const ProfileSetup = () => {
               type="text"
               value={profileName}
               onChange={(e) => setProfileName(e.target.value)}
-              className="w-full px-4 py-2 bg-gray-900/50 border border-gray-600 rounded-lg text-white focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-4 py-2 bg-gray-900/50 border border-gray-600 rounded-lg text-white focus:ring-cyan-400 focus:border-cyan-400"
               placeholder="e.g., My Swing Strategy"
               required
             />
@@ -231,12 +231,12 @@ const ProfileSetup = () => {
               id="profileDescription"
               value={profileDescription}
               onChange={(e) => setProfileDescription(e.target.value)}
-              className="w-full px-4 py-2 bg-gray-900/50 border border-gray-600 rounded-lg text-white focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-4 py-2 bg-gray-900/50 border border-gray-600 rounded-lg text-white focus:ring-cyan-400 focus:border-cyan-400"
               rows="3"
               placeholder="A few words about this profile's purpose"
             ></textarea>
           </div>
-          <button type="submit" className="w-full px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">Create Backtest Profile & Start</button>
+          <button type="submit" className="w-full px-6 py-3 bg-cyan-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">Create Backtest Profile & Start</button>
         </form>
       </div>
     </div>

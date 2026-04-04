@@ -1,221 +1,206 @@
-// Talaria-Log Brand Colors Configuration
-// This file centralizes all color definitions for consistent theming across the application
-// Updated with official brand guidelines from brand book
+/**
+ * Journal UI – neon cyan dark theme (aligned with homepage /dashboard).
+ * Use these tokens for className strings and chart colors.
+ */
 
 export const colors = {
-  // Primary Brand Colors (from brand book)
   primary: {
-    blue: '#3090FF',         // Primary brand blue
-    darkBlue: '#232CF4',     // Dark brand blue
-    navy: '#040028',         // Dark navy background
-    white: '#FFFFFF',        // Pure white
+    blue: '#22d3ee',
+    darkBlue: '#0891b2',
+    navy: '#050a10',
+    white: '#f8fafc',
   },
 
-  // Secondary Brand Colors (from brand book)
   secondary: {
-    lightBlue: '#5FACF9',    // Light blue accent
-    purple: '#353089',       // Purple accent
-    black: '#000000',        // Pure black
+    lightBlue: '#67e8f9',
+    purple: '#a5f3fc',
+    black: '#000000',
   },
 
-  // Gradients with brand colors
   gradients: {
-    primary: 'from-[#3090FF] to-[#232CF4]',           // Main brand gradient
-    primaryHover: 'from-[#232CF4] to-[#353089]',      // Hover state for main gradient
-    secondary: 'from-[#5FACF9] to-[#353089]',         // Secondary gradient
-    text: 'from-[#3090FF] to-[#232CF4]',              // Text gradients
-    icon: 'from-[#3090FF] to-[#232CF4]',              // Icon backgrounds
-    logo: 'from-[#3090FF] to-[#232CF4]',              // Logo gradients
-    dark: 'from-[#040028] to-[#000000]',              // Dark background gradient
+    primary: 'from-cyan-400/20 to-cyan-600/10',
+    primaryHover: 'from-cyan-400/25 to-cyan-600/15',
+    secondary: 'from-cyan-500/15 to-cyan-700/10',
+    text: '', // avoid text gradients – use solid cyan
+    icon: 'from-cyan-500/20 to-cyan-700/10',
+    logo: 'from-cyan-400 to-cyan-600',
+    dark: 'from-[#050a10] to-[#020508]',
   },
 
-  // Background Colors
   backgrounds: {
-    primary: '#040028',      // Main background (brand navy)
-    secondary: 'bg-white/5',  // Secondary background
-    tertiary: 'bg-white/10',  // Tertiary background
-    overlay: 'bg-white/5',    // Overlay backgrounds
-    card: 'bg-white/5',       // Card backgrounds
+    primary: '#050a10',
+    secondary: 'bg-cyan-950/40',
+    tertiary: 'bg-cyan-500/10',
+    overlay: 'bg-black/60',
+    card: 'bg-cyan-950/30',
   },
 
-  // Text Colors
   text: {
-    primary: 'text-white',           // Primary text
-    secondary: 'text-white/60',      // Secondary text
-    tertiary: 'text-white/40',       // Tertiary text
-    muted: 'text-white/20',          // Muted text
-    brand: 'text-[#3090FF]',         // Brand color text
+    primary: 'text-slate-100',
+    secondary: 'text-cyan-100/55',
+    tertiary: 'text-cyan-200/45',
+    muted: 'text-cyan-200/35',
+    brand: 'text-cyan-300',
   },
 
-  // Border Colors
   borders: {
-    primary: 'border-white/10',      // Primary borders
-    secondary: 'border-white/20',    // Secondary borders
-    accent: 'border-[#3090FF]/20',   // Brand accent borders
-    brand: 'border-[#3090FF]',       // Full brand borders
+    primary: 'border-cyan-500/15',
+    secondary: 'border-cyan-400/25',
+    accent: 'border-cyan-400/35',
+    brand: 'border-cyan-400',
   },
 
-  // Status Colors (keeping existing for functionality)
   status: {
-    success: '#10b981',      // Emerald Green
-    error: '#ef4444',        // Ruby Red
-    warning: '#f59e0b',      // Amber Gold
-    info: '#5FACF9',         // Brand light blue
+    success: '#34d399',
+    error: '#f87171',
+    warning: '#fbbf24',
+    info: '#22d3ee',
   },
 
-  // Component Specific Colors
   components: {
-    // Navigation
     nav: {
-      background: 'bg-[#040028]/80',
-      border: 'border-white/5',
-      link: 'text-white/70',
-      linkHover: 'text-white',
-      linkActive: 'text-[#3090FF]',
-      linkBg: 'bg-white/5',
-      linkBorder: 'border-white/10',
+      background: 'bg-[#050a10]/90',
+      border: 'border-cyan-500/15',
+      link: 'text-cyan-100/55',
+      linkHover: 'text-cyan-50',
+      linkActive: 'text-cyan-300',
+      linkBg: 'bg-cyan-500/10',
+      linkBorder: 'border-cyan-400/30',
     },
 
-    // Buttons
     button: {
-      primary: 'bg-gradient-to-r from-[#3090FF] to-[#232CF4]',
-      primaryHover: 'hover:from-[#232CF4] hover:to-[#353089]',
-      secondary: 'bg-white/10 backdrop-blur-sm',
-      secondaryHover: 'hover:bg-white/15',
-      outline: 'border-[#5FACF9] text-[#5FACF9]',
-      outlineHover: 'hover:bg-[#3090FF] hover:border-[#3090FF] hover:text-white',
-      text: 'text-white',
+      primary:
+        'bg-cyan-500/15 text-cyan-50 border border-cyan-400/45 shadow-glow hover:bg-cyan-500/20 hover:border-cyan-400/60',
+      primaryHover: '',
+      secondary: 'bg-cyan-950/40 backdrop-blur-sm border-cyan-500/20',
+      secondaryHover: 'hover:bg-cyan-500/10',
+      outline: 'border-cyan-400/50 text-cyan-300',
+      outlineHover: 'hover:bg-cyan-500/15 hover:border-cyan-400 hover:text-cyan-50',
+      text: 'text-cyan-50',
     },
 
-    // Cards
     card: {
-      background: 'bg-white/5 backdrop-blur-sm',
-      border: 'border-white/10',
-      hover: 'hover:bg-white/10 hover:border-[#3090FF]/20',
-      glow: 'shadow-[0_0_20px_rgba(48,144,255,0.1)]',
-      glowHover: 'hover:shadow-[0_0_30px_rgba(48,144,255,0.2)]',
+      background: 'bg-cyan-950/30',
+      border: 'border-cyan-400/20',
+      hover: 'hover:border-cyan-400/45 hover:shadow-glow',
+      glow: 'shadow-[inset_0_1px_0_0_rgba(34,211,238,0.06)]',
+      glowHover: 'hover:shadow-[0_0_28px_-8px_rgba(34,211,238,0.2)]',
     },
 
-    // Icons
     icon: {
-      background: 'bg-gradient-to-br from-[#3090FF] to-[#232CF4]',
-      text: 'text-white',
-      accent: 'text-[#5FACF9]',
+      background: 'bg-cyan-500/15 border border-cyan-400/25',
+      text: 'text-cyan-200',
+      accent: 'text-cyan-400',
     },
 
-    // Badges
     badge: {
-      primary: 'bg-[#3090FF]/10 backdrop-blur-sm border-[#3090FF]/20',
-      text: 'text-[#5FACF9]',
-      icon: 'text-[#3090FF]',
+      primary: 'bg-cyan-500/10 border border-cyan-400/30',
+      text: 'text-cyan-200',
+      icon: 'text-cyan-400',
     },
 
-    // Forms
     form: {
-      input: 'bg-white/5 border-white/10 focus:border-[#3090FF]',
-      inputFocus: 'focus:shadow-[0_0_0_3px_rgba(48,144,255,0.1)]',
-      label: 'text-white/80',
+      input: 'bg-cyan-950/40 border-cyan-500/20 focus:border-cyan-400',
+      inputFocus: 'focus:shadow-[0_0_0_3px_rgba(34,211,238,0.12)]',
+      label: 'text-cyan-100/70',
     },
 
-    // Tables
     table: {
-      header: 'bg-white/5 text-white border-white/10',
-      row: 'border-white/10',
-      rowHover: 'hover:bg-[#3090FF]/5',
+      header: 'bg-cyan-950/50 text-cyan-400/90 border-cyan-500/15',
+      row: 'border-cyan-500/10',
+      rowHover: 'hover:bg-cyan-500/[0.06]',
     },
   },
 
-  // Animation Colors
   animations: {
-    pulse: 'bg-green-400',   // Status indicator
-    glow: 'rgba(48, 144, 255, 0.6)', // Brand blue glow effect
-    glowSecondary: 'rgba(95, 172, 249, 0.4)', // Light blue glow
+    pulse: 'bg-cyan-400',
+    glow: 'rgba(34, 211, 238, 0.35)',
+    glowSecondary: 'rgba(103, 232, 249, 0.25)',
   },
 };
 
-// Utility functions for color application
 export const colorUtils = {
-  // Get gradient classes
-  getGradient: (type = 'primary') => `bg-gradient-to-r ${colors.gradients[type]}`,
-  
-  // Get gradient with hover
-  getGradientWithHover: () => `${colors.gradients.primary} ${colors.gradients.primaryHover}`,
-  
-  // Get text gradient
-  getTextGradient: () => `bg-gradient-to-r ${colors.gradients.text} bg-clip-text text-transparent`,
-  
-  // Get icon background
-  getIconBg: () => `bg-gradient-to-br ${colors.gradients.icon}`,
-  
-  // Get button classes
+  getGradient: (type = 'primary') => `bg-gradient-to-r ${colors.gradients[type] || colors.gradients.primary}`,
+
+  getGradientWithHover: () =>
+    `${colors.gradients.primary} ${colors.gradients.primaryHover}`,
+
+  getTextGradient: () => 'text-cyan-200',
+
+  getIconBg: () => colors.components.icon.background,
+
   getButtonClasses: (variant = 'primary') => {
-    const base = 'inline-flex items-center space-x-2 px-6 py-3 rounded-lg transition-all duration-200 text-sm font-medium';
-    
+    const base =
+      'inline-flex items-center space-x-2 px-6 py-3 rounded-lg transition-all duration-200 text-sm font-medium';
     switch (variant) {
       case 'primary':
-        return `${base} ${colors.components.button.primary} text-white shadow-lg hover:shadow-xl ${colors.components.button.primaryHover}`;
+        return `${base} ${colors.components.button.primary}`;
       case 'secondary':
-        return `${base} ${colors.components.button.secondary} text-white border ${colors.borders.secondary} ${colors.components.button.secondaryHover} hover:border-white/30`;
+        return `${base} ${colors.components.button.secondary} text-cyan-100 border ${colors.borders.secondary} ${colors.components.button.secondaryHover}`;
       case 'outline':
         return `${base} bg-transparent ${colors.components.button.outline} border ${colors.components.button.outlineHover}`;
       default:
         return base;
     }
   },
-  
-  // Get card classes
-  getCardClasses: () => `${colors.components.card.background} rounded-xl p-6 border ${colors.components.card.border} transition-all duration-300 ${colors.components.card.hover}`,
-  
-  // Get card with glow
-  getCardGlowClasses: () => `${colors.components.card.background} rounded-xl p-6 border ${colors.components.card.border} transition-all duration-300 ${colors.components.card.hover} ${colors.components.card.glow} ${colors.components.card.glowHover}`,
-  
-  // Get badge classes
+
+  getCardClasses: () =>
+    `${colors.components.card.background} rounded-lg p-6 border ${colors.components.card.border} transition-all duration-300 ${colors.components.card.hover}`,
+
+  getCardGlowClasses: () =>
+    `${colorUtils.getCardClasses()} ${colors.components.card.glow} ${colors.components.card.glowHover}`,
+
   getBadgeClasses: () => `${colors.components.badge.primary} px-3 py-1.5 rounded-lg`,
 
-  // Get navigation item classes
   getNavItemClasses: (isActive = false) => {
-    const base = 'flex items-center px-4 py-3 rounded-xl transition-all duration-300 ease-out';
+    const base =
+      'flex items-center px-4 py-3 rounded-lg transition-all duration-300 ease-out';
     if (isActive) {
-      return `${base} bg-gradient-to-r from-[#3090FF]/20 to-[#232CF4]/10 border-l-3 border-[#3090FF] text-white`;
+      return `${base} bg-cyan-500/12 border-l-[3px] border-cyan-400 text-cyan-50`;
     }
-    return `${base} text-white/70 hover:text-white hover:bg-[#3090FF]/10 hover:translate-x-1`;
+    return `${base} text-cyan-100/55 hover:text-cyan-100 hover:bg-cyan-500/10`;
   },
 
-  // Get input classes
-  getInputClasses: () => `${colors.components.form.input} rounded-xl px-4 py-3 text-white placeholder-white/40 transition-all duration-300 ${colors.components.form.inputFocus}`,
+  getInputClasses: () =>
+    `${colors.components.form.input} rounded-lg px-4 py-3 text-slate-100 placeholder-cyan-200/30 transition-all duration-300 ${colors.components.form.inputFocus}`,
 
-  // Get brand colors for charts/graphs
   getChartColors: () => [
-    '#3090FF', // Primary blue
-    '#5FACF9', // Light blue
-    '#232CF4', // Dark blue
-    '#353089', // Purple
-    '#10b981', // Success green
-    '#ef4444', // Error red
-    '#f59e0b', // Warning yellow
+    '#22d3ee',
+    '#67e8f9',
+    '#0891b2',
+    '#a5f3fc',
+    '#34d399',
+    '#f87171',
+    '#fbbf24',
   ],
 
-  // Get status color
   getStatusColor: (status) => {
     switch (status) {
-      case 'success': return colors.status.success;
-      case 'error': return colors.status.error;
-      case 'warning': return colors.status.warning;
-      case 'info': return colors.status.info;
-      default: return colors.primary.blue;
+      case 'success':
+        return colors.status.success;
+      case 'error':
+        return colors.status.error;
+      case 'warning':
+        return colors.status.warning;
+      case 'info':
+        return colors.status.info;
+      default:
+        return colors.primary.blue;
     }
   },
 
-  // Get brand shadow
   getBrandShadow: (intensity = 'medium') => {
     switch (intensity) {
-      case 'light': return 'shadow-[0_4px_15px_rgba(48,144,255,0.1)]';
-      case 'medium': return 'shadow-[0_4px_15px_rgba(48,144,255,0.3)]';
-      case 'strong': return 'shadow-[0_6px_20px_rgba(48,144,255,0.4)]';
-      default: return 'shadow-[0_4px_15px_rgba(48,144,255,0.3)]';
+      case 'light':
+        return 'shadow-[0_4px_15px_rgba(34,211,238,0.08)]';
+      case 'medium':
+        return 'shadow-[0_4px_20px_rgba(34,211,238,0.15)]';
+      case 'strong':
+        return 'shadow-[0_6px_28px_rgba(34,211,238,0.22)]';
+      default:
+        return 'shadow-[0_4px_20px_rgba(34,211,238,0.15)]';
     }
   },
 };
 
 export default colors;
-

@@ -53,7 +53,7 @@ export default function SubscriptionGuard({ children, feature = 'this feature' }
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -68,8 +68,8 @@ export default function SubscriptionGuard({ children, feature = 'this feature' }
       <div className="max-w-lg w-full text-center">
         {/* Lock Icon */}
         <div className="relative inline-block mb-8">
-          <div className="absolute inset-0 bg-blue-500/20 rounded-full blur-2xl"></div>
-          <div className="relative w-24 h-24 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center mx-auto">
+          <div className="absolute inset-0 bg-cyan-500/20 rounded-full blur-2xl"></div>
+          <div className="relative w-24 h-24 bg-gradient-to-br from-cyan-400 to-blue-700 rounded-full flex items-center justify-center mx-auto">
             <Lock className="w-10 h-10 text-white" />
           </div>
         </div>
@@ -84,7 +84,7 @@ export default function SubscriptionGuard({ children, feature = 'this feature' }
         </p>
 
         {/* Features List */}
-        <div className="bg-white/5 rounded-xl p-6 mb-8 border border-white/10 text-left">
+        <div className="bg-cyan-950/15 rounded-xl p-6 mb-8 border border-white/10 text-left">
           <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
             <Crown className="w-5 h-5 text-yellow-400" />
             Premium Features Include
@@ -110,7 +110,7 @@ export default function SubscriptionGuard({ children, feature = 'this feature' }
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link
             to="/pricing"
-            className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all shadow-lg hover:shadow-xl"
+            className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-gradient-to-r from-cyan-400 to-cyan-600 text-white font-semibold rounded-lg hover:from-cyan-500 hover:to-blue-700 transition-all shadow-lg hover:shadow-xl"
           >
             <Sparkles className="w-5 h-5" />
             View Pricing Plans

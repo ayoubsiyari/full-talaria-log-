@@ -51,7 +51,7 @@ export default function RefundPolicy() {
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <Link to="/" className="flex items-center space-x-3 group">
-              <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10 group-hover:bg-white/15 transition-all duration-300">
+              <div className="w-8 h-8 bg-cyan-500/10 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10 group-hover:bg-cyan-500/12 transition-all duration-300">
                 <img src={logo} alt="Journal Logo" className="w-6 h-6 rounded-sm" />
               </div>
               <span className="text-xl font-semibold text-white">
@@ -71,7 +71,7 @@ export default function RefundPolicy() {
         <div className="max-w-4xl mx-auto">
           {/* Header */}
           <div className="text-center mb-16">
-            <div className="w-12 h-12 bg-white/10 rounded-lg flex items-center justify-center mx-auto mb-6 border border-white/10">
+            <div className="w-12 h-12 bg-cyan-500/10 rounded-lg flex items-center justify-center mx-auto mb-6 border border-white/10">
               <RefreshCw className="w-6 h-6 text-white/80" />
             </div>
             <h1 className="text-4xl md:text-5xl font-normal mb-6 text-white leading-tight">
@@ -98,7 +98,7 @@ export default function RefundPolicy() {
                 Refund Eligibility
               </h2>
               <div className="space-y-6">
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Eligible for Refund</h3>
                   <ul className="list-disc list-inside space-y-1 text-sm">
                     <li>Subscriptions purchased within the last 30 days</li>
@@ -109,7 +109,7 @@ export default function RefundPolicy() {
                   </ul>
                 </div>
 
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Not Eligible for Refund</h3>
                   <ul className="list-disc list-inside space-y-1 text-sm">
                     <li>Subscriptions older than 30 days</li>
@@ -129,7 +129,7 @@ export default function RefundPolicy() {
               </h2>
               <div className="space-y-4">
                 <p className="font-light">To request a refund, please follow these steps:</p>
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <ol className="list-decimal list-inside space-y-2 text-sm">
                     <li>Contact our support team at support@journal.com</li>
                     <li>Include your account email and reason for refund</li>
@@ -147,7 +147,7 @@ export default function RefundPolicy() {
                 Refund Timeline
               </h2>
               <div className="space-y-4">
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Processing Times</h3>
                   <div className="space-y-2 text-sm">
                     <p><strong className="text-white/90">Credit Cards:</strong> 5-10 business days</p>
@@ -163,7 +163,7 @@ export default function RefundPolicy() {
               <h2 className="text-2xl font-medium text-white mb-4">Subscription Cancellation</h2>
               <div className="space-y-4">
                 <p className="font-light">You can cancel your subscription at any time:</p>
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <ul className="list-disc list-inside space-y-1 text-sm">
                     <li>Access your account settings</li>
                     <li>Navigate to subscription management</li>
@@ -179,7 +179,7 @@ export default function RefundPolicy() {
               <h2 className="text-2xl font-medium text-white mb-4">Pro-rated Refunds</h2>
               <div className="space-y-4">
                 <p className="font-light">In certain circumstances, we may offer pro-rated refunds:</p>
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <ul className="list-disc list-inside space-y-1 text-sm">
                     <li>Billing errors or system malfunctions</li>
                     <li>Service downtime exceeding our SLA</li>
@@ -194,7 +194,7 @@ export default function RefundPolicy() {
               <h2 className="text-2xl font-medium text-white mb-4">Free Trial Policy</h2>
               <div className="space-y-4">
                 <p className="font-light">Our free trial policy:</p>
-                <div className="bg-blue-500/10 border border-blue-500/30 p-6 rounded-lg">
+                <div className="bg-cyan-500/10 border border-cyan-400/30 p-6 rounded-lg">
                   <ul className="list-disc list-inside space-y-1 text-sm">
                     <li>14-day free trial for all paid plans</li>
                     <li>No credit card required to start</li>
@@ -226,7 +226,7 @@ export default function RefundPolicy() {
 
             <section>
               <h2 className="text-2xl font-medium text-white mb-4">Contact Information</h2>
-              <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+              <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                 <p className="mb-4 font-light">For refund requests or questions about our refund policy:</p>
                 <div className="space-y-2 text-sm">
                   <p><strong className="text-white/90">Email:</strong> support@journal.com</p>

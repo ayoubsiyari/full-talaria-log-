@@ -27,7 +27,7 @@ const CustomTooltip = ({ active, payload, label, timeframe }) => {
           <div className="font-semibold text-[#040028]">
             {`Trade #${data.trade_number}`}
           </div>
-          <div className="text-slate-600 text-sm">
+          <div className="text-cyan-100/60 text-sm">
             {`Date: ${data.date}`}
           </div>
         </>
@@ -38,7 +38,7 @@ const CustomTooltip = ({ active, payload, label, timeframe }) => {
           <div className="font-semibold text-[#040028]">
             {`Period: ${label}`}
           </div>
-          <div className="text-slate-600 text-sm">
+          <div className="text-cyan-100/60 text-sm">
             {`Trades: ${data.trade_count}`}
           </div>
         </>
@@ -46,9 +46,9 @@ const CustomTooltip = ({ active, payload, label, timeframe }) => {
     }
 
     return (
-      <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-lg">
+      <div className="bg-cyan-950/40 border border-cyan-500/15 rounded-lg p-3 shadow-lg">
         {labelContent}
-        <div className="border-t border-slate-200 my-2"></div>
+        <div className="border-t border-cyan-500/15 my-2"></div>
         <div className="flex items-center gap-2">
           <div className={`font-bold text-lg ${data.pnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
             {`${data.pnl >= 0 ? '+' : ''}${data.pnl.toFixed(2)}`}
@@ -162,7 +162,7 @@ const PnlDistribution = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-jf-bg">
         <div className="w-full px-6 py-4 space-y-6">
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -174,7 +174,7 @@ const PnlDistribution = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-jf-bg">
         <div className="w-full px-6 py-4">
           <div className="bg-red-50 border border-red-200 rounded-xl p-6">
             <div className="flex items-start gap-4">
@@ -203,23 +203,23 @@ const PnlDistribution = () => {
 
   if (!data || !data.pnl_data || data.pnl_data.length === 0) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-jf-bg">
         <div className="w-full px-6 py-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+          <div className="bg-cyan-950/25 border border-cyan-500/20 rounded-xl p-6">
             <div className="flex items-start gap-4">
               <div className="flex-shrink-0">
                 <div className="h-6 w-6 text-blue-500">📊</div>
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-semibold text-blue-800 mb-2">
+                <h3 className="text-lg font-semibold text-cyan-100 mb-2">
                   No Data Available
                 </h3>
-                <p className="text-blue-700 mb-4">
+                <p className="text-cyan-200 mb-4">
                   No P&L distribution data available for the current filters.
                 </p>
                 <button
                   onClick={fetchData}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  className="bg-cyan-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                 >
                   <RefreshCw className="h-4 w-4 inline mr-2" />
                   Refresh
@@ -235,23 +235,23 @@ const PnlDistribution = () => {
   const { pnl_data } = data;
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-jf-bg">
       <div className="w-full px-6 py-4 space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-blue-600 mb-2">
+            <h1 className="text-3xl font-bold text-cyan-300 mb-2">
               P&L Returns Distribution
             </h1>
-            <p className="text-slate-600">
+            <p className="text-cyan-100/60">
               Track your trading performance over time
             </p>
           </div>
           
           <div className="flex flex-wrap gap-2">
             {/* Statistical Reference Toggle */}
-            <div className="bg-slate-100 rounded-lg p-1">
-              <label className="block text-xs font-medium text-slate-600 mb-2 text-center">
+            <div className="bg-cyan-950/35 rounded-lg p-1">
+              <label className="block text-xs font-medium text-cyan-100/60 mb-2 text-center">
                 Statistical Reference
               </label>
               <div className="flex">
@@ -259,8 +259,8 @@ const PnlDistribution = () => {
                   onClick={() => setStatLine('average')}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                     statLine === 'average'
-                      ? 'bg-white shadow text-blue-600'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-cyan-950/40 shadow text-cyan-300'
+                      : 'text-cyan-100/60 hover:text-slate-900'
                   }`}
                 >
                   Average
@@ -269,8 +269,8 @@ const PnlDistribution = () => {
                   onClick={() => setStatLine('median')}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                     statLine === 'median'
-                      ? 'bg-white shadow text-blue-600'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-cyan-950/40 shadow text-cyan-300'
+                      : 'text-cyan-100/60 hover:text-slate-900'
                   }`}
                 >
                   Median
@@ -279,8 +279,8 @@ const PnlDistribution = () => {
             </div>
             
             {/* Time Period Toggle */}
-            <div className="bg-slate-100 rounded-lg p-1">
-              <label className="block text-xs font-medium text-slate-600 mb-2 text-center">
+            <div className="bg-cyan-950/35 rounded-lg p-1">
+              <label className="block text-xs font-medium text-cyan-100/60 mb-2 text-center">
                 Time Period
               </label>
               <div className="flex">
@@ -288,8 +288,8 @@ const PnlDistribution = () => {
                   onClick={() => setTimeframe('daily')}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                     timeframe === 'daily'
-                      ? 'bg-white shadow text-blue-600'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-cyan-950/40 shadow text-cyan-300'
+                      : 'text-cyan-100/60 hover:text-slate-900'
                   }`}
                 >
                   Daily
@@ -298,8 +298,8 @@ const PnlDistribution = () => {
                   onClick={() => setTimeframe('weekly')}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                     timeframe === 'weekly'
-                      ? 'bg-white shadow text-blue-600'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-cyan-950/40 shadow text-cyan-300'
+                      : 'text-cyan-100/60 hover:text-slate-900'
                   }`}
                 >
                   Weekly
@@ -308,8 +308,8 @@ const PnlDistribution = () => {
                   onClick={() => setTimeframe('monthly')}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                     timeframe === 'monthly'
-                      ? 'bg-white shadow text-blue-600'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-cyan-950/40 shadow text-cyan-300'
+                      : 'text-cyan-100/60 hover:text-slate-900'
                   }`}
                 >
                   Monthly
@@ -320,10 +320,10 @@ const PnlDistribution = () => {
         </div>
 
         {/* Chart Container */}
-        <div className="bg-white border border-blue-200/60 rounded-xl shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-blue-200/60">
+        <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-cyan-500/20">
             <h2 className="text-xl font-bold text-[#040028]">P&L Distribution Chart</h2>
-            <p className="text-sm text-slate-600 mt-1">
+            <p className="text-sm text-cyan-100/60 mt-1">
               Visual representation of profit and loss distribution over time
             </p>
           </div>

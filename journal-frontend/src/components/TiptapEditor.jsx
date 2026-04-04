@@ -32,7 +32,7 @@ const MenuBar = ({ editor }) => {
         <button
           key={index}
           onClick={item.action}
-          className={`p-2 rounded-md hover:bg-gray-700 transition-colors ${editor.isActive(item.name, item.level ? { level: item.level } : {}) ? 'bg-blue-600 text-white' : ''}`}
+          className={`p-2 rounded-md hover:bg-gray-700 transition-colors ${editor.isActive(item.name, item.level ? { level: item.level } : {}) ? 'bg-cyan-600 text-white' : ''}`}
           title={item.name}
         >
           <item.icon size={16} />

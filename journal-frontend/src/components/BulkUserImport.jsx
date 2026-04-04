@@ -50,24 +50,24 @@ const BulkUserImport = () => {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-xl p-6 border border-gray-200">
+      <div className="bg-cyan-950/40 rounded-xl p-6 border border-cyan-500/15">
         <h4 className="text-lg font-semibold mb-4">📋 Download Template</h4>
         <p className="text-gray-600 mb-4">Download CSV template with group support</p>
         <button 
           onClick={downloadTemplate} 
-          className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium"
+          className="bg-cyan-500 hover:bg-cyan-600 text-white px-6 py-3 rounded-lg font-medium"
         >
           📥 Download Template
         </button>
       </div>
       
-      <div className="bg-white rounded-xl p-6 border border-gray-200">
+      <div className="bg-cyan-950/40 rounded-xl p-6 border border-cyan-500/15">
         <h4 className="text-lg font-semibold mb-4">📤 Upload Users</h4>
         <input 
           type="file" 
           onChange={(e) => setFile(e.target.files[0])} 
           accept=".csv,.xlsx,.xls" 
-          className="mb-4 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+          className="mb-4 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-cyan-950/25 file:text-cyan-200 hover:file:bg-blue-100"
         />
         {file && (
           <div className="mt-4">
@@ -105,18 +105,18 @@ const BulkUserImport = () => {
         </div>
       )}
       
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-cyan-500/20">
         <h4 className="text-lg font-semibold mb-4">🎯 Account Types</h4>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-          <div className="bg-white rounded-lg p-3 border">
+          <div className="bg-cyan-950/40 rounded-lg p-3 border">
             <h5 className="font-medium text-blue-900">👤 Individual</h5>
-            <p className="text-blue-700">Students see only their own trades</p>
+            <p className="text-cyan-200">Students see only their own trades</p>
           </div>
-          <div className="bg-white rounded-lg p-3 border">
+          <div className="bg-cyan-950/40 rounded-lg p-3 border">
             <h5 className="font-medium text-purple-900">👥 Group</h5>
             <p className="text-purple-700">Sees ALL group member trades</p>
           </div>
-          <div className="bg-white rounded-lg p-3 border">
+          <div className="bg-cyan-950/40 rounded-lg p-3 border">
             <h5 className="font-medium text-green-900">👑 Admin</h5>
             <p className="text-green-700">Full system access</p>
           </div>

@@ -154,7 +154,7 @@ export default function Onboarding() {
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 bg-white/10 rounded-xl flex items-center justify-center border border-white/10">
+            <div className="w-16 h-16 bg-cyan-500/10 rounded-xl flex items-center justify-center border border-white/10">
               <img src={logo} alt="Talaria" className="w-12 h-12 rounded-lg" />
             </div>
           </div>
@@ -168,25 +168,25 @@ export default function Onboarding() {
             <div key={s} className="flex items-center">
               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
                 s < step ? 'bg-green-500 text-white' :
-                s === step ? 'bg-blue-500 text-white' :
-                'bg-white/10 text-white/40'
+                s === step ? 'bg-cyan-500 text-white' :
+                'bg-cyan-500/10 text-white/40'
               }`}>
                 {s < step ? <Check className="w-4 h-4" /> : s}
               </div>
               {s < 3 && (
-                <div className={`w-12 h-1 mx-2 rounded ${s < step ? 'bg-green-500' : 'bg-white/10'}`} />
+                <div className={`w-12 h-1 mx-2 rounded ${s < step ? 'bg-green-500' : 'bg-cyan-500/10'}`} />
               )}
             </div>
           ))}
         </div>
 
         {/* Card */}
-        <div className="bg-white/5 backdrop-blur-sm rounded-xl p-6 border border-white/10">
+        <div className="bg-cyan-950/15 backdrop-blur-sm rounded-xl p-6 border border-white/10">
           {/* Step 1: Profile Settings */}
           {step === 1 && (
             <div className="space-y-6">
               <div className="text-center mb-6">
-                <Globe className="w-10 h-10 text-blue-400 mx-auto mb-3" />
+                <Globe className="w-10 h-10 text-cyan-300 mx-auto mb-3" />
                 <h2 className="text-xl font-semibold">Profile Settings</h2>
                 <p className="text-white/60 text-sm">Configure your preferences</p>
               </div>
@@ -196,7 +196,7 @@ export default function Onboarding() {
                 <select
                   value={timezone}
                   onChange={(e) => setTimezone(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-3 rounded-lg bg-cyan-500/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400"
                 >
                   {TIMEZONES.map((tz) => (
                     <option key={tz.value} value={tz.value} className="bg-gray-900">{tz.label}</option>
@@ -209,7 +209,7 @@ export default function Onboarding() {
                 <select
                   value={currency}
                   onChange={(e) => setCurrency(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-3 rounded-lg bg-cyan-500/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400"
                 >
                   {CURRENCIES.map((c) => (
                     <option key={c.value} value={c.value} className="bg-gray-900">{c.label}</option>
@@ -227,8 +227,8 @@ export default function Onboarding() {
                       onClick={() => setMarketType(m.value)}
                       className={`p-3 rounded-lg border text-left transition-all ${
                         marketType === m.value
-                          ? 'border-blue-500 bg-blue-500/20'
-                          : 'border-white/20 bg-white/5 hover:bg-white/10'
+                          ? 'border-cyan-400 bg-cyan-500/20'
+                          : 'border-white/20 bg-cyan-950/15 hover:bg-cyan-500/10'
                       }`}
                     >
                       <div className="font-medium text-sm">{m.label}</div>
@@ -244,7 +244,7 @@ export default function Onboarding() {
           {step === 2 && (
             <div className="space-y-6">
               <div className="text-center mb-6">
-                <BarChart3 className="w-10 h-10 text-blue-400 mx-auto mb-3" />
+                <BarChart3 className="w-10 h-10 text-cyan-300 mx-auto mb-3" />
                 <h2 className="text-xl font-semibold">Trading Account</h2>
                 <p className="text-white/60 text-sm">Set up your first trading account</p>
               </div>
@@ -256,7 +256,7 @@ export default function Onboarding() {
                   value={accountName}
                   onChange={(e) => setAccountName(e.target.value)}
                   placeholder="e.g., Main Trading Account"
-                  className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-3 rounded-lg bg-cyan-500/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-cyan-400"
                 />
               </div>
 
@@ -267,7 +267,7 @@ export default function Onboarding() {
                   value={broker}
                   onChange={(e) => setBroker(e.target.value)}
                   placeholder="e.g., Interactive Brokers"
-                  className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-3 rounded-lg bg-cyan-500/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-cyan-400"
                 />
               </div>
 
@@ -281,8 +281,8 @@ export default function Onboarding() {
                       onClick={() => setAccountType(t.value)}
                       className={`p-3 rounded-lg border text-center transition-all ${
                         accountType === t.value
-                          ? 'border-blue-500 bg-blue-500/20'
-                          : 'border-white/20 bg-white/5 hover:bg-white/10'
+                          ? 'border-cyan-400 bg-cyan-500/20'
+                          : 'border-white/20 bg-cyan-950/15 hover:bg-cyan-500/10'
                       }`}
                     >
                       <div className="font-medium text-sm">{t.label}</div>
@@ -300,7 +300,7 @@ export default function Onboarding() {
                     value={startingBalance}
                     onChange={(e) => setStartingBalance(e.target.value)}
                     placeholder="10000"
-                    className="w-full pl-10 pr-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-10 pr-4 py-3 rounded-lg bg-cyan-500/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-cyan-400"
                   />
                 </div>
               </div>
@@ -318,7 +318,7 @@ export default function Onboarding() {
                 <p className="text-white/60 text-sm">Your trading environment is ready</p>
               </div>
 
-              <div className="bg-white/5 rounded-lg p-4 text-left space-y-3">
+              <div className="bg-cyan-950/15 rounded-lg p-4 text-left space-y-3">
                 <div className="flex justify-between text-sm">
                   <span className="text-white/60">Timezone</span>
                   <span className="text-white">{TIMEZONES.find(t => t.value === timezone)?.label}</span>
@@ -365,7 +365,7 @@ export default function Onboarding() {
             {step < totalSteps ? (
               <button
                 onClick={handleNext}
-                className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
+                className="px-6 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-colors flex items-center gap-2"
               >
                 Continue
                 <ChevronRight className="w-4 h-4" />

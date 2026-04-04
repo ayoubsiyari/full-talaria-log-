@@ -28,7 +28,7 @@ const formatDuration = (duration) => {
 
 const formatTradeStatus = (status) => {
   const statusMap = {
-    'open': { color: 'bg-blue-100', text: 'text-blue-700' },
+    'open': { color: 'bg-blue-100', text: 'text-cyan-200' },
     'closed': { color: 'bg-gray-100', text: 'text-gray-700' },
     'pending': { color: 'bg-yellow-100', text: 'text-yellow-700' },
     'cancelled': { color: 'bg-red-100', text: 'text-red-700' }
@@ -151,14 +151,14 @@ export default function RecentTrades() {
             <div className="flex space-x-4">
               <div className="relative">
                 <select
-                  className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                  className="bg-cyan-950/25 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-cyan-400 focus:border-cyan-400 block w-full p-2.5"
                 >
                   <option value="all">All Time</option>
                   <option value="month">Current Month</option>
                   <option value="year">Current Year</option>
                 </select>
               </div>
-              <button className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+              <button className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-cyan-600 hover:bg-blue-700">
                 <Settings className="h-5 w-5 mr-2" />
                 <span>Settings</span>
               </button>
@@ -170,7 +170,7 @@ export default function RecentTrades() {
             ))}
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <table className="min-w-full bg-cyan-950/40 border border-cyan-500/15 rounded-lg overflow-hidden">
               <thead>
                 <tr>
                   {Array(7).fill(null).map((_, i) => (
@@ -182,7 +182,7 @@ export default function RecentTrades() {
               </thead>
               <tbody>
                 {Array(5).fill(null).map((_, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
+                  <tr key={i} className="hover:bg-cyan-950/25">
                     {Array(7).fill(null).map((_, j) => (
                       <td key={j} className="px-6 py-4">
                         <div className="h-4 bg-gray-200 rounded w-24 animate-pulse" />
@@ -223,7 +223,7 @@ export default function RecentTrades() {
   }
 
   return (
-    <div className="p-8 max-w-6xl mx-auto bg-white shadow-lg rounded-xl">
+    <div className="p-8 max-w-6xl mx-auto bg-cyan-950/40 shadow-lg rounded-xl">
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">
@@ -236,7 +236,7 @@ export default function RecentTrades() {
             <select
               value={selectedTimeframe}
               onChange={(e) => setSelectedTimeframe(e.target.value)}
-              className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+              className="bg-cyan-950/25 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-cyan-400 focus:border-cyan-400 block w-full p-2.5"
             >
               <option value="all">All Time</option>
               <option value="month">Current Month</option>
@@ -245,7 +245,7 @@ export default function RecentTrades() {
           </div>
           <button
             onClick={() => setShowAdvancedStats(!showAdvancedStats)}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-cyan-600 hover:bg-blue-700"
           >
             <Settings className="h-5 w-5 mr-2" />
             {showAdvancedStats ? 'Hide Advanced' : 'Show Advanced'}
@@ -256,9 +256,9 @@ export default function RecentTrades() {
       {/* Trade Statistics */}
       {showAdvancedStats && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow-md p-6">
+          <div className="bg-cyan-950/40 rounded-xl shadow-md p-6">
             <div className="flex items-center space-x-2 mb-4">
-              <Filter className="h-6 w-6 text-blue-600" />
+              <Filter className="h-6 w-6 text-cyan-300" />
               <h3 className="text-xl font-semibold text-gray-900">Trade Summary</h3>
             </div>
             <div className="space-y-4">
@@ -276,7 +276,7 @@ export default function RecentTrades() {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-600">Avg P&L</span>
-                <span className="font-medium text-blue-600">
+                <span className="font-medium text-cyan-300">
                   {formatCurrency(
                     stats.recent_trades.reduce((sum, t) => sum + t.pnl, 0) / stats.recent_trades.length
                   )}
@@ -289,7 +289,7 @@ export default function RecentTrades() {
 
       {/* Trade Table */}
       <div className="overflow-x-auto">
-        <table className="min-w-full bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <table className="min-w-full bg-cyan-950/40 border border-cyan-500/15 rounded-lg overflow-hidden">
           <thead className="bg-gray-100">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
@@ -329,7 +329,7 @@ export default function RecentTrades() {
           </thead>
           <tbody className="divide-y divide-gray-200">
             {sortTrades().map((trade, idx) => (
-              <tr key={idx} className="hover:bg-gray-50">
+              <tr key={idx} className="hover:bg-cyan-950/25">
                 <td className="px-6 py-4 font-medium text-gray-900">{trade.symbol}</td>
                 <td className="px-6 py-4">
                   <span

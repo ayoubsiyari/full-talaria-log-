@@ -84,12 +84,12 @@ export default function ProfileSelector({ onSelect }) {
         </div>
         <button
           onClick={connectMetaapi}
-          className="bg-blue-600 text-white px-4 py-2 rounded"
+          className="bg-cyan-600 text-white px-4 py-2 rounded"
           disabled={!metaapiAccountId || connecting}
         >
           {connecting ? 'Connecting...' : 'Connect'}
         </button>
-        {metaapiMsg && <div className="mt-2 text-blue-700">{metaapiMsg}</div>}
+        {metaapiMsg && <div className="mt-2 text-cyan-200">{metaapiMsg}</div>}
       </div>
     );
   }

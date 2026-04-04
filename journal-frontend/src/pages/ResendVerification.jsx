@@ -56,7 +56,7 @@ export default function ResendVerification() {
         </div>
 
         {/* Form Card */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 shadow-2xl">
+        <div className="bg-cyan-500/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 shadow-2xl">
           <form onSubmit={handleResendVerification} className="space-y-6">
             {/* Email Input */}
             <div className="relative">

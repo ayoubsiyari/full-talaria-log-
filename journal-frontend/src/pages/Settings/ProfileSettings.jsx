@@ -162,7 +162,7 @@ export default function ProfileSettings({ userData, setUserData }) {
               ? 'bg-green-500/20 text-green-400 border border-green-500/30'
               : getMessageType() === 'error'
               ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-              : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+              : 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/30'
           }`}>
             {getMessageType() === 'success' ? (
               <Check className="w-5 h-5" />

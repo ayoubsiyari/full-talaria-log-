@@ -66,7 +66,7 @@ export default function CookiePolicy() {
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <Link to="/" className="flex items-center space-x-3 group">
-              <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10 group-hover:bg-white/15 transition-all duration-300">
+              <div className="w-8 h-8 bg-cyan-500/10 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10 group-hover:bg-cyan-500/12 transition-all duration-300">
                 <img src={logo} alt="Journal Logo" className="w-6 h-6 rounded-sm" />
               </div>
               <span className="text-xl font-semibold text-white">
@@ -86,7 +86,7 @@ export default function CookiePolicy() {
         <div className="max-w-4xl mx-auto">
           {/* Header */}
           <div className="text-center mb-16">
-            <div className="w-12 h-12 bg-white/10 rounded-lg flex items-center justify-center mx-auto mb-6 border border-white/10">
+            <div className="w-12 h-12 bg-cyan-500/10 rounded-lg flex items-center justify-center mx-auto mb-6 border border-white/10">
               <Cookie className="w-6 h-6 text-white/80" />
             </div>
             <h1 className="text-4xl md:text-5xl font-normal mb-6 text-white leading-tight">
@@ -114,7 +114,7 @@ export default function CookiePolicy() {
                 How We Use Cookies
               </h2>
               <div className="space-y-6">
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Essential Cookies</h3>
                   <p className="mb-2 font-light">These cookies are necessary for the website to function properly:</p>
                   <ul className="list-disc list-inside space-y-1 ml-4 text-sm">
@@ -125,7 +125,7 @@ export default function CookiePolicy() {
                   </ul>
                 </div>
 
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Performance Cookies</h3>
                   <p className="mb-2 font-light">These cookies help us understand how visitors interact with our website:</p>
                   <ul className="list-disc list-inside space-y-1 ml-4 text-sm">
@@ -136,7 +136,7 @@ export default function CookiePolicy() {
                   </ul>
                 </div>
 
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Functional Cookies</h3>
                   <p className="mb-2 font-light">These cookies enable enhanced functionality and personalization:</p>
                   <ul className="list-disc list-inside space-y-1 ml-4 text-sm">
@@ -147,7 +147,7 @@ export default function CookiePolicy() {
                   </ul>
                 </div>
 
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Marketing Cookies</h3>
                   <p className="mb-2 font-light">These cookies are used to deliver relevant advertisements:</p>
                   <ul className="list-disc list-inside space-y-1 ml-4 text-sm">
@@ -167,7 +167,7 @@ export default function CookiePolicy() {
               </h2>
               <div className="space-y-4">
                 <p className="font-light">We may use third-party services that place cookies on your device:</p>
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Analytics Services</h3>
                   <ul className="space-y-2 text-sm">
                     <li><strong className="text-white/90">Google Analytics:</strong> Website usage and performance analysis</li>
@@ -175,14 +175,14 @@ export default function CookiePolicy() {
                     <li><strong className="text-white/90">Hotjar:</strong> Heatmaps and user session recordings</li>
                   </ul>
                 </div>
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Payment Services</h3>
                   <ul className="space-y-2 text-sm">
                     <li><strong className="text-white/90">Stripe:</strong> Payment processing and fraud prevention</li>
                     <li><strong className="text-white/90">PayPal:</strong> Alternative payment processing</li>
                   </ul>
                 </div>
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Marketing Services</h3>
                   <ul className="space-y-2 text-sm">
                     <li><strong className="text-white/90">Facebook Pixel:</strong> Ad conversion tracking</li>
@@ -196,7 +196,7 @@ export default function CookiePolicy() {
             <section>
               <h2 className="text-2xl font-medium text-white mb-4">Cookie Duration</h2>
               <div className="space-y-4">
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Session Cookies</h3>
                   <p className="font-light">These cookies are temporary and are deleted when you close your browser. They are used for:</p>
                   <ul className="list-disc list-inside space-y-1 ml-4 mt-2 text-sm">
@@ -205,7 +205,7 @@ export default function CookiePolicy() {
                     <li>Security tokens and CSRF protection</li>
                   </ul>
                 </div>
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Persistent Cookies</h3>
                   <p className="font-light">These cookies remain on your device for a set period or until manually deleted:</p>
                   <ul className="list-disc list-inside space-y-1 ml-4 mt-2 text-sm">
@@ -221,7 +221,7 @@ export default function CookiePolicy() {
             <section>
               <h2 className="text-2xl font-medium text-white mb-4">Managing Your Cookie Preferences</h2>
               <div className="space-y-6">
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Browser Settings</h3>
                   <p className="mb-2 font-light">You can control cookies through your browser settings:</p>
                   <ul className="list-disc list-inside space-y-1 ml-4 text-sm">
@@ -232,7 +232,7 @@ export default function CookiePolicy() {
                   </ul>
                 </div>
 
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Cookie Consent</h3>
                   <p className="font-light">
                     When you first visit our website, you'll see a cookie consent banner. You can choose which 
@@ -241,7 +241,7 @@ export default function CookiePolicy() {
                   </p>
                 </div>
 
-                <div className="bg-blue-500/10 border border-blue-500/30 p-6 rounded-lg">
+                <div className="bg-cyan-500/10 border border-cyan-400/30 p-6 rounded-lg">
                   <h3 className="text-lg font-medium text-white mb-2 flex items-center">
                     <Info className="w-5 h-5 mr-2" />
                     Important Note
@@ -279,7 +279,7 @@ export default function CookiePolicy() {
 
             <section>
               <h2 className="text-2xl font-medium text-white mb-4">Contact Us</h2>
-              <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+              <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                 <p className="mb-4 font-light">If you have any questions about our use of cookies, please contact us:</p>
                 <div className="space-y-2 text-sm">
                   <p><strong className="text-white/90">Email:</strong> privacy@talariajournal.com</p>

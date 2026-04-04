@@ -19,10 +19,10 @@ const StatCard = ({ title, value, tooltip, isOptimized = false }) => (
   <div className={`border rounded-xl p-6 text-center h-full flex flex-col justify-center transition-all duration-300 ${
     isOptimized 
       ? 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-200 shadow-lg' 
-      : 'bg-white border-blue-200/60'
+      : 'bg-cyan-950/40 border-cyan-500/20'
   }`}>
     <div className="flex items-center justify-center mb-2">
-      <h4 className="text-xs font-medium text-slate-600 uppercase tracking-wider">{title}</h4>
+      <h4 className="text-xs font-medium text-cyan-100/60 uppercase tracking-wider">{title}</h4>
       {tooltip && (
         <div className="ml-1 group relative">
           <Info size={16} className="text-slate-400 cursor-pointer" />
@@ -494,7 +494,7 @@ const ExitAnalysisAmelioration = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-jf-bg">
         <div className="w-full px-6 py-4 space-y-6">
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -506,7 +506,7 @@ const ExitAnalysisAmelioration = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-jf-bg">
         <div className="w-full px-6 py-4">
           <div className="bg-red-50 border border-red-200 rounded-xl p-6">
             <div className="flex items-start gap-4">
@@ -535,23 +535,23 @@ const ExitAnalysisAmelioration = () => {
 
   if (!data || !data.chart_data || data.chart_data.length === 0) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-jf-bg">
         <div className="w-full px-6 py-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+          <div className="bg-cyan-950/25 border border-cyan-500/20 rounded-xl p-6">
             <div className="flex items-start gap-4">
               <div className="flex-shrink-0">
                 <div className="h-6 w-6 text-blue-500">📊</div>
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-semibold text-blue-800 mb-2">
+                <h3 className="text-lg font-semibold text-cyan-100 mb-2">
                   No Data Available
                 </h3>
-                <p className="text-blue-700 mb-4">
+                <p className="text-cyan-200 mb-4">
                   No exit analysis data available for the current filters.
                 </p>
                 <button
                   onClick={fetchData}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  className="bg-cyan-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                 >
                   <RefreshCw className="h-4 w-4 inline mr-2" />
                   Refresh
@@ -583,7 +583,7 @@ const ExitAnalysisAmelioration = () => {
   const avgDrawdownLoser = summary_stats.avg_drawdown_loser;
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-jf-bg">
       <div className="w-full px-6 py-4 space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -591,20 +591,20 @@ const ExitAnalysisAmelioration = () => {
             <h1 className="text-3xl font-bold text-[#040028] mb-2">
               Exit Analysis Amelioration
             </h1>
-            <p className="text-slate-600">
+            <p className="text-cyan-100/60">
               Interactive tool to optimize your TP/SL levels and see real-time performance changes
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             {/* Calculation Mode Toggle */}
-            <div className="bg-slate-100 rounded-lg p-1">
+            <div className="bg-cyan-950/35 rounded-lg p-1">
               <div className="flex">
                 <button
                   onClick={() => setCalcMode('average')}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                     calcMode === 'average'
-                      ? 'bg-white shadow text-blue-600'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-cyan-950/40 shadow text-cyan-300'
+                      : 'text-cyan-100/60 hover:text-slate-900'
                   }`}
                 >
                   Average
@@ -613,8 +613,8 @@ const ExitAnalysisAmelioration = () => {
                   onClick={() => setCalcMode('median')}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                     calcMode === 'median'
-                      ? 'bg-white shadow text-blue-600'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-cyan-950/40 shadow text-cyan-300'
+                      : 'text-cyan-100/60 hover:text-slate-900'
                   }`}
                 >
                   Median
@@ -625,9 +625,9 @@ const ExitAnalysisAmelioration = () => {
         </div>
 
         {/* Interactive Controls */}
-        <div className="bg-white border border-blue-200/60 rounded-xl shadow-sm p-6">
+        <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl shadow-sm p-6">
           <div className="flex items-center gap-2 mb-4">
-            <Move className="h-5 w-5 text-blue-600" />
+            <Move className="h-5 w-5 text-cyan-300" />
             <h3 className="text-lg font-semibold text-[#040028]">Interactive TP/SL Controls</h3>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -640,7 +640,7 @@ const ExitAnalysisAmelioration = () => {
                     setSlLevel(-100);
                     // hasMovedLevels will be updated by useEffect
                   }}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                  className="px-4 py-2 bg-cyan-950/35 hover:bg-slate-200 text-slate-200 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
                 >
                   <RefreshCw className="h-4 w-4" />
                   Reset to Default (TP: 100%, SL: -100%)
@@ -651,7 +651,7 @@ const ExitAnalysisAmelioration = () => {
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Target className="h-4 w-4 text-green-600" />
-                <label className="text-sm font-medium text-slate-700">Take Profit Level</label>
+                <label className="text-sm font-medium text-slate-200">Take Profit Level</label>
                 <span className="text-lg font-bold text-green-600">{tpLevel.toFixed(1)}%</span>
               </div>
               <input
@@ -671,7 +671,7 @@ const ExitAnalysisAmelioration = () => {
                   background: `linear-gradient(to right, #10B981 0%, #10B981 ${(tpLevel/500)*100}%, #e2e8f0 ${(tpLevel/500)*100}%, #e2e8f0 100%)`
                 }}
               />
-              <div className="flex justify-between text-xs text-slate-500">
+              <div className="flex justify-between text-xs text-cyan-200/45">
                 <span>0%</span>
                 <span>250%</span>
                 <span>500%</span>
@@ -682,7 +682,7 @@ const ExitAnalysisAmelioration = () => {
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-red-600" />
-                <label className="text-sm font-medium text-slate-700">Stop Loss Level</label>
+                <label className="text-sm font-medium text-slate-200">Stop Loss Level</label>
                 <span className="text-lg font-bold text-red-600">{slLevel.toFixed(1)}%</span>
               </div>
               <input
@@ -702,7 +702,7 @@ const ExitAnalysisAmelioration = () => {
                   background: `linear-gradient(to right, #e2e8f0 0%, #e2e8f0 ${((slLevel+500)/500)*100}%, #EF4444 ${((slLevel+500)/500)*100}%, #EF4444 100%)`
                 }}
               />
-              <div className="flex justify-between text-xs text-slate-500">
+              <div className="flex justify-between text-xs text-cyan-200/45">
                 <span>-500%</span>
                 <span>-250%</span>
                 <span>0%</span>
@@ -712,10 +712,10 @@ const ExitAnalysisAmelioration = () => {
         </div>
 
         {/* Chart Container */}
-        <div className="bg-white border border-blue-200/60 rounded-xl shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-blue-200/60">
+        <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-cyan-500/20">
             <h2 className="text-xl font-bold text-[#040028]">Interactive Exit Analysis Chart</h2>
-            <p className="text-sm text-slate-600 mt-1">
+            <p className="text-sm text-cyan-100/60 mt-1">
               {hasMovedLevels 
                 ? `Current TP: ${tpLevel.toFixed(1)}%, SL: ${slLevel.toFixed(1)}% - Drag lines or use controls to optimize`
                 : "Drag the TP/SL lines or use the controls above to see real-time changes"
@@ -903,9 +903,9 @@ const ExitAnalysisAmelioration = () => {
         {/* Original vs Ameliorated Stats */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Original Stats */}
-          <div className="bg-white border border-blue-200/60 rounded-xl shadow-sm p-6">
+          <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl shadow-sm p-6">
             <div className="flex items-center gap-2 mb-4">
-              <TrendingUp className="h-5 w-5 text-blue-600" />
+              <TrendingUp className="h-5 w-5 text-cyan-300" />
               <h3 className="text-lg font-semibold text-[#040028]">Original Performance</h3>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -929,7 +929,7 @@ const ExitAnalysisAmelioration = () => {
           </div>
 
           {/* Ameliorated Stats */}
-          <div className="bg-white border border-blue-200/60 rounded-xl shadow-sm p-6">
+          <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl shadow-sm p-6">
             <div className="flex items-center gap-2 mb-4">
               <Target className="h-5 w-5 text-emerald-600" />
               <h3 className="text-lg font-semibold text-[#040028]">
@@ -974,13 +974,13 @@ const ExitAnalysisAmelioration = () => {
                 />
               </div>
             ) : (
-              <div className="text-center text-slate-500">Calculating optimized metrics...</div>
+              <div className="text-center text-cyan-200/45">Calculating optimized metrics...</div>
             )}
             
             {/* Show message when levels haven't been moved */}
             {!hasMovedLevels && amelioratedMetrics && (
-              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center gap-2 text-blue-700">
+              <div className="mt-4 p-3 bg-cyan-950/25 border border-cyan-500/20 rounded-lg">
+                <div className="flex items-center gap-2 text-cyan-200">
                   <Info className="h-4 w-4" />
                   <span className="text-sm font-medium">
                     Move the TP/SL levels above to see optimized performance results
@@ -993,7 +993,7 @@ const ExitAnalysisAmelioration = () => {
 
                  {/* Detailed Ameliorated Stats */}
          {amelioratedMetrics && hasMovedLevels && (
-           <div className="bg-white border border-blue-200/60 rounded-xl shadow-sm p-6">
+           <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl shadow-sm p-6">
              <h3 className="text-lg font-semibold text-[#040028] mb-4">Detailed TP/SL Optimization Results</h3>
              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                
@@ -1018,18 +1018,18 @@ const ExitAnalysisAmelioration = () => {
 
          {/* Win Rate Change Analysis */}
          {amelioratedMetrics && hasMovedLevels && (
-           <div className="bg-white border border-blue-200/60 rounded-xl shadow-sm p-4">
+           <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl shadow-sm p-4">
              <div className="flex items-center gap-2 mb-3">
-               <div className="h-5 w-5 text-blue-600">📊</div>
-               <h4 className="text-sm font-semibold text-slate-700">Win Rate Change Analysis</h4>
+               <div className="h-5 w-5 text-cyan-300">📊</div>
+               <h4 className="text-sm font-semibold text-slate-200">Win Rate Change Analysis</h4>
              </div>
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-600">
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-cyan-100/60">
                <div>
                  <div className="font-medium">Original Win Rate:</div>
-                 <div className="text-lg font-bold text-blue-600">
+                 <div className="text-lg font-bold text-cyan-300">
                    {(trades.filter(t => t.actual_pnl > 0).length / trades.length * 100).toFixed(2)}%
                  </div>
-                 <div className="text-xs text-slate-500 mt-1">
+                 <div className="text-xs text-cyan-200/45 mt-1">
                    ({trades.filter(t => t.actual_pnl > 0).length} wins / {trades.length} trades)
                  </div>
                </div>
@@ -1038,7 +1038,7 @@ const ExitAnalysisAmelioration = () => {
                  <div className="text-lg font-bold text-emerald-600">
                    {amelioratedMetrics.winRate.toFixed(2)}%
                  </div>
-                 <div className="text-xs text-slate-500 mt-1">
+                 <div className="text-xs text-cyan-200/45 mt-1">
                    ({amelioratedMetrics.tradesHitTp} TP hits / {amelioratedMetrics.tradesHitTp + amelioratedMetrics.tradesHitSl} TP+SL hits)
                  </div>
                </div>
@@ -1047,12 +1047,12 @@ const ExitAnalysisAmelioration = () => {
                  <div className={`text-lg font-bold ${amelioratedMetrics.winRate > (trades.filter(t => t.actual_pnl > 0).length / trades.length * 100) ? 'text-green-600' : 'text-red-600'}`}>
                    {(amelioratedMetrics.winRate - (trades.filter(t => t.actual_pnl > 0).length / trades.length * 100)).toFixed(2)}%
                  </div>
-                 <div className="text-xs text-slate-500 mt-1">
+                 <div className="text-xs text-cyan-200/45 mt-1">
                    (TP-based vs P&L-based win rate)
                  </div>
                </div>
              </div>
-             <div className="mt-3 text-xs text-slate-500">
+             <div className="mt-3 text-xs text-cyan-200/45">
                <div>• Trades that hit TP: {amelioratedMetrics.tradesHitTp} ({((amelioratedMetrics.tradesHitTp / amelioratedMetrics.totalTrades) * 100).toFixed(1)}%)</div>
                <div>• Trades that hit SL: {amelioratedMetrics.tradesHitSl} ({((amelioratedMetrics.tradesHitSl / amelioratedMetrics.totalTrades) * 100).toFixed(1)}%)</div>
                <div>• Trades using actual exit: {amelioratedMetrics.totalTrades - amelioratedMetrics.tradesHitTp - amelioratedMetrics.tradesHitSl} ({(((amelioratedMetrics.totalTrades - amelioratedMetrics.tradesHitTp - amelioratedMetrics.tradesHitSl) / amelioratedMetrics.totalTrades) * 100).toFixed(1)}%)</div>
@@ -1075,12 +1075,12 @@ const ExitAnalysisAmelioration = () => {
              </div>
              
                            {/* Detailed Win Rate Debug Info - Side by Side */}
-              <div className="mt-4 p-3 bg-white rounded-lg border border-blue-200">
-                <div className="text-xs font-semibold text-slate-700 mb-3">🔍 Detailed Win Rate Debug Info - Side by Side Comparison:</div>
+              <div className="mt-4 p-3 bg-cyan-950/40 rounded-lg border border-cyan-500/20">
+                <div className="text-xs font-semibold text-slate-200 mb-3">🔍 Detailed Win Rate Debug Info - Side by Side Comparison:</div>
                 <div className="grid grid-cols-2 gap-4">
                   {/* Original Performance */}
-                  <div className="text-xs text-slate-600">
-                    <div className="font-semibold text-blue-600 mb-2">📊 Original Performance:</div>
+                  <div className="text-xs text-cyan-100/60">
+                    <div className="font-semibold text-cyan-300 mb-2">📊 Original Performance:</div>
                     <div className="space-y-1">
                       <div>• <strong>Total Trades:</strong> {trades.length}</div>
                       <div>• <strong>Wins:</strong> {trades.filter(t => t.actual_pnl > 0).length} ({((trades.filter(t => t.actual_pnl > 0).length / trades.length) * 100).toFixed(1)}%)</div>
@@ -1091,7 +1091,7 @@ const ExitAnalysisAmelioration = () => {
                   </div>
                   
                   {/* Optimized Performance */}
-                  <div className="text-xs text-slate-600">
+                  <div className="text-xs text-cyan-100/60">
                     <div className="font-semibold text-emerald-600 mb-2">🎯 Optimized Performance:</div>
                     <div className="space-y-1">
                       <div>• <strong>Total Trades:</strong> {amelioratedMetrics.totalTrades}</div>
@@ -1106,9 +1106,9 @@ const ExitAnalysisAmelioration = () => {
                 </div>
                 
                 {/* Breakdown by Exit Type */}
-                <div className="mt-3 pt-3 border-t border-gray-200">
-                  <div className="text-xs font-semibold text-slate-700 mb-2">📈 Breakdown by Exit Type (Optimized):</div>
-                  <div className="grid grid-cols-3 gap-4 text-xs text-slate-600">
+                <div className="mt-3 pt-3 border-t border-cyan-500/15">
+                  <div className="text-xs font-semibold text-slate-200 mb-2">📈 Breakdown by Exit Type (Optimized):</div>
+                  <div className="grid grid-cols-3 gap-4 text-xs text-cyan-100/60">
                     <div>
                       <div className="font-medium text-green-600">TP Hits:</div>
                       <div>Count: {amelioratedTrades.filter(t => t.hitTp).length}</div>
@@ -1122,7 +1122,7 @@ const ExitAnalysisAmelioration = () => {
                       <div>Win Rate: 0% (all SL hits are losses)</div>
                     </div>
                     <div>
-                      <div className="font-medium text-blue-600">Actual Exits:</div>
+                      <div className="font-medium text-cyan-300">Actual Exits:</div>
                       <div>Count: {amelioratedTrades.filter(t => !t.hitTp && !t.hitSl).length}</div>
                       <div>Wins: {amelioratedTrades.filter(t => !t.hitTp && !t.hitSl && t.amelioratedPnl > 0).length}</div>
                       <div>Losses: {amelioratedTrades.filter(t => !t.hitTp && !t.hitSl && t.amelioratedPnl < 0).length}</div>
@@ -1131,9 +1131,9 @@ const ExitAnalysisAmelioration = () => {
                 </div>
                 
                 {/* Current Settings */}
-                <div className="mt-3 pt-3 border-t border-gray-200">
-                  <div className="text-xs font-semibold text-slate-700 mb-2">⚙️ Current Settings:</div>
-                  <div className="grid grid-cols-2 gap-4 text-xs text-slate-600">
+                <div className="mt-3 pt-3 border-t border-cyan-500/15">
+                  <div className="text-xs font-semibold text-slate-200 mb-2">⚙️ Current Settings:</div>
+                  <div className="grid grid-cols-2 gap-4 text-xs text-cyan-100/60">
                     <div><strong>TP Level:</strong> {tpLevel}%</div>
                     <div><strong>SL Level:</strong> {slLevel}%</div>
                   </div>
@@ -1146,18 +1146,18 @@ const ExitAnalysisAmelioration = () => {
          {amelioratedMetrics && verificationResults && hasMovedLevels && (
            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
              {/* Internal Verification */}
-             <div className="bg-white border border-blue-200/60 rounded-xl shadow-sm p-4">
+             <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl shadow-sm p-4">
                <div className="flex items-center gap-2 mb-2">
                  {amelioratedMetrics.calculationsMatch ? (
                    <div className="h-5 w-5 text-green-600">✅</div>
                  ) : (
                    <div className="h-5 w-5 text-red-600">❌</div>
                  )}
-                 <h4 className="text-sm font-semibold text-slate-700">
+                 <h4 className="text-sm font-semibold text-slate-200">
                    Internal Verification: {amelioratedMetrics.calculationsMatch ? 'PASSED' : 'FAILED'}
                  </h4>
                </div>
-               <div className="text-xs text-slate-600 space-y-1">
+               <div className="text-xs text-cyan-100/60 space-y-1">
                  <div>• Total Trades: {amelioratedMetrics.totalTrades}</div>
                                    <div>• Trades Hit TP: {amelioratedMetrics.tradesHitTp} ({((amelioratedMetrics.tradesHitTp / amelioratedMetrics.totalTrades) * 100).toFixed(1)}%)</div>
                   <div>• Trades Hit SL: {amelioratedMetrics.tradesHitSl} ({((amelioratedMetrics.tradesHitSl / amelioratedMetrics.totalTrades) * 100).toFixed(1)}%)</div>
@@ -1167,18 +1167,18 @@ const ExitAnalysisAmelioration = () => {
              </div>
 
              {/* Mathematical Verification */}
-             <div className="bg-white border border-blue-200/60 rounded-xl shadow-sm p-4">
+             <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl shadow-sm p-4">
                <div className="flex items-center gap-2 mb-2">
                  {verificationResults.allMatch ? (
                    <div className="h-5 w-5 text-green-600">✅</div>
                  ) : (
                    <div className="h-5 w-5 text-red-600">❌</div>
                  )}
-                 <h4 className="text-sm font-semibold text-slate-700">
+                 <h4 className="text-sm font-semibold text-slate-200">
                    Mathematical Verification: {verificationResults.allMatch ? 'PASSED' : 'FAILED'}
                  </h4>
                </div>
-               <div className="text-xs text-slate-600 space-y-1">
+               <div className="text-xs text-cyan-100/60 space-y-1">
                  <div>• P&L Match: {verificationResults.matches.pnlMatch ? '✅' : '❌'}</div>
                  <div>• Wins Match: {verificationResults.matches.winsMatch ? '✅' : '❌'}</div>
                  <div>• Losses Match: {verificationResults.matches.lossesMatch ? '✅' : '❌'}</div>
@@ -1186,7 +1186,7 @@ const ExitAnalysisAmelioration = () => {
                  
                  <div>• TP Count Match: {verificationResults.matches.tpMatch ? '✅' : '❌'}</div>
                  <div>• SL Count Match: {verificationResults.matches.slMatch ? '✅' : '❌'}</div>
-                                   <div className="mt-2 pt-2 border-t border-slate-200">
+                                   <div className="mt-2 pt-2 border-t border-cyan-500/15">
                     <div>Verification Win Rate: {((verificationResults.verificationResults.tradesHitTp / (verificationResults.verificationResults.tradesHitTp + verificationResults.verificationResults.tradesHitSl)) * 100).toFixed(2)}% (TP hits / TP+SL hits)</div>
                   </div>
                </div>

@@ -27,7 +27,7 @@ const ProtectedRoute = ({
   // TEMPORARILY DISABLED: Only check auth initialization
   if (!isInitialized) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+      <div className="flex items-center justify-center min-h-screen bg-jf-bg">
         <div className="text-[#040028] font-medium">Loading...</div>
       </div>
     );
@@ -37,7 +37,7 @@ const ProtectedRoute = ({
   // // Also wait for feature flags to be loaded from backend to prevent race conditions
   // if (!isInitialized || isLoading || !hasLoadedFromBackend) {
   //   return (
-  //     <div className="flex items-center justify-center min-h-screen bg-slate-50">
+  //     <div className="flex items-center justify-center min-h-screen bg-jf-bg">
   //       <div className="text-[#040028] font-medium">Loading...</div>
   //     </div>
   //   );

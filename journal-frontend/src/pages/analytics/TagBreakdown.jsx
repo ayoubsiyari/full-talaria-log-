@@ -123,39 +123,39 @@ export default function TagBreakdown() {
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
-      <h1 className="text-3xl font-bold text-slate-800 mb-6">🧠 Tag-Based Performance Analysis</h1>
-      <p className="text-slate-600 mb-10">
+      <h1 className="text-3xl font-bold text-slate-100 mb-6">🧠 Tag-Based Performance Analysis</h1>
+      <p className="text-cyan-100/60 mb-10">
         Analyze your performance across tags like setups, mistakes, and emotions.
       </p>
 
       <div className="mb-12">
     {overallStats && (
       <div className="mb-6">
-        <h3 className="text-xl font-semibold text-slate-700 mb-2">Overall Performance</h3>
+        <h3 className="text-xl font-semibold text-slate-200 mb-2">Overall Performance</h3>
         <div className="grid grid-cols-4 gap-4">
-          <div className="bg-slate-50 p-4 rounded-lg">
-            <div className="text-slate-500">Total Trades</div>
+          <div className="bg-jf-bg p-4 rounded-lg">
+            <div className="text-cyan-200/45">Total Trades</div>
             <div className="text-xl font-semibold">{overallStats.totalTrades}</div>
           </div>
-          <div className="bg-slate-50 p-4 rounded-lg">
-            <div className="text-slate-500">Avg Win Rate</div>
+          <div className="bg-jf-bg p-4 rounded-lg">
+            <div className="text-cyan-200/45">Avg Win Rate</div>
             <div className="text-xl font-semibold">{overallStats.totalWinRate}%</div>
           </div>
-          <div className="bg-slate-50 p-4 rounded-lg">
-            <div className="text-slate-500">Avg P&L</div>
+          <div className="bg-jf-bg p-4 rounded-lg">
+            <div className="text-cyan-200/45">Avg P&L</div>
             <div className="text-xl font-semibold">${overallStats.totalAvgPnl}</div>
           </div>
-          <div className="bg-slate-50 p-4 rounded-lg">
-            <div className="text-slate-500">Avg R:R</div>
+          <div className="bg-jf-bg p-4 rounded-lg">
+            <div className="text-cyan-200/45">Avg R:R</div>
             <div className="text-xl font-semibold">{overallStats.totalAvgRr}</div>
           </div>
         </div>
       </div>
     )}
 
-    <div className="overflow-x-auto rounded-lg shadow border border-slate-200">
-      <table className="w-full text-left text-sm text-slate-700">
-        <thead className="bg-slate-100 border-b border-slate-200">
+    <div className="overflow-x-auto rounded-lg shadow border border-cyan-500/15">
+      <table className="w-full text-left text-sm text-slate-200">
+        <thead className="bg-cyan-950/35 border-b border-cyan-500/15">
           <tr>
             <th className="p-3">Tag</th>
             <th className="p-3">Trades</th>
@@ -169,7 +169,7 @@ export default function TagBreakdown() {
             <tr
               key={i}
               className={`border-b border-slate-100 ${
-                i % 2 === 0 ? "bg-white" : "bg-slate-50"
+                i % 2 === 0 ? "bg-cyan-950/40" : "bg-jf-bg"
               }`}
             >
               <td className="p-3 font-medium">{row.tag}</td>
@@ -185,12 +185,12 @@ export default function TagBreakdown() {
   </div>
     {data.map((item, index) => (
           <div key={index} className="mb-12">
-            <h2 className="text-2xl font-semibold text-slate-700 mb-4 capitalize">
+            <h2 className="text-2xl font-semibold text-slate-200 mb-4 capitalize">
               {item.tag.replace(/_/g, " ")}
             </h2>
-            <div className="overflow-x-auto rounded-lg shadow border border-slate-200">
-              <table className="w-full text-left text-sm text-slate-700">
-                <thead className="bg-slate-100 border-b border-slate-200">
+            <div className="overflow-x-auto rounded-lg shadow border border-cyan-500/15">
+              <table className="w-full text-left text-sm text-slate-200">
+                <thead className="bg-cyan-950/35 border-b border-cyan-500/15">
                   <tr>
                     <th className="p-3">Label</th>
                     <th className="p-3">Trades</th>
@@ -204,7 +204,7 @@ export default function TagBreakdown() {
                     <tr
                       key={i}
                       className={`border-b border-slate-100 ${
-                        i % 2 === 0 ? "bg-white" : "bg-slate-50"
+                        i % 2 === 0 ? "bg-cyan-950/40" : "bg-jf-bg"
                       }`}
                     >
                       <td className="p-3 font-medium">{row.label}</td>

@@ -183,7 +183,7 @@ export default function Features() {
               <Link to="/login" className={`px-3 py-1.5 text-sm ${colors.components.nav.link} hover:${colors.components.nav.linkHover} transition-all duration-200`}>
                 Log in
               </Link>
-              <Link to="/login" className="px-4 py-2 bg-white text-black text-sm font-medium rounded-md hover:bg-white/90 transition-all duration-200 shadow-sm">
+              <Link to="/login" className="px-4 py-2 bg-cyan-400 text-cyan-950 text-sm font-medium rounded-md hover:bg-cyan-950/50 transition-all duration-200 shadow-sm">
                 Sign up
               </Link>
             </div>
@@ -203,7 +203,7 @@ export default function Features() {
             <h1 className="text-5xl md:text-7xl font-normal mb-8 text-white leading-tight">
               Everything you need to
               <br />
-                              <span className="bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">
+                              <span className="bg-gradient-to-r from-blue-400 to-cyan-600 bg-clip-text text-transparent">
                   elevate your trading
                 </span>
             </h1>
@@ -222,9 +222,9 @@ export default function Features() {
           {features.map((category, categoryIndex) => (
             <div key={categoryIndex} className="mb-20">
               <div className="flex items-center space-x-4 mb-12">
-                <div className="flex items-center space-x-2 bg-blue-500/10 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-blue-500/20">
-                  <BookOpen className="w-4 h-4 text-blue-400" />
-                  <span className="text-sm text-blue-300 font-medium">{category.category}</span>
+                <div className="flex items-center space-x-2 bg-cyan-500/10 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-cyan-400/20">
+                  <BookOpen className="w-4 h-4 text-cyan-300" />
+                  <span className="text-sm text-cyan-200 font-medium">{category.category}</span>
                 </div>
               </div>
               
@@ -235,7 +235,7 @@ export default function Features() {
                     className={colorUtils.getCardClasses()}
                   >
                     <div className="flex items-center justify-between mb-4">
-                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-700 rounded-lg flex items-center justify-center">
+                      <div className="w-10 h-10 bg-gradient-to-br from-cyan-400 to-blue-700 rounded-lg flex items-center justify-center">
                         <feature.icon className="w-5 h-5 text-white" />
                       </div>
                       <span className={`text-xs px-2 py-1 ${colors.backgrounds.tertiary} rounded-full ${colors.text.secondary} border ${colors.borders.primary}`}>
@@ -254,13 +254,13 @@ export default function Features() {
       </section>
 
       {/* Benefits Section */}
-      <section className="py-20 bg-white/5">
+      <section className="py-20 bg-cyan-950/15">
         <div className="container mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-4xl md:text-5xl font-normal mb-6 text-white leading-tight">
               Why choose
               <br />
-              <span className="bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-blue-400 to-cyan-600 bg-clip-text text-transparent">
                 Talaria?
               </span>
             </h2>
@@ -272,7 +272,7 @@ export default function Features() {
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             {benefits.map((benefit, index) => (
               <div key={index} className="text-center">
-                                 <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center mx-auto mb-6">
+                                 <div className="w-16 h-16 bg-gradient-to-br from-cyan-400 to-blue-700 rounded-xl flex items-center justify-center mx-auto mb-6">
                   <benefit.icon className="w-8 h-8 text-white" />
                 </div>
                 <h3 className={`text-lg font-medium mb-3 ${colors.text.primary}`}>{benefit.title}</h3>
@@ -290,7 +290,7 @@ export default function Features() {
             <h2 className="text-4xl md:text-5xl font-normal mb-6 text-white leading-tight">
               Ready to transform
               <br />
-              <span className="bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-blue-400 to-cyan-600 bg-clip-text text-transparent">
                 your trading?
               </span>
             </h2>
@@ -299,7 +299,7 @@ export default function Features() {
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-                              <Link to="/login" className="group inline-flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-blue-700 text-white px-8 py-4 rounded-lg hover:from-blue-600 hover:to-blue-800 transition-all duration-200 text-sm font-medium shadow-lg hover:shadow-xl">
+                              <Link to="/login" className="group inline-flex items-center space-x-2 bg-gradient-to-r from-cyan-400 to-blue-700 text-white px-8 py-4 rounded-lg hover:from-cyan-500 hover:to-blue-800 transition-all duration-200 text-sm font-medium shadow-lg hover:shadow-xl">
                 <Sparkles className="w-4 h-4" />
                 <span>Start Free Trial</span>
               </Link>

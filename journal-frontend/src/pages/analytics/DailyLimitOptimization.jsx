@@ -22,10 +22,10 @@ const StatCard = ({ title, value, tooltip, isOptimized = false }) => (
   <div className={`border rounded-xl p-6 text-center h-full flex flex-col justify-center transition-all duration-300 ${
     isOptimized 
       ? 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-200 shadow-lg' 
-      : 'bg-white border-blue-200/60'
+      : 'bg-cyan-950/40 border-cyan-500/20'
   }`}>
     <div className="flex items-center justify-center mb-2">
-      <h4 className="text-xs font-medium text-slate-600 uppercase tracking-wider">{title}</h4>
+      <h4 className="text-xs font-medium text-cyan-100/60 uppercase tracking-wider">{title}</h4>
       {tooltip && (
         <div className="ml-1 group relative">
           <div className="h-4 w-4 text-slate-400 cursor-pointer">ℹ️</div>
@@ -53,7 +53,7 @@ const CustomTooltip = ({ active, payload, label, timeframe, initialBalance = 100
           <div className="font-semibold text-[#040028]">
             {`Trade #${data.trade_number}`}
           </div>
-          <div className="text-slate-600 text-sm">
+          <div className="text-cyan-100/60 text-sm">
             {`Date: ${data.date}`}
           </div>
         </>
@@ -64,7 +64,7 @@ const CustomTooltip = ({ active, payload, label, timeframe, initialBalance = 100
           <div className="font-semibold text-[#040028]">
             {`Period: ${label}`}
           </div>
-          <div className="text-slate-600 text-sm">
+          <div className="text-cyan-100/60 text-sm">
             {`Trades: ${data.trade_count}`}
           </div>
         </>
@@ -75,9 +75,9 @@ const CustomTooltip = ({ active, payload, label, timeframe, initialBalance = 100
     const pnlPercentage = (data.pnl / initialBalance) * 100;
 
     return (
-      <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-lg">
+      <div className="bg-cyan-950/40 border border-cyan-500/15 rounded-lg p-3 shadow-lg">
         {labelContent}
-        <div className="border-t border-slate-200 my-2"></div>
+        <div className="border-t border-cyan-500/15 my-2"></div>
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <div className={`font-bold text-lg ${data.pnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
@@ -91,7 +91,7 @@ const CustomTooltip = ({ active, payload, label, timeframe, initialBalance = 100
               {data.pnl >= 0 ? 'Profit' : 'Loss'}
             </span>
           </div>
-          <div className="text-sm text-slate-600">
+          <div className="text-sm text-cyan-100/60">
             {`${pnlPercentage >= 0 ? '+' : ''}${pnlPercentage.toFixed(2)}% of account`}
           </div>
         </div>
@@ -524,7 +524,7 @@ const DailyLimitOptimization = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-jf-bg">
         <div className="w-full px-6 py-4 space-y-6">
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -536,7 +536,7 @@ const DailyLimitOptimization = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-jf-bg">
         <div className="w-full px-6 py-4">
           <div className="bg-red-50 border border-red-200 rounded-xl p-6">
             <div className="flex items-start gap-4">
@@ -565,23 +565,23 @@ const DailyLimitOptimization = () => {
 
   if (!data || !data.pnl_data || data.pnl_data.length === 0) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-jf-bg">
         <div className="w-full px-6 py-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+          <div className="bg-cyan-950/25 border border-cyan-500/20 rounded-xl p-6">
             <div className="flex items-start gap-4">
               <div className="flex-shrink-0">
                 <div className="h-6 w-6 text-blue-500">📊</div>
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-semibold text-blue-800 mb-2">
+                <h3 className="text-lg font-semibold text-cyan-100 mb-2">
                   No Data Available
                 </h3>
-                <p className="text-blue-700 mb-4">
+                <p className="text-cyan-200 mb-4">
                   No daily limit optimization data available for the current filters.
                 </p>
                 <button
                   onClick={fetchData}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  className="bg-cyan-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                 >
                   <RefreshCw className="h-4 w-4 inline mr-2" />
                   Refresh
@@ -597,14 +597,14 @@ const DailyLimitOptimization = () => {
   const { pnl_data } = data;
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-jf-bg">
       {/* Header with Filter Toggle */}
-      <div className="bg-white border-b border-slate-200 px-6 py-4">
+      <div className="bg-cyan-950/40 border-b border-cyan-500/15 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <button 
               onClick={toggleFilterVisibility} 
-              className="p-2 rounded-lg hover:bg-slate-100 transition-colors duration-200"
+              className="p-2 rounded-lg hover:bg-cyan-950/35 transition-colors duration-200"
               aria-label="Toggle sidebar"
             >
               <Move className="h-5 w-5 text-[#040028]" />
@@ -625,18 +625,18 @@ const DailyLimitOptimization = () => {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-blue-600 mb-2">
+            <h1 className="text-3xl font-bold text-cyan-300 mb-2">
               Daily Limit Optimization
             </h1>
-            <p className="text-slate-600">
+            <p className="text-cyan-100/60">
               Optimize your daily profit and loss limits with interactive controls
             </p>
           </div>
           
           <div className="flex flex-wrap gap-2">
             {/* Statistical Reference Toggle */}
-            <div className="bg-slate-100 rounded-lg p-1">
-              <label className="block text-xs font-medium text-slate-600 mb-2 text-center">
+            <div className="bg-cyan-950/35 rounded-lg p-1">
+              <label className="block text-xs font-medium text-cyan-100/60 mb-2 text-center">
                 Statistical Reference
               </label>
               <div className="flex">
@@ -644,8 +644,8 @@ const DailyLimitOptimization = () => {
                   onClick={() => setStatLine('average')}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                     statLine === 'average'
-                      ? 'bg-white shadow text-blue-600'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-cyan-950/40 shadow text-cyan-300'
+                      : 'text-cyan-100/60 hover:text-slate-900'
                   }`}
                 >
                   Average
@@ -654,8 +654,8 @@ const DailyLimitOptimization = () => {
                   onClick={() => setStatLine('median')}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                     statLine === 'median'
-                      ? 'bg-white shadow text-blue-600'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-cyan-950/40 shadow text-cyan-300'
+                      : 'text-cyan-100/60 hover:text-slate-900'
                   }`}
                 >
                   Median
@@ -664,8 +664,8 @@ const DailyLimitOptimization = () => {
             </div>
             
             {/* Time Period Toggle */}
-            <div className="bg-slate-100 rounded-lg p-1">
-              <label className="block text-xs font-medium text-slate-600 mb-2 text-center">
+            <div className="bg-cyan-950/35 rounded-lg p-1">
+              <label className="block text-xs font-medium text-cyan-100/60 mb-2 text-center">
                 Time Period
               </label>
               <div className="flex">
@@ -673,8 +673,8 @@ const DailyLimitOptimization = () => {
                   onClick={() => setTimeframe('daily')}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                     timeframe === 'daily'
-                      ? 'bg-white shadow text-blue-600'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-cyan-950/40 shadow text-cyan-300'
+                      : 'text-cyan-100/60 hover:text-slate-900'
                   }`}
                 >
                   Daily
@@ -683,8 +683,8 @@ const DailyLimitOptimization = () => {
                   onClick={() => setTimeframe('weekly')}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                     timeframe === 'weekly'
-                      ? 'bg-white shadow text-blue-600'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-cyan-950/40 shadow text-cyan-300'
+                      : 'text-cyan-100/60 hover:text-slate-900'
                   }`}
                 >
                   Weekly
@@ -693,8 +693,8 @@ const DailyLimitOptimization = () => {
                   onClick={() => setTimeframe('monthly')}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                     timeframe === 'monthly'
-                      ? 'bg-white shadow text-blue-600'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-cyan-950/40 shadow text-cyan-300'
+                      : 'text-cyan-100/60 hover:text-slate-900'
                   }`}
                 >
                   Monthly
@@ -705,18 +705,18 @@ const DailyLimitOptimization = () => {
         </div>
 
         {/* Interactive Controls */}
-        <div className="bg-white border border-blue-200/60 rounded-xl shadow-sm p-6">
+        <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl shadow-sm p-6">
           <div className="flex items-center gap-2 mb-4">
-            <Move className="h-5 w-5 text-blue-600" />
+            <Move className="h-5 w-5 text-cyan-300" />
             <h3 className="text-lg font-semibold text-[#040028]">Interactive Daily Limit Controls</h3>
           </div>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
              {/* Account Value Input - Hidden as it's redundant with Journal.jsx */}
              {/* <div className="space-y-3">
                <div className="flex items-center gap-2">
-                 <DollarSign className="h-4 w-4 text-blue-600" />
-                 <label className="text-sm font-medium text-slate-700">Account Value</label>
-                 <span className="text-lg font-bold text-blue-600">${initialBalance.toLocaleString()}</span>
+                 <DollarSign className="h-4 w-4 text-cyan-300" />
+                 <label className="text-sm font-medium text-slate-200">Account Value</label>
+                 <span className="text-lg font-bold text-cyan-300">${initialBalance.toLocaleString()}</span>
                  <button
                    onClick={() => {
                      const token = localStorage.getItem('token');
@@ -737,7 +737,7 @@ const DailyLimitOptimization = () => {
                        alert('Please log in to sync initial balance.');
                      }
                    }}
-                   className="ml-2 p-1 text-blue-600 hover:text-blue-800 transition-colors"
+                   className="ml-2 p-1 text-cyan-300 hover:text-cyan-100 transition-colors"
                    title="Sync with journal balance"
                  >
                    <RefreshCw className="h-3 w-3" />
@@ -753,10 +753,10 @@ const DailyLimitOptimization = () => {
                    const newValue = parseInt(e.target.value);
                    setInitialBalance(newValue);
                  }}
-                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400"
                  placeholder="Enter account value"
                />
-               <div className="text-xs text-slate-500">
+               <div className="text-xs text-cyan-200/45">
                  Used to calculate percentage limits. Click sync button to use journal balance.
                </div>
              </div> */}
@@ -769,7 +769,7 @@ const DailyLimitOptimization = () => {
                    setUpperLimit(10);
                    setLowerLimit(-10);
                  }}
-                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                 className="px-4 py-2 bg-cyan-950/35 hover:bg-slate-200 text-slate-200 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
                >
                  <RefreshCw className="h-4 w-4" />
                  Reset to Default (Upper: 10%, Lower: -10%)
@@ -780,7 +780,7 @@ const DailyLimitOptimization = () => {
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-green-600" />
-                                 <label className="text-sm font-medium text-slate-700">Upper Daily Limit</label>
+                                 <label className="text-sm font-medium text-slate-200">Upper Daily Limit</label>
                  <span className="text-lg font-bold text-green-600">{upperLimit.toFixed(1)}%</span>
               </div>
                              <input
@@ -799,7 +799,7 @@ const DailyLimitOptimization = () => {
                    background: `linear-gradient(to right, #10B981 0%, #10B981 ${(upperLimit/25)*100}%, #e2e8f0 ${(upperLimit/25)*100}%, #e2e8f0 100%)`
                  }}
                />
-               <div className="flex justify-between text-xs text-slate-500">
+               <div className="flex justify-between text-xs text-cyan-200/45">
                  <span>0%</span>
                  <span>12.5%</span>
                  <span>25%</span>
@@ -810,7 +810,7 @@ const DailyLimitOptimization = () => {
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-red-600" />
-                                 <label className="text-sm font-medium text-slate-700">Lower Daily Limit</label>
+                                 <label className="text-sm font-medium text-slate-200">Lower Daily Limit</label>
                  <span className="text-lg font-bold text-red-600">{lowerLimit.toFixed(1)}%</span>
               </div>
                              <input
@@ -829,7 +829,7 @@ const DailyLimitOptimization = () => {
                    background: `linear-gradient(to right, #e2e8f0 0%, #e2e8f0 ${((lowerLimit+25)/25)*100}%, #EF4444 ${((lowerLimit+25)/25)*100}%, #EF4444 100%)`
                  }}
                />
-               <div className="flex justify-between text-xs text-slate-500">
+               <div className="flex justify-between text-xs text-cyan-200/45">
                  <span>-25%</span>
                  <span>-12.5%</span>
                  <span>0%</span>
@@ -839,10 +839,10 @@ const DailyLimitOptimization = () => {
         </div>
 
         {/* Chart Container */}
-        <div className="bg-white border border-blue-200/60 rounded-xl shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-blue-200/60">
+        <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-cyan-500/20">
             <h2 className="text-xl font-bold text-[#040028]">Daily Limit Optimization Chart</h2>
-                                     <p className="text-sm text-slate-600 mt-1">
+                                     <p className="text-sm text-cyan-100/60 mt-1">
               Current Upper Limit: {upperLimit.toFixed(1)}%, Lower Limit: {lowerLimit.toFixed(1)}% - Drag lines or use controls to optimize
             </p>
           </div>
@@ -1006,9 +1006,9 @@ const DailyLimitOptimization = () => {
         {/* Original vs Optimized Stats */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Original Stats */}
-          <div className="bg-white border border-blue-200/60 rounded-xl shadow-sm p-6">
+          <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl shadow-sm p-6">
             <div className="flex items-center gap-2 mb-4">
-              <TrendingUp className="h-5 w-5 text-blue-600" />
+              <TrendingUp className="h-5 w-5 text-cyan-300" />
               <h3 className="text-lg font-semibold text-[#040028]">Original Performance</h3>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -1036,7 +1036,7 @@ const DailyLimitOptimization = () => {
           </div>
 
           {/* Optimized Stats */}
-          <div className="bg-white border border-blue-200/60 rounded-xl shadow-sm p-6">
+          <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl shadow-sm p-6">
             <div className="flex items-center gap-2 mb-4">
               <DollarSign className="h-5 w-5 text-emerald-600" />
               <h3 className="text-lg font-semibold text-[#040028]">
@@ -1073,14 +1073,14 @@ const DailyLimitOptimization = () => {
                 />
               </div>
             ) : (
-              <div className="text-center text-slate-500">Calculating optimized metrics...</div>
+              <div className="text-center text-cyan-200/45">Calculating optimized metrics...</div>
             )}
             
             {/* Show message when levels haven't been moved */}
             {/* !hasMovedLevels && optimizedMetrics && ( */}
             {optimizedMetrics && (
-              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center gap-2 text-blue-700">
+              <div className="mt-4 p-3 bg-cyan-950/25 border border-cyan-500/20 rounded-lg">
+                <div className="flex items-center gap-2 text-cyan-200">
                   <div className="h-4 w-4">ℹ️</div>
                   <span className="text-sm font-medium">
                     Move the daily limit levels above to see optimized performance results
@@ -1093,7 +1093,7 @@ const DailyLimitOptimization = () => {
 
                  {/* Detailed Optimization Results */}
          {optimizedMetrics && (
-           <div className="bg-white border border-blue-200/60 rounded-xl shadow-sm p-6">
+           <div className="bg-cyan-950/40 border border-cyan-500/20 rounded-xl shadow-sm p-6">
              <h3 className="text-lg font-semibold text-[#040028] mb-4">Detailed Daily Limit Optimization Results</h3>
              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                <StatCard 
@@ -1119,41 +1119,41 @@ const DailyLimitOptimization = () => {
              </div>
              
              {/* Percentage Equivalents */}
-             <div className="mt-6 p-4 bg-slate-50 rounded-lg">
-               <h4 className="text-sm font-semibold text-slate-700 mb-3">Percentage Equivalents (Based on ${initialBalance.toLocaleString()} Account)</h4>
+             <div className="mt-6 p-4 bg-jf-bg rounded-lg">
+               <h4 className="text-sm font-semibold text-slate-200 mb-3">Percentage Equivalents (Based on ${initialBalance.toLocaleString()} Account)</h4>
                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
                  <div>
-                   <div className="font-medium text-slate-600">Upper Limit:</div>
+                   <div className="font-medium text-cyan-100/60">Upper Limit:</div>
                    <div className="text-lg font-bold text-green-600">${((upperLimit / 100) * initialBalance).toFixed(0)} ({upperLimit.toFixed(1)}%)</div>
                  </div>
                  <div>
-                   <div className="font-medium text-slate-600">Lower Limit:</div>
+                   <div className="font-medium text-cyan-100/60">Lower Limit:</div>
                    <div className="text-lg font-bold text-red-600">${((lowerLimit / 100) * initialBalance).toFixed(0)} ({lowerLimit.toFixed(1)}%)</div>
                  </div>
                  <div>
-                   <div className="font-medium text-slate-600">Original Total P&L:</div>
-                   <div className="text-lg font-bold text-blue-600">${pnl_data.reduce((sum, t) => sum + t.pnl, 0).toFixed(0)} ({(pnl_data.reduce((sum, t) => sum + t.pnl, 0) / initialBalance * 100).toFixed(2)}%)</div>
+                   <div className="font-medium text-cyan-100/60">Original Total P&L:</div>
+                   <div className="text-lg font-bold text-cyan-300">${pnl_data.reduce((sum, t) => sum + t.pnl, 0).toFixed(0)} ({(pnl_data.reduce((sum, t) => sum + t.pnl, 0) / initialBalance * 100).toFixed(2)}%)</div>
                  </div>
                  <div>
-                   <div className="font-medium text-slate-600">Optimized Total P&L:</div>
+                   <div className="font-medium text-cyan-100/60">Optimized Total P&L:</div>
                    <div className="text-lg font-bold text-emerald-600">${optimizedMetrics.totalPnl.toFixed(0)} ({(optimizedMetrics.totalPnl / initialBalance * 100).toFixed(2)}%)</div>
                  </div>
                </div>
              </div>
              
              {/* Win Rate Change Analysis */}
-             <div className="mt-6 p-4 bg-white rounded-lg border border-blue-200">
+             <div className="mt-6 p-4 bg-cyan-950/40 rounded-lg border border-cyan-500/20">
                <div className="flex items-center gap-2 mb-3">
-                 <div className="h-5 w-5 text-blue-600">📊</div>
-                 <h4 className="text-sm font-semibold text-slate-700">Win Rate Change Analysis</h4>
+                 <div className="h-5 w-5 text-cyan-300">📊</div>
+                 <h4 className="text-sm font-semibold text-slate-200">Win Rate Change Analysis</h4>
                </div>
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-600">
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-cyan-100/60">
                  <div>
                    <div className="font-medium">Original Win Rate:</div>
-                   <div className="text-lg font-bold text-blue-600">
+                   <div className="text-lg font-bold text-cyan-300">
                      {(pnl_data.filter(t => t.pnl > 0).length / pnl_data.length * 100).toFixed(2)}%
                    </div>
-                   <div className="text-xs text-slate-500 mt-1">
+                   <div className="text-xs text-cyan-200/45 mt-1">
                      ({pnl_data.filter(t => t.pnl > 0).length} wins / {pnl_data.length} trades)
                    </div>
                  </div>
@@ -1162,7 +1162,7 @@ const DailyLimitOptimization = () => {
                    <div className="text-lg font-bold text-emerald-600">
                      {optimizedMetrics.winRate.toFixed(2)}%
                    </div>
-                   <div className="text-xs text-slate-500 mt-1">
+                   <div className="text-xs text-cyan-200/45 mt-1">
                      ({optimizedMetrics.tradesHitUpperLimit} upper hits / {optimizedMetrics.tradesHitUpperLimit + optimizedMetrics.tradesHitLowerLimit} upper+lower hits)
                    </div>
                  </div>
@@ -1171,12 +1171,12 @@ const DailyLimitOptimization = () => {
                    <div className={`text-lg font-bold ${optimizedMetrics.winRate > (pnl_data.filter(t => t.pnl > 0).length / pnl_data.length * 100) ? 'text-green-600' : 'text-red-600'}`}>
                      {(optimizedMetrics.winRate - (pnl_data.filter(t => t.pnl > 0).length / pnl_data.length * 100)).toFixed(2)}%
                    </div>
-                   <div className="text-xs text-slate-500 mt-1">
+                   <div className="text-xs text-cyan-200/45 mt-1">
                      (Upper limit-based vs P&L-based win rate)
                    </div>
                  </div>
                </div>
-               <div className="mt-3 text-xs text-slate-500">
+               <div className="mt-3 text-xs text-cyan-200/45">
                  <div>• Trades that hit upper limit: {optimizedMetrics.tradesHitUpperLimit} ({((optimizedMetrics.tradesHitUpperLimit / optimizedMetrics.totalTrades) * 100).toFixed(1)}%)</div>
                  <div>• Trades that hit lower limit: {optimizedMetrics.tradesHitLowerLimit} ({((optimizedMetrics.tradesHitLowerLimit / optimizedMetrics.totalTrades) * 100).toFixed(1)}%)</div>
                  <div>• Trades using actual exit: {optimizedMetrics.totalTrades - optimizedMetrics.tradesHitUpperLimit - optimizedMetrics.tradesHitLowerLimit} ({(((optimizedMetrics.totalTrades - optimizedMetrics.tradesHitUpperLimit - optimizedMetrics.tradesHitLowerLimit) / optimizedMetrics.totalTrades) * 100).toFixed(1)}%)</div>
@@ -1199,12 +1199,12 @@ const DailyLimitOptimization = () => {
                </div>
                
                {/* New P&L Calculation Explanation */}
-               <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                 <div className="flex items-center gap-2 text-blue-700 mb-2">
+               <div className="mt-3 p-3 bg-cyan-950/25 border border-cyan-500/20 rounded-lg">
+                 <div className="flex items-center gap-2 text-cyan-200 mb-2">
                    <div className="h-4 w-4">💰</div>
                    <span className="text-sm font-medium">New P&L Calculation</span>
                  </div>
-                 <div className="text-xs text-blue-600 space-y-1">
+                 <div className="text-xs text-cyan-300 space-y-1">
                    <div>• <strong>Total P&L:</strong> Sum of P&L for trades that hit upper or lower limits only</div>
                    <div>• <strong>Avg P&L:</strong> Average P&L per trade that hits limits (Total P&L ÷ Number of limit hits)</div>
                    <div>• <strong>Upper Limit Hits:</strong> P&L capped at ${((upperLimit / 100) * initialBalance).toFixed(0)}</div>

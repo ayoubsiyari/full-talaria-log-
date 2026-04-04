@@ -15,13 +15,10 @@ export const useTheme = () => {
 
 export function ThemeProvider({ children }) {
   const [isDarkMode, setIsDarkMode] = useState(() => {
-    // Try to get the theme from localStorage or system preference
     const savedTheme = localStorage.getItem('theme');
-    if (savedTheme) {
-      return savedTheme === 'dark';
-    }
-    // Default to system preference
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (savedTheme) return savedTheme === 'dark';
+    // Default dark – matches journal neon cyan UI
+    return true;
   });
 
   useEffect(() => {

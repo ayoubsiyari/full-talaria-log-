@@ -51,7 +51,7 @@ export default function PrivacyPolicy() {
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <Link to="/" className="flex items-center space-x-3 group">
-              <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10 group-hover:bg-white/15 transition-all duration-300">
+              <div className="w-8 h-8 bg-cyan-500/10 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10 group-hover:bg-cyan-500/12 transition-all duration-300">
                 <img src={logo} alt="Journal Logo" className="w-6 h-6 rounded-sm" />
               </div>
               <span className="text-xl font-semibold text-white">
@@ -71,7 +71,7 @@ export default function PrivacyPolicy() {
         <div className="max-w-4xl mx-auto">
           {/* Header */}
           <div className="text-center mb-16">
-            <div className="w-12 h-12 bg-white/10 rounded-lg flex items-center justify-center mx-auto mb-6 border border-white/10">
+            <div className="w-12 h-12 bg-cyan-500/10 rounded-lg flex items-center justify-center mx-auto mb-6 border border-white/10">
               <Shield className="w-6 h-6 text-white/80" />
             </div>
             <h1 className="text-4xl md:text-5xl font-normal mb-6 text-white leading-tight">
@@ -100,7 +100,7 @@ export default function PrivacyPolicy() {
                 Information We Collect
               </h2>
               <div className="space-y-6">
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Personal Information</h3>
                   <p className="mb-2 font-light">We may collect personal information that you provide directly to us:</p>
                   <ul className="list-disc list-inside space-y-1 ml-4 text-sm">
@@ -112,7 +112,7 @@ export default function PrivacyPolicy() {
                   </ul>
                 </div>
 
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Trading Data</h3>
                   <p className="mb-2 font-light">We collect and store your trading information:</p>
                   <ul className="list-disc list-inside space-y-1 ml-4 text-sm">
@@ -124,7 +124,7 @@ export default function PrivacyPolicy() {
                   </ul>
                 </div>
 
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <h3 className="text-lg font-medium text-white mb-2">Usage Information</h3>
                   <p className="mb-2 font-light">We automatically collect certain information:</p>
                   <ul className="list-disc list-inside space-y-1 ml-4 text-sm">
@@ -145,7 +145,7 @@ export default function PrivacyPolicy() {
               </h2>
               <div className="space-y-4">
                 <p className="font-light">We use the information we collect for various purposes:</p>
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <ul className="space-y-2 text-sm">
                     <li><strong className="text-white/90">Service Provision:</strong> To provide and maintain our trading journal platform</li>
                     <li><strong className="text-white/90">Account Management:</strong> To create and manage your account</li>
@@ -166,7 +166,7 @@ export default function PrivacyPolicy() {
               </h2>
               <div className="space-y-4">
                 <p className="font-light">We implement appropriate security measures to protect your information:</p>
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <ul className="space-y-2 text-sm">
                     <li><strong className="text-white/90">Encryption:</strong> All data is encrypted in transit and at rest</li>
                     <li><strong className="text-white/90">Access Controls:</strong> Strict access controls and authentication</li>
@@ -185,7 +185,7 @@ export default function PrivacyPolicy() {
               </h2>
               <div className="space-y-4">
                 <p className="font-light">We do not sell, trade, or rent your personal information. We may share information in limited circumstances:</p>
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <ul className="space-y-2 text-sm">
                     <li><strong className="text-white/90">Service Providers:</strong> With trusted third-party service providers</li>
                     <li><strong className="text-white/90">Legal Requirements:</strong> When required by law or legal process</li>
@@ -200,7 +200,7 @@ export default function PrivacyPolicy() {
               <h2 className="text-2xl font-medium text-white mb-4">Your Rights</h2>
               <div className="space-y-4">
                 <p className="font-light">You have certain rights regarding your personal information:</p>
-                <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+                <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                   <ul className="space-y-2 text-sm">
                     <li><strong className="text-white/90">Access:</strong> Request access to your personal information</li>
                     <li><strong className="text-white/90">Correction:</strong> Request correction of inaccurate information</li>
@@ -215,7 +215,7 @@ export default function PrivacyPolicy() {
 
             <section>
               <h2 className="text-2xl font-medium text-white mb-4">Contact Us</h2>
-              <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+              <div className="bg-cyan-950/15 p-6 rounded-lg border border-white/10">
                 <p className="mb-4 font-light">If you have questions about this Privacy Policy, please contact us:</p>
                 <div className="space-y-2 text-sm">
                   <p><strong className="text-white/90">Email:</strong> privacy@journal.com</p>

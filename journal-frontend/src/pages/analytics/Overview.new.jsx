@@ -27,7 +27,7 @@ const COLORS = {
 const CustomTooltip = ({ active, payload, label, valueFormatter = (val) => val, labelFormatter = (val) => val }) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-200">
+      <div className="bg-cyan-950/40 p-3 rounded-lg shadow-lg border border-cyan-500/15">
         <p className="font-medium text-gray-900">{labelFormatter(label, payload)}</p>
         {payload.map((entry, index) => (
           <p key={index} className="text-sm" style={{ color: entry.color }}>
@@ -83,7 +83,7 @@ const PnLChart = ({ data, timeRange = 30 }) => {
   }, [data, timeRange]);
 
   return (
-    <div className="bg-white p-4 rounded-xl border border-gray-200 h-full">
+    <div className="bg-cyan-950/40 p-4 rounded-xl border border-cyan-500/15 h-full">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-800">P&L Trend</h3>
         <div className="flex items-center text-sm text-gray-500">
@@ -158,7 +158,7 @@ const WinLossPieChart = ({ wins = 0, losses = 0, totalTrades = 0 }) => {
   const lossRate = 100 - winRate;
 
   return (
-    <div className="bg-white p-4 rounded-xl border border-gray-200 h-full">
+    <div className="bg-cyan-950/40 p-4 rounded-xl border border-cyan-500/15 h-full">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-800">Win/Loss Ratio</h3>
         <div className="flex items-center text-sm text-gray-500">
