@@ -15917,6 +15917,7 @@ class OrderManager {
             trailingStop: trailingStop,
             tpTargets: tpTargets,
             placedTime: timestamp,
+            _noFillBeforeTime: timestamp,
             status: 'PENDING',
             sizingMode: this.positionSizeMode || 'risk-usd',
             // Store scaling intent for when order executes
@@ -17138,6 +17139,12 @@ class OrderManager {
             const high = Number.parseFloat(touchCandle.h);
             const low = Number.parseFloat(touchCandle.l);
             if (!Number.isFinite(high) || !Number.isFinite(low)) {
+                return;
+            }
+
+            // Don't fill on the candle that was current when the order was
+            // placed or last dragged — only new price action should trigger it.
+            if (pendingOrder._noFillBeforeTime && touchCandle.t <= pendingOrder._noFillBeforeTime) {
                 return;
             }
 
@@ -20058,6 +20065,12 @@ class OrderManager {
                 }
 
                 pendingOrder.entryPrice = newPrice;
+
+                // Record current candle so the order won't fill on a candle
+                // whose range already contained the old/new price.
+                const curBar = self.getCurrentCandle();
+                if (curBar) pendingOrder._noFillBeforeTime = curBar.t;
+
                 const finalY = chart.scales.yScale(newPrice);
 
                 // Update line position
