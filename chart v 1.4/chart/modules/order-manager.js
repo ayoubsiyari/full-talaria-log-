@@ -359,7 +359,7 @@ class OrderManager {
         s.selectAll('.pending-tp-line,.pending-sl-line,.pending-be-line,.pending-tp-label,.pending-sl-label,.pending-be-label').remove();
         s.selectAll('.sl-line,.sl-label-box,.sl-label-text,.sl-pnl-box,.sl-pnl-text,.sl-close-btn,.sl-price-box,.sl-price-text').remove();
         s.selectAll('.tp-line,.tp-label-box,.tp-label-text,.tp-pnl-box,.tp-pnl-text,.tp-close-btn,.tp-price-box,.tp-price-text').remove();
-        s.selectAll('.be-line,.be-label-box,.be-label-text,.be-price-box,.be-price-text').remove();
+        s.selectAll('.be-line,.be-hit-line,.be-label-box,.be-label-text,.be-price-box,.be-price-text').remove();
         s.selectAll('[class*="split-avg-"]').remove();
         s.selectAll('[class*="multi-tp-avg-"]').remove();
         s.selectAll('.exec-order-connector').remove();
@@ -7709,17 +7709,6 @@ class OrderManager {
                     </div>
                 </div>
 
-                <div class="order-section">
-                    <div class="order-toggle-wrapper">
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="advancedOrderToggle">
-                            <span class="toggle-switch__track"></span>
-                            <span class="toggle-switch__thumb"></span>
-                        </label>
-                        <label for="advancedOrderToggle" class="order-toggle-label">Advanced order</label>
-                    </div>
-                </div>
-
                 <div id="advancedOptions" class="order-section is-hidden">
                     <div class="order-collapse order-collapse--open" data-collapse="risk-controls">
                         <button type="button" class="order-collapse__header">
@@ -7978,6 +7967,17 @@ class OrderManager {
                     </div>
                 </div>
 
+                <div class="order-section">
+                    <div class="order-toggle-wrapper">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="advancedOrderToggle">
+                            <span class="toggle-switch__track"></span>
+                            <span class="toggle-switch__thumb"></span>
+                        </label>
+                        <label for="advancedOrderToggle" class="order-toggle-label">Advanced order</label>
+                    </div>
+                </div>
+
                 <!-- Hidden preset toolbar (IDs kept for save/load logic) -->
                 <div id="protectionPresetToolbar" style="display:none;">
                     <button id="createNewProtectionSetting" type="button">+</button>
@@ -8054,8 +8054,8 @@ class OrderManager {
 
                 <div id="multipleTPSection" style="display:none;"></div>
 
-                <!-- Position Scaling Control -->
-                <div class="order-section" id="scalePositionSection" style="margin-top: 8px; margin-bottom: 8px;">
+                <!-- Position Scaling Control (hidden) -->
+                <div class="order-section" id="scalePositionSection" style="display:none; margin-top: 8px; margin-bottom: 8px;">
                     <div class="order-toggle-wrapper">
                         <input type="checkbox" id="scalePositionCheckbox" class="order-checkbox">
                         <label for="scalePositionCheckbox" class="order-toggle-label" style="display: flex; align-items: center; gap: 6px;">
@@ -19257,14 +19257,45 @@ class OrderManager {
                         }
                     }
                 } else if (lineType === 'be') {
-                    // BE line is read-only (calculated from entry/SL)
-                    return;
+                    // Update breakevenSettings value based on new price
+                    const dist = order.type === 'BUY'
+                        ? newPrice - order.openPrice
+                        : order.openPrice - newPrice;
+                    if (dist > 0) {
+                        if (order.breakevenSettings.mode === 'rr') {
+                            const riskDist = Math.abs(order.openPrice - order.stopLoss);
+                            if (riskDist > 0) order.breakevenSettings.value = parseFloat((dist / riskDist).toFixed(2));
+                        } else if (order.breakevenSettings.mode === 'pips') {
+                            order.breakevenSettings.value = parseFloat((dist / self.pipSize).toFixed(1));
+                        } else {
+                            const pips = dist / self.pipSize;
+                            order.breakevenSettings.value = parseFloat((pips * order.quantity * self.pipValuePerLot).toFixed(2));
+                        }
+                    }
+                    // Update stored trigger price
+                    const beData = (self.beLines || []).find(b => b.orderId === order.id);
+                    if (beData) beData.triggerPrice = newPrice;
+                    // Update label text to reflect new value
+                    if (extraElements.labelText) {
+                        let beLabel;
+                        if (order.breakevenSettings.mode === 'rr') beLabel = `BE @ ${order.breakevenSettings.value}R`;
+                        else if (order.breakevenSettings.mode === 'pips') beLabel = `BE @ ${order.breakevenSettings.value}p`;
+                        else beLabel = `BE @ $${order.breakevenSettings.value}`;
+                        extraElements.labelText.text(beLabel);
+                    }
+                    // Update price text
+                    if (extraElements.priceText) {
+                        extraElements.priceText.text(self.formatPrice(newPrice));
+                    }
                 }
                 
                 // Update line position
                 line.attr('y1', newY).attr('y2', newY);
+                if (extraElements.hitLine) {
+                    extraElements.hitLine.attr('y1', newY).attr('y2', newY);
+                }
                 
-                if (lineType === 'sl' || lineType === 'tp') {
+                if (lineType === 'sl' || lineType === 'tp' || lineType === 'be') {
                     if (extraElements.pnlText) {
                         const sym = order.ticker || order.symbol || self._getSymbol();
                         const pnl = self.estimatePnLForPriceLevel(order.type, order.openPrice, newPrice, order.quantity, sym);
@@ -19286,8 +19317,13 @@ class OrderManager {
                         const ptW = pt?.node()?.getBBox()?.width || 0;
                         const pBW = ptW > 0 ? ptW + pad * 2 : 0;
                         const rE = ctx.w - yAxisWidth - 10;
-                        const cX = rE - closeBtnR;
-                        const sX = cX - closeBtnR - closeBtnGap - (pBW > 0 ? pBW + gap : 0) - lBW;
+                        let sX;
+                        if (lineType === 'be') {
+                            sX = rE - lBW;
+                        } else {
+                            const cX = rE - closeBtnR;
+                            sX = cX - closeBtnR - closeBtnGap - (pBW > 0 ? pBW + gap : 0) - lBW;
+                        }
                         let cx = sX;
                         label.attr('x', cx).attr('y', boxY).attr('width', lBW).attr('height', boxH);
                         lt.attr('x', cx + pad).attr('y', newY + 4);
@@ -19296,8 +19332,11 @@ class OrderManager {
                             pb.attr('x', cx).attr('y', boxY).attr('width', pBW).attr('height', boxH);
                             pt.attr('x', cx + pad).attr('y', newY + 4);
                         }
-                        const clBtn = ctx.svg.select(`.${lineType}-close-btn.${lineType}-${order.id}`);
-                        if (!clBtn.empty()) clBtn.attr('transform', `translate(${cX}, ${newY})`);
+                        if (lineType !== 'be') {
+                            const cX = rE - closeBtnR;
+                            const clBtn = ctx.svg.select(`.${lineType}-close-btn.${lineType}-${order.id}`);
+                            if (!clBtn.empty()) clBtn.attr('transform', `translate(${cX}, ${newY})`);
+                        }
                     }
                 } else {
                     label.attr('y', newY - 5);
@@ -19426,11 +19465,16 @@ class OrderManager {
             }
             
             // Reset opacity
-            line.attr('opacity', lineType === 'entry' ? 0.8 : 1);
+            line.attr('opacity', (lineType === 'entry' || lineType === 'be') ? 0.8 : 1);
             
-            const finalPrice = lineType === 'entry' ? order.openPrice : 
-                             lineType === 'sl' ? order.stopLoss : 
-                             order.takeProfit;
+            let finalPrice;
+            if (lineType === 'entry') finalPrice = order.openPrice;
+            else if (lineType === 'sl') finalPrice = order.stopLoss;
+            else if (lineType === 'tp') finalPrice = order.takeProfit;
+            else if (lineType === 'be') {
+                const beData = (self.beLines || []).find(b => b.orderId === order.id);
+                finalPrice = beData ? beData.triggerPrice : startPrice;
+            } else finalPrice = 0;
 
             if ((lineType === 'sl' || lineType === 'tp') && order.isSplitEntry && order.splitGroupId) {
                 self._syncSplitGroupProtectionPrices(order, lineType === 'sl' ? 'sl' : 'tp', finalPrice);
@@ -19457,8 +19501,9 @@ class OrderManager {
                 }
             }
             
-            // Final update - refresh all SL/TP lines and positions panel
+            // Final update - refresh all lines and positions panel
             self.updateSLTPLines(ctx);
+            self.updateBELines(ctx);
             self._updateSplitGroupAvgLines(ctx);
             self._updateMultiTPAvgLines(ctx);
             self.updatePositionsPanel();
@@ -19482,6 +19527,8 @@ class OrderManager {
         const pnlTextNode = extraElements.pnlText?.node?.();
         if (pnlBoxNode) pnlBoxNode.addEventListener('mousedown', onMouseDown);
         if (pnlTextNode) pnlTextNode.addEventListener('mousedown', onMouseDown);
+        const hitLineNode = extraElements.hitLine?.node?.();
+        if (hitLineNode) hitLineNode.addEventListener('mousedown', onMouseDown);
     }
     
     /**
@@ -24014,12 +24061,21 @@ class OrderManager {
                     : entryPrice - profitPrice;
             }
             
+            // Invisible wider hit area for easier grabbing
+            const beHitLine = chart.svg.append('line')
+                .attr('class', `be-hit-line be-${order.id}`)
+                .attr('stroke', 'transparent')
+                .attr('stroke-width', 14)
+                .attr('pointer-events', 'all')
+                .style('cursor', 'ns-resize');
+
             const beLine = chart.svg.append('line')
                 .attr('class', `be-line be-${order.id}`)
                 .attr('stroke', '#f59e0b')
                 .attr('stroke-width', 1.5)
                 .attr('stroke-dasharray', null)
                 .attr('opacity', 0.8)
+                .attr('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
             
             let beLabel;
@@ -24057,14 +24113,20 @@ class OrderManager {
                 .style('cursor', 'ns-resize')
                 .text(this.formatPrice(beTriggerPrice));
             
-            // Make BE line draggable
-            this.makeLineDraggable(beLine, beLabelBox, order, 'be', {}, chart);
+            // Make BE line draggable (pass label/price elements for proper drag)
+            this.makeLineDraggable(beLine, beLabelBox, order, 'be', {
+                labelText: beLabelText,
+                priceBox: bePriceBox,
+                priceText: bePriceText,
+                hitLine: beHitLine
+            }, chart);
             
             // Store BE line data
             if (!this.beLines) this.beLines = [];
             this.beLines.push({
                 orderId: order.id,
                 line: beLine,
+                hitLine: beHitLine,
                 labelBox: beLabelBox,
                 labelText: beLabelText,
                 priceBox: bePriceBox,
@@ -24148,6 +24210,7 @@ class OrderManager {
                 console.log(`   🧹 Removing ${beToRemove.length} BE line(s) for order #${orderId}`);
                 beToRemove.forEach((beLine) => {
                     if (beLine.line) beLine.line.remove();
+                    if (beLine.hitLine) beLine.hitLine.remove();
                     if (beLine.labelBox) beLine.labelBox.remove();
                     if (beLine.labelText) beLine.labelText.remove();
                     if (beLine.priceBox) beLine.priceBox.remove();
@@ -24795,7 +24858,10 @@ class OrderManager {
             return;
         }
         
-        beForChart.forEach(({ orderId, line, labelBox, labelText, priceBox, priceText, triggerPrice }) => {
+        ch.svg.selectAll('.y-axis-be-highlight').remove();
+
+        beForChart.forEach((beData) => {
+            const { orderId, line, hitLine, labelBox, labelText, priceBox, priceText, triggerPrice } = beData;
             const y = ch.scales.yScale(triggerPrice);
             const boxHeight = 18;
             const boxY = y - boxHeight / 2;
@@ -24808,6 +24874,14 @@ class OrderManager {
                 .attr('x2', ch.w)
                 .attr('y1', y)
                 .attr('y2', y);
+            
+            if (hitLine) {
+                hitLine
+                    .attr('x1', 0)
+                    .attr('x2', ch.w)
+                    .attr('y1', y)
+                    .attr('y2', y);
+            }
             
             // Position label on the RIGHT side (same as SL/TP)
             const labelTW = labelText.node()?.getBBox()?.width || 0;
@@ -24828,6 +24902,9 @@ class OrderManager {
             // Hide price box (redundant with Y-axis highlight)
             if (priceBox) priceBox.style('display', 'none');
             if (priceText) priceText.style('display', 'none');
+
+            // Y-axis highlight for BE
+            beData.yAxisHighlight = this.drawYAxisPriceHighlight(triggerPrice, '#f59e0b', 'be', 0, ch);
         });
     }
     
