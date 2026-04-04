@@ -19900,15 +19900,20 @@ class OrderManager {
     }
 
     /**
-     * Factory: create a dashed "plus" badge (Entry+, TP+).
+     * Factory: create a draggable dashed "plus" badge (Entry+, TP+).
+     * Dragging the badge away from the line and releasing creates a new
+     * split level at the drop price.
+     * @param {Function} onDrop - called with (price: number) when badge is
+     *   dragged >= 10px and released.
      * @returns {d3.Selection} the badge <g> group (starts hidden)
      */
-    _createPlusBadge(chart, orderId, prefix, color, label, onClick) {
+    _createPlusBadge(chart, orderId, prefix, color, label, onDrop) {
         const bH = 16, bR = 3;
+        const self = this;
         const g = chart.svg.append('g')
             .attr('class', `${prefix}-${label.toLowerCase().replace('+', '-plus')}-badge ${prefix}-${orderId}`)
             .attr('pointer-events', 'all')
-            .style('cursor', 'pointer')
+            .style('cursor', 'grab')
             .style('display', 'none');
         g.append('rect')
             .attr('height', bH).attr('rx', bR)
@@ -19926,16 +19931,57 @@ class OrderManager {
         const rgb = this._hexToRGB(color);
         g.node().__badgeRGB = rgb;
         g.on('mouseenter', function() {
-                const rgb = this.__badgeRGB;
-                d3.select(this).select('rect').attr('fill', `rgba(${rgb},0.35)`).attr('stroke-dasharray', null);
+                const r = this.__badgeRGB;
+                d3.select(this).select('rect').attr('fill', `rgba(${r},0.35)`).attr('stroke-dasharray', null);
                 d3.select(this).select('text').attr('opacity', 1);
             })
             .on('mouseleave', function() {
-                const rgb = this.__badgeRGB;
-                d3.select(this).select('rect').attr('fill', `rgba(${rgb},0.12)`).attr('stroke-dasharray', '3 2');
+                const r = this.__badgeRGB;
+                d3.select(this).select('rect').attr('fill', `rgba(${r},0.12)`).attr('stroke-dasharray', '3 2');
                 d3.select(this).select('text').attr('opacity', 0.8);
+            });
+
+        let ghostLine = null, ghostPrice = null, startY = 0;
+        const drag = d3.drag()
+            .on('start', function(event) {
+                event.sourceEvent.stopPropagation();
+                startY = event.y;
+                const chartW = chart.w || chart.svg.node().getBoundingClientRect().width || 1200;
+                ghostLine = chart.svg.append('line')
+                    .attr('class', 'plus-badge-ghost')
+                    .attr('x1', 0).attr('x2', chartW)
+                    .attr('y1', event.y).attr('y2', event.y)
+                    .attr('stroke', color).attr('stroke-width', 1.5)
+                    .attr('stroke-dasharray', '6 3').attr('opacity', 0.7);
+                ghostPrice = chart.svg.append('text')
+                    .attr('class', 'plus-badge-ghost-price')
+                    .attr('x', 60).attr('y', event.y - 8)
+                    .attr('fill', color).attr('font-size', '10px')
+                    .attr('font-weight', '600').attr('opacity', 0.9);
+                d3.select(this).style('cursor', 'grabbing');
             })
-            .on('click', (event) => { event.stopPropagation(); onClick(); });
+            .on('drag', function(event) {
+                if (ghostLine) ghostLine.attr('y1', event.y).attr('y2', event.y);
+                if (ghostPrice) {
+                    const yScale = chart.scales?.yScale || chart.yScale;
+                    if (yScale?.invert) {
+                        ghostPrice.text(self.formatPrice(yScale.invert(event.y)))
+                            .attr('y', event.y - 8);
+                    }
+                }
+            })
+            .on('end', function(event) {
+                d3.select(this).style('cursor', 'grab');
+                if (ghostLine) { ghostLine.remove(); ghostLine = null; }
+                if (ghostPrice) { ghostPrice.remove(); ghostPrice = null; }
+                if (Math.abs(event.y - startY) < 10) return;
+                const yScale = chart.scales?.yScale || chart.yScale;
+                if (!yScale?.invert) return;
+                const price = yScale.invert(event.y);
+                if (!price || price <= 0 || !Number.isFinite(price)) return;
+                onDrop(price);
+            });
+        g.call(drag);
         return g;
     }
 
@@ -19954,38 +20000,165 @@ class OrderManager {
     }
 
     /**
-     * Badge click: toggle multi-entry ON in the order panel.
+     * Drag-to-split: add a new TP target at the dropped price.
+     * Works for both pending orders and open positions.
      */
-    _onEntryPlusBadgeClick() {
-        if (this.isMultiEntryMode) return;
-        this.setEntryMode(true);
-        const panel = document.getElementById('orderPanel') || document.getElementById('orderManagerPanel');
-        if (panel) {
-            panel.scrollTop = 0;
-            if (panel.style.display === 'none') {
-                panel.style.display = '';
+    _splitTPAtPrice(orderId, newPrice, isPending) {
+        const source = isPending
+            ? this.pendingOrders.find(p => p.id === orderId)
+            : this.openPositions.find(p => p.id === orderId);
+        if (!source) return;
+
+        const price = parseFloat(this.formatPrice(newPrice));
+
+        if (!source.tpTargets || source.tpTargets.length === 0) {
+            const origTP = source.takeProfit || 0;
+            if (origTP > 0) {
+                source.tpTargets = [
+                    { price: origTP, percentage: 50, hit: false },
+                    { price: price, percentage: 50, hit: false }
+                ];
+            } else {
+                source.tpTargets = [
+                    { price: price, percentage: 100, hit: false }
+                ];
+            }
+            source.takeProfit = 0;
+        } else {
+            const n = source.tpTargets.length + 1;
+            const equalPct = Math.round(100 / n);
+            source.tpTargets.forEach(t => { t.percentage = equalPct; });
+            source.tpTargets.push({ price: price, percentage: equalPct, hit: false });
+            const total = source.tpTargets.reduce((s, t) => s + t.percentage, 0);
+            if (total !== 100) source.tpTargets[source.tpTargets.length - 1].percentage += (100 - total);
+        }
+
+        // Sync across split-group siblings
+        const siblings = isPending
+            ? (source.isSplitEntry && source.splitGroupId ? this._getSplitGroupPendingOrders(source) : [source])
+            : (source.isSplitEntry && source.splitGroupId ? this._getSplitGroupOpenPositions(source) : [source]);
+        for (const sib of siblings) {
+            if (sib.id === source.id) continue;
+            sib.tpTargets = source.tpTargets.map(t => ({ ...t }));
+            sib.takeProfit = 0;
+        }
+
+        // Redraw
+        if (isPending) {
+            for (const sib of siblings) {
+                this.removePendingSLTPLines(sib.id);
+                this.removeMultiTPAvgLine(sib.id);
+            }
+            if (source.isSplitEntry && source.splitGroupId) {
+                this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
+            }
+            this.drawPendingOrderTargets(source);
+            if (source.tpTargets.length >= 2) {
+                this.drawMultiTPAvgLine(source, 'pending');
+            }
+            this.positionPendingOrderTargets();
+        } else {
+            for (const sib of siblings) {
+                this.removeSLTPLines(sib.id);
+                this.removeMultiTPAvgLine(sib.id);
+            }
+            for (const sib of siblings) {
+                this.drawSLTPLines(sib);
+                if (sib.tpTargets && sib.tpTargets.length >= 2) {
+                    this.drawMultiTPAvgLine(sib);
+                }
             }
         }
-        this.showNotification('Multi-Entry mode enabled', 'info');
+        this.updateOrderLines();
+        this.showNotification(`TP split → new target @ ${this.formatPrice(price)}`, 'success');
     }
 
     /**
-     * Badge click: toggle multi-TP ON in the order panel, mirroring multiTPBtn.onclick.
+     * Drag-to-split: split a single pending entry into a split-group
+     * with a new entry at the dropped price. Only works for pending orders.
      */
-    _onTPPlusBadgeClick() {
-        const toggle = document.getElementById('multipleTPToggle');
-        if (toggle && toggle.checked) return;
-        if (toggle) {
-            toggle.checked = true;
+    _splitEntryAtPrice(orderId, newPrice, isPending) {
+        if (!isPending) return;
+        const po = this.pendingOrders.find(p => p.id === orderId);
+        if (!po) return;
+        if (po.isSplitEntry) return;
+
+        const price = parseFloat(this.formatPrice(newPrice));
+        const halfQty = +(po.quantity / 2).toFixed(2) || po.quantity;
+        const splitGroupId = Date.now();
+        const currentCandle = this.getCurrentCandle();
+        const currentPrice = currentCandle ? currentCandle.c : po.entryPrice;
+
+        po.isSplitEntry = true;
+        po.splitGroupId = splitGroupId;
+        po.splitIndex = 1;
+        po.splitTotal = 2;
+        po.quantity = halfQty;
+
+        const newPO = {
+            id: this.orderIdCounter++,
+            symbol: po.symbol || po.ticker,
+            ticker: po.ticker || po.symbol,
+            sourceFileId: po.sourceFileId,
+            instrument_settings: po.instrument_settings,
+            direction: po.direction,
+            entryPrice: price,
+            quantity: halfQty,
+            takeProfit: po.takeProfit,
+            stopLoss: po.stopLoss,
+            riskAmount: po.riskAmount ? po.riskAmount / 2 : 0,
+            originalRiskAmount: po.originalRiskAmount ? po.originalRiskAmount / 2 : 0,
+            autoBreakeven: po.autoBreakeven,
+            breakevenSettings: po.breakevenSettings ? { ...po.breakevenSettings } : null,
+            trailingStop: po.trailingStop ? { ...po.trailingStop } : null,
+            tpTargets: po.tpTargets ? po.tpTargets.map(t => ({ ...t })) : null,
+            placedTime: po.placedTime,
+            _noFillBeforeTime: po._noFillBeforeTime,
+            _noFillBeforeTick: po._noFillBeforeTick,
+            status: 'PENDING',
+            splitGroupId: splitGroupId,
+            splitIndex: 2,
+            splitTotal: 2,
+            isSplitEntry: true,
+            sizingMode: po.sizingMode,
+            scaleWithExisting: po.scaleWithExisting
+        };
+
+        // Auto-detect order type for each leg
+        if (po.direction === 'BUY') {
+            po.orderType = po.entryPrice < currentPrice ? 'limit' : 'stop';
+            newPO.orderType = price < currentPrice ? 'limit' : 'stop';
+        } else {
+            po.orderType = po.entryPrice > currentPrice ? 'limit' : 'stop';
+            newPO.orderType = price > currentPrice ? 'limit' : 'stop';
         }
-        this._syncMultiTPButtonState();
-        this.initializeTPTargets();
-        this.updatePreviewLines();
-        const panel = document.getElementById('orderPanel') || document.getElementById('orderManagerPanel');
-        if (panel && panel.style.display === 'none') {
-            panel.style.display = '';
+
+        if (this.orderService) {
+            this.orderService.registerPendingOrder(newPO);
+        } else {
+            this.pendingOrders.push(newPO);
         }
-        this.showNotification('Multi-TP mode enabled', 'info');
+
+        // Redraw: remove old single line, draw both split lines + avg
+        this.removePendingOrderLine(orderId);
+        this.removePendingSLTPLines(orderId);
+        this.removeMultiTPAvgLine(orderId);
+
+        this.drawPendingOrderLine(po);
+        this.drawPendingOrderLine(newPO);
+        this.drawPendingOrderTargets(po);
+        if (po.tpTargets && po.tpTargets.length >= 2) {
+            this.drawMultiTPAvgLine(po, 'pending');
+        }
+        this.positionPendingOrderTargets();
+
+        // Draw split-group avg entry line
+        const avgPx = (po.entryPrice * halfQty + price * halfQty) / (halfQty * 2);
+        this.drawSplitGroupAvgLine(splitGroupId, avgPx, halfQty * 2, po.direction, [po.id, newPO.id]);
+
+        this.updateOrderLines();
+        this.updatePositionsPanel();
+        this.showNotification(`Entry split → new level @ ${this.formatPrice(price)}`, 'success');
     }
 
     /**
@@ -20425,13 +20598,13 @@ class OrderManager {
             .attr('class', `order-tp-badges order-${order.id}`)
             .style('display', 'none');
 
-        // --- "Entry+" badge: click to enable multi-entry in order panel ---
+        // --- "Entry+" badge: drag to split entry ---
         const entryPlusBadge = this._createPlusBadge(chart, order.id, 'order',
-            '#3b82f6', 'Entry+', () => this._onEntryPlusBadgeClick());
+            '#3b82f6', 'Entry+', (price) => this._splitEntryAtPrice(order.id, price, false));
 
-        // --- "TP+" badge: click to enable multi-TP in order panel ---
+        // --- "TP+" badge: drag to split TP ---
         const tpPlusBadge = this._createPlusBadge(chart, order.id, 'order',
-            '#22c55e', 'TP+', () => this._onTPPlusBadgeClick());
+            '#22c55e', 'TP+', (price) => this._splitTPAtPrice(order.id, price, false));
 
         this._setupEntryDragToCreateTPSL(order, line, labelBox, chart,
             [dragHitLine, labelText, arrow, priceBox, priceText, slBadgeGroup, tpBadgeGroup]);
@@ -21556,13 +21729,13 @@ class OrderManager {
         labelBox.call(drag);
         if (priceBox) priceBox.call(drag);
         
-        // --- "Entry+" badge: click to enable multi-entry in order panel ---
+        // --- "Entry+" badge: drag to split entry ---
         const entryPlusBadge = this._createPlusBadge(chart, pendingOrder.id, 'pending',
-            '#3b82f6', 'Entry+', () => this._onEntryPlusBadgeClick());
+            '#3b82f6', 'Entry+', (price) => this._splitEntryAtPrice(pendingOrder.id, price, true));
 
-        // --- "TP+" badge: click to enable multi-TP in order panel ---
+        // --- "TP+" badge: drag to split TP ---
         const tpPlusBadge = this._createPlusBadge(chart, pendingOrder.id, 'pending',
-            '#22c55e', 'TP+', () => this._onTPPlusBadgeClick());
+            '#22c55e', 'TP+', (price) => this._splitTPAtPrice(pendingOrder.id, price, true));
 
         this.orderLines.push({
             orderId: pendingOrder.id,
@@ -24503,8 +24676,8 @@ class OrderManager {
                     let slBadgeW = (!isPending && !hasSL) ? bW + bGap2 : 0;
                     // Space for single TP badge (open positions, no multi-TP)
                     let singleTPBadgeW = (!isPending && !hasMultiTP && !hasSingleTP) ? bW + bGap2 : 0;
-                    // Space for Entry+ badge
-                    const showEntryPlus = !isAlreadySplitEntry && olEntry.entryPlusBadge;
+                    // Space for Entry+ badge (pending only — can't split an open position's entry)
+                    const showEntryPlus = isPending && !isAlreadySplitEntry && olEntry.entryPlusBadge;
                     let entryPlusBadgeW = showEntryPlus ? plusBW + bGap2 : 0;
                     // Space for TP+ badge
                     const showTPPlus = !isAlreadyMultiTP && olEntry.tpPlusBadge;
