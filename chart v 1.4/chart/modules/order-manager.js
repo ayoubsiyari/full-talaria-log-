@@ -24799,39 +24799,35 @@ class OrderManager {
             const y = ch.scales.yScale(triggerPrice);
             const boxHeight = 18;
             const boxY = y - boxHeight / 2;
+            const gap = 4;
+            const pad = 8;
+            const yAxisWidth = 70;
             
-            // Update line position
             line
                 .attr('x1', 0)
                 .attr('x2', ch.w)
                 .attr('y1', y)
                 .attr('y2', y);
             
-            // Position left label
-            const labelWidth = labelText.node().getBBox().width + 16;
+            // Position label on the RIGHT side (same as SL/TP)
+            const labelTW = labelText.node()?.getBBox()?.width || 0;
+            const labelBW = labelTW + pad * 2;
+            const rightEdge = ch.w - yAxisWidth - 10;
+            const startX = rightEdge - labelBW;
+            
             labelBox
-                .attr('x', 10)
+                .attr('x', startX)
                 .attr('y', boxY)
-                .attr('width', labelWidth)
+                .attr('width', labelBW)
                 .attr('height', boxHeight);
             
             labelText
-                .attr('x', 10 + labelWidth / 2)
+                .attr('x', startX + pad)
                 .attr('y', y + 4);
             
-            // Position right price box
-            const priceWidth = 65;
-            const priceX = ch.w - priceWidth - 10;
-            
-            priceBox
-                .attr('x', priceX)
-                .attr('y', boxY)
-                .attr('width', priceWidth)
-                .attr('height', boxHeight);
-            
-            priceText
-                .attr('x', priceX + priceWidth / 2)
-                .attr('y', y + 4);
+            // Hide price box (redundant with Y-axis highlight)
+            if (priceBox) priceBox.style('display', 'none');
+            if (priceText) priceText.style('display', 'none');
         });
     }
     
