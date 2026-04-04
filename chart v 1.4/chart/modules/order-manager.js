@@ -8584,11 +8584,13 @@ class OrderManager {
 
             const slWidth = this.previewLines?.sl?.labelDimensions?.width || 40;
 
-            // TP zone width: either single TP badge or the widest multi-TP badge (they stack)
+            // TP zone width: for horizontal fan, account for spread of all badges
             const mtpBadges = this.previewLines?.multiTPBadges || [];
             let tpWidth;
             if (mtpBadges.length > 0) {
-                tpWidth = Math.max(...mtpBadges.map(b => b.labelDimensions?.width || 30));
+                const singleW = Math.max(...mtpBadges.map(b => b.labelDimensions?.width || 30));
+                const fanSpread = (mtpBadges.length - 1) * 18; // matches stackOffsetX
+                tpWidth = singleW + fanSpread;
             } else {
                 tpWidth = this.previewLines?.tp?.labelDimensions?.width || 40;
             }
@@ -8598,7 +8600,7 @@ class OrderManager {
             } else if (lineData.label === 'TP') {
                 x = this.chart.w - rightMargin - tpWidth - gap;
             } else if (lineData.isMultiTPBadge) {
-                x = this.chart.w - rightMargin - (bbox.width || tpWidth) - gap;
+                x = this.chart.w - rightMargin - (bbox.width || tpWidth) - gap + (lineData._stackOffsetX || 0);
             }
         } else {
             const pad = 175;
@@ -12564,7 +12566,7 @@ class OrderManager {
                         self.previewLines.sl.labelGroup.attr('transform', `translate(${slX}, ${slY})`);
                     }
 
-                    // Move multi-TP badges with entry during drag
+                    // Move multi-TP badges with entry during drag (horizontal fan)
                     if (self.previewLines.multiTPBadges && self.previewLines.multiTPBadges.length > 0) {
                         self.previewLines.multiTPBadges.forEach(bd => {
                             if (bd && bd.labelGroup) {
@@ -12903,21 +12905,21 @@ class OrderManager {
     }
 
     /**
-     * Draw multi-TP preview badges stacked at the same position as the single TP badge.
-     * Badges are layered on top of each other with a small vertical offset per badge.
+     * Draw multi-TP preview badges fanned horizontally with a slight downward angle.
      */
     _drawMultiTPPreviewBadges(entryPrice, unsetTargets) {
         if (!this.chart?.scales?.yScale || !this.chart?.svg) return;
         const self = this;
         const y = this.chart.scales.yScale(entryPrice);
-        const stackOffsetY = 4; // vertical px offset per badge layer
+        const stackOffsetX = 18; // horizontal px spread per badge
+        const stackOffsetY = 3;  // slight downward angle per badge
 
         // Remove old multi-TP badges
         this.chart.svg.selectAll('.multi-tp-preview-badge').remove();
         if (!this.previewLines.multiTPBadges) this.previewLines.multiTPBadges = [];
         this.previewLines.multiTPBadges = [];
 
-        // Draw back-to-front: last badge first (bottom of stack), first badge last (on top)
+        // Draw back-to-front: last badge first (rightmost/lowest), first badge last (on top, leftmost)
         for (let i = unsetTargets.length - 1; i >= 0; i--) {
             const target = unsetTargets[i];
             const targetNum = (this.tpTargets || []).indexOf(target) + 1;
@@ -12938,7 +12940,8 @@ class OrderManager {
                 isBadge: true,
                 isMultiTPBadge: true,
                 multiTPIndex: i,
-                _stackOffsetY: -i * stackOffsetY,
+                _stackOffsetX: -i * stackOffsetX,
+                _stackOffsetY: i * stackOffsetY,
                 _target: target,
                 priceText: null,
                 labelDimensions: { width: 0, height: 0 },
