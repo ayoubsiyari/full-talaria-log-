@@ -8629,11 +8629,10 @@ class OrderManager {
         const isBeLine = lineData.isBELine || (lineData.label && lineData.label.startsWith('BE'));
         const isBadge = lineData.isBadge;
         
-        // Add split handle for Entry when multi-entry mode is active, or for Entry/TP when advanced order is enabled
+        // Add split handle for Entry when multi-entry mode is active
         const isSplitEntryLine = lineData.label && lineData.label.startsWith('Entry#');
         const showMultiEntryHandle = !isBadge && (isEntryLine || isSplitEntryLine) && !isSlLine && !isBeLine && this.isMultiEntryMode;
-        const showAdvancedHandle = !isBadge && (isEntryLine || isTpLine) && !isSlLine && !isBeLine && this.advancedOrderEnabled;
-        if (showMultiEntryHandle || showAdvancedHandle) {
+        if (showMultiEntryHandle) {
             this.drawSplitHandle(lineData, lineData.labelGroup);
         }
 
@@ -17953,17 +17952,17 @@ class OrderManager {
                 
                 // Check for step-based trailing stop activation and adjustment
                 if (position.trailingStop && position.trailingStop.enabled && position.stopLoss && !position.trailingStop.beSupersedesTrailing) {
+                    // Use HIGH for BUY trailing (matches TP hit detection logic)
+                    const trailPrice = high;
+
                     // Check if trailing should activate (reach threshold first)
                     if (!position.trailingStop.activated) {
-                        const shouldActivate = currentPrice >= position.trailingStop.activationThreshold;
-                        
-                        if (shouldActivate) {
+                        if (trailPrice >= position.trailingStop.activationThreshold) {
                             position.trailingStop.activated = true;
-                            console.log(`   🔥 TRAILING STOP ACTIVATED for BUY #${position.id} at ${currentPrice.toFixed(5)}`);
+                            console.log(`   🔥 TRAILING STOP ACTIVATED for BUY #${position.id} at high=${trailPrice.toFixed(5)}`);
                             
-                            // If Auto BE exists but not triggered yet, mark trailing as the winner
                             if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered) {
-                                position.breakevenSettings.triggered = true; // Mark as handled
+                                position.breakevenSettings.triggered = true;
                                 console.log(`      📌 Trailing activated first - Auto BE will not trigger`);
                             }
                             
@@ -17973,23 +17972,13 @@ class OrderManager {
                     
                     // If activated, apply step-based trailing
                     if (position.trailingStop.activated) {
-                        // Calculate profit from ACTIVATION THRESHOLD (not from entry!)
-                        const profitFromActivation = currentPrice - position.trailingStop.activationThreshold;
-                        
-                        // Calculate how many steps of profit we've reached since activation
+                        const profitFromActivation = trailPrice - position.trailingStop.activationThreshold;
                         const stepsReached = Math.floor(profitFromActivation / position.trailingStop.stepSize);
                         
-                        // Only update if we've reached a new step level
                         if (stepsReached > position.trailingStop.currentStep && stepsReached > 0) {
-                            // Calculate new SL position to maintain original risk distance
-                            // Original risk distance from entry
                             const originalRisk = position.openPrice - position.trailingStop.originalSL;
-                            // New SL = activation threshold + steps moved - original risk
                             const newSL = position.trailingStop.activationThreshold + (stepsReached * position.trailingStop.stepSize) - originalRisk;
                             
-                            // Ensure trailing SL:
-                            // 1. Is higher than current SL
-                            // 2. Never goes below breakeven (entry + pip offset) if breakeven was triggered
                             let breakevenSL = position.openPrice;
                             if (position.autoBreakeven && position.breakevenSettings?.triggered) {
                                 const pipOffset = position.breakevenSettings.pipOffset || 0;
@@ -18005,14 +17994,11 @@ class OrderManager {
                                 position.trailingStop.currentStep = stepsReached;
                                 
                                 console.log(`   📈 STEP TRAILING SL: ${oldSL.toFixed(5)} → ${newSL.toFixed(5)} (Step ${stepsReached}) for BUY #${position.id}`);
-                                this.showNotification(`📈 SL moved to Step ${stepsReached} (+${stepsReached * position.trailingStop.stepPips} pips)`, 'success');
                                 
-                                // Update the SL line on chart
                                 this.removeSLTPLines(position.id);
                                 this.drawSLTPLines(position);
-                                console.log(`   ✅ New SL/TP lines drawn at ${position.stopLoss.toFixed(5)}`);
+                                this.updateSLTPLines();
                                 
-                                // Show notification
                                 this.showNotification(`📈 Trailing SL: ${this.formatPrice(oldSL)} → ${this.formatPrice(newSL)} | #${position.id}`, 'info');
                             }
                         }
@@ -18187,17 +18173,16 @@ class OrderManager {
                 
                 // Check for step-based trailing stop activation and adjustment
                 if (position.trailingStop && position.trailingStop.enabled && position.stopLoss && !position.trailingStop.beSupersedesTrailing) {
-                    // Check if trailing should activate (reach threshold first)
+                    // Use LOW for SELL trailing (matches SL hit detection logic)
+                    const trailPrice = low;
+
                     if (!position.trailingStop.activated) {
-                        const shouldActivate = currentPrice <= position.trailingStop.activationThreshold;
-                        
-                        if (shouldActivate) {
+                        if (trailPrice <= position.trailingStop.activationThreshold) {
                             position.trailingStop.activated = true;
-                            console.log(`   🔥 TRAILING STOP ACTIVATED for SELL #${position.id} at ${currentPrice.toFixed(5)}`);
+                            console.log(`   🔥 TRAILING STOP ACTIVATED for SELL #${position.id} at low=${trailPrice.toFixed(5)}`);
                             
-                            // If Auto BE exists but not triggered yet, mark trailing as the winner
                             if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered) {
-                                position.breakevenSettings.triggered = true; // Mark as handled
+                                position.breakevenSettings.triggered = true;
                                 console.log(`      📌 Trailing activated first - Auto BE will not trigger`);
                             }
                             
@@ -18205,25 +18190,14 @@ class OrderManager {
                         }
                     }
                     
-                    // If activated, apply step-based trailing
                     if (position.trailingStop.activated) {
-                        // Calculate profit from ACTIVATION THRESHOLD (not from entry!)
-                        const profitFromActivation = position.trailingStop.activationThreshold - currentPrice;
-                        
-                        // Calculate how many steps of profit we've reached since activation
+                        const profitFromActivation = position.trailingStop.activationThreshold - trailPrice;
                         const stepsReached = Math.floor(profitFromActivation / position.trailingStop.stepSize);
                         
-                        // Only update if we've reached a new step level
                         if (stepsReached > position.trailingStop.currentStep && stepsReached > 0) {
-                            // Calculate new SL position to maintain original risk distance
-                            // Original risk distance from entry
                             const originalRisk = position.trailingStop.originalSL - position.openPrice;
-                            // New SL = activation threshold - steps moved + original risk
                             const newSL = position.trailingStop.activationThreshold - (stepsReached * position.trailingStop.stepSize) + originalRisk;
                             
-                            // Ensure trailing SL:
-                            // 1. Is lower than current SL (for SELL)
-                            // 2. Never goes above breakeven (entry - pip offset) if breakeven was triggered
                             let breakevenSL = position.openPrice;
                             if (position.autoBreakeven && position.breakevenSettings?.triggered) {
                                 const pipOffset = position.breakevenSettings.pipOffset || 0;
@@ -18239,14 +18213,11 @@ class OrderManager {
                                 position.trailingStop.currentStep = stepsReached;
                                 
                                 console.log(`   📉 STEP TRAILING SL: ${oldSL.toFixed(5)} → ${newSL.toFixed(5)} (Step ${stepsReached}) for SELL #${position.id}`);
-                                this.showNotification(`📉 SL moved to Step ${stepsReached} (+${stepsReached * position.trailingStop.stepPips} pips)`, 'success');
                                 
-                                // Update the SL line on chart
                                 this.removeSLTPLines(position.id);
                                 this.drawSLTPLines(position);
-                                console.log(`   ✅ New SL/TP lines drawn at ${position.stopLoss.toFixed(5)}`);
+                                this.updateSLTPLines();
                                 
-                                // Show notification
                                 this.showNotification(`📉 Trailing SL: ${this.formatPrice(oldSL)} → ${this.formatPrice(newSL)} | #${position.id}`, 'info');
                             }
                         }
