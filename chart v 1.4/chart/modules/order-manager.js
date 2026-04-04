@@ -21987,7 +21987,7 @@ class OrderManager {
         ch.svg.selectAll('.y-axis-pending-tp-highlight').remove();
         ch.svg.selectAll('.y-axis-pending-be-highlight').remove();
 
-        const marginRight = 90;
+        const marginRight = 120;
 
         this.pendingTargetLines.forEach((entry) => {
             if (entry.chart !== ch) return;
@@ -22135,7 +22135,7 @@ class OrderManager {
         const ch = dragChart || this.chart;
         let isDragging = false;
         let dragLabelX = null;
-        const marginRight = 90;
+        const marginRight = 120;
 
         const drag = d3.drag()
             .on('start', function() {
