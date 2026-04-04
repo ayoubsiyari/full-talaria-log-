@@ -20457,11 +20457,17 @@ class OrderManager {
             const totalW = lotsBW + gap + pnlBW;
             const rightEdge = ch.w - yAxisWidth - 10;
 
-            // Align with TP labels: match the startX used in updateSLTPLines
-            const closeBtnR = 10;
-            const closeBtnGap = 6;
-            const closeBtnX = rightEdge - closeBtnR;
-            const alignX = closeBtnX - closeBtnR - closeBtnGap - totalW;
+            // Find leftmost x of sibling TP labels so we align with them
+            let alignX = rightEdge - totalW;
+            const tpLabels = ch.svg.selectAll('.tp-label-box').nodes();
+            if (tpLabels.length > 0) {
+                let minX = Infinity;
+                for (const node of tpLabels) {
+                    const x = parseFloat(d3.select(node).attr('x'));
+                    if (Number.isFinite(x) && x < minX) minX = x;
+                }
+                if (Number.isFinite(minX)) alignX = minX;
+            }
             let cx = alignX;
 
             g.line
@@ -20476,7 +20482,7 @@ class OrderManager {
                 .attr('stroke', pnlColor);
             g.pnlText.attr('x', cx + pad).attr('y', y + 4);
 
-            // --- Connector lines from Avg TP to each individual TP level ---
+            // --- Connector from entry line to Avg TP ---
             if (g._connector) { try { g._connector.remove(); } catch (_) {} }
             const connGroup = ch.svg.append('g')
                 .attr('class', `multi-tp-avg-connector multi-tp-avg-${g.orderId}`)
@@ -20484,21 +20490,30 @@ class OrderManager {
             g._connector = connGroup;
             const connX = rightEdge + 4;
 
-            for (const t of priced) {
-                if (t.hit) continue;
-                const tpY = yScale(t.price);
-                if (!Number.isFinite(tpY) || Math.abs(tpY - y) < 1) continue;
+            let entryY = null;
+            if (g.mode === 'open' && source) {
+                entryY = yScale(source.openPrice);
+            } else if (g.mode === 'pending' && source) {
+                entryY = yScale(source.entryPrice);
+            } else if (g.mode === 'preview') {
+                const previewEntry = parseFloat(document.getElementById('orderEntryPrice')?.value) || 0;
+                if (previewEntry > 0) entryY = yScale(previewEntry);
+            }
+
+            if (Number.isFinite(entryY) && Number.isFinite(y) && Math.abs(entryY - y) > 1) {
                 connGroup.append('line')
                     .attr('x1', connX).attr('x2', connX)
-                    .attr('y1', y).attr('y2', tpY)
+                    .attr('y1', entryY).attr('y2', y)
                     .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
                 connGroup.append('circle')
-                    .attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
-                    .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                    .attr('cx', connX).attr('cy', entryY).attr('r', 2.5)
+                    .attr('fill', '#3b82f6').attr('stroke', '#0f172a').attr('stroke-width', 1);
             }
-            connGroup.append('circle')
-                .attr('cx', connX).attr('cy', y).attr('r', 2.5)
-                .attr('fill', '#eab308').attr('stroke', '#0f172a').attr('stroke-width', 1);
+            if (Number.isFinite(y)) {
+                connGroup.append('circle')
+                    .attr('cx', connX).attr('cy', y).attr('r', 2.5)
+                    .attr('fill', '#eab308').attr('stroke', '#0f172a').attr('stroke-width', 1);
+            }
             try { connGroup.lower(); } catch (_) {}
         }
 
