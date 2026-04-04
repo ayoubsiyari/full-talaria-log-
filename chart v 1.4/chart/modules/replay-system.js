@@ -1819,9 +1819,10 @@ class ReplaySystem {
         };
         flashCutLines();
         
-        // Immediately close/cancel all orders and remove trade visuals
+        // Selectively close only orders/trades that occurred AFTER the cut point;
+        // trades completed before targetTime keep their markers.
         if (this.chart.orderManager && typeof this.chart.orderManager.forceCloseAllOrders === 'function') {
-            this.chart.orderManager.forceCloseAllOrders();
+            this.chart.orderManager.forceCloseAllOrders(targetTime);
         }
 
         // Kill all animation state and update currentIndex NOW so any
@@ -1843,6 +1844,11 @@ class ReplaySystem {
             this.exitGoBackMode();
             this.updateChartData();
             this.updateTimeDisplay();
+
+            // Redraw preserved trade markers now that chart data/scales are current
+            if (this.chart.orderManager && typeof this.chart.orderManager.redrawPreservedTradeMarkers === 'function') {
+                setTimeout(() => this.chart.orderManager.redrawPreservedTradeMarkers(), 100);
+            }
         }, 150);
     }
     

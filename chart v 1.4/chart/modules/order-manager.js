@@ -22393,43 +22393,81 @@ class OrderManager {
     }
 
     /**
-     * Immediately close all open positions, cancel all pending orders,
-     * and remove every trade visual (order lines, SL/TP, entry/exit markers,
-     * connectors). Called when the user rewinds via "Go back".
+     * Close/cancel orders and remove trade visuals on rewind ("Go back").
+     * @param {number} [cutoffTime] - If provided, only remove trades that
+     *   occurred AFTER this timestamp; trades fully completed before it are
+     *   preserved and their markers will be redrawn after chart data updates.
+     *   If omitted, ALL trades and visuals are wiped (legacy behaviour).
      */
-    forceCloseAllOrders() {
+    forceCloseAllOrders(cutoffTime) {
+        const selective = cutoffTime != null && Number.isFinite(cutoffTime);
+
+        const allPending = [
+            ...(this.pendingOrders || []),
+            ...(this.orderService?.pendingOrders || [])
+        ];
         const hadPositions = (this.openPositions || []).length > 0;
-        const hadPending = [
-            ...(this.pendingOrders || []),
-            ...(this.orderService?.pendingOrders || [])
-        ].length > 0;
+        const hadPending = allPending.length > 0;
 
-        // 1. Cancel every pending order (removes pending visuals too)
-        const pendingIds = [
-            ...(this.pendingOrders || []),
-            ...(this.orderService?.pendingOrders || [])
-        ].map(p => p.id);
+        // --- Partition data by cutoff when in selective mode -----------------
+        let preservedClosed = [], removedClosedIds = new Set();
+        let preservedOpen = [], removedOpen = [];
+        let preservedPendingIds = new Set();
+
+        if (selective) {
+            (this.closedPositions || []).forEach(pos => {
+                const ct = pos.closeTime ?? pos.exitTime;
+                if (ct && ct < cutoffTime) {
+                    preservedClosed.push(pos);
+                } else {
+                    removedClosedIds.add(pos.id);
+                }
+            });
+            (this.openPositions || []).forEach(pos => {
+                if (pos.openTime && pos.openTime < cutoffTime) {
+                    preservedOpen.push(pos);
+                } else {
+                    removedOpen.push(pos);
+                }
+            });
+            allPending.forEach(po => {
+                if (po.placedTime && po.placedTime < cutoffTime) {
+                    preservedPendingIds.add(po.id);
+                }
+            });
+        }
+
+        // 1. Cancel pending orders (all, or only future ones) ----------------
         const seen = new Set();
-        pendingIds.forEach(id => {
-            if (seen.has(id)) return;
-            seen.add(id);
-            this.cancelPendingOrder(id, { silent: true });
+        allPending.forEach(po => {
+            if (seen.has(po.id)) return;
+            seen.add(po.id);
+            if (selective && preservedPendingIds.has(po.id)) return;
+            this.cancelPendingOrder(po.id, { silent: true });
         });
 
-        // 2. Force-remove open position visuals and clear the array
-        (this.openPositions || []).forEach(pos => {
-            try { this.removeOrderLine(pos.id); } catch (e) { /* */ }
-            try { this.removeSLTPLines(pos.id); } catch (e) { /* */ }
-            try { this.removeEntryMarker(pos.id); } catch (e) { /* */ }
+        // 2. Remove open-position visuals for positions being discarded ------
+        const posToStrip = selective ? removedOpen : (this.openPositions || []);
+        posToStrip.forEach(pos => {
+            try { this.removeOrderLine(pos.id); } catch (_) {}
+            try { this.removeSLTPLines(pos.id); } catch (_) {}
+            try { this.removeEntryMarker(pos.id); } catch (_) {}
         });
-        this.openPositions = [];
-        if (this.orderService) this.orderService.openPositions = [];
 
-        // 3. Clear closed-positions list so old markers don't linger
-        this.closedPositions = [];
-        if (this.orderService) this.orderService.closedPositions = [];
+        // 3. Update data arrays ----------------------------------------------
+        if (selective) {
+            this.openPositions = preservedOpen;
+            if (this.orderService) this.orderService.openPositions = preservedOpen;
+            this.closedPositions = preservedClosed;
+            if (this.orderService) this.orderService.closedPositions = preservedClosed;
+        } else {
+            this.openPositions = [];
+            if (this.orderService) this.orderService.openPositions = [];
+            this.closedPositions = [];
+            if (this.orderService) this.orderService.closedPositions = [];
+        }
 
-        // 4. Wipe all SVG drawing layers (entry/exit markers, connectors, etc.)
+        // 4. Wipe all SVG drawing layers (will be redrawn for kept trades) ---
         if (this.chart?.svg) {
             this._stripOrderDrawingLayersFromChart(this.chart);
             this.chart.svg.selectAll('.exit-marker, [class*="exit-marker-"], .partial-close-marker, [class*="partial-close-marker-"]').remove();
@@ -22441,7 +22479,7 @@ class OrderManager {
             if (c?.svg) c.svg.selectAll('.exit-marker, [class*="exit-marker-"], .partial-close-marker, [class*="partial-close-marker-"]').remove();
         });
 
-        // 5. Reset in-memory visual arrays
+        // 5. Reset in-memory visual arrays -----------------------------------
         this.orderLines = [];
         this.splitGroupAvgLines = [];
         this.multiTPAvgLines = [];
@@ -22455,19 +22493,101 @@ class OrderManager {
         this.tradeConnectors = [];
         this.mfeMaeMarkers = [];
 
-        // 6. Clear scaled/split trade maps
+        // 6. Clear scaled/split trade maps -----------------------------------
         if (this.scaledTrades) this.scaledTrades.clear();
         if (this.splitTrades) this.splitTrades.clear();
 
-        // 7. Reset panel to fresh state
+        // 7. Reset panel to fresh state --------------------------------------
         this._resetPanelForNewOrder();
         this.updatePositionsPanel();
 
-        if (hadPositions || hadPending) {
-            this.showNotification('All orders closed & cleared (Go Back)', 'info');
+        if (selective) {
+            this._preservedClosedForRedraw = preservedClosed;
+            const removedCount = removedClosedIds.size + removedOpen.length;
+            if (removedCount > 0) {
+                this.showNotification(
+                    `Cleared ${removedCount} future trade(s); kept ${preservedClosed.length} completed`, 'info');
+            }
+            console.log(`🧹 forceCloseAllOrders (selective @ ${cutoffTime}): ` +
+                `kept ${preservedClosed.length} closed + ${preservedOpen.length} open, ` +
+                `removed ${removedClosedIds.size} closed + ${removedOpen.length} open`);
+        } else {
+            if (hadPositions || hadPending) {
+                this.showNotification('All orders closed & cleared (Go Back)', 'info');
+            }
+            console.log('🧹 forceCloseAllOrders: all positions, pending orders, and trade visuals removed');
+        }
+    }
+
+    /**
+     * Redraw entry/exit markers, partial-close markers, and trade connectors
+     * for closed positions that were preserved during a selective "Go back".
+     * Also redraws visuals for any open positions and pending orders that survived.
+     * Must be called AFTER updateChartData() so chart scales are current.
+     */
+    redrawPreservedTradeMarkers() {
+        const preserved = this._preservedClosedForRedraw;
+        this._preservedClosedForRedraw = null;
+
+        // Redraw closed-trade markers
+        if (preserved && preserved.length) {
+            preserved.forEach(pos => {
+                try { this.drawEntryMarker(pos); } catch (_) {}
+
+                // Partial close markers
+                if (Array.isArray(pos.partialCloses)) {
+                    pos.partialCloses.forEach(pc => {
+                        try {
+                            this.drawPartialCloseMarker(pos, {
+                                closePrice: pc.closePrice,
+                                closeTime: pc.closeTime,
+                                pnl: pc.pnl || 0,
+                                percentage: pc.percentage || 1,
+                                type: pc.type || 'TP'
+                            });
+                        } catch (_) {}
+                    });
+                }
+
+                // Final exit marker
+                if (pos.closePrice && pos.closeTime) {
+                    try {
+                        this.drawExitMarker(pos, {
+                            closePrice: pos.closePrice,
+                            closeTime: pos.closeTime,
+                            pnl: pos.pnl || 0,
+                            type: pos.closeType || 'MANUAL'
+                        });
+                    } catch (_) {}
+                }
+            });
         }
 
-        console.log('🧹 forceCloseAllOrders: all positions, pending orders, and trade visuals removed');
+        // Redraw open position visuals
+        (this.openPositions || []).forEach(pos => {
+            try { this.drawOrderLine(pos); } catch (_) {}
+            try { this.drawSLTPLines(pos); } catch (_) {}
+            try { this.drawEntryMarker(pos); } catch (_) {}
+            if (Array.isArray(pos.tpTargets) && pos.tpTargets.length > 1) {
+                try { this.drawMultiTPAvgLine(pos); } catch (_) {}
+            }
+        });
+
+        // Redraw pending order visuals
+        (this.pendingOrders || []).forEach(po => {
+            try { this.drawPendingOrderLine(po); } catch (_) {}
+            try { this.drawPendingOrderTargets(po); } catch (_) {}
+        });
+
+        if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
+        if (this.chart && typeof this.chart.render === 'function') {
+            this.chart.renderPending = true;
+            this.chart.render();
+        }
+        console.log('🎨 redrawPreservedTradeMarkers: redrawn markers for',
+            (preserved || []).length, 'closed +',
+            (this.openPositions || []).length, 'open +',
+            (this.pendingOrders || []).length, 'pending');
     }
     
     /**
