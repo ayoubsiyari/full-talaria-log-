@@ -12451,6 +12451,9 @@ class OrderManager {
                         
                         // Re-render the targets list to update validation and show updated percentages
                         self.renderTPTargets();
+
+                        // Live-update Avg TP line position during drag
+                        if (self.chart) self._updateMultiTPAvgLines(self.chart);
                     }
                 } else if (lineData.label === 'SL') {
                     // Mark SL as manually positioned BEFORE updating input (prevents sync)
@@ -12656,7 +12659,10 @@ class OrderManager {
                     self.calculateAdvancedRiskReward();
                     // Re-render multi-TP rows so profit/R:R update with new entry
                     const multiTPOn = document.getElementById('multipleTPToggle')?.checked;
-                    if (multiTPOn) self.renderTPTargets();
+                    if (multiTPOn) {
+                        self.renderTPTargets();
+                        self._updateMultiTPAvgLines(self.chart);
+                    }
                 } else if (lineData.label && lineData.label.startsWith('Entry#') && lineData.isSplitEntry) {
                     // Split entry line drag — sync price back to splitEntries and multiEntryLevels
                     if (lineData.splitEntryId !== undefined) {
@@ -20327,6 +20333,9 @@ class OrderManager {
             pnlBox, pnlText,
             chart
         });
+
+        // Position labels immediately so they don't flash at x=0
+        this._updateMultiTPAvgLines(chart);
     }
 
     removeMultiTPAvgLine(orderId) {
