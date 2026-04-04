@@ -3291,6 +3291,11 @@ class ReplaySystem {
                 if (Number.isFinite(price)) return price;
                 if (Number.isFinite(this.animatingCandle.close)) return this.animatingCandle.close;
             }
+            // When paused mid-candle, tickProgress is 0 but animatingCandle.close
+            // holds the last animated price. Use it instead of snapping to open.
+            if (!this.isPlaying && Number.isFinite(this.animatingCandle.close)) {
+                return this.animatingCandle.close;
+            }
             const openPx = Number.parseFloat(this.animatingCandle.open);
             if (Number.isFinite(openPx)) return openPx;
         }

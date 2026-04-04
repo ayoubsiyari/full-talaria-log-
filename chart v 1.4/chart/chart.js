@@ -11210,7 +11210,7 @@ class Chart {
                 if (typeof this.replaySystem.getCurrentAnimatedPrice === 'function') {
                     replayPrice = this.replaySystem.getCurrentAnimatedPrice();
                 }
-                if (!Number.isFinite(replayPrice) && this.replaySystem.isPlaying && this.replaySystem.animatingCandle) {
+                if (!Number.isFinite(replayPrice) && this.replaySystem.animatingCandle) {
                     replayPrice = this.replaySystem.animatingCandle.close;
                 }
                 if (!Number.isFinite(replayPrice) && this.replaySystem.fullRawData) {
