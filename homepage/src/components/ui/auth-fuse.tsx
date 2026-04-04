@@ -24,6 +24,28 @@ function validatePassword(password: string) {
   return null;
 }
 
+/** Allow ?next= only for journal marketing/legal flows when user has no plan yet. */
+function isJournalPublicNextPath(path: string): boolean {
+  const pathname = path.split("?")[0].split("#")[0];
+  return (
+    pathname === "/journal/pricing" ||
+    pathname.startsWith("/journal/pricing/") ||
+    pathname === "/pricing" ||
+    pathname.startsWith("/journal/features") ||
+    pathname.startsWith("/journal/contact") ||
+    pathname.startsWith("/journal/legal") ||
+    pathname.startsWith("/journal/privacy-policy") ||
+    pathname.startsWith("/journal/terms") ||
+    pathname.startsWith("/journal/cookie-policy") ||
+    pathname.startsWith("/journal/disclaimer") ||
+    pathname.startsWith("/journal/refund-policy") ||
+    pathname.startsWith("/journal/verify-email") ||
+    pathname.startsWith("/journal/resend-verification") ||
+    pathname.startsWith("/journal/subscription/success") ||
+    pathname.startsWith("/journal/onboarding")
+  );
+}
+
 export interface TypewriterProps {
   text: string | string[];
   speed?: number;
@@ -245,20 +267,29 @@ function SignInForm({ prefillEmail, bannerMessage, nextPath, onForgotPassword }:
       } catch (e) { /* journal login is best-effort */ }
 
       const isAdmin = body?.user?.role === "admin";
+      const safeNext =
+        nextPath && nextPath.startsWith("/") ? nextPath : null;
 
-      const safeNext = nextPath && nextPath.startsWith("/") ? nextPath : null;
+      if (isAdmin) {
+        window.location.href = safeNext || "/dashboard/admin/";
+        return;
+      }
+
+      if (!hasAccess) {
+        if (safeNext && isJournalPublicNextPath(safeNext)) {
+          window.location.href = safeNext;
+        } else {
+          window.location.href = "/journal/pricing";
+        }
+        return;
+      }
+
       if (safeNext) {
         window.location.href = safeNext;
         return;
       }
 
-      if (isAdmin) {
-        window.location.href = "/dashboard/admin/";
-      } else if (!hasAccess) {
-        window.location.href = "/journal/pricing";
-      } else {
-        window.location.href = "/dashboard/";
-      }
+      window.location.href = "/dashboard/";
     } finally {
       setLoading(false);
     }

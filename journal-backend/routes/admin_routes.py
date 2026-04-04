@@ -3,7 +3,7 @@
 from flask import Blueprint, request, jsonify, current_app, send_file, make_response
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, create_access_token, create_refresh_token
 from werkzeug.security import generate_password_hash
-from models import db, User, Profile, JournalEntry, Group, BlockedIP, SecurityLog, FailedLoginAttempt, SystemSettings
+from models import db, User, Profile, JournalEntry, Group, BlockedIP, SecurityLog, FailedLoginAttempt, SystemSettings, Subscription
 from email_service import mail
 from flask_mail import Message
 import logging
@@ -20,8 +20,33 @@ import os
 import csv
 import io
 import subprocess
+from sqlalchemy import exists
 
 admin_bp = Blueprint('admin', __name__)
+
+_ACTIVE_SUB_STATUSES = ('active', 'trialing')
+
+
+def _active_subscription_by_user_id(user_ids):
+    """Map user_id -> newest active/trialing Subscription for those users."""
+    if not user_ids:
+        return {}
+    rows = Subscription.query.filter(
+        Subscription.user_id.in_(user_ids),
+        Subscription.status.in_(_ACTIVE_SUB_STATUSES),
+    ).all()
+    by_uid = {}
+    for s in rows:
+        prev = by_uid.get(s.user_id)
+        if prev is None:
+            by_uid[s.user_id] = s
+            continue
+        s_ts = s.updated_at or s.created_at or datetime.min
+        p_ts = prev.updated_at or prev.created_at or datetime.min
+        if s_ts >= p_ts:
+            by_uid[s.user_id] = s
+    return by_uid
+
 
 # Setup logging for admin actions
 admin_logger = logging.getLogger('admin_actions')
@@ -215,9 +240,13 @@ def list_users():
         pagination = query.order_by(User.id.desc()).paginate(
             page=page, per_page=per_page, error_out=False
         )
-        
+
+        page_user_ids = [u.id for u in pagination.items]
+        sub_by_uid = _active_subscription_by_user_id(page_user_ids)
+
         users = []
         for user in pagination.items:
+            sub = sub_by_uid.get(user.id)
             # Return complete user information for admin interface
             users.append({
                 "id": user.id,
@@ -229,6 +258,8 @@ def list_users():
                 "is_admin": user.is_admin,
                 "email_verified": user.email_verified,
                 "has_journal_access": user.has_journal_access,
+                "has_active_subscription": sub is not None,
+                "subscription_status": sub.status if sub else None,
                 "created_at": user.created_at.isoformat() if user.created_at else None,
                 "updated_at": user.updated_at.isoformat() if user.updated_at else None,
                 # Additional computed fields
@@ -789,16 +820,23 @@ def export_users():
         
         # Get all users
         users = User.query.all()
-        
+        all_ids = [u.id for u in users]
+        sub_by_uid = _active_subscription_by_user_id(all_ids)
+
         # Create CSV data
         output = io.StringIO()
         writer = csv.writer(output)
-        
+
         # Write header
-        writer.writerow(['ID', 'Email', 'Full Name', 'Phone', 'Country', 'Profile Image', 'Is Admin', 'Email Verified', 'Profiles Count', 'Trades Count', 'Created At', 'Updated At'])
-        
+        writer.writerow([
+            'ID', 'Email', 'Full Name', 'Phone', 'Country', 'Profile Image', 'Is Admin',
+            'Email Verified', 'Has Journal Access', 'Has Active Subscription', 'Subscription Status',
+            'Profiles Count', 'Trades Count', 'Created At', 'Updated At',
+        ])
+
         # Write user data
         for user in users:
+            sub = sub_by_uid.get(user.id)
             writer.writerow([
                 user.id,
                 user.email,
@@ -808,6 +846,9 @@ def export_users():
                 user.profile_image or '',
                 user.is_admin,
                 user.email_verified,
+                user.has_journal_access,
+                sub is not None,
+                sub.status if sub else '',
                 len(user.profiles),
                 len(user.journal_entries),
                 user.created_at.isoformat() if user.created_at else '',
@@ -848,6 +889,16 @@ def enhanced_dashboard():
         ).count()
         total_trades = JournalEntry.query.count()
         admin_users = User.query.filter_by(is_admin=True).count()
+
+        has_active_sub = exists().where(
+            Subscription.user_id == User.id,
+            Subscription.status.in_(_ACTIVE_SUB_STATUSES),
+        )
+        users_no_payment = User.query.filter(
+            User.role != 'admin',
+            User.has_journal_access.is_(False),
+            ~has_active_sub,
+        ).count()
         
         # Get recent statistics
         users_today = User.query.filter(
@@ -887,6 +938,7 @@ def enhanced_dashboard():
             "active_users": active_users_30d,
             "total_trades": total_trades,
             "admin_users": admin_users,
+            "users_no_payment": users_no_payment,
             "users_today": users_today,
             "trades_today": trades_today,
             "growth": {

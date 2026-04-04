@@ -21,8 +21,29 @@ function Pill({ok,label}:{ok:boolean;label:string}){
   return <span className={`rounded-full px-2 py-0.5 text-xs ${ok?"bg-green-500/20 text-green-300":"bg-red-500/20 text-red-300"}`}>{label}</span>;
 }
 
-// types
-type URow={id:number;email:string;full_name?:string;name?:string;role?:string;is_admin?:boolean;has_journal_access?:boolean;is_active?:boolean;created_at?:string;trades_count?:number};
+type URow={
+  id:number;
+  email:string;
+  full_name?:string;
+  name?:string;
+  role?:string;
+  is_admin?:boolean;
+  has_journal_access?:boolean;
+  has_active_subscription?:boolean;
+  subscription_status?:string|null;
+  is_active?:boolean;
+  created_at?:string;
+  trades_count?:number;
+};
+
+function PaymentCell({ u, admin }: { u: URow; admin: boolean }) {
+  if (admin) return <span className="text-white/35 text-xs">—</span>;
+  if (u.has_active_subscription)
+    return <Pill ok label={u.subscription_status === "trialing" ? "Trial" : "Paid"} />;
+  if (u.has_journal_access)
+    return <span className="rounded-full px-2 py-0.5 text-xs bg-amber-500/15 text-amber-200 border border-amber-500/25">Manual</span>;
+  return <Pill ok={false} label="No payment" />;
+}
 type Flag={id:number;name:string;enabled:boolean;description?:string;category?:string};
 type Log ={timestamp:string;action:string;details:string};
 type Metrics={cpu?:{percent:number};memory?:{used:number;total:number;percent:number};disk?:{used:number;total:number;percent:number};uptime?:{formatted:string}};
@@ -80,7 +101,10 @@ export default function AdminDashboard() {
         fetch("/journal/api/admin/logs?limit=100",      {headers:jh()}).then(r=>r.json()),
         fetch("/journal/api/admin/system/metrics",      {headers:jh()}).then(r=>r.json()),
       ]);
-      if(sR.status==="fulfilled")setStats(sR.value?.statistics??{});
+      if(sR.status==="fulfilled"){
+        const v=sR.value??{};
+        setStats({...v,...(typeof v.statistics==="object"&&v.statistics?v.statistics:{})});
+      }
       if(uR.status==="fulfilled")setUsers(uR.value?.users??[]);
       if(fR.status==="fulfilled")setFlags(fR.value?.flags??[]);
       if(lR.status==="fulfilled")setLogs(lR.value?.logs??[]);
@@ -114,6 +138,7 @@ export default function AdminDashboard() {
   if(!authorized)return null;
 
   const filtered=users.filter(u=>u.email?.toLowerCase().includes(search.toLowerCase())||(u.full_name??u.name??"").toLowerCase().includes(search.toLowerCase()));
+  const noPaymentCount=users.filter(u=>!isAdm(u)&&!u.has_active_subscription&&!u.has_journal_access).length;
 
   return (
     <div className="space-y-5">
@@ -145,19 +170,23 @@ export default function AdminDashboard() {
       {/* OVERVIEW */}
       {tab==="overview"&&(
         <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <Stat label="Users"     value={fmt(stats.total_users)}       color="text-blue-400"/>
             <Stat label="Trades"    value={fmt(stats.total_trades)}      color="text-green-400"/>
-            <Stat label="New (30d)" value={fmt(stats.active_users_30d)}  color="text-cyan-400"/>
-            <Stat label="Admins"    value={fmt(stats.admin_users_count)} color="text-purple-400"/>
+            <Stat label="New (30d)" value={fmt(stats.active_users_30d??stats.active_users)}  color="text-cyan-400"/>
+            <Stat label="Admins"    value={fmt(stats.admin_users_count??stats.admin_users)} color="text-purple-400"/>
+            <Stat label="No payment" value={fmt(stats.users_no_payment??noPaymentCount)} color="text-amber-400"/>
           </div>
           <div className="grid md:grid-cols-2 gap-4">
             <div className="rounded-xl border border-white/10 bg-white/5 p-4">
               <div className="text-xs font-semibold text-white/40 uppercase tracking-wide mb-3">Latest Users</div>
               {users.slice(0,8).map(u=>(
-                <div key={u.id} className="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
-                  <span className="text-sm truncate max-w-[200px]">{u.email}</span>
-                  <div className="flex gap-1">{isAdm(u)&&<Pill ok label="admin"/>}{!u.has_journal_access&&<Pill ok={false} label="no access"/>}</div>
+                <div key={u.id} className="flex items-center justify-between gap-2 py-1.5 border-b border-white/5 last:border-0">
+                  <span className="text-sm truncate min-w-0">{u.email}</span>
+                  <div className="flex gap-1 flex-shrink-0 items-center flex-wrap justify-end">
+                    <PaymentCell u={u} admin={isAdm(u)}/>
+                    {isAdm(u)&&<Pill ok label="admin"/>}
+                  </div>
                 </div>
               ))}
               {!users.length&&<p className="text-white/30 text-sm">No data</p>}
@@ -206,9 +235,9 @@ export default function AdminDashboard() {
             </div>
           )}
           <div className="rounded-xl border border-white/10 overflow-x-auto">
-            <table className="w-full text-sm min-w-[600px]">
+            <table className="w-full text-sm min-w-[760px]">
               <thead className="bg-white/5 text-white/40 text-xs uppercase tracking-wide">
-                <tr>{["ID","Email / Name","Role","Journal","Trades","Joined",""].map(h=><th key={h} className={`px-4 py-2.5 ${h?"text-left":"text-right"}`}>{h}</th>)}</tr>
+                <tr>{["ID","Email / Name","Role","Journal","Payment","Trades","Joined",""].map(h=><th key={h} className={`px-4 py-2.5 ${h?"text-left":"text-right"}`}>{h}</th>)}</tr>
               </thead>
               <tbody className="divide-y divide-white/5">
                 {filtered.map(u=>(
@@ -217,6 +246,7 @@ export default function AdminDashboard() {
                     <td className="px-4 py-2.5"><div>{u.email}</div>{(u.full_name??u.name)&&<div className="text-xs text-white/30">{u.full_name??u.name}</div>}</td>
                     <td className="px-4 py-2.5"><Pill ok={isAdm(u)} label={isAdm(u)?"admin":"user"}/></td>
                     <td className="px-4 py-2.5"><Pill ok={!!u.has_journal_access} label={u.has_journal_access?"✓":"✗"}/></td>
+                    <td className="px-4 py-2.5 whitespace-nowrap"><PaymentCell u={u} admin={isAdm(u)}/></td>
                     <td className="px-4 py-2.5 text-white/40">{u.trades_count??"—"}</td>
                     <td className="px-4 py-2.5 text-white/30 text-xs">{u.created_at?new Date(u.created_at).toLocaleDateString():"—"}</td>
                     <td className="px-4 py-2.5 text-right">
