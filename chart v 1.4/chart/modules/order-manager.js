@@ -1035,32 +1035,13 @@ class OrderManager {
         if (rs && rs.isActive && rs.isPlaying) {
             console.log(`⏸️ Pausing replay${reason ? ` (${reason})` : ''}`);
 
-            const wasAnimating = !!rs.animatingCandle;
-
             rs.pause();
-            rs._savedTickState = null;
 
-            // Finalize the candle that was mid-animation so pressing play
-            // advances to the NEXT candle instead of re-drawing this one from open.
-            if (wasAnimating && rs.fullRawData) {
-                rs.animatingCandle = null;
-                rs.tickProgress = 0;
-                rs.tickElapsedMs = 0;
-
-                const nextIdx = rs.currentIndex + 1;
-                if (nextIdx < rs.fullRawData.length) {
-                    rs.currentIndex = nextIdx;
-                    rs.edgeProbeRetryCount = 0;
-                    if (rs.fullRawData[rs.currentIndex]) {
-                        rs.replayTimestamp = rs.fullRawData[rs.currentIndex].t;
-                    }
-                }
-
-                rs.updateChartData(true);
-                rs.updateTimeDisplay();
-                rs.updateSlider();
-                rs.syncPanelCharts();
-            }
+            // pause() already saved the partial tick state into _savedTickState
+            // (animatingCandle, tickProgress, tickElapsedMs) and keeps
+            // animatingCandle alive on the chart.  By NOT clearing _savedTickState,
+            // the next play() call will restore the exact tick position so the
+            // candle resumes mid-animation instead of replaying from open.
         }
     }
 
