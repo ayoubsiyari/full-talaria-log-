@@ -10525,7 +10525,18 @@ class OrderManager {
         const halfPip = (Number.isFinite(this.pipSize) && this.pipSize > 0 ? this.pipSize : 0.0001) * 0.5;
         const maxMinDistance = Math.max(Math.abs(effectiveEntryForReward) * 1e-4, 1e-12);
         const minDistance = Math.min(halfPip, maxMinDistance);
-        const hasValidTP = tpEnabled && tpPrice > 0 && tpDistance > minDistance;
+        const multipleTPEnabled = document.getElementById('multipleTPToggle')?.checked || false;
+
+        let hasValidTP;
+        if (tpEnabled && multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
+            hasValidTP = this.tpTargets.some(t => {
+                if (!(t.price > 0)) return false;
+                const d = Math.abs(effectiveEntryForReward - t.price);
+                return d > minDistance;
+            });
+        } else {
+            hasValidTP = tpEnabled && tpPrice > 0 && tpDistance > minDistance;
+        }
 
         let slContextEntry = entryPrice || effectiveEntryForReward;
         if (this.isMultiEntryMode && multiAvg > 0) {
@@ -10566,7 +10577,6 @@ class OrderManager {
         // Reward: use MarketCalculationEngine (same as chart TP/SL labels) so JPY / cross / tick
         // specs match position sizing; manual pipSize×pipValue can be wrong and inflate $ reward.
         let reward = 0;
-        const multipleTPEnabled = document.getElementById('multipleTPToggle')?.checked || false;
 
         // Multi-entry: profit $ at TP uses total position size with PnL measured from Avg Entry.
         const qtyForReward = quantity;
@@ -11166,26 +11176,41 @@ class OrderManager {
 
         const entryPrice = this._getReferenceEntryForOrderMath();
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const slEnabled = document.getElementById('enableSL')?.checked;
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
-        const riskDist = entryPrice > 0 && slPrice > 0 ? Math.abs(entryPrice - slPrice) : 0;
         const side = (this.orderSide || 'BUY').toUpperCase();
+
+        // Compute risk in USD the same way single TP does (via estimatePnLForPriceLevel)
+        let riskUsd = 0;
+        if (slEnabled && entryPrice > 0 && slPrice > 0 && quantity > 0) {
+            riskUsd = Math.abs(this.estimatePnLForPriceLevel(side, entryPrice, slPrice, quantity));
+        }
 
         // Pre-compute effective percentages to match what placeOrder will actually do
         const effectivePcts = this._computeEffectiveTPPercentages(entryPrice, quantity, side);
 
         list.innerHTML = this.tpTargets.map((target, tIdx) => {
-            const tpDist = entryPrice > 0 && target.price > 0 ? Math.abs(target.price - entryPrice) : 0;
-            const rr = riskDist > 0 ? (tpDist / riskDist).toFixed(1) : '—';
             const pctShare = target.percentage || 0;
             const effectivePct = effectivePcts[tIdx] || 0;
-            let profitUsd = '0.00';
+
+            // Per-target profit (USD) — same formula as single TP reward
+            let profitUsd = 0;
             if (entryPrice > 0 && target.price > 0 && effectivePct > 0) {
                 const shareQty = quantity * (effectivePct / 100);
                 if (shareQty > 0) {
-                    const pnl = this.estimatePnLForPriceLevel(side, entryPrice, target.price, shareQty);
-                    profitUsd = Math.abs(pnl).toFixed(2);
+                    profitUsd = Math.max(0, this.estimatePnLForPriceLevel(side, entryPrice, target.price, shareQty));
                 }
             }
+
+            // Per-target R:R — USD-based, matching single TP: (partialReward / partialRisk)
+            // partialRisk = total risk × effectivePct fraction
+            let rr = '—';
+            if (riskUsd > 0 && profitUsd > 0 && effectivePct > 0) {
+                const partialRisk = riskUsd * (effectivePct / 100);
+                rr = partialRisk > 0 ? (profitUsd / partialRisk).toFixed(1) : '—';
+            }
+
+            const profitText = profitUsd > 0 ? profitUsd.toFixed(2) : '0.00';
 
             return `<div class="order-tp-multi__row">
                 <div class="order-tp-multi__row-pct">
@@ -11198,42 +11223,37 @@ class OrderManager {
                     <input type="text" value="${rr}" readonly tabindex="-1" style="color:#22c55e;text-align:center;cursor:default;background:transparent;border-color:transparent;">
                 </div>
                 <div class="order-tp-multi__row-profit">
-                    <input type="text" value="${profitUsd}" readonly tabindex="-1" style="color:#22c55e;cursor:default;background:transparent;border-color:transparent;">
+                    <input type="text" value="${profitText}" readonly tabindex="-1" style="color:#22c55e;cursor:default;background:transparent;border-color:transparent;">
                 </div>
                 <button class="order-tp-multi__row-del" onclick="chart.orderManager.removeTPTarget(${target.id})">×</button>
             </div>`;
         }).join('');
 
-        // Blended R:R and total profit
+        // Blended R:R and total profit — USD-based, matching single TP (reward / risk)
         const blendEl = document.getElementById('tpBlendedValue');
         if (blendEl) {
             let totalProfit = 0;
-            let weightedRR = 0;
-            let totalPct = 0;
             this.tpTargets.forEach((t, tIdx) => {
-                const pct = t.percentage || 0;
                 const ePct = effectivePcts[tIdx] || 0;
                 if (entryPrice > 0 && t.price > 0 && ePct > 0) {
                     const shareQ = quantity * (ePct / 100);
-                    if (shareQ > 0) totalProfit += this.estimatePnLForPriceLevel(side, entryPrice, t.price, shareQ);
+                    if (shareQ > 0) {
+                        totalProfit += Math.max(0, this.estimatePnLForPriceLevel(side, entryPrice, t.price, shareQ));
+                    }
                 }
-                if (riskDist > 0 && ePct > 0) {
-                    const dist = entryPrice > 0 && t.price > 0 ? Math.abs(t.price - entryPrice) : 0;
-                    weightedRR += (dist / riskDist) * (ePct / 100);
-                }
-                totalPct += pct;
             });
-            const blendRR = weightedRR.toFixed(1);
-            blendEl.textContent = `${blendRR}R → +$${Math.abs(totalProfit).toFixed(2)}`;
+            const blendRR = riskUsd > 0 && totalProfit > 0 ? (totalProfit / riskUsd).toFixed(1) : '0.0';
+            blendEl.textContent = `${blendRR}R → +$${totalProfit.toFixed(2)}`;
         }
 
-        // Wire input listeners
+        // Wire input listeners — also trigger calculateAdvancedRiskReward for panel sync
         this.tpTargets.forEach(target => {
             const priceInput = document.getElementById(`tpTarget${target.id}Price`);
             const pctInput = document.getElementById(`tpTarget${target.id}Pct`);
             if (priceInput) {
                 priceInput.oninput = () => {
                     target.price = parseFloat(priceInput.value) || 0;
+                    this.calculateAdvancedRiskReward();
                     this.renderTPTargets();
                     this.updatePreviewLines();
                 };
@@ -11241,6 +11261,7 @@ class OrderManager {
             if (pctInput) {
                 pctInput.oninput = () => {
                     target.percentage = parseFloat(pctInput.value) || 0;
+                    this.calculateAdvancedRiskReward();
                     this.renderTPTargets();
                     this.updatePreviewLines();
                 };
@@ -11898,7 +11919,7 @@ class OrderManager {
         // Check if multiple TPs are enabled
         const multipleTPEnabled = document.getElementById('multipleTPToggle')?.checked || false;
         
-        if (multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
+        if (tpEnabled && multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
             // Draw multiple TP lines
             this.tpTargets.forEach((target, index) => {
                 if (target.price > 0) {
@@ -14009,7 +14030,8 @@ class OrderManager {
         const shareQty = qty * (ePct / 100);
         if (shareQty <= 0) return fallback;
         const pnl = this.estimatePnLForPriceLevel(side, entryPx, price, shareQty);
-        return `+$${Math.abs(pnl).toFixed(2)}`;
+        const sign = pnl >= 0 ? '+' : '-';
+        return `${sign}$${Math.abs(pnl).toFixed(2)}`;
     }
 
     _getReferenceEntryForOrderMath() {
