@@ -2288,6 +2288,12 @@ class ReplaySystem {
         
         // Stop any existing playback first (will preserve state if _preserveTickProgress is set)
         this.stopAllPlayback();
+
+        // Refresh SL/TP/entry guards so the current candle's pre-existing OHLC
+        // doesn't immediately trigger orders when playback resumes after a seek.
+        if (this.chart?.orderManager?._refreshAllGuardsToCurrentCandle) {
+            this.chart.orderManager._refreshAllGuardsToCurrentCandle();
+        }
         
         this.isPlaying = true;
         
@@ -4034,9 +4040,26 @@ class ReplaySystem {
             this.replayTimestamp = this.fullRawData[this.currentIndex].t;
             this.tickElapsedMs = 0; // Reset elapsed time when seeking
         }
+
+        // Pre-arm guards before updateChartData so updatePositions() doesn't
+        // fire SL/TP on the seeked-to candle's stale OHLC.  We use the raw
+        // bar's timestamp (resampled candle time may differ, but this is a
+        // safe upper bound that will be refreshed again after the chart updates).
+        const om = this.chart?.orderManager;
+        if (om && typeof om._refreshAllGuardsToCurrentCandle === 'function') {
+            const rawBar = this.fullRawData[this.currentIndex];
+            if (rawBar) {
+                om._refreshAllGuardsToTimestamp(rawBar.t);
+            }
+        }
         
         const autoScroll = fromDrag ? false : this.autoScrollEnabled;
         this.updateChartData(autoScroll);
+
+        // Final refresh with resampled candle data for precision
+        if (om && typeof om._refreshAllGuardsToCurrentCandle === 'function') {
+            om._refreshAllGuardsToCurrentCandle();
+        }
     }
 
     /**
@@ -4075,8 +4098,20 @@ class ReplaySystem {
         this.replayTimestamp = this.fullRawData[idx]?.t ?? ts;
         this.tickElapsedMs = 0;
 
+        // Pre-arm guards before chart update
+        const om2 = this.chart?.orderManager;
+        if (om2 && typeof om2._refreshAllGuardsToTimestamp === 'function') {
+            const rawBar = this.fullRawData[idx];
+            if (rawBar) om2._refreshAllGuardsToTimestamp(rawBar.t);
+        }
+
         const autoScroll = (preserveVisibleWindow || centerOnCandle) ? false : this.autoScrollEnabled;
         this.updateChartData(autoScroll);
+
+        // Final refresh with resampled candle data
+        if (om2 && typeof om2._refreshAllGuardsToCurrentCandle === 'function') {
+            om2._refreshAllGuardsToCurrentCandle();
+        }
 
         if (centerOnCandle && chart && Array.isArray(chart.data) && chart.data.length > 0) {
             const candleSpacing = typeof chart.getCandleSpacing === 'function'

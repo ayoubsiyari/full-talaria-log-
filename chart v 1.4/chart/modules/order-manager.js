@@ -1092,6 +1092,46 @@ class OrderManager {
         return dir === 'above' ? close >= level : close <= level;
     }
 
+    /**
+     * Refresh SL/TP/multi-TP guards on every open position and pending order
+     * so that pre-existing price action on the current candle doesn't trigger
+     * anything. Called when replay resumes playing or after a seek/drag.
+     */
+    _refreshAllGuardsToCurrentCandle() {
+        const currentCandle = this.getCurrentCandle();
+        if (!currentCandle) return;
+        const snap = this._getCurrentTickSnapshot();
+        this._refreshAllGuardsToTimestamp(currentCandle.t, snap.tick);
+    }
+
+    /**
+     * Set guards to a specific timestamp (used before chart data is resampled
+     * so getCurrentCandle() might not yet reflect the seek target).
+     */
+    _refreshAllGuardsToTimestamp(t, tick) {
+        if (!t) return;
+        if (tick === undefined) tick = -1;
+
+        for (const pos of (this.openPositions || [])) {
+            pos._slNoTriggerBeforeTime = t;
+            pos._slNoTriggerBeforeTick = tick;
+            pos._tpNoTriggerBeforeTime = t;
+            pos._tpNoTriggerBeforeTick = tick;
+            if (pos.tpTargets && pos.tpTargets.length > 0) {
+                for (const tgt of pos.tpTargets) {
+                    if (tgt.hit) continue;
+                    tgt._noTriggerBeforeTime = t;
+                    tgt._noTriggerBeforeTick = tick;
+                }
+            }
+        }
+
+        for (const po of (this.pendingOrders || [])) {
+            po._noFillBeforeTime = t;
+            po._noFillBeforeTick = tick;
+        }
+    }
+
     _getPositionPipSize(position) {
         const raw = position?.instrument_settings?.pip_size ?? position?.instrument_settings?.pipSize ?? this.pipSize;
         const value = Number.parseFloat(raw);
@@ -17700,7 +17740,13 @@ class OrderManager {
         // Remove pending order line AND pending SL/TP lines, then draw active versions
         this.removePendingOrderLine(pendingOrder.id);
         this.removePendingSLTPLines(pendingOrder.id);
-        this.removeMultiTPAvgLine(pendingOrder.id);
+        // For split entries the avg-TP line is keyed by the group; only remove
+        // if no other pending legs remain (the new open leg will redraw it).
+        if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
+            this._removeSplitGroupTPAvgIfEmpty(pendingOrder.splitGroupId, pendingOrder.id);
+        } else {
+            this.removeMultiTPAvgLine(pendingOrder.id);
+        }
         this.drawOrderLine(order);
         this.drawSLTPLines(order);
         
@@ -20388,7 +20434,10 @@ class OrderManager {
         const priced = targets.filter(t => t.price > 0);
         if (priced.length < 2) return;
 
-        const id = mode === 'preview' ? '__preview__' : order.id;
+        // For split-entry groups, use the splitGroupId so only ONE avg TP line
+        // is drawn for the entire group (all legs share the same TP targets).
+        const id = mode === 'preview' ? '__preview__'
+            : (order.isSplitEntry && order.splitGroupId ? `splitgrp_${order.splitGroupId}` : order.id);
         const already = this.multiTPAvgLines.some(g => g.orderId === id);
         if (already) return;
 
@@ -20457,9 +20506,8 @@ class OrderManager {
         this._updateMultiTPAvgLines(chart);
     }
 
-    removeMultiTPAvgLine(orderId) {
-        const idx = this.multiTPAvgLines.findIndex(g => g.orderId === orderId);
-        if (idx === -1) return;
+    _destroyMultiTPAvgEntry(idx) {
+        if (idx < 0 || idx >= this.multiTPAvgLines.length) return;
         const g = this.multiTPAvgLines[idx];
         try { g.line?.remove(); } catch (_) {}
         try { g.lotsBox?.remove(); } catch (_) {}
@@ -20470,17 +20518,62 @@ class OrderManager {
         this.multiTPAvgLines.splice(idx, 1);
     }
 
+    /**
+     * Remove the avg TP line for a split group when no other legs remain.
+     * Call this when the order has already been removed from pendingOrders/openPositions.
+     */
+    _removeSplitGroupTPAvgIfEmpty(splitGroupId, excludeOrderId) {
+        const grpKey = `splitgrp_${splitGroupId}`;
+        const gIdx = this.multiTPAvgLines.findIndex(g => g.orderId === grpKey);
+        if (gIdx === -1) return;
+        const hasOtherOpen = (this.openPositions || []).some(
+            p => p.id !== excludeOrderId && p.splitGroupId === splitGroupId);
+        const hasOtherPending = (this.pendingOrders || []).some(
+            p => p.id !== excludeOrderId && p.splitGroupId === splitGroupId);
+        if (hasOtherOpen || hasOtherPending) return;
+        this._destroyMultiTPAvgEntry(gIdx);
+    }
+
+    removeMultiTPAvgLine(orderId) {
+        let idx = this.multiTPAvgLines.findIndex(g => g.orderId === orderId);
+
+        // For split-entry orders the avg line is keyed by splitgrp_<groupId>.
+        // Look up the order to resolve the group key, and only remove if no
+        // other legs in the group are still open/pending.
+        if (idx === -1) {
+            const pos = (this.openPositions || []).find(p => p.id === orderId)
+                     || (this.pendingOrders || []).find(p => p.id === orderId)
+                     || (this.closedPositions || []).find(p => p.id === orderId);
+            if (pos && pos.isSplitEntry && pos.splitGroupId) {
+                this._removeSplitGroupTPAvgIfEmpty(pos.splitGroupId, orderId);
+                return;
+            }
+        }
+
+        if (idx === -1) return;
+        this._destroyMultiTPAvgEntry(idx);
+    }
+
     _rebuildMultiTPAvgLines() {
+        const drawnGroups = new Set();
         for (const pos of (this.openPositions || [])) {
             if (pos.tpTargets && pos.tpTargets.length >= 2) {
-                const already = this.multiTPAvgLines.some(g => g.orderId === pos.id);
+                const key = pos.isSplitEntry && pos.splitGroupId
+                    ? `splitgrp_${pos.splitGroupId}` : pos.id;
+                if (drawnGroups.has(key)) continue;
+                const already = this.multiTPAvgLines.some(g => g.orderId === key);
                 if (!already) this.drawMultiTPAvgLine(pos, 'open');
+                drawnGroups.add(key);
             }
         }
         for (const po of (this.pendingOrders || [])) {
             if (po.tpTargets && po.tpTargets.length >= 2) {
-                const already = this.multiTPAvgLines.some(g => g.orderId === po.id);
+                const key = po.isSplitEntry && po.splitGroupId
+                    ? `splitgrp_${po.splitGroupId}` : po.id;
+                if (drawnGroups.has(key)) continue;
+                const already = this.multiTPAvgLines.some(g => g.orderId === key);
                 if (!already) this.drawMultiTPAvgLine(po, 'pending');
+                drawnGroups.add(key);
             }
         }
     }
@@ -20508,27 +20601,59 @@ class OrderManager {
             let sym = this._getSymbol();
 
             if (g.mode === 'open') {
-                source = this.openPositions.find(p => p.id === g.orderId);
-                if (!source || !source.tpTargets || source.tpTargets.length < 2) {
-                    toRemove.push(g.orderId);
-                    continue;
+                const isSplitGrp = typeof g.orderId === 'string' && g.orderId.startsWith('splitgrp_');
+                if (isSplitGrp) {
+                    const grpId = g.orderId.replace('splitgrp_', '');
+                    const legs = (this.openPositions || []).filter(p => p.splitGroupId == grpId);
+                    if (!legs.length || !legs[0].tpTargets || legs[0].tpTargets.length < 2) {
+                        toRemove.push(g.orderId);
+                        continue;
+                    }
+                    source = legs[0];
+                    targets = source.tpTargets;
+                    qty = legs.reduce((s, l) => s + (l.quantity || 0), 0);
+                    entryPrice = source.openPrice;
+                    side = source.type || 'BUY';
+                    sym = source.ticker || source.symbol || sym;
+                } else {
+                    source = this.openPositions.find(p => p.id === g.orderId);
+                    if (!source || !source.tpTargets || source.tpTargets.length < 2) {
+                        toRemove.push(g.orderId);
+                        continue;
+                    }
+                    targets = source.tpTargets;
+                    qty = source.quantity || 0;
+                    entryPrice = source.openPrice;
+                    side = source.type || 'BUY';
+                    sym = source.ticker || source.symbol || sym;
                 }
-                targets = source.tpTargets;
-                qty = source.quantity || 0;
-                entryPrice = source.openPrice;
-                side = source.type || 'BUY';
-                sym = source.ticker || source.symbol || sym;
             } else if (g.mode === 'pending') {
-                source = (this.pendingOrders || []).find(p => p.id === g.orderId);
-                if (!source || !source.tpTargets || source.tpTargets.length < 2) {
-                    toRemove.push(g.orderId);
-                    continue;
+                const isSplitGrp = typeof g.orderId === 'string' && g.orderId.startsWith('splitgrp_');
+                if (isSplitGrp) {
+                    const grpId = g.orderId.replace('splitgrp_', '');
+                    const legs = (this.pendingOrders || []).filter(p => p.splitGroupId == grpId);
+                    if (!legs.length || !legs[0].tpTargets || legs[0].tpTargets.length < 2) {
+                        toRemove.push(g.orderId);
+                        continue;
+                    }
+                    source = legs[0];
+                    targets = source.tpTargets;
+                    qty = legs.reduce((s, l) => s + (l.quantity || l.lots || 0), 0);
+                    entryPrice = source.entryPrice;
+                    side = source.direction || 'BUY';
+                    sym = source.ticker || source.symbol || sym;
+                } else {
+                    source = (this.pendingOrders || []).find(p => p.id === g.orderId);
+                    if (!source || !source.tpTargets || source.tpTargets.length < 2) {
+                        toRemove.push(g.orderId);
+                        continue;
+                    }
+                    targets = source.tpTargets;
+                    qty = source.quantity || source.lots || 0;
+                    entryPrice = source.entryPrice;
+                    side = source.direction || 'BUY';
+                    sym = source.ticker || source.symbol || sym;
                 }
-                targets = source.tpTargets;
-                qty = source.quantity || source.lots || 0;
-                entryPrice = source.entryPrice;
-                side = source.direction || 'BUY';
-                sym = source.ticker || source.symbol || sym;
             } else if (g.mode === 'preview') {
                 targets = this.tpTargets || [];
                 const priced = targets.filter(t => t.price > 0);
@@ -20557,13 +20682,25 @@ class OrderManager {
             const lotsBW = g.lotsText.node().getBBox().width + pad * 2;
 
             let totalPnl = 0;
+            const isSplitGrpLine = typeof g.orderId === 'string' && g.orderId.startsWith('splitgrp_');
             if (g.mode === 'open' && source) {
-                const realizedPartials = Number(source.partialClosePnL) || 0;
-                let unrealized = 0;
-                if (currentPrice > 0) {
-                    unrealized = this.estimatePnLForPriceLevel(side, entryPrice, currentPrice, qty, sym);
+                if (isSplitGrpLine) {
+                    const grpId = g.orderId.replace('splitgrp_', '');
+                    const legs = (this.openPositions || []).filter(p => p.splitGroupId == grpId);
+                    for (const leg of legs) {
+                        totalPnl += Number(leg.partialClosePnL) || 0;
+                        if (currentPrice > 0) {
+                            totalPnl += this.estimatePnLForPriceLevel(side, leg.openPrice, currentPrice, leg.quantity || 0, sym);
+                        }
+                    }
+                } else {
+                    const realizedPartials = Number(source.partialClosePnL) || 0;
+                    let unrealized = 0;
+                    if (currentPrice > 0) {
+                        unrealized = this.estimatePnLForPriceLevel(side, entryPrice, currentPrice, qty, sym);
+                    }
+                    totalPnl = realizedPartials + unrealized;
                 }
-                totalPnl = realizedPartials + unrealized;
             } else if (entryPrice > 0 && avgTP > 0) {
                 totalPnl = this.estimatePnLForPriceLevel(side, entryPrice, avgTP, qty, sym);
             }
@@ -21715,7 +21852,12 @@ class OrderManager {
 
         this.removePendingOrderLine(orderId);
         this.removePendingSLTPLines(orderId);
-        this.removeMultiTPAvgLine(orderId);
+        // For split entries, avg TP is keyed by group — only remove when last leg cancelled
+        if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
+            this._removeSplitGroupTPAvgIfEmpty(pendingOrder.splitGroupId, orderId);
+        } else {
+            this.removeMultiTPAvgLine(orderId);
+        }
 
         const orderTypeLabel = pendingOrder.orderType === 'limit' ? 'Limit' : 'Stop';
         console.log(`❌ Cancelled ${orderTypeLabel} ${pendingOrder.direction} order #${orderId}`);
