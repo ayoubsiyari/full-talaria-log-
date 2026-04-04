@@ -8579,39 +8579,41 @@ class OrderManager {
         // Calculate X position with horizontal offsets for badges
         let x;
         if (lineData.isBadge) {
-            const gap = 6;
+            // Layout from right edge: ... [SL] [gap] [TP1] [gap] [TP2] [gap] [rightMargin]
+            // Or for single TP:      ... [SL] [gap] [TP] [gap] [rightMargin]
+            const gap = 8;
             const rightMargin = 65;
-            
-            // Gather all badge widths for layout
-            const slWidth = this.previewLines?.sl?.labelDimensions?.width || 0;
-            const slActive = this.previewLines?.sl?.isBadge ? slWidth : 0;
-
-            // Collect multi-TP badge widths
             const mtpBadges = this.previewLines?.multiTPBadges || [];
-            let mtpTotalW = 0;
-            mtpBadges.forEach(b => { mtpTotalW += (b.labelDimensions?.width || 30) + gap; });
+            const hasMTP = mtpBadges.length > 0;
 
-            // Single TP badge width
-            const tpWidth = this.previewLines?.tp?.labelDimensions?.width || 0;
-            const tpActive = (this.previewLines?.tp?.isBadge && mtpBadges.length === 0) ? tpWidth : 0;
+            // Build ordered list of TP badges from rightmost to leftmost
+            // Rightmost badge is last in the array (highest index)
+            let cursor = this.chart.w - rightMargin;
 
-            // Layout from right: [SL] [TP1] [TP2] ... or [SL] [TP]
-            // Rightmost badges first
-            if (lineData.label === 'SL') {
-                const rightOf = tpActive > 0 ? tpActive + gap : mtpTotalW;
-                x = this.chart.w - rightMargin - slActive - gap - rightOf;
-            } else if (lineData.label === 'TP' && mtpBadges.length === 0) {
-                x = this.chart.w - rightMargin - tpActive - gap;
-            } else if (lineData.isMultiTPBadge) {
-                // Position multi-TP badges in a row from right
-                const myIdx = lineData.multiTPIndex || 0;
+            if (lineData.isMultiTPBadge) {
+                // Place multi-TP badges: rightmost (last index) is closest to price axis
                 let rightOffset = 0;
-                // Badges after this one (higher index = further right)
-                for (let j = mtpBadges.length - 1; j > myIdx; j--) {
-                    rightOffset += (mtpBadges[j].labelDimensions?.width || 30) + gap;
+                for (let j = mtpBadges.length - 1; j >= 0; j--) {
+                    const w = mtpBadges[j].labelDimensions?.width || 30;
+                    if (j === lineData.multiTPIndex) {
+                        x = cursor - rightOffset - w;
+                        break;
+                    }
+                    rightOffset += w + gap;
                 }
-                const myW = lineData.labelDimensions?.width || 30;
-                x = this.chart.w - rightMargin - myW - gap - rightOffset;
+            } else if (lineData.label === 'TP' && !hasMTP) {
+                const myW = bbox.width;
+                x = cursor - myW;
+            } else if (lineData.label === 'SL') {
+                // SL goes to the left of all TP badges
+                let tpZoneW = 0;
+                if (hasMTP) {
+                    mtpBadges.forEach(b => { tpZoneW += (b.labelDimensions?.width || 30) + gap; });
+                } else if (this.previewLines?.tp?.isBadge) {
+                    tpZoneW = (this.previewLines.tp.labelDimensions?.width || 30) + gap;
+                }
+                const myW = bbox.width;
+                x = cursor - tpZoneW - myW;
             }
         } else {
             const pad = 145;
