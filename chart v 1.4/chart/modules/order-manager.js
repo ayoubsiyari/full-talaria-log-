@@ -19283,17 +19283,15 @@ class OrderManager {
                     order.stopLoss = newPrice;
                     const curBar = self.getCurrentCandle();
                     if (curBar) {
-                        const snap = self._getCurrentTickSnapshot();
                         order._slNoTriggerBeforeTime = curBar.t;
-                        order._slNoTriggerBeforeTick = snap.tick;
+                        order._slNoTriggerBeforeTick = Infinity;
                     }
                 } else if (lineType === 'tp') {
                     order.takeProfit = newPrice;
                     const curBar = self.getCurrentCandle();
                     if (curBar) {
-                        const snap = self._getCurrentTickSnapshot();
                         order._tpNoTriggerBeforeTime = curBar.t;
-                        order._tpNoTriggerBeforeTick = snap.tick;
+                        order._tpNoTriggerBeforeTick = Infinity;
                     }
                 } else if (lineType === 'be') {
                     // BE line is read-only (calculated from entry/SL)
@@ -19476,17 +19474,16 @@ class OrderManager {
             }
 
             // Refresh guards so the moved SL/TP won't trigger on the current
-            // candle's existing OHLC range — only on NEW ticks after the drag.
+            // candle's existing OHLC range — only on the NEXT candle.
             if (lineType === 'sl' || lineType === 'tp') {
                 const curBar = self.getCurrentCandle();
                 if (curBar) {
-                    const snap = self._getCurrentTickSnapshot();
                     if (lineType === 'sl') {
                         order._slNoTriggerBeforeTime = curBar.t;
-                        order._slNoTriggerBeforeTick = snap.tick;
+                        order._slNoTriggerBeforeTick = Infinity;
                     } else {
                         order._tpNoTriggerBeforeTime = curBar.t;
-                        order._tpNoTriggerBeforeTick = snap.tick;
+                        order._tpNoTriggerBeforeTick = Infinity;
                     }
                 }
             }
@@ -19576,9 +19573,8 @@ class OrderManager {
                     // Keep guard fresh so the moved TP doesn't trigger mid-drag
                     const curBar = self.getCurrentCandle();
                     if (curBar) {
-                        const snap = self._getCurrentTickSnapshot();
                         order.tpTargets[targetIndex]._noTriggerBeforeTime = curBar.t;
-                        order.tpTargets[targetIndex]._noTriggerBeforeTick = snap.tick;
+                        order.tpTargets[targetIndex]._noTriggerBeforeTick = Infinity;
                     }
                 }
                 
@@ -19681,13 +19677,12 @@ class OrderManager {
             
             const finalPrice = target.price;
 
-            // Refresh guard so the moved TP won't trigger on the current candle's
-            // existing OHLC range — only on NEW ticks after the drag.
+            // Refresh guard so the moved TP won't trigger on the current candle —
+            // only on the NEXT candle after the drag completes.
             const curBar = self.getCurrentCandle();
             if (curBar) {
-                const snap = self._getCurrentTickSnapshot();
                 target._noTriggerBeforeTime = curBar.t;
-                target._noTriggerBeforeTick = snap.tick;
+                target._noTriggerBeforeTick = Infinity;
             }
             
             // Final update
@@ -19845,12 +19840,11 @@ class OrderManager {
             }
 
             const curBar = self.getCurrentCandle();
-            const snap = self._getCurrentTickSnapshot();
             if (dragType === 'tp') {
                 order.takeProfit = newPrice;
                 if (curBar) {
                     order._tpNoTriggerBeforeTime = curBar.t;
-                    order._tpNoTriggerBeforeTick = snap.tick;
+                    order._tpNoTriggerBeforeTick = Infinity;
                 }
                 console.log(`✅ TP set to ${newPrice.toFixed(5)} for order #${order.id}`);
                 self.showNotification(`TP set to ${self.formatPrice(newPrice)} for #${order.id}`, 'success');
@@ -19858,7 +19852,7 @@ class OrderManager {
                 order.stopLoss = newPrice;
                 if (curBar) {
                     order._slNoTriggerBeforeTime = curBar.t;
-                    order._slNoTriggerBeforeTick = snap.tick;
+                    order._slNoTriggerBeforeTick = Infinity;
                 }
                 console.log(`✅ SL set to ${newPrice.toFixed(5)} for order #${order.id}`);
                 self.showNotification(`SL set to ${self.formatPrice(newPrice)} for #${order.id}`, 'success');
@@ -20067,9 +20061,8 @@ class OrderManager {
             target.price = newPrice;
             const curBar = self.getCurrentCandle();
             if (curBar) {
-                const snap = self._getCurrentTickSnapshot();
                 target._noTriggerBeforeTime = curBar.t;
-                target._noTriggerBeforeTick = snap.tick;
+                target._noTriggerBeforeTick = Infinity;
             }
             console.log(`✅ TP${targetNum} set to ${newPrice.toFixed(5)} for order #${order.id}`);
             self.showNotification(`TP${targetNum} set to ${self.formatPrice(newPrice)} for #${order.id}`, 'success');
@@ -21300,12 +21293,12 @@ class OrderManager {
 
                 pendingOrder.entryPrice = newPrice;
 
-                // Record current candle + tick so the order won't fill on price
-                // action that already happened, but WILL fill on new ticks.
+                // Record current candle so the order won't fill on price action
+                // that already happened — only on the NEXT candle.
                 const curBar = self.getCurrentCandle();
                 if (curBar) {
                     pendingOrder._noFillBeforeTime = curBar.t;
-                    pendingOrder._noFillBeforeTick = self._getCurrentTickSnapshot().tick;
+                    pendingOrder._noFillBeforeTick = Infinity;
                 }
 
                 const finalY = chart.scales.yScale(newPrice);
@@ -21378,32 +21371,6 @@ class OrderManager {
                     }
                 }
 
-                // Only auto-execute on release if replay is actively playing
-                // (otherwise, wait for the next candle tick to check activation normally)
-                const replayPlaying = self.replaySystem && self.replaySystem.isActive && self.replaySystem.isPlaying;
-                if (replayPlaying && curCandle) {
-                    const high = Number.parseFloat(curCandle.h);
-                    const low = Number.parseFloat(curCandle.l);
-                    let shouldExec = false;
-                    if (pendingOrder.orderType === 'limit') {
-                        if (pendingOrder.direction === 'BUY' && low <= pendingOrder.entryPrice) shouldExec = true;
-                        else if (pendingOrder.direction === 'SELL' && high >= pendingOrder.entryPrice) shouldExec = true;
-                    } else if (pendingOrder.orderType === 'stop') {
-                        if (pendingOrder.direction === 'BUY' && high >= pendingOrder.entryPrice) shouldExec = true;
-                        else if (pendingOrder.direction === 'SELL' && low <= pendingOrder.entryPrice) shouldExec = true;
-                    }
-                    if (shouldExec) {
-                        console.log(`⚡ Price already past entry — executing #${pendingOrder.id} on release`);
-                        if (self.orderService) {
-                            self.orderService.removePendingOrder(pendingOrder.id);
-                        } else {
-                            self.pendingOrders = self.pendingOrders.filter(o => o.id !== pendingOrder.id);
-                        }
-                        self.executePendingOrder(pendingOrder, curCandle);
-                        return;
-                    }
-                }
-                
                 // Redraw targets to update P&L with new lot size
                 self.removePendingSLTPLines(pendingOrder.id);
                 self.removeMultiTPAvgLine(pendingOrder.id);
