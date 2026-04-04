@@ -19900,6 +19900,95 @@ class OrderManager {
     }
 
     /**
+     * Factory: create a dashed "plus" badge (Entry+, TP+).
+     * @returns {d3.Selection} the badge <g> group (starts hidden)
+     */
+    _createPlusBadge(chart, orderId, prefix, color, label, onClick) {
+        const bH = 16, bR = 3;
+        const g = chart.svg.append('g')
+            .attr('class', `${prefix}-${label.toLowerCase().replace('+', '-plus')}-badge ${prefix}-${orderId}`)
+            .attr('pointer-events', 'all')
+            .style('cursor', 'pointer')
+            .style('display', 'none');
+        g.append('rect')
+            .attr('height', bH).attr('rx', bR)
+            .attr('fill', this._plusBadgeFill(color, 0.12))
+            .attr('stroke', color).attr('stroke-width', 1)
+            .attr('stroke-dasharray', '3 2')
+            .style('pointer-events', 'all');
+        g.append('text')
+            .attr('fill', color)
+            .attr('font-size', '9px').attr('font-weight', '700')
+            .attr('dy', '0.35em').attr('text-anchor', 'middle')
+            .attr('opacity', 0.8)
+            .style('pointer-events', 'none')
+            .text(label);
+        const rgb = this._hexToRGB(color);
+        g.node().__badgeRGB = rgb;
+        g.on('mouseenter', function() {
+                const rgb = this.__badgeRGB;
+                d3.select(this).select('rect').attr('fill', `rgba(${rgb},0.35)`).attr('stroke-dasharray', null);
+                d3.select(this).select('text').attr('opacity', 1);
+            })
+            .on('mouseleave', function() {
+                const rgb = this.__badgeRGB;
+                d3.select(this).select('rect').attr('fill', `rgba(${rgb},0.12)`).attr('stroke-dasharray', '3 2');
+                d3.select(this).select('text').attr('opacity', 0.8);
+            })
+            .on('click', (event) => { event.stopPropagation(); onClick(); });
+        return g;
+    }
+
+    _hexToRGB(hex) {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        return `${r},${g},${b}`;
+    }
+
+    _plusBadgeFill(color, alpha) {
+        const r = parseInt(color.slice(1, 3), 16);
+        const g = parseInt(color.slice(3, 5), 16);
+        const b = parseInt(color.slice(5, 7), 16);
+        return `rgba(${r},${g},${b},${alpha})`;
+    }
+
+    /**
+     * Badge click: toggle multi-entry ON in the order panel.
+     */
+    _onEntryPlusBadgeClick() {
+        if (this.isMultiEntryMode) return;
+        this.setEntryMode(true);
+        const panel = document.getElementById('orderPanel') || document.getElementById('orderManagerPanel');
+        if (panel) {
+            panel.scrollTop = 0;
+            if (panel.style.display === 'none') {
+                panel.style.display = '';
+            }
+        }
+        this.showNotification('Multi-Entry mode enabled', 'info');
+    }
+
+    /**
+     * Badge click: toggle multi-TP ON in the order panel, mirroring multiTPBtn.onclick.
+     */
+    _onTPPlusBadgeClick() {
+        const toggle = document.getElementById('multipleTPToggle');
+        if (toggle && toggle.checked) return;
+        if (toggle) {
+            toggle.checked = true;
+        }
+        this._syncMultiTPButtonState();
+        this.initializeTPTargets();
+        this.updatePreviewLines();
+        const panel = document.getElementById('orderPanel') || document.getElementById('orderManagerPanel');
+        if (panel && panel.style.display === 'none') {
+            panel.style.display = '';
+        }
+        this.showNotification('Multi-TP mode enabled', 'info');
+    }
+
+    /**
      * Render stacked multi-TP badges inside the container group.
      * Each unset target gets its own badge; badges stack with a slight
      * offset so the user sees depth (like layered cards).
@@ -20336,6 +20425,14 @@ class OrderManager {
             .attr('class', `order-tp-badges order-${order.id}`)
             .style('display', 'none');
 
+        // --- "Entry+" badge: click to enable multi-entry in order panel ---
+        const entryPlusBadge = this._createPlusBadge(chart, order.id, 'order',
+            '#3b82f6', 'Entry+', () => this._onEntryPlusBadgeClick());
+
+        // --- "TP+" badge: click to enable multi-TP in order panel ---
+        const tpPlusBadge = this._createPlusBadge(chart, order.id, 'order',
+            '#22c55e', 'TP+', () => this._onTPPlusBadgeClick());
+
         this._setupEntryDragToCreateTPSL(order, line, labelBox, chart,
             [dragHitLine, labelText, arrow, priceBox, priceText, slBadgeGroup, tpBadgeGroup]);
 
@@ -20354,6 +20451,8 @@ class OrderManager {
             slBadge: slBadgeGroup,
             tpBadge: tpBadgeGroup,
             tpBadgesContainer,
+            entryPlusBadge,
+            tpPlusBadge,
             _tpBadgeTargetCount: 0,
             chart
         });
@@ -21126,6 +21225,23 @@ class OrderManager {
                             }
                         }
                     }
+
+                    // Entry+ badge: hide for split group members (already split)
+                    if (ml.entryPlusBadge) ml.entryPlusBadge.style('display', 'none');
+
+                    // TP+ badge: show only if no multi-TP yet
+                    const plusBW = 38;
+                    if (ml.tpPlusBadge) {
+                        if (!hasMultiTP) {
+                            ml.tpPlusBadge.style('display', null)
+                                .attr('transform', `translate(${memberCx}, ${oy - bH / 2})`);
+                            ml.tpPlusBadge.select('rect').attr('width', plusBW);
+                            ml.tpPlusBadge.select('text').attr('x', plusBW / 2).attr('y', bH / 2);
+                            memberCx += plusBW + bGap2;
+                        } else {
+                            ml.tpPlusBadge.style('display', 'none');
+                        }
+                    }
                 }
 
                 ml._handledBySplitGroup = true;
@@ -21440,6 +21556,14 @@ class OrderManager {
         labelBox.call(drag);
         if (priceBox) priceBox.call(drag);
         
+        // --- "Entry+" badge: click to enable multi-entry in order panel ---
+        const entryPlusBadge = this._createPlusBadge(chart, pendingOrder.id, 'pending',
+            '#3b82f6', 'Entry+', () => this._onEntryPlusBadgeClick());
+
+        // --- "TP+" badge: click to enable multi-TP in order panel ---
+        const tpPlusBadge = this._createPlusBadge(chart, pendingOrder.id, 'pending',
+            '#22c55e', 'TP+', () => this._onTPPlusBadgeClick());
+
         this.orderLines.push({
             orderId: pendingOrder.id,
             isPending: true,
@@ -21450,6 +21574,8 @@ class OrderManager {
             priceBox,
             closeBtn,
             priceText,
+            entryPlusBadge,
+            tpPlusBadge,
             chart
         });
         
@@ -21896,6 +22022,8 @@ class OrderManager {
                 if (lineData.priceBox) lineData.priceBox.remove();
                 if (lineData.priceText) lineData.priceText.remove();
                 if (lineData.closeBtn) lineData.closeBtn.remove();
+                if (lineData.entryPlusBadge) lineData.entryPlusBadge.remove();
+                if (lineData.tpPlusBadge) lineData.tpPlusBadge.remove();
             } catch (e) {
                 console.error('Error removing lineData elements:', e);
             }
@@ -22970,6 +23098,8 @@ class OrderManager {
             if (orderLine.slBadge) orderLine.slBadge.remove();
             if (orderLine.tpBadge) orderLine.tpBadge.remove();
             if (orderLine.tpBadgesContainer) orderLine.tpBadgesContainer.remove();
+            if (orderLine.entryPlusBadge) orderLine.entryPlusBadge.remove();
+            if (orderLine.tpPlusBadge) orderLine.tpPlusBadge.remove();
         });
         
         // Remove from array
@@ -24348,17 +24478,20 @@ class OrderManager {
                         pnlBW = pw + pad * 2;
                     }
 
-                    // Determine badge state
+                    // Determine badge state (works for both pending and open)
                     const hasSL = !isPending && orderData.stopLoss && orderData.stopLoss > 0;
-                    const hasMultiTP = !isPending && orderData.tpTargets && orderData.tpTargets.length > 0;
-                    const hasSingleTP = !isPending && !hasMultiTP && orderData.takeProfit && orderData.takeProfit > 0;
+                    const hasMultiTP = orderData.tpTargets && orderData.tpTargets.length > 0;
+                    const hasSingleTP = !hasMultiTP && orderData.takeProfit && orderData.takeProfit > 0;
                     const allTPsSet = hasMultiTP && orderData.tpTargets.every(t => (t.price > 0) || t.hit);
+                    const isAlreadySplitEntry = !!(orderData.isSplitEntry || orderData.splitGroupId);
+                    const isAlreadyMultiTP = hasMultiTP;
 
                     const bW = 24, bGap2 = 3, bH = 16;
+                    const plusBW = 38;
 
                     // Calculate multi-TP badge width (stacked)
                     let multiTPBadgesW = 0;
-                    if (hasMultiTP && !allTPsSet && olEntry.tpBadgesContainer) {
+                    if (!isPending && hasMultiTP && !allTPsSet && olEntry.tpBadgesContainer) {
                         const stackOffset = 5, singleBadgeW = 28;
                         const activeTargets = orderData.tpTargets.filter(t => !t.hit);
                         multiTPBadgesW = activeTargets.length > 0
@@ -24366,12 +24499,19 @@ class OrderManager {
                             : 0;
                     }
 
-                    // Space for SL badge
+                    // Space for SL badge (open positions only)
                     let slBadgeW = (!isPending && !hasSL) ? bW + bGap2 : 0;
-                    // Space for single TP badge (only when no multi-TP)
+                    // Space for single TP badge (open positions, no multi-TP)
                     let singleTPBadgeW = (!isPending && !hasMultiTP && !hasSingleTP) ? bW + bGap2 : 0;
+                    // Space for Entry+ badge
+                    const showEntryPlus = !isAlreadySplitEntry && olEntry.entryPlusBadge;
+                    let entryPlusBadgeW = showEntryPlus ? plusBW + bGap2 : 0;
+                    // Space for TP+ badge
+                    const showTPPlus = !isAlreadyMultiTP && olEntry.tpPlusBadge;
+                    let tpPlusBadgeW = showTPPlus ? plusBW + bGap2 : 0;
 
-                    let totalBadgesW = slBadgeW + (hasMultiTP ? multiTPBadgesW : singleTPBadgeW);
+                    let totalBadgesW = slBadgeW + (hasMultiTP ? multiTPBadgesW : singleTPBadgeW)
+                        + entryPlusBadgeW + tpPlusBadgeW;
 
                     const rightEdge = ch.w - yAxisWidth - 10;
                     const closeBtnX = rightEdge - closeBtnR;
@@ -24389,7 +24529,7 @@ class OrderManager {
                         cx += pnlBW + gap;
                     }
 
-                    // --- SL badge ---
+                    // --- SL badge (open only) ---
                     if (!isPending && slBadge) {
                         if (hasSL) {
                             slBadge.style('display', 'none');
@@ -24402,10 +24542,9 @@ class OrderManager {
                         }
                     }
 
-                    // --- TP badges ---
+                    // --- TP badges (open only) ---
                     if (!isPending) {
                         if (hasMultiTP) {
-                            // Hide single TP badge; show stacked multi-TP badges
                             if (tpBadge) tpBadge.style('display', 'none');
                             if (olEntry.tpBadgesContainer) {
                                 if (allTPsSet) {
@@ -24421,7 +24560,6 @@ class OrderManager {
                                 }
                             }
                         } else {
-                            // Hide multi-TP container; show single TP badge
                             if (olEntry.tpBadgesContainer) olEntry.tpBadgesContainer.style('display', 'none');
                             if (tpBadge) {
                                 if (hasSingleTP) {
@@ -24434,6 +24572,32 @@ class OrderManager {
                                     cx += bW + bGap2;
                                 }
                             }
+                        }
+                    }
+
+                    // --- Entry+ badge (both pending and open) ---
+                    if (olEntry.entryPlusBadge) {
+                        if (showEntryPlus) {
+                            olEntry.entryPlusBadge.style('display', null)
+                                .attr('transform', `translate(${cx}, ${y - bH / 2})`);
+                            olEntry.entryPlusBadge.select('rect').attr('width', plusBW);
+                            olEntry.entryPlusBadge.select('text').attr('x', plusBW / 2).attr('y', bH / 2);
+                            cx += plusBW + bGap2;
+                        } else {
+                            olEntry.entryPlusBadge.style('display', 'none');
+                        }
+                    }
+
+                    // --- TP+ badge (both pending and open) ---
+                    if (olEntry.tpPlusBadge) {
+                        if (showTPPlus) {
+                            olEntry.tpPlusBadge.style('display', null)
+                                .attr('transform', `translate(${cx}, ${y - bH / 2})`);
+                            olEntry.tpPlusBadge.select('rect').attr('width', plusBW);
+                            olEntry.tpPlusBadge.select('text').attr('x', plusBW / 2).attr('y', bH / 2);
+                            cx += plusBW + bGap2;
+                        } else {
+                            olEntry.tpPlusBadge.style('display', 'none');
                         }
                     }
 
