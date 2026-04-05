@@ -8870,6 +8870,27 @@ class OrderManager {
         const bbox = lineData.labelGroup.node().getBBox();
         lineData.labelDimensions = { width: bbox.width, height: bbox.height };
 
+        // While dragging, keep label X stable. Otherwise renderPreviewLabel uses chart.w - maxW - pad
+        // but alignPreviewLabels uses sharedBaseX — they disagree → horizontal snap every move.
+        if (this.isDraggingPreviewLine && !lineData.isBadge) {
+            const tr = lineData.labelGroup.attr('transform') || '';
+            const m = /translate\(([^,]+)/.exec(tr);
+            const curX = m ? parseFloat(m[1]) : NaN;
+            if (Number.isFinite(curX)) {
+                let yPixel;
+                if (overrideY !== null && overrideY !== undefined) {
+                    yPixel = overrideY;
+                } else if (this.chart?.scales?.yScale) {
+                    yPixel = this.chart.scales.yScale(lineData.price);
+                } else {
+                    yPixel = 0;
+                }
+                const translateY = yPixel - bbox.height / 2;
+                lineData.labelGroup.attr('transform', `translate(${curX}, ${translateY})`);
+                return;
+            }
+        }
+
         // Calculate X position with horizontal offsets for badges
         let x;
         if (lineData.isBadge) {
@@ -14609,7 +14630,10 @@ class OrderManager {
             const pt = ld.yAxisHighlight.select('.y-axis-price-text');
             if (pt.size()) pt.text(formatted);
         }
-        this.scheduleAlignPreviewLabels();
+        // Full label realign fights the drag handler (sharedBaseX vs preserved translate) — skip until drag end.
+        if (!this.isDraggingPreviewLine) {
+            this.scheduleAlignPreviewLabels();
+        }
         this._syncPendingLimitStopConnector();
         this._syncTpBadgeYToMultiEntryAvg();
     }
