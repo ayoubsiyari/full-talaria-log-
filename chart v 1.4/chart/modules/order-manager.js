@@ -12577,8 +12577,8 @@ class OrderManager {
                     }
                 }
                 
-                // Calculate and display pip distance in real-time (skip for SL — already on label)
-                if (lineData.label !== 'SL') {
+                // Calculate and display pip distance in real-time (only for Entry line)
+                if (lineData.label === 'Entry') {
                     const pipDistance = Math.abs(newPrice - (lineData.dragStartPrice || newPrice)) / self.pipSize;
                     if (pipDistance > 0.1) {
                         if (!lineData.pipIndicator) {
@@ -13110,23 +13110,7 @@ class OrderManager {
                                 .text(`R:R ${rrRatio.toFixed(2)}`);
                         }
                         
-                        // Show dollar amount on TP line if dragging TP
-                        if (lineData.label === 'TP' && !lineData.dollarIndicator) {
-                            lineData.dollarIndicator = lineData.labelGroup.append('text')
-                                .attr('class', 'dollar-indicator')
-                                .attr('fill', '#22c55e')
-                                .attr('font-size', '11px')
-                                .attr('font-weight', '700')
-                                .attr('text-anchor', 'end');
-                        }
-                        if (lineData.label === 'TP' && lineData.dollarIndicator) {
-                            lineData.dollarIndicator
-                                .attr('x', -10)
-                                .attr('y', 4)
-                                .text(`+$${rewardAmount.toFixed(2)}`);
-                        }
-                        
-                        // SL dollar indicator removed — P&L already shown on SL label
+                        // TP/SL dollar indicators removed — P&L already shown on labels
                     }
                     
                     // Call these AFTER calculating indicators
@@ -19468,88 +19452,7 @@ class OrderManager {
                     extraElements.priceText.text(self.formatPrice(newPrice));
                 }
                 
-                // Show live pip distance indicator (skip for SL — already on label)
-                if (lineType !== 'sl') {
-                    const pipDistance = Math.abs(newPrice - dragStartPrice) / self.pipSize;
-                    if (pipDistance > 0.1) {
-                        if (!pipIndicator) {
-                            pipIndicator = ctx.svg.append('text')
-                                .attr('class', `pip-indicator-${order.id}`)
-                                .attr('fill', '#fbbf24')
-                                .attr('font-size', '10px')
-                                .attr('font-weight', '600')
-                                .attr('text-anchor', 'middle')
-                                .attr('pointer-events', 'none');
-                        }
-                        pipIndicator
-                            .attr('x', ctx.w / 2)
-                            .attr('y', newY - 25)
-                            .text(`${pipDistance.toFixed(1)} pips`);
-                    } else if (pipIndicator) {
-                        pipIndicator.remove();
-                        pipIndicator = null;
-                    }
-                }
-                
-                // Calculate and show dollar amount for SL/TP (do this immediately, not throttled)
-                const entryPrice = order.openPrice;
-                if (lineType === 'sl' || lineType === 'tp') {
-                    let priceDiff = 0;
-                        
-                        if (order.type === 'BUY') {
-                            priceDiff = lineType === 'tp' 
-                                ? (newPrice - entryPrice) 
-                                : (entryPrice - newPrice);
-                        } else {
-                            priceDiff = lineType === 'tp' 
-                                ? (entryPrice - newPrice) 
-                                : (newPrice - entryPrice);
-                        }
-                        
-                    if (priceDiff > 0) {
-                        const pips = priceDiff / self.pipSize;
-                        const dollarAmount = pips * order.quantity * self.pipValuePerLot;
-                        const color = lineType === 'tp' ? '#22c55e' : '#ef4444';
-                        const sign = lineType === 'tp' ? '+' : '-';
-                        
-                        if (lineType !== 'sl') {
-                            if (!dollarIndicator) {
-                                dollarIndicator = ctx.svg.append('text')
-                                    .attr('class', `dollar-indicator-${order.id}`)
-                                    .attr('fill', color)
-                                    .attr('font-size', '11px')
-                                    .attr('font-weight', '700')
-                                    .attr('text-anchor', 'start')
-                                    .attr('pointer-events', 'none');
-                            }
-                            dollarIndicator
-                                .attr('x', ctx.w / 2 + 50)
-                                .attr('y', newY + 4)
-                                .attr('fill', color)
-                                .text(`${sign}$${dollarAmount.toFixed(2)}`);
-                        }
-                    }
-                    
-                    if (lineType !== 'sl' && order.stopLoss && order.takeProfit) {
-                        const risk = Math.abs(entryPrice - order.stopLoss);
-                        const reward = Math.abs(order.takeProfit - entryPrice);
-                        const rrRatio = risk > 0 ? (reward / risk) : 0;
-                        
-                        if (!rrIndicator) {
-                            rrIndicator = ctx.svg.append('text')
-                                .attr('class', `rr-indicator-${order.id}`)
-                                .attr('fill', '#60a5fa')
-                                .attr('font-size', '11px')
-                                .attr('font-weight', '700')
-                                .attr('text-anchor', 'start')
-                                .attr('pointer-events', 'none');
-                        }
-                        rrIndicator
-                            .attr('x', ctx.w / 2 + 50)
-                            .attr('y', newY - 12)
-                            .text(`R:R ${rrRatio.toFixed(2)}`);
-                    }
-                }
+                // SL/TP floating indicators (pips, dollar, R:R) removed — info already on labels
                 
                 // Throttled panel update and connector redraw
                 throttledUpdate(() => {
@@ -19751,55 +19654,7 @@ class OrderManager {
                     priceText.text(self.formatPrice(newPrice));
                 }
                 
-                // Show live pip distance indicator
-                const pipDistance = Math.abs(newPrice - dragStartPrice) / self.pipSize;
-                if (pipDistance > 0.1) {
-                    if (!pipIndicator) {
-                        pipIndicator = ctx.svg.append('text')
-                            .attr('class', `pip-indicator-tp-${order.id}-${targetIndex}`)
-                            .attr('fill', '#fbbf24')
-                            .attr('font-size', '10px')
-                            .attr('font-weight', '600')
-                            .attr('text-anchor', 'middle')
-                            .attr('pointer-events', 'none');
-                    }
-                    pipIndicator
-                        .attr('x', ctx.w / 2)
-                        .attr('y', newY - 25)
-                        .text(`${pipDistance.toFixed(1)} pips`);
-                } else if (pipIndicator) {
-                    pipIndicator.remove();
-                    pipIndicator = null;
-                }
-                
-                // Calculate dollar amount
-                const entryPrice = order.openPrice;
-                const targetQuantity = order.quantity * (target.percentage / 100);
-                let priceDiff = order.type === 'BUY' 
-                    ? (newPrice - entryPrice) 
-                    : (entryPrice - newPrice);
-                    
-                if (priceDiff > 0) {
-                    const sym = order.ticker || order.symbol || self._getSymbol();
-                    const dollarAmount = self.estimatePnLForPriceLevel(order.type, entryPrice, newPrice, targetQuantity, sym);
-                    
-                    if (!dollarIndicator) {
-                        dollarIndicator = ctx.svg.append('text')
-                            .attr('class', `dollar-indicator-tp-${order.id}-${targetIndex}`)
-                            .attr('fill', '#22c55e')
-                            .attr('font-size', '11px')
-                            .attr('font-weight', '700')
-                            .attr('text-anchor', 'start')
-                            .attr('pointer-events', 'none');
-                    }
-                    dollarIndicator
-                        .attr('x', ctx.w / 2 + 50)
-                        .attr('y', newY + 4)
-                        .text(`+$${dollarAmount.toFixed(2)}`);
-                } else if (dollarIndicator) {
-                    dollarIndicator.remove();
-                    dollarIndicator = null;
-                }
+                // TP floating indicators removed — info already on labels
                 
                 // Update SL/TP lines positions (throttled)
                 if (!frameId) {
