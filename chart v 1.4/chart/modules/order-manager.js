@@ -22814,16 +22814,23 @@ class OrderManager {
                     survivor.breakevenSettings = cancelledBESettings;
                 }
 
+                // Remove all visuals BEFORE clearing split identity
+                // (so the splitgrp_ keyed avg TP line can be found and removed)
+                this.removeSplitGroupAvgLine(splitGroupId);
+                const grpAvgTPKey = `splitgrp_${splitGroupId}`;
+                const grpAvgTPIdx = this.multiTPAvgLines.findIndex(g => g.orderId === grpAvgTPKey);
+                if (grpAvgTPIdx !== -1) this._destroyMultiTPAvgEntry(grpAvgTPIdx);
+
+                this.removePendingOrderLine(survivor.id);
+                this.removePendingSLTPLines(survivor.id);
+
+                // Now clear split identity
                 survivor.isSplitEntry = false;
                 survivor.splitGroupId = undefined;
                 survivor.splitIndex = undefined;
                 survivor.splitTotal = undefined;
 
-                this.removeSplitGroupAvgLine(splitGroupId);
-
-                this.removePendingOrderLine(survivor.id);
-                this.removePendingSLTPLines(survivor.id);
-                this.removeMultiTPAvgLine(survivor.id);
+                // Redraw as a normal (non-split) pending order
                 this.drawPendingOrderLine(survivor);
                 this.drawPendingOrderTargets(survivor);
                 if (survivor.tpTargets && survivor.tpTargets.length >= 2) {
@@ -22846,23 +22853,30 @@ class OrderManager {
                 });
                 remainingSiblings.forEach((sib, i) => { sib.splitIndex = i + 1; });
 
+                // 1. Remove ALL visual elements for remaining siblings first
+                remainingSiblings.forEach(sib => {
+                    this.removePendingOrderLine(sib.id);
+                    this.removePendingSLTPLines(sib.id);
+                    this.removeMultiTPAvgLine(sib.id);
+                });
+
+                // 2. Update avg entry line
                 this._updateSplitGroupAvgLines();
 
-                // Redraw targets for the new primary leg (splitIndex 1)
+                // 3. Redraw entry lines for all remaining siblings
+                remainingSiblings.forEach(sib => {
+                    this.drawPendingOrderLine(sib);
+                });
+
+                // 4. Redraw targets for the new primary leg (splitIndex 1)
                 const newPrimary = remainingSiblings.find(s => Number(s.splitIndex) === 1) || remainingSiblings[0];
-                this.removePendingSLTPLines(newPrimary.id);
-                this.removeMultiTPAvgLine(newPrimary.id);
                 this.drawPendingOrderTargets(newPrimary);
                 if (newPrimary.tpTargets && newPrimary.tpTargets.length >= 2) {
                     this.drawMultiTPAvgLine(newPrimary, 'pending');
                 }
-                this.positionPendingOrderTargets(this.chart);
 
-                // Redraw entry lines for all remaining siblings to reflect new lot sizes
-                remainingSiblings.forEach(sib => {
-                    this.removePendingOrderLine(sib.id);
-                    this.drawPendingOrderLine(sib);
-                });
+                // 5. Position everything
+                this.positionPendingOrderTargets(this.chart);
             }
         }
 
