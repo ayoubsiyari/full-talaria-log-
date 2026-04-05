@@ -8965,8 +8965,12 @@ class OrderManager {
         // No-op: panel is now a fixed right-side drawer and does not need drag-to-reposition.
     }
 
+    /**
+     * Align full-width preview line labels, then re-anchor TP/SL badges to the entry tag.
+     * Previously used double-rAF (paint → align → snap). Running synchronously removes the right-then-back jitter on drag/click.
+     */
     scheduleAlignPreviewLabels() {
-        if (typeof requestAnimationFrame === 'function') {
+        if (typeof cancelAnimationFrame === 'function') {
             if (this.pendingPreviewAlignFrame) {
                 cancelAnimationFrame(this.pendingPreviewAlignFrame);
                 this.pendingPreviewAlignFrame = null;
@@ -8975,24 +8979,14 @@ class OrderManager {
                 cancelAnimationFrame(this.pendingPreviewAlignFollowupFrame);
                 this.pendingPreviewAlignFollowupFrame = null;
             }
-
-            this.pendingPreviewAlignFrame = requestAnimationFrame(() => {
-                this.pendingPreviewAlignFrame = null;
-                this.pendingPreviewAlignFollowupFrame = requestAnimationFrame(() => {
-                    this.pendingPreviewAlignFollowupFrame = null;
-                    this.alignPreviewLabels();
-                });
-            });
-            return;
         }
-
         if (this.pendingPreviewAlignTimeout) {
             clearTimeout(this.pendingPreviewAlignTimeout);
-        }
-        this.pendingPreviewAlignTimeout = setTimeout(() => {
             this.pendingPreviewAlignTimeout = null;
-            this.alignPreviewLabels();
-        }, 0);
+        }
+        if (!this.previewLines || !this.chart?.scales) return;
+        this.alignPreviewLabels();
+        this._reflowEntryAnchoredTpSlBadges();
     }
     
     /**
@@ -12132,10 +12126,10 @@ class OrderManager {
             updateYAxisHighlight(this.previewLines.avgEntry, avgY);
         }
 
-        // Reflow horizontal preview label alignment after width changes
+        // Reflow horizontal preview label alignment after width changes (sync — no deferred snap)
         if (widthChanged) {
             this.alignPreviewLabels();
-            this.scheduleAlignPreviewLabels();
+            this._reflowEntryAnchoredTpSlBadges();
         } else {
             // Vertical-only pan: x2 was reset to full width — clip back to label edge (no gap).
             const clipPreviewToLabel = (ld) => {
@@ -12463,8 +12457,9 @@ class OrderManager {
             }
         }
 
-        // After all preview geometry is in the DOM: reflow TP/SL badges vs entry **in the same turn**
-        // so we do not paint once then rAF-nudge right (felt like lag on ✓ / panel updates).
+        // Final layout in one turn: align entry/line labels (sharedBaseX), then TP/SL badges track entry's right edge.
+        // Must run alignPreviewLabels before _reflowEntryAnchoredTpSlBadges (was only deferred via rAF from drawPreviewLine → snap).
+        this.alignPreviewLabels();
         this._reflowEntryAnchoredTpSlBadges();
         this._syncPendingLimitStopConnector();
     }
@@ -12540,7 +12535,6 @@ class OrderManager {
             this.makePreviewLineDraggable(lineData);
         }
 
-        this.scheduleAlignPreviewLabels();
         return lineData;
     }
 
