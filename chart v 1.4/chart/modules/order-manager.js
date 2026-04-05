@@ -20065,6 +20065,152 @@ class OrderManager {
     }
 
     /**
+     * Drag-to-create SL or TP from a pending order's badge pill.
+     * Unlike _setupEntryDragToCreateTPSL (which hijacks all mousedowns on the
+     * entry line), this only binds to the specific badge group so the d3 drag
+     * that repositions the entry price is not blocked.
+     */
+    _setupPendingBadgeDragToCreate(pendingOrder, badge, targetType, chart) {
+        const self = this;
+        const ctx = chart || this.chart;
+        const isBuy = pendingOrder.direction === 'BUY';
+        let isDragging = false;
+        let previewLine = null, previewLabelBg = null, previewLabel = null;
+        let previewPnlBg = null, previewPnlText = null;
+        const color = targetType === 'tp' ? '#22c55e' : '#f23645';
+
+        const onMouseDown = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            isDragging = true;
+            self._isDraggingOrderLine = true;
+
+            previewLine = ctx.svg.append('line')
+                .attr('stroke', color).attr('stroke-width', 1.5)
+                .attr('stroke-dasharray', '6 3').attr('opacity', 0.9)
+                .attr('x1', 0).attr('x2', ctx.w - (ctx.margin?.r || 70))
+                .style('pointer-events', 'none');
+            previewLabelBg = ctx.svg.append('rect')
+                .attr('fill', color).attr('rx', 3).attr('height', 20)
+                .style('pointer-events', 'none');
+            previewLabel = ctx.svg.append('text')
+                .attr('fill', '#fff').attr('font-size', '11px').attr('font-weight', '700')
+                .attr('dy', '0.35em').style('pointer-events', 'none');
+            previewPnlBg = ctx.svg.append('rect')
+                .attr('fill', '#0f172a').attr('stroke', color).attr('stroke-width', 1)
+                .attr('rx', 3).attr('height', 20).style('pointer-events', 'none');
+            previewPnlText = ctx.svg.append('text')
+                .attr('fill', color).attr('font-size', '11px').attr('font-weight', '700')
+                .attr('dy', '0.35em').style('pointer-events', 'none');
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        };
+
+        const onMouseMove = (e) => {
+            if (!isDragging || !ctx.scales?.yScale) return;
+            const svgRect = ctx.svg.node().getBoundingClientRect();
+            const mouseY = e.clientY - svgRect.top;
+            const newPrice = ctx.scales.yScale.invert(mouseY);
+            const priceStr = newPrice.toFixed(self.getPricePrecision());
+            const sym = pendingOrder.ticker || pendingOrder.symbol || self._getSymbol();
+            const pnl = self.estimatePnLForPriceLevel(
+                pendingOrder.direction, pendingOrder.entryPrice, newPrice, pendingOrder.quantity, sym
+            );
+            const pnlStr = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+
+            previewLine.attr('y1', mouseY).attr('y2', mouseY);
+
+            const pad = 6;
+            const xRight = ctx.w - (ctx.margin?.r || 70) - 4;
+            const label = targetType === 'tp' ? 'TP' : 'SL';
+            previewLabel.text(`${label}  ${priceStr}`);
+            const labelW = (previewLabel.node()?.getBBox()?.width || 60) + pad * 2;
+            const pnlW = 80;
+            const xStart = xRight - labelW - 4 - pnlW;
+
+            previewLabelBg.attr('x', xStart).attr('y', mouseY - 10).attr('width', labelW);
+            previewLabel.attr('x', xStart + pad).attr('y', mouseY);
+            previewPnlBg.attr('x', xStart + labelW + 4).attr('y', mouseY - 10).attr('width', pnlW);
+            previewPnlText.text(pnlStr).attr('x', xStart + labelW + 4 + pad).attr('y', mouseY);
+        };
+
+        const onMouseUp = (e) => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            if (!isDragging) return;
+            isDragging = false;
+            self._isDraggingOrderLine = false;
+
+            if (previewLine) previewLine.remove();
+            if (previewLabelBg) previewLabelBg.remove();
+            if (previewLabel) previewLabel.remove();
+            if (previewPnlBg) previewPnlBg.remove();
+            if (previewPnlText) previewPnlText.remove();
+
+            if (!ctx.scales?.yScale) return;
+            const svgRect = ctx.svg.node().getBoundingClientRect();
+            const mouseY = e.clientY - svgRect.top;
+            const newPrice = ctx.scales.yScale.invert(mouseY);
+            const entryPx = pendingOrder.entryPrice;
+
+            if (targetType === 'tp') {
+                if (isBuy && newPrice <= entryPx) return;
+                if (!isBuy && newPrice >= entryPx) return;
+            } else {
+                if (isBuy && newPrice >= entryPx) return;
+                if (!isBuy && newPrice <= entryPx) return;
+            }
+
+            const siblings = pendingOrder.isSplitEntry && pendingOrder.splitGroupId
+                ? self._getSplitGroupPendingOrders(pendingOrder) : [pendingOrder];
+
+            if (targetType === 'tp') {
+                if (pendingOrder.tpTargets && pendingOrder.tpTargets.length > 0) {
+                    const idx = pendingOrder.tpTargets.findIndex(t => !(t.price > 0) && !t.hit);
+                    const applyIdx = idx >= 0 ? idx : 0;
+                    for (const sib of siblings) {
+                        if (sib.tpTargets?.[applyIdx]) sib.tpTargets[applyIdx].price = newPrice;
+                    }
+                } else {
+                    for (const sib of siblings) sib.takeProfit = newPrice;
+                }
+                self.showNotification(`TP set to ${self.formatPrice(newPrice)} for pending #${pendingOrder.id}`, 'success');
+            } else {
+                const sizingMode = pendingOrder.sizingMode || 'risk-usd';
+                const minLot = self.getMarketConfig()?.minSize ?? 0.01;
+                for (const sib of siblings) {
+                    sib.stopLoss = newPrice;
+                    const sRisk = sib.riskAmount || sib.originalRiskAmount || 0;
+                    if (sizingMode === 'lot-size') {
+                        if (sib.entryPrice > 0)
+                            sib.riskAmount = Math.round(self._engineRisk(sib.entryPrice, newPrice, sib.quantity, sib.entryPrice) * 100) / 100;
+                    } else if (sRisk > 0 && sib.entryPrice > 0) {
+                        const q = self._enginePositionSize(sRisk, sib.entryPrice, newPrice, sib.entryPrice);
+                        sib.quantity = Math.round(Math.max(minLot, q) * 100) / 100;
+                    }
+                }
+                self.showNotification(`SL set to ${self.formatPrice(newPrice)} for pending #${pendingOrder.id}`, 'success');
+            }
+
+            self.removePendingOrderLine(pendingOrder.id);
+            self.drawPendingOrderLine(pendingOrder, ctx);
+            self.removePendingSLTPLines(pendingOrder.id);
+            self.removeMultiTPAvgLine(pendingOrder.id);
+            self.drawPendingOrderTargets(pendingOrder, ctx);
+            if (pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 2)
+                self.drawMultiTPAvgLine(pendingOrder, 'pending');
+            self._updateSplitGroupAvgLines(ctx);
+            self._updateMultiTPAvgLines(ctx);
+            self.updateOrderLines(ctx);
+            if (typeof self.updatePositionsPanel === 'function') self.updatePositionsPanel();
+        };
+
+        const node = badge.node();
+        if (node) node.addEventListener('mousedown', onMouseDown);
+    }
+
+    /**
      * Factory: create a draggable dashed "plus" badge (Entry+, TP+).
      * Dragging the badge away from the line and releasing creates a new
      * split level at the drop price.
@@ -21823,6 +21969,16 @@ class OrderManager {
                 dragStartPrice = pendingOrder.entryPrice;
                 dragStartQty = pendingOrder.quantity;
                 line.attr('stroke-width', 1.6).attr('opacity', 1);
+                // Hide entry-row extras during drag (repositioned on drag end via redraw)
+                const ol = (self.orderLines || []).find(o => o.orderId === pendingOrder.id && o.isPending && (o.chart || self.chart) === chart);
+                if (ol) {
+                    if (ol.pnlBox) ol.pnlBox.style('display', 'none');
+                    if (ol.pnlText) ol.pnlText.style('display', 'none');
+                    if (ol.slBadge) ol.slBadge.style('display', 'none');
+                    if (ol.tpBadge) ol.tpBadge.style('display', 'none');
+                    if (ol.tpBadgesContainer) ol.tpBadgesContainer.style('display', 'none');
+                    if (ol.entryPlusBadge) ol.entryPlusBadge.style('display', 'none');
+                }
                 console.log(`🎯 Started dragging pending entry line #${pendingOrder.id}`);
             })
             .on('drag', function(event) {
@@ -21949,10 +22105,12 @@ class OrderManager {
                     }
                 }
 
-                // Redraw targets to update P&L with new lot size
+                // Full redraw so entry-row badges (P/L, SL, TP, Entry+) are repositioned
+                self.removePendingOrderLine(pendingOrder.id);
+                self.drawPendingOrderLine(pendingOrder, chart);
                 self.removePendingSLTPLines(pendingOrder.id);
                 self.removeMultiTPAvgLine(pendingOrder.id);
-                self.drawPendingOrderTargets(pendingOrder);
+                self.drawPendingOrderTargets(pendingOrder, chart);
                 if (pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 2) {
                     self.drawMultiTPAvgLine(pendingOrder, 'pending');
                 }
@@ -22055,9 +22213,8 @@ class OrderManager {
         const entryPlusBadge = this._createPlusBadge(chart, pendingOrder.id, 'pending',
             '#3b82f6', 'Entry+', (price) => this._splitEntryAtPrice(pendingOrder.id, price, true));
 
-        this._setupEntryDragToCreateTPSL(pendingOrder, line, labelBox, chart,
-            [dragHitLine, labelText, priceBox, priceText, slBadgeGroup, tpBadgeGroup],
-            { isPending: true });
+        this._setupPendingBadgeDragToCreate(pendingOrder, slBadgeGroup, 'sl', chart);
+        this._setupPendingBadgeDragToCreate(pendingOrder, tpBadgeGroup, 'tp', chart);
 
         this.orderLines.push({
             orderId: pendingOrder.id,
