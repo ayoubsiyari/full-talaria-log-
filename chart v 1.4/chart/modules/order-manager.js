@@ -20235,6 +20235,7 @@ class OrderManager {
         const drag = d3.drag()
             .on('start', function(event) {
                 event.sourceEvent.stopPropagation();
+                g.node().__dragging = true;
                 startY = event.y;
                 const chartW = chart.w || chart.svg.node().getBoundingClientRect().width || 1200;
                 ghostLine = chart.svg.append('line')
@@ -20261,6 +20262,7 @@ class OrderManager {
                 }
             })
             .on('end', function(event) {
+                g.node().__dragging = false;
                 d3.select(this).style('cursor', 'grab');
                 if (ghostLine) { ghostLine.remove(); ghostLine = null; }
                 if (ghostPrice) { ghostPrice.remove(); ghostPrice = null; }
@@ -22481,37 +22483,43 @@ class OrderManager {
 
                 let bx = translateX + totalLabelW + bGap;
 
-                // X delete button (right of label+pnl)
+                // X delete button (right of label+pnl) — reuse if exists
                 if (isMultiTP) {
-                    if (target._deleteBtn) { try { target._deleteBtn.remove(); } catch (_) {} }
-                    const dbg = ch.svg.append('g')
-                        .attr('class', `pending-tp-delete pending-tp-${entry.pendingOrder.id}`)
-                        .attr('pointer-events', 'all')
-                        .style('cursor', 'pointer')
-                        .attr('transform', `translate(${bx + deleteBtnR}, ${y})`);
-                    dbg.append('circle').attr('r', deleteBtnR)
-                        .attr('fill', '#0f172a').attr('stroke', bgColor).attr('stroke-width', 1);
-                    dbg.append('text').attr('fill', '#e2e8f0').attr('font-size', '11px')
-                        .attr('font-weight', '700').attr('text-anchor', 'middle').attr('dy', '0.35em')
-                        .style('pointer-events', 'none').text('×');
-                    dbg.on('click', (event) => {
-                        event.stopPropagation();
-                        this._deleteTPTarget(entry.pendingOrder.id, target.tpTargetIndex, true);
-                    });
-                    target._deleteBtn = dbg;
+                    if (!target._deleteBtn || !target._deleteBtn.node()?.parentNode) {
+                        if (target._deleteBtn) { try { target._deleteBtn.remove(); } catch (_) {} }
+                        const dbg = ch.svg.append('g')
+                            .attr('class', `pending-tp-delete pending-tp-${entry.pendingOrder.id}`)
+                            .attr('pointer-events', 'all')
+                            .style('cursor', 'pointer');
+                        dbg.append('circle').attr('r', deleteBtnR)
+                            .attr('fill', '#0f172a').attr('stroke', bgColor).attr('stroke-width', 1);
+                        dbg.append('text').attr('fill', '#e2e8f0').attr('font-size', '11px')
+                            .attr('font-weight', '700').attr('text-anchor', 'middle').attr('dy', '0.35em')
+                            .style('pointer-events', 'none').text('×');
+                        dbg.on('click', (event) => {
+                            event.stopPropagation();
+                            this._deleteTPTarget(entry.pendingOrder.id, target.tpTargetIndex, true);
+                        });
+                        target._deleteBtn = dbg;
+                    }
+                    target._deleteBtn.attr('transform', `translate(${bx + deleteBtnR}, ${y})`);
                     bx += deleteBtnR * 2 + bGap;
                 }
 
-                // TP+ badge (right of X, before margin)
+                // TP+ badge (right of X, before margin) — reuse if exists, skip if dragging
                 if (target.type === 'TP') {
-                    if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} }
-                    const tpb = this._createPlusBadge(ch, entry.pendingOrder.id, 'pending-tp',
-                        '#22c55e', 'TP+', (price) => this._splitTPAtPrice(entry.pendingOrder.id, price, true));
-                    tpb.style('display', null)
-                        .attr('transform', `translate(${bx}, ${y - bH / 2})`);
-                    tpb.select('rect').attr('width', plusBW);
-                    tpb.select('text').attr('x', plusBW / 2).attr('y', bH / 2);
-                    target._tpPlusBadge = tpb;
+                    const badgeNode = target._tpPlusBadge?.node?.();
+                    if (!badgeNode || !badgeNode.parentNode) {
+                        if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} }
+                        target._tpPlusBadge = this._createPlusBadge(ch, entry.pendingOrder.id, 'pending-tp',
+                            '#22c55e', 'TP+', (price) => this._splitTPAtPrice(entry.pendingOrder.id, price, true));
+                        target._tpPlusBadge.select('rect').attr('width', plusBW);
+                        target._tpPlusBadge.select('text').attr('x', plusBW / 2).attr('y', bH / 2);
+                    }
+                    if (!badgeNode?.__dragging) {
+                        target._tpPlusBadge.style('display', null)
+                            .attr('transform', `translate(${bx}, ${y - bH / 2})`);
+                    }
                 }
 
                 if (isDraggable && entry.pendingOrder && !target.dragApplied) {
@@ -25371,12 +25379,14 @@ class OrderManager {
                         cx += deleteBtnR * 2 + gap;
                     }
 
-                    // TP+ badge
+                    // TP+ badge — skip reposition if actively being dragged
                     if (tpPlusBadge) {
-                        tpPlusBadge.style('display', null)
-                            .attr('transform', `translate(${cx}, ${y - bH / 2})`);
-                        tpPlusBadge.select('rect').attr('width', plusBW);
-                        tpPlusBadge.select('text').attr('x', plusBW / 2).attr('y', bH / 2);
+                        if (!tpPlusBadge.node()?.__dragging) {
+                            tpPlusBadge.style('display', null)
+                                .attr('transform', `translate(${cx}, ${y - bH / 2})`);
+                            tpPlusBadge.select('rect').attr('width', plusBW);
+                            tpPlusBadge.select('text').attr('x', plusBW / 2).attr('y', bH / 2);
+                        }
                         cx += plusBW + gap;
                     }
 
@@ -25794,7 +25804,7 @@ class OrderManager {
                     if (cm) tp.deleteBtn.attr('transform', `translate(${parseFloat(cm[1]) - dx}, ${cm[2]})`);
                 }
             }
-            if (tp.tpPlusBadge) {
+            if (tp.tpPlusBadge && !tp.tpPlusBadge.node()?.__dragging) {
                 const ct = tp.tpPlusBadge.attr('transform');
                 if (ct) {
                     const cm = ct.match(/translate\(\s*([\d.e+-]+)\s*,\s*([\d.e+-]+)/);
