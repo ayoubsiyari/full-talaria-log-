@@ -15777,6 +15777,7 @@ class OrderManager {
             }
 
             this.removePreviewLines();
+            this._suppressChartRender = true;
 
             const splitGroupId = `split_${Date.now()}`;
             let placedCount = 0;
@@ -15934,6 +15935,8 @@ class OrderManager {
             );
             this.updatePositionsPanel();
             this.showPositionsPanel();
+            this._suppressChartRender = false;
+            if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
             if (keepPanelOpen) {
                 this._resetPanelForNewOrder();
             } else {
@@ -16034,6 +16037,7 @@ class OrderManager {
             if (sessionValidationErrors.length > 0) {
                 this.showNotification(sessionValidationErrors[0], 'error');
             }
+            this._suppressChartRender = false;
             return;
         }
         
@@ -16068,6 +16072,8 @@ class OrderManager {
                 this.showPositionsPanel();
             }
 
+            this._suppressChartRender = false;
+            if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
             if (keepPanelOpen) {
                 this._resetPanelForNewOrder();
             } else {
@@ -16090,11 +16096,15 @@ class OrderManager {
         
         // Remove preview lines before placing order
         this.removePreviewLines();
+
+        // Suppress intermediate chart.render() calls during placement to prevent visual shake
+        this._suppressChartRender = true;
         
         // Check if prop firm trading is disabled due to rule violation
         if (window.propFirmTracker && window.propFirmTracker.tradingDisabled) {
             console.error('🚫 Trading is disabled due to prop firm rule violation');
             this.showNotification('❌ Trading Disabled - Challenge rule violated', 'error');
+            this._suppressChartRender = false;
             return;
         }
         
@@ -16183,6 +16193,8 @@ class OrderManager {
                 
                 // Show positions panel and close order panel
                 this.showPositionsPanel();
+                this._suppressChartRender = false;
+                if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
                 if (keepPanelOpen) {
                     this._resetPanelForNewOrder();
                 } else {
@@ -16191,6 +16203,8 @@ class OrderManager {
             } else {
                 // No splits - place single order as normal
                 this.placePendingOrder(entryPrice, quantity, tpPrice, slPrice, actualRisk, autoBreakeven, breakevenSettings, trailingStop, tpTargets, currentCandle.t);
+                this._suppressChartRender = false;
+                if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
                 if (keepPanelOpen) {
                     this._resetPanelForNewOrder();
                 } else {
@@ -16344,6 +16358,10 @@ class OrderManager {
         
         this.updatePositionsPanel();
         this.showPositionsPanel();
+
+        // Single render after all drawing is done (intermediate renders were suppressed)
+        this._suppressChartRender = false;
+        if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
         
         if (keepPanelOpen) {
             this._resetPanelForNewOrder();
@@ -21034,7 +21052,7 @@ class OrderManager {
 
         console.log(`✅ Order line created and added to array (total: ${this.orderLines.length})`);
 
-        if (chart && typeof chart.render === 'function') {
+        if (!this._suppressChartRender && chart && typeof chart.render === 'function') {
             chart.renderPending = true;
             chart.render();
             console.log('🎨 Chart render triggered - lines will be positioned automatically');
@@ -21143,7 +21161,7 @@ class OrderManager {
             chart
         });
 
-        if (chart.renderPending !== undefined) {
+        if (!this._suppressChartRender && chart.renderPending !== undefined) {
             chart.renderPending = true;
             chart.render();
         }
@@ -22218,7 +22236,7 @@ class OrderManager {
         
         console.log(`✅ Pending order line created (total lines: ${this.orderLines.length})`);
         
-        if (chart && typeof chart.render === 'function') {
+        if (!this._suppressChartRender && chart && typeof chart.render === 'function') {
             chart.renderPending = true;
             chart.render();
         }
@@ -24742,7 +24760,7 @@ class OrderManager {
         
         // Force a chart render which will position the lines automatically
         // (updateSLTPLines is called during render after scales are ready)
-        if (chart && typeof chart.render === 'function') {
+        if (!this._suppressChartRender && chart && typeof chart.render === 'function') {
             chart.renderPending = true;
             chart.render();
             console.log('🎨 Chart render triggered - SL/TP lines will be positioned automatically');
