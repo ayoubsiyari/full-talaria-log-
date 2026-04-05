@@ -25120,7 +25120,7 @@ class OrderManager {
                 if (labelText && closeBtn && labelBox) {
                     const boxH = 18;
                     const boxY = y - boxH / 2;
-                    const gap = 4;
+                    const gap = 6;
                     const pad = 8;
                     const yAxisWidth = 70;
                     const closeBtnR = 10;
@@ -25143,12 +25143,13 @@ class OrderManager {
                     const allTPsSet = hasMultiTP && orderData.tpTargets.every(t => (t.price > 0) || t.hit);
                     const isAlreadySplitEntry = !!(orderData.isSplitEntry || orderData.splitGroupId);
 
-                    const bW = 24, bGap2 = 3, bH = 16;
+                    const bW = 24, bGap2 = 4, bH = 16;
                     const plusBW = 38;
 
-                    // Calculate multi-TP badge width (stacked)
+                    // Multi-TP stacked badges (when some targets still unset)
+                    const useMultiTpContainer = !isPending && hasMultiTP && !allTPsSet && olEntry.tpBadgesContainer;
                     let multiTPBadgesW = 0;
-                    if (!isPending && hasMultiTP && !allTPsSet && olEntry.tpBadgesContainer) {
+                    if (useMultiTpContainer) {
                         const stackOffset = 5, singleBadgeW = 28;
                         const activeTargets = orderData.tpTargets.filter(t => !t.hit);
                         multiTPBadgesW = activeTargets.length > 0
@@ -25156,14 +25157,13 @@ class OrderManager {
                             : 0;
                     }
 
-                    // Space for SL badge (open positions only)
-                    let slBadgeW = (!isPending && !hasSL) ? bW + bGap2 : 0;
-                    // Space for single TP badge (open positions, no multi-TP)
-                    let singleTPBadgeW = (!isPending && !hasMultiTP && !hasSingleTP) ? bW + bGap2 : 0;
+                    // Open positions: always reserve SL + TP slots (TradingView-style row: label | P/L | SL | TP | X)
+                    const slBadgeW = (!isPending && slBadge) ? bW + bGap2 : 0;
+                    const singleTPBadgeW = (!isPending && tpBadge && !useMultiTpContainer) ? bW + bGap2 : 0;
                     // Space for Entry+ badge (pending only — can't split an open position's entry)
                     const showEntryPlus = isPending && !isAlreadySplitEntry && olEntry.entryPlusBadge;
                     let entryPlusBadgeW = showEntryPlus ? plusBW + bGap2 : 0;
-                    let totalBadgesW = slBadgeW + (hasMultiTP ? multiTPBadgesW : singleTPBadgeW)
+                    let totalBadgesW = slBadgeW + (useMultiTpContainer ? multiTPBadgesW : singleTPBadgeW)
                         + entryPlusBadgeW;
 
                     const rightEdge = ch.w - yAxisWidth - 10;
@@ -25182,48 +25182,51 @@ class OrderManager {
                         cx += pnlBW + gap;
                     }
 
-                    // --- SL badge (open only) ---
+                    // --- SL badge (open only): always shown; dashed = unset, solid fill = active ---
                     if (!isPending && slBadge) {
+                        slBadge.style('display', null)
+                            .attr('transform', `translate(${cx}, ${y - bH / 2})`)
+                            .style('pointer-events', hasSL ? 'none' : 'all');
+                        const sr = slBadge.select('rect');
+                        sr.attr('stroke-dasharray', '3 2').attr('stroke', '#f23645');
                         if (hasSL) {
-                            slBadge.style('display', 'none');
+                            sr.attr('fill', 'rgba(242,54,69,0.22)');
                         } else {
-                            slBadge.style('display', null)
-                                .attr('transform', `translate(${cx}, ${y - bH / 2})`);
-                            slBadge.select('rect').attr('width', bW);
-                            slBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
-                            cx += bW + bGap2;
+                            sr.attr('fill', 'rgba(242,54,69,0.12)');
                         }
+                        slBadge.select('rect').attr('width', bW);
+                        slBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
+                        cx += bW + bGap2;
                     }
 
-                    // --- TP badges (open only) ---
+                    // --- TP badges (open only): same row as SL; multi-TP uses stacked container until all set ---
                     if (!isPending) {
-                        if (hasMultiTP) {
+                        if (useMultiTpContainer) {
                             if (tpBadge) tpBadge.style('display', 'none');
-                            if (olEntry.tpBadgesContainer) {
-                                if (allTPsSet) {
-                                    olEntry.tpBadgesContainer.style('display', 'none');
-                                } else {
-                                    const renderedW = this._renderMultiTPBadges(
-                                        olEntry, orderData, olEntry.tpBadgesContainer,
-                                        orderData.tpTargets, y, ch
-                                    );
-                                    olEntry.tpBadgesContainer.style('display', null)
-                                        .attr('transform', `translate(${cx}, ${y - bH / 2})`);
-                                    cx += renderedW + bGap2;
-                                }
-                            }
+                            const renderedW = this._renderMultiTPBadges(
+                                olEntry, orderData, olEntry.tpBadgesContainer,
+                                orderData.tpTargets, y, ch
+                            );
+                            olEntry.tpBadgesContainer.style('display', null)
+                                .attr('transform', `translate(${cx}, ${y - bH / 2})`);
+                            cx += renderedW + bGap2;
                         } else {
                             if (olEntry.tpBadgesContainer) olEntry.tpBadgesContainer.style('display', 'none');
                             if (tpBadge) {
-                                if (hasSingleTP) {
-                                    tpBadge.style('display', 'none');
+                                const tpActive = hasSingleTP || (hasMultiTP && allTPsSet);
+                                tpBadge.style('display', null)
+                                    .attr('transform', `translate(${cx}, ${y - bH / 2})`)
+                                    .style('pointer-events', tpActive ? 'none' : 'all');
+                                const tr = tpBadge.select('rect');
+                                tr.attr('stroke-dasharray', '3 2').attr('stroke', '#22c55e');
+                                if (tpActive) {
+                                    tr.attr('fill', 'rgba(34,197,94,0.22)');
                                 } else {
-                                    tpBadge.style('display', null)
-                                        .attr('transform', `translate(${cx}, ${y - bH / 2})`);
-                                    tpBadge.select('rect').attr('width', bW);
-                                    tpBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
-                                    cx += bW + bGap2;
+                                    tr.attr('fill', 'rgba(34,197,94,0.12)');
                                 }
+                                tpBadge.select('rect').attr('width', bW);
+                                tpBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
+                                cx += bW + bGap2;
                             }
                         }
                     }
