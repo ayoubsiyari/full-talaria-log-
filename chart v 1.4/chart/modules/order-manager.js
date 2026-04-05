@@ -833,7 +833,7 @@ class OrderManager {
 
         if (isBuy) {
             if (position.tpTargets && position.tpTargets.length > 0) {
-                position.tpTargets.forEach((target) => {
+                position.tpTargets.forEach((target, index) => {
                     if (!target || target.hit) return;
                     const tp = Number.parseFloat(target.price);
                     if (!Number.isFinite(tp) || high < tp) return;
@@ -842,12 +842,13 @@ class OrderManager {
                     const allTargetsHit = position.tpTargets.every((t) => t && t.hit);
                     const closeType = allTargetsHit ? 'TP' : 'TP-PARTIAL';
                     const fillPx = hasOpen ? this._gapFill(tp, bgOpen, true, true) : tp;
+                    const resolvedTargetId = target.id != null ? target.id : index;
                     positionsToClose.push({
                         id: position.id,
                         closePrice: fillPx,
                         type: closeType,
                         percentage: allTargetsHit ? null : closePercentage,
-                        targetId: target.id,
+                        targetId: resolvedTargetId,
                         bgCloseTime: barTime
                     });
                 });
@@ -875,7 +876,7 @@ class OrderManager {
             }
         } else {
             if (position.tpTargets && position.tpTargets.length > 0) {
-                position.tpTargets.forEach((target) => {
+                position.tpTargets.forEach((target, index) => {
                     if (!target || target.hit) return;
                     const tp = Number.parseFloat(target.price);
                     if (!Number.isFinite(tp) || low > tp) return;
@@ -884,12 +885,13 @@ class OrderManager {
                     const allTargetsHit = position.tpTargets.every((t) => t && t.hit);
                     const closeType = allTargetsHit ? 'TP' : 'TP-PARTIAL';
                     const fillPx = hasOpen ? this._gapFill(tp, bgOpen, false, true) : tp;
+                    const resolvedTargetId = target.id != null ? target.id : index;
                     positionsToClose.push({
                         id: position.id,
                         closePrice: fillPx,
                         type: closeType,
                         percentage: allTargetsHit ? null : closePercentage,
-                        targetId: target.id,
+                        targetId: resolvedTargetId,
                         bgCloseTime: barTime
                     });
                 });
@@ -18122,14 +18124,15 @@ class OrderManager {
                             const closeType = allTargetsHit ? 'TP' : 'TP-PARTIAL';
                             const fillPx = this._gapFill(target.price, open, true, true);
                             
-                            console.log(`   🎯 TP TARGET #${target.id} HIT! ${allTargetsHit ? 'FINAL TARGET - ' : ''}Closing ${(closePercentage * 100).toFixed(0)}% at ${fillPx.toFixed(5)} for BUY #${position.id}`);
+                            const resolvedTpId = target.id != null ? target.id : index;
+                            console.log(`   🎯 TP TARGET #${resolvedTpId} HIT! ${allTargetsHit ? 'FINAL TARGET - ' : ''}Closing ${(closePercentage * 100).toFixed(0)}% at ${fillPx.toFixed(5)} for BUY #${position.id}`);
                             console.log(`      allTargetsHit=${allTargetsHit}, closeType=${closeType}, percentage=${closePercentage}`);
                             positionsToClose.push({ 
                                 id: position.id, 
                                 closePrice: fillPx, 
                                 type: closeType,
                                 percentage: allTargetsHit ? null : closePercentage,
-                                targetId: target.id
+                                targetId: resolvedTpId
                             });
                         }
                     });
@@ -18341,14 +18344,15 @@ class OrderManager {
                             const closeType = allTargetsHit ? 'TP' : 'TP-PARTIAL';
                             const fillPx = this._gapFill(target.price, open, false, true);
                             
-                            console.log(`   🎯 TP TARGET #${target.id} HIT! ${allTargetsHit ? 'FINAL TARGET - ' : ''}Closing ${(closePercentage * 100).toFixed(0)}% at ${fillPx.toFixed(5)} for SELL #${position.id}`);
+                            const resolvedTpId = target.id != null ? target.id : index;
+                            console.log(`   🎯 TP TARGET #${resolvedTpId} HIT! ${allTargetsHit ? 'FINAL TARGET - ' : ''}Closing ${(closePercentage * 100).toFixed(0)}% at ${fillPx.toFixed(5)} for SELL #${position.id}`);
                             console.log(`      allTargetsHit=${allTargetsHit}, closeType=${closeType}, percentage=${closePercentage}`);
                             positionsToClose.push({ 
                                 id: position.id, 
                                 closePrice: fillPx, 
                                 type: closeType,
                                 percentage: allTargetsHit ? null : closePercentage,
-                                targetId: target.id
+                                targetId: resolvedTpId
                             });
                         }
                     });
@@ -20213,20 +20217,27 @@ class OrderManager {
             const origTP = source.takeProfit || 0;
             if (origTP > 0) {
                 source.tpTargets = [
-                    { price: origTP, percentage: 50, hit: false },
-                    { price: price, percentage: 50, hit: false }
+                    { id: 0, price: origTP, percentage: 50, hit: false },
+                    { id: 1, price: price, percentage: 50, hit: false }
                 ];
             } else {
                 source.tpTargets = [
-                    { price: price, percentage: 100, hit: false }
+                    { id: 0, price: price, percentage: 100, hit: false }
                 ];
             }
             source.takeProfit = 0;
         } else {
             const n = source.tpTargets.length + 1;
             const equalPct = Math.round(100 / n);
-            source.tpTargets.forEach(t => { t.percentage = equalPct; });
-            source.tpTargets.push({ price: price, percentage: equalPct, hit: false });
+            source.tpTargets.forEach((t, i) => {
+                t.percentage = equalPct;
+                if (t.id == null) t.id = i;
+            });
+            const nextId = source.tpTargets.reduce((m, t) => {
+                const id = Number(t.id);
+                return Number.isFinite(id) ? Math.max(m, id) : m;
+            }, -1) + 1;
+            source.tpTargets.push({ id: nextId, price: price, percentage: equalPct, hit: false });
             const total = source.tpTargets.reduce((s, t) => s + t.percentage, 0);
             if (total !== 100) source.tpTargets[source.tpTargets.length - 1].percentage += (100 - total);
         }
