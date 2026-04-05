@@ -25600,6 +25600,9 @@ class OrderManager {
                                 cx += renderedW + bGap2;
                             }
                         }
+                    } else if (hasMultiTP && isPending) {
+                        if (tpBadge) tpBadge.style('display', 'none');
+                        if (olEntry.tpBadgesContainer) olEntry.tpBadgesContainer.style('display', 'none');
                     } else {
                         if (olEntry.tpBadgesContainer) olEntry.tpBadgesContainer.style('display', 'none');
                         if (tpBadge) {
