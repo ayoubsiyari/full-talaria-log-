@@ -19503,23 +19503,48 @@ class OrderManager {
                                 : (newPrice - entryPrice);
                         }
                         
-                    if (priceDiff > 0 && lineType === 'tp') {
+                    if (priceDiff > 0) {
                         const pips = priceDiff / self.pipSize;
                         const dollarAmount = pips * order.quantity * self.pipValuePerLot;
+                        const color = lineType === 'tp' ? '#22c55e' : '#ef4444';
+                        const sign = lineType === 'tp' ? '+' : '-';
                         
-                        if (!dollarIndicator) {
-                            dollarIndicator = ctx.svg.append('text')
-                                .attr('class', `dollar-indicator-${order.id}`)
-                                .attr('fill', '#22c55e')
+                        if (lineType !== 'sl') {
+                            if (!dollarIndicator) {
+                                dollarIndicator = ctx.svg.append('text')
+                                    .attr('class', `dollar-indicator-${order.id}`)
+                                    .attr('fill', color)
+                                    .attr('font-size', '11px')
+                                    .attr('font-weight', '700')
+                                    .attr('text-anchor', 'start')
+                                    .attr('pointer-events', 'none');
+                            }
+                            dollarIndicator
+                                .attr('x', ctx.w / 2 + 50)
+                                .attr('y', newY + 4)
+                                .attr('fill', color)
+                                .text(`${sign}$${dollarAmount.toFixed(2)}`);
+                        }
+                    }
+                    
+                    if (lineType !== 'sl' && order.stopLoss && order.takeProfit) {
+                        const risk = Math.abs(entryPrice - order.stopLoss);
+                        const reward = Math.abs(order.takeProfit - entryPrice);
+                        const rrRatio = risk > 0 ? (reward / risk) : 0;
+                        
+                        if (!rrIndicator) {
+                            rrIndicator = ctx.svg.append('text')
+                                .attr('class', `rr-indicator-${order.id}`)
+                                .attr('fill', '#60a5fa')
                                 .attr('font-size', '11px')
                                 .attr('font-weight', '700')
                                 .attr('text-anchor', 'start')
                                 .attr('pointer-events', 'none');
                         }
-                        dollarIndicator
+                        rrIndicator
                             .attr('x', ctx.w / 2 + 50)
-                            .attr('y', newY + 4)
-                            .text(`+$${dollarAmount.toFixed(2)}`);
+                            .attr('y', newY - 12)
+                            .text(`R:R ${rrRatio.toFixed(2)}`);
                     }
                 }
                 
