@@ -19815,6 +19815,184 @@ class OrderManager {
     }
     
     /**
+     * Drag from pending order entry line to create TP or SL.
+     * BUY: drag up → TP, drag down → SL
+     * SELL: drag down → TP, drag up → SL
+     */
+    _setupPendingEntryDragToCreateTPSL(pendingOrder, line, labelBox, chart, extraElements = []) {
+        const self = this;
+        const ctx = chart || this.chart;
+        let isDragging = false;
+        let startY = 0;
+        let dragType = null;
+        let previewLine = null;
+        let previewLabel = null;
+        let previewLabelBg = null;
+        let previewPnlBg = null;
+        let previewPnlText = null;
+
+        const DEAD_ZONE = 4;
+        const isBuy = pendingOrder.direction === 'BUY';
+
+        const onMouseDown = (e) => {
+            if (e.target.closest('.pending-order-close-btn')) return;
+            if (e.target.closest('.pending-entry-plus-badge')) return;
+            e.preventDefault();
+            e.stopPropagation();
+            isDragging = true;
+            startY = e.clientY;
+            dragType = null;
+            self._isDraggingOrderLine = true;
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        };
+
+        const onMouseMove = (e) => {
+            if (!isDragging || !ctx.scales?.yScale) return;
+            const dy = e.clientY - startY;
+
+            if (!dragType) {
+                if (Math.abs(dy) < DEAD_ZONE) return;
+                const draggingUp = dy < 0;
+                if (isBuy) {
+                    dragType = draggingUp ? (pendingOrder.takeProfit ? null : 'tp')
+                                          : (pendingOrder.stopLoss ? null : 'sl');
+                } else {
+                    dragType = draggingUp ? (pendingOrder.stopLoss ? null : 'sl')
+                                          : (pendingOrder.takeProfit ? null : 'tp');
+                }
+                if (!dragType) {
+                    isDragging = false;
+                    self._isDraggingOrderLine = false;
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                    return;
+                }
+                const color = dragType === 'tp' ? '#22c55e' : '#f23645';
+                previewLine = ctx.svg.append('line')
+                    .attr('stroke', color).attr('stroke-width', 1.5)
+                    .attr('stroke-dasharray', '6 3').attr('opacity', 0.9)
+                    .attr('x1', 0).attr('x2', ctx.w - (ctx.margin?.r || 70))
+                    .style('pointer-events', 'none');
+                previewLabelBg = ctx.svg.append('rect')
+                    .attr('fill', color).attr('rx', 3).attr('height', 20)
+                    .style('pointer-events', 'none');
+                previewLabel = ctx.svg.append('text')
+                    .attr('fill', '#fff').attr('font-size', '11px').attr('font-weight', '700')
+                    .attr('dy', '0.35em').style('pointer-events', 'none');
+                previewPnlBg = ctx.svg.append('rect')
+                    .attr('fill', '#0f172a').attr('stroke', color).attr('stroke-width', 1)
+                    .attr('rx', 3).attr('height', 20).style('pointer-events', 'none');
+                previewPnlText = ctx.svg.append('text')
+                    .attr('fill', color).attr('font-size', '11px').attr('font-weight', '700')
+                    .attr('dy', '0.35em').style('pointer-events', 'none');
+            }
+
+            const svgRect = ctx.svg.node().getBoundingClientRect();
+            const mouseY = e.clientY - svgRect.top;
+            const newPrice = ctx.scales.yScale.invert(mouseY);
+            const precision = self.getPricePrecision();
+            const priceStr = newPrice.toFixed(precision);
+            const label = dragType === 'tp' ? 'TP' : 'SL';
+            const sym = pendingOrder.ticker || pendingOrder.symbol || self._getSymbol();
+            const pnl = self.estimatePnLForPriceLevel(pendingOrder.direction, pendingOrder.entryPrice, newPrice, pendingOrder.quantity, sym);
+            const pnlStr = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+
+            previewLine.attr('y1', mouseY).attr('y2', mouseY);
+
+            const pad = 6;
+            const rightMargin = ctx.margin?.r || 70;
+            const xRight = ctx.w - rightMargin - 4;
+            const labelFullStr = `${label}  ${priceStr}`;
+            previewLabel.text(labelFullStr);
+            const labelW = (previewLabel.node()?.getBBox()?.width || 60) + pad * 2;
+            const pnlW = 80;
+            const totalW = labelW + 4 + pnlW;
+            const xStart = xRight - totalW;
+
+            previewLabelBg.attr('x', xStart).attr('y', mouseY - 10).attr('width', labelW);
+            previewLabel.attr('x', xStart + pad).attr('y', mouseY);
+            previewPnlBg.attr('x', xStart + labelW + 4).attr('y', mouseY - 10).attr('width', pnlW);
+            previewPnlText.text(pnlStr).attr('x', xStart + labelW + 4 + pad).attr('y', mouseY);
+        };
+
+        const onMouseUp = (e) => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            if (!isDragging) return;
+            isDragging = false;
+            self._isDraggingOrderLine = false;
+
+            if (previewLine) previewLine.remove();
+            if (previewLabelBg) previewLabelBg.remove();
+            if (previewLabel) previewLabel.remove();
+            if (previewPnlBg) previewPnlBg.remove();
+            if (previewPnlText) previewPnlText.remove();
+
+            if (!dragType || !ctx.scales?.yScale) return;
+
+            const svgRect = ctx.svg.node().getBoundingClientRect();
+            const mouseY = e.clientY - svgRect.top;
+            const newPrice = ctx.scales.yScale.invert(mouseY);
+
+            if (dragType === 'tp') {
+                if (isBuy && newPrice <= pendingOrder.entryPrice) return;
+                if (!isBuy && newPrice >= pendingOrder.entryPrice) return;
+            } else {
+                if (isBuy && newPrice >= pendingOrder.entryPrice) return;
+                if (!isBuy && newPrice <= pendingOrder.entryPrice) return;
+            }
+
+            const siblings = pendingOrder.isSplitEntry && pendingOrder.splitGroupId
+                ? self._getSplitGroupPendingOrders(pendingOrder) : [pendingOrder];
+            if (dragType === 'tp') {
+                for (const sib of siblings) sib.takeProfit = newPrice;
+                console.log(`✅ TP set to ${newPrice.toFixed(5)} for pending #${pendingOrder.id}`);
+                self.showNotification(`TP set to ${self.formatPrice(newPrice)} for pending #${pendingOrder.id}`, 'success');
+            } else {
+                for (const sib of siblings) sib.stopLoss = newPrice;
+                console.log(`✅ SL set to ${newPrice.toFixed(5)} for pending #${pendingOrder.id}`);
+                self.showNotification(`SL set to ${self.formatPrice(newPrice)} for pending #${pendingOrder.id}`, 'success');
+            }
+
+            // Recalculate lot size when SL changes (risk-based modes)
+            if (dragType === 'sl') {
+                const sMode = pendingOrder.sizingMode || 'risk-usd';
+                const risk = pendingOrder.riskAmount || pendingOrder.originalRiskAmount || 0;
+                if (sMode !== 'lot-size' && risk > 0) {
+                    for (const sib of siblings) {
+                        const newQty = self._enginePositionSize(risk, sib.entryPrice, newPrice, sib.entryPrice);
+                        const minLot = self.getMarketConfig()?.minSize ?? 0.01;
+                        sib.quantity = Math.round(Math.max(minLot, newQty) * 100) / 100;
+                    }
+                }
+            }
+
+            const primaryLeg = pendingOrder.isSplitEntry && pendingOrder.splitGroupId
+                ? (siblings.find(s => Number(s.splitIndex) === 1) || pendingOrder)
+                : pendingOrder;
+            self.removePendingSLTPLines(primaryLeg.id);
+            self.removeMultiTPAvgLine(primaryLeg.id);
+            self.drawPendingOrderTargets(primaryLeg);
+            if (primaryLeg.tpTargets && primaryLeg.tpTargets.length >= 2) {
+                self.drawMultiTPAvgLine(primaryLeg, 'pending');
+            }
+            self.positionPendingOrderTargets(ctx);
+            if (typeof self.updateOrderLines === 'function') self.updateOrderLines(ctx);
+            if (typeof self.updatePositionsPanel === 'function') self.updatePositionsPanel();
+        };
+
+        const lineNode = line.node();
+        const labelNode = labelBox.node();
+        if (lineNode) lineNode.addEventListener('mousedown', onMouseDown);
+        if (labelNode) labelNode.addEventListener('mousedown', onMouseDown);
+        for (const el of extraElements) {
+            const node = el?.node?.();
+            if (node) node.addEventListener('mousedown', onMouseDown);
+        }
+    }
+
+    /**
      * TradingView-style drag from active order entry line to create TP or SL.
      * BUY: drag up → TP, drag down → SL
      * SELL: drag down → TP, drag up → SL
@@ -21732,6 +21910,10 @@ class OrderManager {
                 dragStartPrice = pendingOrder.entryPrice;
                 dragStartQty = pendingOrder.quantity;
                 line.attr('stroke-width', 1.6).attr('opacity', 1);
+                // Hide badges during drag to avoid stale positioning
+                if (slBadgeGroup) slBadgeGroup.style('display', 'none');
+                if (tpBadgeGroup) tpBadgeGroup.style('display', 'none');
+                if (entryPlusBadge) entryPlusBadge.style('display', 'none');
                 console.log(`🎯 Started dragging pending entry line #${pendingOrder.id}`);
             })
             .on('drag', function(event) {
@@ -21858,6 +22040,10 @@ class OrderManager {
                     }
                 }
 
+                // Update label text with final type + lot size
+                const finalTypeLabel = `${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${self.formatQuantity(pendingOrder.quantity || 0)}`;
+                labelText.text(finalTypeLabel);
+
                 // Redraw targets to update P&L with new lot size
                 self.removePendingSLTPLines(pendingOrder.id);
                 self.removeMultiTPAvgLine(pendingOrder.id);
@@ -21867,6 +22053,9 @@ class OrderManager {
                 }
                 self._updateSplitGroupAvgLines(chart);
                 self._updateMultiTPAvgLines(chart);
+
+                // Reposition all order lines (Entry+ badge, y-axis highlights, etc.)
+                if (typeof self.updateOrderLines === 'function') self.updateOrderLines(chart);
                 if (typeof self.updatePositionsPanel === 'function') self.updatePositionsPanel();
                 
                 const sMode = pendingOrder.sizingMode || 'risk-usd';
@@ -21882,6 +22071,68 @@ class OrderManager {
         labelBox.call(drag);
         if (priceBox) priceBox.call(drag);
         
+        // --- SL / TP drag-to-set badges for pending orders ---
+        const badgeH = 16, badgeR = 3, badgeFontSize = '10px';
+
+        const slBadgeGroup = chart.svg.append('g')
+            .attr('class', `pending-sl-badge pending-${pendingOrder.id}`)
+            .attr('pointer-events', 'all')
+            .style('cursor', 'ns-resize')
+            .style('display', 'none');
+        slBadgeGroup.append('rect')
+            .attr('height', badgeH).attr('rx', badgeR)
+            .attr('fill', 'rgba(242,54,69,0.12)')
+            .attr('stroke', '#f23645').attr('stroke-width', 1)
+            .attr('stroke-dasharray', '3 2')
+            .style('pointer-events', 'all');
+        slBadgeGroup.append('text')
+            .attr('fill', '#f23645')
+            .attr('font-size', badgeFontSize).attr('font-weight', '700')
+            .attr('dy', '0.35em').attr('text-anchor', 'middle')
+            .attr('opacity', 0.8)
+            .style('pointer-events', 'all')
+            .text('SL');
+        slBadgeGroup
+            .on('mouseenter', function() {
+                d3.select(this).select('rect').attr('fill', 'rgba(242,54,69,0.35)').attr('stroke-dasharray', null);
+                d3.select(this).select('text').attr('opacity', 1);
+            })
+            .on('mouseleave', function() {
+                d3.select(this).select('rect').attr('fill', 'rgba(242,54,69,0.12)').attr('stroke-dasharray', '3 2');
+                d3.select(this).select('text').attr('opacity', 0.8);
+            });
+
+        const tpBadgeGroup = chart.svg.append('g')
+            .attr('class', `pending-tp-badge pending-${pendingOrder.id}`)
+            .attr('pointer-events', 'all')
+            .style('cursor', 'ns-resize')
+            .style('display', 'none');
+        tpBadgeGroup.append('rect')
+            .attr('height', badgeH).attr('rx', badgeR)
+            .attr('fill', 'rgba(34,197,94,0.12)')
+            .attr('stroke', '#22c55e').attr('stroke-width', 1)
+            .attr('stroke-dasharray', '3 2')
+            .style('pointer-events', 'all');
+        tpBadgeGroup.append('text')
+            .attr('fill', '#22c55e')
+            .attr('font-size', badgeFontSize).attr('font-weight', '700')
+            .attr('dy', '0.35em').attr('text-anchor', 'middle')
+            .attr('opacity', 0.8)
+            .style('pointer-events', 'all')
+            .text('TP');
+        tpBadgeGroup
+            .on('mouseenter', function() {
+                d3.select(this).select('rect').attr('fill', 'rgba(34,197,94,0.35)').attr('stroke-dasharray', null);
+                d3.select(this).select('text').attr('opacity', 1);
+            })
+            .on('mouseleave', function() {
+                d3.select(this).select('rect').attr('fill', 'rgba(34,197,94,0.12)').attr('stroke-dasharray', '3 2');
+                d3.select(this).select('text').attr('opacity', 0.8);
+            });
+
+        this._setupPendingEntryDragToCreateTPSL(pendingOrder, line, labelBox, chart,
+            [dragHitLine, labelText, priceBox, slBadgeGroup, tpBadgeGroup]);
+
         // --- "Entry+" badge: drag to split entry ---
         const entryPlusBadge = this._createPlusBadge(chart, pendingOrder.id, 'pending',
             '#3b82f6', 'Entry+', (price) => this._splitEntryAtPrice(pendingOrder.id, price, true));
@@ -21896,6 +22147,8 @@ class OrderManager {
             priceBox,
             closeBtn,
             priceText,
+            slBadge: slBadgeGroup,
+            tpBadge: tpBadgeGroup,
             entryPlusBadge,
             chart
         });
@@ -22389,6 +22642,8 @@ class OrderManager {
                 if (lineData.priceBox) lineData.priceBox.remove();
                 if (lineData.priceText) lineData.priceText.remove();
                 if (lineData.closeBtn) lineData.closeBtn.remove();
+                if (lineData.slBadge) lineData.slBadge.remove();
+                if (lineData.tpBadge) lineData.tpBadge.remove();
                 if (lineData.entryPlusBadge) lineData.entryPlusBadge.remove();
                 if (lineData.yAxisHighlight) lineData.yAxisHighlight.remove();
             } catch (e) {
@@ -22427,6 +22682,12 @@ class OrderManager {
         }
         if (!pendingOrder) return;
 
+        // Before removing: check if this is a split entry and find siblings
+        const wasSplitEntry = pendingOrder.isSplitEntry && pendingOrder.splitGroupId;
+        const splitGroupId = pendingOrder.splitGroupId;
+        const cancelledQty = pendingOrder.quantity || 0;
+        const cancelledRisk = pendingOrder.riskAmount || 0;
+
         if (this.orderService) {
             this.orderService.removePendingOrder(orderId);
         }
@@ -22437,10 +22698,59 @@ class OrderManager {
         this.removePendingOrderLine(orderId);
         this.removePendingSLTPLines(orderId);
         // For split entries, avg TP is keyed by group — only remove when last leg cancelled
-        if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
-            this._removeSplitGroupTPAvgIfEmpty(pendingOrder.splitGroupId, orderId);
+        if (wasSplitEntry && splitGroupId) {
+            this._removeSplitGroupTPAvgIfEmpty(splitGroupId, orderId);
         } else {
             this.removeMultiTPAvgLine(orderId);
+        }
+
+        // If this was a split entry, restore lot size to the remaining sibling(s)
+        if (wasSplitEntry && splitGroupId) {
+            const allPending = [...(this.pendingOrders || []), ...(this.orderService?.pendingOrders || [])];
+            const remainingSiblings = allPending.filter(p => p.splitGroupId === splitGroupId && p.id !== orderId);
+
+            if (remainingSiblings.length === 1) {
+                // Only one sibling left — restore to non-split state and absorb cancelled qty
+                const survivor = remainingSiblings[0];
+                survivor.quantity = +(survivor.quantity + cancelledQty).toFixed(2);
+                survivor.riskAmount = (survivor.riskAmount || 0) + cancelledRisk;
+                if (survivor.originalRiskAmount != null) {
+                    survivor.originalRiskAmount = (survivor.originalRiskAmount || 0) + (pendingOrder.originalRiskAmount || cancelledRisk);
+                }
+                survivor.isSplitEntry = false;
+                survivor.splitGroupId = undefined;
+                survivor.splitIndex = undefined;
+                survivor.splitTotal = undefined;
+
+                // Remove old split-group avg line
+                this.removeSplitGroupAvgLine(splitGroupId);
+
+                // Redraw the survivor's entry line and targets
+                this.removePendingOrderLine(survivor.id);
+                this.removePendingSLTPLines(survivor.id);
+                this.removeMultiTPAvgLine(survivor.id);
+                this.drawPendingOrderLine(survivor);
+                this.drawPendingOrderTargets(survivor);
+                if (survivor.tpTargets && survivor.tpTargets.length >= 2) {
+                    this.drawMultiTPAvgLine(survivor, 'pending');
+                }
+
+                console.log(`🔄 Restored pending #${survivor.id} to ${survivor.quantity.toFixed(2)} lots (absorbed cancelled split)`);
+            } else if (remainingSiblings.length > 1) {
+                // Multiple siblings remain — distribute cancelled qty evenly
+                const qtyPerSib = cancelledQty / remainingSiblings.length;
+                const riskPerSib = cancelledRisk / remainingSiblings.length;
+                remainingSiblings.forEach(sib => {
+                    sib.quantity = +(sib.quantity + qtyPerSib).toFixed(2);
+                    sib.riskAmount = (sib.riskAmount || 0) + riskPerSib;
+                    sib.splitTotal = remainingSiblings.length;
+                });
+                // Recalculate split indexes
+                remainingSiblings.forEach((sib, i) => { sib.splitIndex = i + 1; });
+
+                // Update avg line
+                this._updateSplitGroupAvgLines();
+            }
         }
 
         const orderTypeLabel = pendingOrder.orderType === 'limit' ? 'Limit' : 'Stop';
@@ -25118,7 +25428,7 @@ class OrderManager {
                     }
 
                     // Determine badge state (works for both pending and open)
-                    const hasSL = !isPending && orderData.stopLoss && orderData.stopLoss > 0;
+                    const hasSL = orderData.stopLoss && orderData.stopLoss > 0;
                     const hasMultiTP = orderData.tpTargets && orderData.tpTargets.length > 0;
                     const hasSingleTP = !hasMultiTP && orderData.takeProfit && orderData.takeProfit > 0;
                     const allTPsSet = hasMultiTP && orderData.tpTargets.every(t => (t.price > 0) || t.hit);
@@ -25137,10 +25447,10 @@ class OrderManager {
                             : 0;
                     }
 
-                    // Space for SL badge (open positions only)
-                    let slBadgeW = (!isPending && !hasSL) ? bW + bGap2 : 0;
-                    // Space for single TP badge (open positions, no multi-TP)
-                    let singleTPBadgeW = (!isPending && !hasMultiTP && !hasSingleTP) ? bW + bGap2 : 0;
+                    // SL badge: show for both open and pending when SL is not set
+                    let slBadgeW = (!hasSL && slBadge) ? bW + bGap2 : 0;
+                    // TP badge: show for both open and pending when single TP is not set
+                    let singleTPBadgeW = (!hasMultiTP && !hasSingleTP && tpBadge) ? bW + bGap2 : 0;
                     // Space for Entry+ badge (pending only — can't split an open position's entry)
                     const showEntryPlus = isPending && !isAlreadySplitEntry && olEntry.entryPlusBadge;
                     let entryPlusBadgeW = showEntryPlus ? plusBW + bGap2 : 0;
@@ -25163,8 +25473,8 @@ class OrderManager {
                         cx += pnlBW + gap;
                     }
 
-                    // --- SL badge (open only) ---
-                    if (!isPending && slBadge) {
+                    // --- SL badge (both open and pending) ---
+                    if (slBadge) {
                         if (hasSL) {
                             slBadge.style('display', 'none');
                         } else {
@@ -25176,35 +25486,33 @@ class OrderManager {
                         }
                     }
 
-                    // --- TP badges (open only) ---
-                    if (!isPending) {
-                        if (hasMultiTP) {
-                            if (tpBadge) tpBadge.style('display', 'none');
-                            if (olEntry.tpBadgesContainer) {
-                                if (allTPsSet) {
-                                    olEntry.tpBadgesContainer.style('display', 'none');
-                                } else {
-                                    const renderedW = this._renderMultiTPBadges(
-                                        olEntry, orderData, olEntry.tpBadgesContainer,
-                                        orderData.tpTargets, y, ch
-                                    );
-                                    olEntry.tpBadgesContainer.style('display', null)
-                                        .attr('transform', `translate(${cx}, ${y - bH / 2})`);
-                                    cx += renderedW + bGap2;
-                                }
+                    // --- TP badges (both open and pending) ---
+                    if (hasMultiTP && !isPending) {
+                        if (tpBadge) tpBadge.style('display', 'none');
+                        if (olEntry.tpBadgesContainer) {
+                            if (allTPsSet) {
+                                olEntry.tpBadgesContainer.style('display', 'none');
+                            } else {
+                                const renderedW = this._renderMultiTPBadges(
+                                    olEntry, orderData, olEntry.tpBadgesContainer,
+                                    orderData.tpTargets, y, ch
+                                );
+                                olEntry.tpBadgesContainer.style('display', null)
+                                    .attr('transform', `translate(${cx}, ${y - bH / 2})`);
+                                cx += renderedW + bGap2;
                             }
-                        } else {
-                            if (olEntry.tpBadgesContainer) olEntry.tpBadgesContainer.style('display', 'none');
-                            if (tpBadge) {
-                                if (hasSingleTP) {
-                                    tpBadge.style('display', 'none');
-                                } else {
-                                    tpBadge.style('display', null)
-                                        .attr('transform', `translate(${cx}, ${y - bH / 2})`);
-                                    tpBadge.select('rect').attr('width', bW);
-                                    tpBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
-                                    cx += bW + bGap2;
-                                }
+                        }
+                    } else {
+                        if (olEntry.tpBadgesContainer) olEntry.tpBadgesContainer.style('display', 'none');
+                        if (tpBadge) {
+                            if (hasSingleTP) {
+                                tpBadge.style('display', 'none');
+                            } else {
+                                tpBadge.style('display', null)
+                                    .attr('transform', `translate(${cx}, ${y - bH / 2})`);
+                                tpBadge.select('rect').attr('width', bW);
+                                tpBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
+                                cx += bW + bGap2;
                             }
                         }
                     }
