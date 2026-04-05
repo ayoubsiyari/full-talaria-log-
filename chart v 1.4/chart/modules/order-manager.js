@@ -357,9 +357,9 @@ class OrderManager {
         s.selectAll('.order-line,.order-drag-hit,.order-label-box,.order-label-text,.order-arrow,.order-price-box,.order-price-text,.order-close-btn,.order-pnl-box,.order-pnl-text,.order-sl-badge,.order-tp-badge,.order-tp-badges').remove();
         s.selectAll('.pending-order-line,.pending-order-label-box,.pending-order-label-text,.pending-order-price-box,.pending-order-price-text,.pending-order-close-btn').remove();
         s.selectAll('.pending-tp-line,.pending-sl-line,.pending-be-line,.pending-tp-label,.pending-sl-label,.pending-be-label').remove();
-        s.selectAll('[class*="pending-tp-tp-plus-badge"],[class*="pending-tp-delete"],[class*="pending-sl-badge"],[class*="pending-tp-badge"]').remove();
+        s.selectAll('[class*="pending-tp-tp-plus-badge"],[class*="pending-tp-delete"],[class*="pending-tp-split"],[class*="pending-sl-badge"],[class*="pending-tp-badge"]').remove();
         s.selectAll('.sl-line,.sl-label-box,.sl-label-text,.sl-pnl-box,.sl-pnl-text,.sl-close-btn,.sl-price-box,.sl-price-text').remove();
-        s.selectAll('.tp-line,.tp-label-box,.tp-label-text,.tp-pnl-box,.tp-pnl-text,.tp-close-btn,.tp-price-box,.tp-price-text').remove();
+        s.selectAll('.tp-line,.tp-label-box,.tp-label-text,.tp-pnl-box,.tp-pnl-text,.tp-close-btn,.tp-split-btn,.tp-price-box,.tp-price-text').remove();
         s.selectAll('.be-line,.be-hit-line,.be-label-box,.be-label-text,.be-price-box,.be-price-text').remove();
         s.selectAll('[class*="split-avg-"]').remove();
         s.selectAll('[class*="multi-tp-avg-"]').remove();
@@ -22275,6 +22275,7 @@ class OrderManager {
         ch.svg.selectAll('.y-axis-pending-be-highlight').remove();
         ch.svg.selectAll('[class*="pending-tp-tp-plus-badge"]').remove();
         ch.svg.selectAll('[class*="pending-tp-delete"]').remove();
+        ch.svg.selectAll('[class*="pending-tp-split"]').remove();
 
         if (!this.pendingTargetLines?.length) return;
 
@@ -22382,14 +22383,17 @@ class OrderManager {
                 const totalLabelW = labelWidth + pnlBoxW;
                 target.labelDimensions = { width: totalLabelW, height: labelHeight };
 
-                // Layout: Label+PnL → X (right of label, left of right margin)
+                // Layout: Label+PnL → [+] → [X] (right of label, left of right margin)
                 const isMultiTP = !!target.isPendingMultiTP;
                 const needsCloseBtn = (target.type === 'SL' || target.type === 'TP');
+                const needsSplitBtn = (target.type === 'TP');
                 const closeBtnR = 10;
+                const splitBtnR = needsSplitBtn ? closeBtnR : 0;
                 const closeBtnGap = 6;
                 const xBtnW = needsCloseBtn ? (closeBtnR * 2 + closeBtnGap) : 0;
+                const splitW = needsSplitBtn ? (splitBtnR * 2 + closeBtnGap) : 0;
                 const bGap = 4;
-                const badgesW = xBtnW;
+                const badgesW = xBtnW + splitW;
 
                 const translateX = ch.w - totalLabelW - badgesW - marginRight;
                 const translateY = y - labelHeight / 2;
@@ -22431,6 +22435,42 @@ class OrderManager {
                         target._deleteBtn = dbg;
                     }
                     target._deleteBtn.attr('transform', `translate(${closeBtnX}, ${y})`);
+                }
+
+                // + split button for TP targets
+                if (needsSplitBtn) {
+                    const splitX = translateX + totalLabelW + (needsCloseBtn ? closeBtnR * 2 + closeBtnGap : 0) + closeBtnGap + splitBtnR;
+                    if (!target._splitBtn || !target._splitBtn.node()?.parentNode) {
+                        if (target._splitBtn) { try { target._splitBtn.remove(); } catch (_) {} }
+                        const sbg = ch.svg.append('g')
+                            .attr('class', `pending-tp-split pending-tp-${entry.pendingOrder.id}`)
+                            .attr('pointer-events', 'all')
+                            .style('cursor', 'pointer');
+                        sbg.append('circle').attr('r', splitBtnR)
+                            .attr('fill', '#0f172a').attr('stroke', '#22c55e').attr('stroke-width', 1.2);
+                        sbg.append('text').attr('fill', '#22c55e').attr('font-size', '14px')
+                            .attr('font-weight', '700').attr('text-anchor', 'middle').attr('dy', '0.35em')
+                            .style('pointer-events', 'none').text('+');
+                        sbg.on('click', (event) => {
+                            event.stopPropagation();
+                            event.preventDefault();
+                            const po = entry.pendingOrder;
+                            const ep = po.entryPrice;
+                            const tp = target.price;
+                            const dist = Math.abs(tp - ep);
+                            const newTP = po.direction === 'BUY' ? tp + dist * 0.5 : tp - dist * 0.5;
+                            this._splitTPAtPrice(po.id, newTP, true);
+                        });
+                        sbg.on('mouseover', function() {
+                            sbg.select('circle').attr('fill', '#22c55e');
+                            sbg.select('text').attr('fill', '#ffffff');
+                        }).on('mouseout', function() {
+                            sbg.select('circle').attr('fill', '#0f172a');
+                            sbg.select('text').attr('fill', '#22c55e');
+                        });
+                        target._splitBtn = sbg;
+                    }
+                    target._splitBtn.attr('transform', `translate(${splitX}, ${y})`);
                 }
 
                 if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} target._tpPlusBadge = null; }
@@ -22501,6 +22541,12 @@ class OrderManager {
                     const cBtnR = 10, cBtnGap = 6;
                     const closeBtnX = translateX + dims.width + cBtnGap + cBtnR;
                     target._deleteBtn.attr('transform', `translate(${closeBtnX}, ${clampedY})`);
+                }
+                if (target._splitBtn) {
+                    const sBtnR = 10, sBtnGap = 6;
+                    const hasClose = !!target._deleteBtn;
+                    const splitX = translateX + dims.width + (hasClose ? 10 * 2 + sBtnGap : 0) + sBtnGap + sBtnR;
+                    target._splitBtn.attr('transform', `translate(${splitX}, ${clampedY})`);
                 }
                 
                 if (target.priceHighlight) {
@@ -22634,6 +22680,7 @@ class OrderManager {
                 target.labelGroup?.remove();
                 target.priceHighlight?.remove();
                 if (target._deleteBtn) { try { target._deleteBtn.remove(); } catch (_) {} }
+                if (target._splitBtn) { try { target._splitBtn.remove(); } catch (_) {} }
                 if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} }
             });
         });
@@ -24370,6 +24417,37 @@ class OrderManager {
                         this._deleteTPTarget(order.id, index, false);
                     });
 
+                    // TP+ split button for multi-TP (adds another target)
+                    const tpMultiSplitBtn = chart.svg.append('g')
+                        .attr('class', `tp-split-btn tp-${order.id} tp-target-${target.id || index}`)
+                        .attr('pointer-events', 'all')
+                        .style('cursor', 'pointer');
+                    const tpMultiSplitBg = tpMultiSplitBtn.append('circle')
+                        .attr('r', 8)
+                        .attr('fill', '#0f172a')
+                        .attr('stroke', '#22c55e').attr('stroke-width', 1.2);
+                    tpMultiSplitBtn.append('text')
+                        .attr('fill', '#22c55e').attr('font-size', '12px').attr('font-weight', '700')
+                        .attr('text-anchor', 'middle').attr('dy', '0.35em')
+                        .style('pointer-events', 'none').text('+');
+                    tpMultiSplitBtn.on('click', (event) => {
+                        event.stopPropagation();
+                        event.preventDefault();
+                        const entry = order.openPrice;
+                        const highestTP = Math.max(...order.tpTargets.filter(t => !t.hit && t.price > 0).map(t => t.price));
+                        const lowestTP = Math.min(...order.tpTargets.filter(t => !t.hit && t.price > 0).map(t => t.price));
+                        const dist = Math.abs(highestTP - entry) || Math.abs(lowestTP - entry);
+                        const newTP = order.type === 'BUY' ? highestTP + dist * 0.3 : lowestTP - dist * 0.3;
+                        this._splitTPAtPrice(order.id, newTP, false);
+                    });
+                    tpMultiSplitBtn.on('mouseover', function() {
+                        tpMultiSplitBg.attr('fill', '#22c55e');
+                        tpMultiSplitBtn.select('text').attr('fill', '#ffffff');
+                    }).on('mouseout', function() {
+                        tpMultiSplitBg.attr('fill', '#0f172a');
+                        tpMultiSplitBtn.select('text').attr('fill', '#22c55e');
+                    });
+
                     tpLines.push({ 
                         orderId: order.id,
                         targetId: target.id || index,
@@ -24381,6 +24459,7 @@ class OrderManager {
                         priceBox: tpPriceBox,
                         priceText: tpPriceText,
                         deleteBtn: tpDeleteBtn,
+                        splitBtn: tpMultiSplitBtn,
                         type: 'TP',
                         chart
                     });
@@ -24485,6 +24564,37 @@ class OrderManager {
                 tpCloseBtnBg.attr('fill', '#0f172a');
                 tpCloseBtnText.attr('fill', '#e2e8f0');
             });
+
+            // TP+ split button (adds a new TP target)
+            const tpSplitBtn = chart.svg.append('g')
+                .attr('class', `tp-split-btn tp-${order.id}`)
+                .attr('pointer-events', 'all')
+                .style('cursor', 'pointer');
+            const tpSplitBg = tpSplitBtn.append('circle')
+                .attr('r', 10)
+                .attr('fill', '#0f172a')
+                .attr('stroke', '#22c55e')
+                .attr('stroke-width', 1.2);
+            tpSplitBtn.append('text')
+                .attr('fill', '#22c55e').attr('font-size', '14px').attr('font-weight', '700')
+                .attr('text-anchor', 'middle').attr('dy', '0.35em')
+                .style('pointer-events', 'none').text('+');
+            tpSplitBtn.on('click', (event) => {
+                event.stopPropagation();
+                event.preventDefault();
+                const entry = order.openPrice;
+                const tp = order.takeProfit;
+                const dist = Math.abs(tp - entry);
+                const newTP = order.type === 'BUY' ? tp + dist * 0.5 : tp - dist * 0.5;
+                this._splitTPAtPrice(order.id, newTP, false);
+            });
+            tpSplitBtn.on('mouseover', function() {
+                tpSplitBg.attr('fill', '#22c55e');
+                tpSplitBtn.select('text').attr('fill', '#ffffff');
+            }).on('mouseout', function() {
+                tpSplitBg.attr('fill', '#0f172a');
+                tpSplitBtn.select('text').attr('fill', '#22c55e');
+            });
             
             // Right side price box (green)
             const tpPriceBox = chart.svg.append('rect')
@@ -24522,6 +24632,7 @@ class OrderManager {
                 pnlBox: tpPnlBox,
                 pnlText: tpPnlText,
                 closeBtn: tpCloseBtn,
+                splitBtn: tpSplitBtn,
                 priceBox: tpPriceBox,
                 priceText: tpPriceText,
                 type: 'TP',
@@ -24688,6 +24799,7 @@ class OrderManager {
                     if (tpLine.pnlBox) tpLine.pnlBox.remove();
                     if (tpLine.pnlText) tpLine.pnlText.remove();
                     if (tpLine.closeBtn) tpLine.closeBtn.remove();
+                    if (tpLine.splitBtn) tpLine.splitBtn.remove();
                     if (tpLine.priceBox) tpLine.priceBox.remove();
                     if (tpLine.priceText) tpLine.priceText.remove();
                     if (tpLine.deleteBtn) tpLine.deleteBtn.remove();
@@ -24924,6 +25036,8 @@ class OrderManager {
                 if (tpLine.pnlBox) tpLine.pnlBox.remove();
                 if (tpLine.pnlText) tpLine.pnlText.remove();
                 if (tpLine.closeBtn) tpLine.closeBtn.remove();
+                if (tpLine.splitBtn) tpLine.splitBtn.remove();
+                if (tpLine.deleteBtn) tpLine.deleteBtn.remove();
                 if (tpLine.priceBox) tpLine.priceBox.remove();
                 if (tpLine.priceText) tpLine.priceText.remove();
             });
@@ -25278,7 +25392,7 @@ class OrderManager {
             // Track which TP prices have been updated
             const updatedTPPrices = new Set();
             
-            tpForChart.forEach(({ orderId, targetId, line, labelBox, labelText, pnlBox, pnlText, closeBtn, priceBox, priceText, deleteBtn }) => {
+            tpForChart.forEach(({ orderId, targetId, line, labelBox, labelText, pnlBox, pnlText, closeBtn, splitBtn, priceBox, priceText, deleteBtn }) => {
                 const position = this.openPositions.find(p => p.id === orderId);
                 if (!position) return;
                 
@@ -25312,6 +25426,7 @@ class OrderManager {
                     if (priceBox) priceBox.style('display', 'none');
                     if (priceText) priceText.style('display', 'none');
                     if (closeBtn) closeBtn.style('display', 'none');
+                    if (splitBtn) splitBtn.style('display', 'none');
                     if (deleteBtn) deleteBtn.style('display', 'none');
                 } else {
                     updatedTPPrices.add(priceKey);
@@ -25357,6 +25472,7 @@ class OrderManager {
                     if (pnlBox) pnlBox.style('display', null);
                     if (pnlText) pnlText.style('display', null);
                     if (closeBtn) closeBtn.style('display', null);
+                    if (splitBtn) splitBtn.style('display', null);
                     if (priceBox) priceBox.style('display', 'none');
                     if (priceText) priceText.style('display', 'none');
                 }
@@ -25372,6 +25488,7 @@ class OrderManager {
                     const pad = 8;
                     const yAxisWidth = 70;
                     const closeBtnR = 10;
+                    const splitBtnR = splitBtn ? (deleteBtn ? 8 : 10) : 0;
                     const closeBtnGap = 6;
                     const deleteBtnR = 8;
 
@@ -25380,9 +25497,10 @@ class OrderManager {
                     const pnlTW = pnlText?.node()?.getBBox()?.width || 0;
                     const pnlBW = pnlTW > 0 ? pnlTW + pad * 2 : 0;
 
-                    // Layout: Label → PnL → X → CloseBtn
+                    // Layout: Label → PnL → [Delete] → [Split+] → CloseBtn
                     const deleteSpace = deleteBtn ? (deleteBtnR * 2 + gap) : 0;
-                    const badgesW = deleteSpace;
+                    const splitSpace = splitBtn ? (splitBtnR * 2 + gap) : 0;
+                    const badgesW = deleteSpace + splitSpace;
 
                     const rightEdge = ch.w - yAxisWidth - 10;
                     const closeBtnX = rightEdge - closeBtnR;
@@ -25403,11 +25521,17 @@ class OrderManager {
                         cx += pnlBW + gap;
                     }
 
-                    // X delete button
+                    // X delete button (multi-TP only)
                     if (deleteBtn) {
                         deleteBtn.style('display', null)
                             .attr('transform', `translate(${cx + deleteBtnR}, ${y})`);
                         cx += deleteBtnR * 2 + gap;
+                    }
+
+                    // + split button
+                    if (splitBtn) {
+                        splitBtn.attr('transform', `translate(${cx + splitBtnR}, ${y})`);
+                        cx += splitBtnR * 2 + gap;
                     }
 
                     closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
@@ -25824,6 +25948,13 @@ class OrderManager {
                     if (cm) tp.deleteBtn.attr('transform', `translate(${parseFloat(cm[1]) - dx}, ${cm[2]})`);
                 }
             }
+            if (tp.splitBtn) {
+                const ct = tp.splitBtn.attr('transform');
+                if (ct) {
+                    const cm = ct.match(/translate\(\s*([\d.e+-]+)\s*,\s*([\d.e+-]+)/);
+                    if (cm) tp.splitBtn.attr('transform', `translate(${parseFloat(cm[1]) - dx}, ${cm[2]})`);
+                }
+            }
             if (tp.closeBtn) {
                 const ct = tp.closeBtn.attr('transform');
                 if (ct) {
@@ -25922,6 +26053,7 @@ class OrderManager {
                     }
                 };
                 shiftG(target._deleteBtn);
+                shiftG(target._splitBtn);
             });
         });
     }
