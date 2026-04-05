@@ -8573,7 +8573,52 @@ class OrderManager {
             offsetX += width + gap;
         });
 
-        // Add +/- arrows for multiple TP lines (after segments)
+        // X to remove single TP / SL preview lines (same idea as executed order lines)
+        const isSingleTpPreviewLine = lineData.label === 'TP' && !lineData.isBadge && lineData.targetIndex === undefined;
+        const isSingleSlPreviewLine = lineData.label === 'SL' && !lineData.isBadge;
+        if ((isSingleTpPreviewLine || isSingleSlPreviewLine) && !lineData.isAvgEntryLine) {
+            const closeSize = 18;
+            const closeGroup = lineData.labelGroup.append('g')
+                .attr('class', 'preview-tp-sl-close-btn')
+                .attr('transform', `translate(${offsetX}, ${(height - closeSize) / 2})`)
+                .style('cursor', 'pointer');
+
+            closeGroup.append('circle')
+                .attr('cx', closeSize / 2)
+                .attr('cy', closeSize / 2)
+                .attr('r', closeSize / 2)
+                .attr('fill', 'rgba(15, 23, 42, 0.95)')
+                .attr('stroke', lineData.color || '#94a3b8')
+                .attr('stroke-width', 1.2);
+
+            closeGroup.append('text')
+                .attr('x', closeSize / 2)
+                .attr('y', closeSize / 2)
+                .attr('dy', '0.35em')
+                .attr('text-anchor', 'middle')
+                .attr('fill', '#e2e8f0')
+                .attr('font-size', '11px')
+                .attr('font-weight', '700')
+                .text('×');
+
+            const self = this;
+            closeGroup
+                .on('mouseenter', function() {
+                    d3.select(this).select('circle').attr('stroke', '#f87171').attr('stroke-width', 1.5);
+                })
+                .on('mouseleave', function() {
+                    d3.select(this).select('circle').attr('stroke', lineData.color || '#94a3b8').attr('stroke-width', 1.2);
+                })
+                .on('click', (event) => {
+                    event.stopPropagation();
+                    if (isSingleTpPreviewLine) self._removePreviewSingleTP();
+                    else self._removePreviewSingleSL();
+                });
+
+            offsetX += closeSize + gap;
+        }
+
+        // Add +/- arrows for multiple TP lines (after segments); X when at least one multi-TP row exists
         if (lineData.targetIndex !== undefined && this.tpTargets && this.tpTargets.length > 1) {
             const arrowSize = 18;
             const arrowGap = 2;
@@ -8637,14 +8682,15 @@ class OrderManager {
                 .text('+');
             
             offsetX += arrowSize + arrowGap;
-            
-            // Add close (X) button for multiple TP lines
+        }
+
+        if (lineData.targetIndex !== undefined && this.tpTargets && this.tpTargets.length >= 1) {
             const closeSize = 18;
             const closeGroup = lineData.labelGroup.append('g')
-                .attr('class', 'tp-close-btn')
+                .attr('class', 'tp-close-btn preview-tp-sl-close-btn')
                 .attr('transform', `translate(${offsetX}, ${(height - closeSize) / 2})`)
                 .style('cursor', 'pointer');
-            
+
             closeGroup.append('circle')
                 .attr('cx', closeSize / 2)
                 .attr('cy', closeSize / 2)
@@ -8652,7 +8698,7 @@ class OrderManager {
                 .attr('fill', 'rgba(239, 68, 68, 0.3)')
                 .attr('stroke', '#ef4444')
                 .attr('stroke-width', 1.5);
-            
+
             closeGroup.append('text')
                 .attr('x', closeSize / 2)
                 .attr('y', closeSize / 2)
@@ -8662,8 +8708,7 @@ class OrderManager {
                 .attr('font-size', '11px')
                 .attr('font-weight', '700')
                 .text('✕');
-            
-            // Close button events
+
             closeGroup
                 .on('mouseenter', function() {
                     d3.select(this).select('circle')
@@ -8675,11 +8720,10 @@ class OrderManager {
                 })
                 .on('click', (event) => {
                     event.stopPropagation();
-                    if (lineData.targetId) {
-                        this.removeTPTarget(lineData.targetId);
-                    }
+                    const key = lineData.targetId != null ? lineData.targetId : lineData.targetIndex;
+                    if (key != null) this.removeTPTarget(key);
                 });
-            
+
             offsetX += closeSize + gap;
         }
         
@@ -12477,6 +12521,17 @@ class OrderManager {
         };
 
         const drag = d3.drag()
+            .filter((event) => {
+                const t = event.sourceEvent && event.sourceEvent.target;
+                if (t && typeof t.closest === 'function') {
+                    if (t.closest('.preview-tp-sl-close-btn')) return false;
+                    if (t.closest('.tp-close-btn')) return false;
+                    if (t.closest('.tp-percentage-control')) return false;
+                    if (t.closest('.entry-action-btn')) return false;
+                    if (t.closest('.split-handle')) return false;
+                }
+                return true;
+            })
             .on('start', () => {
                 isDragging = true;
                 dragStartTime = Date.now();
@@ -14938,12 +14993,51 @@ class OrderManager {
     }
     
     /**
+     * Turn off single-TP preview (chart + panel) — same effect as unchecking TP in the drawer.
+     */
+    _removePreviewSingleTP() {
+        const enableTP = document.getElementById('enableTP');
+        const tpInput = document.getElementById('tpPrice');
+        if (enableTP) {
+            enableTP.checked = false;
+            if (typeof enableTP.onchange === 'function') enableTP.onchange();
+        }
+        if (tpInput) tpInput.value = '';
+        this.tpManuallyPositioned = false;
+        this.updatePreviewLines();
+        this.calculateAdvancedRiskReward();
+    }
+
+    /**
+     * Turn off SL preview (chart + panel).
+     */
+    _removePreviewSingleSL() {
+        const enableSL = document.getElementById('enableSL');
+        const slInput = document.getElementById('slPrice');
+        if (enableSL) {
+            enableSL.checked = false;
+            if (typeof enableSL.onchange === 'function') enableSL.onchange();
+        }
+        if (slInput) slInput.value = '';
+        this.slManuallyPositioned = false;
+        this.updatePreviewLines();
+        this.calculateAdvancedRiskReward();
+    }
+
+    /**
      * Remove a TP target by ID
      */
-    removeTPTarget(targetId) {
+    removeTPTarget(targetIdOrIndex) {
         if (!this.tpTargets) return;
-        
-        const index = this.tpTargets.findIndex(t => t.id === targetId);
+
+        let index = -1;
+        if (targetIdOrIndex != null && targetIdOrIndex !== '') {
+            index = this.tpTargets.findIndex(t => t && (t.id === targetIdOrIndex || String(t.id) === String(targetIdOrIndex)));
+        }
+        if (index === -1 && typeof targetIdOrIndex === 'number' && Number.isInteger(targetIdOrIndex)
+            && targetIdOrIndex >= 0 && targetIdOrIndex < this.tpTargets.length) {
+            index = targetIdOrIndex;
+        }
         if (index === -1) return;
         
         // Remove the target
@@ -14968,7 +15062,7 @@ class OrderManager {
             });
         }
         
-        console.log(`🗑️ Removed TP target #${targetId} - Remaining: ${this.tpTargets.length}`);
+        console.log(`🗑️ Removed TP target (ref ${targetIdOrIndex}) - Remaining: ${this.tpTargets.length}`);
         
         // Update UI
         this.renderTPTargets();
