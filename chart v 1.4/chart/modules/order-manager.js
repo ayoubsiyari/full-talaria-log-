@@ -15896,6 +15896,21 @@ class OrderManager {
             if (placedOrderIds.length > 1 && lotsSum > 0) {
                 const avgPx = weightedPriceSum / lotsSum;
                 this.drawSplitGroupAvgLine(splitGroupId, avgPx, lotsSum, this.orderSide, placedOrderIds);
+
+                // All entries are now registered — redraw targets for the primary
+                // so lot sizes and P&L aggregate from ALL split group members.
+                const allPlaced = [...(this.pendingOrders || []), ...(this.orderService?.pendingOrders || [])];
+                const primaryEntry = allPlaced.find(p => p.splitGroupId === splitGroupId && Number(p.splitIndex) === 1);
+                if (primaryEntry) {
+                    this.removePendingSLTPLines(primaryEntry.id);
+                    this.removeMultiTPAvgLine(primaryEntry.id);
+                    this.removeMultiTPAvgLine(`splitgrp_${splitGroupId}`);
+                    this.drawPendingOrderTargets(primaryEntry);
+                    if (primaryEntry.tpTargets && primaryEntry.tpTargets.length >= 2) {
+                        this.drawMultiTPAvgLine(primaryEntry, 'pending');
+                    }
+                    this.positionPendingOrderTargets(this.chart);
+                }
             }
 
             this.showNotification(
