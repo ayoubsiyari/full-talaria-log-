@@ -22530,8 +22530,9 @@ class OrderManager {
                 // Layout: Label+PnL → X (right of label, left of right margin)
                 const isMultiTP = !!target.isPendingMultiTP;
                 const needsCloseBtn = (target.type === 'SL' || target.type === 'TP');
-                const deleteBtnR = 7;
-                const xBtnW = needsCloseBtn ? (deleteBtnR * 2 + 4) : 0;
+                const closeBtnR = 10;
+                const closeBtnGap = 6;
+                const xBtnW = needsCloseBtn ? (closeBtnR * 2 + closeBtnGap) : 0;
                 const bGap = 4;
                 const badgesW = xBtnW;
 
@@ -22541,19 +22542,18 @@ class OrderManager {
                     .attr('transform', `translate(${translateX}, ${translateY})`)
                     .style('cursor', isDraggable ? 'ns-resize' : 'default');
 
-                let bx = translateX + totalLabelW + bGap;
-
                 // X close/delete button for SL, single TP, and multi-TP targets
                 if (needsCloseBtn) {
+                    const closeBtnX = translateX + totalLabelW + closeBtnGap + closeBtnR;
                     if (!target._deleteBtn || !target._deleteBtn.node()?.parentNode) {
                         if (target._deleteBtn) { try { target._deleteBtn.remove(); } catch (_) {} }
                         const dbg = ch.svg.append('g')
                             .attr('class', `pending-tp-delete pending-tp-${entry.pendingOrder.id}`)
                             .attr('pointer-events', 'all')
                             .style('cursor', 'pointer');
-                        dbg.append('circle').attr('r', deleteBtnR)
-                            .attr('fill', '#0f172a').attr('stroke', bgColor).attr('stroke-width', 1);
-                        dbg.append('text').attr('fill', '#e2e8f0').attr('font-size', '11px')
+                        dbg.append('circle').attr('r', closeBtnR)
+                            .attr('fill', '#0f172a').attr('stroke', '#e2e8f0').attr('stroke-width', 1.2);
+                        dbg.append('text').attr('fill', '#e2e8f0').attr('font-size', '14px')
                             .attr('font-weight', '700').attr('text-anchor', 'middle').attr('dy', '0.35em')
                             .style('pointer-events', 'none').text('×');
                         dbg.on('click', (event) => {
@@ -22575,8 +22575,7 @@ class OrderManager {
                         });
                         target._deleteBtn = dbg;
                     }
-                    target._deleteBtn.attr('transform', `translate(${bx + deleteBtnR}, ${y})`);
-                    bx += deleteBtnR * 2 + bGap;
+                    target._deleteBtn.attr('transform', `translate(${closeBtnX}, ${y})`);
                 }
 
                 if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} target._tpPlusBadge = null; }
@@ -22641,6 +22640,12 @@ class OrderManager {
                 target.line.attr('x2', Math.max(0, translateX));
                 if (target.hitLine) {
                     target.hitLine.attr('x1', 0).attr('x2', ch.w);
+                }
+
+                if (target._deleteBtn) {
+                    const cBtnR = 10, cBtnGap = 6;
+                    const closeBtnX = translateX + dims.width + cBtnGap + cBtnR;
+                    target._deleteBtn.attr('transform', `translate(${closeBtnX}, ${clampedY})`);
                 }
                 
                 if (target.priceHighlight) {
