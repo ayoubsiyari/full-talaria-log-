@@ -25673,6 +25673,197 @@ class OrderManager {
             this.updatePreviewLinePositions();
         }
         this.positionPendingOrderTargets(ch);
+        this._alignAllOrderLabels(ch);
+    }
+
+    /**
+     * Post-positioning pass: align all visible order label groups to the same
+     * left edge so entries, TP, SL, Avg lines form a clean vertical column.
+     */
+    _alignAllOrderLabels(ch) {
+        if (!ch?.svg) return;
+
+        // Collect the X position of every visible label box on this chart
+        let minX = Infinity;
+        const labelSelectors = [
+            '.order-label-box',
+            '.pending-order-label-box',
+            '.sl-label-box',
+            '.tp-label-box',
+            '.multi-tp-avg-label',
+            '.split-avg-label'
+        ];
+        for (const sel of labelSelectors) {
+            ch.svg.selectAll(sel).each(function () {
+                const el = d3.select(this);
+                if (el.style('display') === 'none') return;
+                const x = parseFloat(el.attr('x'));
+                if (Number.isFinite(x) && x < minX) minX = x;
+            });
+        }
+        // Also check pending target label groups (use translate)
+        ch.svg.selectAll('[class*="pending-tp-label"],[class*="pending-sl-label"],[class*="pending-be-label"]').each(function () {
+            const el = d3.select(this);
+            if (el.style('display') === 'none') return;
+            const t = el.attr('transform');
+            if (t) {
+                const m = t.match(/translate\(\s*([\d.e+-]+)/);
+                if (m) {
+                    const x = parseFloat(m[1]);
+                    if (Number.isFinite(x) && x < minX) minX = x;
+                }
+            }
+        });
+
+        if (!Number.isFinite(minX) || minX === Infinity) return;
+
+        // Shift SL label groups
+        (this.slLines || []).forEach((sl) => {
+            if (sl.chart !== ch) return;
+            const box = sl.labelBox;
+            if (!box || box.style('display') === 'none') return;
+            const curX = parseFloat(box.attr('x'));
+            if (!Number.isFinite(curX) || Math.abs(curX - minX) < 0.5) return;
+            const dx = curX - minX;
+            box.attr('x', minX);
+            if (sl.labelText) sl.labelText.attr('x', parseFloat(sl.labelText.attr('x')) - dx);
+            if (sl.pnlBox) sl.pnlBox.attr('x', parseFloat(sl.pnlBox.attr('x')) - dx);
+            if (sl.pnlText) sl.pnlText.attr('x', parseFloat(sl.pnlText.attr('x')) - dx);
+            if (sl.closeBtn) {
+                const ct = sl.closeBtn.attr('transform');
+                if (ct) {
+                    const cm = ct.match(/translate\(\s*([\d.e+-]+)\s*,\s*([\d.e+-]+)/);
+                    if (cm) sl.closeBtn.attr('transform', `translate(${parseFloat(cm[1]) - dx}, ${cm[2]})`);
+                }
+            }
+        });
+
+        // Shift TP label groups
+        (this.tpLines || []).forEach((tp) => {
+            if (tp.chart !== ch) return;
+            const box = tp.labelBox;
+            if (!box || box.style('display') === 'none') return;
+            const curX = parseFloat(box.attr('x'));
+            if (!Number.isFinite(curX) || Math.abs(curX - minX) < 0.5) return;
+            const dx = curX - minX;
+            box.attr('x', minX);
+            if (tp.labelText) tp.labelText.attr('x', parseFloat(tp.labelText.attr('x')) - dx);
+            if (tp.pnlBox) tp.pnlBox.attr('x', parseFloat(tp.pnlBox.attr('x')) - dx);
+            if (tp.pnlText) tp.pnlText.attr('x', parseFloat(tp.pnlText.attr('x')) - dx);
+            if (tp.deleteBtn) {
+                const ct = tp.deleteBtn.attr('transform');
+                if (ct) {
+                    const cm = ct.match(/translate\(\s*([\d.e+-]+)\s*,\s*([\d.e+-]+)/);
+                    if (cm) tp.deleteBtn.attr('transform', `translate(${parseFloat(cm[1]) - dx}, ${cm[2]})`);
+                }
+            }
+            if (tp.tpPlusBadge) {
+                const ct = tp.tpPlusBadge.attr('transform');
+                if (ct) {
+                    const cm = ct.match(/translate\(\s*([\d.e+-]+)\s*,\s*([\d.e+-]+)/);
+                    if (cm) tp.tpPlusBadge.attr('transform', `translate(${parseFloat(cm[1]) - dx}, ${cm[2]})`);
+                }
+            }
+            if (tp.closeBtn) {
+                const ct = tp.closeBtn.attr('transform');
+                if (ct) {
+                    const cm = ct.match(/translate\(\s*([\d.e+-]+)\s*,\s*([\d.e+-]+)/);
+                    if (cm) tp.closeBtn.attr('transform', `translate(${parseFloat(cm[1]) - dx}, ${cm[2]})`);
+                }
+            }
+        });
+
+        // Shift entry label groups (both pending and open)
+        (this.orderLines || []).forEach((ol) => {
+            if ((ol.chart || this.chart) !== ch) return;
+            const box = ol.labelBox;
+            if (!box || box.style('display') === 'none') return;
+            const curX = parseFloat(box.attr('x'));
+            if (!Number.isFinite(curX) || Math.abs(curX - minX) < 0.5) return;
+            const dx = curX - minX;
+            box.attr('x', minX);
+            if (ol.labelText) ol.labelText.attr('x', parseFloat(ol.labelText.attr('x')) - dx);
+            if (ol.arrow) ol.arrow.attr('x', parseFloat(ol.arrow.attr('x')) - dx);
+            if (ol.pnlBox) ol.pnlBox.attr('x', parseFloat(ol.pnlBox.attr('x')) - dx);
+            if (ol.pnlText) ol.pnlText.attr('x', parseFloat(ol.pnlText.attr('x')) - dx);
+            const shiftBadge = (badge) => {
+                if (!badge || badge.style('display') === 'none') return;
+                const bt = badge.attr('transform');
+                if (bt) {
+                    const bm = bt.match(/translate\(\s*([\d.e+-]+)\s*,\s*([\d.e+-]+)/);
+                    if (bm) badge.attr('transform', `translate(${parseFloat(bm[1]) - dx}, ${bm[2]})`);
+                }
+            };
+            shiftBadge(ol.slBadge);
+            shiftBadge(ol.tpBadge);
+            shiftBadge(ol.tpBadgesContainer);
+            shiftBadge(ol.entryPlusBadge);
+            if (ol.closeBtn) {
+                const ct = ol.closeBtn.attr('transform');
+                if (ct) {
+                    const cm = ct.match(/translate\(\s*([\d.e+-]+)\s*,\s*([\d.e+-]+)/);
+                    if (cm) ol.closeBtn.attr('transform', `translate(${parseFloat(cm[1]) - dx}, ${cm[2]})`);
+                }
+            }
+        });
+
+        // Shift Avg TP labels
+        (this.multiTPAvgLines || []).forEach((g) => {
+            if (g.chart !== ch) return;
+            const box = g.lotsBox;
+            if (!box) return;
+            const curX = parseFloat(box.attr('x'));
+            if (!Number.isFinite(curX) || Math.abs(curX - minX) < 0.5) return;
+            const dx = curX - minX;
+            box.attr('x', minX);
+            if (g.lotsText) g.lotsText.attr('x', parseFloat(g.lotsText.attr('x')) - dx);
+        });
+
+        // Shift Avg Entry labels
+        (this.splitGroupAvgLines || []).forEach((g) => {
+            if (g.chart !== ch) return;
+            const box = g.lotsBox;
+            if (!box) return;
+            const curX = parseFloat(box.attr('x'));
+            if (!Number.isFinite(curX) || Math.abs(curX - minX) < 0.5) return;
+            const dx = curX - minX;
+            box.attr('x', minX);
+            if (g.lotsText) g.lotsText.attr('x', parseFloat(g.lotsText.attr('x')) - dx);
+            if (g.pnlBox) g.pnlBox.attr('x', parseFloat(g.pnlBox.attr('x')) - dx);
+            if (g.pnlText) g.pnlText.attr('x', parseFloat(g.pnlText.attr('x')) - dx);
+            if (g._connector) {
+                const x2 = parseFloat(g._connector.attr('x2'));
+                if (Number.isFinite(x2)) g._connector.attr('x2', x2 - dx);
+            }
+        });
+
+        // Shift pending target label groups (use translate)
+        (this.pendingTargetLines || []).forEach((entry) => {
+            if (entry.chart !== ch) return;
+            entry.targets.forEach((target) => {
+                const lg = target.labelGroup;
+                if (!lg) return;
+                const t = lg.attr('transform');
+                if (!t) return;
+                const m = t.match(/translate\(\s*([\d.e+-]+)\s*,\s*([\d.e+-]+)/);
+                if (!m) return;
+                const curX = parseFloat(m[1]);
+                if (!Number.isFinite(curX) || Math.abs(curX - minX) < 0.5) return;
+                const dx = curX - minX;
+                lg.attr('transform', `translate(${minX}, ${m[2]})`);
+                // Shift delete btn and TP+ badge
+                const shiftG = (el) => {
+                    if (!el) return;
+                    const et = el.attr('transform');
+                    if (et) {
+                        const em = et.match(/translate\(\s*([\d.e+-]+)\s*,\s*([\d.e+-]+)/);
+                        if (em) el.attr('transform', `translate(${parseFloat(em[1]) - dx}, ${em[2]})`);
+                    }
+                };
+                shiftG(target._deleteBtn);
+                shiftG(target._tpPlusBadge);
+            });
+        });
     }
 
     _drawExecutedOrderConnectors(ch) {
