@@ -22336,11 +22336,16 @@ class OrderManager {
         }
 
         const ch = sourceChart || this.chart;
-        if (!ch?.scales?.yScale || !this.pendingTargetLines?.length) return;
+        if (!ch?.scales?.yScale) return;
 
+        // Always sweep orphaned pending badges/highlights even when no targets remain
         ch.svg.selectAll('.y-axis-pending-sl-highlight').remove();
         ch.svg.selectAll('.y-axis-pending-tp-highlight').remove();
         ch.svg.selectAll('.y-axis-pending-be-highlight').remove();
+        ch.svg.selectAll('[class*="pending-tp-tp-plus-badge"]').remove();
+        ch.svg.selectAll('[class*="pending-tp-delete"]').remove();
+
+        if (!this.pendingTargetLines?.length) return;
 
         const marginRight = 120;
 
