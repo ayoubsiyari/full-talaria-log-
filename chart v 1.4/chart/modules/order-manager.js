@@ -12577,25 +12577,26 @@ class OrderManager {
                     }
                 }
                 
-                // Calculate and display pip distance in real-time
-                const pipDistance = Math.abs(newPrice - (lineData.dragStartPrice || newPrice)) / self.pipSize;
-                if (pipDistance > 0.1) {
-                    // Show pip indicator on the line
-                    if (!lineData.pipIndicator) {
-                        lineData.pipIndicator = lineData.labelGroup.append('text')
-                            .attr('class', 'pip-distance-indicator')
-                            .attr('fill', '#fbbf24')
-                            .attr('font-size', '10px')
-                            .attr('font-weight', '600')
-                            .attr('text-anchor', 'middle');
+                // Calculate and display pip distance in real-time (skip for SL — already on label)
+                if (lineData.label !== 'SL') {
+                    const pipDistance = Math.abs(newPrice - (lineData.dragStartPrice || newPrice)) / self.pipSize;
+                    if (pipDistance > 0.1) {
+                        if (!lineData.pipIndicator) {
+                            lineData.pipIndicator = lineData.labelGroup.append('text')
+                                .attr('class', 'pip-distance-indicator')
+                                .attr('fill', '#fbbf24')
+                                .attr('font-size', '10px')
+                                .attr('font-weight', '600')
+                                .attr('text-anchor', 'middle');
+                        }
+                        lineData.pipIndicator
+                            .attr('y', -25)
+                            .attr('x', 0)
+                            .text(`${pipDistance.toFixed(1)} pips`);
+                    } else if (lineData.pipIndicator) {
+                        lineData.pipIndicator.remove();
+                        lineData.pipIndicator = null;
                     }
-                    lineData.pipIndicator
-                        .attr('y', -25)
-                        .attr('x', 0)
-                        .text(`${pipDistance.toFixed(1)} pips`);
-                } else if (lineData.pipIndicator) {
-                    lineData.pipIndicator.remove();
-                    lineData.pipIndicator = null;
                 }
                 
                 // Update label Y position without recalculating X (prevents horizontal jumping)
@@ -19467,25 +19468,27 @@ class OrderManager {
                     extraElements.priceText.text(self.formatPrice(newPrice));
                 }
                 
-                // Show live pip distance indicator
-                const pipDistance = Math.abs(newPrice - dragStartPrice) / self.pipSize;
-                if (pipDistance > 0.1) {
-                    if (!pipIndicator) {
-                        pipIndicator = ctx.svg.append('text')
-                            .attr('class', `pip-indicator-${order.id}`)
-                            .attr('fill', '#fbbf24')
-                            .attr('font-size', '10px')
-                            .attr('font-weight', '600')
-                            .attr('text-anchor', 'middle')
-                            .attr('pointer-events', 'none');
+                // Show live pip distance indicator (skip for SL — already on label)
+                if (lineType !== 'sl') {
+                    const pipDistance = Math.abs(newPrice - dragStartPrice) / self.pipSize;
+                    if (pipDistance > 0.1) {
+                        if (!pipIndicator) {
+                            pipIndicator = ctx.svg.append('text')
+                                .attr('class', `pip-indicator-${order.id}`)
+                                .attr('fill', '#fbbf24')
+                                .attr('font-size', '10px')
+                                .attr('font-weight', '600')
+                                .attr('text-anchor', 'middle')
+                                .attr('pointer-events', 'none');
+                        }
+                        pipIndicator
+                            .attr('x', ctx.w / 2)
+                            .attr('y', newY - 25)
+                            .text(`${pipDistance.toFixed(1)} pips`);
+                    } else if (pipIndicator) {
+                        pipIndicator.remove();
+                        pipIndicator = null;
                     }
-                    pipIndicator
-                        .attr('x', ctx.w / 2)
-                        .attr('y', newY - 25)
-                        .text(`${pipDistance.toFixed(1)} pips`);
-                } else if (pipIndicator) {
-                    pipIndicator.remove();
-                    pipIndicator = null;
                 }
                 
                 // Calculate and show dollar amount for SL/TP (do this immediately, not throttled)
@@ -19548,9 +19551,10 @@ class OrderManager {
                     }
                 }
                 
-                // Throttled panel update to avoid excessive redraws
+                // Throttled panel update and connector redraw
                 throttledUpdate(() => {
                     self.updatePositionsPanel();
+                    self._drawExecutedOrderConnectors(ctx);
                 });
             }
             
@@ -19802,6 +19806,7 @@ class OrderManager {
                     frameId = requestAnimationFrame(() => {
                         self.updateSLTPLines(ctx);
                         self.updatePositionsPanel();
+                        self._drawExecutedOrderConnectors(ctx);
                         frameId = null;
                     });
                 }
@@ -22080,6 +22085,7 @@ class OrderManager {
                 // Update label text with current type + recalculated lot size
                 const typeLabel = `${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${pendingOrder.quantity.toFixed(2)}`;
                 labelText.text(typeLabel);
+                self._drawExecutedOrderConnectors(chart);
             })
             .on('end', function() {
                 if (!isDragging) return;
@@ -22523,8 +22529,9 @@ class OrderManager {
 
                 // Layout: Label+PnL → X (right of label, left of right margin)
                 const isMultiTP = !!target.isPendingMultiTP;
+                const needsCloseBtn = (target.type === 'SL' || target.type === 'TP');
                 const deleteBtnR = 7;
-                const xBtnW = isMultiTP ? (deleteBtnR * 2 + 4) : 0;
+                const xBtnW = needsCloseBtn ? (deleteBtnR * 2 + 4) : 0;
                 const bGap = 4;
                 const badgesW = xBtnW;
 
@@ -22536,8 +22543,8 @@ class OrderManager {
 
                 let bx = translateX + totalLabelW + bGap;
 
-                // X delete button (right of label+pnl) — reuse if exists
-                if (isMultiTP) {
+                // X close/delete button for SL, single TP, and multi-TP targets
+                if (needsCloseBtn) {
                     if (!target._deleteBtn || !target._deleteBtn.node()?.parentNode) {
                         if (target._deleteBtn) { try { target._deleteBtn.remove(); } catch (_) {} }
                         const dbg = ch.svg.append('g')
@@ -22551,7 +22558,20 @@ class OrderManager {
                             .style('pointer-events', 'none').text('×');
                         dbg.on('click', (event) => {
                             event.stopPropagation();
-                            this._deleteTPTarget(entry.pendingOrder.id, target.tpTargetIndex, true);
+                            if (isMultiTP) {
+                                this._deleteTPTarget(entry.pendingOrder.id, target.tpTargetIndex, true);
+                            } else if (target.type === 'SL') {
+                                this.removePendingStopLoss(entry.pendingOrder.id);
+                            } else if (target.type === 'TP') {
+                                this.removePendingTakeProfit(entry.pendingOrder.id);
+                            }
+                        });
+                        dbg.on('mouseover', function() {
+                            dbg.select('circle').attr('fill', target.type === 'SL' ? '#f23645' : '#22c55e');
+                            dbg.select('text').attr('fill', '#ffffff');
+                        }).on('mouseout', function() {
+                            dbg.select('circle').attr('fill', '#0f172a');
+                            dbg.select('text').attr('fill', '#e2e8f0');
                         });
                         target._deleteBtn = dbg;
                     }
@@ -22630,6 +22650,12 @@ class OrderManager {
                 target.priceHighlight = self.drawYAxisPriceHighlight(newPrice, color, `pending-${target.type.toLowerCase()}`, 0, ch);
                 
                 target.price = newPrice;
+                if (target.type === 'TP') {
+                    pendingOrder.takeProfit = newPrice;
+                } else if (target.type === 'SL') {
+                    pendingOrder.stopLoss = newPrice;
+                }
+                self._drawExecutedOrderConnectors(ch);
             })
             .on('end', function() {
                 if (!isDragging) return;
@@ -24968,6 +24994,50 @@ class OrderManager {
         if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
     }
     
+    /**
+     * Remove Stop Loss from a pending order
+     */
+    removePendingStopLoss(orderId) {
+        const po = (this.pendingOrders || []).find(p => p.id == orderId);
+        if (!po) return;
+
+        if (po.isSplitEntry && po.splitGroupId) {
+            this._getSplitGroupPendingOrders(po).forEach(m => { m.stopLoss = null; });
+        } else {
+            po.stopLoss = null;
+        }
+
+        this.removePendingSLTPLines(orderId);
+        this.drawPendingOrderTargets(po, this.chart);
+        this._drawExecutedOrderConnectors(this.chart);
+        console.log(`✅ Pending SL removed from order #${orderId}`);
+        this.showNotification(`Stop Loss removed from pending order`, 'info');
+    }
+
+    /**
+     * Remove Take Profit from a pending order
+     */
+    removePendingTakeProfit(orderId) {
+        const po = (this.pendingOrders || []).find(p => p.id == orderId);
+        if (!po) return;
+
+        if (po.isSplitEntry && po.splitGroupId) {
+            this._getSplitGroupPendingOrders(po).forEach(m => { m.takeProfit = null; m.tpTargets = null; });
+        } else {
+            po.takeProfit = null;
+            po.tpTargets = null;
+        }
+
+        this.removePendingSLTPLines(orderId);
+        this.drawPendingOrderTargets(po, this.chart);
+        this._drawExecutedOrderConnectors(this.chart);
+        const avgKey = `splitgrp_${po.splitGroupId}`;
+        const avgIdx = (this.multiTPAvgLines || []).findIndex(g => g.orderId === avgKey || g.orderId === po.id);
+        if (avgIdx !== -1) this._destroyMultiTPAvgEntry(avgIdx);
+        console.log(`✅ Pending TP removed from order #${orderId}`);
+        this.showNotification(`Take Profit removed from pending order`, 'info');
+    }
+
     /**
      * Remove only Take Profit from order (keeps position open)
      */
