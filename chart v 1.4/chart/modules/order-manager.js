@@ -22802,17 +22802,25 @@ class OrderManager {
             const remainingSiblings = allPending.filter(p => p.splitGroupId === splitGroupId && p.id !== orderId);
 
             if (remainingSiblings.length > 0) {
-                // --- Step 2: Transfer target ownership if primary was deleted ---
-                const deletedWasPrimary = (primaryLegId === orderId);
-                if (deletedWasPrimary) {
-                    const newPrimary = remainingSiblings[0];
-                    const ownershipRecords = (this.pendingTargetLines || []).filter(e => e.orderId === primaryLegId);
-                    ownershipRecords.forEach(rec => {
-                        rec.orderId = newPrimary.id;
-                        rec.pendingOrder = newPrimary;
-                    });
-                    console.log(`🔄 Transferred target ownership from #${primaryLegId} to #${newPrimary.id}`);
-                }
+                // --- Step 2: Destroy old target SVGs & data completely ---
+                // Remove targets keyed under the old primary (covers primary-deleted case)
+                this.removePendingSLTPLines(primaryLegId);
+                // Also remove any targets keyed under each sibling's own ID (belt-and-suspenders)
+                remainingSiblings.forEach(sib => this.removePendingSLTPLines(sib.id));
+                // Destroy the split-group avg TP line
+                const grpAvgTPKey = `splitgrp_${splitGroupId}`;
+                const grpAvgTPIdx = this.multiTPAvgLines.findIndex(g => g.orderId === grpAvgTPKey);
+                if (grpAvgTPIdx !== -1) this._destroyMultiTPAvgEntry(grpAvgTPIdx);
+                // Also remove any avg TP keyed under the primary or individual IDs
+                this.removeMultiTPAvgLine(primaryLegId);
+                remainingSiblings.forEach(sib => this.removeMultiTPAvgLine(sib.id));
+                // Brute-force remove leftover SVG elements from old primary
+                (this._collectLayoutCharts() || [this.chart]).forEach(c => {
+                    if (!c?.svg) return;
+                    c.svg.selectAll(`.pending-tp-${primaryLegId}`).remove();
+                    c.svg.selectAll(`.pending-sl-${primaryLegId}`).remove();
+                    c.svg.selectAll(`.pending-be-${primaryLegId}`).remove();
+                });
 
                 // --- Step 3: Re-index remaining siblings + update metadata ---
                 remainingSiblings.forEach((sib, i) => { sib.splitIndex = i + 1; });
@@ -22831,12 +22839,6 @@ class OrderManager {
                         survivor.breakevenSettings = cancelledBESettings;
                     }
                     this.removeSplitGroupAvgLine(splitGroupId);
-                    const grpAvgTPKey = `splitgrp_${splitGroupId}`;
-                    const grpAvgTPIdx = this.multiTPAvgLines.findIndex(g => g.orderId === grpAvgTPKey);
-                    if (grpAvgTPIdx !== -1) {
-                        this.multiTPAvgLines[grpAvgTPIdx].orderId = survivor.id;
-                        this.multiTPAvgLines[grpAvgTPIdx].mode = 'pending';
-                    }
                 } else {
                     remainingSiblings.forEach(sib => { sib.splitTotal = remainingSiblings.length; });
                     remainingSiblings.forEach(sib => {
@@ -22846,45 +22848,14 @@ class OrderManager {
                     });
                 }
 
-                // --- Step 4: Recalculate target labels and P&L BEFORE any redraw ---
+                // --- Step 4: Recreate targets & avg TP from scratch ---
                 const newPrimaryOrder = remainingSiblings.find(s => Number(s.splitIndex) === 1) || remainingSiblings[0];
-                const totalQty = remainingSiblings.reduce((s, sib) => s + (sib.quantity || 0), 0);
-                const pendingSym = newPrimaryOrder.ticker || newPrimaryOrder.symbol || this._getSymbol();
+                this.drawPendingOrderTargets(newPrimaryOrder);
+                if (newPrimaryOrder.tpTargets && newPrimaryOrder.tpTargets.length >= 2) {
+                    this.drawMultiTPAvgLine(newPrimaryOrder, 'pending');
+                }
 
-                const targetRecordsForUpdate = (this.pendingTargetLines || []).filter(e => e.orderId === newPrimaryOrder.id);
-                targetRecordsForUpdate.forEach(rec => {
-                    rec.targets.forEach(target => {
-                        if (target.type === 'TP' && target.percentage != null) {
-                            const closeQty = totalQty * (target.percentage / 100);
-                            let pnl = 0;
-                            remainingSiblings.forEach(sib => {
-                                const cq = sib.quantity * (target.percentage / 100);
-                                pnl += this.estimatePnLForPriceLevel(sib.direction, sib.entryPrice, target.price, cq, pendingSym);
-                            });
-                            target.labelText = `TP${(target.tpTargetIndex != null ? target.tpTargetIndex + 1 : '')} (${target.percentage.toFixed(0)}%) ${closeQty.toFixed(2)}`;
-                            target.pnlStr = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
-                            target.pnl = pnl;
-                        } else if (target.type === 'TP') {
-                            let pnl = 0;
-                            remainingSiblings.forEach(sib => {
-                                pnl += this.estimatePnLForPriceLevel(sib.direction, sib.entryPrice, target.price, sib.quantity, pendingSym);
-                            });
-                            target.labelText = 'TP';
-                            target.pnlStr = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
-                            target.pnl = pnl;
-                        } else if (target.type === 'SL') {
-                            let pnl = 0;
-                            remainingSiblings.forEach(sib => {
-                                pnl += this.estimatePnLForPriceLevel(sib.direction, sib.entryPrice, target.price, sib.quantity, pendingSym);
-                            });
-                            target.labelText = 'SL';
-                            target.pnlStr = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
-                            target.pnl = pnl;
-                        }
-                    });
-                });
-
-                // --- Step 5: Redraw entry lines + reposition (values are already correct) ---
+                // --- Step 5: Redraw entry lines ---
                 if (remainingSiblings.length === 1) {
                     this.removePendingOrderLine(remainingSiblings[0].id);
                     this.drawPendingOrderLine(remainingSiblings[0]);
