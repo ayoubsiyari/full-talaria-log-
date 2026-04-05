@@ -22763,17 +22763,21 @@ class OrderManager {
             ? { ...pendingOrder.breakevenSettings }
             : null;
 
-        // For split entries, find the primary leg that owns the drawn targets
-        // and remove ALL sibling target lines before removing the order
+        // For split entries, find the primary leg that owns the drawn targets.
+        // Do NOT remove target lines here if siblings remain — they will be
+        // transferred to a new primary in the split-group handling below.
         let primaryLegId = orderId;
+        let hasSiblingsRemaining = false;
         if (wasSplitEntry && splitGroupId) {
             const allBeforeRemove = [...(this.pendingOrders || []), ...(this.orderService?.pendingOrders || [])];
             const groupMembers = allBeforeRemove.filter(p => p.splitGroupId === splitGroupId);
             const primary = groupMembers.find(p => Number(p.splitIndex) === 1);
             if (primary) primaryLegId = primary.id;
-            // Remove targets drawn by the primary leg (shared across all siblings)
-            this.removePendingSLTPLines(primaryLegId);
-            if (primaryLegId !== orderId) this.removePendingSLTPLines(orderId);
+            hasSiblingsRemaining = groupMembers.filter(p => p.id !== orderId).length > 0;
+            if (!hasSiblingsRemaining) {
+                this.removePendingSLTPLines(primaryLegId);
+                if (primaryLegId !== orderId) this.removePendingSLTPLines(orderId);
+            }
         }
 
         if (this.orderService) {
@@ -22794,32 +22798,115 @@ class OrderManager {
         }
 
         if (wasSplitEntry && splitGroupId) {
-            // Cascade-delete: cancel ALL remaining siblings in the split group
             const allPending = [...(this.pendingOrders || []), ...(this.orderService?.pendingOrders || [])];
             const remainingSiblings = allPending.filter(p => p.splitGroupId === splitGroupId && p.id !== orderId);
 
             if (remainingSiblings.length > 0) {
-                console.log(`🧹 Cascade-deleting ${remainingSiblings.length} sibling(s) in split group ${splitGroupId}`);
-                remainingSiblings.forEach(sib => {
-                    this.removePendingOrderLine(sib.id);
-                    this.removePendingSLTPLines(sib.id);
-                    this.removeMultiTPAvgLine(sib.id);
-                    if (this.orderService) {
-                        this.orderService.removePendingOrder(sib.id);
+                // --- Step 2: Transfer target ownership if primary was deleted ---
+                const deletedWasPrimary = (primaryLegId === orderId);
+                if (deletedWasPrimary) {
+                    const newPrimary = remainingSiblings[0];
+                    const targetRecords = (this.pendingTargetLines || []).filter(e => e.orderId === primaryLegId);
+                    targetRecords.forEach(rec => {
+                        rec.orderId = newPrimary.id;
+                        rec.pendingOrder = newPrimary;
+                    });
+                    // Re-key SVG class attributes so removePendingOrderLine for old ID won't match
+                    // (target classes are pending-tp-<id> / pending-sl-<id>, entry line is pending-<id> — no collision)
+                    console.log(`🔄 Transferred target ownership from #${primaryLegId} to #${newPrimary.id}`);
+                }
+
+                // --- Step 3: Re-index remaining siblings ---
+                remainingSiblings.forEach((sib, i) => { sib.splitIndex = i + 1; });
+
+                if (remainingSiblings.length === 1) {
+                    const survivor = remainingSiblings[0];
+                    survivor.isSplitEntry = false;
+                    survivor.splitGroupId = undefined;
+                    survivor.splitIndex = undefined;
+                    survivor.splitTotal = undefined;
+                    // Inherit TP/SL from cancelled order if survivor lacks them
+                    if (!survivor.takeProfit && cancelledTP) survivor.takeProfit = cancelledTP;
+                    if (!survivor.stopLoss && cancelledSL) survivor.stopLoss = cancelledSL;
+                    if (!survivor.tpTargets && cancelledTPTargets) survivor.tpTargets = cancelledTPTargets;
+                    if (survivor.autoBreakeven == null && cancelledAutoBreakeven != null) {
+                        survivor.autoBreakeven = cancelledAutoBreakeven;
+                        survivor.breakevenSettings = cancelledBESettings;
                     }
-                    if (this.pendingOrders?.length) {
-                        this.pendingOrders = this.pendingOrders.filter(o => o.id !== sib.id);
+                    this.removeSplitGroupAvgLine(splitGroupId);
+                    // Re-key avg TP line from splitgrp_ to survivor's plain ID
+                    const grpAvgTPKey = `splitgrp_${splitGroupId}`;
+                    const grpAvgTPIdx = this.multiTPAvgLines.findIndex(g => g.orderId === grpAvgTPKey);
+                    if (grpAvgTPIdx !== -1) {
+                        this.multiTPAvgLines[grpAvgTPIdx].orderId = survivor.id;
+                        this.multiTPAvgLines[grpAvgTPIdx].mode = 'pending';
                     }
+                    // Redraw entry line to update label (lot size display)
+                    this.removePendingOrderLine(survivor.id);
+                    this.drawPendingOrderLine(survivor);
+                } else {
+                    remainingSiblings.forEach(sib => { sib.splitTotal = remainingSiblings.length; });
+                    // Inherit TP/SL from cancelled order if siblings lack them
+                    remainingSiblings.forEach(sib => {
+                        if (!sib.takeProfit && cancelledTP) sib.takeProfit = cancelledTP;
+                        if (!sib.stopLoss && cancelledSL) sib.stopLoss = cancelledSL;
+                        if (!sib.tpTargets && cancelledTPTargets) sib.tpTargets = cancelledTPTargets.map(t => ({ ...t }));
+                    });
+                    this._updateSplitGroupAvgLines();
+                    // Redraw entry lines to update lot size labels
+                    remainingSiblings.forEach(sib => {
+                        this.removePendingOrderLine(sib.id);
+                        this.drawPendingOrderLine(sib);
+                    });
+                }
+
+                // --- Step 4: Recalculate target labels and P&L ---
+                const newPrimaryOrder = remainingSiblings.find(s => Number(s.splitIndex) === 1) || remainingSiblings[0];
+                const totalQty = remainingSiblings.reduce((s, sib) => s + (sib.quantity || 0), 0);
+                const pendingSym = newPrimaryOrder.ticker || newPrimaryOrder.symbol || this._getSymbol();
+
+                const targetRecords = (this.pendingTargetLines || []).filter(e => e.orderId === newPrimaryOrder.id);
+                targetRecords.forEach(rec => {
+                    rec.targets.forEach(target => {
+                        if (target.type === 'TP' && target.percentage != null) {
+                            const closeQty = totalQty * (target.percentage / 100);
+                            let pnl = 0;
+                            remainingSiblings.forEach(sib => {
+                                const cq = sib.quantity * (target.percentage / 100);
+                                pnl += this.estimatePnLForPriceLevel(sib.direction, sib.entryPrice, target.price, cq, pendingSym);
+                            });
+                            target.labelText = `TP${(target.tpTargetIndex != null ? target.tpTargetIndex + 1 : '')} (${target.percentage.toFixed(0)}%) ${closeQty.toFixed(2)}`;
+                            target.pnlStr = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+                            target.pnl = pnl;
+                        } else if (target.type === 'TP') {
+                            let pnl = 0;
+                            remainingSiblings.forEach(sib => {
+                                pnl += this.estimatePnLForPriceLevel(sib.direction, sib.entryPrice, target.price, sib.quantity, pendingSym);
+                            });
+                            target.labelText = 'TP';
+                            target.pnlStr = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+                            target.pnl = pnl;
+                        } else if (target.type === 'SL') {
+                            let pnl = 0;
+                            remainingSiblings.forEach(sib => {
+                                pnl += this.estimatePnLForPriceLevel(sib.direction, sib.entryPrice, target.price, sib.quantity, pendingSym);
+                            });
+                            target.labelText = 'SL';
+                            target.pnlStr = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+                            target.pnl = pnl;
+                        }
+                    });
                 });
+
+                // --- Step 5: Reposition everything ---
+                this.positionPendingOrderTargets(this.chart);
+            } else {
+                // No siblings left — clean up shared group visuals
+                this.removeSplitGroupAvgLine(splitGroupId);
+                const grpAvgTPKey = `splitgrp_${splitGroupId}`;
+                const grpAvgTPIdx = this.multiTPAvgLines.findIndex(g => g.orderId === grpAvgTPKey);
+                if (grpAvgTPIdx !== -1) this._destroyMultiTPAvgEntry(grpAvgTPIdx);
             }
-
-            // Remove shared group visuals
-            this.removeSplitGroupAvgLine(splitGroupId);
-            const grpAvgTPKey = `splitgrp_${splitGroupId}`;
-            const grpAvgTPIdx = this.multiTPAvgLines.findIndex(g => g.orderId === grpAvgTPKey);
-            if (grpAvgTPIdx !== -1) this._destroyMultiTPAvgEntry(grpAvgTPIdx);
-
-            this.positionPendingOrderTargets(this.chart);
         }
 
         const orderTypeLabel = pendingOrder.orderType === 'limit' ? 'Limit' : 'Stop';
