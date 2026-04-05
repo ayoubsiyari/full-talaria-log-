@@ -22682,11 +22682,34 @@ class OrderManager {
         }
         if (!pendingOrder) return;
 
-        // Before removing: check if this is a split entry and find siblings
         const wasSplitEntry = pendingOrder.isSplitEntry && pendingOrder.splitGroupId;
         const splitGroupId = pendingOrder.splitGroupId;
         const cancelledQty = pendingOrder.quantity || 0;
         const cancelledRisk = pendingOrder.riskAmount || 0;
+
+        // Snapshot TP/SL from cancelled order so survivors can inherit
+        const cancelledTP = pendingOrder.takeProfit;
+        const cancelledSL = pendingOrder.stopLoss;
+        const cancelledTPTargets = pendingOrder.tpTargets
+            ? pendingOrder.tpTargets.map(t => ({ ...t }))
+            : null;
+        const cancelledAutoBreakeven = pendingOrder.autoBreakeven;
+        const cancelledBESettings = pendingOrder.breakevenSettings
+            ? { ...pendingOrder.breakevenSettings }
+            : null;
+
+        // For split entries, find the primary leg that owns the drawn targets
+        // and remove ALL sibling target lines before removing the order
+        let primaryLegId = orderId;
+        if (wasSplitEntry && splitGroupId) {
+            const allBeforeRemove = [...(this.pendingOrders || []), ...(this.orderService?.pendingOrders || [])];
+            const groupMembers = allBeforeRemove.filter(p => p.splitGroupId === splitGroupId);
+            const primary = groupMembers.find(p => Number(p.splitIndex) === 1);
+            if (primary) primaryLegId = primary.id;
+            // Remove targets drawn by the primary leg (shared across all siblings)
+            this.removePendingSLTPLines(primaryLegId);
+            if (primaryLegId !== orderId) this.removePendingSLTPLines(orderId);
+        }
 
         if (this.orderService) {
             this.orderService.removePendingOrder(orderId);
@@ -22696,36 +22719,43 @@ class OrderManager {
         }
 
         this.removePendingOrderLine(orderId);
-        this.removePendingSLTPLines(orderId);
-        // For split entries, avg TP is keyed by group — only remove when last leg cancelled
+        if (!wasSplitEntry) {
+            this.removePendingSLTPLines(orderId);
+        }
         if (wasSplitEntry && splitGroupId) {
             this._removeSplitGroupTPAvgIfEmpty(splitGroupId, orderId);
         } else {
             this.removeMultiTPAvgLine(orderId);
         }
 
-        // If this was a split entry, restore lot size to the remaining sibling(s)
         if (wasSplitEntry && splitGroupId) {
             const allPending = [...(this.pendingOrders || []), ...(this.orderService?.pendingOrders || [])];
             const remainingSiblings = allPending.filter(p => p.splitGroupId === splitGroupId && p.id !== orderId);
 
             if (remainingSiblings.length === 1) {
-                // Only one sibling left — restore to non-split state and absorb cancelled qty
                 const survivor = remainingSiblings[0];
                 survivor.quantity = +(survivor.quantity + cancelledQty).toFixed(2);
                 survivor.riskAmount = (survivor.riskAmount || 0) + cancelledRisk;
                 if (survivor.originalRiskAmount != null) {
                     survivor.originalRiskAmount = (survivor.originalRiskAmount || 0) + (pendingOrder.originalRiskAmount || cancelledRisk);
                 }
+
+                // Inherit TP/SL from cancelled order if survivor lacks them
+                if (!survivor.takeProfit && cancelledTP) survivor.takeProfit = cancelledTP;
+                if (!survivor.stopLoss && cancelledSL) survivor.stopLoss = cancelledSL;
+                if (!survivor.tpTargets && cancelledTPTargets) survivor.tpTargets = cancelledTPTargets;
+                if (survivor.autoBreakeven == null && cancelledAutoBreakeven != null) {
+                    survivor.autoBreakeven = cancelledAutoBreakeven;
+                    survivor.breakevenSettings = cancelledBESettings;
+                }
+
                 survivor.isSplitEntry = false;
                 survivor.splitGroupId = undefined;
                 survivor.splitIndex = undefined;
                 survivor.splitTotal = undefined;
 
-                // Remove old split-group avg line
                 this.removeSplitGroupAvgLine(splitGroupId);
 
-                // Redraw the survivor's entry line and targets
                 this.removePendingOrderLine(survivor.id);
                 this.removePendingSLTPLines(survivor.id);
                 this.removeMultiTPAvgLine(survivor.id);
@@ -22734,22 +22764,40 @@ class OrderManager {
                 if (survivor.tpTargets && survivor.tpTargets.length >= 2) {
                     this.drawMultiTPAvgLine(survivor, 'pending');
                 }
+                this.positionPendingOrderTargets(this.chart);
 
-                console.log(`🔄 Restored pending #${survivor.id} to ${survivor.quantity.toFixed(2)} lots (absorbed cancelled split)`);
+                console.log(`🔄 Restored pending #${survivor.id} to ${survivor.quantity.toFixed(2)} lots (absorbed cancelled split) | TP=${survivor.takeProfit} SL=${survivor.stopLoss}`);
             } else if (remainingSiblings.length > 1) {
-                // Multiple siblings remain — distribute cancelled qty evenly
                 const qtyPerSib = cancelledQty / remainingSiblings.length;
                 const riskPerSib = cancelledRisk / remainingSiblings.length;
                 remainingSiblings.forEach(sib => {
                     sib.quantity = +(sib.quantity + qtyPerSib).toFixed(2);
                     sib.riskAmount = (sib.riskAmount || 0) + riskPerSib;
                     sib.splitTotal = remainingSiblings.length;
+                    // Inherit TP/SL from cancelled order if missing
+                    if (!sib.takeProfit && cancelledTP) sib.takeProfit = cancelledTP;
+                    if (!sib.stopLoss && cancelledSL) sib.stopLoss = cancelledSL;
+                    if (!sib.tpTargets && cancelledTPTargets) sib.tpTargets = cancelledTPTargets.map(t => ({ ...t }));
                 });
-                // Recalculate split indexes
                 remainingSiblings.forEach((sib, i) => { sib.splitIndex = i + 1; });
 
-                // Update avg line
                 this._updateSplitGroupAvgLines();
+
+                // Redraw targets for the new primary leg (splitIndex 1)
+                const newPrimary = remainingSiblings.find(s => Number(s.splitIndex) === 1) || remainingSiblings[0];
+                this.removePendingSLTPLines(newPrimary.id);
+                this.removeMultiTPAvgLine(newPrimary.id);
+                this.drawPendingOrderTargets(newPrimary);
+                if (newPrimary.tpTargets && newPrimary.tpTargets.length >= 2) {
+                    this.drawMultiTPAvgLine(newPrimary, 'pending');
+                }
+                this.positionPendingOrderTargets(this.chart);
+
+                // Redraw entry lines for all remaining siblings to reflect new lot sizes
+                remainingSiblings.forEach(sib => {
+                    this.removePendingOrderLine(sib.id);
+                    this.drawPendingOrderLine(sib);
+                });
             }
         }
 
