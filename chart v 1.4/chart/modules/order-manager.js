@@ -22770,7 +22770,13 @@ class OrderManager {
         let hasSiblingsRemaining = false;
         if (wasSplitEntry && splitGroupId) {
             const allBeforeRemove = [...(this.pendingOrders || []), ...(this.orderService?.pendingOrders || [])];
-            const groupMembers = allBeforeRemove.filter(p => p.splitGroupId === splitGroupId);
+            const seenBeforeIds = new Set();
+            const groupMembers = allBeforeRemove.filter(p => {
+                if (p.splitGroupId !== splitGroupId) return false;
+                if (seenBeforeIds.has(p.id)) return false;
+                seenBeforeIds.add(p.id);
+                return true;
+            });
             const primary = groupMembers.find(p => Number(p.splitIndex) === 1);
             if (primary) primaryLegId = primary.id;
             hasSiblingsRemaining = groupMembers.filter(p => p.id !== orderId).length > 0;
@@ -22799,7 +22805,13 @@ class OrderManager {
 
         if (wasSplitEntry && splitGroupId) {
             const allPending = [...(this.pendingOrders || []), ...(this.orderService?.pendingOrders || [])];
-            const remainingSiblings = allPending.filter(p => p.splitGroupId === splitGroupId && p.id !== orderId);
+            const seenIds = new Set();
+            const remainingSiblings = allPending.filter(p => {
+                if (p.splitGroupId !== splitGroupId || p.id === orderId) return false;
+                if (seenIds.has(p.id)) return false;
+                seenIds.add(p.id);
+                return true;
+            });
 
             if (remainingSiblings.length > 0) {
                 // --- Step 2: Destroy old target SVGs & data completely ---
