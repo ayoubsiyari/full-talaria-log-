@@ -19435,7 +19435,14 @@ class OrderManager {
                             sX = rE - lBW;
                         } else {
                             const cX = rE - closeBtnR;
-                            sX = cX - closeBtnR - closeBtnGap - (pBW > 0 ? pBW + gap : 0) - lBW;
+                            const delBtn = extraElements.deleteBtn;
+                            const splBtn = extraElements.splitBtn;
+                            const deleteBtnR = 8;
+                            const splitBtnR = splBtn ? (delBtn ? 8 : 10) : 0;
+                            const deleteSpace = delBtn ? (deleteBtnR * 2 + gap) : 0;
+                            const splitSpace = splBtn ? (splitBtnR * 2 + gap) : 0;
+                            const badgesW = deleteSpace + splitSpace;
+                            sX = cX - closeBtnR - closeBtnGap - badgesW - (pBW > 0 ? pBW + gap : 0) - lBW;
                         }
                         let cx = sX;
                         label.attr('x', cx).attr('y', boxY).attr('width', lBW).attr('height', boxH);
@@ -19444,9 +19451,22 @@ class OrderManager {
                         if (pb && pt && pBW > 0) {
                             pb.attr('x', cx).attr('y', boxY).attr('width', pBW).attr('height', boxH);
                             pt.attr('x', cx + pad).attr('y', newY + 4);
+                            cx += pBW + gap;
                         }
                         if (lineType !== 'be') {
                             const cX = rE - closeBtnR;
+                            const delBtn = extraElements.deleteBtn;
+                            const splBtn = extraElements.splitBtn;
+                            const deleteBtnR = 8;
+                            const splitBtnR = splBtn ? (delBtn ? 8 : 10) : 0;
+                            if (delBtn) {
+                                delBtn.attr('transform', `translate(${cx + deleteBtnR}, ${newY})`);
+                                cx += deleteBtnR * 2 + gap;
+                            }
+                            if (splBtn) {
+                                splBtn.attr('transform', `translate(${cx + splitBtnR}, ${newY})`);
+                                cx += splitBtnR * 2 + gap;
+                            }
                             const clBtn = ctx.svg.select(`.${lineType}-close-btn.${lineType}-${order.id}`);
                             if (!clBtn.empty()) clBtn.attr('transform', `translate(${cX}, ${newY})`);
                         }
@@ -19462,8 +19482,11 @@ class OrderManager {
                 
                 // SL/TP floating indicators (pips, dollar, R:R) removed — info already on labels
                 
-                // Throttled panel update and connector redraw
+                // Throttled panel update and connector redraw (SL/TP also sync chart labels vs order state)
                 throttledUpdate(() => {
+                    if (lineType === 'sl' || lineType === 'tp') {
+                        self.updateSLTPLines(ctx);
+                    }
                     self.updatePositionsPanel();
                     self._drawExecutedOrderConnectors(ctx);
                 });
@@ -24667,7 +24690,8 @@ class OrderManager {
                 pnlBox: tpPnlBox,
                 pnlText: tpPnlText,
                 priceBox: tpPriceBox,
-                priceText: tpPriceText
+                priceText: tpPriceText,
+                splitBtn: tpSplitBtn
             }, chart);
             
             tpLines.push({ 
@@ -25450,7 +25474,10 @@ class OrderManager {
                     let target = null;
                     for (let i = 0; i < position.tpTargets.length; i++) {
                         const t = position.tpTargets[i];
-                        if (t.id === targetId || i === targetId) { target = t; targetIndex = i; break; }
+                        const idMatch = t.id != null && targetId != null
+                            && (t.id === targetId || String(t.id) === String(targetId));
+                        const idxMatch = i === targetId || String(i) === String(targetId);
+                        if (idMatch || idxMatch) { target = t; targetIndex = i; break; }
                     }
                     if (!target || target.hit) return;
                     tpPrice = target.price;
@@ -25484,7 +25511,10 @@ class OrderManager {
                     if (targetId !== undefined && position.tpTargets) {
                         for (let i = 0; i < position.tpTargets.length; i++) {
                             const t = position.tpTargets[i];
-                            if (t.id === targetId || i === targetId) { tpTarget = t; break; }
+                            const idMatch = t.id != null && targetId != null
+                                && (t.id === targetId || String(t.id) === String(targetId));
+                            const idxMatch = i === targetId || String(i) === String(targetId);
+                            if (idMatch || idxMatch) { tpTarget = t; break; }
                         }
                     }
                     const tpMode = tpTarget?.distributionMode || 'percent';
