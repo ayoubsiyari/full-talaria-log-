@@ -12830,6 +12830,8 @@ class OrderManager {
                         const pricedLv = (self.multiEntryLevels || []).filter(l => l.price > 0);
                         // Multi-entry: TP badge Y follows Avg Entry via _syncAvgEntryPreviewLineFromLevels (called above)
                         if (!(self.isMultiEntryMode && pricedLv.length > 1)) {
+                            // Move the TP badge visually with entry but do NOT write #tpPrice —
+                            // writing the input made it look like TP was "set" to the entry price.
                             self.previewLines.tp.price = newPrice;
                             const tpBbox = self.previewLines.tp.labelDimensions;
                             const tpHeight = tpBbox?.height || 0;
@@ -12837,8 +12839,6 @@ class OrderManager {
                             const tpX = parseFloat(tpTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
                             const tpY = clampedY - tpHeight / 2;
                             self.previewLines.tp.labelGroup.attr('transform', `translate(${tpX}, ${tpY})`);
-                            const tpInput = document.getElementById('tpPrice');
-                            if (tpInput) tpInput.value = formattedPrice;
                         }
                     }
                     if (self.previewLines.sl && !self.slManuallyPositioned && self.previewLines.sl.isBadge) {
