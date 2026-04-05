@@ -22172,24 +22172,21 @@ class OrderManager {
                 );
                 if (!hasTargets) this.drawPendingOrderTargets(pendingOrder, ch);
             }
-            console.log(`🎯 drawPendingOrderTargets: multi-panel early return for #${pendingOrder.id}`);
             return;
         }
 
         const chart = targetChart || this.chart;
-        if (!chart?.svg) { console.log(`🎯 drawPendingOrderTargets: no chart.svg for #${pendingOrder.id}`); return; }
-        if (!this._positionTickerMatchesChartSymbol(pendingOrder, chart)) { console.log(`🎯 drawPendingOrderTargets: ticker mismatch for #${pendingOrder.id} (order=${pendingOrder.ticker || pendingOrder.symbol}, chart=${chart.currentSymbol})`); return; }
+        if (!chart?.svg) return;
+        if (!this._positionTickerMatchesChartSymbol(pendingOrder, chart)) return;
 
         // Shared SL/TP for scale-in: only first pending leg draws targets
         if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) > 1) {
-            console.log(`🎯 drawPendingOrderTargets: skipping non-primary split #${pendingOrder.id} (splitIndex=${pendingOrder.splitIndex})`);
             return;
         }
 
         const entries = [];
         const entryPrice = pendingOrder.entryPrice;
         const quantity = pendingOrder.quantity;
-        console.log(`🎯 drawPendingOrderTargets: drawing for #${pendingOrder.id} — tpTargets=${pendingOrder.tpTargets?.length}, SL=${pendingOrder.stopLoss}, TP=${pendingOrder.takeProfit}, entryPrice=${entryPrice}, qty=${quantity}, isSplitEntry=${pendingOrder.isSplitEntry}`);
         const direction = pendingOrder.direction; // 'BUY' or 'SELL'
         const pendingSym = pendingOrder.ticker || pendingOrder.symbol || this._getSymbol();
 
@@ -22320,7 +22317,6 @@ class OrderManager {
             }
         }
 
-        console.log(`🎯 drawPendingOrderTargets: #${pendingOrder.id} created ${entries.length} entries (types: ${entries.map(e => e.type).join(',')})`);
         if (entries.length === 0) return;
 
         this.pendingTargetLines.push({ orderId: pendingOrder.id, pendingOrder: pendingOrder, targets: entries, chart });
@@ -22798,97 +22794,32 @@ class OrderManager {
         }
 
         if (wasSplitEntry && splitGroupId) {
+            // Cascade-delete: cancel ALL remaining siblings in the split group
             const allPending = [...(this.pendingOrders || []), ...(this.orderService?.pendingOrders || [])];
             const remainingSiblings = allPending.filter(p => p.splitGroupId === splitGroupId && p.id !== orderId);
 
-            if (remainingSiblings.length === 1) {
-                const survivor = remainingSiblings[0];
-                console.log(`🔍 CANCEL-SPLIT: single survivor #${survivor.id}, splitIndex=${survivor.splitIndex}, tpTargets=${JSON.stringify(survivor.tpTargets?.map(t => ({price: t.price, pct: t.percentage, hit: t.hit})))}, SL=${survivor.stopLoss}, TP=${survivor.takeProfit}`);
-                survivor.quantity = +(survivor.quantity + cancelledQty).toFixed(2);
-                survivor.riskAmount = (survivor.riskAmount || 0) + cancelledRisk;
-                if (survivor.originalRiskAmount != null) {
-                    survivor.originalRiskAmount = (survivor.originalRiskAmount || 0) + (pendingOrder.originalRiskAmount || cancelledRisk);
-                }
-
-                // Inherit TP/SL from cancelled order if survivor lacks them
-                if (!survivor.takeProfit && cancelledTP) survivor.takeProfit = cancelledTP;
-                if (!survivor.stopLoss && cancelledSL) survivor.stopLoss = cancelledSL;
-                if (!survivor.tpTargets && cancelledTPTargets) survivor.tpTargets = cancelledTPTargets;
-                if (survivor.autoBreakeven == null && cancelledAutoBreakeven != null) {
-                    survivor.autoBreakeven = cancelledAutoBreakeven;
-                    survivor.breakevenSettings = cancelledBESettings;
-                }
-                console.log(`🔍 CANCEL-SPLIT: after inherit — tpTargets=${JSON.stringify(survivor.tpTargets?.map(t => ({price: t.price, pct: t.percentage})))}, SL=${survivor.stopLoss}`);
-
-                // Remove all visuals BEFORE clearing split identity
-                this.removeSplitGroupAvgLine(splitGroupId);
-                const grpAvgTPKey = `splitgrp_${splitGroupId}`;
-                const grpAvgTPIdx = this.multiTPAvgLines.findIndex(g => g.orderId === grpAvgTPKey);
-                if (grpAvgTPIdx !== -1) this._destroyMultiTPAvgEntry(grpAvgTPIdx);
-
-                this.removePendingOrderLine(survivor.id);
-                this.removePendingSLTPLines(survivor.id);
-
-                // Now clear split identity
-                survivor.isSplitEntry = false;
-                survivor.splitGroupId = undefined;
-                survivor.splitIndex = undefined;
-                survivor.splitTotal = undefined;
-
-                console.log(`🔍 CANCEL-SPLIT: about to drawPendingOrderTargets for #${survivor.id} — isSplitEntry=${survivor.isSplitEntry}, chart.svg=${!!this.chart?.svg}, pendingTargetLines.length=${(this.pendingTargetLines || []).length}`);
-                // Draw targets FIRST so they exist in pendingTargetLines
-                // before drawPendingOrderLine triggers chart.render() →
-                // updateOrderLines() → positionPendingOrderTargets().
-                this.drawPendingOrderTargets(survivor);
-                console.log(`🔍 CANCEL-SPLIT: after drawPendingOrderTargets — pendingTargetLines.length=${(this.pendingTargetLines || []).length}, hasEntry=${(this.pendingTargetLines || []).some(e => e.orderId === survivor.id)}`);
-                if (survivor.tpTargets && survivor.tpTargets.length >= 2) {
-                    this.drawMultiTPAvgLine(survivor, 'pending');
-                }
-                this.drawPendingOrderLine(survivor);
-                this.positionPendingOrderTargets(this.chart);
-
-                console.log(`🔄 Restored pending #${survivor.id} to ${survivor.quantity.toFixed(2)} lots (absorbed cancelled split) | TP=${survivor.takeProfit} SL=${survivor.stopLoss} | pendingTargetLines=${(this.pendingTargetLines || []).length}`);
-            } else if (remainingSiblings.length > 1) {
-                const qtyPerSib = cancelledQty / remainingSiblings.length;
-                const riskPerSib = cancelledRisk / remainingSiblings.length;
-                remainingSiblings.forEach(sib => {
-                    sib.quantity = +(sib.quantity + qtyPerSib).toFixed(2);
-                    sib.riskAmount = (sib.riskAmount || 0) + riskPerSib;
-                    sib.splitTotal = remainingSiblings.length;
-                    // Inherit TP/SL from cancelled order if missing
-                    if (!sib.takeProfit && cancelledTP) sib.takeProfit = cancelledTP;
-                    if (!sib.stopLoss && cancelledSL) sib.stopLoss = cancelledSL;
-                    if (!sib.tpTargets && cancelledTPTargets) sib.tpTargets = cancelledTPTargets.map(t => ({ ...t }));
-                });
-                remainingSiblings.forEach((sib, i) => { sib.splitIndex = i + 1; });
-
-                // 1. Remove ALL visual elements for remaining siblings first
+            if (remainingSiblings.length > 0) {
+                console.log(`🧹 Cascade-deleting ${remainingSiblings.length} sibling(s) in split group ${splitGroupId}`);
                 remainingSiblings.forEach(sib => {
                     this.removePendingOrderLine(sib.id);
                     this.removePendingSLTPLines(sib.id);
                     this.removeMultiTPAvgLine(sib.id);
+                    if (this.orderService) {
+                        this.orderService.removePendingOrder(sib.id);
+                    }
+                    if (this.pendingOrders?.length) {
+                        this.pendingOrders = this.pendingOrders.filter(o => o.id !== sib.id);
+                    }
                 });
-
-                // 2. Update avg entry line
-                this._updateSplitGroupAvgLines();
-
-                // 3. Draw targets FIRST so they exist in pendingTargetLines
-                //    before drawPendingOrderLine triggers chart.render() →
-                //    updateOrderLines() → positionPendingOrderTargets().
-                const newPrimary = remainingSiblings.find(s => Number(s.splitIndex) === 1) || remainingSiblings[0];
-                this.drawPendingOrderTargets(newPrimary);
-                if (newPrimary.tpTargets && newPrimary.tpTargets.length >= 2) {
-                    this.drawMultiTPAvgLine(newPrimary, 'pending');
-                }
-
-                // 4. Redraw entry lines for all remaining siblings
-                remainingSiblings.forEach(sib => {
-                    this.drawPendingOrderLine(sib);
-                });
-
-                // 5. Position everything
-                this.positionPendingOrderTargets(this.chart);
             }
+
+            // Remove shared group visuals
+            this.removeSplitGroupAvgLine(splitGroupId);
+            const grpAvgTPKey = `splitgrp_${splitGroupId}`;
+            const grpAvgTPIdx = this.multiTPAvgLines.findIndex(g => g.orderId === grpAvgTPKey);
+            if (grpAvgTPIdx !== -1) this._destroyMultiTPAvgEntry(grpAvgTPIdx);
+
+            this.positionPendingOrderTargets(this.chart);
         }
 
         const orderTypeLabel = pendingOrder.orderType === 'limit' ? 'Limit' : 'Stop';
@@ -22900,36 +22831,6 @@ class OrderManager {
         this.updatePositionsPanel();
         if (typeof this.updateOrderLines === 'function') {
             this.updateOrderLines();
-        }
-
-        // Safety net: verify pending orders that should have targets actually do
-        this._ensurePendingTargetsExist();
-    }
-
-    /**
-     * If a pending order has tpTargets/stopLoss but no entry in pendingTargetLines,
-     * redraw its targets (guards against ordering issues during cancel/split flows).
-     */
-    _ensurePendingTargetsExist() {
-        const pending = [...(this.pendingOrders || []), ...(this.orderService?.pendingOrders || [])];
-        const seen = new Set();
-        for (const po of pending) {
-            if (!po || seen.has(po.id)) continue;
-            seen.add(po.id);
-            // Only the primary leg of a split group draws targets
-            if (po.isSplitEntry && po.splitGroupId && Number(po.splitIndex) > 1) continue;
-            const hasTargetData = (po.tpTargets && po.tpTargets.length > 0) || po.stopLoss || po.takeProfit;
-            if (!hasTargetData) continue;
-            const hasDrawn = (this.pendingTargetLines || []).some(e => e.orderId === po.id);
-            if (!hasDrawn) {
-                console.log(`🔧 _ensurePendingTargetsExist: redrawing missing targets for pending #${po.id}`);
-                this.drawPendingOrderTargets(po);
-                if (po.tpTargets && po.tpTargets.length >= 2) {
-                    const key = po.isSplitEntry && po.splitGroupId ? `splitgrp_${po.splitGroupId}` : po.id;
-                    const hasAvg = this.multiTPAvgLines.some(g => g.orderId === key);
-                    if (!hasAvg) this.drawMultiTPAvgLine(po, 'pending');
-                }
-            }
         }
     }
 
