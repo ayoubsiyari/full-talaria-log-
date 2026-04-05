@@ -25873,7 +25873,7 @@ class OrderManager {
         ch.svg.selectAll('.exec-order-connector').remove();
         const yScale = ch.scales.yScale;
         const yAxisWidth = ch.margin?.r || 70;
-        const connX = ch.w - yAxisWidth - 6;
+        const connX = ch.w - yAxisWidth - 10;
 
         for (const pos of this.openPositions) {
             if (!this._positionTickerMatchesChartSymbol(pos, ch)) continue;
