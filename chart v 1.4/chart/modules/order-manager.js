@@ -21435,12 +21435,11 @@ class OrderManager {
                 totalPnl = this.estimatePnLForPriceLevel(side, entryPrice, avgTP, qty, sym);
             }
 
-            const sign = totalPnl >= 0 ? '+' : '';
-            const pnlColor = totalPnl >= 0 ? '#26a69a' : '#f23645';
-            g.pnlText.text(`${sign}$${totalPnl.toFixed(2)}`).attr('fill', pnlColor);
-            const pnlBW = g.pnlText.node().getBBox().width + pad * 2;
+            // Hide P&L on Avg TP line (redundant with individual TP P&L)
+            g.pnlBox.style('display', 'none');
+            g.pnlText.style('display', 'none');
 
-            const totalW = lotsBW + gap + pnlBW;
+            const totalW = lotsBW;
             const rightEdge = ch.w - yAxisWidth - 10;
 
             // Find leftmost x of sibling TP labels so we align with them
@@ -21462,11 +21461,6 @@ class OrderManager {
 
             g.lotsBox.attr('x', cx).attr('y', y - boxH / 2).attr('width', lotsBW).attr('height', boxH);
             g.lotsText.attr('x', cx + pad).attr('y', y + 4);
-            cx += lotsBW + gap;
-
-            g.pnlBox.attr('x', cx).attr('y', y - boxH / 2).attr('width', pnlBW).attr('height', boxH)
-                .attr('stroke', pnlColor);
-            g.pnlText.attr('x', cx + pad).attr('y', y + 4);
         }
 
         for (const id of toRemove) this.removeMultiTPAvgLine(id);
@@ -22246,7 +22240,12 @@ class OrderManager {
                     }, 0);
                 }
                 
-                const labelText = `TP${index + 1}`;
+                let totalCloseQty = closeQty;
+                if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
+                    totalCloseQty = this._getSplitGroupPendingOrders(pendingOrder)
+                        .reduce((s, m) => s + m.quantity * (target.percentage / 100), 0);
+                }
+                const labelText = `TP${index + 1} (${target.percentage.toFixed(0)}%) ${totalCloseQty.toFixed(2)}`;
                 const pnlStr = `${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
                 const item = createLine(target.price, 'TP', labelText, tpPnL, target.id || index, target.percentage, index);
                 if (item) {
@@ -25265,7 +25264,11 @@ class OrderManager {
                         } else {
                             valStr = `${percentage.toFixed(0)}%`;
                         }
-                        labelStr = numPositions > 1 ? `TP${targetIndex + 1} (${valStr}, ${numPositions}×)` : `TP${targetIndex + 1} (${valStr})`;
+                        const totalQty = groupData ? groupData.positions.reduce((s, p) => s + (p.pos.quantity || 0), 0) : (position.quantity || 0);
+                        const targetLots = totalQty * (percentage / 100);
+                        labelStr = numPositions > 1
+                            ? `TP${targetIndex + 1} (${valStr}) ${targetLots.toFixed(2)} (${numPositions}×)`
+                            : `TP${targetIndex + 1} (${valStr}) ${targetLots.toFixed(2)}`;
                     } else {
                         labelStr = numPositions > 1 ? `TP (${numPositions}×)` : 'TP';
                     }
