@@ -12748,7 +12748,6 @@ class OrderManager {
                 const translateY = clampedY - height / 2;
                 lineData.labelGroup.attr('transform', `translate(${currentX}, ${translateY})`);
                 self.adjustPreviewLineForLabel(lineData);
-                self._syncPendingLimitStopConnector();
                 
                 // Update Y-axis price highlight for ALL lines (Entry, TP, SL, BE, etc.)
                 if (lineData.yAxisHighlight) {
@@ -13216,6 +13215,10 @@ class OrderManager {
                         }
                     }
                 }
+
+                // After every label path (renderPreviewLabel, badges, BE, risk entry relayout). Running earlier
+                // left anchorX one update behind — connector looked lagged vs horizontal lines during drag.
+                self._syncPendingLimitStopConnector();
                 
                 // Throttled live calculations - show R:R ratio and dollar amounts
                 throttledCalculate(() => {
@@ -15524,7 +15527,13 @@ class OrderManager {
         if (slOn) pushLeftX(this.previewLines.sl);
         if (!leftXs.length) return;
         const entryGroup = anchorLine?.labelGroup;
-        const entryW = anchorLine?.labelDimensions?.width || 0;
+        let entryW = anchorLine?.labelDimensions?.width || 0;
+        if (this.isDraggingPreviewLine && entryGroup?.node()?.getBBox) {
+            try {
+                const bb = entryGroup.node().getBBox();
+                if (bb && Number.isFinite(bb.width) && bb.width > 0) entryW = bb.width;
+            } catch (_e) { /* ignore */ }
+        }
         const trEntry = entryGroup?.attr('transform') || '';
         const mEntry = /translate\(([^,]+),/.exec(trEntry);
         const entryX = mEntry ? parseFloat(mEntry[1]) : NaN;
