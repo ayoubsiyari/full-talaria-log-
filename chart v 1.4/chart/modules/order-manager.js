@@ -8579,7 +8579,7 @@ class OrderManager {
         if ((isSingleTpPreviewLine || isSingleSlPreviewLine) && !lineData.isAvgEntryLine) {
             const closeSize = 18;
             const closeGroup = lineData.labelGroup.append('g')
-                .attr('class', 'preview-tp-sl-close-btn')
+                .attr('class', 'tp-close-btn preview-tp-sl-close-btn')
                 .attr('transform', `translate(${offsetX}, ${(height - closeSize) / 2})`)
                 .style('cursor', 'pointer');
 
@@ -8587,27 +8587,29 @@ class OrderManager {
                 .attr('cx', closeSize / 2)
                 .attr('cy', closeSize / 2)
                 .attr('r', closeSize / 2)
-                .attr('fill', 'rgba(15, 23, 42, 0.95)')
-                .attr('stroke', lineData.color || '#94a3b8')
-                .attr('stroke-width', 1.2);
+                .attr('fill', 'rgba(239, 68, 68, 0.3)')
+                .attr('stroke', '#ef4444')
+                .attr('stroke-width', 1.5);
 
             closeGroup.append('text')
                 .attr('x', closeSize / 2)
                 .attr('y', closeSize / 2)
                 .attr('dy', '0.35em')
                 .attr('text-anchor', 'middle')
-                .attr('fill', '#e2e8f0')
+                .attr('fill', '#ef4444')
                 .attr('font-size', '11px')
                 .attr('font-weight', '700')
-                .text('×');
+                .text('✕');
 
             const self = this;
             closeGroup
                 .on('mouseenter', function() {
-                    d3.select(this).select('circle').attr('stroke', '#f87171').attr('stroke-width', 1.5);
+                    d3.select(this).select('circle')
+                        .attr('fill', 'rgba(239, 68, 68, 0.5)');
                 })
                 .on('mouseleave', function() {
-                    d3.select(this).select('circle').attr('stroke', lineData.color || '#94a3b8').attr('stroke-width', 1.2);
+                    d3.select(this).select('circle')
+                        .attr('fill', 'rgba(239, 68, 68, 0.3)');
                 })
                 .on('click', (event) => {
                     event.stopPropagation();
@@ -14993,35 +14995,30 @@ class OrderManager {
     }
     
     /**
-     * Turn off single-TP preview (chart + panel) — same effect as unchecking TP in the drawer.
+     * Collapse single-TP preview back to the entry-line badge (initial state): keep TP enabled,
+     * clear dragged line state, refresh prices from risk/R:R like after toggling TP on.
      */
     _removePreviewSingleTP() {
-        const enableTP = document.getElementById('enableTP');
-        const tpInput = document.getElementById('tpPrice');
-        if (enableTP) {
-            enableTP.checked = false;
-            if (typeof enableTP.onchange === 'function') enableTP.onchange();
-        }
-        if (tpInput) tpInput.value = '';
         this.tpManuallyPositioned = false;
-        this.updatePreviewLines();
+        const tpInput = document.getElementById('tpPrice');
+        if (tpInput) tpInput.value = '';
+        this.syncDefaultTargetsToEntry();
+        this.calculatePositionFromRisk();
         this.calculateAdvancedRiskReward();
+        this.updatePreviewLines();
     }
 
     /**
-     * Turn off SL preview (chart + panel).
+     * Collapse SL preview back to the entry-line badge; keep SL enabled and resync from risk.
      */
     _removePreviewSingleSL() {
-        const enableSL = document.getElementById('enableSL');
-        const slInput = document.getElementById('slPrice');
-        if (enableSL) {
-            enableSL.checked = false;
-            if (typeof enableSL.onchange === 'function') enableSL.onchange();
-        }
-        if (slInput) slInput.value = '';
         this.slManuallyPositioned = false;
-        this.updatePreviewLines();
+        const slInput = document.getElementById('slPrice');
+        if (slInput) slInput.value = '';
+        this.syncDefaultTargetsToEntry();
+        this.calculatePositionFromRisk();
         this.calculateAdvancedRiskReward();
+        this.updatePreviewLines();
     }
 
     /**
