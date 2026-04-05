@@ -12501,6 +12501,7 @@ class OrderManager {
             })
             .on('drag', event => {
                 if (!isDragging || !self.chart?.scales?.yScale) return;
+                if (event.sourceEvent && self.chart.updateCrosshair) self.chart.updateCrosshair(event.sourceEvent);
 
                 const chartHeightRaw = self.chart.h ?? self.chart.height ?? self.chart.svg?.attr('height') ?? 0;
                 const chartHeight = Number(chartHeightRaw) || 0;
@@ -13257,6 +13258,7 @@ class OrderManager {
                 .on('start', () => { badgeGroup.style('opacity', 0.8); })
                 .on('drag', (event) => {
                     if (!self.chart?.scales?.yScale) return;
+                    if (event.sourceEvent && self.chart.updateCrosshair) self.chart.updateCrosshair(event.sourceEvent);
                     const chartH = Number(self.chart.h ?? self.chart.svg?.attr('height') ?? 0) || 0;
                     const clampedY = Math.max(0, Math.min(chartH, event.y));
                     const newPrice = self.chart.scales.yScale.invert(clampedY);
@@ -13315,6 +13317,7 @@ class OrderManager {
             })
             .on('drag', event => {
                 if (!self.chart?.scales?.yScale) return;
+                if (event.sourceEvent && self.chart.updateCrosshair) self.chart.updateCrosshair(event.sourceEvent);
 
                 const chartHeightRaw = self.chart.h ?? self.chart.height ?? self.chart.svg?.attr('height') ?? 0;
                 const chartHeight = Number(chartHeightRaw) || 0;
@@ -14800,6 +14803,7 @@ class OrderManager {
             })
             .on('drag', function(event) {
                 if (!self.splitDragGhost) return;
+                if (event.sourceEvent && self.chart?.updateCrosshair) self.chart.updateCrosshair(event.sourceEvent);
                 
                 // Get SVG coordinates from mouse position
                 const svgNode = self.chart.svg.node();
@@ -19330,6 +19334,7 @@ class OrderManager {
         
         const onMouseMove = function(e) {
             if (!isDragging) return;
+            if (ctx.updateCrosshair) ctx.updateCrosshair(e);
             
             const currentY = e.clientY;
             const deltaY = currentY - startY;
@@ -19700,6 +19705,7 @@ class OrderManager {
         
         const onMouseMove = function(e) {
             if (!isDragging) return;
+            if (ctx.updateCrosshair) ctx.updateCrosshair(e);
             
             const currentY = e.clientY;
             const deltaY = currentY - startY;
@@ -20280,6 +20286,7 @@ class OrderManager {
                 d3.select(this).style('cursor', 'grabbing');
             })
             .on('drag', function(event) {
+                if (event.sourceEvent && chart?.updateCrosshair) chart.updateCrosshair(event.sourceEvent);
                 if (ghostLine) ghostLine.attr('y1', event.y).attr('y2', event.y);
                 if (ghostPrice) {
                     const yScale = chart.scales?.yScale || chart.yScale;
@@ -21973,6 +21980,7 @@ class OrderManager {
             })
             .on('drag', function(event) {
                 if (!isDragging || !chart?.scales?.yScale) return;
+                if (event.sourceEvent && chart.updateCrosshair) chart.updateCrosshair(event.sourceEvent);
                 
                 const chartHeight = chart.h || 500;
                 const clampedY = Math.max(0, Math.min(chartHeight, event.y));
@@ -22585,6 +22593,7 @@ class OrderManager {
             })
             .on('drag', function(event) {
                 if (!isDragging || !ch?.scales?.yScale) return;
+                if (event.sourceEvent && ch.updateCrosshair) ch.updateCrosshair(event.sourceEvent);
                 
                 const chartHeight = ch.h || 500;
                 const clampedY = Math.max(0, Math.min(chartHeight, event.y));
