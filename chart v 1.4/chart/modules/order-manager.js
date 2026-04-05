@@ -11329,15 +11329,34 @@ class OrderManager {
             return ['⚠️ Set entry price first'];
         }
         
-        // Check total based on distribution mode
-        const totalValue = this.tpTargets.reduce((sum, t) => sum + (t.percentage || 0), 0);
+        // Only validate targets that have a price set (unset ones are filtered
+        // out at order-placement time and their share is redistributed).
+        const pricedTargets = this.tpTargets.filter(t => t.price > 0);
+        
+        if (pricedTargets.length === 0) {
+            errors.push('⚠️ At least one TP target must have a price set');
+            return errors;
+        }
+        
+        // Auto-redistribute percentages equally among priced targets so the
+        // user doesn't have to manually fix rounding after adding/removing TPs.
+        if (this.tpDistributionMode === 'percent' && pricedTargets.length > 0) {
+            const equalPct = Math.round(100 / pricedTargets.length);
+            pricedTargets.forEach((t, i) => {
+                t.percentage = (i === pricedTargets.length - 1)
+                    ? 100 - equalPct * (pricedTargets.length - 1)
+                    : equalPct;
+            });
+        }
+        
+        // Check total based on distribution mode (only priced targets)
+        const totalValue = pricedTargets.reduce((sum, t) => sum + (t.percentage || 0), 0);
         
         if (this.tpDistributionMode === 'percent') {
-            if (Math.abs(totalValue - 100) > 0.1) {
+            if (Math.abs(totalValue - 100) > 0.5) {
                 errors.push(`⚠️ TP percentages must sum to 100% (currently ${totalValue.toFixed(1)}%)`);
             }
         } else if (this.tpDistributionMode === 'amount') {
-            // Validate that total amount is reasonable (positive)
             if (totalValue <= 0) {
                 errors.push(`⚠️ Total TP amount must be positive (currently $${totalValue.toFixed(2)})`);
             }
@@ -11348,19 +11367,12 @@ class OrderManager {
             }
         }
         
-        // Validate each target
-        this.tpTargets.forEach((target, index) => {
-            // Check if price is set
-            if (!target.price || target.price <= 0) {
-                errors.push(`⚠️ TP #${index + 1}: Price must be set`);
-                return;
-            }
-            
+        // Validate each priced target
+        pricedTargets.forEach((target, index) => {
             // Check direction (BUY: TP > Entry, SELL: TP < Entry)
             if (this.orderSide === 'BUY') {
                 if (target.price <= entryPrice) {
                     errors.push(`⚠️ TP #${index + 1}: Must be ABOVE entry (${this.formatPrice(entryPrice)})`);
-
                 }
             } else {
                 if (target.price >= entryPrice) {
@@ -11385,7 +11397,6 @@ class OrderManager {
         });
         
         // Auto-sort TPs into progressive order (closest to entry first)
-        // so the execution engine processes them correctly.
         this.tpTargets.sort((a, b) => {
             if (this.orderSide === 'BUY') {
                 return a.price - b.price;
@@ -21368,17 +21379,20 @@ class OrderManager {
                 const isSplitGrp = typeof g.orderId === 'string' && g.orderId.startsWith('splitgrp_');
                 if (isSplitGrp) {
                     const grpId = g.orderId.replace('splitgrp_', '');
-                    const legs = (this.openPositions || []).filter(p => p.splitGroupId == grpId);
-                    if (!legs.length || !legs[0].tpTargets || legs[0].tpTargets.length < 2) {
+                    const openLegs = (this.openPositions || []).filter(p => p.splitGroupId == grpId);
+                    const pendingLegs = (this.pendingOrders || []).filter(p => p.splitGroupId == grpId);
+                    const allLegs = [...openLegs, ...pendingLegs];
+                    const refLeg = openLegs[0] || pendingLegs[0];
+                    if (!refLeg || !refLeg.tpTargets || refLeg.tpTargets.length < 2) {
                         toRemove.push(g.orderId);
                         continue;
                     }
-                    source = legs[0];
-                    targets = source.tpTargets;
-                    qty = legs.reduce((s, l) => s + (l.quantity || 0), 0);
-                    entryPrice = source.openPrice;
-                    side = source.type || 'BUY';
-                    sym = source.ticker || source.symbol || sym;
+                    source = refLeg;
+                    targets = refLeg.tpTargets;
+                    qty = allLegs.reduce((s, l) => s + (l.quantity || l.lots || 0), 0);
+                    entryPrice = refLeg.openPrice || refLeg.entryPrice;
+                    side = refLeg.type || refLeg.direction || 'BUY';
+                    sym = refLeg.ticker || refLeg.symbol || sym;
                 } else {
                     source = this.openPositions.find(p => p.id === g.orderId);
                     if (!source || !source.tpTargets || source.tpTargets.length < 2) {
@@ -21395,17 +21409,23 @@ class OrderManager {
                 const isSplitGrp = typeof g.orderId === 'string' && g.orderId.startsWith('splitgrp_');
                 if (isSplitGrp) {
                     const grpId = g.orderId.replace('splitgrp_', '');
-                    const legs = (this.pendingOrders || []).filter(p => p.splitGroupId == grpId);
-                    if (!legs.length || !legs[0].tpTargets || legs[0].tpTargets.length < 2) {
+                    const pendingLegs = (this.pendingOrders || []).filter(p => p.splitGroupId == grpId);
+                    const openLegs = (this.openPositions || []).filter(p => p.splitGroupId == grpId);
+                    const allLegs = [...pendingLegs, ...openLegs];
+                    const refLeg = pendingLegs[0] || openLegs[0];
+                    if (!refLeg || !refLeg.tpTargets || refLeg.tpTargets.length < 2) {
                         toRemove.push(g.orderId);
                         continue;
                     }
-                    source = legs[0];
-                    targets = source.tpTargets;
-                    qty = legs.reduce((s, l) => s + (l.quantity || l.lots || 0), 0);
-                    entryPrice = source.entryPrice;
-                    side = source.direction || 'BUY';
-                    sym = source.ticker || source.symbol || sym;
+                    if (!pendingLegs.length && openLegs.length) {
+                        g.mode = 'open';
+                    }
+                    source = refLeg;
+                    targets = refLeg.tpTargets;
+                    qty = allLegs.reduce((s, l) => s + (l.quantity || l.lots || 0), 0);
+                    entryPrice = refLeg.entryPrice || refLeg.openPrice;
+                    side = refLeg.direction || refLeg.type || 'BUY';
+                    sym = refLeg.ticker || refLeg.symbol || sym;
                 } else {
                     source = (this.pendingOrders || []).find(p => p.id === g.orderId);
                     if (!source || !source.tpTargets || source.tpTargets.length < 2) {
@@ -22905,11 +22925,18 @@ class OrderManager {
                 }
                 this.positionPendingOrderTargets(this.chart);
             } else {
-                // No siblings left — clean up shared group visuals
+                // No pending siblings left — clean up shared group visuals
                 this.removeSplitGroupAvgLine(splitGroupId);
-                const grpAvgTPKey = `splitgrp_${splitGroupId}`;
-                const grpAvgTPIdx = this.multiTPAvgLines.findIndex(g => g.orderId === grpAvgTPKey);
-                if (grpAvgTPIdx !== -1) this._destroyMultiTPAvgEntry(grpAvgTPIdx);
+
+                // Only destroy the avg TP line if no executed legs remain in this group
+                const hasOpenLegs = (this.openPositions || []).some(
+                    p => p.splitGroupId == splitGroupId
+                );
+                if (!hasOpenLegs) {
+                    const grpAvgTPKey = `splitgrp_${splitGroupId}`;
+                    const grpAvgTPIdx = this.multiTPAvgLines.findIndex(g => g.orderId === grpAvgTPKey);
+                    if (grpAvgTPIdx !== -1) this._destroyMultiTPAvgEntry(grpAvgTPIdx);
+                }
             }
         }
 
