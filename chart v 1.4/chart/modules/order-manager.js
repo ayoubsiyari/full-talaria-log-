@@ -12463,15 +12463,10 @@ class OrderManager {
             }
         }
 
-        // After all preview geometry is in the DOM (incl. badges), sync limit/stop vertical guide.
-        if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(() => {
-                this._reflowEntryAnchoredTpSlBadges();
-                this._syncPendingLimitStopConnector();
-            });
-        } else {
-            this._syncPendingLimitStopConnector();
-        }
+        // After all preview geometry is in the DOM: reflow TP/SL badges vs entry **in the same turn**
+        // so we do not paint once then rAF-nudge right (felt like lag on ✓ / panel updates).
+        this._reflowEntryAnchoredTpSlBadges();
+        this._syncPendingLimitStopConnector();
     }
 
     drawPreviewLine(price, color, label, direction = null, isDraggable = false, targetIndex = undefined, targetId = undefined, options = null) {
