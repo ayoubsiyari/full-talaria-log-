@@ -12037,6 +12037,8 @@ class OrderManager {
             }
         }
 
+        // Same-price Entry/TP/SL rows: alignPreviewLabels only ran on width change, so labels overlapped on pan/zoom.
+        this.alignPreviewLabels();
         this._syncPendingLimitStopConnector();
         if (this.chart) this._updateMultiTPAvgLines(this.chart);
     }
@@ -22078,6 +22080,20 @@ class OrderManager {
         ch.svg.selectAll('.y-axis-pending-be-highlight').remove();
 
         const marginRight = 120;
+        const ROW_BUCKET = 4;
+        const STAGGER_PX = 168;
+        const rowSlot = new Map();
+        const pendingLinesOnChart = (this.orderLines || []).filter(
+            (ol) => ol.isPending && (ol.chart || this.chart) === ch
+        );
+        for (const ol of pendingLinesOnChart) {
+            const po = this.pendingOrders.find((p) => p.id === ol.orderId);
+            if (!po) continue;
+            const ye = ch.scales.yScale(po.entryPrice);
+            if (!Number.isFinite(ye)) continue;
+            const yk = Math.round(ye / ROW_BUCKET);
+            rowSlot.set(yk, (rowSlot.get(yk) || 0) + 1);
+        }
 
         this.pendingTargetLines.forEach((entry) => {
             if (entry.chart !== ch) return;
@@ -22156,7 +22172,10 @@ class OrderManager {
                 const tpPlusW = (target.type === 'TP') ? (plusBW + bGap) : 0;
                 const badgesW = xBtnW + tpPlusW;
 
-                const translateX = ch.w - labelWidth - badgesW - marginRight;
+                const yk = Math.round(y / ROW_BUCKET);
+                const slot = rowSlot.get(yk) || 0;
+                rowSlot.set(yk, slot + 1);
+                const translateX = ch.w - labelWidth - badgesW - marginRight - slot * STAGGER_PX;
                 const translateY = y - labelHeight / 2;
                 labelGroup
                     .attr('transform', `translate(${translateX}, ${translateY})`)
