@@ -22830,12 +22830,14 @@ class OrderManager {
                 survivor.splitIndex = undefined;
                 survivor.splitTotal = undefined;
 
-                // Redraw as a normal (non-split) pending order
-                this.drawPendingOrderLine(survivor);
+                // Draw targets FIRST so they exist in pendingTargetLines
+                // before drawPendingOrderLine triggers chart.render() →
+                // updateOrderLines() → positionPendingOrderTargets().
                 this.drawPendingOrderTargets(survivor);
                 if (survivor.tpTargets && survivor.tpTargets.length >= 2) {
                     this.drawMultiTPAvgLine(survivor, 'pending');
                 }
+                this.drawPendingOrderLine(survivor);
                 this.positionPendingOrderTargets(this.chart);
 
                 console.log(`🔄 Restored pending #${survivor.id} to ${survivor.quantity.toFixed(2)} lots (absorbed cancelled split) | TP=${survivor.takeProfit} SL=${survivor.stopLoss}`);
@@ -22863,17 +22865,19 @@ class OrderManager {
                 // 2. Update avg entry line
                 this._updateSplitGroupAvgLines();
 
-                // 3. Redraw entry lines for all remaining siblings
-                remainingSiblings.forEach(sib => {
-                    this.drawPendingOrderLine(sib);
-                });
-
-                // 4. Redraw targets for the new primary leg (splitIndex 1)
+                // 3. Draw targets FIRST so they exist in pendingTargetLines
+                //    before drawPendingOrderLine triggers chart.render() →
+                //    updateOrderLines() → positionPendingOrderTargets().
                 const newPrimary = remainingSiblings.find(s => Number(s.splitIndex) === 1) || remainingSiblings[0];
                 this.drawPendingOrderTargets(newPrimary);
                 if (newPrimary.tpTargets && newPrimary.tpTargets.length >= 2) {
                     this.drawMultiTPAvgLine(newPrimary, 'pending');
                 }
+
+                // 4. Redraw entry lines for all remaining siblings
+                remainingSiblings.forEach(sib => {
+                    this.drawPendingOrderLine(sib);
+                });
 
                 // 5. Position everything
                 this.positionPendingOrderTargets(this.chart);
@@ -22889,6 +22893,36 @@ class OrderManager {
         this.updatePositionsPanel();
         if (typeof this.updateOrderLines === 'function') {
             this.updateOrderLines();
+        }
+
+        // Safety net: verify pending orders that should have targets actually do
+        this._ensurePendingTargetsExist();
+    }
+
+    /**
+     * If a pending order has tpTargets/stopLoss but no entry in pendingTargetLines,
+     * redraw its targets (guards against ordering issues during cancel/split flows).
+     */
+    _ensurePendingTargetsExist() {
+        const pending = [...(this.pendingOrders || []), ...(this.orderService?.pendingOrders || [])];
+        const seen = new Set();
+        for (const po of pending) {
+            if (!po || seen.has(po.id)) continue;
+            seen.add(po.id);
+            // Only the primary leg of a split group draws targets
+            if (po.isSplitEntry && po.splitGroupId && Number(po.splitIndex) > 1) continue;
+            const hasTargetData = (po.tpTargets && po.tpTargets.length > 0) || po.stopLoss || po.takeProfit;
+            if (!hasTargetData) continue;
+            const hasDrawn = (this.pendingTargetLines || []).some(e => e.orderId === po.id);
+            if (!hasDrawn) {
+                console.log(`🔧 _ensurePendingTargetsExist: redrawing missing targets for pending #${po.id}`);
+                this.drawPendingOrderTargets(po);
+                if (po.tpTargets && po.tpTargets.length >= 2) {
+                    const key = po.isSplitEntry && po.splitGroupId ? `splitgrp_${po.splitGroupId}` : po.id;
+                    const hasAvg = this.multiTPAvgLines.some(g => g.orderId === key);
+                    if (!hasAvg) this.drawMultiTPAvgLine(po, 'pending');
+                }
+            }
         }
     }
 
