@@ -22467,13 +22467,12 @@ class OrderManager {
                 const totalLabelW = labelWidth + pnlBoxW;
                 target.labelDimensions = { width: totalLabelW, height: labelHeight };
 
-                // Layout: Label+PnL → X → TP+ (right of label, left of right margin)
+                // Layout: Label+PnL → X (right of label, left of right margin)
                 const isMultiTP = !!target.isPendingMultiTP;
                 const deleteBtnR = 7;
                 const xBtnW = isMultiTP ? (deleteBtnR * 2 + 4) : 0;
-                const plusBW = 36, bH = 16, bGap = 4;
-                const tpPlusW = (target.type === 'TP') ? (plusBW + bGap) : 0;
-                const badgesW = xBtnW + tpPlusW;
+                const bGap = 4;
+                const badgesW = xBtnW;
 
                 const translateX = ch.w - totalLabelW - badgesW - marginRight;
                 const translateY = y - labelHeight / 2;
@@ -22506,21 +22505,7 @@ class OrderManager {
                     bx += deleteBtnR * 2 + bGap;
                 }
 
-                // TP+ badge (right of X, before margin) — reuse if exists, skip if dragging
-                if (target.type === 'TP') {
-                    const badgeNode = target._tpPlusBadge?.node?.();
-                    if (!badgeNode || !badgeNode.parentNode) {
-                        if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} }
-                        target._tpPlusBadge = this._createPlusBadge(ch, entry.pendingOrder.id, 'pending-tp',
-                            '#22c55e', 'TP+', (price) => this._splitTPAtPrice(entry.pendingOrder.id, price, true));
-                        target._tpPlusBadge.select('rect').attr('width', plusBW);
-                        target._tpPlusBadge.select('text').attr('x', plusBW / 2).attr('y', bH / 2);
-                    }
-                    if (!badgeNode?.__dragging) {
-                        target._tpPlusBadge.style('display', null)
-                            .attr('transform', `translate(${bx}, ${y - bH / 2})`);
-                    }
-                }
+                if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} target._tpPlusBadge = null; }
 
                 if (isDraggable && entry.pendingOrder && !target.dragApplied) {
                     this.makePendingTargetDraggable(target, entry.pendingOrder, ch);
@@ -24433,10 +24418,6 @@ class OrderManager {
                         this._deleteTPTarget(order.id, index, false);
                     });
 
-                    // TP+ badge (drag to add another TP target)
-                    const tpPlusBadge = this._createPlusBadge(chart, order.id, 'tp-target',
-                        '#22c55e', 'TP+', (price) => this._splitTPAtPrice(order.id, price, false));
-
                     tpLines.push({ 
                         orderId: order.id,
                         targetId: target.id || index,
@@ -24448,7 +24429,6 @@ class OrderManager {
                         priceBox: tpPriceBox,
                         priceText: tpPriceText,
                         deleteBtn: tpDeleteBtn,
-                        tpPlusBadge: tpPlusBadge,
                         type: 'TP',
                         chart
                     });
@@ -24578,10 +24558,6 @@ class OrderManager {
                 priceText: tpPriceText
             }, chart);
             
-            // TP+ badge on single TP line (drag to split into multi-TP)
-            const singleTpPlusBadge = this._createPlusBadge(chart, order.id, 'tp-single',
-                '#22c55e', 'TP+', (price) => this._splitTPAtPrice(order.id, price, false));
-
             tpLines.push({ 
                 orderId: order.id, 
                 line: tpLine, 
@@ -24592,7 +24568,6 @@ class OrderManager {
                 closeBtn: tpCloseBtn,
                 priceBox: tpPriceBox,
                 priceText: tpPriceText,
-                tpPlusBadge: singleTpPlusBadge,
                 type: 'TP',
                 chart
             });
@@ -25247,7 +25222,7 @@ class OrderManager {
             // Track which TP prices have been updated
             const updatedTPPrices = new Set();
             
-            tpForChart.forEach(({ orderId, targetId, line, labelBox, labelText, pnlBox, pnlText, closeBtn, priceBox, priceText, deleteBtn, tpPlusBadge }) => {
+            tpForChart.forEach(({ orderId, targetId, line, labelBox, labelText, pnlBox, pnlText, closeBtn, priceBox, priceText, deleteBtn }) => {
                 const position = this.openPositions.find(p => p.id === orderId);
                 if (!position) return;
                 
@@ -25282,7 +25257,6 @@ class OrderManager {
                     if (priceText) priceText.style('display', 'none');
                     if (closeBtn) closeBtn.style('display', 'none');
                     if (deleteBtn) deleteBtn.style('display', 'none');
-                    if (tpPlusBadge) tpPlusBadge.style('display', 'none');
                 } else {
                     updatedTPPrices.add(priceKey);
                     const numPositions = groupData ? groupData.positions.length : 1;
@@ -25340,7 +25314,6 @@ class OrderManager {
                     const yAxisWidth = 70;
                     const closeBtnR = 10;
                     const closeBtnGap = 6;
-                    const plusBW = 36, bH = 16;
                     const deleteBtnR = 8;
 
                     const labelTW = labelText.node()?.getBBox()?.width || 0;
@@ -25348,10 +25321,9 @@ class OrderManager {
                     const pnlTW = pnlText?.node()?.getBBox()?.width || 0;
                     const pnlBW = pnlTW > 0 ? pnlTW + pad * 2 : 0;
 
-                    // Layout: Label → PnL → X → TP+ → CloseBtn
-                    const tpPlusSpace = tpPlusBadge ? plusBW + gap : 0;
+                    // Layout: Label → PnL → X → CloseBtn
                     const deleteSpace = deleteBtn ? (deleteBtnR * 2 + gap) : 0;
-                    const badgesW = tpPlusSpace + deleteSpace;
+                    const badgesW = deleteSpace;
 
                     const rightEdge = ch.w - yAxisWidth - 10;
                     const closeBtnX = rightEdge - closeBtnR;
@@ -25377,17 +25349,6 @@ class OrderManager {
                         deleteBtn.style('display', null)
                             .attr('transform', `translate(${cx + deleteBtnR}, ${y})`);
                         cx += deleteBtnR * 2 + gap;
-                    }
-
-                    // TP+ badge — skip reposition if actively being dragged
-                    if (tpPlusBadge) {
-                        if (!tpPlusBadge.node()?.__dragging) {
-                            tpPlusBadge.style('display', null)
-                                .attr('transform', `translate(${cx}, ${y - bH / 2})`);
-                            tpPlusBadge.select('rect').attr('width', plusBW);
-                            tpPlusBadge.select('text').attr('x', plusBW / 2).attr('y', bH / 2);
-                        }
-                        cx += plusBW + gap;
                     }
 
                     closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
@@ -25804,13 +25765,6 @@ class OrderManager {
                     if (cm) tp.deleteBtn.attr('transform', `translate(${parseFloat(cm[1]) - dx}, ${cm[2]})`);
                 }
             }
-            if (tp.tpPlusBadge && !tp.tpPlusBadge.node()?.__dragging) {
-                const ct = tp.tpPlusBadge.attr('transform');
-                if (ct) {
-                    const cm = ct.match(/translate\(\s*([\d.e+-]+)\s*,\s*([\d.e+-]+)/);
-                    if (cm) tp.tpPlusBadge.attr('transform', `translate(${parseFloat(cm[1]) - dx}, ${cm[2]})`);
-                }
-            }
             if (tp.closeBtn) {
                 const ct = tp.closeBtn.attr('transform');
                 if (ct) {
@@ -25900,7 +25854,6 @@ class OrderManager {
                 if (!Number.isFinite(curX) || Math.abs(curX - minX) < 0.5) return;
                 const dx = curX - minX;
                 lg.attr('transform', `translate(${minX}, ${m[2]})`);
-                // Shift delete btn and TP+ badge
                 const shiftG = (el) => {
                     if (!el) return;
                     const et = el.attr('transform');
@@ -25910,7 +25863,6 @@ class OrderManager {
                     }
                 };
                 shiftG(target._deleteBtn);
-                shiftG(target._tpPlusBadge);
             });
         });
     }
