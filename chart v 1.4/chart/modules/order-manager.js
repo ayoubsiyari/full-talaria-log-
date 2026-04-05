@@ -17253,6 +17253,7 @@ class OrderManager {
                 this.removeEntryMarker(orderId);
                 this.removeMfeMaeMarkers(orderId);
                 this._cleanupOrphanedYAxisHighlights();
+                this._ensurePendingTargetsSurvive();
                 // Force a chart redraw to ensure lines are visually removed
                 if (this.chart && this.chart.render) {
                     this.chart.render();
@@ -17404,6 +17405,7 @@ class OrderManager {
             }
         }
         
+        this._ensurePendingTargetsSurvive();
         this.updatePositionsPanel();
         
         // Show trade journal modal for post-trade notes (modal will UPDATE the journal entry, not create it)
@@ -18717,6 +18719,7 @@ class OrderManager {
                     this.removeSplitGroupAvgLine(position.splitGroupId);
                 }
                 this._cleanupOrphanedYAxisHighlights();
+                this._ensurePendingTargetsSurvive();
                 this.updatePositionsPanel();
                 return;
             }
@@ -19157,6 +19160,7 @@ class OrderManager {
             console.log(`🧹 Cleaned up orphaned pending order #${orderId}`);
         }
         
+        this._ensurePendingTargetsSurvive();
         this.updatePositionsPanel();
         
         // Continue post-exit tracking by configured mode (hours or fixed candles).
@@ -21223,7 +21227,7 @@ class OrderManager {
             .attr('font-size', '11px')
             .attr('font-weight', '600')
             .attr('x', 0).attr('y', y + 4)
-            .text(`Avg TP  ${qty} lots`);
+            .text(`Avg TP  ${Number(qty).toFixed(2)} lots`);
 
         const pnlBox = chart.svg.append('rect')
             .attr('class', `multi-tp-avg-label ${cls}`)
@@ -21425,7 +21429,7 @@ class OrderManager {
             const y = yScale(avgTP);
             if (!Number.isFinite(y)) continue;
 
-            g.lotsText.text(`Avg TP  ${qty} lots`);
+            g.lotsText.text(`Avg TP  ${Number(qty).toFixed(2)} lots`);
             const lotsBW = g.lotsText.node().getBBox().width + pad * 2;
 
             let totalPnl = 0;
@@ -24803,6 +24807,59 @@ class OrderManager {
         });
     }
     
+    /**
+     * After closing an executed position, verify that every remaining pending
+     * order still has its entry line AND SL/TP target visuals.  If any are
+     * missing (DOM nodes removed as collateral damage), re-draw them.
+     */
+    _ensurePendingTargetsSurvive() {
+        if (!this.pendingOrders || this.pendingOrders.length === 0) return;
+        const chart = this.chart;
+        if (!chart?.svg) return;
+
+        for (const po of this.pendingOrders) {
+            const hasEntryLine = (this.orderLines || []).some(
+                ol => ol.orderId === po.id && ol.isPending
+            );
+            if (!hasEntryLine) {
+                console.log(`🔧 Re-drawing missing entry line for pending #${po.id}`);
+                try { this.drawPendingOrderLine(po); } catch (_) {}
+            }
+
+            const needsTargets = po.stopLoss || po.takeProfit ||
+                (po.tpTargets && po.tpTargets.length > 0);
+
+            if (needsTargets) {
+                const hasTargets = (this.pendingTargetLines || []).some(
+                    e => e.orderId === po.id
+                );
+                let targetsInDOM = hasTargets;
+                if (hasTargets) {
+                    const entry = this.pendingTargetLines.find(e => e.orderId === po.id);
+                    const firstLine = entry?.targets?.[0]?.line;
+                    if (firstLine && !firstLine.node()?.parentNode) {
+                        targetsInDOM = false;
+                    }
+                }
+                if (!targetsInDOM) {
+                    console.log(`🔧 Re-drawing missing SL/TP targets for pending #${po.id}`);
+                    try {
+                        this.removePendingSLTPLines(po.id);
+                        this.drawPendingOrderTargets(po);
+                        if (po.tpTargets && po.tpTargets.length >= 2) {
+                            this.removeMultiTPAvgLine(po.id);
+                            this.drawMultiTPAvgLine(po, 'pending');
+                        }
+                    } catch (_) {}
+                }
+            }
+        }
+
+        if (chart.scales?.yScale) {
+            this.positionPendingOrderTargets(chart);
+        }
+    }
+
     /**
      * Remove only Stop Loss from order (keeps position open)
      */
