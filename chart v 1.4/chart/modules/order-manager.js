@@ -25819,15 +25819,17 @@ class OrderManager {
             if (g.lotsText) g.lotsText.attr('x', parseFloat(g.lotsText.attr('x')) - dx);
         });
 
-        // Shift Avg Entry labels
+        // Shift Avg Entry labels (use avgBox as the leftmost reference)
         (this.splitGroupAvgLines || []).forEach((g) => {
             if (g.chart !== ch) return;
-            const box = g.lotsBox;
-            if (!box) return;
-            const curX = parseFloat(box.attr('x'));
+            const ref = g.avgBox || g.lotsBox;
+            if (!ref) return;
+            const curX = parseFloat(ref.attr('x'));
             if (!Number.isFinite(curX) || Math.abs(curX - minX) < 0.5) return;
             const dx = curX - minX;
-            box.attr('x', minX);
+            if (g.avgBox) g.avgBox.attr('x', parseFloat(g.avgBox.attr('x')) - dx);
+            if (g.avgText) g.avgText.attr('x', parseFloat(g.avgText.attr('x')) - dx);
+            if (g.lotsBox) g.lotsBox.attr('x', parseFloat(g.lotsBox.attr('x')) - dx);
             if (g.lotsText) g.lotsText.attr('x', parseFloat(g.lotsText.attr('x')) - dx);
             if (g.pnlBox) g.pnlBox.attr('x', parseFloat(g.pnlBox.attr('x')) - dx);
             if (g.pnlText) g.pnlText.attr('x', parseFloat(g.pnlText.attr('x')) - dx);
