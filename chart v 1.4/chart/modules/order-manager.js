@@ -8546,7 +8546,7 @@ class OrderManager {
                 .attr('class', 'preview-label-bg')
                 .attr('width', width)
                 .attr('height', height)
-                .attr('rx', 7)
+                .attr('rx', 3)
                 .attr('stroke', segment.stroke || lineData.color)
                 .attr('stroke-width', segment.strokeWidth || 1.2);
 
@@ -12196,7 +12196,7 @@ class OrderManager {
                     false,
                     undefined,
                     undefined,
-                    { strokeDasharray: '7 5', smallLabel: true, isAvgEntryLine: true }
+                    { strokeDasharray: '7 5', smallLabel: true, isAvgEntryLine: true, opacity: 0.85 }
                 );
             }
         }
@@ -12206,10 +12206,10 @@ class OrderManager {
         
         if (tpEnabled && multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
             // Draw full lines for targets that have a price set
+            const tpColors = ['#4ade80', '#22c55e', '#16a34a', '#15803d', '#166534'];
             this.tpTargets.forEach((target, index) => {
                 if (target.price > 0) {
-                    const greenIntensity = 0.6 + (index / this.tpTargets.length) * 0.4;
-                    const color = `rgba(34, 197, 94, ${greenIntensity})`;
+                    const color = tpColors[Math.min(index, tpColors.length - 1)];
                     const label = `TP${index + 1}`;
                     
                     const tpLine = this.drawPreviewLine(target.price, color, label, null, true, index, target.id);
@@ -12347,7 +12347,7 @@ class OrderManager {
         const hitStrokeWidth = 20;
         const dash = options?.strokeDasharray ?? null;
         const disabled = options?.disabled === true;
-        const lineOpacity = disabled ? 0.38 : 0.88;
+        const lineOpacity = disabled ? 0.38 : (options?.opacity ?? 0.92);
 
         const line = this.chart.svg.append('line')
             .attr('class', disabled ? 'preview-line preview-line--disabled' : 'preview-line')
@@ -12466,7 +12466,7 @@ class OrderManager {
             .on('start', () => {
                 isDragging = true;
                 dragStartTime = Date.now();
-                lineData.line.attr('opacity', 1);
+                lineData.line.attr('stroke-width', 1.6).attr('opacity', 1);
                 
                 // Set flag to prevent full redraw during drag
                 self.isDraggingPreviewLine = true;
@@ -13142,7 +13142,7 @@ class OrderManager {
             .on('end', () => {
                 if (!isDragging) return;
                 isDragging = false;
-                lineData.line.attr('opacity', 0.7);
+                lineData.line.attr('stroke-width', 1).attr('opacity', 0.92);
                 
                 // Clear dragging flag
                 self.isDraggingPreviewLine = false;
@@ -19264,8 +19264,7 @@ class OrderManager {
             
             console.log(`🖱️ Drag started: ${lineType.toUpperCase()} @ ${startPrice.toFixed(5)}`);
             
-            // Increase opacity
-            line.attr('opacity', 1);
+            line.attr('stroke-width', 1.6).attr('opacity', 1);
             
             // Force immediate panel update
             self.updatePositionsPanel();
@@ -19522,8 +19521,7 @@ class OrderManager {
                 frameId = null;
             }
             
-            // Reset opacity
-            line.attr('opacity', (lineType === 'entry' || lineType === 'be') ? 0.8 : 1);
+            line.attr('stroke-width', 1).attr('opacity', 0.92);
             
             let finalPrice;
             if (lineType === 'entry') finalPrice = order.openPrice;
@@ -19639,8 +19637,7 @@ class OrderManager {
             
             console.log(`🖱️ Multi-TP drag started: TP${targetIndex + 1} @ ${target.price.toFixed(5)}`);
             
-            // Increase opacity
-            line.attr('opacity', 1);
+            line.attr('stroke-width', 1.6).attr('opacity', 1);
             
             // Add document listeners
             document.addEventListener('mousemove', onMouseMove);
@@ -19771,8 +19768,7 @@ class OrderManager {
                 frameId = null;
             }
             
-            // Reset opacity
-            line.attr('opacity', 1);
+            line.attr('stroke-width', 1).attr('opacity', 0.92);
             
             const finalPrice = target.price;
 
@@ -20772,7 +20768,7 @@ class OrderManager {
             .attr('class', `order-line order-${order.id}`)
             .attr('stroke', lineColor)
             .attr('stroke-width', 1)
-            .attr('opacity', 1)
+            .attr('opacity', 0.92)
             .attr('pointer-events', 'none');
 
         // Wide invisible hit area for easy dragging from the line
@@ -21787,7 +21783,7 @@ class OrderManager {
         }
 
         // TradingView-like visual styling for pending lines.
-        const lineColor = pendingOrder.direction === 'BUY' ? '#3b82f6' : '#ef4444';
+        const lineColor = pendingOrder.direction === 'BUY' ? '#2962ff' : '#f23645';
         
         const line = chart.svg.append('line')
             .attr('class', `pending-order-line pending-${pendingOrder.id}`)
@@ -22191,10 +22187,11 @@ class OrderManager {
 
         const self = this;
         
-        const createLine = (price, type, labelText = null, pnl = null, targetId = null, percentage = null) => {
+        const tpColors = ['#4ade80', '#22c55e', '#16a34a', '#15803d', '#166534'];
+        const createLine = (price, type, labelText = null, pnl = null, targetId = null, percentage = null, tpIndex = 0) => {
             if (!price) return null;
-            const color = type === 'TP' ? '#22c55e' : type === 'SL' ? '#f23645' : '#f59e0b';
-            const isDraggable = (type === 'TP' || type === 'SL');
+            const color = type === 'TP' ? tpColors[Math.min(tpIndex, tpColors.length - 1)] : type === 'SL' ? '#f23645' : '#f59e0b';
+            const isDraggable = (type === 'TP' || type === 'SL' || type === 'BE');
             
             const line = chart.svg.append('line')
                 .attr('class', `pending-${type.toLowerCase()}-line pending-${type.toLowerCase()}-${pendingOrder.id}`)
@@ -22202,7 +22199,7 @@ class OrderManager {
                 .attr('stroke-width', 1)
                 .attr('stroke-linecap', 'butt')
                 .attr('stroke-dasharray', null)
-                .attr('opacity', type === 'BE' ? 0.92 : 0.92)
+                .attr('opacity', 0.92)
                 .style('pointer-events', isDraggable ? 'all' : 'none')
                 .style('cursor', isDraggable ? 'ns-resize' : 'default');
 
@@ -22238,11 +22235,13 @@ class OrderManager {
                     }, 0);
                 }
                 
-                const labelText = `TP${index + 1}  ${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
-                const item = createLine(target.price, 'TP', labelText, tpPnL, target.id || index, target.percentage);
+                const labelText = `TP${index + 1}`;
+                const pnlStr = `${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
+                const item = createLine(target.price, 'TP', labelText, tpPnL, target.id || index, target.percentage, index);
                 if (item) {
                     item.tpTargetIndex = index;
                     item.isPendingMultiTP = true;
+                    item.pnlStr = pnlStr;
                     entries.push(item);
                 }
             });
@@ -22255,9 +22254,10 @@ class OrderManager {
                     m.direction, m.entryPrice, pendingOrder.takeProfit, m.quantity, pendingSym
                 ), 0);
             }
-            const labelText = `TP  ${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
+            const labelText = `TP`;
+            const pnlStr = `${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
             const item = createLine(pendingOrder.takeProfit, 'TP', labelText, tpPnL);
-            if (item) entries.push(item);
+            if (item) { item.pnlStr = pnlStr; entries.push(item); }
         }
         
         // Draw SL with P&L (sum all legs for scale-in)
@@ -22269,9 +22269,10 @@ class OrderManager {
                     m.direction, m.entryPrice, pendingOrder.stopLoss, m.quantity, pendingSym
                 ), 0);
             }
-            const labelText = `SL  ${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`;
+            const labelText = `SL`;
+            const pnlStr = `${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`;
             const item = createLine(pendingOrder.stopLoss, 'SL', labelText, slPnL);
-            if (item) entries.push(item);
+            if (item) { item.pnlStr = pnlStr; entries.push(item); }
         }
         
         // Add BE trigger line if breakeven is enabled
@@ -22336,7 +22337,7 @@ class OrderManager {
             if (entry.chart !== ch) return;
             entry.targets.forEach((target) => {
                 const y = ch.scales.yScale(target.price);
-                const isDraggable = (target.type === 'TP' || target.type === 'SL');
+                const isDraggable = (target.type === 'TP' || target.type === 'SL' || target.type === 'BE');
 
                 target.line
                     .attr('x1', 0)
@@ -22355,7 +22356,9 @@ class OrderManager {
                 const labelGroup = target.labelGroup;
                 labelGroup.selectAll('*').remove();
 
-                const bgColor = target.type === 'TP' ? '#22c55e'
+                const tpIndexColors = ['#4ade80', '#22c55e', '#16a34a', '#15803d', '#166534'];
+                const bgColor = target.type === 'TP'
+                    ? (target.tpTargetIndex != null ? tpIndexColors[Math.min(target.tpTargetIndex, tpIndexColors.length - 1)] : '#22c55e')
                     : target.type === 'SL' ? '#f23645'
                     : '#f59e0b';
 
@@ -22387,8 +22390,6 @@ class OrderManager {
                 const labelWidth = bbox.width + 16;
                 const labelHeight = bbox.height + 8;
 
-                target.labelDimensions = { width: labelWidth, height: labelHeight };
-
                 labelRect
                     .attr('width', labelWidth)
                     .attr('height', labelHeight)
@@ -22401,7 +22402,40 @@ class OrderManager {
                     .attr('text-anchor', 'middle')
                     .attr('dy', '0.35em');
 
-                // Layout: Label → X → TP+ (right of label, left of right margin)
+                const pnlAccent = target.type === 'TP' ? '#86efac' : target.type === 'SL' ? '#fca5a5' : '#fde68a';
+                let pnlBoxW = 0;
+                const hasPnl = target.pnlStr && (target.type === 'TP' || target.type === 'SL');
+                if (hasPnl) {
+                    const pnlText = labelGroup.append('text')
+                        .attr('fill', pnlAccent)
+                        .attr('font-size', '11px')
+                        .attr('font-weight', '700')
+                        .style('pointer-events', 'none')
+                        .text(target.pnlStr);
+                    const pnlBbox = pnlText.node().getBBox();
+                    pnlBoxW = pnlBbox.width + 16;
+                    const pnlBoxX = labelWidth + 2;
+                    labelGroup.insert('rect', 'text:last-of-type')
+                        .attr('rx', 3)
+                        .attr('fill', '#0f172a')
+                        .attr('stroke', bgColor)
+                        .attr('stroke-width', 1)
+                        .attr('width', pnlBoxW)
+                        .attr('height', labelHeight)
+                        .attr('x', pnlBoxX)
+                        .attr('y', 0);
+                    pnlText
+                        .attr('x', pnlBoxX + pnlBoxW / 2)
+                        .attr('y', labelHeight / 2)
+                        .attr('text-anchor', 'middle')
+                        .attr('dy', '0.35em');
+                    pnlBoxW += 2;
+                }
+
+                const totalLabelW = labelWidth + pnlBoxW;
+                target.labelDimensions = { width: totalLabelW, height: labelHeight };
+
+                // Layout: Label+PnL → X → TP+ (right of label, left of right margin)
                 const isMultiTP = !!target.isPendingMultiTP;
                 const deleteBtnR = 7;
                 const xBtnW = isMultiTP ? (deleteBtnR * 2 + 4) : 0;
@@ -22409,15 +22443,15 @@ class OrderManager {
                 const tpPlusW = (target.type === 'TP') ? (plusBW + bGap) : 0;
                 const badgesW = xBtnW + tpPlusW;
 
-                const translateX = ch.w - labelWidth - badgesW - marginRight;
+                const translateX = ch.w - totalLabelW - badgesW - marginRight;
                 const translateY = y - labelHeight / 2;
                 labelGroup
                     .attr('transform', `translate(${translateX}, ${translateY})`)
                     .style('cursor', isDraggable ? 'ns-resize' : 'default');
 
-                let bx = translateX + labelWidth + bGap;
+                let bx = translateX + totalLabelW + bGap;
 
-                // X delete button (right of label)
+                // X delete button (right of label+pnl)
                 if (isMultiTP) {
                     if (target._deleteBtn) { try { target._deleteBtn.remove(); } catch (_) {} }
                     const dbg = ch.svg.append('g')
@@ -22580,6 +22614,22 @@ class OrderManager {
                                 }
                             }
                         });
+                    }
+                } else if (target.type === 'BE') {
+                    const entryP = pendingOrder.entryPrice;
+                    const slP = pendingOrder.stopLoss;
+                    if (entryP > 0 && slP > 0 && pendingOrder.breakevenSettings) {
+                        const dist = Math.abs(target.price - entryP);
+                        const mode = pendingOrder.breakevenSettings.mode;
+                        if (mode === 'rr') {
+                            const riskDist = Math.abs(entryP - slP);
+                            pendingOrder.breakevenSettings.value = riskDist > 0 ? +(dist / riskDist).toFixed(1) : pendingOrder.breakevenSettings.value;
+                        } else if (mode === 'pips') {
+                            pendingOrder.breakevenSettings.value = +(dist / self.pipSize).toFixed(1);
+                        } else {
+                            const pips = dist / self.pipSize;
+                            pendingOrder.breakevenSettings.value = +(pips * pendingOrder.quantity * self.pipValuePerLot).toFixed(2);
+                        }
                     }
                 }
                 
@@ -24096,7 +24146,7 @@ class OrderManager {
                 .attr('class', `sl-line sl-${order.id}`)
                 .attr('stroke', '#f23645')
                 .attr('stroke-width', 1)
-                .attr('opacity', 1)
+                .attr('opacity', 0.92)
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
             
@@ -24244,7 +24294,7 @@ class OrderManager {
                         .attr('class', `tp-line tp-${order.id} tp-target-${target.id || index}`)
                         .attr('stroke', color)
                         .attr('stroke-width', 1)
-                        .attr('opacity', 1)
+                        .attr('opacity', 0.92)
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize');
                     
@@ -24361,7 +24411,7 @@ class OrderManager {
                 .attr('class', `tp-line tp-${order.id}`)
                 .attr('stroke', '#22c55e')
                 .attr('stroke-width', 1)
-                .attr('opacity', 1)
+                .attr('opacity', 0.92)
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
             
@@ -24526,9 +24576,9 @@ class OrderManager {
             const beLine = chart.svg.append('line')
                 .attr('class', `be-line be-${order.id}`)
                 .attr('stroke', '#f59e0b')
-                .attr('stroke-width', 1.5)
+                .attr('stroke-width', 1)
                 .attr('stroke-dasharray', null)
-                .attr('opacity', 0.8)
+                .attr('opacity', 0.92)
                 .attr('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
             
@@ -24540,14 +24590,14 @@ class OrderManager {
             const beLabelBox = chart.svg.append('rect')
                 .attr('class', `be-label-box be-${order.id}`)
                 .attr('fill', '#f59e0b')
-                .attr('rx', 2)
+                .attr('rx', 3)
                 .style('cursor', 'ns-resize');
             
             const beLabelText = chart.svg.append('text')
                 .attr('class', `be-label-text be-${order.id}`)
                 .attr('fill', '#ffffff')
                 .attr('font-size', '11px')
-                .attr('font-weight', '600')
+                .attr('font-weight', '700')
                 .style('cursor', 'ns-resize')
                 .text(beLabel);
             
@@ -24555,7 +24605,7 @@ class OrderManager {
             const bePriceBox = chart.svg.append('rect')
                 .attr('class', `be-price-box be-${order.id}`)
                 .attr('fill', '#f59e0b')
-                .attr('rx', 2)
+                .attr('rx', 3)
                 .style('cursor', 'ns-resize');
             
             const bePriceText = chart.svg.append('text')
@@ -25709,7 +25759,7 @@ class OrderManager {
                         .attr('fill', '#f23645').attr('stroke', '#0f172a').attr('stroke-width', 1);
                 }
             }
-            const eColor = po.direction === 'BUY' ? '#3b82f6' : '#ef4444';
+            const eColor = po.direction === 'BUY' ? '#2962ff' : '#f23645';
             cg.append('circle').attr('cx', connX).attr('cy', entryY).attr('r', 2.5)
                 .attr('fill', eColor).attr('stroke', '#0f172a').attr('stroke-width', 1);
             try { cg.lower(); } catch (_) {}
