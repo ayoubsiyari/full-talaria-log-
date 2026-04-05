@@ -357,6 +357,7 @@ class OrderManager {
         s.selectAll('.order-line,.order-drag-hit,.order-label-box,.order-label-text,.order-arrow,.order-price-box,.order-price-text,.order-close-btn,.order-pnl-box,.order-pnl-text,.order-sl-badge,.order-tp-badge,.order-tp-badges').remove();
         s.selectAll('.pending-order-line,.pending-order-label-box,.pending-order-label-text,.pending-order-price-box,.pending-order-price-text,.pending-order-close-btn').remove();
         s.selectAll('.pending-tp-line,.pending-sl-line,.pending-be-line,.pending-tp-label,.pending-sl-label,.pending-be-label').remove();
+        s.selectAll('[class*="pending-tp-tp-plus-badge"],[class*="pending-tp-delete"],[class*="pending-sl-badge"],[class*="pending-tp-badge"]').remove();
         s.selectAll('.sl-line,.sl-label-box,.sl-label-text,.sl-pnl-box,.sl-pnl-text,.sl-close-btn,.sl-price-box,.sl-price-text').remove();
         s.selectAll('.tp-line,.tp-label-box,.tp-label-text,.tp-pnl-box,.tp-pnl-text,.tp-close-btn,.tp-price-box,.tp-price-text').remove();
         s.selectAll('.be-line,.be-hit-line,.be-label-box,.be-label-text,.be-price-box,.be-price-text').remove();
@@ -17820,6 +17821,16 @@ class OrderManager {
         } else {
             this.removeMultiTPAvgLine(pendingOrder.id);
         }
+        // Belt-and-suspenders: forcefully remove any remaining pending DOM elements
+        // (badges, target labels, etc.) that may survive the structured cleanup
+        const oid = pendingOrder.id;
+        (this._collectLayoutCharts() || [this.chart]).forEach((c) => {
+            if (!c?.svg) return;
+            c.svg.selectAll(`.pending-${oid}`).remove();
+            c.svg.selectAll(`.pending-tp-${oid}`).remove();
+            c.svg.selectAll(`.pending-sl-${oid}`).remove();
+            c.svg.selectAll(`.pending-be-${oid}`).remove();
+        });
         this.drawOrderLine(order);
         this.drawSLTPLines(order);
         
