@@ -8832,6 +8832,38 @@ class OrderManager {
         this.positionPreviewLabel(lineData, overrideY);
     }
 
+    /**
+     * Single-entry preview: place TP/SL badges immediately after the entry tag (MARKET BUY + ✓ ✕),
+     * not near the price axis — matches the original drawer layout.
+     */
+    _useEntryAnchoredTpSlBadges() {
+        return !!(this.previewLines?.entry && !this.isMultiEntryMode);
+    }
+
+    /** Right edge X of the entry preview label group (includes action buttons when present). */
+    _getPreviewEntryLabelRightEdgeX() {
+        const entry = this.previewLines?.entry;
+        if (!entry?.labelGroup) return null;
+        const tr = entry.labelGroup.attr('transform') || '';
+        const m = /translate\(([^,]+)/.exec(tr);
+        const ex = m ? parseFloat(m[1]) : NaN;
+        if (!Number.isFinite(ex)) return null;
+        const w = entry.labelDimensions?.width ?? 0;
+        return ex + w;
+    }
+
+    /** Second pass: entry label width can settle after first paint (action buttons). */
+    _reflowEntryAnchoredTpSlBadges() {
+        if (!this._useEntryAnchoredTpSlBadges() || !this.chart?.scales?.yScale) return;
+        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        if (!(entryPrice > 0)) return;
+        const y = this.chart.scales.yScale(entryPrice);
+        const sl = this.previewLines?.sl;
+        const tp = this.previewLines?.tp;
+        if (sl?.isBadge && sl.labelGroup) this.positionPreviewLabel(sl, y);
+        if (tp?.isBadge && tp.labelGroup) this.positionPreviewLabel(tp, y);
+    }
+
     positionPreviewLabel(lineData, overrideY = null) {
         if (!lineData || !lineData.labelGroup) return;
 
@@ -8852,21 +8884,44 @@ class OrderManager {
                 tpWidth = this.previewLines?.tp?.labelDimensions?.width || 40;
             }
 
-            // Base X for the frontmost TP badge (TP1, offset=0)
+            // Base X for the frontmost TP badge (TP1, offset=0) — fallback when not entry-anchored
             const tpBaseX = this.chart.w - rightMargin - tpWidth - gap;
 
+            let placed = false;
             if (lineData.isMultiTPBadge) {
                 x = tpBaseX + (lineData._stackOffsetX || 0);
-            } else if (lineData.label === 'TP') {
-                x = tpBaseX;
-            } else if (lineData.label === 'SL') {
-                // SL sits just left of the leftmost multi-TP badge (or single TP).
-                // Must use this badge's measured width: previewLines.sl is not assigned until
-                // drawPreviewBadge returns, so the old slWidth fallback (40px) misplaced SL after
-                // switching from a full SL line back to badge mode.
-                const leftmostOffset = mtpBadges.length > 1 ? (mtpBadges.length - 1) * 18 : 0;
-                const slBadgeW = lineData.labelDimensions?.width || 40;
-                x = tpBaseX - leftmostOffset - gap - slBadgeW;
+                placed = true;
+            } else if (this._useEntryAnchoredTpSlBadges() && (lineData.label === 'TP' || lineData.label === 'SL')) {
+                const entryRight = this._getPreviewEntryLabelRightEdgeX();
+                if (entryRight != null) {
+                    if (lineData.label === 'SL') {
+                        x = entryRight + gap;
+                    } else {
+                        const slOn = document.getElementById('enableSL')?.checked;
+                        const sl = this.previewLines.sl;
+                        if (slOn && sl?.isBadge && sl.labelGroup) {
+                            const slTr = sl.labelGroup.attr('transform') || '';
+                            const sm = /translate\(([^,]+)/.exec(slTr);
+                            const sx = sm ? parseFloat(sm[1]) : NaN;
+                            const sw = sl.labelDimensions?.width || 0;
+                            x = Number.isFinite(sx) ? sx + sw + gap : entryRight + gap;
+                        } else {
+                            x = entryRight + gap;
+                        }
+                    }
+                    placed = true;
+                }
+            }
+            if (!placed) {
+                if (lineData.label === 'TP') {
+                    x = tpBaseX;
+                } else if (lineData.label === 'SL') {
+                    const leftmostOffset = mtpBadges.length > 1 ? (mtpBadges.length - 1) * 18 : 0;
+                    const slBadgeW = lineData.labelDimensions?.width || 40;
+                    x = tpBaseX - leftmostOffset - gap - slBadgeW;
+                } else {
+                    x = tpBaseX;
+                }
             }
         } else {
             const pad = 175;
@@ -12301,7 +12356,17 @@ class OrderManager {
                 this.drawMultiTPAvgLine(previewOrder, 'preview');
             }
         } else {
-            // Draw single TP preview line only after user drags it
+            // Single TP mode: draw SL before TP when both are badges so TP can sit to the right of SL
+            // (entry-anchored layout in positionPreviewLabel).
+            if (slEnabled && this.slManuallyPositioned && slPrice > 0) {
+                this.previewLines.sl = this.drawPreviewLine(slPrice, '#f23645', 'SL', null, true);
+                if (this.previewLines.sl) {
+                    this.previewLines.sl.targetPrice = slPrice;
+                }
+            } else if (slEnabled) {
+                this.previewLines.sl = this.drawPreviewBadge(entryPrice, '#f23645', 'SL', slPrice);
+            }
+
             if (tpEnabled && this.tpManuallyPositioned && tpPrice > 0) {
                 this.previewLines.tp = this.drawPreviewLine(tpPrice, '#22c55e', 'TP', null, true);
                 if (this.previewLines.tp) {
@@ -12311,15 +12376,17 @@ class OrderManager {
                 this.previewLines.tp = this.drawPreviewBadge(tpBadgeAnchorPrice, '#22c55e', 'TP', tpPrice);
             }
         }
-        
-        // Draw SL: full line only after user drags it, badge otherwise
-        if (slEnabled && this.slManuallyPositioned && slPrice > 0) {
-            this.previewLines.sl = this.drawPreviewLine(slPrice, '#f23645', 'SL', null, true);
-            if (this.previewLines.sl) {
-                this.previewLines.sl.targetPrice = slPrice;
+
+        // Multi-TP mode: SL was not drawn in the branch above — draw it here.
+        if (tpEnabled && multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
+            if (slEnabled && this.slManuallyPositioned && slPrice > 0) {
+                this.previewLines.sl = this.drawPreviewLine(slPrice, '#f23645', 'SL', null, true);
+                if (this.previewLines.sl) {
+                    this.previewLines.sl.targetPrice = slPrice;
+                }
+            } else if (slEnabled) {
+                this.previewLines.sl = this.drawPreviewBadge(entryPrice, '#f23645', 'SL', slPrice);
             }
-        } else if (slEnabled) {
-            this.previewLines.sl = this.drawPreviewBadge(entryPrice, '#f23645', 'SL', slPrice);
         }
         
         // Draw Breakeven trigger line if enabled
@@ -12398,7 +12465,10 @@ class OrderManager {
 
         // After all preview geometry is in the DOM (incl. badges), sync limit/stop vertical guide.
         if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(() => this._syncPendingLimitStopConnector());
+            requestAnimationFrame(() => {
+                this._reflowEntryAnchoredTpSlBadges();
+                this._syncPendingLimitStopConnector();
+            });
         } else {
             this._syncPendingLimitStopConnector();
         }
