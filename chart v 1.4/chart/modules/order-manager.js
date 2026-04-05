@@ -767,6 +767,39 @@ class OrderManager {
     }
 
     /**
+     * Executable stop-loss fill: gap-aware open, then worst price already traded in the bar.
+     * BUY: if low <= SL, fill at min(gapFill, low) so moving SL above current market
+     * closes at market depth, not at the dragged stop level.
+     * SELL: if high >= SL, fill at max(gapFill, high).
+     * If SL was just released with stop on the wrong side of current price, _slDragReleaseFillPrice
+     * (same bar only) fills at that market snapshot instead of the dragged stop.
+     */
+    _stopLossFillPrice(sl, candleOpen, high, low, isBuy, position = null, barT = null) {
+        if (position != null && barT != null) {
+            const at = position._slDragReleaseAtBarT;
+            if (at != null && at === barT && position._slDragReleaseFillPrice != null && Number.isFinite(position._slDragReleaseFillPrice)) {
+                const fp = position._slDragReleaseFillPrice;
+                delete position._slDragReleaseFillPrice;
+                delete position._slDragReleaseAtBarT;
+                return fp;
+            }
+            if (at != null && at !== barT) {
+                delete position._slDragReleaseFillPrice;
+                delete position._slDragReleaseAtBarT;
+            }
+        }
+        if (!Number.isFinite(sl)) return sl;
+        const o = Number.isFinite(candleOpen) ? candleOpen : sl;
+        const base = this._gapFill(sl, o, isBuy, false);
+        if (isBuy) {
+            if (Number.isFinite(low) && low <= sl) return Math.min(base, low);
+            return base;
+        }
+        if (Number.isFinite(high) && high >= sl) return Math.max(base, high);
+        return base;
+    }
+
+    /**
      * SL/TP vs that instrument's bar high/low while the main chart is on another pair (milestone 8.2).
      * Does not use beJustTriggered — that flag is tied to the visible chart candle.
      */
@@ -802,13 +835,17 @@ class OrderManager {
                 });
                 const sl = Number.parseFloat(position.stopLoss);
                 if (Number.isFinite(sl) && low <= sl) {
-                    const fillPx = hasOpen ? this._gapFill(sl, bgOpen, true, false) : sl;
+                    const fillPx = hasOpen
+                        ? this._stopLossFillPrice(sl, bgOpen, high, low, true)
+                        : (Number.isFinite(low) ? Math.min(sl, low) : sl);
                     positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL', bgCloseTime: barTime });
                 }
             } else {
                 const sl = Number.parseFloat(position.stopLoss);
                 if (Number.isFinite(sl) && low <= sl) {
-                    const fillPx = hasOpen ? this._gapFill(sl, bgOpen, true, false) : sl;
+                    const fillPx = hasOpen
+                        ? this._stopLossFillPrice(sl, bgOpen, high, low, true)
+                        : (Number.isFinite(low) ? Math.min(sl, low) : sl);
                     positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL', bgCloseTime: barTime });
                 } else {
                     const tp = Number.parseFloat(position.takeProfit);
@@ -840,13 +877,17 @@ class OrderManager {
                 });
                 const sl = Number.parseFloat(position.stopLoss);
                 if (Number.isFinite(sl) && high >= sl) {
-                    const fillPx = hasOpen ? this._gapFill(sl, bgOpen, false, false) : sl;
+                    const fillPx = hasOpen
+                        ? this._stopLossFillPrice(sl, bgOpen, high, low, false)
+                        : (Number.isFinite(high) ? Math.max(sl, high) : sl);
                     positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL', bgCloseTime: barTime });
                 }
             } else {
                 const sl = Number.parseFloat(position.stopLoss);
                 if (Number.isFinite(sl) && high >= sl) {
-                    const fillPx = hasOpen ? this._gapFill(sl, bgOpen, false, false) : sl;
+                    const fillPx = hasOpen
+                        ? this._stopLossFillPrice(sl, bgOpen, high, low, false)
+                        : (Number.isFinite(high) ? Math.max(sl, high) : sl);
                     positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL', bgCloseTime: barTime });
                 } else {
                     const tp = Number.parseFloat(position.takeProfit);
@@ -18061,7 +18102,7 @@ class OrderManager {
                         if (slHit) {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
-                            const fillPx = this._gapFill(position.stopLoss, open, true, false);
+                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, low, true, position, currentCandle.t);
                             console.log(`   🛑 STOP LOSS HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
                         } else if (tpHit) {
@@ -18079,7 +18120,7 @@ class OrderManager {
                         if (multiSlHit) {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
-                            const fillPx = this._gapFill(position.stopLoss, open, true, false);
+                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, low, true, position, currentCandle.t);
                             console.log(`   🛑 STOP LOSS HIT! Closing remaining position BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
                         }
@@ -18280,7 +18321,7 @@ class OrderManager {
                         if (slHitSell) {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
-                            const fillPx = this._gapFill(position.stopLoss, open, false, false);
+                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, low, false, position, currentCandle.t);
                             console.log(`   🛑 STOP LOSS HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
                         } else if (tpHitSell) {
@@ -18298,7 +18339,7 @@ class OrderManager {
                         if (multiSlHitSell) {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
-                            const fillPx = this._gapFill(position.stopLoss, open, false, false);
+                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, low, false, position, currentCandle.t);
                             console.log(`   🛑 STOP LOSS HIT! Closing remaining position SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
                         }
@@ -19478,6 +19519,26 @@ class OrderManager {
 
             if ((lineType === 'sl' || lineType === 'tp') && order.isSplitEntry && order.splitGroupId) {
                 self._syncSplitGroupProtectionPrices(order, lineType === 'sl' ? 'sl' : 'tp', finalPrice);
+            }
+
+            // SL released with stop on the "wrong" side of current price: next SL fill uses market at release, not dragged level.
+            if (lineType === 'sl') {
+                const curBarSl = self.getCurrentCandle();
+                const markPx = Number(curBarSl?.c);
+                const sibsSl = order.isSplitEntry && order.splitGroupId
+                    ? self._getSplitGroupOpenPositions(order) : [order];
+                for (const sib of sibsSl) {
+                    delete sib._slDragReleaseFillPrice;
+                    delete sib._slDragReleaseAtBarT;
+                    if (!curBarSl || !Number.isFinite(markPx) || !Number.isFinite(sib.stopLoss)) continue;
+                    if (sib.type === 'BUY' && sib.stopLoss > markPx) {
+                        sib._slDragReleaseFillPrice = markPx;
+                        sib._slDragReleaseAtBarT = curBarSl.t;
+                    } else if (sib.type === 'SELL' && sib.stopLoss < markPx) {
+                        sib._slDragReleaseFillPrice = markPx;
+                        sib._slDragReleaseAtBarT = curBarSl.t;
+                    }
+                }
             }
 
             // Refresh guards on this order AND all split siblings.
