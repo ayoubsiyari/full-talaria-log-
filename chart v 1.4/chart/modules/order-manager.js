@@ -8844,8 +8844,6 @@ class OrderManager {
             const gap = 8;
             const rightMargin = 65;
 
-            const slWidth = this.previewLines?.sl?.labelDimensions?.width || 40;
-
             const mtpBadges = this.previewLines?.multiTPBadges || [];
             let tpWidth;
             if (mtpBadges.length > 0) {
@@ -8862,9 +8860,13 @@ class OrderManager {
             } else if (lineData.label === 'TP') {
                 x = tpBaseX;
             } else if (lineData.label === 'SL') {
-                // SL sits just left of the leftmost multi-TP badge (or single TP)
+                // SL sits just left of the leftmost multi-TP badge (or single TP).
+                // Must use this badge's measured width: previewLines.sl is not assigned until
+                // drawPreviewBadge returns, so the old slWidth fallback (40px) misplaced SL after
+                // switching from a full SL line back to badge mode.
                 const leftmostOffset = mtpBadges.length > 1 ? (mtpBadges.length - 1) * 18 : 0;
-                x = tpBaseX - leftmostOffset - gap - slWidth;
+                const slBadgeW = lineData.labelDimensions?.width || 40;
+                x = tpBaseX - leftmostOffset - gap - slBadgeW;
             }
         } else {
             const pad = 175;
