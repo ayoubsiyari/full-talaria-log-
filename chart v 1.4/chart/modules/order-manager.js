@@ -22151,8 +22151,7 @@ class OrderManager {
 
         const slBadgeGroup = chart.svg.append('g')
             .attr('class', `pending-order-sl-badge pending-${pendingOrder.id}`)
-            .attr('pointer-events', 'all')
-            .style('cursor', 'ns-resize')
+            .attr('pointer-events', 'none')
             .style('display', 'none');
         slBadgeGroup.append('rect')
             .attr('height', badgeH).attr('rx', badgeR)
@@ -22179,8 +22178,7 @@ class OrderManager {
 
         const tpBadgeGroup = chart.svg.append('g')
             .attr('class', `pending-order-tp-badge pending-${pendingOrder.id}`)
-            .attr('pointer-events', 'all')
-            .style('cursor', 'ns-resize')
+            .attr('pointer-events', 'none')
             .style('display', 'none');
         tpBadgeGroup.append('rect')
             .attr('height', badgeH).attr('rx', badgeR)
@@ -22212,9 +22210,6 @@ class OrderManager {
         // --- "Entry+" badge: drag to split entry ---
         const entryPlusBadge = this._createPlusBadge(chart, pendingOrder.id, 'pending',
             '#3b82f6', 'Entry+', (price) => this._splitEntryAtPrice(pendingOrder.id, price, true));
-
-        this._setupPendingBadgeDragToCreate(pendingOrder, slBadgeGroup, 'sl', chart);
-        this._setupPendingBadgeDragToCreate(pendingOrder, tpBadgeGroup, 'tp', chart);
 
         this.orderLines.push({
             orderId: pendingOrder.id,
@@ -25546,9 +25541,10 @@ class OrderManager {
 
                     // --- SL badge: always on entry row when present ---
                     if (slBadge) {
+                        const slInteractive = !isPending && !hasSL;
                         slBadge.style('display', null)
                             .attr('transform', `translate(${cx}, ${y - bH / 2})`)
-                            .style('pointer-events', hasSL ? 'none' : 'all');
+                            .style('pointer-events', slInteractive ? 'all' : 'none');
                         const sr = slBadge.select('rect');
                         sr.attr('stroke-dasharray', '3 2').attr('stroke', '#f23645');
                         if (hasSL) {
@@ -25575,9 +25571,10 @@ class OrderManager {
                         if (tpBadgesContainer) tpBadgesContainer.style('display', 'none');
                         if (tpBadge) {
                             const tpActive = hasSingleTP || (hasMultiTP && allTPsSet);
+                            const tpInteractive = !isPending && !tpActive;
                             tpBadge.style('display', null)
                                 .attr('transform', `translate(${cx}, ${y - bH / 2})`)
-                                .style('pointer-events', tpActive ? 'none' : 'all');
+                                .style('pointer-events', tpInteractive ? 'all' : 'none');
                             const tr = tpBadge.select('rect');
                             tr.attr('stroke-dasharray', '3 2').attr('stroke', '#22c55e');
                             if (tpActive) {
