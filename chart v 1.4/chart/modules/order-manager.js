@@ -18552,31 +18552,14 @@ class OrderManager {
             
             console.log(`✅ Partial close: #${orderId} | Closed ${(percentage * 100).toFixed(0)}% (${closeQuantity.toFixed(2)} lots) | P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} | Cumulative Partial P&L: $${position.partialClosePnL.toFixed(2)} | Remaining: ${position.quantity.toFixed(2)} lots | Balance: $${this.balance.toFixed(2)}`);
             
-            // Remove the specific TP target line that was hit
-            if (targetId !== undefined && this.tpLines) {
-                const hitLine = this.tpLines.find(tpLine => tpLine.orderId === orderId && tpLine.targetId === targetId);
-                if (hitLine) {
-                    // Remove ALL SVG elements for this TP line (including P&L label)
-                    if (hitLine.line) hitLine.line.remove();
-                    if (hitLine.labelBox) hitLine.labelBox.remove();
-                    if (hitLine.labelText) hitLine.labelText.remove();
-                    if (hitLine.pnlBox) hitLine.pnlBox.remove();
-                    if (hitLine.pnlText) hitLine.pnlText.remove();
-                    if (hitLine.priceBox) hitLine.priceBox.remove();
-                    if (hitLine.priceText) hitLine.priceText.remove();
-                    if (hitLine.closeBtn) hitLine.closeBtn.remove();
-                    if (hitLine.deleteBtn) hitLine.deleteBtn.remove();
-                    if (hitLine.tpPlusBadge) hitLine.tpPlusBadge.remove();
-                    if (hitLine.yAxisHighlight) hitLine.yAxisHighlight.remove();
-                    
-                    // Remove from array
-                    this.tpLines = this.tpLines.filter(tpLine => !(tpLine.orderId === orderId && tpLine.targetId === targetId));
-                    console.log(`   ✅ Removed TP line for target #${targetId}`);
-                }
-            }
+            // Keep hit TP lines on chart until every TP target has filled (full close removes all via removeSLTPLines)
             
             // Update remaining SL/TP lines to reflect new quantity (for P&L recalculation)
             this.updateSLTPLines();
+            const _avgCharts = this._isMultiPanelLayout() ? (this._collectLayoutCharts() || []) : [this.chart];
+            (_avgCharts.length ? _avgCharts : [this.chart]).forEach((c) => {
+                if (c?.scales?.yScale) this._updateMultiTPAvgLines(c);
+            });
             
             // Draw partial profit marker only on the active chart
             if (!isBackgroundClose) {
@@ -19656,12 +19639,13 @@ class OrderManager {
                 
                 // TP floating indicators removed — info already on labels
                 
-                // Update SL/TP lines positions (throttled)
+                // Update SL/TP lines + Avg TP line (throttled)
                 if (!frameId) {
                     frameId = requestAnimationFrame(() => {
                         self.updateSLTPLines(ctx);
                         self.updatePositionsPanel();
                         self._drawExecutedOrderConnectors(ctx);
+                        self._updateMultiTPAvgLines(ctx);
                         frameId = null;
                     });
                 }
@@ -19717,6 +19701,7 @@ class OrderManager {
             // Final update
             self.updateSLTPLines(ctx);
             self.updatePositionsPanel();
+            self._updateMultiTPAvgLines(ctx);
             
             console.log(`✅ Multi-TP drag ended: TP${targetIndex + 1} @ ${finalPrice.toFixed(5)}`);
             
@@ -21322,7 +21307,14 @@ class OrderManager {
 
             if (!targets) continue;
 
-            const priced = targets.filter(t => t.price > 0);
+            let priced = targets.filter(t => t.price > 0);
+            if (g.mode !== 'preview') {
+                priced = priced.filter(t => !t.hit);
+                if (priced.length < 2) {
+                    toRemove.push(g.orderId);
+                    continue;
+                }
+            }
             let wSum = 0, pctSum = 0;
             for (const t of priced) {
                 wSum += t.price * (t.percentage || 0);
@@ -22503,6 +22495,7 @@ class OrderManager {
         const ch = dragChart || this.chart;
         let isDragging = false;
         let dragLabelX = null;
+        let avgFrameId = null;
         const marginRight = 120;
 
         const drag = d3.drag()
@@ -22557,11 +22550,35 @@ class OrderManager {
                 
                 target.price = newPrice;
                 if (target.type === 'TP') {
-                    pendingOrder.takeProfit = newPrice;
+                    const hasMulti = pendingOrder.tpTargets && pendingOrder.tpTargets.length > 0;
+                    if (hasMulti) {
+                        let tpT = null;
+                        if (target.targetId != null) tpT = pendingOrder.tpTargets.find(t => t.id === target.targetId);
+                        if (!tpT && target.tpTargetIndex != null) tpT = pendingOrder.tpTargets[target.tpTargetIndex];
+                        if (tpT) tpT.price = newPrice;
+                        if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
+                            self._getSplitGroupPendingOrders(pendingOrder).forEach((m) => {
+                                if (!m.tpTargets) return;
+                                let mt = target.targetId != null ? m.tpTargets.find(t => t.id === target.targetId) : null;
+                                if (!mt && target.tpTargetIndex != null) mt = m.tpTargets[target.tpTargetIndex];
+                                if (mt) mt.price = newPrice;
+                            });
+                        }
+                    } else {
+                        pendingOrder.takeProfit = newPrice;
+                    }
                 } else if (target.type === 'SL') {
                     pendingOrder.stopLoss = newPrice;
                 }
                 self._drawExecutedOrderConnectors(ch);
+                if (target.type === 'TP' && pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 2) {
+                    if (!avgFrameId) {
+                        avgFrameId = requestAnimationFrame(() => {
+                            self._updateMultiTPAvgLines(ch);
+                            avgFrameId = null;
+                        });
+                    }
+                }
             })
             .on('end', function() {
                 if (!isDragging) return;
@@ -25399,6 +25416,8 @@ class OrderManager {
                 let tpPrice;
                 let targetIndex = -1;
                 let percentage = 100;
+                let tpHit = false;
+                let tpTargetMeta = null;
                 
                 if (targetId !== undefined && position.tpTargets && position.tpTargets.length > 0) {
                     let target = null;
@@ -25406,7 +25425,9 @@ class OrderManager {
                         const t = position.tpTargets[i];
                         if (t.id === targetId || i === targetId) { target = t; targetIndex = i; break; }
                     }
-                    if (!target || target.hit) return;
+                    if (!target) return;
+                    tpTargetMeta = target;
+                    tpHit = !!target.hit;
                     tpPrice = target.price;
                     percentage = target.percentage;
                 } else if (position.takeProfit) {
@@ -25465,21 +25486,30 @@ class OrderManager {
                             ? `TP (${numPositions}×) ${totalTpQty.toFixed(2)}`
                             : `TP  ${totalTpQty.toFixed(2)}`;
                     }
+                    if (tpHit) labelStr = `${labelStr} ✓`;
                     if (labelText) labelText.text(labelStr);
-                    if (pnlText) pnlText.text(`${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)}`);
+                    let showPnL = totalPnL;
+                    if (tpHit && tpTargetMeta) {
+                        showPnL = (position.partialCloses || []).filter(pc => pc.targetId === tpTargetMeta.id)
+                            .reduce((s, pc) => s + (pc.pnl || 0), 0);
+                    }
+                    if (pnlText) pnlText.text(`${showPnL >= 0 ? '+' : ''}$${showPnL.toFixed(2)}`);
                     if (labelBox) labelBox.style('display', null);
                     if (labelText) labelText.style('display', null);
                     if (pnlBox) pnlBox.style('display', null);
                     if (pnlText) pnlText.style('display', null);
-                    if (closeBtn) closeBtn.style('display', null);
-                    if (splitBtn) splitBtn.style('display', null);
+                    if (closeBtn) closeBtn.style('display', tpHit ? 'none' : null);
+                    if (splitBtn) splitBtn.style('display', tpHit ? 'none' : null);
+                    if (deleteBtn) deleteBtn.style('display', tpHit ? 'none' : null);
                     if (priceBox) priceBox.style('display', 'none');
                     if (priceText) priceText.style('display', 'none');
                 }
                 
                 const y = ch.scales.yScale(tpPrice);
                 
-                line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
+                line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y)
+                    .attr('opacity', tpHit ? 0.5 : 0.92)
+                    .style('pointer-events', tpHit ? 'none' : 'all');
                 
                 if (labelText && labelBox) {
                     const boxH = 18;
@@ -26077,13 +26107,15 @@ class OrderManager {
             const cg = ch.svg.append('g').attr('class', 'exec-order-connector').style('pointer-events', 'none');
             if (hasMultiTP) {
                 for (const t of pos.tpTargets) {
-                    if (t.hit || !(t.price > 0)) continue;
+                    if (!(t.price > 0)) continue;
                     const tpY = yScale(t.price);
+                    const dim = !!t.hit;
                     if (Number.isFinite(tpY)) {
                         cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
-                            .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
+                            .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', dim ? 0.35 : 0.7);
                         cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
-                            .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                            .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1)
+                            .attr('opacity', dim ? 0.45 : 1);
                     }
                 }
                 const avgG = this.multiTPAvgLines.find(g => g.orderId === pos.id);
@@ -26129,13 +26161,15 @@ class OrderManager {
             const cg = ch.svg.append('g').attr('class', 'exec-order-connector').style('pointer-events', 'none');
             if (hasMultiTP) {
                 for (const t of po.tpTargets) {
-                    if (t.hit || !(t.price > 0)) continue;
+                    if (!(t.price > 0)) continue;
                     const tpY = yScale(t.price);
+                    const dim = !!t.hit;
                     if (Number.isFinite(tpY)) {
                         cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
-                            .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
+                            .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', dim ? 0.35 : 0.7);
                         cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
-                            .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                            .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1)
+                            .attr('opacity', dim ? 0.45 : 1);
                     }
                 }
                 const avgG = this.multiTPAvgLines.find(g => g.orderId === po.id);
