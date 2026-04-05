@@ -788,6 +788,23 @@ class OrderManager {
                 delete position._slDragReleaseAtBarT;
             }
         }
+        // Intra-bar replay: fill at animated market (matches gray price line), not bar low/high alone.
+        const rsIb = this.replaySystem;
+        if (rsIb && rsIb.animatingCandle) {
+            const cur = this.getCurrentCandle();
+            const cc = Number(cur?.c);
+            const openPx = Number.isFinite(candleOpen) ? candleOpen : NaN;
+            if (Number.isFinite(cc)) {
+                if (isBuy && Number.isFinite(low) && low <= sl) {
+                    if (Number.isFinite(openPx) && openPx < sl) return Math.min(openPx, cc);
+                    return cc;
+                }
+                if (!isBuy && Number.isFinite(high) && high >= sl) {
+                    if (Number.isFinite(openPx) && openPx > sl) return Math.max(openPx, cc);
+                    return cc;
+                }
+            }
+        }
         if (!Number.isFinite(sl)) return sl;
         const o = Number.isFinite(candleOpen) ? candleOpen : sl;
         const base = this._gapFill(sl, o, isBuy, false);
@@ -22685,6 +22702,24 @@ class OrderManager {
     }
 
     /**
+     * Candle column for exit/partial markers: during tick replay the forming bar uses animatingCandle.t
+     * (next raw bar) while chart.data is updated in the *last* slot — map to that slot so the tick
+     * lines up with the candle being played, not the next empty column.
+     */
+    _chartIndexForCloseMarker(closeTime) {
+        const data = this.chart?.data;
+        if (!data || !data.length || closeTime == null) return -1;
+        const rs = this.replaySystem;
+        if (rs?.isActive && rs.animatingCandle) {
+            const animT = rs.animatingCandle.t;
+            if (Number.isFinite(Number(closeTime)) && Number.isFinite(Number(animT)) && Number(closeTime) === Number(animT)) {
+                return data.length - 1;
+            }
+        }
+        return this._findCandleIndexForTime(data, closeTime);
+    }
+
+    /**
      * Build an SVG arrow-up path (like ↑) centered at (cx, cy).
      */
     _arrowUpPath(cx, cy, size) {
@@ -22974,7 +23009,7 @@ class OrderManager {
         const { yScale } = this.chart.scales;
         if (!yScale) return;
 
-        const dataIndex = this._findCandleIndexForTime(this.chart.data, closeData.closeTime);
+        const dataIndex = this._chartIndexForCloseMarker(closeData.closeTime);
         if (dataIndex === -1) return;
 
         if (!this.exitMarkers) this.exitMarkers = [];
@@ -23129,7 +23164,7 @@ class OrderManager {
         if (!yScale) return;
 
         const entryIdx = this._findCandleIndexForTime(this.chart.data, order.openTime);
-        const exitIdx = this._findCandleIndexForTime(this.chart.data, closeData.closeTime);
+        const exitIdx = this._chartIndexForCloseMarker(closeData.closeTime);
         if (entryIdx === -1 || exitIdx === -1) return;
 
         const x1 = this.chart.dataIndexToPixel(entryIdx);
@@ -23172,7 +23207,7 @@ class OrderManager {
         const { yScale } = this.chart.scales;
         if (!yScale) return;
 
-        const dataIndex = this._findCandleIndexForTime(this.chart.data, closeData.closeTime);
+        const dataIndex = this._chartIndexForCloseMarker(closeData.closeTime);
         if (dataIndex === -1) return;
 
         if (!this.partialCloseMarkers) this.partialCloseMarkers = [];
@@ -23374,7 +23409,7 @@ class OrderManager {
         if (this.exitMarkers && this.exitMarkers.length > 0) {
             const { yScale: mainY } = this.chart.scales;
             this.exitMarkers.forEach(({ marker, time, price, isBuyExit }) => {
-                const dataIndex = this._findCandleIndexForTime(this.chart.data, time);
+                const dataIndex = this._chartIndexForCloseMarker(time);
                 if (dataIndex === -1) return;
 
                 const candle = this.chart.data[dataIndex];
@@ -23415,7 +23450,7 @@ class OrderManager {
         if (this.partialCloseMarkers && this.partialCloseMarkers.length > 0) {
             const { yScale: partialY } = this.chart.scales;
             this.partialCloseMarkers.forEach(({ marker, time, price, isBuyExit }) => {
-                const dataIndex = this._findCandleIndexForTime(this.chart.data, time);
+                const dataIndex = this._chartIndexForCloseMarker(time);
                 if (dataIndex === -1) return;
 
                 const candle = this.chart.data[dataIndex];
@@ -23457,7 +23492,7 @@ class OrderManager {
             const { yScale: mainY } = this.chart.scales;
             this.tradeConnectors.forEach((tc) => {
                 const eIdx = this._findCandleIndexForTime(this.chart.data, tc.entryTime);
-                const xIdx = this._findCandleIndexForTime(this.chart.data, tc.exitTime);
+                const xIdx = this._chartIndexForCloseMarker(tc.exitTime);
                 if (eIdx === -1 || xIdx === -1) return;
                 tc.line
                     .attr('x1', this.chart.dataIndexToPixel(eIdx))
