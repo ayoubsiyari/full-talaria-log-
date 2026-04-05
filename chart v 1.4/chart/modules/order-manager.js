@@ -17391,6 +17391,11 @@ class OrderManager {
         // Clean up any preview lines that might be lingering
         this.removePreviewLines();
         
+        // If this was part of a multi-entry group, cancel any pending siblings
+        if (position.splitGroupId && position.isSplitEntry) {
+            this._cancelPendingOrdersInSplitGroup(position.splitGroupId);
+        }
+        
         // IMPORTANT: Clean up any pending orders with this ID (shouldn't exist but safety check)
         const hadPending = this.pendingOrders.some(p => p.id === orderId);
         if (hadPending) {
@@ -18719,6 +18724,9 @@ class OrderManager {
                     this.removeSplitGroupAvgLine(position.splitGroupId);
                 }
                 this._cleanupOrphanedYAxisHighlights();
+                if (position.splitGroupId && position.isSplitEntry) {
+                    this._cancelPendingOrdersInSplitGroup(position.splitGroupId);
+                }
                 this._ensurePendingTargetsSurvive();
                 this.updatePositionsPanel();
                 return;
@@ -19152,6 +19160,11 @@ class OrderManager {
         
         // Clean up any preview lines that might be lingering
         this.removePreviewLines();
+        
+        // If this was part of a multi-entry group, cancel any pending siblings
+        if (position.splitGroupId && position.isSplitEntry && !isPartialClose) {
+            this._cancelPendingOrdersInSplitGroup(position.splitGroupId);
+        }
         
         // IMPORTANT: Clean up any pending orders with this ID (shouldn't exist but safety check)
         const hadPending = this.pendingOrders.some(p => p.id === orderId);
