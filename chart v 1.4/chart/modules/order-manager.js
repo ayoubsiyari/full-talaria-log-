@@ -13125,21 +13125,7 @@ class OrderManager {
                                 .text(`+$${rewardAmount.toFixed(2)}`);
                         }
                         
-                        // Show dollar amount on SL line if dragging SL
-                        if (lineData.label === 'SL' && !lineData.dollarIndicator) {
-                            lineData.dollarIndicator = lineData.labelGroup.append('text')
-                                .attr('class', 'dollar-indicator')
-                                .attr('fill', '#ef4444')
-                                .attr('font-size', '11px')
-                                .attr('font-weight', '700')
-                                .attr('text-anchor', 'end');
-                        }
-                        if (lineData.label === 'SL' && lineData.dollarIndicator) {
-                            lineData.dollarIndicator
-                                .attr('x', -10)
-                                .attr('y', 4)
-                                .text(`-$${riskAmount.toFixed(2)}`);
-                        }
+                        // SL dollar indicator removed — P&L already shown on SL label
                     }
                     
                     // Call these AFTER calculating indicators
@@ -19517,16 +19503,14 @@ class OrderManager {
                                 : (newPrice - entryPrice);
                         }
                         
-                    if (priceDiff > 0) {
+                    if (priceDiff > 0 && lineType === 'tp') {
                         const pips = priceDiff / self.pipSize;
                         const dollarAmount = pips * order.quantity * self.pipValuePerLot;
-                        const color = lineType === 'tp' ? '#22c55e' : '#ef4444';
-                        const sign = lineType === 'tp' ? '+' : '-';
                         
                         if (!dollarIndicator) {
                             dollarIndicator = ctx.svg.append('text')
                                 .attr('class', `dollar-indicator-${order.id}`)
-                                .attr('fill', color)
+                                .attr('fill', '#22c55e')
                                 .attr('font-size', '11px')
                                 .attr('font-weight', '700')
                                 .attr('text-anchor', 'start')
@@ -19535,29 +19519,7 @@ class OrderManager {
                         dollarIndicator
                             .attr('x', ctx.w / 2 + 50)
                             .attr('y', newY + 4)
-                            .attr('fill', color)
-                            .text(`${sign}$${dollarAmount.toFixed(2)}`);
-                    }
-                    
-                    // Calculate and show live R:R ratio
-                    if (order.stopLoss && order.takeProfit) {
-                        const risk = Math.abs(entryPrice - order.stopLoss);
-                        const reward = Math.abs(order.takeProfit - entryPrice);
-                        const rrRatio = risk > 0 ? (reward / risk) : 0;
-                        
-                        if (!rrIndicator) {
-                            rrIndicator = ctx.svg.append('text')
-                                .attr('class', `rr-indicator-${order.id}`)
-                                .attr('fill', '#60a5fa')
-                                .attr('font-size', '11px')
-                                .attr('font-weight', '700')
-                                .attr('text-anchor', 'start')
-                                .attr('pointer-events', 'none');
-                        }
-                        rrIndicator
-                            .attr('x', ctx.w / 2 + 50)
-                            .attr('y', newY - 12)
-                            .text(`R:R ${rrRatio.toFixed(2)}`);
+                            .text(`+$${dollarAmount.toFixed(2)}`);
                     }
                 }
                 
@@ -22338,13 +22300,15 @@ class OrderManager {
         } else if (pendingOrder.takeProfit) {
             // Single TP - calculate P&L (sum all legs for scale-in)
             let tpPnL = this.estimatePnLForPriceLevel(direction, entryPrice, pendingOrder.takeProfit, quantity, pendingSym);
+            let totalTpQty = quantity;
             if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
                 const members = this._getSplitGroupPendingOrders(pendingOrder);
                 tpPnL = members.reduce((sum, m) => sum + this.estimatePnLForPriceLevel(
                     m.direction, m.entryPrice, pendingOrder.takeProfit, m.quantity, pendingSym
                 ), 0);
+                totalTpQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
             }
-            const labelText = `TP`;
+            const labelText = `TP  ${totalTpQty.toFixed(2)}`;
             const pnlStr = `${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
             const item = createLine(pendingOrder.takeProfit, 'TP', labelText, tpPnL);
             if (item) { item.pnlStr = pnlStr; entries.push(item); }
@@ -22353,13 +22317,15 @@ class OrderManager {
         // Draw SL with P&L (sum all legs for scale-in)
         if (pendingOrder.stopLoss) {
             let slPnL = this.estimatePnLForPriceLevel(direction, entryPrice, pendingOrder.stopLoss, quantity, pendingSym);
+            let totalSlQty = quantity;
             if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
                 const members = this._getSplitGroupPendingOrders(pendingOrder);
                 slPnL = members.reduce((sum, m) => sum + this.estimatePnLForPriceLevel(
                     m.direction, m.entryPrice, pendingOrder.stopLoss, m.quantity, pendingSym
                 ), 0);
+                totalSlQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
             }
-            const labelText = `SL`;
+            const labelText = `SL  ${totalSlQty.toFixed(2)}`;
             const pnlStr = `${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`;
             const item = createLine(pendingOrder.stopLoss, 'SL', labelText, slPnL);
             if (item) { item.pnlStr = pnlStr; entries.push(item); }
@@ -24275,6 +24241,10 @@ class OrderManager {
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
             
+            let slTotalQty = order.quantity || 0;
+            if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
+                slTotalQty = this._getSplitGroupOpenPositions(order).reduce((s, m) => s + (m.quantity || 0), 0);
+            }
             const slLabelText = chart.svg.append('text')
                 .attr('class', `sl-label-text sl-${order.id}`)
                 .attr('fill', '#ffffff')
@@ -24282,7 +24252,7 @@ class OrderManager {
                 .attr('font-weight', '700')
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize')
-                .text('SL');
+                .text(`SL  ${slTotalQty.toFixed(2)}`);
 
             const slPnlBox = chart.svg.append('rect')
                 .attr('class', `sl-pnl-box sl-${order.id}`)
@@ -24536,6 +24506,10 @@ class OrderManager {
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
             
+            let tpTotalQty = order.quantity || 0;
+            if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
+                tpTotalQty = this._getSplitGroupOpenPositions(order).reduce((s, m) => s + (m.quantity || 0), 0);
+            }
             const tpLabelText = chart.svg.append('text')
                 .attr('class', `tp-label-text tp-${order.id}`)
                 .attr('fill', '#ffffff')
@@ -24543,7 +24517,7 @@ class OrderManager {
                 .attr('font-weight', '700')
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize')
-                .text('TP');
+                .text(`TP  ${tpTotalQty.toFixed(2)}`);
 
             const tpPnlBox = chart.svg.append('rect')
                 .attr('class', `tp-pnl-box tp-${order.id}`)
@@ -25248,7 +25222,10 @@ class OrderManager {
                 } else {
                     updatedSLPrices.add(priceKey);
                     const numPositions = positionsAtThisSL.length;
-                    const labelPrefix = numPositions > 1 ? `SL (${numPositions}×)` : 'SL';
+                    const totalSlQty = positionsAtThisSL.reduce((s, p) => s + (p.quantity || 0), 0);
+                    const labelPrefix = numPositions > 1
+                        ? `SL (${numPositions}×) ${totalSlQty.toFixed(2)}`
+                        : `SL  ${totalSlQty.toFixed(2)}`;
                     if (labelText) labelText.text(labelPrefix);
                     if (pnlText) pnlText.text(`${totalSlPnL >= 0 ? '+' : ''}$${totalSlPnL.toFixed(2)}`);
                     if (labelBox) labelBox.style('display', null);
@@ -25413,7 +25390,10 @@ class OrderManager {
                             ? `TP${targetIndex + 1} (${valStr}) ${targetLots.toFixed(2)} (${numPositions}×)`
                             : `TP${targetIndex + 1} (${valStr}) ${targetLots.toFixed(2)}`;
                     } else {
-                        labelStr = numPositions > 1 ? `TP (${numPositions}×)` : 'TP';
+                        const totalTpQty = groupData ? groupData.positions.reduce((s, p) => s + (p.pos.quantity || 0), 0) : (position.quantity || 0);
+                        labelStr = numPositions > 1
+                            ? `TP (${numPositions}×) ${totalTpQty.toFixed(2)}`
+                            : `TP  ${totalTpQty.toFixed(2)}`;
                     }
                     if (labelText) labelText.text(labelStr);
                     if (pnlText) pnlText.text(`${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)}`);
