@@ -25549,8 +25549,8 @@ class OrderManager {
                     let slBadgeW = (!hasSL && slBadge) ? bW + bGap2 : 0;
                     // TP badge: show for both open and pending when single TP is not set
                     let singleTPBadgeW = (!hasMultiTP && !hasSingleTP && tpBadge) ? bW + bGap2 : 0;
-                    // Space for Entry+ badge (pending only — can't split an open position's entry)
-                    const showEntryPlus = isPending && !isAlreadySplitEntry && olEntry.entryPlusBadge;
+                    // Entry+ badge hidden on pending — multi-entry is activated via order panel
+                    const showEntryPlus = false;
                     let entryPlusBadgeW = showEntryPlus ? plusBW + bGap2 : 0;
                     let totalBadgesW = slBadgeW + (hasMultiTP ? multiTPBadgesW : singleTPBadgeW)
                         + entryPlusBadgeW;
