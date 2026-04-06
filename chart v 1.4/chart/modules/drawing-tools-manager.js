@@ -2593,6 +2593,15 @@ class DrawingToolsManager {
      * Handle context menu (right-click)
      */
     handleContextMenu(event) {
+        // macOS: Ctrl+primary-click fires a synthetic contextmenu (secondary click).
+        // User holds Ctrl for magnet while placing lines; do not open menus or run cleanup.
+        if (this.currentTool && event.button === 0 && event.ctrlKey) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+            return;
+        }
+
         // Don't show context menu during rectangular selection
         if (this.isRectSelecting) {
             event.preventDefault();

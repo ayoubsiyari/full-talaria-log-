@@ -581,6 +581,14 @@ class Chart {
                     return;
                 }
 
+                const dm = this.drawingManager;
+                if (dm && dm.currentTool && e.button === 0 && e.ctrlKey) {
+                    e.preventDefault();
+                    if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+                    e.stopPropagation();
+                    return;
+                }
+
                 // Only show context menu if not on a drawing
                 if (!this.tool && !this.findDrawingAtPoint(e.offsetX, e.offsetY)) {
                     e.preventDefault();
@@ -2223,6 +2231,14 @@ class Chart {
         this.canvas.addEventListener('contextmenu', (e) => {
             if (this.shouldSuppressRightClickContextMenu(e)) {
                 e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            const dm = this.drawingManager;
+            if (dm && dm.currentTool && e.button === 0 && e.ctrlKey) {
+                e.preventDefault();
+                if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
                 e.stopPropagation();
                 return;
             }
@@ -12512,6 +12528,16 @@ class Chart {
         this.svg.node().addEventListener('contextmenu', (e) => {
             if (this.shouldSuppressRightClickContextMenu(e)) {
                 e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            // macOS: Ctrl+primary-click emits contextmenu; do not toggle legacy tool state or
+            // hide menus while a DrawingToolsManager tool is active (magnet uses Ctrl/Cmd).
+            const dm = this.drawingManager;
+            if (dm && dm.currentTool && e.button === 0 && e.ctrlKey) {
+                e.preventDefault();
+                if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
                 e.stopPropagation();
                 return;
             }
