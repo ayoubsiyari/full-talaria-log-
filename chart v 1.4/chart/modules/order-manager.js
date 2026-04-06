@@ -10586,6 +10586,12 @@ class OrderManager {
                         if (rrInput) rrInput.style.display = 'none';
                         if (pipsInput) pipsInput.style.display = 'flex';
                     }
+
+                    const trailingSLToggleEl = document.getElementById('trailingSLToggle');
+                    if (trailingSLToggleEl?.checked) {
+                        this._updateTrailingSummary();
+                        this.initializeTrailingSL();
+                    }
                 }
             };
         });
@@ -12303,18 +12309,26 @@ class OrderManager {
         const riskDist = Math.abs(entry - sl);
         if (riskDist < 1e-10) { el.textContent = ''; return; }
 
-        const activateR = parseFloat(document.getElementById('trailingActivateRR')?.value || 1);
+        const activateMode = this.trailingActivateMode || 'trail-rr';
         const trailR = parseFloat(document.getElementById('trailingStepSize')?.value || 0.5);
-        const stepR = parseFloat(document.getElementById('trailingActivatePips')?.value || 0.25);
         const isBuy = this.orderSide === 'BUY';
         const precision = this.getPricePrecision();
+        const pipSz = this.pipSize || 0.0001;
 
-        const activateDist = activateR * riskDist;
+        let activateDist;
+        if (activateMode === 'trail-rr') {
+            const activateRR = parseFloat(document.getElementById('trailingActivateRR')?.value || 1);
+            activateDist = activateRR * riskDist;
+        } else {
+            const activateRFraction = parseFloat(document.getElementById('trailingActivatePips')?.value || 0.25);
+            activateDist = activateRFraction * riskDist;
+        }
         const activatePrice = isBuy ? entry + activateDist : entry - activateDist;
-        const trailPts = (trailR * riskDist) / this.pipSize;
-        const stepPts = (stepR * riskDist) / this.pipSize;
 
-        el.textContent = `At ${activatePrice.toFixed(precision)} trails ${trailPts.toFixed(1)} pts, steps ${stepPts.toFixed(1)} pts`;
+        const stepSizePrice = trailR * riskDist;
+        const stepPts = stepSizePrice / pipSz;
+
+        el.textContent = `Activate @ ${activatePrice.toFixed(precision)} · step ${stepPts.toFixed(1)} pts (${trailR}× risk)`;
     }
 
     /**
@@ -18805,10 +18819,12 @@ class OrderManager {
                     // Use HIGH for BUY trailing (matches TP hit detection logic)
                     const trailPrice = high;
 
+                    let justActivatedTrailing = false;
                     // Check if trailing should activate (reach threshold first)
                     if (!position.trailingStop.activated) {
                         if (trailPrice >= position.trailingStop.activationThreshold) {
                             position.trailingStop.activated = true;
+                            justActivatedTrailing = true;
                             console.log(`   🔥 TRAILING STOP ACTIVATED for BUY #${position.id} at high=${trailPrice.toFixed(5)}`);
                             
                             if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered) {
@@ -18822,12 +18838,15 @@ class OrderManager {
                     
                     // If activated, apply step-based trailing
                     if (position.trailingStop.activated) {
-                        const profitFromActivation = trailPrice - position.trailingStop.activationThreshold;
-                        const stepsReached = Math.floor(profitFromActivation / position.trailingStop.stepSize);
-                        
-                        if (stepsReached > position.trailingStop.currentStep && stepsReached > 0) {
-                            const originalRisk = position.openPrice - position.trailingStop.originalSL;
-                            const newSL = position.trailingStop.activationThreshold + (stepsReached * position.trailingStop.stepSize) - originalRisk;
+                        const comp = this._computeTrailingStepNewSl(
+                            'BUY',
+                            position.openPrice,
+                            position.trailingStop,
+                            trailPrice,
+                            justActivatedTrailing
+                        );
+                        if (comp && comp.stepsReached > position.trailingStop.currentStep && comp.stepsReached > 0) {
+                            const newSL = comp.newSL;
                             
                             let breakevenSL = position.openPrice;
                             if (position.autoBreakeven && position.breakevenSettings?.triggered) {
@@ -18841,10 +18860,10 @@ class OrderManager {
                             if (newSL > minSL) {
                                 const oldSL = position.stopLoss;
                                 position.stopLoss = newSL;
-                                position.trailingStop.currentStep = stepsReached;
+                                position.trailingStop.currentStep = comp.stepsReached;
                                 this._logSLTPModification(position, 'SL', oldSL, newSL, 'TRAIL');
                                 
-                                console.log(`   📈 STEP TRAILING SL: ${oldSL.toFixed(5)} → ${newSL.toFixed(5)} (Step ${stepsReached}) for BUY #${position.id}`);
+                                console.log(`   📈 STEP TRAILING SL: ${oldSL.toFixed(5)} → ${newSL.toFixed(5)} (Step ${comp.stepsReached}) for BUY #${position.id}`);
                                 
                                 this.removeSLTPLines(position.id);
                                 this.drawSLTPLines(position);
@@ -19049,9 +19068,11 @@ class OrderManager {
                     // Use LOW for SELL trailing (matches SL hit detection logic)
                     const trailPrice = low;
 
+                    let justActivatedTrailingSell = false;
                     if (!position.trailingStop.activated) {
                         if (trailPrice <= position.trailingStop.activationThreshold) {
                             position.trailingStop.activated = true;
+                            justActivatedTrailingSell = true;
                             console.log(`   🔥 TRAILING STOP ACTIVATED for SELL #${position.id} at low=${trailPrice.toFixed(5)}`);
                             
                             if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered) {
@@ -19064,12 +19085,15 @@ class OrderManager {
                     }
                     
                     if (position.trailingStop.activated) {
-                        const profitFromActivation = position.trailingStop.activationThreshold - trailPrice;
-                        const stepsReached = Math.floor(profitFromActivation / position.trailingStop.stepSize);
-                        
-                        if (stepsReached > position.trailingStop.currentStep && stepsReached > 0) {
-                            const originalRisk = position.trailingStop.originalSL - position.openPrice;
-                            const newSL = position.trailingStop.activationThreshold - (stepsReached * position.trailingStop.stepSize) + originalRisk;
+                        const comp = this._computeTrailingStepNewSl(
+                            'SELL',
+                            position.openPrice,
+                            position.trailingStop,
+                            trailPrice,
+                            justActivatedTrailingSell
+                        );
+                        if (comp && comp.stepsReached > position.trailingStop.currentStep && comp.stepsReached > 0) {
+                            const newSL = comp.newSL;
                             
                             let breakevenSL = position.openPrice;
                             if (position.autoBreakeven && position.breakevenSettings?.triggered) {
@@ -19083,10 +19107,10 @@ class OrderManager {
                             if (newSL < maxSL) {
                                 const oldSL = position.stopLoss;
                                 position.stopLoss = newSL;
-                                position.trailingStop.currentStep = stepsReached;
+                                position.trailingStop.currentStep = comp.stepsReached;
                                 this._logSLTPModification(position, 'SL', oldSL, newSL, 'TRAIL');
                                 
-                                console.log(`   📉 STEP TRAILING SL: ${oldSL.toFixed(5)} → ${newSL.toFixed(5)} (Step ${stepsReached}) for SELL #${position.id}`);
+                                console.log(`   📉 STEP TRAILING SL: ${oldSL.toFixed(5)} → ${newSL.toFixed(5)} (Step ${comp.stepsReached}) for SELL #${position.id}`);
                                 
                                 this.removeSLTPLines(position.id);
                                 this.drawSLTPLines(position);
@@ -28520,6 +28544,49 @@ class OrderManager {
      * NinjaTrader-style automatic trailing with activation threshold
      * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      */
+
+    /**
+     * Shared step-based trailing math (same for open positions and preview panel).
+     * When justActivatedThisBar is true, caps steps at 1 on the activation bar so a gap past
+     * the threshold does not ratchet SL by multiple steps in a single bar.
+     * @param {'BUY'|'SELL'} orderSide
+     * @param {number} openPrice
+     * @param {{ activationThreshold: number, stepSize: number, originalSL: number }} trailingStop
+     * @param {number} trailPrice — BUY: bar high; SELL: bar low
+     * @param {boolean} justActivatedThisBar
+     * @returns {{ profitFromActivation: number, stepsRaw: number, stepsReached: number, newSL: number } | null}
+     */
+    _computeTrailingStepNewSl(orderSide, openPrice, trailingStop, trailPrice, justActivatedThisBar) {
+        const stepSize = trailingStop?.stepSize;
+        if (stepSize == null || !Number.isFinite(stepSize) || stepSize <= 0) return null;
+        const th = trailingStop.activationThreshold;
+        const osl = trailingStop.originalSL;
+        if (!Number.isFinite(th) || !Number.isFinite(osl) || !Number.isFinite(openPrice) || !Number.isFinite(trailPrice)) {
+            return null;
+        }
+        const side = (orderSide || 'BUY').toUpperCase();
+        let profitFromActivation;
+        let originalRisk;
+        if (side === 'BUY') {
+            profitFromActivation = trailPrice - th;
+            originalRisk = openPrice - osl;
+        } else {
+            profitFromActivation = th - trailPrice;
+            originalRisk = osl - openPrice;
+        }
+        if (!Number.isFinite(profitFromActivation) || !Number.isFinite(originalRisk)) return null;
+        const stepsRaw = Math.floor(profitFromActivation / stepSize);
+        let stepsReached = stepsRaw;
+        if (justActivatedThisBar) stepsReached = Math.min(stepsReached, 1);
+        let newSL;
+        if (side === 'BUY') {
+            newSL = th + stepsReached * stepSize - originalRisk;
+        } else {
+            newSL = th - stepsReached * stepSize + originalRisk;
+        }
+        if (!Number.isFinite(newSL)) return null;
+        return { profitFromActivation, stepsRaw, stepsReached, newSL };
+    }
     
     /**
      * Initialize step-based trailing SL with activation threshold
@@ -28649,9 +28716,12 @@ class OrderManager {
         const low = Number.parseFloat(lastCandle.l ?? lastCandle.low);
         const hasHL = Number.isFinite(high) && Number.isFinite(low);
         
-        const { entryPrice, originalSL, currentSL, activationThreshold, stepSize, stepPips, currentStep, orderSide, activated } = this.trailingState;
+        const ts = this.trailingState;
+        const { entryPrice, originalSL, currentSL, activationThreshold, stepPips, currentStep, orderSide, activated } = ts;
         
         const trailPrice = hasHL ? (orderSide === 'BUY' ? high : low) : close;
+        
+        let justActivatedThisBar = false;
         
         // Check if we should activate trailing
         if (!activated) {
@@ -28664,73 +28734,58 @@ class OrderManager {
             }
             
             if (shouldActivate) {
-                this.trailingState.activated = true;
-                this.trailingState.isActive = true;
+                justActivatedThisBar = true;
+                ts.activated = true;
+                ts.isActive = true;
                 
-                // Show activation notification
                 this.showNotification('🎯 Trailing SL Activated! Now trails in steps.', 'success');
                 console.log(`✅ Trailing activated! Trail price (H/L): ${trailPrice.toFixed(5)}, Threshold: ${activationThreshold.toFixed(5)}`);
                 
-                // Update visual indicator
                 this.updateTrailingIndicator(true);
             } else {
-                // Not activated yet - update waiting status (favorable excursion this bar vs entry)
                 const profitDistance = orderSide === 'BUY' ? trailPrice - entryPrice : entryPrice - trailPrice;
                 this.updateTrailingStatusDetails(0, profitDistance / this.pipSize, false);
                 return;
             }
         }
         
-        // If trailing is active, apply step-based logic
-        if (this.trailingState.isActive) {
-            // Calculate profit from ACTIVATION THRESHOLD (not from entry!)
-            let profitFromActivation;
-            if (orderSide === 'BUY') {
-                profitFromActivation = trailPrice - activationThreshold;
-            } else {
-                profitFromActivation = activationThreshold - trailPrice;
-            }
+        if (ts.isActive) {
+            const comp = this._computeTrailingStepNewSl(
+                orderSide,
+                entryPrice,
+                {
+                    activationThreshold: ts.activationThreshold,
+                    stepSize: ts.stepSize,
+                    originalSL: ts.originalSL
+                },
+                trailPrice,
+                justActivatedThisBar
+            );
             
-            // Calculate how many steps of profit we've reached since activation
-            const stepsReached = Math.floor(profitFromActivation / stepSize);
+            const stepsReachedDisplay = comp ? comp.stepsReached : 0;
+            const profitFromActivationDisplay = comp ? comp.profitFromActivation : 0;
             
-            // Only update if we've reached a new step level
-            if (stepsReached > currentStep && stepsReached > 0) {
-                // Calculate new SL position to maintain original risk distance
-                let newSL;
-                if (orderSide === 'BUY') {
-                    const originalRisk = entryPrice - originalSL;
-                    newSL = activationThreshold + (stepsReached * stepSize) - originalRisk;
-                } else {
-                    const originalRisk = originalSL - entryPrice;
-                    newSL = activationThreshold - (stepsReached * stepSize) + originalRisk;
-                }
+            if (comp && comp.stepsReached > ts.currentStep && comp.stepsReached > 0) {
+                const newSL = comp.newSL;
+                const prevSl = ts.currentSL;
+                ts.currentSL = newSL;
+                ts.currentStep = comp.stepsReached;
+                ts.lastUpdate = Date.now();
                 
-                // Update state
-                this.trailingState.currentSL = newSL;
-                this.trailingState.currentStep = stepsReached;
-                this.trailingState.lastUpdate = Date.now();
-                
-                // Update the SL input field
                 const slInput = document.getElementById('slPrice');
                 if (slInput) {
                     slInput.value = newSL.toFixed(5);
                 }
                 
-                // Update preview lines
                 this.updatePreviewLines();
-                
-                // Recalculate risk/reward
                 this.calculateAdvancedRiskReward();
                 
-                // Show notification
-                this.showNotification(`📈 SL moved to Step ${stepsReached} (+${stepsReached * stepPips} pips)`, 'success');
+                this.showNotification(`📈 SL moved to Step ${comp.stepsReached} (+${comp.stepsReached * stepPips} pips)`, 'success');
                 
-                console.log(`📈 Step Trailing: ${currentSL.toFixed(5)} → ${newSL.toFixed(5)} (Step ${currentStep} → ${stepsReached})`);
+                console.log(`📈 Step Trailing: ${prevSl.toFixed(5)} → ${newSL.toFixed(5)} (Step ${currentStep} → ${comp.stepsReached})`);
             }
             
-            // Update status details (show profit from activation, not entry)
-            this.updateTrailingStatusDetails(stepsReached, profitFromActivation / this.pipSize, true);
+            this.updateTrailingStatusDetails(stepsReachedDisplay, profitFromActivationDisplay / this.pipSize, true);
         }
     }
     
