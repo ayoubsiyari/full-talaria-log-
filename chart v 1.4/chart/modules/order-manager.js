@@ -12490,15 +12490,15 @@ class OrderManager {
                 if (!ok) mainEntryOpts = { disabled: true };
             }
         }
-        this.previewLines.entry = this.drawPreviewLine(entryPrice, entryColor, mainEntryLabel, this.orderSide, true, undefined, undefined, mainEntryOpts);
-        if (this.isMultiEntryMode && this.multiEntryLevels?.length > 0 && this.previewLines.entry) {
-            this.previewLines.entry.multiEntryLevelId = this.multiEntryLevels[0].id;
+        if (this.isMultiEntryMode && this.multiEntryLevels?.length > 0) {
+            mainEntryOpts = { ...(mainEntryOpts || {}), multiEntryLevelId: this.multiEntryLevels[0].id };
         }
+        this.previewLines.entry = this.drawPreviewLine(entryPrice, entryColor, mainEntryLabel, this.orderSide, true, undefined, undefined, mainEntryOpts);
 
         // Draw split entry lines if any — using same style as main Entry
         if (this.splitEntries && this.splitEntries.length > 0) {
             this.splitEntries.forEach((splitEntry, index) => {
-                if (splitEntry.price > 0) {
+                    if (splitEntry.price > 0) {
                     let splitOpts = null;
                     if (this.isMultiEntryMode && splitEntry.multiEntryLevelId != null && this.multiEntryLevels) {
                         const lvl = this.multiEntryLevels.find(l => l.id === splitEntry.multiEntryLevelId);
@@ -12510,17 +12510,19 @@ class OrderManager {
                     const splitOrderType = splitEntry.orderType || this.orderType;
                     // Label format: "Entry#N:orderType" — parsed by composePreviewLabelSegments
                     const splitLabel = `Entry#${index + 2}:${splitOrderType}`;
-                    
+                    splitOpts = {
+                        ...(splitOpts || {}),
+                        splitEntryId: splitEntry.id,
+                        isSplitEntry: true,
+                        orderType: splitOrderType,
+                        ...(splitEntry.multiEntryLevelId !== undefined && splitEntry.multiEntryLevelId !== null
+                            ? { multiEntryLevelId: splitEntry.multiEntryLevelId }
+                            : {})
+                    };
+
                     const splitLine = this.drawPreviewLine(splitEntry.price, splitColor, splitLabel, this.orderSide, true, undefined, undefined, splitOpts);
                     if (splitLine) {
                         splitEntry.lineData = splitLine;
-                        splitLine.isSplitEntry = true;
-                        splitLine.splitEntryId = splitEntry.id;
-                        splitLine.orderType = splitOrderType;
-                        // Use multiEntryLevelId stored on splitEntry for reliable sync-back
-                        if (splitEntry.multiEntryLevelId !== undefined) {
-                            splitLine.multiEntryLevelId = splitEntry.multiEntryLevelId;
-                        }
                         this.previewLines.splitEntries.push(splitLine);
                     }
                 }
@@ -12755,6 +12757,15 @@ class OrderManager {
             isAvgEntryLine: !!options?.isAvgEntryLine,
             disabled: disabled
         };
+        // Must be set before renderPreviewLabel — otherwise ✕ / controls miss first paint until a later re-render (e.g. drag).
+        if (options?.multiEntryLevelId !== undefined && options.multiEntryLevelId !== null) {
+            lineData.multiEntryLevelId = options.multiEntryLevelId;
+        }
+        if (options?.splitEntryId !== undefined && options.splitEntryId !== null) {
+            lineData.splitEntryId = options.splitEntryId;
+        }
+        if (options?.isSplitEntry) lineData.isSplitEntry = true;
+        if (options?.orderType) lineData.orderType = options.orderType;
 
         this.renderPreviewLabel(lineData, y);
         this.adjustPreviewLineForLabel(lineData);
