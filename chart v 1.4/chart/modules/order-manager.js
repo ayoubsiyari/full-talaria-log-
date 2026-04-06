@@ -8895,7 +8895,7 @@ class OrderManager {
                 })
                 .on('click', function(event) {
                     event.stopPropagation();
-                    self.placeAdvancedOrder({ keepPanelOpen: true });
+                    self.placeAdvancedOrder({ keepPanelOpen: true, resetPanelForNewOrder: true });
                 });
 
             actX += actSize + gap;
@@ -9292,6 +9292,60 @@ class OrderManager {
 
         if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
             this.chart.updateSVGPointerEvents();
+        }
+    }
+
+    /**
+     * After placing from the main panel button: keep drawer open and refresh TP/SL/preview from current price
+     * (does not use the harsh "Make new order" zero-out — use resetPanelForNewOrder for that).
+     */
+    _stayOpenAndRefreshOrderPanel() {
+        this._orderPlacedAwaitingReset = false;
+        const placeBtn = document.getElementById('placeOrderButton');
+        if (placeBtn) {
+            placeBtn.style.background = '';
+            placeBtn.style.opacity = '1';
+            placeBtn.disabled = false;
+        }
+        this.tpManuallyPositioned = false;
+        this.slManuallyPositioned = false;
+        this.updateOrderPanelPrice();
+        setTimeout(() => {
+            this.syncDefaultTargetsToEntry();
+            this.calculatePositionFromRisk();
+            this.calculateAdvancedRiskReward();
+            this.updatePlaceButtonText();
+            this._updateBreakevenSummary();
+            this._updateTrailingSummary();
+            this._applyPrecisionToInputs();
+            const orderValidationBox = document.getElementById('orderValidation');
+            if (orderValidationBox) {
+                orderValidationBox.className = 'order-validation';
+                orderValidationBox.innerHTML = '';
+            }
+            requestAnimationFrame(() => {
+                this.updatePreviewLines();
+                if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
+                    this.chart.updateSVGPointerEvents();
+                }
+            });
+        }, 100);
+    }
+
+    /**
+     * @param {{ keepPanelOpen?: boolean, resetPanelForNewOrder?: boolean }} opts
+     */
+    _finalizeOrderPanelAfterPlace(opts = {}) {
+        const keep = opts.keepPanelOpen === true;
+        const hardReset = opts.resetPanelForNewOrder === true;
+        if (!keep) {
+            this.toggleOrderPanel();
+            return;
+        }
+        if (hardReset) {
+            this._resetPanelForNewOrder();
+        } else {
+            this._stayOpenAndRefreshOrderPanel();
         }
     }
 
@@ -10548,7 +10602,7 @@ class OrderManager {
             } else {
                 console.error('❌ scalePositionCheckbox element NOT FOUND!');
             }
-            this.placeAdvancedOrder();
+            this.placeAdvancedOrder({ keepPanelOpen: true });
         };
         
         // Initialize
@@ -15781,7 +15835,8 @@ class OrderManager {
      * Place advanced order from panel
      */
     placeAdvancedOrder(options = {}) {
-        const keepPanelOpen = options.keepPanelOpen || false;
+        const keepPanelOpen = options.keepPanelOpen === true;
+        const resetPanelForNewOrder = options.resetPanelForNewOrder === true;
         if (!this.replaySystem || !this.replaySystem.isActive) {
             alert('Replay mode must be active to place orders');
             return;
@@ -16235,11 +16290,7 @@ class OrderManager {
             this.showPositionsPanel();
             this._suppressChartRender = false;
             if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
-            if (keepPanelOpen) {
-                this._resetPanelForNewOrder();
-            } else {
-                this.toggleOrderPanel();
-            }
+            this._finalizeOrderPanelAfterPlace({ keepPanelOpen, resetPanelForNewOrder });
             this.clearSplitEntries();
             this._resetMultiEntryStateForNewOrder();
             return;
@@ -16373,11 +16424,7 @@ class OrderManager {
 
             this._suppressChartRender = false;
             if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
-            if (keepPanelOpen) {
-                this._resetPanelForNewOrder();
-            } else {
-                this.toggleOrderPanel();
-            }
+            this._finalizeOrderPanelAfterPlace({ keepPanelOpen, resetPanelForNewOrder });
             return;
         }
 
@@ -16494,21 +16541,13 @@ class OrderManager {
                 this.showPositionsPanel();
                 this._suppressChartRender = false;
                 if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
-                if (keepPanelOpen) {
-                    this._resetPanelForNewOrder();
-                } else {
-                    this.toggleOrderPanel();
-                }
+                this._finalizeOrderPanelAfterPlace({ keepPanelOpen, resetPanelForNewOrder });
             } else {
                 // No splits - place single order as normal
                 this.placePendingOrder(entryPrice, quantity, tpPrice, slPrice, actualRisk, autoBreakeven, breakevenSettings, trailingStop, tpTargets, currentCandle.t);
                 this._suppressChartRender = false;
                 if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
-                if (keepPanelOpen) {
-                    this._resetPanelForNewOrder();
-                } else {
-                    this.toggleOrderPanel();
-                }
+                this._finalizeOrderPanelAfterPlace({ keepPanelOpen, resetPanelForNewOrder });
             }
             return;
         }
@@ -16662,12 +16701,7 @@ class OrderManager {
         this._suppressChartRender = false;
         if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
         
-        if (keepPanelOpen) {
-            this._resetPanelForNewOrder();
-        } else {
-            // Close panel
-            this.toggleOrderPanel();
-        }
+        this._finalizeOrderPanelAfterPlace({ keepPanelOpen, resetPanelForNewOrder });
         
         // Show trade journal modal for entry notes
         this.showTradeJournalModal(order, false, null);
@@ -17064,7 +17098,7 @@ class OrderManager {
      * Place order from panel (legacy method for compatibility)
      */
     placeOrderFromPanel() {
-        this.placeAdvancedOrder();
+        this.placeAdvancedOrder({ keepPanelOpen: true });
     }
     
     /**
