@@ -12081,12 +12081,21 @@ class OrderManager {
      */
     _syncPreviewToReplayPrice() {
         if (!this.replaySystem || !this.replaySystem.isActive) return;
-        if (this.orderType !== 'market') return;
 
         const orderPanelEl = document.getElementById('orderPanel');
         if (!orderPanelEl || !orderPanelEl.classList.contains('visible')) return;
         if (this._orderPlacedAwaitingReset) return;
         if (this.isDraggingPreviewLine) return;
+
+        // For pending (limit/stop) orders: entry is fixed but type should flip
+        // when the replay price crosses the entry — same logic as dragging past current price.
+        if (this.orderType === 'limit' || this.orderType === 'stop') {
+            this._autoDetectOrderTypeFromEntry();
+            this.updatePreviewLines();
+            return;
+        }
+
+        if (this.orderType !== 'market') return;
 
         const currentCandle = this.getCurrentCandle();
         if (!currentCandle) return;
