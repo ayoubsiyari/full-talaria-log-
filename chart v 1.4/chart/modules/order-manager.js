@@ -12224,6 +12224,17 @@ class OrderManager {
                 btn.classList.toggle('active', btn.dataset.type === newType);
             });
             this.updatePlaceButtonText();
+            // Keep draft entry tag in sync (LIMIT ↔ STOP ↔ MARKET) when market moves vs fixed entry
+            const ent = this.previewLines?.entry;
+            if (ent && ent.label === 'Entry' && ent.labelGroup) {
+                const ch = this._previewChartFromContext(ent);
+                if (ch?.scales?.yScale) {
+                    const y = ch.scales.yScale(ent.price);
+                    this.renderPreviewLabel(ent, y);
+                    this.adjustPreviewLineForLabel(ent);
+                    this.scheduleAlignPreviewLabels();
+                }
+            }
         }
     }
 
@@ -12375,6 +12386,12 @@ class OrderManager {
             return;
         }
         if (this._orderPlacedAwaitingReset) return;
+
+        // Live tape / replay: entry vs market crosses → LIMIT vs STOP (and MARKET when right on price)
+        const orderPanelEl = document.getElementById('orderPanel');
+        if (orderPanelEl?.classList.contains('visible') && !this.isDraggingPreviewLine) {
+            this._autoDetectOrderTypeFromEntry();
+        }
 
         const widthChanged = this._lastPreviewChartWidth !== pc.w;
         this._lastPreviewChartWidth = pc.w;
