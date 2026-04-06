@@ -300,6 +300,26 @@ class OrderManager {
         return id != null && String(id) !== '' ? String(id) : null;
     }
 
+    /**
+     * Chart surface for draft order preview: selected panel in multi-panel mode (getActiveChart), else main chart.
+     */
+    _getPreviewChart() {
+        const oc = this._getOrderContextChart();
+        if (oc && oc.svg && oc.scales) return oc;
+        return this.chart;
+    }
+
+    /**
+     * Which chart preview SVG elements were drawn on (per lineData, bundle, or active panel).
+     */
+    _previewChartFromContext(lineData = null) {
+        return (lineData && lineData._previewChart)
+            || this.previewLines?._previewChart
+            || this._previewTargetChart
+            || this._getPreviewChart()
+            || this.chart;
+    }
+
     /** Timeframe used for replay OHLC / SL-TP (must match getCurrentCandle / chart.data). */
     _getReplayDecisionTimeframe() {
         const ch = this._getOrderContextChart();
@@ -9234,10 +9254,11 @@ class OrderManager {
 
     /** Second pass: entry label width can settle after first paint (action buttons). */
     _reflowEntryAnchoredTpSlBadges() {
-        if (!this._useEntryAnchoredTpSlBadges() || !this.chart?.scales?.yScale) return;
+        const pch = this.previewLines?._previewChart || this._getPreviewChart();
+        if (!this._useEntryAnchoredTpSlBadges() || !pch?.scales?.yScale) return;
         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         if (!(entryPrice > 0)) return;
-        const y = this.chart.scales.yScale(entryPrice);
+        const y = pch.scales.yScale(entryPrice);
         const sl = this.previewLines?.sl;
         const tp = this.previewLines?.tp;
         if (sl?.isBadge && sl.labelGroup) this.positionPreviewLabel(sl, y);
@@ -9247,6 +9268,7 @@ class OrderManager {
     positionPreviewLabel(lineData, overrideY = null) {
         if (!lineData || !lineData.labelGroup) return;
 
+        const ch = this._previewChartFromContext(lineData);
         const bbox = lineData.labelGroup.node().getBBox();
         lineData.labelDimensions = { width: bbox.width, height: bbox.height };
 
@@ -9260,8 +9282,8 @@ class OrderManager {
                 let yPixel;
                 if (overrideY !== null && overrideY !== undefined) {
                     yPixel = overrideY;
-                } else if (this.chart?.scales?.yScale) {
-                    yPixel = this.chart.scales.yScale(lineData.price);
+                } else if (ch?.scales?.yScale) {
+                    yPixel = ch.scales.yScale(lineData.price);
                 } else {
                     yPixel = 0;
                 }
@@ -9286,7 +9308,7 @@ class OrderManager {
             }
 
             // Base X for the frontmost TP badge (TP1, offset=0) — fallback when not entry-anchored
-            const tpBaseX = this.chart.w - rightMargin - tpWidth - gap;
+            const tpBaseX = ch.w - rightMargin - tpWidth - gap;
 
             let placed = false;
             if (lineData.isMultiTPBadge) {
@@ -9343,14 +9365,14 @@ class OrderManager {
                     }
                 }
             }
-            x = this.chart.w - maxW - pad;
+            x = ch.w - maxW - pad;
         }
         
         let yPixel;
         if (overrideY !== null && overrideY !== undefined) {
             yPixel = overrideY;
-        } else if (this.chart?.scales?.yScale) {
-            yPixel = this.chart.scales.yScale(lineData.price);
+        } else if (ch?.scales?.yScale) {
+            yPixel = ch.scales.yScale(lineData.price);
         } else {
             yPixel = 0;
         }
@@ -9385,7 +9407,8 @@ class OrderManager {
             clearTimeout(this.pendingPreviewAlignTimeout);
             this.pendingPreviewAlignTimeout = null;
         }
-        if (!this.previewLines || !this.chart?.scales) return;
+        const pch = this.previewLines?._previewChart || this._getPreviewChart();
+        if (!this.previewLines || !pch?.scales) return;
         this.alignPreviewLabels();
         this._reflowEntryAnchoredTpSlBadges();
     }
@@ -12347,13 +12370,14 @@ class OrderManager {
      * This function efficiently updates Y-positions without full redraw
      */
     updatePreviewLinePositions() {
-        if (!this.chart || !this.chart.scales || !this.previewLines) {
+        const pc = this._previewChartFromContext();
+        if (!pc || !pc.scales || !this.previewLines) {
             return;
         }
         if (this._orderPlacedAwaitingReset) return;
 
-        const widthChanged = this._lastPreviewChartWidth !== this.chart.w;
-        this._lastPreviewChartWidth = this.chart.w;
+        const widthChanged = this._lastPreviewChartWidth !== pc.w;
+        this._lastPreviewChartWidth = pc.w;
 
         const updateLabelY = (lineData, yPixel) => {
             if (!lineData || !lineData.labelGroup) return;
@@ -12375,27 +12399,27 @@ class OrderManager {
             if (!lineData || !lineData.yAxisHighlight) return;
             const rect = lineData.yAxisHighlight.select('rect');
             const highlightHeight = parseFloat(rect.attr('height')) || 24;
-            const rightMargin = this.chart.margin?.r || 70;
-            const x = this.chart.w - rightMargin + 2;
+            const rightMargin = pc.margin?.r || 70;
+            const x = pc.w - rightMargin + 2;
             lineData.yAxisHighlight.attr('transform', `translate(${x}, ${yPixel - highlightHeight / 2})`);
         };
         
         // Update entry line position
         if (this.previewLines.entry) {
-            const entryY = this.chart.scales.yScale(this.previewLines.entry.price);
+            const entryY = pc.scales.yScale(this.previewLines.entry.price);
             
             // Update line if it exists
             if (this.previewLines.entry.line) {
                 this.previewLines.entry.line
                     .attr('y1', entryY)
                     .attr('y2', entryY)
-                    .attr('x2', this.chart.w);
+                    .attr('x2', pc.w);
             }
             if (this.previewLines.entry.hitLine) {
                 this.previewLines.entry.hitLine
                     .attr('y1', entryY)
                     .attr('y2', entryY)
-                    .attr('x2', this.chart.w);
+                    .attr('x2', pc.w);
             }
 
             updateLabelY(this.previewLines.entry, entryY);
@@ -12404,20 +12428,20 @@ class OrderManager {
         
         // Update TP line/badge position (works for both badges and full lines)
         if (this.previewLines.tp && this.previewLines.tp.price) {
-            const tpY = this.chart.scales.yScale(this.previewLines.tp.price);
+            const tpY = pc.scales.yScale(this.previewLines.tp.price);
             
             // Update line if it exists (full line mode)
             if (this.previewLines.tp.line) {
                 this.previewLines.tp.line
                     .attr('y1', tpY)
                     .attr('y2', tpY)
-                    .attr('x2', this.chart.w);
+                    .attr('x2', pc.w);
             }
             if (this.previewLines.tp.hitLine) {
                 this.previewLines.tp.hitLine
                     .attr('y1', tpY)
                     .attr('y2', tpY)
-                    .attr('x2', this.chart.w);
+                    .attr('x2', pc.w);
             }
 
             updateLabelY(this.previewLines.tp, tpY);
@@ -12426,20 +12450,20 @@ class OrderManager {
         
         // Update SL line/badge position (works for both badges and full lines)
         if (this.previewLines.sl && this.previewLines.sl.price) {
-            const slY = this.chart.scales.yScale(this.previewLines.sl.price);
+            const slY = pc.scales.yScale(this.previewLines.sl.price);
             
             // Update line if it exists (full line mode)
             if (this.previewLines.sl.line) {
                 this.previewLines.sl.line
                     .attr('y1', slY)
                     .attr('y2', slY)
-                    .attr('x2', this.chart.w);
+                    .attr('x2', pc.w);
             }
             if (this.previewLines.sl.hitLine) {
                 this.previewLines.sl.hitLine
                     .attr('y1', slY)
                     .attr('y2', slY)
-                    .attr('x2', this.chart.w);
+                    .attr('x2', pc.w);
             }
 
             updateLabelY(this.previewLines.sl, slY);
@@ -12449,8 +12473,8 @@ class OrderManager {
         // Update multi-TP badge positions (follow entry Y, stacked)
         if (this.previewLines.multiTPBadges && this.previewLines.multiTPBadges.length > 0) {
             const entryPx = this.previewLines.entry?.price;
-            if (entryPx > 0 && this.chart.scales?.yScale) {
-                const ey = this.chart.scales.yScale(entryPx);
+            if (entryPx > 0 && pc.scales?.yScale) {
+                const ey = pc.scales.yScale(entryPx);
                 this.previewLines.multiTPBadges.forEach(bd => {
                     if (bd && bd.labelGroup) {
                         bd.price = entryPx;
@@ -12464,20 +12488,20 @@ class OrderManager {
         if (this.previewLines.multipleTPs && Array.isArray(this.previewLines.multipleTPs)) {
             this.previewLines.multipleTPs.forEach(tpLine => {
                 if (tpLine && tpLine.price) {
-                    const tpY = this.chart.scales.yScale(tpLine.price);
+                    const tpY = pc.scales.yScale(tpLine.price);
                     
                     // Update line
                     if (tpLine.line) {
                         tpLine.line
                             .attr('y1', tpY)
                             .attr('y2', tpY)
-                            .attr('x2', this.chart.w);
+                            .attr('x2', pc.w);
                     }
                     if (tpLine.hitLine) {
                         tpLine.hitLine
                             .attr('y1', tpY)
                             .attr('y2', tpY)
-                            .attr('x2', this.chart.w);
+                            .attr('x2', pc.w);
                     }
 
                     updateLabelY(tpLine, tpY);
@@ -12488,20 +12512,20 @@ class OrderManager {
         
         // Update BE (Breakeven) line position
         if (this.previewLines.be && this.previewLines.be.price) {
-            const beY = this.chart.scales.yScale(this.previewLines.be.price);
+            const beY = pc.scales.yScale(this.previewLines.be.price);
             
             // Update line if it exists
             if (this.previewLines.be.line) {
                 this.previewLines.be.line
                     .attr('y1', beY)
                     .attr('y2', beY)
-                    .attr('x2', this.chart.w);
+                    .attr('x2', pc.w);
             }
             if (this.previewLines.be.hitLine) {
                 this.previewLines.be.hitLine
                     .attr('y1', beY)
                     .attr('y2', beY)
-                    .attr('x2', this.chart.w);
+                    .attr('x2', pc.w);
             }
 
             updateLabelY(this.previewLines.be, beY);
@@ -12512,19 +12536,19 @@ class OrderManager {
         if (this.previewLines.splitEntries && Array.isArray(this.previewLines.splitEntries)) {
             this.previewLines.splitEntries.forEach(splitLine => {
                 if (splitLine && splitLine.price) {
-                    const splitY = this.chart.scales.yScale(splitLine.price);
+                    const splitY = pc.scales.yScale(splitLine.price);
                     
                     if (splitLine.line) {
                         splitLine.line
                             .attr('y1', splitY)
                             .attr('y2', splitY)
-                            .attr('x2', this.chart.w);
+                            .attr('x2', pc.w);
                     }
                     if (splitLine.hitLine) {
                         splitLine.hitLine
                             .attr('y1', splitY)
                             .attr('y2', splitY)
-                            .attr('x2', this.chart.w);
+                            .attr('x2', pc.w);
                     }
 
                     updateLabelY(splitLine, splitY);
@@ -12535,18 +12559,18 @@ class OrderManager {
 
         // Multi-entry weighted average line
         if (this.previewLines.avgEntry && this.previewLines.avgEntry.price) {
-            const avgY = this.chart.scales.yScale(this.previewLines.avgEntry.price);
+            const avgY = pc.scales.yScale(this.previewLines.avgEntry.price);
             if (this.previewLines.avgEntry.line) {
                 this.previewLines.avgEntry.line
                     .attr('y1', avgY)
                     .attr('y2', avgY)
-                    .attr('x2', this.chart.w);
+                    .attr('x2', pc.w);
             }
             if (this.previewLines.avgEntry.hitLine) {
                 this.previewLines.avgEntry.hitLine
                     .attr('y1', avgY)
                     .attr('y2', avgY)
-                    .attr('x2', this.chart.w);
+                    .attr('x2', pc.w);
             }
             updateLabelY(this.previewLines.avgEntry, avgY);
             updateYAxisHighlight(this.previewLines.avgEntry, avgY);
@@ -12575,11 +12599,12 @@ class OrderManager {
         }
 
         this._syncPendingLimitStopConnector();
-        if (this.chart) this._updateMultiTPAvgLines(this.chart);
+        if (pc) this._updateMultiTPAvgLines(pc);
     }
 
     updatePreviewLines() {
-        if (!this.chart || !this.chart.svg || !this.chart.scales) {
+        const previewChart = this._getPreviewChart();
+        if (!previewChart?.svg || !previewChart?.scales) {
             return;
         }
 
@@ -12614,10 +12639,14 @@ class OrderManager {
 
         if (!entryPrice || entryPrice <= 0) return;
 
+        this._previewTargetChart = previewChart;
+        try {
+
         // Ensure TP/SL defaults are available when enabled
         this.syncDefaultTargetsToEntry();
 
         this.previewLines = {
+            _previewChart: previewChart,
             entry: null,
             tp: null,
             sl: null,
@@ -12893,19 +12922,24 @@ class OrderManager {
         this.alignPreviewLabels();
         this._reflowEntryAnchoredTpSlBadges();
         this._syncPendingLimitStopConnector();
+        } finally {
+            this._previewTargetChart = null;
+        }
     }
 
     drawPreviewLine(price, color, label, direction = null, isDraggable = false, targetIndex = undefined, targetId = undefined, options = null) {
-        const y = this.chart.scales.yScale(price);
+        const chart = this._previewTargetChart || this._getPreviewChart();
+        if (!chart?.svg || !chart?.scales) return null;
+        const y = chart.scales.yScale(price);
         const hitStrokeWidth = 20;
         const dash = options?.strokeDasharray ?? null;
         const disabled = options?.disabled === true;
         const lineOpacity = disabled ? 0.38 : (options?.opacity ?? 0.92);
 
-        const line = this.chart.svg.append('line')
+        const line = chart.svg.append('line')
             .attr('class', disabled ? 'preview-line preview-line--disabled' : 'preview-line')
             .attr('x1', 0)
-            .attr('x2', this.chart.w)
+            .attr('x2', chart.w)
             .attr('y1', y)
             .attr('y2', y)
             .attr('stroke', color)
@@ -12915,10 +12949,10 @@ class OrderManager {
             .attr('opacity', lineOpacity)
             .style('pointer-events', isDraggable ? 'all' : 'none')
             .style('cursor', isDraggable ? 'ns-resize' : 'default');
-        const hitLine = this.chart.svg.append('line')
+        const hitLine = chart.svg.append('line')
             .attr('class', 'preview-line-hit')
             .attr('x1', 0)
-            .attr('x2', this.chart.w)
+            .attr('x2', chart.w)
             .attr('y1', y)
             .attr('y2', y)
             .attr('stroke', color)
@@ -12929,7 +12963,7 @@ class OrderManager {
             .style('cursor', isDraggable ? 'ns-resize' : 'default');
 
         const needsPointerEvents = isDraggable || options?.isAvgEntryLine;
-        const labelGroup = this.chart.svg.append('g')
+        const labelGroup = chart.svg.append('g')
             .attr('class', disabled ? 'preview-label-group preview-label-group--disabled' : 'preview-label-group')
             .style('pointer-events', needsPointerEvents ? 'all' : 'none')
             .style('cursor', isDraggable ? 'ns-resize' : 'default')
@@ -12950,7 +12984,8 @@ class OrderManager {
             targetId: targetId,          // Add targetId for multiple TPs
             smallLabel: !!options?.smallLabel,
             isAvgEntryLine: !!options?.isAvgEntryLine,
-            disabled: disabled
+            disabled: disabled,
+            _previewChart: chart
         };
         // Must be set before renderPreviewLabel — otherwise ✕ / controls miss first paint until a later re-render (e.g. drag).
         if (options?.multiEntryLevelId !== undefined && options.multiEntryLevelId !== null) {
@@ -12966,7 +13001,7 @@ class OrderManager {
         this.adjustPreviewLineForLabel(lineData);
         
         // Add Y-axis price highlight for all order lines (Entry, TP, SL, BE, etc.)
-        lineData.yAxisHighlight = this.drawYAxisPriceHighlight(price, color, label, 0);
+        lineData.yAxisHighlight = this.drawYAxisPriceHighlight(price, color, label, 0, chart);
         if (disabled && lineData.yAxisHighlight) {
             lineData.yAxisHighlight.style('opacity', 0.45);
         }
@@ -13062,13 +13097,14 @@ class OrderManager {
                 self.calculateAdvancedRiskReward();
             })
             .on('drag', event => {
-                if (!isDragging || !self.chart?.scales?.yScale) return;
-                if (event.sourceEvent && self.chart.updateCrosshair) self.chart.updateCrosshair(event.sourceEvent);
+                const ch = lineData._previewChart || self.previewLines?._previewChart || self._getPreviewChart() || self.chart;
+                if (!isDragging || !ch?.scales?.yScale) return;
+                if (event.sourceEvent && ch.updateCrosshair) ch.updateCrosshair(event.sourceEvent);
 
-                const chartHeightRaw = self.chart.h ?? self.chart.height ?? self.chart.svg?.attr('height') ?? 0;
+                const chartHeightRaw = ch.h ?? ch.height ?? ch.svg?.attr('height') ?? 0;
                 const chartHeight = Number(chartHeightRaw) || 0;
                 let clampedY = Math.max(0, Math.min(chartHeight, event.y));
-                let newPrice = self.chart.scales.yScale.invert(clampedY);
+                let newPrice = ch.scales.yScale.invert(clampedY);
 
                 // BUY: entries must stay above SL; SELL: entries must stay below SL
                 const enableSL = document.getElementById('enableSL')?.checked;
@@ -13107,7 +13143,7 @@ class OrderManager {
                             } else if (self.orderSide === 'SELL' && newPrice >= slP - slPad) {
                                 newPrice = slP - slPad;
                             }
-                            clampedY = self.chart.scales.yScale(newPrice);
+                            clampedY = ch.scales.yScale(newPrice);
                             clampedY = Math.max(0, Math.min(chartHeight, clampedY));
                         }
                     }
@@ -13115,7 +13151,7 @@ class OrderManager {
 
                 if (lineData.label === 'SL' && enableSL) {
                     newPrice = self._clampSlDragPrice(newPrice);
-                    clampedY = self.chart.scales.yScale(newPrice);
+                    clampedY = ch.scales.yScale(newPrice);
                     clampedY = Math.max(0, Math.min(chartHeight, clampedY));
                 }
 
@@ -13240,7 +13276,7 @@ class OrderManager {
                         self.renderTPTargets();
 
                         // Live-update Avg TP line position during drag
-                        if (self.chart) self._updateMultiTPAvgLines(self.chart);
+                        if (ch) self._updateMultiTPAvgLines(ch);
                     }
                 } else if (lineData.label === 'SL') {
                     // Mark SL as manually positioned BEFORE updating input (prevents sync)
@@ -13448,7 +13484,7 @@ class OrderManager {
                     const multiTPOn = document.getElementById('multipleTPToggle')?.checked;
                     if (multiTPOn) {
                         self.renderTPTargets();
-                        self._updateMultiTPAvgLines(self.chart);
+                        self._updateMultiTPAvgLines(ch);
                     }
                 } else if (lineData.label && lineData.label.startsWith('Entry#') && lineData.isSplitEntry) {
                     // Split entry line drag — sync price back to splitEntries and multiEntryLevels
@@ -13555,7 +13591,7 @@ class OrderManager {
                         
                         // Manually update Entry label to show new lot size
                         if (self.previewLines.entry) {
-                            const entryY = self.chart.scales.yScale(self.previewLines.entry.price);
+                            const entryY = ch.scales.yScale(self.previewLines.entry.price);
                             self.renderPreviewLabel(self.previewLines.entry, entryY);
                         }
                         
@@ -13622,7 +13658,7 @@ class OrderManager {
                             }
                             
                             // Update BE line position
-                            const newBEY = self.chart.scales.yScale(newBEPrice);
+                            const newBEY = ch.scales.yScale(newBEPrice);
                             self.previewLines.be.price = newBEPrice;
                             self.previewLines.be.line.attr('y1', newBEY).attr('y2', newBEY);
                             
@@ -13746,14 +13782,15 @@ class OrderManager {
      * Draw multi-TP preview badges fanned horizontally with a slight downward angle.
      */
     _drawMultiTPPreviewBadges(entryPrice, unsetTargets) {
-        if (!this.chart?.scales?.yScale || !this.chart?.svg) return;
+        const ch = this.previewLines?._previewChart || this._getPreviewChart();
+        if (!ch?.scales?.yScale || !ch?.svg) return;
         const self = this;
-        const y = this.chart.scales.yScale(entryPrice);
+        const y = ch.scales.yScale(entryPrice);
         const stackOffsetX = 5; // horizontal px spread per badge
         const stackOffsetY = 3;  // slight downward angle per badge
 
         // Remove old multi-TP badges
-        this.chart.svg.selectAll('.multi-tp-preview-badge').remove();
+        ch.svg.selectAll('.multi-tp-preview-badge').remove();
         if (!this.previewLines.multiTPBadges) this.previewLines.multiTPBadges = [];
         this.previewLines.multiTPBadges = [];
 
@@ -13763,7 +13800,7 @@ class OrderManager {
             const targetNum = (this.tpTargets || []).indexOf(target) + 1;
             const label = `TP${targetNum}`;
 
-            const badgeGroup = this.chart.svg.append('g')
+            const badgeGroup = ch.svg.append('g')
                 .attr('class', 'multi-tp-preview-badge preview-badge-group')
                 .style('cursor', 'ns-resize')
                 .style('pointer-events', 'all');
@@ -13783,7 +13820,8 @@ class OrderManager {
                 _target: target,
                 priceText: null,
                 labelDimensions: { width: 0, height: 0 },
-                yAxisHighlight: null
+                yAxisHighlight: null,
+                _previewChart: ch
             };
 
             this.renderPreviewLabel(badgeData, y + badgeData._stackOffsetY);
@@ -13793,11 +13831,11 @@ class OrderManager {
             const drag = d3.drag()
                 .on('start', () => { badgeGroup.style('opacity', 0.8); })
                 .on('drag', (event) => {
-                    if (!self.chart?.scales?.yScale) return;
-                    if (event.sourceEvent && self.chart.updateCrosshair) self.chart.updateCrosshair(event.sourceEvent);
-                    const chartH = Number(self.chart.h ?? self.chart.svg?.attr('height') ?? 0) || 0;
+                    if (!ch?.scales?.yScale) return;
+                    if (event.sourceEvent && ch.updateCrosshair) ch.updateCrosshair(event.sourceEvent);
+                    const chartH = Number(ch.h ?? ch.svg?.attr('height') ?? 0) || 0;
                     const clampedY = Math.max(0, Math.min(chartH, event.y));
-                    const newPrice = self.chart.scales.yScale.invert(clampedY);
+                    const newPrice = ch.scales.yScale.invert(clampedY);
 
                     target.price = parseFloat(newPrice.toFixed(self.getPricePrecision()));
 
@@ -13821,11 +13859,13 @@ class OrderManager {
     }
 
     drawPreviewBadge(entryPrice, color, label, targetPrice) {
-        const y = this.chart.scales.yScale(entryPrice);
+        const ch = this._getPreviewChart();
+        if (!ch?.scales?.yScale || !ch?.svg) return null;
+        const y = ch.scales.yScale(entryPrice);
         const self = this;
 
         // Create a small draggable badge (no line, just the label)
-        const badgeGroup = this.chart.svg.append('g')
+        const badgeGroup = ch.svg.append('g')
             .attr('class', 'preview-badge-group')
             .style('cursor', 'ns-resize')
             .style('pointer-events', 'all');
@@ -13840,7 +13880,8 @@ class OrderManager {
             isBadge: true,
             priceText: null,
             labelDimensions: { width: 0, height: 0 },
-            yAxisHighlight: null
+            yAxisHighlight: null,
+            _previewChart: ch
         };
 
         // Render the badge label
@@ -13852,16 +13893,16 @@ class OrderManager {
                 badgeGroup.style('opacity', 0.8);
             })
             .on('drag', event => {
-                if (!self.chart?.scales?.yScale) return;
-                if (event.sourceEvent && self.chart.updateCrosshair) self.chart.updateCrosshair(event.sourceEvent);
+                if (!ch?.scales?.yScale) return;
+                if (event.sourceEvent && ch.updateCrosshair) ch.updateCrosshair(event.sourceEvent);
 
-                const chartHeightRaw = self.chart.h ?? self.chart.height ?? self.chart.svg?.attr('height') ?? 0;
+                const chartHeightRaw = ch.h ?? ch.height ?? ch.svg?.attr('height') ?? 0;
                 const chartHeight = Number(chartHeightRaw) || 0;
                 let clampedY = Math.max(0, Math.min(chartHeight, event.y));
-                let newPrice = self.chart.scales.yScale.invert(clampedY);
+                let newPrice = ch.scales.yScale.invert(clampedY);
                 if (label === 'SL' && document.getElementById('enableSL')?.checked) {
                     newPrice = self._clampSlDragPrice(newPrice);
-                    clampedY = self.chart.scales.yScale(newPrice);
+                    clampedY = ch.scales.yScale(newPrice);
                     clampedY = Math.max(0, Math.min(chartHeight, clampedY));
                 }
 
@@ -13962,7 +14003,7 @@ class OrderManager {
                     
                     // Also update the Entry label to show correct lot size
                     if (self.previewLines.entry) {
-                        const entryY = self.chart.scales.yScale(self.previewLines.entry.price);
+                        const entryY = ch.scales.yScale(self.previewLines.entry.price);
                         self.renderPreviewLabel(self.previewLines.entry, entryY);
                     }
                 });
@@ -15031,9 +15072,10 @@ class OrderManager {
         const priced = (this.multiEntryLevels || []).filter(l => l.price > 0);
         if (!this.isMultiEntryMode || priced.length <= 1) return;
         const avgP = this._calcMultiEntryAvgPrice();
-        if (!(avgP > 0) || !this.chart?.scales?.yScale) return;
+        const ch = this._previewChartFromContext(this.previewLines.tp);
+        if (!(avgP > 0) || !ch?.scales?.yScale) return;
         this.previewLines.tp.price = avgP;
-        const avgY = this.chart.scales.yScale(avgP);
+        const avgY = ch.scales.yScale(avgP);
         const tp = this.previewLines.tp;
         const tpHeight = tp.labelDimensions?.height || 0;
         const tr = tp.labelGroup?.attr('transform');
@@ -15048,7 +15090,9 @@ class OrderManager {
      * While dragging entry lines, updatePreviewLines() is skipped — move the Avg Entry dashed line in sync with panel math.
      */
     _syncAvgEntryPreviewLineFromLevels() {
-        if (!this.previewLines?.avgEntry || !this.chart?.scales?.yScale) return;
+        const ld0 = this.previewLines?.avgEntry;
+        const ch = this._previewChartFromContext(ld0);
+        if (!ld0 || !ch?.scales?.yScale) return;
         const priced = (this.multiEntryLevels || []).filter(l => l.price > 0 && (l.amount || 0) > 0);
         if (priced.length <= 1) return;
         const avgPrice = this._calcMultiEntryAvgPrice();
@@ -15056,12 +15100,12 @@ class OrderManager {
         const ld = this.previewLines.avgEntry;
         const formatted = this.formatPrice(avgPrice);
         ld.price = avgPrice;
-        const y = this.chart.scales.yScale(avgPrice);
+        const y = ch.scales.yScale(avgPrice);
         if (ld.line) {
-            ld.line.attr('y1', y).attr('y2', y).attr('x2', this.chart.w);
+            ld.line.attr('y1', y).attr('y2', y).attr('x2', ch.w);
         }
         if (ld.hitLine) {
-            ld.hitLine.attr('y1', y).attr('y2', y).attr('x2', this.chart.w);
+            ld.hitLine.attr('y1', y).attr('y2', y).attr('x2', ch.w);
         }
         if (ld.priceText) {
             const totalLots = this._calcMultiEntryTotalLots();
@@ -15077,8 +15121,8 @@ class OrderManager {
         this.adjustPreviewLineForLabel(ld);
         if (ld.yAxisHighlight) {
             const highlightHeight = 22;
-            const rightMargin = this.chart.margin?.r || 70;
-            const hx = this.chart.w - rightMargin + 2;
+            const rightMargin = ch.margin?.r || 70;
+            const hx = ch.w - rightMargin + 2;
             ld.yAxisHighlight.attr('transform', `translate(${hx}, ${y - highlightHeight / 2})`);
             const pt = ld.yAxisHighlight.select('.y-axis-price-text');
             if (pt.size()) pt.text(formatted);
@@ -15251,6 +15295,7 @@ class OrderManager {
         if (!lineData || !parentGroup) return null;
         
         const self = this;
+        const ch = lineData._previewChart || self.previewLines?._previewChart || self._getPreviewChart() || self.chart;
         const handleSize = 18;
         const handleGap = 4;
         
@@ -15319,21 +15364,21 @@ class OrderManager {
                 g0.select('text').attr('fill', '#ffffff');
 
                 // Get SVG coordinates from mouse position
-                const svgNode = self.chart.svg.node();
+                const svgNode = ch.svg.node();
                 const pt = svgNode.createSVGPoint();
                 pt.x = event.sourceEvent.clientX;
                 pt.y = event.sourceEvent.clientY;
                 const svgCoords = pt.matrixTransform(svgNode.getScreenCTM().inverse());
                 
                 // Store initial positions
-                initialLineY = self.chart.scales.yScale(lineData.price);
+                initialLineY = ch.scales.yScale(lineData.price);
                 dragStartY = svgCoords.y;
                 
                 // Create a ghost line that starts at the original line position
-                self.splitDragGhost = self.chart.svg.append('line')
+                self.splitDragGhost = ch.svg.append('line')
                     .attr('class', 'split-drag-ghost')
                     .attr('x1', 0)
-                    .attr('x2', self.chart.w)
+                    .attr('x2', ch.w)
                     .attr('y1', initialLineY)
                     .attr('y2', initialLineY)
                     .attr('stroke', '#7c3aed')
@@ -15345,7 +15390,7 @@ class OrderManager {
                 const isTpLine = lineData.label && lineData.label.startsWith('TP');
                 const labelText = isTpLine ? 'New TP' : (self.isMultiEntryMode ? 'New Entry' : 'Split Entry');
                 
-                self.splitDragLabel = self.chart.svg.append('g')
+                self.splitDragLabel = ch.svg.append('g')
                     .attr('class', 'split-drag-label');
                 
                 self.splitDragLabel.append('rect')
@@ -15365,14 +15410,14 @@ class OrderManager {
                     .attr('font-weight', '600')
                     .text(labelText);
                 
-                self.splitDragLabel.attr('transform', `translate(${self.chart.w - 150}, ${initialLineY - 11})`);
+                self.splitDragLabel.attr('transform', `translate(${ch.w - 150}, ${initialLineY - 11})`);
             })
             .on('drag', function(event) {
                 if (!self.splitDragGhost) return;
-                if (event.sourceEvent && self.chart?.updateCrosshair) self.chart.updateCrosshair(event.sourceEvent);
+                if (event.sourceEvent && ch?.updateCrosshair) ch.updateCrosshair(event.sourceEvent);
                 
                 // Get SVG coordinates from mouse position
-                const svgNode = self.chart.svg.node();
+                const svgNode = ch.svg.node();
                 const pt = svgNode.createSVGPoint();
                 pt.x = event.sourceEvent.clientX;
                 pt.y = event.sourceEvent.clientY;
@@ -15380,9 +15425,9 @@ class OrderManager {
                 
                 // Calculate the new Y position based on drag delta from initial line position
                 const dragDelta = svgCoords.y - dragStartY;
-                const chartHeight = self.chart.h || 400;
+                const chartHeight = ch.h || 400;
                 const newY = Math.max(0, Math.min(chartHeight, initialLineY + dragDelta));
-                const newPrice = self.chart.scales.yScale.invert(newY);
+                const newPrice = ch.scales.yScale.invert(newY);
                 
                 // Update ghost line position
                 self.splitDragGhost
@@ -15391,13 +15436,13 @@ class OrderManager {
                 
                 // Update label position and text
                 if (self.splitDragLabel) {
-                    self.splitDragLabel.attr('transform', `translate(${self.chart.w - 150}, ${newY - 11})`);
+                    self.splitDragLabel.attr('transform', `translate(${ch.w - 150}, ${newY - 11})`);
                     self.splitDragLabel.select('text').text(`@ ${self.formatPrice(newPrice)}`);
                 }
             })
             .on('end', function(event) {
                 // Get SVG coordinates from mouse position
-                const svgNode = self.chart.svg.node();
+                const svgNode = ch.svg.node();
                 const pt = svgNode.createSVGPoint();
                 pt.x = event.sourceEvent.clientX;
                 pt.y = event.sourceEvent.clientY;
@@ -15405,9 +15450,9 @@ class OrderManager {
                 
                 // Calculate final position
                 const dragDelta = svgCoords.y - dragStartY;
-                const chartHeight = self.chart.h || 400;
+                const chartHeight = ch.h || 400;
                 const finalY = Math.max(0, Math.min(chartHeight, initialLineY + dragDelta));
-                const newPrice = self.chart.scales.yScale.invert(finalY);
+                const newPrice = ch.scales.yScale.invert(finalY);
                 
                 // Remove ghost elements
                 if (self.splitDragGhost) {
@@ -15723,9 +15768,11 @@ class OrderManager {
                     try { if (bd.labelGroup) bd.labelGroup.remove(); } catch (_) {}
                 });
             }
-            if (this.chart?.svg) {
-                this.chart.svg.selectAll('.multi-tp-preview-badge').remove();
-            }
+            const _badgeCharts = (typeof this._collectLayoutCharts === 'function' ? this._collectLayoutCharts() : null)
+                || (this.chart ? [this.chart] : []);
+            _badgeCharts.forEach((c) => {
+                if (c?.svg) c.svg.selectAll('.multi-tp-preview-badge').remove();
+            });
 
             // Remove multi-TP avg preview line
             this.removeMultiTPAvgLine('__preview__');
@@ -15763,40 +15810,44 @@ class OrderManager {
             this.pendingPreviewAlignTimeout = null;
         }
 
-        // Aggressively remove any orphaned preview elements
-        if (this.chart && this.chart.svg) {
+        // Aggressively remove any orphaned preview elements (all panels — stale preview can linger off-main)
+        const _orphanCharts = (typeof this._collectLayoutCharts === 'function' ? this._collectLayoutCharts() : null)
+            || (this.chart ? [this.chart] : []);
+        _orphanCharts.forEach((c) => {
+            if (!c?.svg) return;
             const removed = {
-                lines: this.chart.svg.selectAll('.preview-line').size(),
-                labelGroups: this.chart.svg.selectAll('.preview-label-group').size(),
-                badgeGroups: this.chart.svg.selectAll('.preview-badge-group').size(),
-                yAxisHighlights: this.chart.svg.selectAll('.y-axis-price-highlight').size(),
-                splitEntryLines: this.chart.svg.selectAll('.split-entry-line').size(),
-                splitEntryLabels: this.chart.svg.selectAll('.split-entry-label-group').size(),
-                splitDragGhosts: this.chart.svg.selectAll('.split-drag-ghost').size()
+                lines: c.svg.selectAll('.preview-line').size(),
+                labelGroups: c.svg.selectAll('.preview-label-group').size(),
+                badgeGroups: c.svg.selectAll('.preview-badge-group').size(),
+                yAxisHighlights: c.svg.selectAll('.y-axis-price-highlight').size(),
+                splitEntryLines: c.svg.selectAll('.split-entry-line').size(),
+                splitEntryLabels: c.svg.selectAll('.split-entry-label-group').size(),
+                splitDragGhosts: c.svg.selectAll('.split-drag-ghost').size()
             };
-            
-            this.chart.svg.selectAll('.preview-line').remove();
-            this.chart.svg.selectAll('.preview-line-hit').remove();
-            this.chart.svg.selectAll('.preview-label-group').remove();
-            this.chart.svg.selectAll('.preview-badge-group').remove();
-            this.chart.svg.selectAll('.y-axis-price-highlight').remove();
-            this.chart.svg.selectAll('.split-entry-line').remove();
-            this.chart.svg.selectAll('.split-entry-label-group').remove();
-            this.chart.svg.selectAll('.split-drag-ghost').remove();
-            this.chart.svg.selectAll('.split-drag-label').remove();
-            this.chart.svg.selectAll('.preview-pending-connector').remove();
-            
+
+            c.svg.selectAll('.preview-line').remove();
+            c.svg.selectAll('.preview-line-hit').remove();
+            c.svg.selectAll('.preview-label-group').remove();
+            c.svg.selectAll('.preview-badge-group').remove();
+            c.svg.selectAll('.y-axis-price-highlight').remove();
+            c.svg.selectAll('.split-entry-line').remove();
+            c.svg.selectAll('.split-entry-label-group').remove();
+            c.svg.selectAll('.split-drag-ghost').remove();
+            c.svg.selectAll('.split-drag-label').remove();
+            c.svg.selectAll('.preview-pending-connector').remove();
+
             const totalRemoved = Object.values(removed).reduce((a, b) => a + b, 0);
             if (totalRemoved > 0) {
                 console.log(`   🧹 Cleaned up orphaned elements: lines=${removed.lines}, labels=${removed.labelGroups}, badges=${removed.badgeGroups}, splits=${removed.splitEntryLines + removed.splitEntryLabels}`);
             }
-        }
+        });
 
         console.log('✅ Preview lines cleanup complete');
     }
 
     alignPreviewLabels() {
-        if (!this.previewLines || !this.chart || !this.chart.scales || !this.chart.svg) return;
+        const ch = this.previewLines?._previewChart || this._getPreviewChart();
+        if (!this.previewLines || !ch || !ch.scales || !ch.svg) return;
 
         const activeLines = Object.values(this.previewLines).filter(Boolean);
         if (!activeLines.length) return;
@@ -15864,7 +15915,7 @@ class OrderManager {
             const totalWidth = bucket.widths.reduce((s, w) => s + w, 0) + totalGap;
             if (totalWidth > maxRowWidth) maxRowWidth = totalWidth;
         });
-        const sharedBaseX = this.chart.w - maxRowWidth - marginRight;
+        const sharedBaseX = ch.w - maxRowWidth - marginRight;
 
         buckets.forEach(bucket => {
             const items = bucket.items;
@@ -15875,7 +15926,7 @@ class OrderManager {
                 const width = bucket.widths[index] ?? 0;
                 const bbox = lineData.labelDimensions;
                 const height = bbox?.height || 0;
-                const yPixel = this.chart.scales.yScale(lineData.price);
+                const yPixel = ch.scales.yScale(lineData.price);
                 const translateY = yPixel - (height / 2);
                 lineData.labelGroup.attr('transform', `translate(${currentX}, ${translateY})`);
                 this.adjustPreviewLineForLabel(lineData, currentX, width, height);
@@ -15888,15 +15939,16 @@ class OrderManager {
 
     adjustPreviewLineForLabel(lineData, labelX = null, labelWidth = null, labelHeight = null) {
         if (!lineData || !lineData.line || !lineData.labelGroup) return;
-        if (!this.chart) return;
+        const ch = this._previewChartFromContext(lineData);
+        if (!ch) return;
 
         const bbox = lineData.labelDimensions || lineData.labelGroup.node()?.getBBox?.();
         const width = labelWidth ?? bbox?.width ?? 0;
         const x = labelX ?? (() => {
             const transform = lineData.labelGroup.attr('transform');
-            if (!transform) return this.chart.w - width - 18;
+            if (!transform) return ch.w - width - 18;
             const match = /translate\(([^,]+),/.exec(transform);
-            return match ? parseFloat(match[1]) : this.chart.w - width - 18;
+            return match ? parseFloat(match[1]) : ch.w - width - 18;
         })();
 
         // End at label edge by default; preview TP/SL extends to right axis price.
@@ -15908,7 +15960,7 @@ class OrderManager {
             || lineData.label === 'Avg Entry'
             || (typeof lineData.label === 'string' && (lineData.label.startsWith('TP') || lineData.label.startsWith('Entry')));
         if (isPreviewOrder && isEntryTpSl) {
-            lineEndX = this.chart.w;
+            lineEndX = ch.w;
         }
 
         lineData.line
@@ -15942,7 +15994,8 @@ class OrderManager {
      */
     _syncPendingLimitStopConnector() {
         this._removePendingLimitStopConnector();
-        if (!this.chart?.svg || !this.chart.scales?.yScale) return;
+        const ch = this.previewLines?._previewChart || this._getPreviewChart();
+        if (!ch?.svg || !ch.scales?.yScale) return;
         if (!this.previewLines?.entry) return;
 
         const tpOn = document.getElementById('enableTP')?.checked;
@@ -15963,9 +16016,9 @@ class OrderManager {
             : 0;
 
         const ys = [];
-        if (entryPx > 0) ys.push(this.chart.scales.yScale(entryPx));
-        if (tpOn && tpPx > 0) ys.push(this.chart.scales.yScale(tpPx));
-        if (slOn && slPx > 0) ys.push(this.chart.scales.yScale(slPx));
+        if (entryPx > 0) ys.push(ch.scales.yScale(entryPx));
+        if (tpOn && tpPx > 0) ys.push(ch.scales.yScale(tpPx));
+        if (slOn && slPx > 0) ys.push(ch.scales.yScale(slPx));
         if (ys.length < 2) return;
 
         const yTop = Math.min(...ys);
@@ -15999,13 +16052,13 @@ class OrderManager {
         // Keep connector on the right side near the entry tag.
         const connectorPadRight = 50; // px past entry label — nudge toward axis, away from badges
         const anchorX = Number.isFinite(entryX)
-            ? Math.max(0, Math.min(this.chart.w - 1, entryX + entryW + connectorPadRight))
-            : Math.max(0, Math.min(this.chart.w - 1, Math.min(...leftXs)));
-        const entryY = this.chart.scales.yScale(entryPx);
-        const tpY = (tpOn && tpPx > 0) ? this.chart.scales.yScale(tpPx) : null;
-        const slY = (slOn && slPx > 0) ? this.chart.scales.yScale(slPx) : null;
+            ? Math.max(0, Math.min(ch.w - 1, entryX + entryW + connectorPadRight))
+            : Math.max(0, Math.min(ch.w - 1, Math.min(...leftXs)));
+        const entryY = ch.scales.yScale(entryPx);
+        const tpY = (tpOn && tpPx > 0) ? ch.scales.yScale(tpPx) : null;
+        const slY = (slOn && slPx > 0) ? ch.scales.yScale(slPx) : null;
 
-        const connectorGroup = this.chart.svg.append('g')
+        const connectorGroup = ch.svg.append('g')
             .attr('class', 'preview-pending-connector')
             .style('pointer-events', 'none');
         this._pendingPreviewConnector = connectorGroup;
@@ -22014,7 +22067,9 @@ class OrderManager {
      * @param {string} mode - 'open' | 'pending' | 'preview'
      */
     drawMultiTPAvgLine(order, mode = 'open') {
-        const chart = this.chart;
+        const chart = mode === 'preview'
+            ? (this.previewLines?._previewChart || this._getPreviewChart() || this.chart)
+            : this.chart;
         if (!chart?.svg) return;
 
         const targets = order.tpTargets || [];
