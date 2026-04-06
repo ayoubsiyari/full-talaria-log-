@@ -135,6 +135,8 @@ class OrderManager {
         this.tradeConnectors = [];
         this.editingPendingOrderId = null;
         this._draggingPendingOrderIds = new Set();
+        /** True while dragging a pending order's TP/SL/BE target line — avoids align pass + full reposition fighting the drag handler. */
+        this._isDraggingPendingTarget = false;
         
         // SPLIT ENTRY SYSTEM - Multiple entry levels for pending orders
         this.splitEntries = []; // Array of { id, price, percentage, lineData }
@@ -22738,6 +22740,7 @@ class OrderManager {
         const drag = d3.drag()
             .on('start', function() {
                 isDragging = true;
+                self._isDraggingPendingTarget = true;
                 const tr = target.labelGroup?.attr('transform') || '';
                 const m = /translate\(([^,]+),\s*([^)]+)\)/.exec(tr);
                 dragLabelX = m ? (parseFloat(m[1]) || 0) : null;
@@ -22820,6 +22823,7 @@ class OrderManager {
             .on('end', function() {
                 if (!isDragging) return;
                 isDragging = false;
+                self._isDraggingPendingTarget = false;
                 dragLabelX = null;
                 
                 target.line.attr('stroke-width', 1).attr('opacity', 0.92);
@@ -26125,7 +26129,10 @@ class OrderManager {
         if (ch === this.chart) {
             this.updatePreviewLinePositions();
         }
-        this.positionPendingOrderTargets(ch);
+        // Full rebuild clears label groups — would fight makePendingTargetDraggable and cause horizontal snap.
+        if (!this._isDraggingPendingTarget) {
+            this.positionPendingOrderTargets(ch);
+        }
         this._alignAllOrderLabels(ch);
     }
 
@@ -26154,19 +26161,8 @@ class OrderManager {
                 if (Number.isFinite(x) && x < minX) minX = x;
             });
         }
-        // Also check pending target label groups (use translate)
-        ch.svg.selectAll('[class*="pending-tp-label"],[class*="pending-sl-label"],[class*="pending-be-label"]').each(function () {
-            const el = d3.select(this);
-            if (el.style('display') === 'none') return;
-            const t = el.attr('transform');
-            if (t) {
-                const m = t.match(/translate\(\s*([\d.e+-]+)/);
-                if (m) {
-                    const x = parseFloat(m[1]);
-                    if (Number.isFinite(x) && x < minX) minX = x;
-                }
-            }
-        });
+        // Pending TP/SL/BE targets are positioned only in positionPendingOrderTargets (right-anchored).
+        // Do not fold them into minX or shift them here — that caused horizontal snap on click/drag.
 
         if (!Number.isFinite(minX) || minX === Infinity) return;
 
@@ -26290,33 +26286,6 @@ class OrderManager {
                 const x2 = parseFloat(g._connector.attr('x2'));
                 if (Number.isFinite(x2)) g._connector.attr('x2', x2 - dx);
             }
-        });
-
-        // Shift pending target label groups (use translate)
-        (this.pendingTargetLines || []).forEach((entry) => {
-            if (entry.chart !== ch) return;
-            entry.targets.forEach((target) => {
-                const lg = target.labelGroup;
-                if (!lg) return;
-                const t = lg.attr('transform');
-                if (!t) return;
-                const m = t.match(/translate\(\s*([\d.e+-]+)\s*,\s*([\d.e+-]+)/);
-                if (!m) return;
-                const curX = parseFloat(m[1]);
-                if (!Number.isFinite(curX) || Math.abs(curX - minX) < 0.5) return;
-                const dx = curX - minX;
-                lg.attr('transform', `translate(${minX}, ${m[2]})`);
-                const shiftG = (el) => {
-                    if (!el) return;
-                    const et = el.attr('transform');
-                    if (et) {
-                        const em = et.match(/translate\(\s*([\d.e+-]+)\s*,\s*([\d.e+-]+)/);
-                        if (em) el.attr('transform', `translate(${parseFloat(em[1]) - dx}, ${em[2]})`);
-                    }
-                };
-                shiftG(target._deleteBtn);
-                shiftG(target._splitBtn);
-            });
         });
     }
 
