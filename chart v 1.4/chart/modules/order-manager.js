@@ -8852,7 +8852,9 @@ class OrderManager {
         }
         
         // Add split handle for Entry and TP lines (NOT for SL or BE)
-        const isEntryLine = lineData.label === 'Entry';
+        const isPlainEntryLabel = lineData.label === 'Entry';
+        const isEntryOneNumberedLabel = !!(lineData.label && /^Entry#1(?:$|:)/.test(lineData.label));
+        const isEntryLine = isPlainEntryLabel || isEntryOneNumberedLabel;
         const isTpLine = lineData.label && (lineData.label.startsWith('TP') || lineData.label === 'TP');
         const isSlLine = lineData.label === 'SL';
         const isBeLine = lineData.isBELine || (lineData.label && lineData.label.startsWith('BE'));
@@ -8918,9 +8920,11 @@ class OrderManager {
             }
         }
 
-        // Action badges: on Avg Entry in multi-entry mode, or on Entry in single-entry mode
+        // Action badges: Avg Entry in multi-entry; plain "Entry" in single-entry; "Entry#1:…" is the main row in multi-entry (same ✓ ✕ as single Entry).
         const isAvgEntryLine = lineData.label === 'Avg Entry';
-        const showActionBadges = isAvgEntryLine || (isEntryLine && !this.isMultiEntryMode);
+        const showActionBadges = isAvgEntryLine
+            || (isPlainEntryLabel && !this.isMultiEntryMode)
+            || (this.isMultiEntryMode && isEntryOneNumberedLabel);
         if (showActionBadges && !isBadge) {
             const currentBBox = lineData.labelGroup.node().getBBox();
             let actX = currentBBox.x + currentBBox.width + gap;
