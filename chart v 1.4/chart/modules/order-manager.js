@@ -21916,49 +21916,6 @@ class OrderManager {
     }
 
     /**
-     * Text on the pending entry line: dollar risk (SL) and reward (TP) when set; otherwise lot size.
-     */
-    _formatPendingEntryLineLabel(pendingOrder, entryPrice) {
-        const qty = Number(pendingOrder.quantity) || 0;
-        const sym = pendingOrder.ticker || pendingOrder.symbol || this._getSymbol();
-        const side = pendingOrder.direction === 'SELL' ? 'SELL' : 'BUY';
-        const ot = (pendingOrder.orderType || 'limit').toLowerCase();
-        const dir = (pendingOrder.direction || 'BUY').toLowerCase();
-        if (!(entryPrice > 0) || qty <= 0) {
-            return `${ot} ${dir} ${this.formatQuantity(qty)}`;
-        }
-        const sl = Number(pendingOrder.stopLoss) || 0;
-        let riskUsd = 0;
-        if (sl > 0) {
-            riskUsd = Math.abs(this.estimatePnLForPriceLevel(side, entryPrice, sl, qty, sym));
-        }
-        let rewardUsd = 0;
-        const targets = pendingOrder.tpTargets;
-        if (targets && targets.length > 0) {
-            for (const t of targets) {
-                if (t.hit || !(Number(t.price) > 0)) continue;
-                const pct = Number(t.percentage) || 0;
-                const share = qty * (pct / 100);
-                if (share > 0) {
-                    rewardUsd += Math.max(0, this.estimatePnLForPriceLevel(side, entryPrice, Number(t.price), share, sym));
-                }
-            }
-        } else {
-            const tp = Number(pendingOrder.takeProfit) || 0;
-            if (tp > 0) {
-                rewardUsd = Math.max(0, this.estimatePnLForPriceLevel(side, entryPrice, tp, qty, sym));
-            }
-        }
-        if (riskUsd > 0 || rewardUsd > 0) {
-            const parts = [];
-            if (riskUsd > 0) parts.push(`R $${riskUsd.toFixed(0)}`);
-            if (rewardUsd > 0) parts.push(`P $${rewardUsd.toFixed(0)}`);
-            return `${ot} ${dir} ${parts.join(' · ')}`;
-        }
-        return `${ot} ${dir} ${this.formatQuantity(qty)}`;
-    }
-
-    /**
      * Draw pending order line on chart (dashed line)
      * @param {object} pendingOrder
      * @param {object|null} targetChart — when null in multi-panel, draws on every chart whose symbol matches the order
@@ -22018,6 +21975,8 @@ class OrderManager {
             .style('cursor', 'ns-resize');
         
         // Label text showing order type and direction (white text on colored background)
+        const orderTypeLabel = pendingOrder.orderType === 'limit' ? 'LIMIT' : 'STOP';
+        const directionLabel = pendingOrder.direction; // BUY or SELL
         const labelText = chart.svg.append('text')
             .attr('class', `pending-order-label-text pending-${pendingOrder.id}`)
             .attr('fill', '#ffffff')
@@ -22025,7 +21984,7 @@ class OrderManager {
             .attr('font-weight', '700')
             .attr('letter-spacing', '0.01em')
             .style('cursor', 'pointer')
-            .text(this._formatPendingEntryLineLabel(pendingOrder, pendingOrder.entryPrice));
+            .text(`${orderTypeLabel} ${directionLabel} ${this.formatQuantity(pendingOrder.quantity || 0)}`);
         
         // Right side price box (skip if created from position tool - it already shows the price)
         let priceBox = null;
@@ -22196,7 +22155,8 @@ class OrderManager {
                     pendingOrder.orderType = newType;
                 }
 
-                labelText.text(self._formatPendingEntryLineLabel(pendingOrder, newPrice));
+                const typeLabel = `${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${dragStartQty.toFixed(2)}`;
+                labelText.text(typeLabel);
                 self._drawExecutedOrderConnectors(chart);
             })
             .on('end', function() {
@@ -22227,7 +22187,8 @@ class OrderManager {
                 }
 
                 pendingOrder.quantity = dragStartQty;
-                labelText.text(self._formatPendingEntryLineLabel(pendingOrder, pendingOrder.entryPrice));
+                const finalTypeLabel = `${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${self.formatQuantity(pendingOrder.quantity || 0)}`;
+                labelText.text(finalTypeLabel);
 
                 // Redraw targets to update P&L with new lot size
                 self.removePendingSLTPLines(pendingOrder.id);
@@ -22243,14 +22204,10 @@ class OrderManager {
                 if (typeof self.updateOrderLines === 'function') self.updateOrderLines(chart);
                 if (typeof self.updatePositionsPanel === 'function') self.updatePositionsPanel();
                 
-                const sym = pendingOrder.ticker || pendingOrder.symbol || self._getSymbol();
-                const rUsd = pendingOrder.stopLoss > 0
-                    ? Math.abs(self.estimatePnLForPriceLevel(
-                        pendingOrder.direction, pendingOrder.entryPrice, pendingOrder.stopLoss, dragStartQty, sym))
-                    : 0;
-                const notifDetail = rUsd > 0
-                    ? `${dragStartQty.toFixed(2)} lots · ~R $${rUsd.toFixed(0)}`
-                    : `${dragStartQty.toFixed(2)} lots`;
+                const sMode = pendingOrder.sizingMode || 'risk-usd';
+                const notifDetail = sMode === 'lot-size'
+                    ? `$${pendingOrder.riskAmount} risk`
+                    : `${pendingOrder.quantity.toFixed(2)} lots`;
                 self.showNotification(`✏️ Entry → ${formattedPrice} | ${notifDetail}`, 'info');
             });
         
