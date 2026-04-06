@@ -22058,8 +22058,80 @@ class OrderManager {
 
     // ─── Multi-TP Avg Line ──────────────────────────────────────────────
 
+    /** Open + pending legs in a split group (deduped), for one combined Avg TP line. */
+    _getSplitGroupLegsForMultiTP(splitGroupId) {
+        if (splitGroupId == null) return [];
+        const byId = new Map();
+        const add = (arr) => {
+            (arr || []).forEach((o) => {
+                if (o && o.splitGroupId === splitGroupId && o.isSplitEntry && !byId.has(o.id)) {
+                    byId.set(o.id, o);
+                }
+            });
+        };
+        add(this.openPositions);
+        add(this.orderService?.openPositions);
+        add(this.pendingOrders);
+        add(this.orderService?.pendingOrders);
+        return [...byId.values()];
+    }
+
+    /**
+     * Weighted average TP from priced targets (preview uses effective lot-proportional %).
+     * @returns {number|null}
+     */
+    _weightedAvgTPFromPricedTargets(priced, mode, orderCtx) {
+        if (!priced || priced.length === 0) return null;
+        let weights;
+        if (mode === 'preview') {
+            const qty = orderCtx.quantity || parseFloat(document.getElementById('orderQuantity')?.value) || 1;
+            const entry = orderCtx.entryPrice || parseFloat(document.getElementById('orderEntryPrice')?.value) || 0;
+            weights = this._computeEffectiveTPPercentages(entry, qty, orderCtx.type || this.orderSide || 'BUY');
+        } else {
+            weights = priced.map(t => t.percentage || 0);
+        }
+        let wSum = 0, pctSum = 0;
+        for (let i = 0; i < priced.length; i++) {
+            const w = weights[i] || 0;
+            wSum += priced[i].price * w;
+            pctSum += w;
+        }
+        if (priced.length === 1 && (!pctSum || pctSum <= 0)) return priced[0].price;
+        return pctSum > 0 ? wSum / pctSum : priced[0].price;
+    }
+
+    /**
+     * One Avg TP for the whole split group: lot-weighted mean of each leg's weighted TP level.
+     * @returns {{ avgTP: number, totalQty: number }|null}
+     */
+    _computeSplitGroupCombinedAvgTP(splitGroupId, mode) {
+        const legs = this._getSplitGroupLegsForMultiTP(splitGroupId);
+        if (legs.length === 0) return null;
+        let totalPriced = 0;
+        for (const leg of legs) {
+            totalPriced += (leg.tpTargets || []).filter(t => t.price > 0 && !t.hit).length;
+        }
+        const minAgg = mode === 'preview' ? 1 : 2;
+        if (totalPriced < minAgg) return null;
+
+        let blendSum = 0, qSum = 0;
+        for (const leg of legs) {
+            const priced = (leg.tpTargets || []).filter(t => t.price > 0 && !t.hit);
+            if (priced.length === 0) continue;
+            const legAvg = this._weightedAvgTPFromPricedTargets(priced, mode, leg);
+            if (legAvg == null || !Number.isFinite(legAvg)) continue;
+            const q = leg.quantity || leg.lots || 0;
+            if (q <= 0) continue;
+            blendSum += legAvg * q;
+            qSum += q;
+        }
+        if (qSum <= 0) return null;
+        return { avgTP: blendSum / qSum, totalQty: qSum };
+    }
+
     /**
      * Draw a weighted-average TP line for multi-TP orders.
+     * Split-entry groups use a single line (lot-weighted across all legs).
      * Works for open positions, pending orders, and preview lines.
      * @param {object} order - The order/position/preview object
      * @param {string} mode - 'open' | 'pending' | 'preview'
@@ -22070,38 +22142,46 @@ class OrderManager {
             : this.chart;
         if (!chart?.svg) return;
 
-        const targets = order.tpTargets || [];
-        const priced = targets.filter(t => t.price > 0 && !t.hit);
-        // Preview mode: show avg TP line for any ≥1 priced targets (setup feedback)
-        // Open/Pending mode: show avg TP line only when ≥2 non-hit targets remain
-        const minTargets = mode === 'preview' ? 1 : 2;
-        if (priced.length < minTargets) return;
+        let id;
+        let avgTP;
+        let qty;
 
-        // One weighted Avg TP line per order; split-entry legs can have different tpTargets independently.
-        const id = mode === 'preview' ? '__preview__' : order.id;
-        const already = this.multiTPAvgLines.some(g => g.orderId === id);
-        if (already) return;
+        if (mode === 'preview') {
+            const targets = order.tpTargets || [];
+            const priced = targets.filter(t => t.price > 0 && !t.hit);
+            if (priced.length < 1) return;
+            id = '__preview__';
+            if (this.multiTPAvgLines.some(g => g.orderId === id)) return;
+            avgTP = this._weightedAvgTPFromPricedTargets(priced, mode, order);
+            if (avgTP == null || !Number.isFinite(avgTP)) return;
+            qty = order.quantity || parseFloat(document.getElementById('orderQuantity')?.value) || 0;
+        } else if (order.isSplitEntry && order.splitGroupId) {
+            id = `splitgrp_${order.splitGroupId}`;
+            const legs = this._getSplitGroupLegsForMultiTP(order.splitGroupId);
+            for (const leg of legs) {
+                this.removeMultiTPAvgLine(leg.id);
+            }
+            if (this.multiTPAvgLines.some(g => g.orderId === id)) {
+                this._updateMultiTPAvgLines(chart);
+                return;
+            }
+            const comb = this._computeSplitGroupCombinedAvgTP(order.splitGroupId, mode);
+            if (!comb) return;
+            avgTP = comb.avgTP;
+            qty = comb.totalQty;
+        } else {
+            const targets = order.tpTargets || [];
+            const priced = targets.filter(t => t.price > 0 && !t.hit);
+            if (priced.length < 2) return;
+            id = order.id;
+            if (this.multiTPAvgLines.some(g => g.orderId === id)) return;
+            avgTP = this._weightedAvgTPFromPricedTargets(priced, mode, order);
+            if (avgTP == null || !Number.isFinite(avgTP)) return;
+            qty = order.quantity || order.lots || 0;
+        }
 
         const accent = '#ca8a04';
         const yScale = chart.scales?.yScale;
-
-        // Use effective (lot-proportional) percentages for correct weighting.
-        // For preview mode call _computeEffectiveTPPercentages so lots/amount modes work correctly.
-        let weights;
-        if (mode === 'preview') {
-            const qty = order.quantity || parseFloat(document.getElementById('orderQuantity')?.value) || 1;
-            const entry = order.entryPrice || parseFloat(document.getElementById('orderEntryPrice')?.value) || 0;
-            weights = this._computeEffectiveTPPercentages(entry, qty, order.type || this.orderSide || 'BUY');
-        } else {
-            weights = priced.map(t => t.percentage || 0);
-        }
-        let wSum = 0, pctSum = 0;
-        for (let i = 0; i < priced.length; i++) {
-            const w = weights[i] || 0;
-            wSum += priced[i].price * w;
-            pctSum += w;
-        }
-        const avgTP = pctSum > 0 ? wSum / pctSum : priced[0].price;
         const y = yScale ? yScale(avgTP) : 100;
 
         const cls = `multi-tp-avg-${id}`;
@@ -22121,7 +22201,6 @@ class OrderManager {
             .attr('stroke', accent)
             .attr('stroke-width', 1)
             .attr('rx', 3);
-        const qty = order.quantity || order.lots || 0;
         const lotsText = chart.svg.append('text')
             .attr('class', `multi-tp-avg-label ${cls}`)
             .attr('fill', '#fbbf24')
@@ -22249,11 +22328,13 @@ class OrderManager {
             let entryPrice = 0;
             let side = 'BUY';
             let sym = this._getSymbol();
+            let combinedSplitGrpId = null;
 
             if (g.mode === 'open') {
                 const isSplitGrp = typeof g.orderId === 'string' && g.orderId.startsWith('splitgrp_');
                 if (isSplitGrp) {
                     const grpId = g.orderId.replace('splitgrp_', '');
+                    combinedSplitGrpId = grpId;
                     const openLegs = (this.openPositions || []).filter(p => p.splitGroupId == grpId);
                     const pendingLegs = (this.pendingOrders || []).filter(p => p.splitGroupId == grpId);
                     const allLegs = [...openLegs, ...pendingLegs];
@@ -22284,6 +22365,7 @@ class OrderManager {
                 const isSplitGrp = typeof g.orderId === 'string' && g.orderId.startsWith('splitgrp_');
                 if (isSplitGrp) {
                     const grpId = g.orderId.replace('splitgrp_', '');
+                    combinedSplitGrpId = grpId;
                     const pendingLegs = (this.pendingOrders || []).filter(p => p.splitGroupId == grpId);
                     const openLegs = (this.openPositions || []).filter(p => p.splitGroupId == grpId);
                     const allLegs = [...pendingLegs, ...openLegs];
@@ -22323,31 +22405,43 @@ class OrderManager {
                 side = this.orderSide || 'BUY';
             }
 
-            if (!targets) continue;
+            if (!targets && combinedSplitGrpId == null) continue;
 
-            const priced = targets.filter(t => t.price > 0 && !t.hit);
-            // Preview mode: show avg TP line for any ≥1 priced targets (setup feedback)
-            // Open/Pending mode: show avg TP line only when ≥2 non-hit targets remain (averaging makes sense)
-            const minTargets = g.mode === 'preview' ? 1 : 2;
-            if (priced.length < minTargets) {
-                toRemove.push(g.orderId);
-                continue;
-            }
-            // Use effective lot-proportional weights for correct weighted average.
-            let weights2;
-            if (g.mode === 'preview') {
-                weights2 = this._computeEffectiveTPPercentages(entryPrice, qty, side);
+            let avgTP;
+            if (combinedSplitGrpId != null) {
+                const comb = this._computeSplitGroupCombinedAvgTP(combinedSplitGrpId, g.mode);
+                if (!comb) {
+                    toRemove.push(g.orderId);
+                    continue;
+                }
+                avgTP = comb.avgTP;
+                g.avgTP = avgTP;
+                qty = comb.totalQty;
             } else {
-                weights2 = priced.map(t => t.percentage || 0);
+                const priced = targets.filter(t => t.price > 0 && !t.hit);
+                // Preview mode: show avg TP line for any ≥1 priced targets (setup feedback)
+                // Open/Pending mode: show avg TP line only when ≥2 non-hit targets remain (averaging makes sense)
+                const minTargets = g.mode === 'preview' ? 1 : 2;
+                if (priced.length < minTargets) {
+                    toRemove.push(g.orderId);
+                    continue;
+                }
+                // Use effective lot-proportional weights for correct weighted average.
+                let weights2;
+                if (g.mode === 'preview') {
+                    weights2 = this._computeEffectiveTPPercentages(entryPrice, qty, side);
+                } else {
+                    weights2 = priced.map(t => t.percentage || 0);
+                }
+                let wSum = 0, pctSum = 0;
+                for (let i = 0; i < priced.length; i++) {
+                    const w = weights2[i] || 0;
+                    wSum += priced[i].price * w;
+                    pctSum += w;
+                }
+                avgTP = pctSum > 0 ? wSum / pctSum : g.avgTP;
+                g.avgTP = avgTP;
             }
-            let wSum = 0, pctSum = 0;
-            for (let i = 0; i < priced.length; i++) {
-                const w = weights2[i] || 0;
-                wSum += priced[i].price * w;
-                pctSum += w;
-            }
-            const avgTP = pctSum > 0 ? wSum / pctSum : g.avgTP;
-            g.avgTP = avgTP;
 
             const y = yScale(avgTP);
             if (!Number.isFinite(y)) continue;
