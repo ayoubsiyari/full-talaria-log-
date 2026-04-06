@@ -151,6 +151,7 @@ class OrderManager {
         this.pendingPreviewAlignTimeout = null;
         this._lastPreviewChartWidth = null;
         this.pendingTargetLines = [];
+        this._pendingPositionsPanelRaf = null;
 
         /** Resampled bars per fileId+timeframe for off-chart mark / SL-TP (matches main chart TF) */
         this._miSeriesByFileId = new Map();
@@ -16546,6 +16547,15 @@ class OrderManager {
         const q = Number(pendingOrder.quantity);
         return Number.isFinite(q) && q > 0 ? q : 0;
     }
+
+    /** Throttled so pending card Risk $ updates live while dragging entry/SL without spamming DOM. */
+    _schedulePendingOrdersPanelRefresh() {
+        if (this._pendingPositionsPanelRaf != null) return;
+        this._pendingPositionsPanelRaf = requestAnimationFrame(() => {
+            this._pendingPositionsPanelRaf = null;
+            if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
+        });
+    }
     
     /**
      * Place a pending order (Limit or Stop)
@@ -22120,6 +22130,7 @@ class OrderManager {
                 }
 
                 pendingOrder.entryPrice = newPrice;
+                self._schedulePendingOrdersPanelRefresh();
 
                 // Record current candle so the order won't fill on price action
                 // that already happened — only on the NEXT candle.
@@ -22816,6 +22827,23 @@ class OrderManager {
                     }
                 } else if (target.type === 'SL') {
                     pendingOrder.stopLoss = newPrice;
+                    const qBase = self._getPendingPlacedQuantity(pendingOrder);
+                    pendingOrder.quantity = qBase;
+                    if (pendingOrder.entryPrice > 0 && newPrice > 0) {
+                        const newRisk = self._engineRisk(pendingOrder.entryPrice, newPrice, qBase, pendingOrder.entryPrice);
+                        pendingOrder.riskAmount = Math.round(newRisk * 100) / 100;
+                    }
+                    if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
+                        self._getSplitGroupPendingOrders(pendingOrder).forEach((m) => {
+                            m.stopLoss = newPrice;
+                            const mq = self._getPendingPlacedQuantity(m);
+                            m.quantity = mq;
+                            if (m.entryPrice > 0 && newPrice > 0) {
+                                m.riskAmount = Math.round(self._engineRisk(m.entryPrice, newPrice, mq, m.entryPrice) * 100) / 100;
+                            }
+                        });
+                    }
+                    self._schedulePendingOrdersPanelRefresh();
                 }
                 self._drawExecutedOrderConnectors(ch);
                 if (target.type === 'TP' && pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 2) {
