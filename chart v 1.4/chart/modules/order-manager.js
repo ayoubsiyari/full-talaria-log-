@@ -8568,7 +8568,7 @@ class OrderManager {
                 this.calculateAdvancedRiskReward();
                 this.updatePlaceButtonText();
             }
-            this.showNotification('Multi-entry enabled — add legs with the purple ⊕ on each entry line.', 'info', 2800);
+            this.showNotification('Multi-entry enabled — add legs with the purple + on each entry line.', 'info', 2800);
             return;
         }
         if (kind === 'tp') {
@@ -8950,17 +8950,26 @@ class OrderManager {
                 });
         }
 
-        // Green +: enable multi-entry OR multi-TP only (which line you click), never both.
+        // Green +: only until that mode is on — then use purple + on each entry/TP line to add levels.
         if (!this._previewMultiModesActive()) {
             const isMainEntryPreviewLine = !lineData.isBadge && (
                 lineData.label === 'Entry' ||
                 (lineData.label && /^Entry#1(?:$|:)/.test(lineData.label))
             );
             const isTpBadgeActivator = lineData.isBadge && lineData.label === 'TP';
-            if (isMainEntryPreviewLine || isSingleTpPreviewLine || isTpBadgeActivator) {
+            const multiTpOn = !!document.getElementById('multipleTPToggle')?.checked;
+            let showActivator = false;
+            let activatorKind = 'tp';
+            if (isMainEntryPreviewLine && !this.isMultiEntryMode) {
+                showActivator = true;
+                activatorKind = 'entry';
+            } else if ((isSingleTpPreviewLine || isTpBadgeActivator) && !multiTpOn) {
+                showActivator = true;
+                activatorKind = 'tp';
+            }
+            if (showActivator) {
                 const bb = lineData.labelGroup.node().getBBox();
                 const ax = bb.x + bb.width + gap;
-                const activatorKind = isMainEntryPreviewLine ? 'entry' : 'tp';
                 this._appendPreviewMultiModesActivatorButton(lineData, ax, height, activatorKind);
             }
         }
@@ -14968,49 +14977,52 @@ class OrderManager {
         const existingBBox = parentGroup.node().getBBox();
         const handleX = existingBBox.width + handleGap;
         
-        // Create split handle group
+        // Split handle: same visual language as green + (dark fill, stroke, + glyph) — violet accent.
         const splitHandle = parentGroup.append('g')
             .attr('class', 'split-handle')
             .attr('transform', `translate(${handleX}, ${(24 - handleSize) / 2})`)
             .style('cursor', 'copy')
-            .style('opacity', 0.7);
-        
-        // Background circle
+            .style('opacity', 0.92);
+
+        const r = handleSize / 2;
         splitHandle.append('circle')
-            .attr('cx', handleSize / 2)
-            .attr('cy', handleSize / 2)
-            .attr('r', handleSize / 2)
-            .attr('fill', 'rgba(124, 58, 237, 0.3)')
+            .attr('cx', r)
+            .attr('cy', r)
+            .attr('r', r)
+            .attr('fill', '#0f172a')
             .attr('stroke', '#7c3aed')
-            .attr('stroke-width', 1.5);
-        
-        // Plus icon
+            .attr('stroke-width', 1.2);
+
         splitHandle.append('text')
-            .attr('x', handleSize / 2)
-            .attr('y', handleSize / 2)
+            .attr('x', r)
+            .attr('y', r)
             .attr('dy', '0.35em')
             .attr('text-anchor', 'middle')
             .attr('fill', '#7c3aed')
             .attr('font-size', '14px')
             .attr('font-weight', '700')
-            .text('⊕');
+            .style('pointer-events', 'none')
+            .text('+');
 
         splitHandle.on('mousedown', (e) => {
             e.stopPropagation();
         });
-        
-        // Hover effect
+
+        const resetSplitHandleStyle = function() {
+            const g = d3.select(this);
+            g.style('opacity', 0.92);
+            g.select('circle').attr('fill', '#0f172a');
+            g.select('text').attr('fill', '#7c3aed');
+        };
+
         splitHandle
             .on('mouseenter', function() {
-                d3.select(this).style('opacity', 1);
-                d3.select(this).select('circle')
-                    .attr('fill', 'rgba(124, 58, 237, 0.5)');
+                const g = d3.select(this);
+                g.style('opacity', 1);
+                g.select('circle').attr('fill', '#7c3aed');
+                g.select('text').attr('fill', '#ffffff');
             })
-            .on('mouseleave', function() {
-                d3.select(this).style('opacity', 0.7);
-                d3.select(this).select('circle')
-                    .attr('fill', 'rgba(124, 58, 237, 0.3)');
-            });
+            .on('mouseleave', resetSplitHandleStyle);
         
         // Make split handle draggable
         // Store initial Y offset for proper drag positioning
@@ -15020,8 +15032,11 @@ class OrderManager {
         const drag = d3.drag()
             .on('start', function(event) {
                 event.sourceEvent.stopPropagation();
-                d3.select(this).style('opacity', 1);
-                
+                const g0 = d3.select(this);
+                g0.style('opacity', 1);
+                g0.select('circle').attr('fill', '#7c3aed');
+                g0.select('text').attr('fill', '#ffffff');
+
                 // Get SVG coordinates from mouse position
                 const svgNode = self.chart.svg.node();
                 const pt = svgNode.createSVGPoint();
@@ -15122,9 +15137,9 @@ class OrderManager {
                     self.splitDragLabel.remove();
                     self.splitDragLabel = null;
                 }
-                
-                d3.select(this).style('opacity', 0.7);
-                
+
+                resetSplitHandleStyle.call(this);
+
                 // Resolve TP vs Entry without overlap: TP first (TP, TP1, TP2…), then entry-shaped labels only.
                 const label = lineData.label || '';
                 const isTpLine = label === 'TP' || /^TP\d+$/.test(label);
