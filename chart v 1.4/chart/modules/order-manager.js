@@ -21234,43 +21234,12 @@ class OrderManager {
             .style('cursor', 'ns-resize')
             .text(this.formatPrice(order.openPrice));
 
-        const closeBtn = chart.svg.append('g')
-            .attr('class', `order-close-btn order-${order.id}`)
-            .attr('pointer-events', 'all')
-            .style('cursor', 'pointer');
-
-        const closeBtnBg = closeBtn.append('circle')
-            .attr('r', 10)
-            .attr('fill', '#0f172a')
-            .attr('stroke', '#e2e8f0')
-            .attr('stroke-width', 1.2)
-            .style('pointer-events', 'all')
-            .style('cursor', 'pointer');
-
-        const closeBtnText = closeBtn.append('text')
-            .attr('fill', '#e2e8f0')
-            .attr('font-size', '14px')
-            .attr('font-weight', '700')
-            .attr('text-anchor', 'middle')
-            .attr('dy', '0.35em')
-            .style('pointer-events', 'none')
-            .text('×');
-
-        closeBtn.on('click', (event) => {
-            event.stopPropagation();
-            event.preventDefault();
-            if (confirm(`Close ${order.type} position #${order.id} at market price?`)) {
-                this.closePosition(order.id);
-            }
-        });
-
-        closeBtn.on('mouseover', function() {
-            closeBtnBg.attr('fill', color);
-            closeBtnText.attr('fill', '#ffffff');
-        }).on('mouseout', function() {
-            closeBtnBg.attr('fill', '#0f172a');
-            closeBtnText.attr('fill', '#e2e8f0');
-        });
+        const closeBtn = this._createCloseCircleButton(
+            chart.svg,
+            `order-close-btn order-${order.id}`,
+            color,
+            () => { if (confirm(`Close ${order.type} position #${order.id} at market price?`)) this.closePosition(order.id); }
+        );
 
         const pnlBox = chart.svg.append('rect')
             .attr('class', `order-pnl-box order-${order.id}`)
@@ -22263,45 +22232,12 @@ class OrderManager {
         }
         
         // Close button (X) for pending orders
-        const closeBtn = chart.svg.append('g')
-            .attr('class', `pending-order-close-btn pending-${pendingOrder.id}`)
-            .attr('pointer-events', 'all')
-            .style('cursor', 'pointer');
-        
-        const closeBtnBg = closeBtn.append('circle')
-            .attr('r', 10)
-            .attr('fill', '#0f172a')
-            .attr('stroke', '#e2e8f0')
-            .attr('stroke-width', 1.2)
-            .style('pointer-events', 'all')
-            .style('cursor', 'pointer');
-        
-        const closeBtnText = closeBtn.append('text')
-            .attr('fill', '#e2e8f0')
-            .attr('font-size', '14px')
-            .attr('font-weight', '700')
-            .attr('text-anchor', 'middle')
-            .attr('dy', '0.35em')
-            .style('pointer-events', 'none')
-            .text('×');
-        
-        // Close button click handler
-        closeBtn.on('click', (event) => {
-            event.stopPropagation();
-            event.preventDefault();
-            if (confirm(`Cancel ${orderTypeLabel} ${pendingOrder.direction} order #${pendingOrder.id}?`)) {
-                this.cancelPendingOrder(pendingOrder.id);
-            }
-        });
-        
-        // Hover effect for close button
-        closeBtn.on('mouseover', function() {
-            closeBtnBg.attr('fill', lineColor);
-            closeBtnText.attr('fill', '#ffffff');
-        }).on('mouseout', function() {
-            closeBtnBg.attr('fill', '#0f172a');
-            closeBtnText.attr('fill', '#e2e8f0');
-        });
+        const closeBtn = this._createCloseCircleButton(
+            chart.svg,
+            `pending-order-close-btn pending-${pendingOrder.id}`,
+            lineColor,
+            () => { if (confirm(`Cancel ${orderTypeLabel} ${pendingOrder.direction} order #${pendingOrder.id}?`)) this.cancelPendingOrder(pendingOrder.id); }
+        );
         
         // Make entry line draggable
         const self = this;
@@ -24756,43 +24692,12 @@ class OrderManager {
                 .text(`${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`);
             
             // Close button (removes only SL, not the entire position)
-            const slCloseBtn = chart.svg.append('g')
-                .attr('class', `sl-close-btn sl-${order.id}`)
-                .attr('pointer-events', 'all')
-                .style('cursor', 'pointer');
-            
-            const slCloseBtnBg = slCloseBtn.append('circle')
-                .attr('r', 10)
-                .attr('fill', '#0f172a')
-                .attr('stroke', '#e2e8f0')
-                .attr('stroke-width', 1.2)
-                .style('pointer-events', 'all')
-                .style('cursor', 'pointer');
-            
-            const slCloseBtnText = slCloseBtn.append('text')
-                .attr('fill', '#e2e8f0')
-                .attr('font-size', '14px')
-                .attr('font-weight', '700')
-                .attr('text-anchor', 'middle')
-                .attr('dy', '0.35em')
-                .style('pointer-events', 'none')
-                .text('×');
-            
-            slCloseBtn.on('click', (event) => {
-                event.stopPropagation();
-                event.preventDefault();
-                if (confirm(`Remove Stop Loss from order #${order.id}?`)) {
-                    this.removeStopLoss(order.id);
-                }
-            });
-            
-            slCloseBtn.on('mouseover', () => {
-                slCloseBtnBg.attr('fill', '#f23645');
-                slCloseBtnText.attr('fill', '#ffffff');
-            }).on('mouseout', () => {
-                slCloseBtnBg.attr('fill', '#0f172a');
-                slCloseBtnText.attr('fill', '#e2e8f0');
-            });
+            const slCloseBtn = this._createCloseCircleButton(
+                chart.svg,
+                `sl-close-btn sl-${order.id}`,
+                '#f23645',
+                () => { if (confirm(`Remove Stop Loss from order #${order.id}?`)) this.removeStopLoss(order.id); }
+            );
             
             // Right side price box
             const slPriceBox = chart.svg.append('rect')
@@ -24952,35 +24857,20 @@ class OrderManager {
                     });
 
                     // TP+ split button for multi-TP (adds another target)
-                    const tpMultiSplitBtn = chart.svg.append('g')
-                        .attr('class', `tp-split-btn tp-${order.id} tp-target-${target.id || index}`)
-                        .attr('pointer-events', 'all')
-                        .style('cursor', 'pointer');
-                    const tpMultiSplitBg = tpMultiSplitBtn.append('circle')
-                        .attr('r', 8)
-                        .attr('fill', '#0f172a')
-                        .attr('stroke', '#22c55e').attr('stroke-width', 1.2);
-                    tpMultiSplitBtn.append('text')
-                        .attr('fill', '#22c55e').attr('font-size', '12px').attr('font-weight', '700')
-                        .attr('text-anchor', 'middle').attr('dy', '0.35em')
-                        .style('pointer-events', 'none').text('+');
-                    tpMultiSplitBtn.on('click', (event) => {
-                        event.stopPropagation();
-                        event.preventDefault();
-                        const entry = order.openPrice;
-                        const highestTP = Math.max(...order.tpTargets.filter(t => !t.hit && t.price > 0).map(t => t.price));
-                        const lowestTP = Math.min(...order.tpTargets.filter(t => !t.hit && t.price > 0).map(t => t.price));
-                        const dist = Math.abs(highestTP - entry) || Math.abs(lowestTP - entry);
-                        const newTP = order.type === 'BUY' ? highestTP + dist * 0.3 : lowestTP - dist * 0.3;
-                        this._splitTPAtPrice(order.id, newTP, false);
-                    });
-                    tpMultiSplitBtn.on('mouseover', function() {
-                        tpMultiSplitBg.attr('fill', '#22c55e');
-                        tpMultiSplitBtn.select('text').attr('fill', '#ffffff');
-                    }).on('mouseout', function() {
-                        tpMultiSplitBg.attr('fill', '#0f172a');
-                        tpMultiSplitBtn.select('text').attr('fill', '#22c55e');
-                    });
+                    const tpMultiSplitBtn = this._createSplitPlusButton(
+                        chart.svg,
+                        `tp-split-btn tp-${order.id} tp-target-${target.id || index}`,
+                        '#22c55e',
+                        () => {
+                            const entry = order.openPrice;
+                            const highestTP = Math.max(...order.tpTargets.filter(t => !t.hit && t.price > 0).map(t => t.price));
+                            const lowestTP = Math.min(...order.tpTargets.filter(t => !t.hit && t.price > 0).map(t => t.price));
+                            const dist = Math.abs(highestTP - entry) || Math.abs(lowestTP - entry);
+                            const newTP = order.type === 'BUY' ? highestTP + dist * 0.3 : lowestTP - dist * 0.3;
+                            this._splitTPAtPrice(order.id, newTP, false);
+                        },
+                        8
+                    );
 
                     tpLines.push({ 
                         orderId: order.id,
@@ -25061,74 +24951,26 @@ class OrderManager {
                 .style('cursor', 'ns-resize')
                 .text(`${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
             
-            const tpCloseBtn = chart.svg.append('g')
-                .attr('class', `tp-close-btn tp-${order.id}`)
-                .attr('pointer-events', 'all')
-                .style('cursor', 'pointer');
-            
-            const tpCloseBtnBg = tpCloseBtn.append('circle')
-                .attr('r', 10)
-                .attr('fill', '#0f172a')
-                .attr('stroke', '#e2e8f0')
-                .attr('stroke-width', 1.2)
-                .style('pointer-events', 'all')
-                .style('cursor', 'pointer');
-            
-            const tpCloseBtnText = tpCloseBtn.append('text')
-                .attr('fill', '#e2e8f0')
-                .attr('font-size', '14px')
-                .attr('font-weight', '700')
-                .attr('text-anchor', 'middle')
-                .attr('dy', '0.35em')
-                .style('pointer-events', 'none')
-                .text('×');
-            
-            tpCloseBtn.on('click', (event) => {
-                event.stopPropagation();
-                event.preventDefault();
-                if (confirm(`Remove Take Profit from order #${order.id}?`)) {
-                    this.removeTakeProfit(order.id);
-                }
-            });
-            
-            tpCloseBtn.on('mouseover', function() {
-                tpCloseBtnBg.attr('fill', '#22c55e');
-                tpCloseBtnText.attr('fill', '#ffffff');
-            }).on('mouseout', function() {
-                tpCloseBtnBg.attr('fill', '#0f172a');
-                tpCloseBtnText.attr('fill', '#e2e8f0');
-            });
+            const tpCloseBtn = this._createCloseCircleButton(
+                chart.svg,
+                `tp-close-btn tp-${order.id}`,
+                '#22c55e',
+                () => { if (confirm(`Remove Take Profit from order #${order.id}?`)) this.removeTakeProfit(order.id); }
+            );
 
             // TP+ split button (adds a new TP target)
-            const tpSplitBtn = chart.svg.append('g')
-                .attr('class', `tp-split-btn tp-${order.id}`)
-                .attr('pointer-events', 'all')
-                .style('cursor', 'pointer');
-            const tpSplitBg = tpSplitBtn.append('circle')
-                .attr('r', 10)
-                .attr('fill', '#0f172a')
-                .attr('stroke', '#22c55e')
-                .attr('stroke-width', 1.2);
-            tpSplitBtn.append('text')
-                .attr('fill', '#22c55e').attr('font-size', '14px').attr('font-weight', '700')
-                .attr('text-anchor', 'middle').attr('dy', '0.35em')
-                .style('pointer-events', 'none').text('+');
-            tpSplitBtn.on('click', (event) => {
-                event.stopPropagation();
-                event.preventDefault();
-                const entry = order.openPrice;
-                const tp = order.takeProfit;
-                const dist = Math.abs(tp - entry);
-                const newTP = order.type === 'BUY' ? tp + dist * 0.5 : tp - dist * 0.5;
-                this._splitTPAtPrice(order.id, newTP, false);
-            });
-            tpSplitBtn.on('mouseover', function() {
-                tpSplitBg.attr('fill', '#22c55e');
-                tpSplitBtn.select('text').attr('fill', '#ffffff');
-            }).on('mouseout', function() {
-                tpSplitBg.attr('fill', '#0f172a');
-                tpSplitBtn.select('text').attr('fill', '#22c55e');
-            });
+            const tpSplitBtn = this._createSplitPlusButton(
+                chart.svg,
+                `tp-split-btn tp-${order.id}`,
+                '#22c55e',
+                () => {
+                    const entry = order.openPrice;
+                    const tp = order.takeProfit;
+                    const dist = Math.abs(tp - entry);
+                    const newTP = order.type === 'BUY' ? tp + dist * 0.5 : tp - dist * 0.5;
+                    this._splitTPAtPrice(order.id, newTP, false);
+                }
+            );
             
             // Right side price box (green)
             const tpPriceBox = chart.svg.append('rect')
@@ -28929,6 +28771,164 @@ class OrderManager {
             scaledGroupId: scaledInfo.groupId,
             numberOfEntries: scaledInfo.entries.length
         };
+    }
+
+    // ─── Shared Visual Helpers (eliminate duplicate patterns) ────────────────
+
+    /**
+     * Build a standard circular ×-close button and return the <g> element.
+     * Replaces the repeated circle+text+hover pattern in every draw method.
+     * @param {object} svg - d3 selection to append into
+     * @param {string} cssClass - class string for the <g>
+     * @param {string} hoverColor - fill color on hover (matches line color)
+     * @param {function} onClickFn - called with (event) on click
+     * @returns {object} d3 <g> selection
+     */
+    _createCloseCircleButton(svg, cssClass, hoverColor, onClickFn) {
+        const btn = svg.append('g')
+            .attr('class', cssClass)
+            .attr('pointer-events', 'all')
+            .style('cursor', 'pointer');
+        const bg = btn.append('circle')
+            .attr('r', 10)
+            .attr('fill', '#0f172a')
+            .attr('stroke', '#e2e8f0')
+            .attr('stroke-width', 1.2)
+            .style('pointer-events', 'all')
+            .style('cursor', 'pointer');
+        const txt = btn.append('text')
+            .attr('fill', '#e2e8f0')
+            .attr('font-size', '14px')
+            .attr('font-weight', '700')
+            .attr('text-anchor', 'middle')
+            .attr('dy', '0.35em')
+            .style('pointer-events', 'none')
+            .text('×');
+        btn.on('click', (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+            onClickFn(event);
+        }).on('mouseover', function() {
+            bg.attr('fill', hoverColor);
+            txt.attr('fill', '#ffffff');
+        }).on('mouseout', function() {
+            bg.attr('fill', '#0f172a');
+            txt.attr('fill', '#e2e8f0');
+        });
+        return btn;
+    }
+
+    /**
+     * Build a circular +-split button and return the <g> element.
+     * Replaces the repeated tpSplitBtn/tpMultiSplitBtn pattern.
+     * @param {object} svg - d3 selection
+     * @param {string} cssClass - class string for the <g>
+     * @param {string} color - stroke + text color (green #22c55e)
+     * @param {function} onClickFn - called with (event) on click
+     * @param {number} [r=10] - circle radius (8 for multi-TP small variant)
+     * @returns {object} d3 <g> selection
+     */
+    _createSplitPlusButton(svg, cssClass, color, onClickFn, r = 10) {
+        const btn = svg.append('g')
+            .attr('class', cssClass)
+            .attr('pointer-events', 'all')
+            .style('cursor', 'pointer');
+        const bg = btn.append('circle')
+            .attr('r', r)
+            .attr('fill', '#0f172a')
+            .attr('stroke', color)
+            .attr('stroke-width', 1.2);
+        btn.append('text')
+            .attr('fill', color)
+            .attr('font-size', r >= 10 ? '14px' : '12px')
+            .attr('font-weight', '700')
+            .attr('text-anchor', 'middle')
+            .attr('dy', '0.35em')
+            .style('pointer-events', 'none')
+            .text('+');
+        btn.on('click', (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+            onClickFn(event);
+        }).on('mouseover', function() {
+            bg.attr('fill', color);
+            btn.select('text').attr('fill', '#ffffff');
+        }).on('mouseout', function() {
+            bg.attr('fill', '#0f172a');
+            btn.select('text').attr('fill', color);
+        });
+        return btn;
+    }
+
+    /**
+     * Calculate the breakeven trigger price from breakevenSettings.
+     * Replaces duplicated rr/pips/amount math in updatePreviewLines and drawPendingOrderTargets.
+     * @param {number} entryPrice
+     * @param {number} slPrice
+     * @param {{mode: string, value: number}} beSettings
+     * @param {string} direction - 'BUY' | 'SELL'
+     * @param {number} quantity - lots (needed for amount mode)
+     * @returns {number} beTriggerPrice
+     */
+    _calcBETriggerPrice(entryPrice, slPrice, beSettings, direction, quantity) {
+        const { mode, value } = beSettings;
+        const riskDistance = Math.abs(entryPrice - slPrice);
+        let profitDistance = 0;
+        if (mode === 'rr') {
+            profitDistance = value * riskDistance;
+        } else if (mode === 'pips') {
+            profitDistance = value * (this.pipSize || 0.0001);
+        } else { // amount
+            const profitPips = value / ((quantity || 1) * (this.pipValuePerLot || 10));
+            profitDistance = profitPips * (this.pipSize || 0.0001);
+        }
+        return direction === 'BUY'
+            ? entryPrice + profitDistance
+            : entryPrice - profitDistance;
+    }
+
+    /**
+     * Estimate P&L at a target price, automatically aggregating across split-group legs.
+     * Replaces the 6× duplicated isSplitEntry aggregation guard in drawSLTPLines and drawPendingOrderTargets.
+     * @param {object} order - open position or pending order
+     * @param {number} targetPrice
+     * @param {number} [pct=1] - fraction of quantity (1 = full, target.percentage/100 for multi-TP)
+     * @param {'open'|'pending'} [mode='open']
+     * @returns {number} estimated P&L in account currency
+     */
+    _estimateSplitPnL(order, targetPrice, pct = 1, mode = 'open') {
+        const type = order.type || order.direction;
+        const entryPx = order.openPrice || order.entryPrice;
+        const sym = order.ticker || order.symbol || this._getSymbol();
+        let pnl = this.estimatePnLForPriceLevel(type, entryPx, targetPrice, order.quantity * pct, sym);
+        if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
+            const members = mode === 'open'
+                ? this._getSplitGroupOpenPositions(order)
+                : this._getSplitGroupPendingOrders(order);
+            pnl = members.reduce((sum, m) => {
+                const mType = m.type || m.direction;
+                const mEntry = m.openPrice || m.entryPrice;
+                return sum + this.estimatePnLForPriceLevel(mType, mEntry, targetPrice, m.quantity * pct, sym);
+            }, 0);
+        }
+        return pnl;
+    }
+
+    /**
+     * Get the total quantity across a split-group, or just the order's own quantity.
+     * Replaces the 4× duplicated isSplitEntry reduce in label text builders.
+     * @param {object} order
+     * @param {'open'|'pending'} [mode='open']
+     * @returns {number}
+     */
+    _getSplitGroupTotalQty(order, mode = 'open') {
+        if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
+            const members = mode === 'open'
+                ? this._getSplitGroupOpenPositions(order)
+                : this._getSplitGroupPendingOrders(order);
+            return members.reduce((s, m) => s + (m.quantity || 0), 0);
+        }
+        return order.quantity || 0;
     }
 }
 
