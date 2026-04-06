@@ -14899,24 +14899,34 @@ class OrderManager {
     }
 
     /**
-     * Sum of implied lot sizes across multi-entry levels (matches weighting used for Avg Entry price).
+     * Sum of implied lot sizes per level (same rules as the multi-entry summary row).
+     */
+    _getMultiEntryImpliedTotalLots() {
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const pipSize = this.pipSize || 0.0001;
+        const pipValue = this.pipValuePerLot || 10;
+        const minLotS = this.getMarketConfig()?.minSize ?? 0.01;
+        let totalLots = 0;
+        (this.multiEntryLevels || []).forEach(l => {
+            if (!(l.price > 0)) return;
+            if (!this._multiEntryLevelMeetsMinLot(l, slPrice, pipSize, pipValue, minLotS)) return;
+            const lots = this._calcLevelLotSizeNumeric(l, slPrice, pipSize, pipValue);
+            if (lots > 0) totalLots += lots;
+        });
+        return totalLots;
+    }
+
+    /**
+     * Total lots for Avg Entry badge: implied lots, then synced order qty, then raw level amounts.
      */
     _calcMultiEntryTotalLots() {
         if (!this.multiEntryLevels?.length) {
             return parseFloat(document.getElementById('orderQuantity')?.value || 0) || 0;
         }
-        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
-        const ps = this.pipSize || 0.0001;
-        const pv = this.pipValuePerLot || 10;
-        const minLot = this.getMarketConfig()?.minSize ?? 0.01;
-        let totalLots = 0;
-        for (const l of this.multiEntryLevels) {
-            if (!(l.price > 0)) continue;
-            if (!this._multiEntryLevelMeetsMinLot(l, slPrice, ps, pv, minLot)) continue;
-            const lots = this._calcLevelLotSizeNumeric(l, slPrice, ps, pv);
-            if (lots > 0) totalLots += lots;
-        }
+        let totalLots = this._getMultiEntryImpliedTotalLots();
         if (totalLots > 0) return totalLots;
+        const oq = parseFloat(document.getElementById('orderQuantity')?.value || 0);
+        if (oq > 0) return oq;
         const levels = this.multiEntryLevels.filter(l => l.price > 0 && l.amount > 0);
         return levels.reduce((s, l) => s + (Number(l.amount) || 0), 0);
     }
@@ -15040,7 +15050,7 @@ class OrderManager {
             ld.hitLine.attr('y1', y).attr('y2', y).attr('x2', this.chart.w);
         }
         if (ld.priceText) {
-            const totalLots = parseFloat(document.getElementById('orderQuantity')?.value || 0);
+            const totalLots = this._calcMultiEntryTotalLots();
             ld.priceText.text(this.formatQuantity(totalLots));
         }
         const bbox = ld.labelDimensions;
@@ -15072,22 +15082,10 @@ class OrderManager {
      */
     updateMultiEntrySummary() {
         const avgPrice = this._calcMultiEntryAvgPrice();
-        const totalAmount = this.multiEntryLevels.reduce((s, l) => s + (l.amount || 0), 0);
 
-        // Calculate total lots: sum of each valid level's lotSize (skip invalid levels)
-        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
-        const pipSize = this.pipSize || 0.0001;
-        const pipValue = this.pipValuePerLot || 10;
         const config = this.getMarketConfig();
         const posLabel = config?.positionLabel || 'Lot';
-        const minLotS = config?.minSize ?? 0.01;
-        let totalLots = 0;
-        this.multiEntryLevels.forEach(l => {
-            if (!(l.price > 0)) return;
-            if (!this._multiEntryLevelMeetsMinLot(l, slPrice, pipSize, pipValue, minLotS)) return;
-            const lots = this._calcLevelLotSizeNumeric(l, slPrice, pipSize, pipValue);
-            if (lots > 0) totalLots += lots;
-        });
+        const totalLots = this._getMultiEntryImpliedTotalLots();
 
         const avgEl = document.getElementById('multiEntryAvgPrice');
         const qtyEl = document.getElementById('multiEntryTotalQty');
