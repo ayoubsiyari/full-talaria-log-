@@ -8306,6 +8306,12 @@ class OrderManager {
                             <input type="number" id="trailingActivatePips" value="0.25" min="0.01" step="0.01" class="adv-inline-input">
                             <span class="adv-inline-unit" data-trailing-unit-label>R</span>
                         </div>
+                        <div class="order-adv-card__body" style="margin-top:10px; flex-wrap:wrap;">
+                            <span>Limit</span>
+                            <input type="number" id="trailingLimitUsd" value="0" min="0" step="1" class="adv-inline-input" title="Stop trailing after this much locked-in improvement ($). 0 = no cap">
+                            <span class="adv-inline-unit">$</span>
+                            <span style="font-size:10px; color:#94a3b8; max-width:220px; line-height:1.35;">Cap: trail SL until cumulative locked-in $ reaches this, then freeze</span>
+                        </div>
                         <div id="trailSummaryText" class="order-adv-card__summary"></div>
                     </div>
                     <!-- Hidden elements kept for existing logic -->
@@ -10630,6 +10636,8 @@ class OrderManager {
         if (trActIn) trActIn.oninput = trInUpd;
         if (trStepIn) trStepIn.oninput = trInUpd;
         if (trEveryIn) trEveryIn.oninput = trInUpd;
+        const trLimIn = document.getElementById('trailingLimitUsd');
+        if (trLimIn) trLimIn.oninput = trInUpd;
         
         // Multiple TP toggle (button + hidden checkbox)
         const multipleTPToggle = document.getElementById('multipleTPToggle');
@@ -12348,6 +12356,20 @@ class OrderManager {
         return rd > 1e-12 ? v * rd : 0;
     }
 
+    /**
+     * $ change in exit PnL at stop when SL moves from oldSL to newSL (full position size).
+     * Positive = improvement (better exit if stopped).
+     */
+    _trailingLockedUsdDelta(position, oldSL, newSL) {
+        if (!position || oldSL == null || newSL == null) return 0;
+        const sym = position.ticker || position.symbol || this._getSymbol();
+        const t = position.type || 'BUY';
+        const q = position.quantity || 0;
+        const pnlOld = this.estimatePnLForPriceLevel(t, position.openPrice, oldSL, q, sym);
+        const pnlNew = this.estimatePnLForPriceLevel(t, position.openPrice, newSL, q, sym);
+        return pnlNew - pnlOld;
+    }
+
     _updateTrailingInlineUnits() {
         const mode = this.trailingUnitMode || 'rr';
         const lbl = this._trailingUnitLabel(mode);
@@ -12401,7 +12423,9 @@ class OrderManager {
         const stepPts = pipSz > 0 ? stepDist / pipSz : 0;
 
         const u = this._trailingUnitLabel(unitMode);
-        el.textContent = `Activate @ ${activatePrice.toFixed(precision)} · each step ≈ ${stepPts.toFixed(1)} pts (inputs in ${u})`;
+        const lim = Math.max(0, parseFloat(document.getElementById('trailingLimitUsd')?.value || 0));
+        const limSuffix = lim > 0 ? ` · Limit $${lim.toFixed(0)} locked-in (cumul.) then freeze` : '';
+        el.textContent = `Activate @ ${activatePrice.toFixed(precision)} · each step ≈ ${stepPts.toFixed(1)} pts (inputs in ${u})${limSuffix}`;
     }
 
     /**
@@ -16283,6 +16307,7 @@ class OrderManager {
                 ? entryPrice + activateDist
                 : entryPrice - activateDist;
             
+            const limitUsd = Math.max(0, parseFloat(document.getElementById('trailingLimitUsd')?.value || 0));
             trailingStop = {
                 enabled: true,
                 activated: false,
@@ -16292,7 +16317,10 @@ class OrderManager {
                 stepSize,
                 stepPips: this.pipSize > 0 ? stepSize / this.pipSize : 0,
                 currentStep: 0,
-                originalSL: slPrice
+                originalSL: slPrice,
+                limitUsd: limitUsd > 0 ? limitUsd : 0,
+                cumulativeTrailUsd: 0,
+                limitReached: false
             };
         }
         
@@ -16430,7 +16458,13 @@ class OrderManager {
             };
             const cloneTrailingStop = (ts) => {
                 if (!ts) return ts;
-                return { ...ts, activated: false, currentStep: 0 };
+                return {
+                    ...ts,
+                    activated: false,
+                    currentStep: 0,
+                    cumulativeTrailUsd: 0,
+                    limitReached: false
+                };
             };
 
             const placeMode = this.positionSizeMode || 'risk-usd';
@@ -16848,7 +16882,13 @@ class OrderManager {
                 
                 const cloneTrailingStop = (ts) => {
                     if (!ts) return ts;
-                    return { ...ts, activated: false, currentStep: 0 }; // Clone and reset state
+                    return {
+                        ...ts,
+                        activated: false,
+                        currentStep: 0,
+                        cumulativeTrailUsd: 0,
+                        limitReached: false
+                    };
                 };
                 
                 // Place main entry order (uses main orderType)
@@ -18935,8 +18975,8 @@ class OrderManager {
                         }
                     }
                     
-                    // If activated, apply step-based trailing
-                    if (position.trailingStop.activated) {
+                    // If activated, apply step-based trailing (until optional $ limit reached)
+                    if (position.trailingStop.activated && !position.trailingStop.limitReached) {
                         const comp = this._computeTrailingStepNewSl(
                             'BUY',
                             position.openPrice,
@@ -18961,6 +19001,16 @@ class OrderManager {
                                 position.stopLoss = newSL;
                                 position.trailingStop.currentStep = comp.stepsReached;
                                 this._logSLTPModification(position, 'SL', oldSL, newSL, 'TRAIL');
+                                
+                                const limUsd = Number(position.trailingStop.limitUsd);
+                                if (limUsd > 0) {
+                                    const dUsd = this._trailingLockedUsdDelta(position, oldSL, newSL);
+                                    position.trailingStop.cumulativeTrailUsd = (position.trailingStop.cumulativeTrailUsd || 0) + Math.max(0, dUsd);
+                                    if (position.trailingStop.cumulativeTrailUsd >= limUsd) {
+                                        position.trailingStop.limitReached = true;
+                                        this.showNotification(`Trailing limit $${limUsd.toFixed(0)} reached — SL fixed | #${position.id}`, 'info');
+                                    }
+                                }
                                 
                                 console.log(`   📈 STEP TRAILING SL: ${oldSL.toFixed(5)} → ${newSL.toFixed(5)} (Step ${comp.stepsReached}) for BUY #${position.id}`);
                                 
@@ -19183,7 +19233,7 @@ class OrderManager {
                         }
                     }
                     
-                    if (position.trailingStop.activated) {
+                    if (position.trailingStop.activated && !position.trailingStop.limitReached) {
                         const comp = this._computeTrailingStepNewSl(
                             'SELL',
                             position.openPrice,
@@ -19208,6 +19258,16 @@ class OrderManager {
                                 position.stopLoss = newSL;
                                 position.trailingStop.currentStep = comp.stepsReached;
                                 this._logSLTPModification(position, 'SL', oldSL, newSL, 'TRAIL');
+                                
+                                const limUsd = Number(position.trailingStop.limitUsd);
+                                if (limUsd > 0) {
+                                    const dUsd = this._trailingLockedUsdDelta(position, oldSL, newSL);
+                                    position.trailingStop.cumulativeTrailUsd = (position.trailingStop.cumulativeTrailUsd || 0) + Math.max(0, dUsd);
+                                    if (position.trailingStop.cumulativeTrailUsd >= limUsd) {
+                                        position.trailingStop.limitReached = true;
+                                        this.showNotification(`Trailing limit $${limUsd.toFixed(0)} reached — SL fixed | #${position.id}`, 'info');
+                                    }
+                                }
                                 
                                 console.log(`   📉 STEP TRAILING SL: ${oldSL.toFixed(5)} → ${newSL.toFixed(5)} (Step ${comp.stepsReached}) for SELL #${position.id}`);
                                 
@@ -28390,7 +28450,8 @@ class OrderManager {
                 activateMode: this.trailingActivateMode || 'trail-rr',
                 rrValue: parseFloat(document.getElementById('trailingActivateRR')?.value || 1.5),
                 pipsValue: parseFloat(document.getElementById('trailingActivatePips')?.value || 10),
-                stepSize: parseFloat(document.getElementById('trailingStepSize')?.value || 4)
+                stepSize: parseFloat(document.getElementById('trailingStepSize')?.value || 4),
+                limitUsd: parseFloat(document.getElementById('trailingLimitUsd')?.value || 0)
             },
             multipleTP: {
                 enabled: document.getElementById('multipleTPToggle')?.checked || false,
@@ -28427,6 +28488,8 @@ class OrderManager {
         document.getElementById('trailingActivateRR').value = setting.trailing.rrValue;
         document.getElementById('trailingActivatePips').value = setting.trailing.pipsValue;
         document.getElementById('trailingStepSize').value = setting.trailing.stepSize;
+        const tLim = document.getElementById('trailingLimitUsd');
+        if (tLim) tLim.value = setting.trailing.limitUsd != null ? String(setting.trailing.limitUsd) : '0';
         const tUm = setting.trailing.unitMode
             || (setting.trailing.activateMode === 'trail-pips' ? 'pips' : 'rr');
         this._setTrailingUnitMode(tUm === 'amount' || tUm === 'pips' || tUm === 'rr' ? tUm : 'rr');
@@ -28928,6 +28991,7 @@ class OrderManager {
             ? entryPrice + activateDist
             : entryPrice - activateDist;
         const stepPips = this.pipSize > 0 ? stepSize / this.pipSize : 0;
+        const limitUsd = Math.max(0, parseFloat(document.getElementById('trailingLimitUsd')?.value || 0));
         
         // Initialize trailing state for step-based system with activation
         this.trailingState = {
@@ -28943,7 +29007,10 @@ class OrderManager {
             stepPips: stepPips,
             currentStep: 0,  // Number of steps moved
             orderSide: this.orderSide,
-            lastUpdate: Date.now()
+            lastUpdate: Date.now(),
+            limitUsd: limitUsd > 0 ? limitUsd : 0,
+            cumulativeTrailUsd: 0,
+            limitReached: false
         };
         
         console.log('🎯 Step-based Trailing SL initialized:', {
@@ -29037,7 +29104,7 @@ class OrderManager {
             }
         }
         
-        if (ts.isActive) {
+        if (ts.isActive && !ts.limitReached) {
             const comp = this._computeTrailingStepNewSl(
                 orderSide,
                 entryPrice,
@@ -29060,6 +29127,19 @@ class OrderManager {
                 ts.currentStep = comp.stepsReached;
                 ts.lastUpdate = Date.now();
                 
+                const limUsd = Number(ts.limitUsd || 0);
+                if (limUsd > 0) {
+                    const q = this._getTrailingFormQuantity();
+                    const sym = this._getSymbol();
+                    const dUsd = this.estimatePnLForPriceLevel(orderSide, entryPrice, newSL, q, sym)
+                        - this.estimatePnLForPriceLevel(orderSide, entryPrice, prevSl, q, sym);
+                    ts.cumulativeTrailUsd = (ts.cumulativeTrailUsd || 0) + Math.max(0, dUsd);
+                    if (ts.cumulativeTrailUsd >= limUsd) {
+                        ts.limitReached = true;
+                        this.showNotification(`Trailing limit $${limUsd.toFixed(0)} reached — SL fixed (preview)`, 'info');
+                    }
+                }
+                
                 const slInput = document.getElementById('slPrice');
                 if (slInput) {
                     slInput.value = newSL.toFixed(5);
@@ -29074,6 +29154,8 @@ class OrderManager {
             }
             
             this.updateTrailingStatusDetails(stepsReachedDisplay, profitFromActivationDisplay / this.pipSize, true);
+        } else if (ts.isActive && ts.limitReached) {
+            this.updateTrailingStatusDetails(ts.currentStep || 0, 0, true);
         }
     }
     
@@ -29127,6 +29209,13 @@ class OrderManager {
         
         const { stepPips, activationThreshold, entryPrice, orderSide, unitMode } = this.trailingState;
         const um = unitMode || this.trailingUnitMode || 'rr';
+        
+        if (this.trailingState.limitReached) {
+            const lim = Number(this.trailingState.limitUsd || 0);
+            const cum = Number(this.trailingState.cumulativeTrailUsd || 0);
+            statusDetails.textContent = `Limit hit — SL fixed (~$${cum.toFixed(0)} / $${lim.toFixed(0)} locked-in)`;
+            return;
+        }
         
         if (!isActivated) {
             // Show waiting for activation message
