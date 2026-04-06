@@ -1205,6 +1205,12 @@ class DrawingToolsManager {
             return;
         }
 
+        // Box-select (Ctrl+drag) hijacks mousemove; cancel it when switching to a drawing tool
+        // so magnet (Ctrl) + draw works and previews are not stuck on the selection rectangle.
+        if (this.isRectSelecting) {
+            this.cancelRectangularSelection();
+        }
+
         this.currentTool = toolName;
         this.deselectAll();
         this.drawingState.reset();
@@ -1263,6 +1269,9 @@ class DrawingToolsManager {
      * Clear current tool (cursor mode)
      */
     clearTool(_mirrored = false) {
+        if (this.isRectSelecting) {
+            this.cancelRectangularSelection();
+        }
         this._clearLiveSyncPreview();
         this.currentTool = null;
         this.drawingState.reset();
@@ -1450,6 +1459,10 @@ class DrawingToolsManager {
         // Ignore right-click - handled by contextmenu event
         if (event.button === 2) {
             return;
+        }
+
+        if (this.currentTool && this.isRectSelecting) {
+            this.cancelRectangularSelection();
         }
 
         // First-click draw in multi-panel mode:
@@ -2241,6 +2254,10 @@ class DrawingToolsManager {
             (this.currentTool || this.selectedDrawing || this.isDragging || this.isDrawing || this.isResizing)) {
             this.chart.updateCrosshair(event);
         }
+
+        if (this.currentTool && this.isRectSelecting) {
+            this.cancelRectangularSelection();
+        }
         
         // Handle rectangular selection
         if (this.isRectSelecting) {
@@ -2695,6 +2712,10 @@ class DrawingToolsManager {
         
         // Escape key - cancel current drawing or deselect
         if (event.key === 'Escape') {
+            if (this.isRectSelecting) {
+                this.cancelRectangularSelection();
+                return;
+            }
             if (this.drawingState.isDrawing) {
                 this.cancelDrawing();
             } else {
