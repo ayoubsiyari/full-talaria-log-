@@ -8516,6 +8516,72 @@ class OrderManager {
         ];
     }
 
+    /** True when both multi-entry mode and multi-TP are enabled (order panel). */
+    _previewMultiModesActive() {
+        const mtp = document.getElementById('multipleTPToggle')?.checked;
+        return !!(this.isMultiEntryMode && mtp);
+    }
+
+    /** Pending-style + control: enables multi-entry + multi-TP together (order panel). */
+    _appendPreviewMultiModesActivatorButton(lineData, startX, height) {
+        const self = this;
+        const btnR = 9;
+        const g = lineData.labelGroup.append('g')
+            .attr('class', 'preview-enable-multi-modes-btn')
+            .attr('transform', `translate(${startX}, ${(height - btnR * 2) / 2})`)
+            .style('cursor', 'pointer');
+        const bg = g.append('circle')
+            .attr('r', btnR)
+            .attr('cx', btnR)
+            .attr('cy', btnR)
+            .attr('fill', '#0f172a')
+            .attr('stroke', '#22c55e')
+            .attr('stroke-width', 1.2);
+        g.append('text')
+            .attr('x', btnR)
+            .attr('y', btnR)
+            .attr('dy', '0.35em')
+            .attr('text-anchor', 'middle')
+            .attr('fill', '#22c55e')
+            .attr('font-size', '12px')
+            .attr('font-weight', '700')
+            .text('+');
+        g.on('click', (e) => {
+            e.stopPropagation();
+            self._enableMultiEntryAndMultiTPFromPreview();
+        })
+            .on('mouseenter', () => bg.attr('fill', '#14532d'))
+            .on('mouseleave', () => bg.attr('fill', '#0f172a'));
+    }
+
+    _enableMultiEntryAndMultiTPFromPreview() {
+        const multipleTPToggle = document.getElementById('multipleTPToggle');
+        const multipleTPSettings = document.getElementById('multipleTPSettings');
+        const multiTPBtn = document.getElementById('multiTPBtn');
+        const tpSingleView = document.querySelector('.order-tp-single');
+
+        if (multipleTPToggle && !multipleTPToggle.checked) {
+            multipleTPToggle.checked = true;
+            if (multiTPBtn) {
+                multiTPBtn.textContent = 'Single';
+                multiTPBtn.classList.add('active');
+            }
+            if (multipleTPSettings) multipleTPSettings.classList.remove('is-hidden');
+            if (tpSingleView) tpSingleView.classList.add('is-hidden');
+            this.initializeTPTargets();
+        }
+
+        if (!this.isMultiEntryMode) {
+            this.setEntryMode(true);
+        } else {
+            this.updatePreviewLines();
+            this.calculateAdvancedRiskReward();
+            this.updatePlaceButtonText();
+        }
+
+        this.showNotification('Multi-entry & multi-TP enabled — adjust levels in the order panel.', 'info', 2800);
+    }
+
     renderPreviewLabel(lineData, overrideY = null) {
         if (!lineData || !lineData.labelGroup) return;
 
@@ -8829,6 +8895,20 @@ class OrderManager {
                     event.stopPropagation();
                     self.toggleOrderPanel();
                 });
+        }
+
+        // + enable multi-entry & multi-TP (same as turning both on in the order panel)
+        if (!this._previewMultiModesActive()) {
+            const isMainEntryPreviewLine = !lineData.isBadge && (
+                lineData.label === 'Entry' ||
+                (lineData.label && /^Entry#1(?:$|:)/.test(lineData.label))
+            );
+            const isTpBadgeActivator = lineData.isBadge && lineData.label === 'TP';
+            if (isMainEntryPreviewLine || isSingleTpPreviewLine || isTpBadgeActivator) {
+                const bb = lineData.labelGroup.node().getBBox();
+                const ax = bb.x + bb.width + gap;
+                this._appendPreviewMultiModesActivatorButton(lineData, ax, height);
+            }
         }
 
         lineData.priceText = priceText;
@@ -15707,23 +15787,26 @@ class OrderManager {
         }
         
         // Get trailing stop settings (step-based system with activation)
+        // UI labels use "R" for step + pip-mode activation: distances are multiples of initial risk (|entry−SL|),
+        // not raw pip counts (must match _updateTrailingSummary / initializeTrailingSL).
         const trailingEnabled = document.getElementById('trailingSLToggle')?.checked || false;
         let trailingStop = null;
         if (trailingEnabled) {
-            const stepPips = parseFloat(document.getElementById('trailingStepSize')?.value || 4);
+            const riskDistance = Math.abs(entryPrice - slPrice);
+            const stepR = parseFloat(document.getElementById('trailingStepSize')?.value || 0.5);
+            const stepSize = riskDistance > 0 ? stepR * riskDistance : 0;
             const activateMode = this.trailingActivateMode || 'trail-rr';
             
             // Calculate activation threshold
             let activationThreshold;
             if (activateMode === 'trail-rr') {
                 const activateRR = parseFloat(document.getElementById('trailingActivateRR')?.value || 1);
-                const risk = Math.abs(entryPrice - slPrice);
-                const reward = risk * activateRR;
+                const reward = riskDistance * activateRR;
                 activationThreshold = this.orderSide === 'BUY' ? entryPrice + reward : entryPrice - reward;
             } else {
-                const activatePips = parseFloat(document.getElementById('trailingActivatePips')?.value || 10);
-                const pipDistance = activatePips * this.pipSize;
-                activationThreshold = this.orderSide === 'BUY' ? entryPrice + pipDistance : entryPrice - pipDistance;
+                const activateR = parseFloat(document.getElementById('trailingActivatePips')?.value || 0.25);
+                const dist = riskDistance > 0 ? activateR * riskDistance : 0;
+                activationThreshold = this.orderSide === 'BUY' ? entryPrice + dist : entryPrice - dist;
             }
             
             trailingStop = {
@@ -15731,8 +15814,8 @@ class OrderManager {
                 activated: false,                    // Not activated yet
                 activateMode: activateMode,          // 'trail-rr' or 'trail-pips'
                 activationThreshold: activationThreshold,
-                stepSize: stepPips * this.pipSize,  // Step size in price
-                stepPips: stepPips,                  // Step size in pips
+                stepSize: stepSize,                  // Price distance per step (= stepR × initial risk)
+                stepPips: riskDistance > 0 ? stepSize / this.pipSize : 0, // Pip equivalent (for display / status)
                 currentStep: 0,                      // Number of steps moved
                 originalSL: slPrice                  // Store original SL
             };
@@ -19691,6 +19774,17 @@ class OrderManager {
                 // Update price text element
                 if (extraElements.priceText) {
                     extraElements.priceText.text(self.formatPrice(newPrice));
+                }
+
+                if (lineType === 'sl') {
+                    self._styleOpenSlProfitProtectionVisuals(order, line, {
+                        labelBox: label,
+                        labelText: extraElements.labelText,
+                        pnlBox: extraElements.pnlBox,
+                        pnlText: extraElements.pnlText,
+                        priceBox: extraElements.priceBox,
+                        priceText: extraElements.priceText
+                    });
                 }
                 
                 // SL/TP floating indicators (pips, dollar, R:R) removed — info already on labels
@@ -24398,6 +24492,36 @@ class OrderManager {
         });
     }
 
+    /** BUY: SL above entry locks profit. SELL: SL below entry locks profit. */
+    _isOpenSlProfitProtection(order, slPrice) {
+        if (!order || slPrice == null) return false;
+        const sl = Number(slPrice);
+        const e = Number(order.openPrice);
+        if (!Number.isFinite(sl) || !Number.isFinite(e)) return false;
+        if (order.type === 'BUY') return sl > e;
+        if (order.type === 'SELL') return sl < e;
+        return false;
+    }
+
+    /**
+     * Executed SL line: red when still loss-side, green when stop is past entry (profit lock).
+     * @param {object} els - labelBox, labelText, pnlBox, pnlText, priceBox, priceText (D3 selections)
+     */
+    _styleOpenSlProfitProtectionVisuals(order, line, els) {
+        if (!order) return;
+        const profit = this._isOpenSlProfitProtection(order, order.stopLoss);
+        const green = '#22c55e';
+        const red = '#f23645';
+        const c = profit ? green : red;
+        line?.attr('stroke', c);
+        els.labelBox?.attr('fill', c).attr('stroke', c);
+        els.labelText?.attr('fill', '#ffffff');
+        els.pnlBox?.attr('stroke', c);
+        els.pnlText?.attr('fill', profit ? '#86efac' : '#fca5a5');
+        els.priceBox?.attr('fill', c).attr('stroke', c);
+        els.priceText?.attr('fill', profit ? '#86efac' : '#ffffff');
+    }
+
     /**
      * Draw SL and TP lines on chart
      */
@@ -24534,10 +24658,11 @@ class OrderManager {
                 }
             });
             
-            slCloseBtn.on('mouseover', function() {
-                slCloseBtnBg.attr('fill', '#f23645');
+            slCloseBtn.on('mouseover', () => {
+                const p = this._isOpenSlProfitProtection(order, order.stopLoss);
+                slCloseBtnBg.attr('fill', p ? '#22c55e' : '#f23645');
                 slCloseBtnText.attr('fill', '#ffffff');
-            }).on('mouseout', function() {
+            }).on('mouseout', () => {
                 slCloseBtnBg.attr('fill', '#0f172a');
                 slCloseBtnText.attr('fill', '#e2e8f0');
             });
@@ -24561,6 +24686,15 @@ class OrderManager {
                 .style('cursor', 'ns-resize')
                 .text(this.formatPrice(order.stopLoss));
             
+            this._styleOpenSlProfitProtectionVisuals(order, slLine, {
+                labelBox: slLabelBox,
+                labelText: slLabelText,
+                pnlBox: slPnlBox,
+                pnlText: slPnlText,
+                priceBox: slPriceBox,
+                priceText: slPriceText
+            });
+
             // Make SL line draggable (pass all elements for full drag area)
             this.makeLineDraggable(slLine, slLabelBox, order, 'sl', {
                 labelText: slLabelText,
@@ -25614,13 +25748,26 @@ class OrderManager {
                     
                     closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
                 }
+
+                this._styleOpenSlProfitProtectionVisuals(position, line, {
+                    labelBox,
+                    labelText,
+                    pnlBox,
+                    pnlText,
+                    priceBox,
+                    priceText
+                });
                 
                 yAxisHighlightPrices.sl.add(position.stopLoss);
             });
             
             // Create Y-axis highlights for unique SL prices
             yAxisHighlightPrices.sl.forEach((slPrice) => {
-                this.drawYAxisPriceHighlight(slPrice, '#f23645', 'sl', 0, ch);
+                const pos = this.openPositions.find(
+                    (p) => p.stopLoss != null && Math.abs(p.stopLoss - slPrice) < 1e-8
+                );
+                const hl = pos && this._isOpenSlProfitProtection(pos, pos.stopLoss) ? '#22c55e' : '#f23645';
+                this.drawYAxisPriceHighlight(slPrice, hl, 'sl', 0, ch);
             });
         }
         
@@ -27966,10 +28113,15 @@ class OrderManager {
         const activateMode = this.trailingActivateMode || 'trail-rr';
         let activationThreshold;
         
+        const riskDistance = Math.abs(entryPrice - slPrice);
+        if (riskDistance < 1e-10) {
+            console.warn('⚠️ Entry and SL must differ to compute trailing (R-based) distances');
+            return;
+        }
+
         if (activateMode === 'trail-rr') {
             const activateRR = parseFloat(document.getElementById('trailingActivateRR')?.value || 1);
-            const risk = Math.abs(entryPrice - slPrice);
-            const reward = risk * activateRR;
+            const reward = riskDistance * activateRR;
             
             if (this.orderSide === 'BUY') {
                 activationThreshold = entryPrice + reward;
@@ -27977,20 +28129,20 @@ class OrderManager {
                 activationThreshold = entryPrice - reward;
             }
         } else {
-            // trail-pips mode
-            const activatePips = parseFloat(document.getElementById('trailingActivatePips')?.value || 10);
-            const pipDistance = activatePips * this.pipSize;
+            // trail-pips mode: input is R multiples of initial risk (same unit as step), not literal pips
+            const activateR = parseFloat(document.getElementById('trailingActivatePips')?.value || 0.25);
+            const dist = activateR * riskDistance;
             
             if (this.orderSide === 'BUY') {
-                activationThreshold = entryPrice + pipDistance;
+                activationThreshold = entryPrice + dist;
             } else {
-                activationThreshold = entryPrice - pipDistance;
+                activationThreshold = entryPrice - dist;
             }
         }
         
-        // Get step size in pips
-        const stepPips = parseFloat(document.getElementById('trailingStepSize')?.value || 4);
-        const stepSize = stepPips * this.pipSize;
+        const stepR = parseFloat(document.getElementById('trailingStepSize')?.value || 0.5);
+        const stepSize = stepR * riskDistance;
+        const stepPips = stepSize / this.pipSize;
         
         // Initialize trailing state for step-based system with activation
         this.trailingState = {
@@ -28012,7 +28164,8 @@ class OrderManager {
             entry: entryPrice.toFixed(5),
             initialSL: slPrice.toFixed(5),
             activationThreshold: activationThreshold.toFixed(5),
-            stepSize: `${stepPips} pips`,
+            stepR,
+            stepPipsEquivalent: stepPips.toFixed(2),
             mode: activateMode,
             side: this.orderSide
         });
@@ -28056,23 +28209,28 @@ class OrderManager {
     updateTrailingSL() {
         if (!this.trailingState || !this.chart) return;
         
-        // Get current price from last candle
+        // Match open-position trailing: BUY uses candle HIGH, SELL uses LOW (same as updatePositions).
         const data = this.chart.data;
         if (!data || data.length === 0) return;
         
         const lastCandle = data[data.length - 1];
-        const currentPrice = lastCandle.close;
+        const close = Number.parseFloat(lastCandle.c ?? lastCandle.close);
+        const high = Number.parseFloat(lastCandle.h ?? lastCandle.high);
+        const low = Number.parseFloat(lastCandle.l ?? lastCandle.low);
+        const hasHL = Number.isFinite(high) && Number.isFinite(low);
         
         const { entryPrice, originalSL, currentSL, activationThreshold, stepSize, stepPips, currentStep, orderSide, activated } = this.trailingState;
+        
+        const trailPrice = hasHL ? (orderSide === 'BUY' ? high : low) : close;
         
         // Check if we should activate trailing
         if (!activated) {
             let shouldActivate = false;
             
             if (orderSide === 'BUY') {
-                shouldActivate = currentPrice >= activationThreshold;
+                shouldActivate = trailPrice >= activationThreshold;
             } else {
-                shouldActivate = currentPrice <= activationThreshold;
+                shouldActivate = trailPrice <= activationThreshold;
             }
             
             if (shouldActivate) {
@@ -28081,13 +28239,13 @@ class OrderManager {
                 
                 // Show activation notification
                 this.showNotification('🎯 Trailing SL Activated! Now trails in steps.', 'success');
-                console.log(`✅ Trailing activated! Price: ${currentPrice.toFixed(5)}, Threshold: ${activationThreshold.toFixed(5)}`);
+                console.log(`✅ Trailing activated! Trail price (H/L): ${trailPrice.toFixed(5)}, Threshold: ${activationThreshold.toFixed(5)}`);
                 
                 // Update visual indicator
                 this.updateTrailingIndicator(true);
             } else {
-                // Not activated yet - update waiting status
-                const profitDistance = orderSide === 'BUY' ? currentPrice - entryPrice : entryPrice - currentPrice;
+                // Not activated yet - update waiting status (favorable excursion this bar vs entry)
+                const profitDistance = orderSide === 'BUY' ? trailPrice - entryPrice : entryPrice - trailPrice;
                 this.updateTrailingStatusDetails(0, profitDistance / this.pipSize, false);
                 return;
             }
@@ -28098,9 +28256,9 @@ class OrderManager {
             // Calculate profit from ACTIVATION THRESHOLD (not from entry!)
             let profitFromActivation;
             if (orderSide === 'BUY') {
-                profitFromActivation = currentPrice - activationThreshold;
+                profitFromActivation = trailPrice - activationThreshold;
             } else {
-                profitFromActivation = activationThreshold - currentPrice;
+                profitFromActivation = activationThreshold - trailPrice;
             }
             
             // Calculate how many steps of profit we've reached since activation
@@ -28170,8 +28328,14 @@ class OrderManager {
         } else {
             statusBox.style.display = 'none';
             
-            const stepPips = parseFloat(document.getElementById('trailingStepSize')?.value || 4);
-            hint.textContent = `SL moves up by ${stepPips} pips each time price moves +${stepPips} pips`;
+            const entry = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+            const sl = parseFloat(document.getElementById('slPrice')?.value || 0);
+            const riskDist = Math.abs(entry - sl);
+            const stepR = parseFloat(document.getElementById('trailingStepSize')?.value || 0.5);
+            const stepPipsEq = riskDist > 0 ? (stepR * riskDist) / this.pipSize : 0;
+            hint.textContent = riskDist > 0
+                ? `Each step ≈ ${stepPipsEq.toFixed(1)} pips (${stepR}× risk)`
+                : `Set entry & SL — each step is ${stepR}× initial risk`;
             hint.style.color = '#787b86';
             hint.style.fontWeight = '400';
         }
