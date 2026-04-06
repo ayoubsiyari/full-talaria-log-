@@ -23173,6 +23173,10 @@ class OrderManager {
         if (!chart?.svg) return;
         if (!this._positionTickerMatchesChartSymbol(pendingOrder, chart)) return;
 
+        if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
+            this._syncTpTargetsAcrossSplitGroup(pendingOrder, 'pending');
+        }
+
         // Shared SL/TP for scale-in: only first pending leg draws targets
         if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) > 1) {
             return;
@@ -25254,6 +25258,27 @@ class OrderManager {
     }
 
     /**
+     * Copy multi-TP ladder from primary (or first leg that has targets) onto any split leg missing tpTargets.
+     * @param {'open'|'pending'} mode
+     */
+    _syncTpTargetsAcrossSplitGroup(order, mode = 'open') {
+        if (!order?.isSplitEntry || !order.splitGroupId) return;
+        const members = mode === 'pending'
+            ? this._getSplitGroupPendingOrders(order)
+            : this._getSplitGroupOpenPositions(order);
+        if (members.length < 2) return;
+        const donor = members.find(m => Number(m.splitIndex) === 1 && m.tpTargets?.length)
+            || members.find(m => m.tpTargets?.length);
+        if (!donor?.tpTargets?.length) return;
+        for (const m of members) {
+            if (m.id === donor.id) continue;
+            if (!m.tpTargets || m.tpTargets.length === 0) {
+                m.tpTargets = donor.tpTargets.map(t => ({ ...t }));
+            }
+        }
+    }
+
+    /**
      * Draw SL and TP lines on chart
      */
     drawSLTPLines(order, targetChart = null) {
@@ -25265,6 +25290,10 @@ class OrderManager {
         // One shared SL/TP for the whole scale-in: only the first leg draws chart lines
         if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) > 1) {
             return;
+        }
+
+        if (order.isSplitEntry && order.splitGroupId) {
+            this._syncTpTargetsAcrossSplitGroup(order, 'open');
         }
 
         // Guard: remove any existing SL/TP/BE lines for this order first to prevent duplicates.
@@ -26410,45 +26439,97 @@ class OrderManager {
         // Update TP lines - aggregate P&L for positions at same TP price
         if (tpForChart.length > 0) {
             console.log(`   Updating ${tpForChart.length} TP lines`);
+
+            (this.openPositions || []).forEach(p => {
+                if (p.isSplitEntry && p.splitGroupId && Number(p.splitIndex) === 1) {
+                    this._syncTpTargetsAcrossSplitGroup(p, 'open');
+                }
+            });
             
             // Group by TP price level to aggregate P&L
             const tpPriceGroups = {};
             this.openPositions.forEach(pos => {
                 if (pos.tpTargets && pos.tpTargets.length > 0) {
-                    // Calculate total percentage of non-hit targets for normalization
+                    // Split groups: only primary leg carries chart lines — aggregate lots across all members here
+                    if (pos.isSplitEntry && pos.splitGroupId && Number(pos.splitIndex) !== 1) {
+                        return;
+                    }
+                    const members = pos.isSplitEntry && pos.splitGroupId
+                        ? this._getSplitGroupOpenPositions(pos)
+                        : [pos];
+                    const splitGroupTotalQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
+
                     const nonHitTargets = pos.tpTargets.filter(t => t.price > 0 && t.percentage > 0 && !t.hit);
                     const totalPctRemaining = nonHitTargets.reduce((sum, t) => sum + (t.percentage || 0), 0);
                     
                     pos.tpTargets.forEach((target, idx) => {
                         if (target.hit) return;
+                        if (!(target.price > 0 && target.percentage > 0)) return;
                         const priceKey = target.price.toFixed(5);
-                        // Normalize percentage among remaining non-hit targets
                         const normalizedPct = totalPctRemaining > 0 ? (target.percentage / totalPctRemaining) * 100 : target.percentage;
-                        if (!tpPriceGroups[priceKey]) tpPriceGroups[priceKey] = { positions: [], totalPnL: 0, percentage: target.percentage, normalizedPct: normalizedPct, targetIndex: idx };
-                        
-                        // Calculate this position's P&L for this target using normalized percentage
-                        const targetQuantity = pos.quantity * (normalizedPct / 100);
-                        let priceDiff = pos.type === 'BUY' 
-                            ? target.price - pos.openPrice 
-                            : pos.openPrice - target.price;
-                        const pipsMove = priceDiff / this.pipSize;
-                        const pnl = pipsMove * targetQuantity * this.pipValuePerLot;
-                        
-                        tpPriceGroups[priceKey].totalPnL += pnl;
-                        tpPriceGroups[priceKey].positions.push({ pos, target, pnl });
+
+                        let rowPnL = 0;
+                        for (const m of members) {
+                            const targetQuantity = m.quantity * (normalizedPct / 100);
+                            let priceDiff = m.type === 'BUY'
+                                ? target.price - m.openPrice
+                                : m.openPrice - target.price;
+                            const pipsMove = priceDiff / this.pipSize;
+                            rowPnL += pipsMove * targetQuantity * this.pipValuePerLot;
+                        }
+
+                        if (!tpPriceGroups[priceKey]) {
+                            tpPriceGroups[priceKey] = {
+                                positions: [{ pos, target, pnl: rowPnL }],
+                                totalPnL: rowPnL,
+                                percentage: target.percentage,
+                                normalizedPct,
+                                targetIndex: idx,
+                                splitGroupTotalQty: pos.isSplitEntry && pos.splitGroupId ? splitGroupTotalQty : undefined
+                            };
+                        } else {
+                            tpPriceGroups[priceKey].totalPnL += rowPnL;
+                            tpPriceGroups[priceKey].positions.push({ pos, target, pnl: rowPnL });
+                            if (!tpPriceGroups[priceKey].splitGroupTotalQty && pos.isSplitEntry && pos.splitGroupId) {
+                                tpPriceGroups[priceKey].splitGroupTotalQty = splitGroupTotalQty;
+                            }
+                        }
                     });
                 } else if (pos.takeProfit) {
+                    if (pos.isSplitEntry && pos.splitGroupId && Number(pos.splitIndex) !== 1) {
+                        return;
+                    }
+                    const members = pos.isSplitEntry && pos.splitGroupId
+                        ? this._getSplitGroupOpenPositions(pos)
+                        : [pos];
+                    const splitGroupTotalQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
                     const priceKey = pos.takeProfit.toFixed(5);
-                    if (!tpPriceGroups[priceKey]) tpPriceGroups[priceKey] = { positions: [], totalPnL: 0, percentage: 100, targetIndex: -1 };
-                    
-                    let priceDiff = pos.type === 'BUY' 
-                        ? pos.takeProfit - pos.openPrice 
-                        : pos.openPrice - pos.takeProfit;
-                    const pipsMove = priceDiff / this.pipSize;
-                    const pnl = pipsMove * pos.quantity * this.pipValuePerLot;
-                    
-                    tpPriceGroups[priceKey].totalPnL += pnl;
-                    tpPriceGroups[priceKey].positions.push({ pos, target: null, pnl });
+
+                    let rowPnL = 0;
+                    for (const m of members) {
+                        const tpPx = pos.takeProfit;
+                        let priceDiff = m.type === 'BUY'
+                            ? tpPx - m.openPrice
+                            : m.openPrice - tpPx;
+                        const pipsMove = priceDiff / this.pipSize;
+                        rowPnL += pipsMove * m.quantity * this.pipValuePerLot;
+                    }
+
+                    if (!tpPriceGroups[priceKey]) {
+                        tpPriceGroups[priceKey] = {
+                            positions: [{ pos, target: null, pnl: rowPnL }],
+                            totalPnL: rowPnL,
+                            percentage: 100,
+                            targetIndex: -1,
+                            splitGroupTotalQty: pos.isSplitEntry && pos.splitGroupId ? splitGroupTotalQty : undefined
+                        };
+                    } else {
+                        tpPriceGroups[priceKey].totalPnL += rowPnL;
+                        tpPriceGroups[priceKey].positions.push({ pos, target: null, pnl: rowPnL });
+                        if (!tpPriceGroups[priceKey].splitGroupTotalQty && pos.isSplitEntry && pos.splitGroupId) {
+                            tpPriceGroups[priceKey].splitGroupTotalQty = splitGroupTotalQty;
+                        }
+                    }
                 }
             });
             
@@ -26523,7 +26604,11 @@ class OrderManager {
                         } else {
                             valStr = `${percentage.toFixed(0)}%`;
                         }
-                        const totalQty = groupData ? groupData.positions.reduce((s, p) => s + (p.pos.quantity || 0), 0) : (position.quantity || 0);
+                        // Split-entry: one chart row uses full group lot size (aligned with SL / Avg Entry).
+                        // Multiple unrelated positions at the same TP price still sum per-position qty.
+                        const totalQty = (groupData && groupData.positions.length === 1 && groupData.splitGroupTotalQty != null)
+                            ? groupData.splitGroupTotalQty
+                            : (groupData ? groupData.positions.reduce((s, p) => s + (p.pos.quantity || 0), 0) : (position.quantity || 0));
                         // Use normalized percentage for correct lot calculation after partial closes
                         const normalizedPct = groupData?.normalizedPct ?? percentage;
                         const targetLots = totalQty * (normalizedPct / 100);
@@ -26531,7 +26616,9 @@ class OrderManager {
                             ? `TP${targetIndex + 1} (${valStr}) ${targetLots.toFixed(2)} (${numPositions}×)`
                             : `TP${targetIndex + 1} (${valStr}) ${targetLots.toFixed(2)}`;
                     } else {
-                        const totalTpQty = groupData ? groupData.positions.reduce((s, p) => s + (p.pos.quantity || 0), 0) : (position.quantity || 0);
+                        const totalTpQty = (groupData && groupData.positions.length === 1 && groupData.splitGroupTotalQty != null)
+                            ? groupData.splitGroupTotalQty
+                            : (groupData ? groupData.positions.reduce((s, p) => s + (p.pos.quantity || 0), 0) : (position.quantity || 0));
                         labelStr = numPositions > 1
                             ? `TP (${numPositions}×) ${totalTpQty.toFixed(2)}`
                             : `TP  ${totalTpQty.toFixed(2)}`;
