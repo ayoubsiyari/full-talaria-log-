@@ -170,6 +170,8 @@ class OrderManager {
         /** Trailing SL inline inputs: 'rr' | 'pips' | 'amount' ($ profit at current lot size) */
         this.trailingUnitMode = 'rr';
         this.trailingActivateMode = 'trail-rr';
+        /** Prevents re-entrancy when Auto BE and Trailing SL exclude each other */
+        this._beTrailMutex = false;
         
         // MARKET TYPE SYSTEM - Support for different instrument types
         this.marketType = 'forex'; // Default: forex, futures, crypto, stocks
@@ -10489,9 +10491,11 @@ class OrderManager {
             };
         }
         
-        // Auto breakeven toggle
+        // Auto breakeven toggle (mutually exclusive with Trailing SL)
         const autoBreakevenToggle = document.getElementById('autoBreakevenToggle');
         const breakevenSettings = document.getElementById('breakevenSettings');
+        const trailingSLToggleMutex = document.getElementById('trailingSLToggle');
+        const trailingSLSettingsMutex = document.getElementById('trailingSLSettings');
         if (autoBreakevenToggle && breakevenSettings) {
             const updateBreakevenVisibility = () => {
                 breakevenSettings.classList.toggle('is-hidden', !autoBreakevenToggle.checked);
@@ -10505,7 +10509,23 @@ class OrderManager {
                 this.updatePreviewLines();
                 this._updateBreakevenSummary();
             };
-            autoBreakevenToggle.onchange = updateBreakevenVisibility;
+            autoBreakevenToggle.onchange = () => {
+                if (this._beTrailMutex) {
+                    updateBreakevenVisibility();
+                    return;
+                }
+                if (autoBreakevenToggle.checked && trailingSLToggleMutex?.checked) {
+                    this._beTrailMutex = true;
+                    trailingSLToggleMutex.checked = false;
+                    if (trailingSLSettingsMutex) trailingSLSettingsMutex.classList.add('is-hidden');
+                    this.stopTrailingSL();
+                    this._updateTrailingSummary();
+                    this._beTrailMutex = false;
+                    this.showNotification('Trailing Stop turned off — Breakeven and Trailing cannot both be on.', 'info', 2600);
+                }
+                updateBreakevenVisibility();
+                if (typeof this._checkBreakevenTrailingConflict === 'function') this._checkBreakevenTrailingConflict();
+            };
             updateBreakevenVisibility();
         }
 
@@ -10603,20 +10623,39 @@ class OrderManager {
         });
 
         
-        // Trailing SL toggle
+        // Trailing SL toggle (mutually exclusive with Auto BE)
         const trailingSLToggle = document.getElementById('trailingSLToggle');
         const trailingSLSettings = document.getElementById('trailingSLSettings');
         if (trailingSLToggle && trailingSLSettings) {
             trailingSLToggle.onchange = () => {
+                if (this._beTrailMutex) {
+                    trailingSLSettings.classList.toggle('is-hidden', !trailingSLToggle.checked);
+                    if (trailingSLToggle.checked) {
+                        this.initializeTrailingSL();
+                    } else {
+                        this.stopTrailingSL();
+                    }
+                    this._updateTrailingSummary();
+                    return;
+                }
+                if (trailingSLToggle.checked && autoBreakevenToggle?.checked) {
+                    this._beTrailMutex = true;
+                    autoBreakevenToggle.checked = false;
+                    if (breakevenSettings) breakevenSettings.classList.add('is-hidden');
+                    this.updatePreviewLines();
+                    this._updateBreakevenSummary();
+                    this._beTrailMutex = false;
+                    this.showNotification('Breakeven turned off — use Breakeven or Trailing, not both.', 'info', 2600);
+                }
                 trailingSLSettings.classList.toggle('is-hidden', !trailingSLToggle.checked);
                 
-                // Initialize or stop trailing system
                 if (trailingSLToggle.checked) {
                     this.initializeTrailingSL();
                 } else {
                     this.stopTrailingSL();
                 }
                 this._updateTrailingSummary();
+                if (typeof this._checkBreakevenTrailingConflict === 'function') this._checkBreakevenTrailingConflict();
             };
         }
 
@@ -28468,9 +28507,18 @@ class OrderManager {
      * Apply protection settings
      */
     applyProtectionSettings(setting) {
+        // Breakeven and Trailing are mutually exclusive; if a preset has both, keep Breakeven only
+        const presetBe = !!setting.breakeven?.enabled;
+        const presetTrail = !!setting.trailing?.enabled;
+        let breakevenEnabled = presetBe;
+        let trailingEnabled = presetTrail;
+        if (breakevenEnabled && trailingEnabled) {
+            trailingEnabled = false;
+        }
+
         // Apply breakeven settings
         const beToggle = document.getElementById('autoBreakevenToggle');
-        if (beToggle) beToggle.checked = setting.breakeven.enabled;
+        if (beToggle) beToggle.checked = breakevenEnabled;
         
         this.breakevenMode = setting.breakeven.mode;
         const pipsInput = document.getElementById('breakevenPips');
@@ -28482,7 +28530,7 @@ class OrderManager {
         
         // Apply trailing settings
         const trailToggle = document.getElementById('trailingSLToggle');
-        if (trailToggle) trailToggle.checked = setting.trailing.enabled;
+        if (trailToggle) trailToggle.checked = trailingEnabled;
         
         this.trailingActivateMode = setting.trailing.activateMode || 'trail-rr';
         document.getElementById('trailingActivateRR').value = setting.trailing.rrValue;
@@ -28515,8 +28563,16 @@ class OrderManager {
         // Show/hide settings panels
         const beSettings = document.getElementById('breakevenSettings');
         const trailSettings = document.getElementById('trailingSLSettings');
-        if (beSettings) beSettings.classList.toggle('is-hidden', !setting.breakeven.enabled);
-        if (trailSettings) trailSettings.classList.toggle('is-hidden', !setting.trailing.enabled);
+        if (beSettings) beSettings.classList.toggle('is-hidden', !breakevenEnabled);
+        if (trailSettings) trailSettings.classList.toggle('is-hidden', !trailingEnabled);
+        if (presetBe && presetTrail) {
+            this.stopTrailingSL();
+            this.showNotification('Preset enabled both Breakeven and Trailing — applied Breakeven only.', 'info', 3200);
+        } else if (trailingEnabled) {
+            this.initializeTrailingSL();
+        } else {
+            this.stopTrailingSL();
+        }
         
         // Apply Multiple TP settings
         if (setting.multipleTP) {
