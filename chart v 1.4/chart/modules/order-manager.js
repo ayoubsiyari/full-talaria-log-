@@ -20616,45 +20616,29 @@ class OrderManager {
             if (total !== 100) source.tpTargets[source.tpTargets.length - 1].percentage += (100 - total);
         }
 
-        // Sync across split-group siblings
-        const siblings = isPending
-            ? (source.isSplitEntry && source.splitGroupId ? this._getSplitGroupPendingOrders(source) : [source])
-            : (source.isSplitEntry && source.splitGroupId ? this._getSplitGroupOpenPositions(source) : [source]);
-        for (const sib of siblings) {
-            if (sib.id === source.id) continue;
-            sib.tpTargets = source.tpTargets.map(t => ({ ...t }));
-            sib.takeProfit = 0;
-        }
+        // Per-leg TP: do not copy tpTargets to other split-entry legs — only this order splits.
 
-        // Redraw
+        // Redraw (this order only)
         if (isPending) {
-            for (const sib of siblings) {
-                this.removePendingSLTPLines(sib.id);
-                this.removeMultiTPAvgLine(sib.id);
-            }
+            this.removePendingSLTPLines(source.id);
+            this.removeMultiTPAvgLine(source.id);
             if (source.isSplitEntry && source.splitGroupId) {
                 this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
             }
-            // drawPendingOrderTargets only renders for splitIndex===1,
-            // so find the primary leg of the group.
-            const primaryLeg = source.isSplitEntry && source.splitGroupId
-                ? siblings.find(s => Number(s.splitIndex) === 1) || source
-                : source;
-            this.drawPendingOrderTargets(primaryLeg);
+            this.drawPendingOrderTargets(source);
             if (source.tpTargets.length >= 2) {
-                this.drawMultiTPAvgLine(primaryLeg, 'pending');
+                this.drawMultiTPAvgLine(source, 'pending');
             }
             this.positionPendingOrderTargets();
         } else {
-            for (const sib of siblings) {
-                this.removeSLTPLines(sib.id);
-                this.removeMultiTPAvgLine(sib.id);
+            this.removeSLTPLines(source.id);
+            this.removeMultiTPAvgLine(source.id);
+            if (source.isSplitEntry && source.splitGroupId) {
+                this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
             }
-            for (const sib of siblings) {
-                this.drawSLTPLines(sib);
-                if (sib.tpTargets && sib.tpTargets.length >= 2) {
-                    this.drawMultiTPAvgLine(sib);
-                }
+            this.drawSLTPLines(source);
+            if (source.tpTargets && source.tpTargets.length >= 2) {
+                this.drawMultiTPAvgLine(source);
             }
         }
         this.updateOrderLines();
@@ -20688,48 +20672,29 @@ class OrderManager {
             });
         }
 
-        // Sync across split-group siblings
-        const siblings = isPending
-            ? (source.isSplitEntry && source.splitGroupId ? this._getSplitGroupPendingOrders(source) : [source])
-            : (source.isSplitEntry && source.splitGroupId ? this._getSplitGroupOpenPositions(source) : [source]);
-        for (const sib of siblings) {
-            if (sib.id === source.id) continue;
-            if (source.tpTargets.length > 0) {
-                sib.tpTargets = source.tpTargets.map(t => ({ ...t }));
-                sib.takeProfit = 0;
-            } else {
-                sib.tpTargets = [];
-                sib.takeProfit = source.takeProfit;
-            }
-        }
+        // Per-leg TP: do not mirror deletes/changes to other split-entry legs.
 
-        // Redraw
+        // Redraw (this order only)
         if (isPending) {
-            for (const sib of siblings) {
-                this.removePendingSLTPLines(sib.id);
-                this.removeMultiTPAvgLine(sib.id);
-            }
+            this.removePendingSLTPLines(source.id);
+            this.removeMultiTPAvgLine(source.id);
             if (source.isSplitEntry && source.splitGroupId) {
                 this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
             }
-            const primaryLeg = source.isSplitEntry && source.splitGroupId
-                ? siblings.find(s => Number(s.splitIndex) === 1) || source
-                : source;
-            this.drawPendingOrderTargets(primaryLeg);
+            this.drawPendingOrderTargets(source);
             if (source.tpTargets && source.tpTargets.length >= 2) {
-                this.drawMultiTPAvgLine(primaryLeg, 'pending');
+                this.drawMultiTPAvgLine(source, 'pending');
             }
             this.positionPendingOrderTargets();
         } else {
-            for (const sib of siblings) {
-                this.removeSLTPLines(sib.id);
-                this.removeMultiTPAvgLine(sib.id);
+            this.removeSLTPLines(source.id);
+            this.removeMultiTPAvgLine(source.id);
+            if (source.isSplitEntry && source.splitGroupId) {
+                this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
             }
-            for (const sib of siblings) {
-                this.drawSLTPLines(sib);
-                if (sib.tpTargets && sib.tpTargets.length >= 2) {
-                    this.drawMultiTPAvgLine(sib);
-                }
+            this.drawSLTPLines(source);
+            if (source.tpTargets && source.tpTargets.length >= 2) {
+                this.drawMultiTPAvgLine(source);
             }
         }
         this.updateOrderLines();
@@ -21474,10 +21439,8 @@ class OrderManager {
         const priced = targets.filter(t => t.price > 0);
         if (priced.length < 2) return;
 
-        // For split-entry groups, use the splitGroupId so only ONE avg TP line
-        // is drawn for the entire group (all legs share the same TP targets).
-        const id = mode === 'preview' ? '__preview__'
-            : (order.isSplitEntry && order.splitGroupId ? `splitgrp_${order.splitGroupId}` : order.id);
+        // One weighted Avg TP line per order; split-entry legs can have different tpTargets independently.
+        const id = mode === 'preview' ? '__preview__' : order.id;
         const already = this.multiTPAvgLines.some(g => g.orderId === id);
         if (already) return;
 
@@ -21598,8 +21561,7 @@ class OrderManager {
         const drawnGroups = new Set();
         for (const pos of (this.openPositions || [])) {
             if (pos.tpTargets && pos.tpTargets.length >= 2) {
-                const key = pos.isSplitEntry && pos.splitGroupId
-                    ? `splitgrp_${pos.splitGroupId}` : pos.id;
+                const key = pos.id;
                 if (drawnGroups.has(key)) continue;
                 const already = this.multiTPAvgLines.some(g => g.orderId === key);
                 if (!already) this.drawMultiTPAvgLine(pos, 'open');
@@ -21608,8 +21570,7 @@ class OrderManager {
         }
         for (const po of (this.pendingOrders || [])) {
             if (po.tpTargets && po.tpTargets.length >= 2) {
-                const key = po.isSplitEntry && po.splitGroupId
-                    ? `splitgrp_${po.splitGroupId}` : po.id;
+                const key = po.id;
                 if (drawnGroups.has(key)) continue;
                 const already = this.multiTPAvgLines.some(g => g.orderId === key);
                 if (!already) this.drawMultiTPAvgLine(po, 'pending');
