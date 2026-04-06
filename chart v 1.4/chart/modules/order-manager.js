@@ -20702,6 +20702,28 @@ class OrderManager {
     }
 
     /**
+     * One TP price for a new split leg: weighted avg of set multi-TP targets, else legacy takeProfit.
+     * Entry split does not clone multi-TP rows — only TP+ / _splitTPAtPrice should add targets.
+     */
+    _collapsedTakeProfitForNewSplitLeg(po) {
+        if (po.tpTargets && po.tpTargets.length > 0) {
+            const priced = po.tpTargets.filter(t => (t.price > 0) && !t.hit);
+            if (priced.length > 0) {
+                let wSum = 0;
+                let pctSum = 0;
+                for (const t of priced) {
+                    const p = t.percentage || 0;
+                    wSum += t.price * p;
+                    pctSum += p;
+                }
+                if (pctSum > 0) return wSum / pctSum;
+                return priced[0].price;
+            }
+        }
+        return (po.takeProfit && po.takeProfit > 0) ? po.takeProfit : 0;
+    }
+
+    /**
      * Drag-to-split: split a single pending entry into a split-group
      * with a new entry at the dropped price. Only works for pending orders.
      */
@@ -20724,6 +20746,8 @@ class OrderManager {
         po.quantity = halfQty;
         po.placedQuantity = halfQty;
 
+        const newLegTP = this._collapsedTakeProfitForNewSplitLeg(po);
+
         const newPO = {
             id: this.orderIdCounter++,
             symbol: po.symbol || po.ticker,
@@ -20734,14 +20758,14 @@ class OrderManager {
             entryPrice: price,
             quantity: halfQty,
             placedQuantity: halfQty,
-            takeProfit: po.takeProfit,
+            takeProfit: newLegTP,
             stopLoss: po.stopLoss,
             riskAmount: po.riskAmount ? po.riskAmount / 2 : 0,
             originalRiskAmount: po.originalRiskAmount ? po.originalRiskAmount / 2 : 0,
             autoBreakeven: po.autoBreakeven,
             breakevenSettings: po.breakevenSettings ? { ...po.breakevenSettings } : null,
             trailingStop: po.trailingStop ? { ...po.trailingStop } : null,
-            tpTargets: po.tpTargets ? po.tpTargets.map(t => ({ ...t })) : null,
+            tpTargets: [],
             placedTime: po.placedTime,
             _noFillBeforeTime: po._noFillBeforeTime,
             _noFillBeforeTick: po._noFillBeforeTick,
