@@ -12809,9 +12809,9 @@ class OrderManager {
                 this._drawMultiTPPreviewBadges(entryPrice, unsetTargets);
             }
 
-            // Draw Avg TP line when at least 2 targets have prices set
+            // Draw Avg TP line when at least 1 target has a price set
             const pricedTargets = this.tpTargets.filter(t => t.price > 0);
-            if (pricedTargets.length >= 2) {
+            if (pricedTargets.length >= 1) {
                 this.removeMultiTPAvgLine('__preview__');
                 const previewOrder = {
                     id: '__preview__',
@@ -16557,7 +16557,7 @@ class OrderManager {
                     this._registerSplitTradeGroupEntry(order);
                     this.drawOrderLine(order);
                     this.drawSLTPLines(order);
-                    if (order.tpTargets && order.tpTargets.length >= 2) {
+                    if (order.tpTargets && order.tpTargets.length >= 1) {
                         this.drawMultiTPAvgLine(order);
                     }
                     setTimeout(() => this.drawEntryMarker(order), 100);
@@ -16608,7 +16608,7 @@ class OrderManager {
                     this.removeMultiTPAvgLine(primaryEntry.id);
                     this.removeMultiTPAvgLine(`splitgrp_${splitGroupId}`);
                     this.drawPendingOrderTargets(primaryEntry);
-                    if (primaryEntry.tpTargets && primaryEntry.tpTargets.length >= 2) {
+                    if (primaryEntry.tpTargets && primaryEntry.tpTargets.length >= 1) {
                         this.drawMultiTPAvgLine(primaryEntry, 'pending');
                     }
                     this.positionPendingOrderTargets(this.chart);
@@ -16745,7 +16745,7 @@ class OrderManager {
                 this.removeMultiTPAvgLine(pendingOrder.id);
                 this.drawPendingOrderLine(pendingOrder);
                 this.drawPendingOrderTargets(pendingOrder);
-                if (pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 2) {
+                if (pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 1) {
                     this.drawMultiTPAvgLine(pendingOrder, 'pending');
                 }
 
@@ -17010,7 +17010,7 @@ class OrderManager {
         
         this.drawOrderLine(order);
         this.drawSLTPLines(order);
-        if (order.tpTargets && order.tpTargets.length >= 2) {
+        if (order.tpTargets && order.tpTargets.length >= 1) {
             this.drawMultiTPAvgLine(order);
         }
         
@@ -17121,7 +17121,7 @@ class OrderManager {
         // Draw pending order line and targets
         this.drawPendingOrderLine(pendingOrder);
         this.drawPendingOrderTargets(pendingOrder);
-        if (pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 2) {
+        if (pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 1) {
             this.drawMultiTPAvgLine(pendingOrder, 'pending');
         }
         this.positionPendingOrderTargets();
@@ -17193,7 +17193,7 @@ class OrderManager {
         // Draw pending order line and targets
         this.drawPendingOrderLine(pendingOrder);
         this.drawPendingOrderTargets(pendingOrder);
-        if (pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 2) {
+        if (pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 1) {
             this.drawMultiTPAvgLine(pendingOrder, 'pending');
         }
         this.positionPendingOrderTargets();
@@ -17320,7 +17320,7 @@ class OrderManager {
             // Draw pending order line + targets
             this.drawPendingOrderLine(pendingOrder);
             this.drawPendingOrderTargets(pendingOrder);
-            if (pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 2) {
+            if (pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 1) {
                 this.drawMultiTPAvgLine(pendingOrder, 'pending');
             }
             
@@ -17384,7 +17384,7 @@ class OrderManager {
             if (order.stopLoss || order.takeProfit) {
                 this.drawSLTPLines(order);
             }
-            if (order.tpTargets && order.tpTargets.length >= 2) {
+            if (order.tpTargets && order.tpTargets.length >= 1) {
                 this.drawMultiTPAvgLine(order);
             }
             
@@ -18701,7 +18701,7 @@ class OrderManager {
         this.playOrderSound('pending');
         
         // Draw multi-TP avg line if applicable
-        if (order.tpTargets && order.tpTargets.length >= 2) {
+        if (order.tpTargets && order.tpTargets.length >= 1) {
             this.drawMultiTPAvgLine(order);
         }
 
@@ -20934,7 +20934,7 @@ class OrderManager {
             self.removePendingSLTPLines(primaryLeg.id);
             self.removeMultiTPAvgLine(primaryLeg.id);
             self.drawPendingOrderTargets(primaryLeg);
-            if (primaryLeg.tpTargets && primaryLeg.tpTargets.length >= 2) {
+            if (primaryLeg.tpTargets && primaryLeg.tpTargets.length >= 1) {
                 self.drawMultiTPAvgLine(primaryLeg, 'pending');
             }
             self.positionPendingOrderTargets(ctx);
@@ -21281,7 +21281,7 @@ class OrderManager {
                 this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
             }
             this.drawPendingOrderTargets(source);
-            if (source.tpTargets.length >= 2) {
+            if (source.tpTargets.length >= 1) {
                 this.drawMultiTPAvgLine(source, 'pending');
             }
             this.positionPendingOrderTargets();
@@ -21292,7 +21292,7 @@ class OrderManager {
                 this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
             }
             this.drawSLTPLines(source);
-            if (source.tpTargets && source.tpTargets.length >= 2) {
+            if (source.tpTargets && source.tpTargets.length >= 1) {
                 this.drawMultiTPAvgLine(source);
             }
         }
@@ -21332,23 +21332,8 @@ class OrderManager {
         // Redraw (this order only)
         if (isPending) {
             this.removePendingSLTPLines(source.id);
-            this.removeMultiTPAvgLine(source.id);
-            if (source.isSplitEntry && source.splitGroupId) {
-                this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
-            }
-            this.drawPendingOrderTargets(source);
-            if (source.tpTargets && source.tpTargets.length >= 2) {
-                this.drawMultiTPAvgLine(source, 'pending');
-            }
-            this.positionPendingOrderTargets();
-        } else {
-            this.removeSLTPLines(source.id);
-            this.removeMultiTPAvgLine(source.id);
-            if (source.isSplitEntry && source.splitGroupId) {
-                this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
-            }
             this.drawSLTPLines(source);
-            if (source.tpTargets && source.tpTargets.length >= 2) {
+            if (source.tpTargets && source.tpTargets.length >= 1) {
                 this.drawMultiTPAvgLine(source);
             }
         }
@@ -21456,7 +21441,7 @@ class OrderManager {
         this.drawPendingOrderLine(po);
         this.drawPendingOrderLine(newPO);
         this.drawPendingOrderTargets(po);
-        if (po.tpTargets && po.tpTargets.length >= 2) {
+        if (po.tpTargets && po.tpTargets.length >= 1) {
             this.drawMultiTPAvgLine(po, 'pending');
         }
         this.positionPendingOrderTargets();
@@ -22087,7 +22072,7 @@ class OrderManager {
 
         const targets = order.tpTargets || [];
         const priced = targets.filter(t => t.price > 0);
-        if (priced.length < 2) return;
+        if (priced.length < 1) return;
 
         // One weighted Avg TP line per order; split-entry legs can have different tpTargets independently.
         const id = mode === 'preview' ? '__preview__' : order.id;
@@ -22097,10 +22082,21 @@ class OrderManager {
         const accent = '#ca8a04';
         const yScale = chart.scales?.yScale;
 
+        // Use effective (lot-proportional) percentages for correct weighting.
+        // For preview mode call _computeEffectiveTPPercentages so lots/amount modes work correctly.
+        let weights;
+        if (mode === 'preview') {
+            const qty = order.quantity || parseFloat(document.getElementById('orderQuantity')?.value) || 1;
+            const entry = order.entryPrice || parseFloat(document.getElementById('orderEntryPrice')?.value) || 0;
+            weights = this._computeEffectiveTPPercentages(entry, qty, order.type || this.orderSide || 'BUY');
+        } else {
+            weights = priced.map(t => t.percentage || 0);
+        }
         let wSum = 0, pctSum = 0;
-        for (const t of priced) {
-            wSum += t.price * (t.percentage || 0);
-            pctSum += t.percentage || 0;
+        for (let i = 0; i < priced.length; i++) {
+            const w = weights[i] || 0;
+            wSum += priced[i].price * w;
+            pctSum += w;
         }
         const avgTP = pctSum > 0 ? wSum / pctSum : priced[0].price;
         const y = yScale ? yScale(avgTP) : 100;
@@ -22210,7 +22206,7 @@ class OrderManager {
     _rebuildMultiTPAvgLines() {
         const drawnGroups = new Set();
         for (const pos of (this.openPositions || [])) {
-            if (pos.tpTargets && pos.tpTargets.length >= 2) {
+            if (pos.tpTargets && pos.tpTargets.length >= 1) {
                 const key = pos.id;
                 if (drawnGroups.has(key)) continue;
                 const already = this.multiTPAvgLines.some(g => g.orderId === key);
@@ -22219,7 +22215,7 @@ class OrderManager {
             }
         }
         for (const po of (this.pendingOrders || [])) {
-            if (po.tpTargets && po.tpTargets.length >= 2) {
+            if (po.tpTargets && po.tpTargets.length >= 1) {
                 const key = po.id;
                 if (drawnGroups.has(key)) continue;
                 const already = this.multiTPAvgLines.some(g => g.orderId === key);
@@ -22317,7 +22313,7 @@ class OrderManager {
             } else if (g.mode === 'preview') {
                 targets = this.tpTargets || [];
                 const priced = targets.filter(t => t.price > 0);
-                if (priced.length < 2) { toRemove.push(g.orderId); continue; }
+                if (priced.length < 1) { toRemove.push(g.orderId); continue; }
                 targets = priced;
                 qty = parseFloat(document.getElementById('orderQuantity')?.value) || 0;
                 entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value) || 0;
@@ -22327,14 +22323,22 @@ class OrderManager {
             if (!targets) continue;
 
             const priced = targets.filter(t => t.price > 0 && !t.hit);
-            if (priced.length < 2) {
+            if (priced.length < 1) {
                 toRemove.push(g.orderId);
                 continue;
             }
+            // Use effective lot-proportional weights for correct weighted average.
+            let weights2;
+            if (g.mode === 'preview') {
+                weights2 = this._computeEffectiveTPPercentages(entryPrice, qty, side);
+            } else {
+                weights2 = priced.map(t => t.percentage || 0);
+            }
             let wSum = 0, pctSum = 0;
-            for (const t of priced) {
-                wSum += t.price * (t.percentage || 0);
-                pctSum += t.percentage || 0;
+            for (let i = 0; i < priced.length; i++) {
+                const w = weights2[i] || 0;
+                wSum += priced[i].price * w;
+                pctSum += w;
             }
             const avgTP = pctSum > 0 ? wSum / pctSum : g.avgTP;
             g.avgTP = avgTP;
@@ -22939,7 +22943,7 @@ class OrderManager {
                 self.removePendingSLTPLines(pendingOrder.id);
                 self.removeMultiTPAvgLine(pendingOrder.id);
                 self.drawPendingOrderTargets(pendingOrder);
-                if (pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 2) {
+                if (pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 1) {
                     self.drawMultiTPAvgLine(pendingOrder, 'pending');
                 }
                 self._updateSplitGroupAvgLines(chart);
@@ -23562,7 +23566,7 @@ class OrderManager {
                     self._schedulePendingOrdersPanelRefresh();
                 }
                 self._drawExecutedOrderConnectors(ch);
-                if (target.type === 'TP' && pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 2) {
+                if (target.type === 'TP' && pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 1) {
                     if (!avgFrameId) {
                         avgFrameId = requestAnimationFrame(() => {
                             self._updateMultiTPAvgLines(ch);
@@ -23640,7 +23644,7 @@ class OrderManager {
                 self.removePendingSLTPLines(pendingOrder.id);
                 self.removeMultiTPAvgLine(pendingOrder.id);
                 self.drawPendingOrderTargets(pendingOrder);
-                if (pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 2) {
+                if (pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 1) {
                     self.drawMultiTPAvgLine(pendingOrder, 'pending');
                 }
                 if (typeof self.updatePositionsPanel === 'function') self.updatePositionsPanel();
@@ -23848,7 +23852,7 @@ class OrderManager {
                 // --- Step 4: Recreate targets & avg TP from scratch ---
                 const newPrimaryOrder = remainingSiblings.find(s => Number(s.splitIndex) === 1) || remainingSiblings[0];
                 this.drawPendingOrderTargets(newPrimaryOrder);
-                if (newPrimaryOrder.tpTargets && newPrimaryOrder.tpTargets.length >= 2) {
+                if (newPrimaryOrder.tpTargets && newPrimaryOrder.tpTargets.length >= 1) {
                     this.drawMultiTPAvgLine(newPrimaryOrder, 'pending');
                 }
 
@@ -25844,7 +25848,7 @@ class OrderManager {
                     try {
                         this.removePendingSLTPLines(po.id);
                         this.drawPendingOrderTargets(po);
-                        if (po.tpTargets && po.tpTargets.length >= 2) {
+                        if (po.tpTargets && po.tpTargets.length >= 1) {
                             this.removeMultiTPAvgLine(po.id);
                             this.drawMultiTPAvgLine(po, 'pending');
                         }
@@ -26992,7 +26996,7 @@ class OrderManager {
         for (const pos of this.openPositions) {
             if (!this._positionTickerMatchesChartSymbol(pos, ch)) continue;
             if (pos.isSplitEntry) continue;
-            const hasMultiTP = pos.tpTargets && pos.tpTargets.length >= 2;
+            const hasMultiTP = pos.tpTargets && pos.tpTargets.length >= 1;
             const tpPx = pos.takeProfit || 0;
             const slPx = pos.stopLoss || 0;
             if (tpPx <= 0 && slPx <= 0 && !hasMultiTP) continue;
@@ -27044,7 +27048,7 @@ class OrderManager {
 
         for (const po of this.pendingOrders) {
             if (!this._positionTickerMatchesChartSymbol(po, ch)) continue;
-            const hasMultiTP = po.tpTargets && po.tpTargets.length >= 2;
+            const hasMultiTP = po.tpTargets && po.tpTargets.length >= 1;
             const tpPx = po.takeProfit || 0;
             const slPx = po.stopLoss || 0;
             if (tpPx <= 0 && slPx <= 0 && !hasMultiTP) continue;
