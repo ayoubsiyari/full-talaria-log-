@@ -13823,6 +13823,11 @@ class Chart {
                 return;
             }
             
+            // SKIP if DrawingToolsManager has an active tool or is mid-drawing
+            if (this.drawingManager && (this.drawingManager.currentTool || this.drawingManager.drawingState?.isDrawing)) {
+                return;
+            }
+            
             const [x, y] = d3.pointer(event);
             
             // Ensure we have valid scales before proceeding
