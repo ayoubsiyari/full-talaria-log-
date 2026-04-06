@@ -25951,17 +25951,26 @@ class OrderManager {
 
                 console.log(`   ✅ ${isPending ? 'Pending' : 'Active'} Order #${orderId}: price=${price.toFixed(5)}, y=${y.toFixed(2)}, width=${ch.w}`);
 
-                line
-                    .attr('x1', 0)
-                    .attr('x2', ch.w)
-                    .attr('y1', y)
-                    .attr('y2', y);
-                if (dragHitLine) {
-                    dragHitLine
+                // Pending entry drag: drawPendingOrderLine's handler owns line, label box, and close btn layout.
+                // updateOrderLines used to overwrite them every frame (different X math) → snap / stuck y-axis feel.
+                const skipPendingEntryGeom = isPending
+                    && this._isDraggingOrderLine
+                    && this._draggingPendingOrderIds
+                    && this._draggingPendingOrderIds.has(orderId);
+
+                if (!skipPendingEntryGeom) {
+                    line
                         .attr('x1', 0)
                         .attr('x2', ch.w)
                         .attr('y1', y)
                         .attr('y2', y);
+                    if (dragHitLine) {
+                        dragHitLine
+                            .attr('x1', 0)
+                            .attr('x2', ch.w)
+                            .attr('y1', y)
+                            .attr('y2', y);
+                    }
                 }
 
                 if (priceBox) priceBox.style('display', 'none');
@@ -25985,7 +25994,7 @@ class OrderManager {
                 if (isPending && pnlBox) pnlBox.style('display', 'none');
                 if (isPending && pnlText) pnlText.style('display', 'none');
 
-                if (labelText && closeBtn && labelBox) {
+                if (!skipPendingEntryGeom && labelText && closeBtn && labelBox) {
                     const boxH = 18;
                     const boxY = y - boxH / 2;
                     const gap = 4;
