@@ -9416,7 +9416,17 @@ class OrderManager {
             }
             x = this.chart.w - maxW - pad;
         }
-        
+
+        // Keep badge right edges left of the y-axis price pills (same inset family as pending/open labels).
+        if (lineData.isBadge && this.chart?.w) {
+            const clusterRight = this._getOrderLabelClusterRightEdgeX(this.chart);
+            const minPad = 8;
+            const bw = bbox.width || lineData.labelDimensions?.width || 0;
+            if (bw > 0 && x + bw > clusterRight - minPad) {
+                x = Math.max(0, clusterRight - minPad - bw);
+            }
+        }
+
         let yPixel;
         if (overrideY !== null && overrideY !== undefined) {
             yPixel = overrideY;
@@ -9426,7 +9436,8 @@ class OrderManager {
             yPixel = 0;
         }
 
-        const translateY = yPixel - bbox.height / 2;
+        const labelH = bbox.height || lineData.labelGroup.node()?.getBBox?.()?.height || 0;
+        const translateY = yPixel - labelH / 2;
         lineData.labelGroup.attr('transform', `translate(${x}, ${translateY})`);
     }
 
@@ -12428,8 +12439,12 @@ class OrderManager {
                 return;
             }
 
-            const bbox = lineData.labelDimensions;
-            const height = bbox?.height || 0;
+            let height = lineData.labelDimensions?.height || 0;
+            if (!height && lineData.labelGroup.node()?.getBBox) {
+                const bb = lineData.labelGroup.node().getBBox();
+                height = bb.height || 0;
+                lineData.labelDimensions = { width: bb.width, height: bb.height };
+            }
             const currentTransform = lineData.labelGroup.attr('transform');
             const currentX = parseFloat(currentTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
             lineData.labelGroup.attr('transform', `translate(${currentX}, ${yPixel - height / 2})`);
@@ -13223,8 +13238,12 @@ class OrderManager {
                 }
                 
                 // Update label Y position without recalculating X (prevents horizontal jumping)
+                const liveBbox = lineData.labelGroup.node()?.getBBox?.();
+                if (liveBbox && (liveBbox.height > 0 || liveBbox.width > 0)) {
+                    lineData.labelDimensions = { width: liveBbox.width, height: liveBbox.height };
+                }
                 const bbox = lineData.labelDimensions;
-                const height = bbox?.height || 0;
+                const height = bbox?.height || liveBbox?.height || 0;
                 const currentTransform = lineData.labelGroup.attr('transform');
                 const currentX = parseFloat(currentTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
                 const translateY = clampedY - height / 2;
@@ -13460,32 +13479,26 @@ class OrderManager {
                         }
                     }
                     
-                    // Update TP/SL badge positions if they haven't been manually positioned
-                    // Only update Y position during drag to prevent horizontal jumping
-                    if (self.previewLines.tp && !self.tpManuallyPositioned && self.previewLines.tp.isBadge) {
+                    // Reflow TP/SL badges: TP can track entry price when not manually positioned; SL stays on the SL line.
+                    if (self._useEntryAnchoredTpSlBadges()) {
                         const pricedLv = (self.multiEntryLevels || []).filter(l => l.price > 0);
-                        // Multi-entry: TP badge Y follows Avg Entry via _syncAvgEntryPreviewLineFromLevels (called above)
-                        if (!(self.isMultiEntryMode && pricedLv.length > 1)) {
-                            // Move the TP badge visually with entry but do NOT write #tpPrice —
-                            // writing the input made it look like TP was "set" to the entry price.
-                            self.previewLines.tp.price = newPrice;
-                            const tpBbox = self.previewLines.tp.labelDimensions;
-                            const tpHeight = tpBbox?.height || 0;
-                            const tpTransform = self.previewLines.tp.labelGroup.attr('transform');
-                            const tpX = parseFloat(tpTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                            const tpY = clampedY - tpHeight / 2;
-                            self.previewLines.tp.labelGroup.attr('transform', `translate(${tpX}, ${tpY})`);
+                        const tp = self.previewLines.tp;
+                        if (tp && !self.tpManuallyPositioned && tp.isBadge && tp.labelGroup) {
+                            if (!(self.isMultiEntryMode && pricedLv.length > 1)) {
+                                tp.price = newPrice;
+                                const tpY = self.chart.scales.yScale(tp.price);
+                                self.positionPreviewLabel(tp, tpY);
+                            }
                         }
-                    }
-                    if (self.previewLines.sl && !self.slManuallyPositioned && self.previewLines.sl.isBadge) {
-                        // Move the SL badge visually with entry but do NOT write #slPrice —
-                        // writing the input made it look like SL was "set" to the entry price.
-                        const slBbox = self.previewLines.sl.labelDimensions;
-                        const slHeight = slBbox?.height || 0;
-                        const slTransform = self.previewLines.sl.labelGroup.attr('transform');
-                        const slX = parseFloat(slTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                        const slY = clampedY - slHeight / 2;
-                        self.previewLines.sl.labelGroup.attr('transform', `translate(${slX}, ${slY})`);
+                        const sl = self.previewLines.sl;
+                        if (sl?.isBadge && sl.labelGroup) {
+                            const slP = parseFloat(document.getElementById('slPrice')?.value || 0) || sl.price;
+                            if (slP > 0) {
+                                sl.price = slP;
+                                const slY = self.chart.scales.yScale(slP);
+                                self.positionPreviewLabel(sl, slY);
+                            }
+                        }
                     }
 
                     // Move multi-TP badges with entry during drag (horizontal fan)
