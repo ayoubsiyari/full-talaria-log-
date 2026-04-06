@@ -122,6 +122,13 @@ class OrderManager {
         // SPLIT ENTRY TRACKING (for split entries placed at once)
         this.splitTrades = new Map(); // Map of splitGroupId -> {entries: [], status, totalPnL, ...}
         
+        // Order overlay: shared colors / hit strips (stroke colors still set in JS where needed)
+        this.ORDER_LINE_COLOR_BUY = '#2962ff';
+        this.ORDER_LINE_COLOR_SELL = '#f23645';
+        this.HIT_WIDTH_PREVIEW = 20;
+        this.HIT_WIDTH_PENDING = 14;
+        this.HIT_WIDTH_OPEN = 16;
+
         // Order visualization
         this.orderLines = [];
         this.splitGroupAvgLines = [];
@@ -821,6 +828,64 @@ class OrderManager {
     }
 
     /**
+     * Weighted average entry for split groups (milestone §2.2 average_entry); else this leg's open.
+     */
+    _getBreakevenReferencePrice(position) {
+        if (!position) return NaN;
+        if (!position.splitGroupId || !position.isSplitEntry) {
+            return Number.parseFloat(position.openPrice);
+        }
+        const legs = this._getSplitGroupOpenPositions(position);
+        if (!legs.length) return Number.parseFloat(position.openPrice);
+        let totalQty = 0;
+        let sum = 0;
+        for (let i = 0; i < legs.length; i++) {
+            const q = Number.parseFloat(legs[i].quantity) || 0;
+            const px = Number.parseFloat(legs[i].openPrice);
+            if (q > 0 && Number.isFinite(px)) {
+                totalQty += q;
+                sum += px * q;
+            }
+        }
+        return totalQty > 0 ? sum / totalQty : Number.parseFloat(position.openPrice);
+    }
+
+    /** Width reserved for the chart's right (price) axis — matches `chart.margin.r` when set. */
+    _getChartRightAxisWidth(chart) {
+        const ch = chart || this.chart;
+        const r = Number(ch?.margin?.r);
+        return Number.isFinite(r) && r > 0 ? r : 70;
+    }
+
+    /** Gap (px) from the inner edge of the price axis band to the right edge of the order label cluster. */
+    _getOrderLabelAxisGapPx() {
+        return 30;
+    }
+
+    /** Offset (px) from label cluster right edge to the close-button center (pending entry uses this). */
+    _getOrderCloseBtnCenterOffsetPx() {
+        return 15;
+    }
+
+    /** X of the right edge of the primary label block (flush with pending `labelBox` right edge). */
+    _getOrderLabelClusterRightEdgeX(chart) {
+        const ch = chart || this.chart;
+        const w = Number(ch?.w);
+        if (!Number.isFinite(w)) return 0;
+        return w - this._getChartRightAxisWidth(ch) - this._getOrderLabelAxisGapPx();
+    }
+
+    /** Inset from chart right to label cluster right (= axis width + gap). */
+    _getOrderLabelRightInsetPx(chart) {
+        return this._getChartRightAxisWidth(chart) + this._getOrderLabelAxisGapPx();
+    }
+
+    /** X position of the order close button center (open / pending / split member rows). */
+    _getOrderOverlayCloseBtnCenterX(chart) {
+        return this._getOrderLabelClusterRightEdgeX(chart) + this._getOrderCloseBtnCenterOffsetPx();
+    }
+
+    /**
      * SL/TP vs that instrument's bar high/low while the main chart is on another pair (milestone 8.2).
      * Does not use beJustTriggered — that flag is tied to the visible chart candle.
      */
@@ -836,6 +901,15 @@ class OrderManager {
 
         if (isBuy) {
             if (position.tpTargets && position.tpTargets.length > 0) {
+                // Milestone §1.3 / matrix #16: SL before TP (same bar — conservative)
+                const sl = Number.parseFloat(position.stopLoss);
+                if (Number.isFinite(sl) && low <= sl) {
+                    const fillPx = hasOpen
+                        ? this._stopLossFillPrice(sl, bgOpen, high, low, true)
+                        : (Number.isFinite(low) ? Math.min(sl, low) : sl);
+                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL', bgCloseTime: barTime });
+                    return;
+                }
                 // BUY bg: sort ascending (closest-first)
                 const _bgBuyTpSorted = [...position.tpTargets].sort((a, b) => a.price - b.price);
                 _bgBuyTpSorted.forEach((target, index) => {
@@ -857,13 +931,6 @@ class OrderManager {
                         bgCloseTime: barTime
                     });
                 });
-                const sl = Number.parseFloat(position.stopLoss);
-                if (Number.isFinite(sl) && low <= sl) {
-                    const fillPx = hasOpen
-                        ? this._stopLossFillPrice(sl, bgOpen, high, low, true)
-                        : (Number.isFinite(low) ? Math.min(sl, low) : sl);
-                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL', bgCloseTime: barTime });
-                }
             } else {
                 const sl = Number.parseFloat(position.stopLoss);
                 if (Number.isFinite(sl) && low <= sl) {
@@ -881,6 +948,14 @@ class OrderManager {
             }
         } else {
             if (position.tpTargets && position.tpTargets.length > 0) {
+                const sl = Number.parseFloat(position.stopLoss);
+                if (Number.isFinite(sl) && high >= sl) {
+                    const fillPx = hasOpen
+                        ? this._stopLossFillPrice(sl, bgOpen, high, low, false)
+                        : (Number.isFinite(high) ? Math.max(sl, high) : sl);
+                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL', bgCloseTime: barTime });
+                    return;
+                }
                 // SELL bg: sort descending (closest-first)
                 const _bgSellTpSorted = [...position.tpTargets].sort((a, b) => b.price - a.price);
                 _bgSellTpSorted.forEach((target, index) => {
@@ -902,13 +977,6 @@ class OrderManager {
                         bgCloseTime: barTime
                     });
                 });
-                const sl = Number.parseFloat(position.stopLoss);
-                if (Number.isFinite(sl) && high >= sl) {
-                    const fillPx = hasOpen
-                        ? this._stopLossFillPrice(sl, bgOpen, high, low, false)
-                        : (Number.isFinite(high) ? Math.max(sl, high) : sl);
-                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL', bgCloseTime: barTime });
-                }
             } else {
                 const sl = Number.parseFloat(position.stopLoss);
                 if (Number.isFinite(sl) && high >= sl) {
@@ -8276,6 +8344,9 @@ class OrderManager {
                             <span>every</span>
                             <input type="number" id="trailingActivatePips" value="0.25" min="0.01" step="0.01" class="adv-inline-input">
                             <span class="adv-inline-unit">R</span>
+                            <span title="Milestone 2.3: SL trails behind extreme by this many pips. 0 = use step-based trailing above.">pip trail</span>
+                            <input type="number" id="trailingDistancePips" value="0" min="0" step="1" class="adv-inline-input" title="0 = step mode; &gt;0 = pip-distance ratchet">
+                            <span class="adv-inline-unit">pips</span>
                         </div>
                         <div id="trailSummaryText" class="order-adv-card__summary"></div>
                     </div>
@@ -9275,7 +9346,6 @@ class OrderManager {
         let x;
         if (lineData.isBadge) {
             const gap = 8;
-            const rightMargin = 65;
 
             const mtpBadges = this.previewLines?.multiTPBadges || [];
             let tpWidth;
@@ -9286,7 +9356,8 @@ class OrderManager {
             }
 
             // Base X for the frontmost TP badge (TP1, offset=0) — fallback when not entry-anchored
-            const tpBaseX = this.chart.w - rightMargin - tpWidth - gap;
+            const clusterRight = this._getOrderLabelClusterRightEdgeX(this.chart);
+            const tpBaseX = clusterRight - tpWidth;
 
             let placed = false;
             if (lineData.isMultiTPBadge) {
@@ -9325,7 +9396,7 @@ class OrderManager {
                 }
             }
         } else {
-            const pad = 175;
+            const pad = this._getOrderLabelRightInsetPx(this.chart);
             // Align all non-badge labels to the same left-edge X by using the widest label's width
             let maxW = bbox.width;
             const keysToCheck = ['entry', 'tp', 'sl', 'avgEntry'];
@@ -10616,6 +10687,8 @@ class OrderManager {
         if (trActIn) trActIn.oninput = () => this._updateTrailingSummary();
         if (trStepIn) trStepIn.oninput = () => this._updateTrailingSummary();
         if (trEveryIn) trEveryIn.oninput = () => this._updateTrailingSummary();
+        const trDistPipsIn = document.getElementById('trailingDistancePips');
+        if (trDistPipsIn) trDistPipsIn.oninput = () => this._updateTrailingSummary();
         
         // Multiple TP toggle (button + hidden checkbox)
         const multipleTPToggle = document.getElementById('multipleTPToggle');
@@ -12311,6 +12384,11 @@ class OrderManager {
 
         const activateDist = activateR * riskDist;
         const activatePrice = isBuy ? entry + activateDist : entry - activateDist;
+        const pipDist = parseFloat(document.getElementById('trailingDistancePips')?.value || '0');
+        if (Number.isFinite(pipDist) && pipDist > 0) {
+            el.textContent = `At ${activatePrice.toFixed(precision)} pip-trail ${pipDist} pips behind extreme (milestone 2.3)`;
+            return;
+        }
         const trailPts = (trailR * riskDist) / this.pipSize;
         const stepPts = (stepR * riskDist) / this.pipSize;
 
@@ -12361,7 +12439,7 @@ class OrderManager {
             if (!lineData || !lineData.yAxisHighlight) return;
             const rect = lineData.yAxisHighlight.select('rect');
             const highlightHeight = parseFloat(rect.attr('height')) || 24;
-            const rightMargin = this.chart.margin?.r || 70;
+            const rightMargin = this._getChartRightAxisWidth(this.chart);
             const x = this.chart.w - rightMargin + 2;
             lineData.yAxisHighlight.attr('transform', `translate(${x}, ${yPixel - highlightHeight / 2})`);
         };
@@ -12653,7 +12731,7 @@ class OrderManager {
         const minLotPE = this.getMarketConfig()?.minSize ?? 0.01;
         
         // Draw entry price preview line (dashed blue/red) - now draggable!
-        const entryColor = this.orderSide === 'BUY' ? '#2962ff' : '#f23645';
+        const entryColor = this.orderSide === 'BUY' ? this.ORDER_LINE_COLOR_BUY : this.ORDER_LINE_COLOR_SELL;
         const mainEntryPercent = this.getMainEntryPercentage();
         let mainEntryLabel = 'Entry';
         if (this.isMultiEntryMode && this.splitEntriesEnabled) {
@@ -12883,7 +12961,7 @@ class OrderManager {
 
     drawPreviewLine(price, color, label, direction = null, isDraggable = false, targetIndex = undefined, targetId = undefined, options = null) {
         const y = this.chart.scales.yScale(price);
-        const hitStrokeWidth = 20;
+        const hitStrokeWidth = this.HIT_WIDTH_PREVIEW;
         const dash = options?.strokeDasharray ?? null;
         const disabled = options?.disabled === true;
         const lineOpacity = disabled ? 0.38 : (options?.opacity ?? 0.92);
@@ -12895,8 +12973,6 @@ class OrderManager {
             .attr('y1', y)
             .attr('y2', y)
             .attr('stroke', color)
-            .attr('stroke-width', 1)
-            .attr('stroke-linecap', 'butt')
             .attr('stroke-dasharray', dash)
             .attr('opacity', lineOpacity)
             .style('pointer-events', isDraggable ? 'all' : 'none')
@@ -13026,8 +13102,7 @@ class OrderManager {
             .on('start', () => {
                 isDragging = true;
                 dragStartTime = Date.now();
-                lineData.line.attr('stroke-width', 1.6).attr('opacity', 1);
-                
+
                 // Set flag to prevent full redraw during drag
                 self.isDraggingPreviewLine = true;
                 
@@ -13677,8 +13752,7 @@ class OrderManager {
             .on('end', () => {
                 if (!isDragging) return;
                 isDragging = false;
-                lineData.line.attr('stroke-width', 1).attr('opacity', 0.92);
-                
+
                 // Clear dragging flag
                 self.isDraggingPreviewLine = false;
                 
@@ -13706,16 +13780,21 @@ class OrderManager {
                 self.calculateAdvancedRiskReward();
                 self.updatePlaceButtonText();
 
-                // Full preview redraw after drag. While dragging, updatePreviewLines() is skipped, so
-                // multi-entry "below min lot" fade + place button state would stay stale; Entry#1 / Entry#N
-                // labels were also never covered by the old Entry-only renderPreviewLabel path.
-                if (typeof requestAnimationFrame === 'function') {
-                    requestAnimationFrame(() => {
+                // Avoid full teardown/rebuild on drag end (reduces label jump / flash). Multi-entry still
+                // needs a full pass for min-lot fade and all Entry#N labels.
+                const needsFullPreview = !!(self.isMultiEntryMode && self.multiEntryLevels?.length);
+                const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn) => fn();
+                raf(() => {
+                    if (needsFullPreview) {
                         self.updatePreviewLines();
-                    });
-                } else {
-                    self.updatePreviewLines();
-                }
+                    } else {
+                        self.updatePreviewLinePositions();
+                        self._layoutPreviewBadgeRow();
+                        self._syncPendingLimitStopConnector();
+                        self.calculateAdvancedRiskReward();
+                        self.updatePlaceButtonText();
+                    }
+                });
                 
                 const dragDuration = Date.now() - dragStartTime;
                 console.log(`✅ Drag completed in ${dragDuration}ms: ${lineData.label} @ ${lineData.price.toFixed(5)}`);
@@ -13742,6 +13821,13 @@ class OrderManager {
         this.chart.svg.selectAll('.multi-tp-preview-badge').remove();
         if (!this.previewLines.multiTPBadges) this.previewLines.multiTPBadges = [];
         this.previewLines.multiTPBadges = [];
+
+        let mtpBadgeDragRaf = null;
+        const flushMtpBadgePreview = () => {
+            self.calculateAdvancedRiskReward();
+            self.renderTPTargets();
+            self.updatePreviewLines();
+        };
 
         // Draw back-to-front: last badge first (rightmost/lowest), first badge last (on top, leftmost)
         for (let i = unsetTargets.length - 1; i >= 0; i--) {
@@ -13777,7 +13863,6 @@ class OrderManager {
 
             // Drag to set this target's price
             const drag = d3.drag()
-                .on('start', () => { badgeGroup.style('opacity', 0.8); })
                 .on('drag', (event) => {
                     if (!self.chart?.scales?.yScale) return;
                     if (event.sourceEvent && self.chart.updateCrosshair) self.chart.updateCrosshair(event.sourceEvent);
@@ -13790,14 +13875,20 @@ class OrderManager {
                     const priceInput = document.getElementById(`tpTarget${target.id}Price`);
                     if (priceInput) priceInput.value = self.formatPrice(target.price);
 
-                    self.calculateAdvancedRiskReward();
-                    self.renderTPTargets();
-                    self.updatePreviewLines();
+                    if (!mtpBadgeDragRaf) {
+                        mtpBadgeDragRaf = requestAnimationFrame(() => {
+                            flushMtpBadgePreview();
+                            mtpBadgeDragRaf = null;
+                        });
+                    }
                 })
                 .on('end', () => {
-                    badgeGroup.style('opacity', 1);
+                    if (mtpBadgeDragRaf) {
+                        cancelAnimationFrame(mtpBadgeDragRaf);
+                        mtpBadgeDragRaf = null;
+                    }
+                    flushMtpBadgePreview();
                     requestAnimationFrame(() => {
-                        self.calculateAdvancedRiskReward();
                         self.updatePlaceButtonText();
                     });
                 });
@@ -15798,7 +15889,7 @@ class OrderManager {
             return orderPriority[lab] ?? 99;
         };
         const gap = 28;
-        const marginRight = 175; // margin from right edge for preview labels
+        const marginRight = this._getOrderLabelRightInsetPx(this.chart);
 
         // Refresh dimensions for all items first
         buckets.forEach(bucket => {
@@ -15859,9 +15950,9 @@ class OrderManager {
         const width = labelWidth ?? bbox?.width ?? 0;
         const x = labelX ?? (() => {
             const transform = lineData.labelGroup.attr('transform');
-            if (!transform) return this.chart.w - width - 18;
+            if (!transform) return this.chart.w - width - this._getOrderLabelRightInsetPx(this.chart);
             const match = /translate\(([^,]+),/.exec(transform);
-            return match ? parseFloat(match[1]) : this.chart.w - width - 18;
+            return match ? parseFloat(match[1]) : this.chart.w - width - this._getOrderLabelRightInsetPx(this.chart);
         })();
 
         // End at label edge by default; preview TP/SL extends to right axis price.
@@ -16137,6 +16228,8 @@ class OrderManager {
             const stepR = parseFloat(document.getElementById('trailingStepSize')?.value || 0.5);
             const stepSize = riskDistance > 0 ? stepR * riskDistance : 0;
             const activateMode = this.trailingActivateMode || 'trail-rr';
+            const trailDistPipsRaw = parseFloat(document.getElementById('trailingDistancePips')?.value || '0');
+            const trailDistancePips = Number.isFinite(trailDistPipsRaw) && trailDistPipsRaw > 0 ? trailDistPipsRaw : 0;
             
             // Calculate activation threshold
             let activationThreshold;
@@ -16158,7 +16251,9 @@ class OrderManager {
                 stepSize: stepSize,                  // Price distance per step (= stepR × initial risk)
                 stepPips: riskDistance > 0 ? stepSize / this.pipSize : 0, // Pip equivalent (for display / status)
                 currentStep: 0,                      // Number of steps moved
-                originalSL: slPrice                  // Store original SL
+                originalSL: slPrice,                 // Store original SL
+                trailDistancePips: trailDistancePips, // >0: milestone §2.3 pip-distance ratchet; 0: step mode
+                trailCurrentSL: undefined
             };
         }
         
@@ -16296,7 +16391,7 @@ class OrderManager {
             };
             const cloneTrailingStop = (ts) => {
                 if (!ts) return ts;
-                return { ...ts, activated: false, currentStep: 0 };
+                return { ...ts, activated: false, currentStep: 0, trailCurrentSL: undefined };
             };
 
             const placeMode = this.positionSizeMode || 'risk-usd';
@@ -16714,7 +16809,7 @@ class OrderManager {
                 
                 const cloneTrailingStop = (ts) => {
                     if (!ts) return ts;
-                    return { ...ts, activated: false, currentStep: 0 }; // Clone and reset state
+                    return { ...ts, activated: false, currentStep: 0, trailCurrentSL: undefined }; // Clone and reset state
                 };
                 
                 // Place main entry order (uses main orderType)
@@ -18112,7 +18207,7 @@ class OrderManager {
                     completedTracking.push(position);
                     return;
                 }
-                // M4-1: skip candles before post_exit_anchor_time (gap between last partial and full close)
+                // Skip candles at/before full-exit anchor (post-exit starts after the trade is flat)
                 if (position.post_exit_anchor_time && currentCandle.t <= position.post_exit_anchor_time) return;
                 this._appendExcursionSnapshot(position, currentCandle, true);
                 position.postExitProcessedCandles += 1;
@@ -18708,6 +18803,8 @@ class OrderManager {
             const markForUnrealized = this._resolveUnrealizedMarkPrice(position, currentCandle);
             const markPx = Number.isFinite(markForUnrealized) ? markForUnrealized : Number.parseFloat(currentPrice);
             if (position.type === 'BUY') {
+                const beRefPx = this._getBreakevenReferencePrice(position);
+                const initialSLForBE = Number.parseFloat(position.initialStopLoss ?? position.initial_sl ?? position.stopLoss);
                 const priceDiff = markPx - position.openPrice;
                 position.unrealizedPnL = this._calculatePositionPnL(position, markPx);
                 position._miLastMarkPrice = markPx;
@@ -18735,11 +18832,11 @@ class OrderManager {
                     const posPipSize = this._getPositionPipSize(position);
                     
                     if (position.breakevenSettings.mode === 'rr') {
-                        const riskDist = Math.abs(position.openPrice - position.stopLoss);
+                        const riskDist = Math.abs(beRefPx - initialSLForBE);
                         const triggerDist = position.breakevenSettings.value * riskDist;
-                        shouldTrigger = (high - position.openPrice) >= triggerDist;
+                        shouldTrigger = (high - beRefPx) >= triggerDist;
                     } else if (position.breakevenSettings.mode === 'pips') {
-                        const currentPipsProfit = (high - position.openPrice) / posPipSize;
+                        const currentPipsProfit = (high - beRefPx) / posPipSize;
                         shouldTrigger = currentPipsProfit >= position.breakevenSettings.value;
                     } else {
                         shouldTrigger = position.unrealizedPnL >= position.breakevenSettings.value;
@@ -18750,9 +18847,9 @@ class OrderManager {
                         const oldSL = position.stopLoss;
                         const pipOffset = position.breakevenSettings.pipOffset || 0;
                         const pipOffsetPrice = pipOffset * posPipSize;
-                        console.log(`      Entry: ${position.openPrice.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}`);
-                        position.stopLoss = position.openPrice + pipOffsetPrice;
-                        console.log(`      New SL = ${position.openPrice.toFixed(5)} + ${pipOffsetPrice.toFixed(5)} = ${position.stopLoss.toFixed(5)}`);
+                        console.log(`      Ref entry (avg): ${beRefPx.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}`);
+                        position.stopLoss = beRefPx + pipOffsetPrice;
+                        console.log(`      New SL = ${beRefPx.toFixed(5)} + ${pipOffsetPrice.toFixed(5)} = ${position.stopLoss.toFixed(5)}`);
                         position.breakevenSettings.triggered = true;
                         
                         if (position.trailingStop && !position.trailingStop.activated) {
@@ -18779,124 +18876,115 @@ class OrderManager {
                     }
                 }
                 
-                // Check for step-based trailing stop activation and adjustment
+                // Trailing: pip-distance ratchet (milestone §2.3) when trailDistancePips > 0; else step-based
                 if (position.trailingStop && position.trailingStop.enabled && position.stopLoss && !position.trailingStop.disabledByManual && !position.trailingStop.beSupersedesTrailing) {
-                    // Use HIGH for BUY trailing (matches TP hit detection logic)
                     const trailPrice = high;
+                    const posPipSizeTr = this._getPositionPipSize(position);
+                    const trailRefPx = beRefPx;
+                    const td = Number(position.trailingStop.trailDistancePips) || 0;
 
-                    // Check if trailing should activate (reach threshold first)
-                    if (!position.trailingStop.activated) {
-                        if (trailPrice >= position.trailingStop.activationThreshold) {
-                            position.trailingStop.activated = true;
-                            console.log(`   🔥 TRAILING STOP ACTIVATED for BUY #${position.id} at high=${trailPrice.toFixed(5)}`);
-                            
-                            if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered) {
-                                position.breakevenSettings.triggered = true;
-                                console.log(`      📌 Trailing activated first - Auto BE will not trigger`);
+                    if (td > 0) {
+                        const distPx = td * posPipSizeTr;
+                        if (!position.trailingStop.activated) {
+                            if (trailPrice >= position.trailingStop.activationThreshold) {
+                                position.trailingStop.activated = true;
+                                position.trailingStop.trailCurrentSL = trailPrice - distPx;
+                                console.log(`   🔥 PIP TRAILING ACTIVATED for BUY #${position.id} at high=${trailPrice.toFixed(5)}`);
+                                if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered) {
+                                    position.breakevenSettings.triggered = true;
+                                    console.log(`      📌 Trailing activated first - Auto BE will not trigger`);
+                                }
+                                this.showNotification(`🔥 Trailing Stop Activated! Order #${position.id}`, 'success');
                             }
-                            
-                            this.showNotification(`🔥 Trailing Stop Activated! Order #${position.id}`, 'success');
                         }
-                    }
-                    
-                    // If activated, apply step-based trailing
-                    if (position.trailingStop.activated) {
-                        const profitFromActivation = trailPrice - position.trailingStop.activationThreshold;
-                        const stepsReached = Math.floor(profitFromActivation / position.trailingStop.stepSize);
-                        
-                        if (stepsReached > position.trailingStop.currentStep && stepsReached > 0) {
-                            const originalRisk = position.openPrice - position.trailingStop.originalSL;
-                            const newSL = position.trailingStop.activationThreshold + (stepsReached * position.trailingStop.stepSize) - originalRisk;
-                            
-                            let breakevenSL = position.openPrice;
-                            if (position.autoBreakeven && position.breakevenSettings?.triggered) {
-                                const pipOffset = position.breakevenSettings.pipOffset || 0;
-                                breakevenSL = position.openPrice + (pipOffset * this._getPositionPipSize(position));
-                            }
-                            const minSL = (position.autoBreakeven && position.breakevenSettings?.triggered) 
-                                ? Math.max(position.stopLoss, breakevenSL) 
+                        if (position.trailingStop.activated) {
+                            const newTrail = trailPrice - distPx;
+                            const prev = position.trailingStop.trailCurrentSL != null
+                                ? position.trailingStop.trailCurrentSL
                                 : position.stopLoss;
-                            
-                            if (newSL > minSL) {
+                            position.trailingStop.trailCurrentSL = Math.max(prev, newTrail);
+                            let breakevenSL = trailRefPx;
+                            if (position.autoBreakeven && position.breakevenSettings?.triggered) {
+                                const pipOff = position.breakevenSettings.pipOffset || 0;
+                                breakevenSL = trailRefPx + (pipOff * posPipSizeTr);
+                            }
+                            const minSL = (position.autoBreakeven && position.breakevenSettings?.triggered)
+                                ? Math.max(position.stopLoss, breakevenSL)
+                                : position.stopLoss;
+                            const cand = position.trailingStop.trailCurrentSL;
+                            if (cand > minSL && cand > position.stopLoss) {
                                 const oldSL = position.stopLoss;
-                                position.stopLoss = newSL;
-                                position.trailingStop.currentStep = stepsReached;
-                                this._logSLTPModification(position, 'SL', oldSL, newSL, 'TRAIL');
-                                
-                                console.log(`   📈 STEP TRAILING SL: ${oldSL.toFixed(5)} → ${newSL.toFixed(5)} (Step ${stepsReached}) for BUY #${position.id}`);
-                                
+                                position.stopLoss = cand;
+                                this._logSLTPModification(position, 'SL', oldSL, cand, 'TRAIL');
+                                console.log(`   📈 PIP TRAILING SL: ${oldSL.toFixed(5)} → ${cand.toFixed(5)} for BUY #${position.id}`);
                                 this.removeSLTPLines(position.id);
                                 this.drawSLTPLines(position);
                                 this.updateSLTPLines();
+                                this.showNotification(`📈 Trailing SL: ${this.formatPrice(oldSL)} → ${this.formatPrice(cand)} | #${position.id}`, 'info');
+                            }
+                        }
+                    } else {
+                        // Check if trailing should activate (reach threshold first)
+                        if (!position.trailingStop.activated) {
+                            if (trailPrice >= position.trailingStop.activationThreshold) {
+                                position.trailingStop.activated = true;
+                                console.log(`   🔥 TRAILING STOP ACTIVATED for BUY #${position.id} at high=${trailPrice.toFixed(5)}`);
                                 
-                                this.showNotification(`📈 Trailing SL: ${this.formatPrice(oldSL)} → ${this.formatPrice(newSL)} | #${position.id}`, 'info');
+                                if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered) {
+                                    position.breakevenSettings.triggered = true;
+                                    console.log(`      📌 Trailing activated first - Auto BE will not trigger`);
+                                }
+                                
+                                this.showNotification(`🔥 Trailing Stop Activated! Order #${position.id}`, 'success');
+                            }
+                        }
+                        
+                        // If activated, apply step-based trailing
+                        if (position.trailingStop.activated) {
+                            const profitFromActivation = trailPrice - position.trailingStop.activationThreshold;
+                            const stepsReached = Math.floor(profitFromActivation / position.trailingStop.stepSize);
+                            
+                            if (stepsReached > position.trailingStop.currentStep && stepsReached > 0) {
+                                const originalRisk = position.openPrice - position.trailingStop.originalSL;
+                                const newSL = position.trailingStop.activationThreshold + (stepsReached * position.trailingStop.stepSize) - originalRisk;
+                                
+                                let breakevenSL = trailRefPx;
+                                if (position.autoBreakeven && position.breakevenSettings?.triggered) {
+                                    const pipOffset = position.breakevenSettings.pipOffset || 0;
+                                    breakevenSL = trailRefPx + (pipOffset * this._getPositionPipSize(position));
+                                }
+                                const minSL = (position.autoBreakeven && position.breakevenSettings?.triggered) 
+                                    ? Math.max(position.stopLoss, breakevenSL) 
+                                    : position.stopLoss;
+                                
+                                if (newSL > minSL) {
+                                    const oldSL = position.stopLoss;
+                                    position.stopLoss = newSL;
+                                    position.trailingStop.currentStep = stepsReached;
+                                    this._logSLTPModification(position, 'SL', oldSL, newSL, 'TRAIL');
+                                    
+                                    console.log(`   📈 STEP TRAILING SL: ${oldSL.toFixed(5)} → ${newSL.toFixed(5)} (Step ${stepsReached}) for BUY #${position.id}`);
+                                    
+                                    this.removeSLTPLines(position.id);
+                                    this.drawSLTPLines(position);
+                                    this.updateSLTPLines();
+                                    
+                                    this.showNotification(`📈 Trailing SL: ${this.formatPrice(oldSL)} → ${this.formatPrice(newSL)} | #${position.id}`, 'info');
+                                }
                             }
                         }
                     }
-                    // Append current trail SL to per-bar path (even if not moved this bar)
                     if (position.trailingStop.activated && position.stopLoss != null) {
                         if (!Array.isArray(position.trail_sl_path)) position.trail_sl_path = [];
                         position.trail_sl_path.push(position.stopLoss);
                     }
                 }
                 
-                // Check for multiple TP hits (skip if BE was just triggered this candle)
-                if (position.tpTargets && position.tpTargets.length > 0 && !position.beJustTriggered) {
-                    console.log(`   📊 Checking ${position.tpTargets.length} TP targets for BUY #${position.id}`);
-                    // BUY: sort ascending (lowest price = closest to entry) so partial TPs fire closest-first
-                    const _buyTpSorted = [...position.tpTargets].sort((a, b) => a.price - b.price);
-                    _buyTpSorted.forEach((target, index) => {
-                        console.log(`      Target ${index + 1}: price=${target.price.toFixed(5)}, percentage=${target.percentage}%, hit=${target.hit}, high=${high.toFixed(5)}`);
-                        const tpTgtGuarded = this._isNoTriggerGuardActive(target._noTriggerBeforeTime, target._noTriggerBeforeTick, currentCandle);
-                        let tpTgtHit;
-                        if (tpTgtGuarded) {
-                            tpTgtHit = this._tickAnimOverridesGuard(target._noTriggerBeforeTick, currentCandle, target.price, 'above');
-                            if (!tpTgtHit) return;
-                        } else {
-                            tpTgtHit = high >= target.price;
-                        }
-                        if (!target.hit && tpTgtHit) {
-                            target._noTriggerBeforeTime = null;
-                            target._noTriggerBeforeTick = undefined;
-                            target.hit = true;
-                            const closePercentage = target.percentage / 100;
-                            const allTargetsHit = position.tpTargets.every(t => t.hit);
-                            const closeType = allTargetsHit ? 'TP' : 'TP-PARTIAL';
-                            const fillPx = this._gapFill(target.price, open, true, true);
-                            
-                            const resolvedTpId = target.id != null ? target.id : index;
-                            console.log(`   🎯 TP TARGET #${resolvedTpId} HIT! ${allTargetsHit ? 'FINAL TARGET - ' : ''}Closing ${(closePercentage * 100).toFixed(0)}% at ${fillPx.toFixed(5)} for BUY #${position.id}`);
-                            console.log(`      allTargetsHit=${allTargetsHit}, closeType=${closeType}, percentage=${closePercentage}`);
-                            positionsToClose.push({ 
-                                id: position.id, 
-                                closePrice: fillPx, 
-                                type: closeType,
-                                percentage: allTargetsHit ? null : closePercentage,
-                                targetId: resolvedTpId
-                            });
-                        }
-                    });
-                    // M3-2: exit-bar clamping — cap bar_high_r to the first partial TP's R-value
-                    const _buyTpHitsThisBar = positionsToClose.filter(p => p.id === position.id && p.type.includes('TP'));
-                    if (_buyTpHitsThisBar.length > 0 && Array.isArray(position.bar_high_r) && position.bar_high_r.length > 0) {
-                        const _firstTpPx = Math.min(..._buyTpHitsThisBar.map(p => p.closePrice));
-                        const _arrayBase = Number.parseFloat(position.array_base_price ?? position.openPrice);
-                        const _initialSL = Number.parseFloat(position.initialStopLoss ?? position.initial_sl ?? position.stopLoss);
-                        const _riskPts = Math.abs(_arrayBase - _initialSL);
-                        if (_riskPts > 0) {
-                            const _tpR = (_firstTpPx - _arrayBase) / _riskPts;
-                            const _last = position.bar_high_r.length - 1;
-                            position.bar_high_r[_last] = Math.min(position.bar_high_r[_last], _tpR);
-                        }
-                    }
-                } else if (position.beJustTriggered && position.tpTargets && position.tpTargets.length > 0) {
-                    console.log(`   ⏭️ Skipping TP checks for BUY #${position.id} - BE was just triggered`);
-                }
-                
-                // Check if SL or TP was hit (skip SL check if BE just triggered this candle!)
                 const buySLGuarded = this._isNoTriggerGuardActive(position._slNoTriggerBeforeTime, position._slNoTriggerBeforeTick, currentCandle);
                 const buyTPGuarded = this._isNoTriggerGuardActive(position._tpNoTriggerBeforeTime, position._tpNoTriggerBeforeTick, currentCandle);
                 const skipBuySL = position.beJustTriggered || this._shouldSkipSLOnFillCandle(position, currentCandle);
+                
+                // Milestone §1.3 / matrix #16: gap-aware SL before TP; multi-TP evaluates SL first on this bar
                 if (!skipBuySL) {
                     if (!buySLGuarded) {
                         position._slNoTriggerBeforeTime = null;
@@ -18922,8 +19010,7 @@ class OrderManager {
                             console.log(`   🎯 TAKE PROFIT HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.takeProfit ? ' (gap fill, TP was ' + position.takeProfit.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP' });
                         }
-                    } else {
-                        // For multiple TPs, still check SL
+                    } else if (!position.beJustTriggered) {
                         const multiSlHit = buySLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'below'))
                             : (position.stopLoss && low <= position.stopLoss);
@@ -18933,8 +19020,56 @@ class OrderManager {
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, low, true, position, currentCandle.t);
                             console.log(`   🛑 STOP LOSS HIT! Closing remaining position BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
+                        } else {
+                            console.log(`   📊 Checking ${position.tpTargets.length} TP targets for BUY #${position.id}`);
+                            const _buyTpSorted = [...position.tpTargets].sort((a, b) => a.price - b.price);
+                            _buyTpSorted.forEach((target, index) => {
+                                console.log(`      Target ${index + 1}: price=${target.price.toFixed(5)}, percentage=${target.percentage}%, hit=${target.hit}, high=${high.toFixed(5)}`);
+                                const tpTgtGuarded = this._isNoTriggerGuardActive(target._noTriggerBeforeTime, target._noTriggerBeforeTick, currentCandle);
+                                let tpTgtHit;
+                                if (tpTgtGuarded) {
+                                    tpTgtHit = this._tickAnimOverridesGuard(target._noTriggerBeforeTick, currentCandle, target.price, 'above');
+                                    if (!tpTgtHit) return;
+                                } else {
+                                    tpTgtHit = high >= target.price;
+                                }
+                                if (!target.hit && tpTgtHit) {
+                                    target._noTriggerBeforeTime = null;
+                                    target._noTriggerBeforeTick = undefined;
+                                    target.hit = true;
+                                    const closePercentage = target.percentage / 100;
+                                    const allTargetsHit = position.tpTargets.every(t => t.hit);
+                                    const closeType = allTargetsHit ? 'TP' : 'TP-PARTIAL';
+                                    const fillPx = this._gapFill(target.price, open, true, true);
+                                    
+                                    const resolvedTpId = target.id != null ? target.id : index;
+                                    console.log(`   🎯 TP TARGET #${resolvedTpId} HIT! ${allTargetsHit ? 'FINAL TARGET - ' : ''}Closing ${(closePercentage * 100).toFixed(0)}% at ${fillPx.toFixed(5)} for BUY #${position.id}`);
+                                    console.log(`      allTargetsHit=${allTargetsHit}, closeType=${closeType}, percentage=${closePercentage}`);
+                                    positionsToClose.push({ 
+                                        id: position.id, 
+                                        closePrice: fillPx, 
+                                        type: closeType,
+                                        percentage: allTargetsHit ? null : closePercentage,
+                                        targetId: resolvedTpId
+                                    });
+                                }
+                            });
+                            const _buyTpHitsThisBar = positionsToClose.filter(p => p.id === position.id && p.type.includes('TP'));
+                            if (_buyTpHitsThisBar.length > 0 && Array.isArray(position.bar_high_r) && position.bar_high_r.length > 0) {
+                                const _firstTpPx = Math.min(..._buyTpHitsThisBar.map(p => p.closePrice));
+                                const _arrayBase = Number.parseFloat(position.array_base_price ?? position.openPrice);
+                                const _initialSL = Number.parseFloat(position.initialStopLoss ?? position.initial_sl ?? position.stopLoss);
+                                const _riskPts = Math.abs(_arrayBase - _initialSL);
+                                if (_riskPts > 0) {
+                                    const _tpR = (_firstTpPx - _arrayBase) / _riskPts;
+                                    const _last = position.bar_high_r.length - 1;
+                                    position.bar_high_r[_last] = Math.min(position.bar_high_r[_last], _tpR);
+                                }
+                            }
                         }
                     }
+                } else if (position.beJustTriggered && position.tpTargets && position.tpTargets.length > 0) {
+                    console.log(`   ⏭️ Skipping TP/SL exit checks for BUY #${position.id} - BE was just triggered`);
                 } else {
                     if (position.beJustTriggered) {
                         console.log(`   ⏭️ Skipping SL checks for BUY #${position.id} - BE was just triggered, new SL needs next candle`);
@@ -18952,6 +19087,8 @@ class OrderManager {
                     delete position._fillOrderType;
                 }
             } else {
+                const beRefPx = this._getBreakevenReferencePrice(position);
+                const initialSLForBE = Number.parseFloat(position.initialStopLoss ?? position.initial_sl ?? position.stopLoss);
                 const priceDiff = position.openPrice - markPx;
                 position.unrealizedPnL = this._calculatePositionPnL(position, markPx);
                 position._miLastMarkPrice = markPx;
@@ -18979,11 +19116,11 @@ class OrderManager {
                     const posPipSize = this._getPositionPipSize(position);
                     
                     if (position.breakevenSettings.mode === 'rr') {
-                        const riskDist = Math.abs(position.openPrice - position.stopLoss);
+                        const riskDist = Math.abs(beRefPx - initialSLForBE);
                         const triggerDist = position.breakevenSettings.value * riskDist;
-                        shouldTrigger = (position.openPrice - low) >= triggerDist;
+                        shouldTrigger = (beRefPx - low) >= triggerDist;
                     } else if (position.breakevenSettings.mode === 'pips') {
-                        const currentPipsProfit = (position.openPrice - low) / posPipSize;
+                        const currentPipsProfit = (beRefPx - low) / posPipSize;
                         shouldTrigger = currentPipsProfit >= position.breakevenSettings.value;
                     } else {
                         shouldTrigger = position.unrealizedPnL >= position.breakevenSettings.value;
@@ -18994,9 +19131,9 @@ class OrderManager {
                         const oldSL = position.stopLoss;
                         const pipOffset = position.breakevenSettings.pipOffset || 0;
                         const pipOffsetPrice = pipOffset * posPipSize;
-                        console.log(`      Entry: ${position.openPrice.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}`);
-                        position.stopLoss = position.openPrice - pipOffsetPrice;
-                        console.log(`      New SL = ${position.openPrice.toFixed(5)} - ${pipOffsetPrice.toFixed(5)} = ${position.stopLoss.toFixed(5)}`);
+                        console.log(`      Ref entry (avg): ${beRefPx.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}`);
+                        position.stopLoss = beRefPx - pipOffsetPrice;
+                        console.log(`      New SL = ${beRefPx.toFixed(5)} - ${pipOffsetPrice.toFixed(5)} = ${position.stopLoss.toFixed(5)}`);
                         position.breakevenSettings.triggered = true;
                         
                         if (position.trailingStop && !position.trailingStop.activated) {
@@ -19023,119 +19160,107 @@ class OrderManager {
                     }
                 }
                 
-                // Check for step-based trailing stop activation and adjustment
                 if (position.trailingStop && position.trailingStop.enabled && position.stopLoss && !position.trailingStop.disabledByManual && !position.trailingStop.beSupersedesTrailing) {
-                    // Use LOW for SELL trailing (matches SL hit detection logic)
                     const trailPrice = low;
+                    const posPipSizeTr = this._getPositionPipSize(position);
+                    const trailRefPx = beRefPx;
+                    const td = Number(position.trailingStop.trailDistancePips) || 0;
 
-                    if (!position.trailingStop.activated) {
-                        if (trailPrice <= position.trailingStop.activationThreshold) {
-                            position.trailingStop.activated = true;
-                            console.log(`   🔥 TRAILING STOP ACTIVATED for SELL #${position.id} at low=${trailPrice.toFixed(5)}`);
-                            
-                            if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered) {
-                                position.breakevenSettings.triggered = true;
-                                console.log(`      📌 Trailing activated first - Auto BE will not trigger`);
+                    if (td > 0) {
+                        const distPx = td * posPipSizeTr;
+                        if (!position.trailingStop.activated) {
+                            if (trailPrice <= position.trailingStop.activationThreshold) {
+                                position.trailingStop.activated = true;
+                                position.trailingStop.trailCurrentSL = trailPrice + distPx;
+                                console.log(`   🔥 PIP TRAILING ACTIVATED for SELL #${position.id} at low=${trailPrice.toFixed(5)}`);
+                                if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered) {
+                                    position.breakevenSettings.triggered = true;
+                                    console.log(`      📌 Trailing activated first - Auto BE will not trigger`);
+                                }
+                                this.showNotification(`🔥 Trailing Stop Activated! Order #${position.id}`, 'success');
                             }
-                            
-                            this.showNotification(`🔥 Trailing Stop Activated! Order #${position.id}`, 'success');
                         }
-                    }
-                    
-                    if (position.trailingStop.activated) {
-                        const profitFromActivation = position.trailingStop.activationThreshold - trailPrice;
-                        const stepsReached = Math.floor(profitFromActivation / position.trailingStop.stepSize);
-                        
-                        if (stepsReached > position.trailingStop.currentStep && stepsReached > 0) {
-                            const originalRisk = position.trailingStop.originalSL - position.openPrice;
-                            const newSL = position.trailingStop.activationThreshold - (stepsReached * position.trailingStop.stepSize) + originalRisk;
-                            
-                            let breakevenSL = position.openPrice;
-                            if (position.autoBreakeven && position.breakevenSettings?.triggered) {
-                                const pipOffset = position.breakevenSettings.pipOffset || 0;
-                                breakevenSL = position.openPrice - (pipOffset * this._getPositionPipSize(position));
-                            }
-                            const maxSL = (position.autoBreakeven && position.breakevenSettings?.triggered) 
-                                ? Math.min(position.stopLoss, breakevenSL) 
+                        if (position.trailingStop.activated) {
+                            const newTrail = trailPrice + distPx;
+                            const prev = position.trailingStop.trailCurrentSL != null
+                                ? position.trailingStop.trailCurrentSL
                                 : position.stopLoss;
-                            
-                            if (newSL < maxSL) {
+                            position.trailingStop.trailCurrentSL = Math.min(prev, newTrail);
+                            let breakevenSL = trailRefPx;
+                            if (position.autoBreakeven && position.breakevenSettings?.triggered) {
+                                const pipOff = position.breakevenSettings.pipOffset || 0;
+                                breakevenSL = trailRefPx - (pipOff * posPipSizeTr);
+                            }
+                            const maxSL = (position.autoBreakeven && position.breakevenSettings?.triggered)
+                                ? Math.min(position.stopLoss, breakevenSL)
+                                : position.stopLoss;
+                            const cand = position.trailingStop.trailCurrentSL;
+                            if (cand < maxSL && cand < position.stopLoss) {
                                 const oldSL = position.stopLoss;
-                                position.stopLoss = newSL;
-                                position.trailingStop.currentStep = stepsReached;
-                                this._logSLTPModification(position, 'SL', oldSL, newSL, 'TRAIL');
-                                
-                                console.log(`   📉 STEP TRAILING SL: ${oldSL.toFixed(5)} → ${newSL.toFixed(5)} (Step ${stepsReached}) for SELL #${position.id}`);
-                                
+                                position.stopLoss = cand;
+                                this._logSLTPModification(position, 'SL', oldSL, cand, 'TRAIL');
+                                console.log(`   📉 PIP TRAILING SL: ${oldSL.toFixed(5)} → ${cand.toFixed(5)} for SELL #${position.id}`);
                                 this.removeSLTPLines(position.id);
                                 this.drawSLTPLines(position);
                                 this.updateSLTPLines();
+                                this.showNotification(`📉 Trailing SL: ${this.formatPrice(oldSL)} → ${this.formatPrice(cand)} | #${position.id}`, 'info');
+                            }
+                        }
+                    } else {
+                        if (!position.trailingStop.activated) {
+                            if (trailPrice <= position.trailingStop.activationThreshold) {
+                                position.trailingStop.activated = true;
+                                console.log(`   🔥 TRAILING STOP ACTIVATED for SELL #${position.id} at low=${trailPrice.toFixed(5)}`);
                                 
-                                this.showNotification(`📉 Trailing SL: ${this.formatPrice(oldSL)} → ${this.formatPrice(newSL)} | #${position.id}`, 'info');
+                                if (position.autoBreakeven && position.breakevenSettings && !position.breakevenSettings.triggered) {
+                                    position.breakevenSettings.triggered = true;
+                                    console.log(`      📌 Trailing activated first - Auto BE will not trigger`);
+                                }
+                                
+                                this.showNotification(`🔥 Trailing Stop Activated! Order #${position.id}`, 'success');
+                            }
+                        }
+                        
+                        if (position.trailingStop.activated) {
+                            const profitFromActivation = position.trailingStop.activationThreshold - trailPrice;
+                            const stepsReached = Math.floor(profitFromActivation / position.trailingStop.stepSize);
+                            
+                            if (stepsReached > position.trailingStop.currentStep && stepsReached > 0) {
+                                const originalRisk = position.trailingStop.originalSL - position.openPrice;
+                                const newSL = position.trailingStop.activationThreshold - (stepsReached * position.trailingStop.stepSize) + originalRisk;
+                                
+                                let breakevenSL = trailRefPx;
+                                if (position.autoBreakeven && position.breakevenSettings?.triggered) {
+                                    const pipOffset = position.breakevenSettings.pipOffset || 0;
+                                    breakevenSL = trailRefPx - (pipOffset * this._getPositionPipSize(position));
+                                }
+                                const maxSL = (position.autoBreakeven && position.breakevenSettings?.triggered) 
+                                    ? Math.min(position.stopLoss, breakevenSL) 
+                                    : position.stopLoss;
+                                
+                                if (newSL < maxSL) {
+                                    const oldSL = position.stopLoss;
+                                    position.stopLoss = newSL;
+                                    position.trailingStop.currentStep = stepsReached;
+                                    this._logSLTPModification(position, 'SL', oldSL, newSL, 'TRAIL');
+                                    
+                                    console.log(`   📉 STEP TRAILING SL: ${oldSL.toFixed(5)} → ${newSL.toFixed(5)} (Step ${stepsReached}) for SELL #${position.id}`);
+                                    
+                                    this.removeSLTPLines(position.id);
+                                    this.drawSLTPLines(position);
+                                    this.updateSLTPLines();
+                                    
+                                    this.showNotification(`📉 Trailing SL: ${this.formatPrice(oldSL)} → ${this.formatPrice(newSL)} | #${position.id}`, 'info');
+                                }
                             }
                         }
                     }
-                    // Append current trail SL to per-bar path (even if not moved this bar)
                     if (position.trailingStop.activated && position.stopLoss != null) {
                         if (!Array.isArray(position.trail_sl_path)) position.trail_sl_path = [];
                         position.trail_sl_path.push(position.stopLoss);
                     }
                 }
                 
-                // Check for multiple TP hits (skip if BE was just triggered this candle)
-                if (position.tpTargets && position.tpTargets.length > 0 && !position.beJustTriggered) {
-                    console.log(`   📊 Checking ${position.tpTargets.length} TP targets for SELL #${position.id}`);
-                    // SELL: sort descending (highest price = closest to entry) so partial TPs fire closest-first
-                    const _sellTpSorted = [...position.tpTargets].sort((a, b) => b.price - a.price);
-                    _sellTpSorted.forEach((target, index) => {
-                        console.log(`      Target ${index + 1}: price=${target.price.toFixed(5)}, percentage=${target.percentage}%, hit=${target.hit}, low=${low.toFixed(5)}`);
-                        const sellTpTgtGuarded = this._isNoTriggerGuardActive(target._noTriggerBeforeTime, target._noTriggerBeforeTick, currentCandle);
-                        let sellTpTgtHit;
-                        if (sellTpTgtGuarded) {
-                            sellTpTgtHit = this._tickAnimOverridesGuard(target._noTriggerBeforeTick, currentCandle, target.price, 'below');
-                            if (!sellTpTgtHit) return;
-                        } else {
-                            sellTpTgtHit = low <= target.price;
-                        }
-                        if (!target.hit && sellTpTgtHit) {
-                            target._noTriggerBeforeTime = null;
-                            target._noTriggerBeforeTick = undefined;
-                            target.hit = true;
-                            const closePercentage = target.percentage / 100;
-                            const allTargetsHit = position.tpTargets.every(t => t.hit);
-                            const closeType = allTargetsHit ? 'TP' : 'TP-PARTIAL';
-                            const fillPx = this._gapFill(target.price, open, false, true);
-                            
-                            const resolvedTpId = target.id != null ? target.id : index;
-                            console.log(`   🎯 TP TARGET #${resolvedTpId} HIT! ${allTargetsHit ? 'FINAL TARGET - ' : ''}Closing ${(closePercentage * 100).toFixed(0)}% at ${fillPx.toFixed(5)} for SELL #${position.id}`);
-                            console.log(`      allTargetsHit=${allTargetsHit}, closeType=${closeType}, percentage=${closePercentage}`);
-                            positionsToClose.push({ 
-                                id: position.id, 
-                                closePrice: fillPx, 
-                                type: closeType,
-                                percentage: allTargetsHit ? null : closePercentage,
-                                targetId: resolvedTpId
-                            });
-                        }
-                    });
-                    // M3-2: exit-bar clamping — cap bar_high_r to the first partial TP's R-value (SELL)
-                    const _sellTpHitsThisBar = positionsToClose.filter(p => p.id === position.id && p.type.includes('TP'));
-                    if (_sellTpHitsThisBar.length > 0 && Array.isArray(position.bar_high_r) && position.bar_high_r.length > 0) {
-                        const _firstTpPx = Math.max(..._sellTpHitsThisBar.map(p => p.closePrice)); // highest price = closest to SELL entry
-                        const _arrayBase = Number.parseFloat(position.array_base_price ?? position.openPrice);
-                        const _initialSL = Number.parseFloat(position.initialStopLoss ?? position.initial_sl ?? position.stopLoss);
-                        const _riskPts = Math.abs(_arrayBase - _initialSL);
-                        if (_riskPts > 0) {
-                            const _tpR = (_arrayBase - _firstTpPx) / _riskPts;
-                            const _last = position.bar_high_r.length - 1;
-                            position.bar_high_r[_last] = Math.min(position.bar_high_r[_last], _tpR);
-                        }
-                    }
-                } else if (position.beJustTriggered && position.tpTargets && position.tpTargets.length > 0) {
-                    console.log(`   ⏭️ Skipping TP checks for SELL #${position.id} - BE was just triggered`);
-                }
-                
-                // Check if SL or TP was hit (skip SL check if BE just triggered this candle!)
                 const sellSLGuarded = this._isNoTriggerGuardActive(position._slNoTriggerBeforeTime, position._slNoTriggerBeforeTick, currentCandle);
                 const sellTPGuarded = this._isNoTriggerGuardActive(position._tpNoTriggerBeforeTime, position._tpNoTriggerBeforeTick, currentCandle);
                 const skipSellSL = position.beJustTriggered || this._shouldSkipSLOnFillCandle(position, currentCandle);
@@ -19164,8 +19289,7 @@ class OrderManager {
                             console.log(`   🎯 TAKE PROFIT HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.takeProfit ? ' (gap fill, TP was ' + position.takeProfit.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP' });
                         }
-                    } else {
-                        // For multiple TPs, still check SL
+                    } else if (!position.beJustTriggered) {
                         const multiSlHitSell = sellSLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'above'))
                             : (position.stopLoss && high >= position.stopLoss);
@@ -19175,8 +19299,56 @@ class OrderManager {
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, low, false, position, currentCandle.t);
                             console.log(`   🛑 STOP LOSS HIT! Closing remaining position SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
+                        } else {
+                            console.log(`   📊 Checking ${position.tpTargets.length} TP targets for SELL #${position.id}`);
+                            const _sellTpSorted = [...position.tpTargets].sort((a, b) => b.price - a.price);
+                            _sellTpSorted.forEach((target, index) => {
+                                console.log(`      Target ${index + 1}: price=${target.price.toFixed(5)}, percentage=${target.percentage}%, hit=${target.hit}, low=${low.toFixed(5)}`);
+                                const sellTpTgtGuarded = this._isNoTriggerGuardActive(target._noTriggerBeforeTime, target._noTriggerBeforeTick, currentCandle);
+                                let sellTpTgtHit;
+                                if (sellTpTgtGuarded) {
+                                    sellTpTgtHit = this._tickAnimOverridesGuard(target._noTriggerBeforeTick, currentCandle, target.price, 'below');
+                                    if (!sellTpTgtHit) return;
+                                } else {
+                                    sellTpTgtHit = low <= target.price;
+                                }
+                                if (!target.hit && sellTpTgtHit) {
+                                    target._noTriggerBeforeTime = null;
+                                    target._noTriggerBeforeTick = undefined;
+                                    target.hit = true;
+                                    const closePercentage = target.percentage / 100;
+                                    const allTargetsHit = position.tpTargets.every(t => t.hit);
+                                    const closeType = allTargetsHit ? 'TP' : 'TP-PARTIAL';
+                                    const fillPx = this._gapFill(target.price, open, false, true);
+                                    
+                                    const resolvedTpId = target.id != null ? target.id : index;
+                                    console.log(`   🎯 TP TARGET #${resolvedTpId} HIT! ${allTargetsHit ? 'FINAL TARGET - ' : ''}Closing ${(closePercentage * 100).toFixed(0)}% at ${fillPx.toFixed(5)} for SELL #${position.id}`);
+                                    console.log(`      allTargetsHit=${allTargetsHit}, closeType=${closeType}, percentage=${closePercentage}`);
+                                    positionsToClose.push({ 
+                                        id: position.id, 
+                                        closePrice: fillPx, 
+                                        type: closeType,
+                                        percentage: allTargetsHit ? null : closePercentage,
+                                        targetId: resolvedTpId
+                                    });
+                                }
+                            });
+                            const _sellTpHitsThisBar = positionsToClose.filter(p => p.id === position.id && p.type.includes('TP'));
+                            if (_sellTpHitsThisBar.length > 0 && Array.isArray(position.bar_high_r) && position.bar_high_r.length > 0) {
+                                const _firstTpPx = Math.max(..._sellTpHitsThisBar.map(p => p.closePrice));
+                                const _arrayBase = Number.parseFloat(position.array_base_price ?? position.openPrice);
+                                const _initialSL = Number.parseFloat(position.initialStopLoss ?? position.initial_sl ?? position.stopLoss);
+                                const _riskPts = Math.abs(_arrayBase - _initialSL);
+                                if (_riskPts > 0) {
+                                    const _tpR = (_arrayBase - _firstTpPx) / _riskPts;
+                                    const _last = position.bar_high_r.length - 1;
+                                    position.bar_high_r[_last] = Math.min(position.bar_high_r[_last], _tpR);
+                                }
+                            }
                         }
                     }
+                } else if (position.beJustTriggered && position.tpTargets && position.tpTargets.length > 0) {
+                    console.log(`   ⏭️ Skipping TP/SL exit checks for SELL #${position.id} - BE was just triggered`);
                 } else {
                     if (position.beJustTriggered) {
                         console.log(`   ⏭️ Skipping SL checks for SELL #${position.id} - BE was just triggered, new SL needs next candle`);
@@ -20060,9 +20232,8 @@ class OrderManager {
         
         // Continue post-exit tracking by configured mode (hours or fixed candles).
         const trackingMode = position.postExitTrackingMode || this.postExitTrackingMode || 'hours';
-        // M4-1: anchor post-exit start at the last partial exit (TP hit), not the full close time.
-        // This ensures the N-candle window begins from when size was last reduced, not when SL finally hits.
-        const _postExitAnchor = position.last_partial_exit_time ?? closeTime;
+        // Milestone 4: post-exit starts when the trade is fully flat (last lot closed) — anchor at final close time.
+        const _postExitAnchor = closeTime;
         const _reanchoredEndTime = _postExitAnchor + (this.mfeMaeTrackingHours * 60 * 60 * 1000);
         const shouldTrackAfterClose = trackingMode === 'candles'
             ? (Number.parseInt(position.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50, 10) > 0)
@@ -20294,9 +20465,10 @@ class OrderManager {
                     const boxY = newY - boxH / 2;
                     const gap = 4;
                     const pad = 8;
-                    const yAxisWidth = 70;
                     const closeBtnR = 10;
                     const closeBtnGap = 6;
+                    const clusterRight = self._getOrderLabelClusterRightEdgeX(ctx);
+                    const closeCenterX = self._getOrderOverlayCloseBtnCenterX(ctx);
                     const lt = extraElements.labelText;
                     const pt = extraElements.pnlText;
                     const pb = extraElements.pnlBox;
@@ -20305,12 +20477,11 @@ class OrderManager {
                         const lBW = ltW + pad * 2;
                         const ptW = pt?.node()?.getBBox()?.width || 0;
                         const pBW = ptW > 0 ? ptW + pad * 2 : 0;
-                        const rE = ctx.w - yAxisWidth - 10;
                         let sX;
                         if (lineType === 'be') {
-                            sX = rE - lBW;
+                            sX = clusterRight - lBW;
                         } else {
-                            const cX = rE - closeBtnR;
+                            const cX = closeCenterX;
                             const delBtn = extraElements.deleteBtn;
                             const splBtn = extraElements.splitBtn;
                             const deleteBtnR = 8;
@@ -20330,7 +20501,7 @@ class OrderManager {
                             cx += pBW + gap;
                         }
                         if (lineType !== 'be') {
-                            const cX = rE - closeBtnR;
+                            const cX = closeCenterX;
                             const delBtn = extraElements.deleteBtn;
                             const splBtn = extraElements.splitBtn;
                             const deleteBtnR = 8;
@@ -21615,21 +21786,19 @@ class OrderManager {
         );
         if (alreadyDrawn) return;
 
-        const color = order.type === 'BUY' ? '#2962ff' : '#f23645';
-        const lineColor = order.type === 'BUY' ? '#2962ff' : '#f23645';
+        const color = order.type === 'BUY' ? this.ORDER_LINE_COLOR_BUY : this.ORDER_LINE_COLOR_SELL;
+        const lineColor = color;
 
         const line = chart.svg.append('line')
             .attr('class', `order-line order-${order.id}`)
             .attr('stroke', lineColor)
-            .attr('stroke-width', 1)
-            .attr('opacity', 0.92)
             .attr('pointer-events', 'none');
 
         // Wide invisible hit area for easy dragging from the line
         const dragHitLine = chart.svg.append('line')
             .attr('class', `order-drag-hit order-${order.id}`)
             .attr('stroke', 'transparent')
-            .attr('stroke-width', 16)
+            .attr('stroke-width', this.HIT_WIDTH_OPEN)
             .attr('pointer-events', 'stroke')
             .style('cursor', 'ns-resize');
 
@@ -21837,7 +22006,6 @@ class OrderManager {
         const accent = '#ca8a04';
         const yScale = chart.scales?.yScale;
         const y = yScale ? yScale(avgPrice) : 100;
-        const yAxisWidth = chart.margin?.r || 70;
 
         const line = chart.svg.append('line')
             .attr('class', `split-avg-line split-avg-${splitGroupId}`)
@@ -22122,7 +22290,9 @@ class OrderManager {
         if (!yScale) return;
         const currentCandle = this.getCurrentCandle();
         const currentPrice = currentCandle ? currentCandle.c : 0;
-        const yAxisWidth = ch.margin?.r || 70;
+        const closeBtnR = 10;
+        const orderCloseCenterX = this._getOrderOverlayCloseBtnCenterX(ch);
+        const stackRightEdge = orderCloseCenterX + closeBtnR;
         const boxH = 18;
         const gap = 4;
         const pad = 8;
@@ -22261,10 +22431,9 @@ class OrderManager {
             g.pnlText.style('display', 'none');
 
             const totalW = lotsBW;
-            const rightEdge = ch.w - yAxisWidth - 10;
 
             // Find leftmost x of sibling TP labels so we align with them
-            let alignX = rightEdge - totalW;
+            let alignX = stackRightEdge - totalW;
             const tpLabels = ch.svg.selectAll('.tp-label-box').nodes();
             if (tpLabels.length > 0) {
                 let minX = Infinity;
@@ -22297,12 +22466,13 @@ class OrderManager {
         if (!yScale) return;
         const currentCandle = this.getCurrentCandle();
         const currentPrice = currentCandle ? currentCandle.c : 0;
-        const yAxisWidth = ch.margin?.r || 70;
+        const closeBtnR = 10;
+        const closeBtnGap = 6;
+        const orderCloseCenterX = this._getOrderOverlayCloseBtnCenterX(ch);
+        const stackRightEdge = orderCloseCenterX + closeBtnR;
         const boxH = 18;
         const gap = 4;
         const pad = 8;
-        const closeBtnR = 10;
-        const closeBtnGap = 6;
 
         const toRemove = [];
         for (const g of this.splitGroupAvgLines) {
@@ -22389,8 +22559,7 @@ class OrderManager {
                 if (rowW > maxRowW) maxRowW = rowW;
             }
 
-            const rightEdge = ch.w - yAxisWidth - 10;
-            const alignX = rightEdge - maxRowW;
+            const alignX = stackRightEdge - maxRowW;
 
             // --- Position Avg Entry label ---
             g.line
@@ -22424,7 +22593,7 @@ class OrderManager {
                     .attr('class', `split-avg-connector split-avg-${g.splitGroupId}`)
                     .style('pointer-events', 'none');
                 g._connector = connGroup;
-                const connX = rightEdge + 4;
+                const connX = stackRightEdge + 4;
                 const tpY = tpPx > 0 ? yScale(tpPx) : null;
                 const slY = slPx > 0 ? yScale(slPx) : null;
                 if (Number.isFinite(tpY)) {
@@ -22484,8 +22653,7 @@ class OrderManager {
                 }
 
                 // Close button at right edge
-                const closeBtnX = rightEdge - closeBtnR;
-                ml.closeBtn?.attr('transform', `translate(${closeBtnX}, ${oy})`);
+                ml.closeBtn?.attr('transform', `translate(${orderCloseCenterX}, ${oy})`);
 
                 // Label box right-aligned to close button
                 const labelBoxX = alignX;
@@ -22580,7 +22748,7 @@ class OrderManager {
     }
 
     /**
-     * Draw pending order line on chart (dashed line)
+     * Draw pending order line on chart (solid line; same buy/sell colors as open positions).
      * @param {object} pendingOrder
      * @param {object|null} targetChart — when null in multi-panel, draws on every chart whose symbol matches the order
      */
@@ -22609,21 +22777,18 @@ class OrderManager {
         }
 
         // TradingView-like visual styling for pending lines.
-        const lineColor = pendingOrder.direction === 'BUY' ? '#2962ff' : '#f23645';
-        
+        const lineColor = pendingOrder.direction === 'BUY' ? this.ORDER_LINE_COLOR_BUY : this.ORDER_LINE_COLOR_SELL;
+
         const line = chart.svg.append('line')
             .attr('class', `pending-order-line pending-${pendingOrder.id}`)
             .attr('stroke', lineColor)
-            .attr('stroke-width', 1)
-            .attr('stroke-linecap', 'butt')
             .attr('stroke-dasharray', null)
-            .attr('opacity', 0.92)
             .style('pointer-events', 'all')
             .style('cursor', 'ns-resize');
         const dragHitLine = chart.svg.append('line')
             .attr('class', `pending-order-hit-line pending-${pendingOrder.id}`)
             .attr('stroke', lineColor)
-            .attr('stroke-width', 14)
+            .attr('stroke-width', this.HIT_WIDTH_PENDING)
             .attr('opacity', 0)
             .style('pointer-events', 'stroke')
             .style('cursor', 'ns-resize');
@@ -22698,7 +22863,6 @@ class OrderManager {
                 self._draggingPendingOrderIds.add(pendingOrder.id);
                 dragStartPrice = pendingOrder.entryPrice;
                 dragStartQty = self._getPendingPlacedQuantity(pendingOrder);
-                line.attr('stroke-width', 1.6).attr('opacity', 1);
                 // Hide badges during drag to avoid stale positioning
                 if (slBadgeGroup) slBadgeGroup.style('display', 'none');
                 if (tpBadgeGroup) tpBadgeGroup.style('display', 'none');
@@ -22751,13 +22915,14 @@ class OrderManager {
                 
                 const boxHeight = 18;
                 const boxY = finalY - boxHeight / 2;
-                const yAxisWidth = 70;
-                
-                closeBtn.attr('transform', `translate(${chart.w - yAxisWidth - 15}, ${finalY})`);
-                
+                const clusterRight = self._getOrderLabelClusterRightEdgeX(chart);
+                const closeCenterX = self._getOrderOverlayCloseBtnCenterX(chart);
+
+                closeBtn.attr('transform', `translate(${closeCenterX}, ${finalY})`);
+
                 const labelTextBbox = labelText.node().getBBox();
                 const labelBoxWidth = labelTextBbox.width + 20;
-                const labelBoxX = chart.w - yAxisWidth - 30 - labelBoxWidth;
+                const labelBoxX = clusterRight - labelBoxWidth;
                 
                 labelBox
                     .attr('x', labelBoxX)
@@ -22796,8 +22961,6 @@ class OrderManager {
                 isDragging = false;
                 self._isDraggingOrderLine = false;
                 if (self._draggingPendingOrderIds) self._draggingPendingOrderIds.delete(pendingOrder.id);
-                
-                line.attr('stroke-width', 1).attr('opacity', 0.92);
 
                 // Relax guard from Infinity (set during drag) to current tick
                 // so the pending order can fill from the next tick onward.
@@ -26136,17 +26299,15 @@ class OrderManager {
                     const boxY = y - boxH / 2;
                     const gap = 4;
                     const pad = 8;
-                    const yAxisWidth = 70;
                     const closeBtnR = 10;
                     const closeBtnGap = 6;
-                    
+
                     const labelTW = labelText.node()?.getBBox()?.width || 0;
                     const labelBW = labelTW + pad * 2;
                     const pnlTW = pnlText?.node()?.getBBox()?.width || 0;
                     const pnlBW = pnlTW > 0 ? pnlTW + pad * 2 : 0;
-                    
-                    const rightEdge = ch.w - yAxisWidth - 10;
-                    const closeBtnX = rightEdge - closeBtnR;
+
+                    const closeBtnX = this._getOrderOverlayCloseBtnCenterX(ch);
                     const startX = closeBtnX - closeBtnR - closeBtnGap - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
                     
                     let cx = startX;
@@ -26323,7 +26484,6 @@ class OrderManager {
                     const boxY = y - boxH / 2;
                     const gap = 4;
                     const pad = 8;
-                    const yAxisWidth = 70;
                     const closeBtnR = 10;
                     const splitBtnR = splitBtn ? (deleteBtn ? 8 : 10) : 0;
                     const closeBtnGap = 6;
@@ -26339,8 +26499,7 @@ class OrderManager {
                     const splitSpace = splitBtn ? (splitBtnR * 2 + gap) : 0;
                     const badgesW = deleteSpace + splitSpace;
 
-                    const rightEdge = ch.w - yAxisWidth - 10;
-                    const closeBtnX = rightEdge - closeBtnR;
+                    const closeBtnX = this._getOrderOverlayCloseBtnCenterX(ch);
                     const startX = closeBtnX - closeBtnR - closeBtnGap
                         - badgesW - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
 
@@ -26418,14 +26577,13 @@ class OrderManager {
             const boxY = y - boxHeight / 2;
             const gap = 4;
             const pad = 8;
-            const yAxisWidth = 70;
-            
+
             line
                 .attr('x1', 0)
                 .attr('x2', ch.w)
                 .attr('y1', y)
                 .attr('y2', y);
-            
+
             if (hitLine) {
                 hitLine
                     .attr('x1', 0)
@@ -26433,12 +26591,12 @@ class OrderManager {
                     .attr('y1', y)
                     .attr('y2', y);
             }
-            
+
             // Position label on the RIGHT side (same as SL/TP)
             const labelTW = labelText.node()?.getBBox()?.width || 0;
             const labelBW = labelTW + pad * 2;
-            const rightEdge = ch.w - yAxisWidth - 10;
-            const startX = rightEdge - labelBW;
+            const clusterRight = this._getOrderLabelClusterRightEdgeX(ch);
+            const startX = clusterRight - labelBW;
             
             labelBox
                 .attr('x', startX)
@@ -26567,7 +26725,6 @@ class OrderManager {
                     const boxY = y - boxH / 2;
                     const gap = 4;
                     const pad = 8;
-                    const yAxisWidth = 70;
                     const closeBtnR = 10;
                     const closeBtnGap = 6;
 
@@ -26611,8 +26768,7 @@ class OrderManager {
                     let totalBadgesW = slBadgeW + (hasMultiTP ? multiTPBadgesW : singleTPBadgeW)
                         + entryPlusBadgeW;
 
-                    const rightEdge = ch.w - yAxisWidth - 10;
-                    const closeBtnX = rightEdge - closeBtnR;
+                    const closeBtnX = this._getOrderOverlayCloseBtnCenterX(ch);
                     const startX = closeBtnX - closeBtnR - closeBtnGap - totalBadgesW - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
 
                     let cx = startX;
@@ -26690,9 +26846,10 @@ class OrderManager {
                     closeBtn.attr('transform', `translate(${closeBtnX}, ${y})`);
                 }
 
-                const highlightColor = isPending
-                    ? (orderData.direction === 'BUY' ? '#2962ff' : '#f23645')
-                    : '#2962ff';
+                const sideBuy = isPending
+                    ? orderData.direction === 'BUY'
+                    : orderData.type === 'BUY';
+                const highlightColor = sideBuy ? this.ORDER_LINE_COLOR_BUY : this.ORDER_LINE_COLOR_SELL;
                 this.drawYAxisPriceHighlight(price, highlightColor, isPending ? 'pending' : 'entry', 0, ch);
             });
 
@@ -26873,8 +27030,7 @@ class OrderManager {
         if (!ch?.svg || !ch?.scales?.yScale) return;
         ch.svg.selectAll('.exec-order-connector').remove();
         const yScale = ch.scales.yScale;
-        const yAxisWidth = ch.margin?.r || 70;
-        const connX = ch.w - yAxisWidth - 6;
+        const connX = this._getOrderLabelClusterRightEdgeX(ch) + 24;
 
         for (const pos of this.openPositions) {
             if (!this._positionTickerMatchesChartSymbol(pos, ch)) continue;
@@ -28031,7 +28187,8 @@ class OrderManager {
                 activateMode: this.trailingActivateMode || 'trail-rr',
                 rrValue: parseFloat(document.getElementById('trailingActivateRR')?.value || 1.5),
                 pipsValue: parseFloat(document.getElementById('trailingActivatePips')?.value || 10),
-                stepSize: parseFloat(document.getElementById('trailingStepSize')?.value || 4)
+                stepSize: parseFloat(document.getElementById('trailingStepSize')?.value || 4),
+                distancePips: parseFloat(document.getElementById('trailingDistancePips')?.value || 0)
             },
             multipleTP: {
                 enabled: document.getElementById('multipleTPToggle')?.checked || false,
@@ -28068,6 +28225,8 @@ class OrderManager {
         document.getElementById('trailingActivateRR').value = setting.trailing.rrValue;
         document.getElementById('trailingActivatePips').value = setting.trailing.pipsValue;
         document.getElementById('trailingStepSize').value = setting.trailing.stepSize;
+        const tdp = document.getElementById('trailingDistancePips');
+        if (tdp) tdp.value = setting.trailing.distancePips != null ? setting.trailing.distancePips : 0;
         
         // Update UI to show correct mode tabs and inputs
         const bePipsInput = document.getElementById('breakevenPipsInput');
