@@ -24548,7 +24548,8 @@ class OrderManager {
     }
 
     /**
-     * Executed SL row stays classic red; only the price-level number turns green when SL locks profit.
+     * Executed SL row stays classic red; only the $ PnL amount (sl-pnl-text, e.g. +$21) turns green when SL locks profit.
+     * Price pill text (sl-price-text) stays white on red.
      * @param {object} els - labelBox, labelText, pnlBox, pnlText, priceBox, priceText (D3 selections)
      */
     _styleOpenSlProfitProtectionVisuals(order, line, els) {
@@ -24559,9 +24560,9 @@ class OrderManager {
         els.labelBox?.attr('fill', red).attr('stroke', red);
         els.labelText?.attr('fill', '#ffffff');
         els.pnlBox?.attr('stroke', red);
-        els.pnlText?.attr('fill', '#fca5a5');
+        els.pnlText?.attr('fill', profit ? '#86efac' : '#fca5a5');
         els.priceBox?.attr('fill', red).attr('stroke', red);
-        els.priceText?.attr('fill', profit ? '#86efac' : '#ffffff');
+        els.priceText?.attr('fill', '#ffffff');
     }
 
     /**
