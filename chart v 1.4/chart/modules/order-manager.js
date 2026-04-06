@@ -8796,6 +8796,46 @@ class OrderManager {
                 });
 
             offsetX += closeSize + gap;
+
+            // + add another TP (same behavior as pending multi-TP split)
+            if (document.getElementById('multipleTPToggle')?.checked) {
+                const splitBtnR = 9;
+                const self = this;
+                const splitG = lineData.labelGroup.append('g')
+                    .attr('class', 'preview-tp-split-add-btn')
+                    .attr('transform', `translate(${offsetX}, ${(height - splitBtnR * 2) / 2})`)
+                    .style('cursor', 'pointer');
+                const sbc = splitG.append('circle')
+                    .attr('r', splitBtnR)
+                    .attr('cx', splitBtnR)
+                    .attr('cy', splitBtnR)
+                    .attr('fill', '#0f172a')
+                    .attr('stroke', '#22c55e')
+                    .attr('stroke-width', 1.2);
+                splitG.append('text')
+                    .attr('x', splitBtnR)
+                    .attr('y', splitBtnR)
+                    .attr('dy', '0.35em')
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', '#22c55e')
+                    .attr('font-size', '14px')
+                    .attr('font-weight', '700')
+                    .text('+');
+                splitG
+                    .on('click', (e) => {
+                        e.stopPropagation();
+                        self._splitPreviewTPFromLine(lineData.price);
+                    })
+                    .on('mouseenter', () => {
+                        sbc.attr('fill', '#22c55e');
+                        splitG.select('text').attr('fill', '#ffffff');
+                    })
+                    .on('mouseleave', () => {
+                        sbc.attr('fill', '#0f172a');
+                        splitG.select('text').attr('fill', '#22c55e');
+                    });
+                offsetX += splitBtnR * 2 + gap;
+            }
         }
         
         // Add split handle for Entry and TP lines (NOT for SL or BE)
@@ -15095,6 +15135,20 @@ class OrderManager {
     
     // Old drawSplitEntryLine / renderSplitEntryLabel / makeSplitEntryLineDraggable removed —
     // Split entries now use drawPreviewLine with Entry#N labels and sync-back in makePreviewLineDraggable.
+
+    /**
+     * Preview multi-TP: + on a TP line adds another target (same price rule as pending TP split).
+     */
+    _splitPreviewTPFromLine(linePrice) {
+        const ep = typeof this._getReferenceEntryForOrderMath === 'function'
+            ? this._getReferenceEntryForOrderMath()
+            : parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        const tp = Number(linePrice);
+        if (!Number.isFinite(ep) || ep <= 0 || !Number.isFinite(tp) || tp <= 0) return;
+        const dist = Math.abs(tp - ep);
+        const newTP = this.orderSide === 'BUY' ? tp + dist * 0.5 : tp - dist * 0.5;
+        this.addTPFromSplit(newTP);
+    }
 
     /**
      * Add a new TP target from split drag
