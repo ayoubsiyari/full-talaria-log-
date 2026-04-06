@@ -8475,7 +8475,7 @@ class OrderManager {
                 const level = this.multiEntryLevels[0];
                 const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
                 const lotSize = level ? this._calcLevelLotSize(level, slPrice, this.pipSize, this.pipValuePerLot) : '0.00';
-                const fullLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper} #1`;
+                const fullLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper} ${lotSize}`;
                 return [
                     {
                         text: fullLabel,
@@ -8521,7 +8521,7 @@ class OrderManager {
         // Weighted average across multi-entry levels (chart preview)
         if (label === 'Avg Entry') {
             const accent = '#eab308';
-            const totalLots = parseFloat(document.getElementById('orderQuantity')?.value || 0);
+            const totalLots = this._calcMultiEntryTotalLots();
             return [
                 {
                     text: 'Avg Entry',
@@ -8553,8 +8553,8 @@ class OrderManager {
             const level = (this.multiEntryLevels || [])[levelIndex];
             const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
             const lotSize = level ? this._calcLevelLotSize(level, slPrice, this.pipSize, this.pipValuePerLot) : '0.00';
-            
-            const fullLabel = `${splitOrderType} ${sideUpper} #${levelNum}`;
+
+            const fullLabel = `${splitOrderType} ${sideUpper} ${lotSize}`;
             
             return [
                 {
@@ -14896,6 +14896,29 @@ class OrderManager {
         const totalAmount = levels.reduce((sum, l) => sum + l.amount, 0);
         const totalWPrice = levels.reduce((sum, l) => sum + (l.price * l.amount), 0);
         return totalAmount > 0 ? totalWPrice / totalAmount : 0;
+    }
+
+    /**
+     * Sum of implied lot sizes across multi-entry levels (matches weighting used for Avg Entry price).
+     */
+    _calcMultiEntryTotalLots() {
+        if (!this.multiEntryLevels?.length) {
+            return parseFloat(document.getElementById('orderQuantity')?.value || 0) || 0;
+        }
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const ps = this.pipSize || 0.0001;
+        const pv = this.pipValuePerLot || 10;
+        const minLot = this.getMarketConfig()?.minSize ?? 0.01;
+        let totalLots = 0;
+        for (const l of this.multiEntryLevels) {
+            if (!(l.price > 0)) continue;
+            if (!this._multiEntryLevelMeetsMinLot(l, slPrice, ps, pv, minLot)) continue;
+            const lots = this._calcLevelLotSizeNumeric(l, slPrice, ps, pv);
+            if (lots > 0) totalLots += lots;
+        }
+        if (totalLots > 0) return totalLots;
+        const levels = this.multiEntryLevels.filter(l => l.price > 0 && l.amount > 0);
+        return levels.reduce((s, l) => s + (Number(l.amount) || 0), 0);
     }
 
     /**
