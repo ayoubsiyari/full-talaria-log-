@@ -9345,7 +9345,7 @@ class OrderManager {
         // Calculate X position with horizontal offsets for badges
         let x;
         if (lineData.isBadge) {
-            const gap = 8;
+            const gap = 12;
 
             const mtpBadges = this.previewLines?.multiTPBadges || [];
             let tpWidth;
@@ -13085,6 +13085,26 @@ class OrderManager {
         return Math.max(p, high + slPad);
     }
 
+    /**
+     * Keep TP on the profit side of entry: BUY → strictly above entry; SELL → strictly below.
+     * Used while dragging preview TP lines/badges so users cannot park TP on the loss side before placing.
+     */
+    _clampTpDragPrice(price) {
+        let p = Number(price);
+        if (!Number.isFinite(p)) return price;
+        const pip = this.pipSize || 0.0001;
+        const tpPad = Math.max(pip * 0.5, 1e-12);
+        const entry = this._getReferenceEntryForOrderMath()
+            || parseFloat(document.getElementById('orderEntryPrice')?.value || 0)
+            || (this.previewLines?.entry?.price > 0 ? this.previewLines.entry.price : 0);
+        if (!(entry > 0)) return p;
+        const side = (this.orderSide || 'BUY').toUpperCase();
+        if (side === 'BUY') {
+            return Math.max(p, entry + tpPad);
+        }
+        return Math.min(p, entry - tpPad);
+    }
+
     makePreviewLineDraggable(lineData) {
         const self = this;
         let isDragging = false;
@@ -13191,6 +13211,17 @@ class OrderManager {
 
                 if (lineData.label === 'SL' && enableSL) {
                     newPrice = self._clampSlDragPrice(newPrice);
+                    clampedY = self.chart.scales.yScale(newPrice);
+                    clampedY = Math.max(0, Math.min(chartHeight, clampedY));
+                }
+
+                const tpOn = document.getElementById('enableTP')?.checked;
+                const isSingleTpDrag = lineData.label === 'TP';
+                const isMultiTpPreviewDrag = typeof lineData.label === 'string'
+                    && /^TP\d+$/.test(lineData.label)
+                    && lineData.targetIndex !== undefined;
+                if (tpOn && (isSingleTpDrag || isMultiTpPreviewDrag)) {
+                    newPrice = self._clampTpDragPrice(newPrice);
                     clampedY = self.chart.scales.yScale(newPrice);
                     clampedY = Math.max(0, Math.min(chartHeight, clampedY));
                 }
@@ -13485,8 +13516,24 @@ class OrderManager {
                         const tp = self.previewLines.tp;
                         if (tp && !self.tpManuallyPositioned && tp.isBadge && tp.labelGroup) {
                             if (!(self.isMultiEntryMode && pricedLv.length > 1)) {
-                                tp.price = newPrice;
-                                const tpY = self.chart.scales.yScale(tp.price);
+                                const tpIn = document.getElementById('tpPrice');
+                                const curTp = parseFloat(tpIn?.value || 0);
+                                const pip = self.pipSize || 0.0001;
+                                const side = (self.orderSide || 'BUY').toUpperCase();
+                                const off = pip * 10;
+                                let tpPx;
+                                if (curTp > 0) {
+                                    tpPx = self._clampTpDragPrice(curTp);
+                                    tp.price = tpPx;
+                                    if (tpIn && Math.abs(tpPx - curTp) > 1e-10) {
+                                        tpIn.value = self.formatPrice(tpPx);
+                                    }
+                                } else {
+                                    tpPx = side === 'BUY' ? newPrice + off : newPrice - off;
+                                    tp.price = tpPx;
+                                    if (tpIn) tpIn.value = self.formatPrice(tpPx);
+                                }
+                                const tpY = self.chart.scales.yScale(tpPx);
                                 self.positionPreviewLabel(tp, tpY);
                             }
                         }
@@ -13938,9 +13985,6 @@ class OrderManager {
 
         // Make badge draggable - when dragged, convert to full line
         const drag = d3.drag()
-            .on('start', () => {
-                badgeGroup.style('opacity', 0.8);
-            })
             .on('drag', event => {
                 if (!self.chart?.scales?.yScale) return;
                 if (event.sourceEvent && self.chart.updateCrosshair) self.chart.updateCrosshair(event.sourceEvent);
@@ -13951,6 +13995,11 @@ class OrderManager {
                 let newPrice = self.chart.scales.yScale.invert(clampedY);
                 if (label === 'SL' && document.getElementById('enableSL')?.checked) {
                     newPrice = self._clampSlDragPrice(newPrice);
+                    clampedY = self.chart.scales.yScale(newPrice);
+                    clampedY = Math.max(0, Math.min(chartHeight, clampedY));
+                }
+                if (label === 'TP' && document.getElementById('enableTP')?.checked) {
+                    newPrice = self._clampTpDragPrice(newPrice);
                     clampedY = self.chart.scales.yScale(newPrice);
                     clampedY = Math.max(0, Math.min(chartHeight, clampedY));
                 }
@@ -14058,8 +14107,6 @@ class OrderManager {
                 });
             })
             .on('end', () => {
-                badgeGroup.style('opacity', 1);
-                // Final calculation on drag end
                 requestAnimationFrame(() => {
                     self.calculateAdvancedRiskReward();
                     self.updatePlaceButtonText();
@@ -16162,9 +16209,16 @@ class OrderManager {
                 errors.push(`⚠️ Stop SELL must be BELOW current price (${this.formatPrice(currentPrice)})`);
             }
         }
-        
-        // SL/TP side validation removed — allow any SL/TP placement
-        
+
+        const tpEnabled = typeof document !== 'undefined' && document.getElementById('enableTP')?.checked;
+        if (tpEnabled && tpPrice > 0 && entryPrice > 0) {
+            if (orderSide === 'BUY' && tpPrice <= entryPrice) {
+                errors.push(`⚠️ Take Profit must be ABOVE entry (${this.formatPrice(entryPrice)}) for BUY orders`);
+            } else if (orderSide === 'SELL' && tpPrice >= entryPrice) {
+                errors.push(`⚠️ Take Profit must be BELOW entry (${this.formatPrice(entryPrice)}) for SELL orders`);
+            }
+        }
+
         return errors;
     }
     
