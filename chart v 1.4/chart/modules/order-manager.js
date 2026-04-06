@@ -26369,7 +26369,10 @@ class OrderManager {
                     updatedSLPrices.add(priceKey);
                     const numPositions = positionsAtThisSL.length;
                     const totalSlQty = positionsAtThisSL.reduce((s, p) => s + (p.quantity || 0), 0);
-                    const labelPrefix = numPositions > 1
+                    const allSameSplitGroup = numPositions > 1
+                        && positionsAtThisSL.every(p => p.isSplitEntry && p.splitGroupId)
+                        && positionsAtThisSL.every(p => p.splitGroupId === positionsAtThisSL[0].splitGroupId);
+                    const labelPrefix = numPositions > 1 && !allSameSplitGroup
                         ? `SL (${numPositions}×) ${totalSlQty.toFixed(2)}`
                         : `SL  ${totalSlQty.toFixed(2)}`;
                     if (labelText) labelText.text(labelPrefix);
