@@ -16210,6 +16210,7 @@ class OrderManager {
                 pendingOrder.direction = this.orderSide;
                 pendingOrder.entryPrice = entryPrice;
                 pendingOrder.quantity = quantity;
+                pendingOrder.placedQuantity = quantity;
                 pendingOrder.takeProfit = tpPrice > 0 ? tpPrice : null;
                 pendingOrder.stopLoss = slPrice > 0 ? slPrice : null;
                 pendingOrder.riskAmount = riskAmount;
@@ -16533,6 +16534,18 @@ class OrderManager {
         // Show trade journal modal for entry notes
         this.showTradeJournalModal(order, false, null);
     }
+
+    /**
+     * Lot size snapshot when the pending order was placed (or last edited). Entry/SL drags
+     * keep this size and move risk $ via _engineRisk instead of resizing lots.
+     */
+    _getPendingPlacedQuantity(pendingOrder) {
+        if (!pendingOrder) return 0;
+        const pq = Number(pendingOrder.placedQuantity);
+        if (Number.isFinite(pq) && pq > 0) return pq;
+        const q = Number(pendingOrder.quantity);
+        return Number.isFinite(q) && q > 0 ? q : 0;
+    }
     
     /**
      * Place a pending order (Limit or Stop)
@@ -16550,6 +16563,7 @@ class OrderManager {
             direction: this.orderSide, // 'BUY' or 'SELL'
             entryPrice: entryPrice,
             quantity: quantity,
+            placedQuantity: quantity,
             takeProfit: tpPrice > 0 ? tpPrice : null,
             stopLoss: slPrice > 0 ? slPrice : null,
             riskAmount: riskAmount,
@@ -16615,6 +16629,7 @@ class OrderManager {
             direction: this.orderSide, // 'BUY' or 'SELL'
             entryPrice: entryPrice,
             quantity: quantity,
+            placedQuantity: quantity,
             takeProfit: tpPrice > 0 ? tpPrice : null,
             stopLoss: slPrice > 0 ? slPrice : null,
             riskAmount: riskAmount,
@@ -16764,6 +16779,7 @@ class OrderManager {
                 direction: this.orderSide,
                 entryPrice: entryPrice,
                 quantity: quantity,
+                placedQuantity: quantity,
                 takeProfit: tpPrice > 0 ? tpPrice : null,
                 stopLoss: slPrice > 0 ? slPrice : null,
                 riskAmount: riskAmount,
@@ -20593,6 +20609,7 @@ class OrderManager {
         po.splitIndex = 1;
         po.splitTotal = 2;
         po.quantity = halfQty;
+        po.placedQuantity = halfQty;
 
         const newPO = {
             id: this.orderIdCounter++,
@@ -20603,6 +20620,7 @@ class OrderManager {
             direction: po.direction,
             entryPrice: price,
             quantity: halfQty,
+            placedQuantity: halfQty,
             takeProfit: po.takeProfit,
             stopLoss: po.stopLoss,
             riskAmount: po.riskAmount ? po.riskAmount / 2 : 0,
@@ -22057,7 +22075,7 @@ class OrderManager {
         let isDragging = false;
         
         let dragStartPrice = pendingOrder.entryPrice;
-        let dragStartQty = pendingOrder.quantity;
+        let dragStartQty = self._getPendingPlacedQuantity(pendingOrder);
 
         const drag = d3.drag()
             .on('start', function() {
@@ -22066,7 +22084,7 @@ class OrderManager {
                 if (!self._draggingPendingOrderIds) self._draggingPendingOrderIds = new Set();
                 self._draggingPendingOrderIds.add(pendingOrder.id);
                 dragStartPrice = pendingOrder.entryPrice;
-                dragStartQty = pendingOrder.quantity;
+                dragStartQty = self._getPendingPlacedQuantity(pendingOrder);
                 line.attr('stroke-width', 1.6).attr('opacity', 1);
                 // Hide badges during drag to avoid stale positioning
                 if (slBadgeGroup) slBadgeGroup.style('display', 'none');
@@ -22082,7 +22100,7 @@ class OrderManager {
                 const clampedY = Math.max(0, Math.min(chartHeight, event.y));
                 let newPrice = chart.scales.yScale.invert(clampedY);
 
-                // Keep lot size fixed at drag start; move risk $ with entry (same idea as lot-size mode for all sizing modes).
+                // Keep placed lot size; move risk $ with entry.
                 pendingOrder.quantity = dragStartQty;
 
                 const slPrice = pendingOrder.stopLoss;
@@ -22186,7 +22204,7 @@ class OrderManager {
                     }
                 }
 
-                pendingOrder.quantity = dragStartQty;
+                pendingOrder.quantity = self._getPendingPlacedQuantity(pendingOrder);
                 const finalTypeLabel = `${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${self.formatQuantity(pendingOrder.quantity || 0)}`;
                 labelText.text(finalTypeLabel);
 
@@ -22204,10 +22222,10 @@ class OrderManager {
                 if (typeof self.updateOrderLines === 'function') self.updateOrderLines(chart);
                 if (typeof self.updatePositionsPanel === 'function') self.updatePositionsPanel();
                 
-                const sMode = pendingOrder.sizingMode || 'risk-usd';
-                const notifDetail = sMode === 'lot-size'
-                    ? `$${pendingOrder.riskAmount} risk`
-                    : `${pendingOrder.quantity.toFixed(2)} lots`;
+                const qPlaced = self._getPendingPlacedQuantity(pendingOrder);
+                const notifDetail = pendingOrder.stopLoss > 0 && pendingOrder.riskAmount != null
+                    ? `$${Number(pendingOrder.riskAmount).toFixed(2)} risk · ${qPlaced.toFixed(2)} lots`
+                    : `${qPlaced.toFixed(2)} lots`;
                 self.showNotification(`✏️ Entry → ${formattedPrice} | ${notifDetail}`, 'info');
             });
         
@@ -22835,40 +22853,21 @@ class OrderManager {
                     const p = parseFloat(formattedPrice);
                     pendingOrder.stopLoss = p;
 
-                    const sizingMode = pendingOrder.sizingMode || 'risk-usd';
-                    const risk = pendingOrder.riskAmount || pendingOrder.originalRiskAmount || 0;
-                    const minLot = self.getMarketConfig()?.minSize ?? 0.01;
-
-                    if (sizingMode === 'lot-size') {
-                        // Lot Size mode: keep lots fixed, recalculate risk
-                        if (pendingOrder.entryPrice > 0) {
-                            const newRisk = self._engineRisk(pendingOrder.entryPrice, p, pendingOrder.quantity, pendingOrder.entryPrice);
-                            pendingOrder.riskAmount = Math.round(newRisk * 100) / 100;
-                            console.log(`🔄 SL moved → recalculated risk: $${pendingOrder.riskAmount} (lots ${pendingOrder.quantity.toFixed(2)})`);
-                        }
-                    } else {
-                        // Risk mode: keep risk fixed, recalculate lots
-                        if (risk > 0 && pendingOrder.entryPrice > 0) {
-                            const newQty = self._enginePositionSize(risk, pendingOrder.entryPrice, p, pendingOrder.entryPrice);
-                            const rounded = Math.round(Math.max(minLot, newQty) * 100) / 100;
-                            pendingOrder.quantity = rounded;
-                            console.log(`🔄 SL moved → recalculated lots: ${rounded.toFixed(2)} (risk $${risk})`);
-                        }
+                    const qBase = self._getPendingPlacedQuantity(pendingOrder);
+                    pendingOrder.quantity = qBase;
+                    if (pendingOrder.entryPrice > 0 && p > 0) {
+                        const newRisk = self._engineRisk(pendingOrder.entryPrice, p, qBase, pendingOrder.entryPrice);
+                        pendingOrder.riskAmount = Math.round(newRisk * 100) / 100;
+                        console.log(`🔄 SL moved → risk $${pendingOrder.riskAmount} (lots ${qBase.toFixed(2)} fixed)`);
                     }
 
                     if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
                         self._getSplitGroupPendingOrders(pendingOrder).forEach((m) => {
                             m.stopLoss = p;
-                            if (sizingMode === 'lot-size') {
-                                if (m.entryPrice > 0) {
-                                    m.riskAmount = Math.round(self._engineRisk(m.entryPrice, p, m.quantity, m.entryPrice) * 100) / 100;
-                                }
-                            } else {
-                                const mRisk = m.riskAmount || m.originalRiskAmount || 0;
-                                if (mRisk > 0 && m.entryPrice > 0) {
-                                    const mQty = self._enginePositionSize(mRisk, m.entryPrice, p, m.entryPrice);
-                                    m.quantity = Math.round(Math.max(minLot, mQty) * 100) / 100;
-                                }
+                            const mq = self._getPendingPlacedQuantity(m);
+                            m.quantity = mq;
+                            if (m.entryPrice > 0 && p > 0) {
+                                m.riskAmount = Math.round(self._engineRisk(m.entryPrice, p, mq, m.entryPrice) * 100) / 100;
                             }
                         });
                     }
@@ -22902,9 +22901,8 @@ class OrderManager {
                 }
                 if (typeof self.updatePositionsPanel === 'function') self.updatePositionsPanel();
                 
-                const slSMode = pendingOrder.sizingMode || 'risk-usd';
-                const slDetail = (target.type === 'SL' && slSMode === 'lot-size')
-                    ? `$${pendingOrder.riskAmount} risk`
+                const slDetail = target.type === 'SL'
+                    ? `$${(pendingOrder.riskAmount != null ? pendingOrder.riskAmount : 0).toFixed(2)} risk · ${self._getPendingPlacedQuantity(pendingOrder).toFixed(2)} lots`
                     : `${pendingOrder.quantity.toFixed(2)} lots`;
                 self.showNotification(`✏️ ${target.type} → ${formattedPrice} | ${slDetail}`, 'info');
             });
