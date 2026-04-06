@@ -836,7 +836,9 @@ class OrderManager {
 
         if (isBuy) {
             if (position.tpTargets && position.tpTargets.length > 0) {
-                position.tpTargets.forEach((target, index) => {
+                // BUY bg: sort ascending (closest-first)
+                const _bgBuyTpSorted = [...position.tpTargets].sort((a, b) => a.price - b.price);
+                _bgBuyTpSorted.forEach((target, index) => {
                     if (!target || target.hit) return;
                     const tp = Number.parseFloat(target.price);
                     if (!Number.isFinite(tp) || high < tp) return;
@@ -879,7 +881,9 @@ class OrderManager {
             }
         } else {
             if (position.tpTargets && position.tpTargets.length > 0) {
-                position.tpTargets.forEach((target, index) => {
+                // SELL bg: sort descending (closest-first)
+                const _bgSellTpSorted = [...position.tpTargets].sort((a, b) => b.price - a.price);
+                _bgSellTpSorted.forEach((target, index) => {
                     if (!target || target.hit) return;
                     const tp = Number.parseFloat(target.price);
                     if (!Number.isFinite(tp) || low > tp) return;
@@ -1220,10 +1224,11 @@ class OrderManager {
 
     _calculateExcursionRValues(position, candle) {
         if (!position || !candle) return null;
-        const openPrice = Number.parseFloat(position.openPrice);
-        const initialSL = Number.parseFloat(position.initialStopLoss ?? position.stopLoss);
-        if (!Number.isFinite(openPrice) || !Number.isFinite(initialSL)) return null;
-        const plannedRiskPrice = Math.abs(openPrice - initialSL);
+        // array_base_price = first fill price; falls back to openPrice for single entries
+        const arrayBase = Number.parseFloat(position.array_base_price ?? position.openPrice);
+        const initialSL = Number.parseFloat(position.initialStopLoss ?? position.initial_sl ?? position.stopLoss);
+        if (!Number.isFinite(arrayBase) || !Number.isFinite(initialSL)) return null;
+        const plannedRiskPrice = Math.abs(arrayBase - initialSL);
         if (!(plannedRiskPrice > 0)) return null;
 
         const high = Number.parseFloat(candle.h);
@@ -1233,15 +1238,15 @@ class OrderManager {
 
         if (position.type === 'BUY') {
             return {
-                bar_high_r: (high - openPrice) / plannedRiskPrice,
-                bar_low_r: (openPrice - low) / plannedRiskPrice,
-                bar_close_r: (close - openPrice) / plannedRiskPrice
+                bar_high_r: (high - arrayBase) / plannedRiskPrice,
+                bar_low_r: (arrayBase - low) / plannedRiskPrice,
+                bar_close_r: (close - arrayBase) / plannedRiskPrice
             };
         }
         return {
-            bar_high_r: (openPrice - low) / plannedRiskPrice,
-            bar_low_r: (high - openPrice) / plannedRiskPrice,
-            bar_close_r: (openPrice - close) / plannedRiskPrice
+            bar_high_r: (arrayBase - low) / plannedRiskPrice,
+            bar_low_r: (high - arrayBase) / plannedRiskPrice,
+            bar_close_r: (arrayBase - close) / plannedRiskPrice
         };
     }
 
@@ -1264,6 +1269,59 @@ class OrderManager {
             position.post_exit_bar_high_r.push(rValues.bar_high_r);
             position.post_exit_bar_low_r.push(rValues.bar_low_r);
         }
+    }
+
+    /**
+     * Append an SL/TP change to the position's audit log.
+     * @param {object} position - open position object
+     * @param {string} field  - e.g. 'SL', 'TP1', 'TP2'
+     * @param {number} oldVal - previous price
+     * @param {number} newVal - new price
+     * @param {string} trigger - 'MANUAL'|'AUTO_BE'|'AUTO_BE_RECALC'|'TRAIL'|'MANUAL_OVERRIDE_TRAIL'
+     */
+    _logSLTPModification(position, field, oldVal, newVal, trigger) {
+        if (!position) return;
+        if (!Array.isArray(position.sl_modifications)) position.sl_modifications = [];
+        const candle = this.getCurrentCandle();
+        position.sl_modifications.push({
+            bar: candle ? candle.t : null,
+            time: candle ? new Date(candle.t).toISOString() : null,
+            field,
+            old: oldVal,
+            new: newVal,
+            trigger
+        });
+    }
+
+    /**
+     * Compute blended gross/net RR from an array of partial closes.
+     * Returns { actual_rr_gross, actual_rr_net, pnl_dollars_gross, pnl_dollars_net, commission_total }.
+     * @param {object} position - closed position with partialCloses[] and finalClosePnL
+     */
+    _computeBlendedRR(position) {
+        const risk = position.originalRiskAmount || position.riskAmount || 0;
+        if (!risk || risk <= 0) return null;
+
+        const parts = Array.isArray(position.partialCloses) ? position.partialCloses : [];
+        let pnl_gross = 0;
+        let commission_total = 0;
+
+        parts.forEach(pc => {
+            pnl_gross += (pc.pnl || 0);
+            commission_total += (pc.commission || 0);
+        });
+        // Add the final-leg PnL (already on position after full close)
+        pnl_gross += (position.finalClosePnL || 0);
+        commission_total += (position.finalCommission || 0);
+
+        const pnl_net = pnl_gross - commission_total;
+        return {
+            actual_rr_gross: pnl_gross / risk,
+            actual_rr_net:   pnl_net  / risk,
+            pnl_dollars_gross: pnl_gross,
+            pnl_dollars_net:   pnl_net,
+            commission_total
+        };
     }
 
     canSwitchToTicker(targetTicker) {
@@ -1897,6 +1955,99 @@ class OrderManager {
         }
     }
 
+    _computeAdvancedAnalytics() {
+        const trades = Array.isArray(this.tradeJournal) ? this.tradeJournal : [];
+        const n = trades.length || 1;
+        const safeN = (v) => { const x = Number.parseFloat(v); return Number.isFinite(x) ? x : null; };
+        const pct = (num, den) => den > 0 ? ((num / den) * 100).toFixed(1) + '%' : '—';
+
+        // ── Multi-Entry ──────────────────────────────────────────────
+        const splitTrades = trades.filter(t => t.isSplitEntry || t.splitGroupId);
+        const splitGroups = {};
+        splitTrades.forEach(t => {
+            const g = t.splitGroupId || t.id;
+            if (!splitGroups[g]) splitGroups[g] = [];
+            splitGroups[g].push(t);
+        });
+        const groupArr = Object.values(splitGroups);
+        const avgFills = groupArr.length > 0
+            ? (groupArr.reduce((s, g) => s + g.length, 0) / groupArr.length).toFixed(1) : '—';
+        const allFilledPct = pct(
+            groupArr.filter(g => !g.some(t => t.entries_locked && g.length < (t.splitTotal || g.length))).length,
+            groupArr.length
+        );
+        const cancelledPct = groupArr.length > 0
+            ? pct(groupArr.filter(g => g.some(t => t.entries_locked)).length, groupArr.length) : '—';
+
+        // ── Scaling Out ───────────────────────────────────────────────
+        const multiTPTrades = trades.filter(t => t.hasPartialCloses && Array.isArray(t.partialCloses) && t.partialCloses.length > 0);
+        const mN = multiTPTrades.length || 1;
+        const avgTPsHit = multiTPTrades.length > 0
+            ? (multiTPTrades.reduce((s, t) => s + t.partialCloses.length, 0) / mN).toFixed(1) : '—';
+        const tp1OnlyTrades = multiTPTrades.filter(t => t.partialCloses.length === 1);
+        const tp1andTP2Trades = multiTPTrades.filter(t => t.partialCloses.length >= 2);
+        const tp1OnlyPct = pct(tp1OnlyTrades.length, multiTPTrades.length);
+        const tp1andTP2Pct = pct(tp1andTP2Trades.length, multiTPTrades.length);
+        const tp1RRs = multiTPTrades.map(t => safeN(t.partialCloses[0]?.rr_at_exit)).filter(v => v !== null);
+        const tp2RRs = multiTPTrades.filter(t => t.partialCloses.length >= 2).map(t => safeN(t.partialCloses[1]?.rr_at_exit)).filter(v => v !== null);
+        const avgRRatTP1 = tp1RRs.length > 0 ? (tp1RRs.reduce((a, b) => a + b, 0) / tp1RRs.length).toFixed(2) + 'R' : '—';
+        const avgRRatTP2 = tp2RRs.length > 0 ? (tp2RRs.reduce((a, b) => a + b, 0) / tp2RRs.length).toFixed(2) + 'R' : '—';
+
+        // ── Breakeven ─────────────────────────────────────────────────
+        const beEnabledTrades = trades.filter(t => t.autoBreakeven || (t.breakevenSettings && t.breakevenSettings.enabled));
+        const beTriggeredTrades = trades.filter(t => t.breakevenSettings?.triggered || t.be_triggered);
+        const beStoppedAtBE = beTriggeredTrades.filter(t => {
+            const closeType = String(t.closeType || '').toUpperCase();
+            return closeType.includes('SL') && Math.abs(safeN(t.exitPrice ?? t.closePrice) - safeN(t.entryPrice ?? t.openPrice)) < 0.0005;
+        });
+        const beTriggeredPct = pct(beTriggeredTrades.length, trades.length);
+        const stoppedAtBEPct = pct(beStoppedAtBE.length, beTriggeredTrades.length);
+        const mfeBeforeBeVals = beTriggeredTrades.map(t => safeN(t.mfe_r)).filter(v => v !== null);
+        const avgMFEbeforeBE = mfeBeforeBeVals.length > 0
+            ? (mfeBeforeBeVals.reduce((a, b) => a + b, 0) / mfeBeforeBeVals.length).toFixed(2) + 'R' : '—';
+
+        // ── Trailing ──────────────────────────────────────────────────
+        const trailTrades = trades.filter(t => t.trailingStop?.enabled || (t.trail_sl_path && t.trail_sl_path.length > 0));
+        const trailUsedPct = pct(trailTrades.length, trades.length);
+        const trailWins = trailTrades.filter(t => (safeN(t.netPnL ?? t.pnl) || 0) > 0);
+        const trailWinRate = pct(trailWins.length, trailTrades.length);
+        const trailExtraRVals = trailTrades.map(t => {
+            const actual = safeN(t.actual_rr_net ?? t.rMultiple);
+            const planned = safeN(t.plannedRR);
+            return (actual !== null && planned !== null) ? actual - planned : null;
+        }).filter(v => v !== null);
+        const avgTrailExtraR = trailExtraRVals.length > 0
+            ? (trailExtraRVals.reduce((a, b) => a + b, 0) / trailExtraRVals.length).toFixed(2) + 'R' : '—';
+
+        // ── Discipline ────────────────────────────────────────────────
+        const slModifiedTrades = trades.filter(t => Array.isArray(t.sl_modifications) && t.sl_modifications.some(m => m.trigger === 'MANUAL'));
+        const tpModifiedTrades = trades.filter(t => Array.isArray(t.sl_modifications) && t.sl_modifications.some(m => m.trigger === 'MANUAL' && String(m.field || '').includes('TP')));
+        const trailOverriddenTrades = trades.filter(t => t.trail_disabled_by_manual || (Array.isArray(t.sl_modifications) && t.sl_modifications.some(m => m.trigger === 'MANUAL_OVERRIDE_TRAIL')));
+        const slModifiedPct = pct(slModifiedTrades.length, trades.length);
+        const tpModifiedPct = pct(tpModifiedTrades.length, trades.length);
+        const trailOverriddenPct = pct(trailOverriddenTrades.length, trades.length);
+        const plannedVsActualVals = trades.map(t => {
+            const planned = safeN(t.plannedRR);
+            const actual = safeN(t.actual_rr_net ?? t.rMultiple);
+            return (planned !== null && actual !== null) ? actual - planned : null;
+        }).filter(v => v !== null);
+        const plannedVsActual = plannedVsActualVals.length > 0
+            ? (plannedVsActualVals.reduce((a, b) => a + b, 0) / plannedVsActualVals.length).toFixed(2) + 'R' : '—';
+        const captureVals = trades.map(t => safeN(t.capture_ratio)).filter(v => v !== null);
+        const avgCaptureRatio = captureVals.length > 0
+            ? ((captureVals.reduce((a, b) => a + b, 0) / captureVals.length) * 100).toFixed(1) + '%' : '—';
+        const wouldHaveWonCount = trades.filter(t => t.would_have_won === true).length;
+        const wouldHaveWonPct = pct(wouldHaveWonCount, trades.length);
+
+        return {
+            splitTrades: String(splitTrades.length), avgFills, allFilledPct, cancelledPct,
+            multiTPTrades: String(multiTPTrades.length), avgTPsHit, tp1OnlyPct, tp1andTP2Pct, avgRRatTP1, avgRRatTP2,
+            beTriggeredPct, stoppedAtBEPct, avgMFEbeforeBE,
+            trailUsedPct, avgTrailExtraR, trailWinRate,
+            slModifiedPct, tpModifiedPct, trailOverriddenPct, plannedVsActual, avgCaptureRatio, wouldHaveWonPct
+        };
+    }
+
     updateAnalyticsPanel() {
         const trades = Array.isArray(this.tradeJournal) ? this.tradeJournal : [];
         const safeNum = (v) => {
@@ -2007,6 +2158,31 @@ class OrderManager {
         if (winBar) {
             winBar.style.width = `${Math.max(0, Math.min(100, winRate))}%`;
         }
+
+        // M6: Advanced analytics sections
+        const adv = this._computeAdvancedAnalytics();
+        setText('analyticsSplitTrades',     adv.splitTrades);
+        setText('analyticsAvgFills',        adv.avgFills);
+        setText('analyticsAllFilled',       adv.allFilledPct);
+        setText('analyticsCancelledEntries',adv.cancelledPct);
+        setText('analyticsMultiTPTrades',   adv.multiTPTrades);
+        setText('analyticsAvgTPsHit',       adv.avgTPsHit);
+        setText('analyticsTP1Only',         adv.tp1OnlyPct);
+        setText('analyticsTP1andTP2',       adv.tp1andTP2Pct);
+        setText('analyticsAvgRRatTP1',      adv.avgRRatTP1);
+        setText('analyticsAvgRRatTP2',      adv.avgRRatTP2);
+        setText('analyticsBETriggered',     adv.beTriggeredPct);
+        setText('analyticsStoppedAtBE',     adv.stoppedAtBEPct);
+        setText('analyticsAvgMFEbeforeBE',  adv.avgMFEbeforeBE);
+        setText('analyticsTrailUsed',       adv.trailUsedPct);
+        setText('analyticsTrailExtraR',     adv.avgTrailExtraR);
+        setText('analyticsTrailWinRate',    adv.trailWinRate);
+        setText('analyticsSLModified',      adv.slModifiedPct);
+        setText('analyticsTPModified',      adv.tpModifiedPct);
+        setText('analyticsTrailOverridden', adv.trailOverriddenPct);
+        setText('analyticsPlannedVsActual', adv.plannedVsActual);
+        setText('analyticsCaptureRatio',    adv.avgCaptureRatio);
+        setText('analyticsWouldHaveWon',    adv.wouldHaveWonPct);
     }
 
     upsertJournalEntry(journalEntry, options = {}) {
@@ -16642,6 +16818,12 @@ class OrderManager {
             tpTargets: tpTargets, // Multiple TP targets
             partialCloses: [], // Track partial closes for multiple TPs
             partialClosePnL: 0, // Cumulative P&L from partial closes
+            sl_modifications: [], // Audit log: every SL/TP change with trigger reason
+            trail_sl_path: [],    // Per-bar trailing SL value history
+            initial_sl: slPrice > 0 ? slPrice : null, // Frozen original SL at creation
+            array_base_price: entryPrice, // First fill price — base for all R-array calculations
+            entry_offset_r: 0,            // Offset in R from array_base_price (0 for single entries)
+            balance_at_creation: this.balance, // Account balance at trade creation (M5 schema)
             _slNoTriggerBeforeTime: currentCandle.t,
             _slNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick,
             _tpNoTriggerBeforeTime: currentCandle.t,
@@ -17930,8 +18112,28 @@ class OrderManager {
                     completedTracking.push(position);
                     return;
                 }
+                // M4-1: skip candles before post_exit_anchor_time (gap between last partial and full close)
+                if (position.post_exit_anchor_time && currentCandle.t <= position.post_exit_anchor_time) return;
                 this._appendExcursionSnapshot(position, currentCandle, true);
                 position.postExitProcessedCandles += 1;
+                // M4-2: checkpoint snapshots at specific bar counts
+                const _cpBars = [5, 10, 15, 20, 25, 30, 40, 50];
+                if (_cpBars.includes(position.postExitProcessedCandles)) {
+                    if (!Array.isArray(position.post_checkpoints)) position.post_checkpoints = [];
+                    const _peHighR = Array.isArray(position.post_exit_bar_high_r) && position.post_exit_bar_high_r.length
+                        ? Math.max(...position.post_exit_bar_high_r) : null;
+                    const _peLowR = Array.isArray(position.post_exit_bar_low_r) && position.post_exit_bar_low_r.length
+                        ? Math.max(...position.post_exit_bar_low_r) : null;
+                    const _peCloseR = Array.isArray(position.post_exit_bar_close_r) && position.post_exit_bar_close_r.length
+                        ? position.post_exit_bar_close_r[position.post_exit_bar_close_r.length - 1] : null;
+                    position.post_checkpoints.push({
+                        bar: position.postExitProcessedCandles,
+                        t: currentCandle.t,
+                        post_mfe_r: _peHighR,
+                        post_mae_r: _peLowR,
+                        post_close_r: _peCloseR
+                    });
+                }
             } else {
                 // Check if tracking window has expired (legacy hours mode)
                 if (currentCandle.t > position.mfeMaeTrackingEndTime) {
@@ -17988,6 +18190,31 @@ class OrderManager {
                 this.tradeJournal[journalIndex].post_exit_bar_low_r = Array.isArray(position.post_exit_bar_low_r) ? position.post_exit_bar_low_r.slice() : [];
                 this.tradeJournal[journalIndex].mfe_r = Array.isArray(position.bar_high_r) && position.bar_high_r.length > 0 ? Math.max(...position.bar_high_r) : (this.tradeJournal[journalIndex].mfe_r ?? 0);
                 this.tradeJournal[journalIndex].mae_r = Array.isArray(position.bar_low_r) && position.bar_low_r.length > 0 ? Math.max(...position.bar_low_r) : (this.tradeJournal[journalIndex].mae_r ?? 0);
+                // M4-2: post-exit checkpoints
+                this.tradeJournal[journalIndex].post_checkpoints = Array.isArray(position.post_checkpoints) ? position.post_checkpoints.slice() : [];
+                this.tradeJournal[journalIndex].post_exit_anchor_time = position.post_exit_anchor_time ?? null;
+
+                // M4-3: derived metrics
+                const _inTradeMfeR = Array.isArray(position.bar_high_r) && position.bar_high_r.length > 0
+                    ? Math.max(...position.bar_high_r) : 0;
+                const _postMfeR = Array.isArray(position.post_exit_bar_high_r) && position.post_exit_bar_high_r.length > 0
+                    ? Math.max(...position.post_exit_bar_high_r) : 0;
+                const _postMaeR = Array.isArray(position.post_exit_bar_low_r) && position.post_exit_bar_low_r.length > 0
+                    ? Math.max(...position.post_exit_bar_low_r) : 0;
+                const _totalMfeR = Math.max(_inTradeMfeR, _postMfeR); // best R across full in-trade + post window
+                const _actualRR = this.tradeJournal[journalIndex].rMultiple ?? this.tradeJournal[journalIndex].actual_rr_net ?? null;
+                const _captureRatio = (Number.isFinite(_actualRR) && _totalMfeR > 0)
+                    ? _actualRR / _totalMfeR : null;
+                const _managementGap = Number.isFinite(_actualRR) ? (_inTradeMfeR - _actualRR) : null;
+                const _exitTimingGap = _postMfeR; // best R reached after exit (positive = left R on table)
+                const _wouldHaveWon = Number.isFinite(_actualRR) && _actualRR <= 0 && _postMfeR > 0;
+                const _exitConfirmed = _postMaeR > _postMfeR; // adverse move > favorable move post-exit
+                this.tradeJournal[journalIndex].total_mfe_r = Number.isFinite(_totalMfeR) ? _totalMfeR : null;
+                this.tradeJournal[journalIndex].capture_ratio = Number.isFinite(_captureRatio) ? _captureRatio : null;
+                this.tradeJournal[journalIndex].management_gap = Number.isFinite(_managementGap) ? _managementGap : null;
+                this.tradeJournal[journalIndex].exit_timing_gap = _exitTimingGap;
+                this.tradeJournal[journalIndex].would_have_won = _wouldHaveWon;
+                this.tradeJournal[journalIndex].exit_confirmed = _exitConfirmed;
                 
                 // Save updated journal
                 this.persistJournal();
@@ -18217,6 +18444,11 @@ class OrderManager {
             originalQuantity: pendingOrder.quantity,
             partialCloses: [],
             partialClosePnL: 0,
+            sl_modifications: [], // Audit log: every SL/TP change with trigger reason
+            trail_sl_path: [],    // Per-bar trailing SL value history
+            initial_sl: pendingOrder.stopLoss || null, // Frozen original SL at creation
+            array_base_price: executionPrice, // First fill price — base for all R-array calculations
+            balance_at_creation: this.balance, // Account balance at trade creation (M5 schema)
             // Split entry tracking
             splitGroupId: pendingOrder.splitGroupId || null,
             splitIndex: pendingOrder.splitIndex || null,
@@ -18278,7 +18510,63 @@ class OrderManager {
         } else {
             this._registerSplitTradeGroupEntry(order);
         }
-        
+
+        // ═══ BE_RECALCULATED: re-anchor SL when new split entry fills post-BE ═══
+        if (order.isSplitEntry && order.splitGroupId) {
+            const siblings = this._getSplitGroupOpenPositions(order);
+            const beTriggeredSibling = siblings.find(s => s.id !== order.id && s.breakevenSettings?.triggered);
+            if (beTriggeredSibling) {
+                // Compute new weighted average entry across all filled siblings including this one
+                const allFilled = [...siblings, order];
+                const totalQty = allFilled.reduce((s, p) => s + (p.quantity || 0), 0);
+                const weightedAvg = totalQty > 0
+                    ? allFilled.reduce((s, p) => s + p.openPrice * (p.quantity || 0), 0) / totalQty
+                    : order.openPrice;
+
+                // Re-anchor SL for all BE-triggered siblings and this new order
+                allFilled.forEach(pos => {
+                    if (!pos.breakevenSettings) return;
+                    const pipOffset = pos.breakevenSettings.pipOffset || 0;
+                    const pipSize = this._getPositionPipSize(pos);
+                    const oldSL = pos.stopLoss;
+                    const newSL = pos.type === 'BUY'
+                        ? weightedAvg + pipOffset * pipSize
+                        : weightedAvg - pipOffset * pipSize;
+                    pos.stopLoss = newSL;
+                    pos.breakevenSettings.be_recalculated = true;
+                    this._logSLTPModification(pos, 'SL', oldSL, newSL, 'AUTO_BE_RECALC');
+                    console.log(`   🔄 BE_RECALC for #${pos.id}: SL re-anchored ${oldSL?.toFixed(5)} → ${newSL.toFixed(5)} (new avg entry ${weightedAvg.toFixed(5)})`);
+                });
+            }
+        }
+
+        // ═══ ENTRY_OFFSET_R: for split groups, sync array_base_price to first fill ═══
+        if (order.isSplitEntry && order.splitGroupId) {
+            const allSplitOpen = this._getSplitGroupOpenPositions(order);
+            const siblings = allSplitOpen.filter(s => s.id !== order.id);
+            if (siblings.length > 0) {
+                // First fill is the sibling with the earliest openTime
+                const firstFill = siblings.reduce((a, b) => (a.openTime <= b.openTime ? a : b));
+                const sharedBase = Number.parseFloat(firstFill.array_base_price ?? firstFill.openPrice);
+                const initialSL = Number.parseFloat(order.initialStopLoss ?? order.initial_sl ?? order.stopLoss);
+                const riskPts = Math.abs(sharedBase - initialSL);
+                order.array_base_price = sharedBase; // align to first fill's base
+                if (riskPts > 0) {
+                    const rawOffset = order.type === 'BUY'
+                        ? (order.openPrice - sharedBase) / riskPts
+                        : (sharedBase - order.openPrice) / riskPts;
+                    order.entry_offset_r = rawOffset;
+                } else {
+                    order.entry_offset_r = 0;
+                }
+                console.log(`   📐 entry_offset_r for split #${order.id}: base=${sharedBase.toFixed(5)}, fill=${order.openPrice.toFixed(5)}, offset=${order.entry_offset_r?.toFixed(4)}R`);
+            } else {
+                order.entry_offset_r = 0; // first fill — no offset
+            }
+        } else {
+            order.entry_offset_r = 0; // single entry — no offset
+        }
+
         // Remove pending order line AND pending SL/TP lines, then draw active versions
         this.removePendingOrderLine(pendingOrder.id);
         this.removePendingSLTPLines(pendingOrder.id);
@@ -18413,7 +18701,10 @@ class OrderManager {
                 return;
             }
 
-            this._appendExcursionSnapshot(position, currentCandle, false);
+            // Entry bar excluded: skip excursion snapshot on the fill candle itself
+            if (currentCandle.t !== position.openTime) {
+                this._appendExcursionSnapshot(position, currentCandle, false);
+            }
             const markForUnrealized = this._resolveUnrealizedMarkPrice(position, currentCandle);
             const markPx = Number.isFinite(markForUnrealized) ? markForUnrealized : Number.parseFloat(currentPrice);
             if (position.type === 'BUY') {
@@ -18477,6 +18768,7 @@ class OrderManager {
                         else triggerType = `$${position.breakevenSettings.value}`;
                         
                         const offsetText = pipOffset !== 0 ? ` +${pipOffset} pts` : '';
+                        this._logSLTPModification(position, 'SL', oldSL, position.stopLoss, 'AUTO_BE');
                         console.log(`   ⚡ BREAKEVEN TRIGGERED! (${triggerType}) SL moved from ${oldSL.toFixed(5)} to ${position.stopLoss.toFixed(5)}${offsetText} for BUY #${position.id}`);
                         console.log(`   Position #${position.id} is STILL OPEN with quantity ${position.quantity}`);
                         console.log(`   ⚠️ Skipping TP checks for this candle to let BE take effect`);
@@ -18488,7 +18780,7 @@ class OrderManager {
                 }
                 
                 // Check for step-based trailing stop activation and adjustment
-                if (position.trailingStop && position.trailingStop.enabled && position.stopLoss && !position.trailingStop.beSupersedesTrailing) {
+                if (position.trailingStop && position.trailingStop.enabled && position.stopLoss && !position.trailingStop.disabledByManual && !position.trailingStop.beSupersedesTrailing) {
                     // Use HIGH for BUY trailing (matches TP hit detection logic)
                     const trailPrice = high;
 
@@ -18529,6 +18821,7 @@ class OrderManager {
                                 const oldSL = position.stopLoss;
                                 position.stopLoss = newSL;
                                 position.trailingStop.currentStep = stepsReached;
+                                this._logSLTPModification(position, 'SL', oldSL, newSL, 'TRAIL');
                                 
                                 console.log(`   📈 STEP TRAILING SL: ${oldSL.toFixed(5)} → ${newSL.toFixed(5)} (Step ${stepsReached}) for BUY #${position.id}`);
                                 
@@ -18540,12 +18833,19 @@ class OrderManager {
                             }
                         }
                     }
+                    // Append current trail SL to per-bar path (even if not moved this bar)
+                    if (position.trailingStop.activated && position.stopLoss != null) {
+                        if (!Array.isArray(position.trail_sl_path)) position.trail_sl_path = [];
+                        position.trail_sl_path.push(position.stopLoss);
+                    }
                 }
                 
                 // Check for multiple TP hits (skip if BE was just triggered this candle)
                 if (position.tpTargets && position.tpTargets.length > 0 && !position.beJustTriggered) {
                     console.log(`   📊 Checking ${position.tpTargets.length} TP targets for BUY #${position.id}`);
-                    position.tpTargets.forEach((target, index) => {
+                    // BUY: sort ascending (lowest price = closest to entry) so partial TPs fire closest-first
+                    const _buyTpSorted = [...position.tpTargets].sort((a, b) => a.price - b.price);
+                    _buyTpSorted.forEach((target, index) => {
                         console.log(`      Target ${index + 1}: price=${target.price.toFixed(5)}, percentage=${target.percentage}%, hit=${target.hit}, high=${high.toFixed(5)}`);
                         const tpTgtGuarded = this._isNoTriggerGuardActive(target._noTriggerBeforeTime, target._noTriggerBeforeTick, currentCandle);
                         let tpTgtHit;
@@ -18576,6 +18876,19 @@ class OrderManager {
                             });
                         }
                     });
+                    // M3-2: exit-bar clamping — cap bar_high_r to the first partial TP's R-value
+                    const _buyTpHitsThisBar = positionsToClose.filter(p => p.id === position.id && p.type.includes('TP'));
+                    if (_buyTpHitsThisBar.length > 0 && Array.isArray(position.bar_high_r) && position.bar_high_r.length > 0) {
+                        const _firstTpPx = Math.min(..._buyTpHitsThisBar.map(p => p.closePrice));
+                        const _arrayBase = Number.parseFloat(position.array_base_price ?? position.openPrice);
+                        const _initialSL = Number.parseFloat(position.initialStopLoss ?? position.initial_sl ?? position.stopLoss);
+                        const _riskPts = Math.abs(_arrayBase - _initialSL);
+                        if (_riskPts > 0) {
+                            const _tpR = (_firstTpPx - _arrayBase) / _riskPts;
+                            const _last = position.bar_high_r.length - 1;
+                            position.bar_high_r[_last] = Math.min(position.bar_high_r[_last], _tpR);
+                        }
+                    }
                 } else if (position.beJustTriggered && position.tpTargets && position.tpTargets.length > 0) {
                     console.log(`   ⏭️ Skipping TP checks for BUY #${position.id} - BE was just triggered`);
                 }
@@ -18699,6 +19012,7 @@ class OrderManager {
                         else triggerType = `$${position.breakevenSettings.value}`;
                         
                         const offsetText = pipOffset !== 0 ? ` +${pipOffset} pts` : '';
+                        this._logSLTPModification(position, 'SL', oldSL, position.stopLoss, 'AUTO_BE');
                         console.log(`   ⚡ BREAKEVEN TRIGGERED! (${triggerType}) SL moved from ${oldSL.toFixed(5)} to ${position.stopLoss.toFixed(5)}${offsetText} for SELL #${position.id}`);
                         console.log(`   Position #${position.id} is STILL OPEN with quantity ${position.quantity}`);
                         console.log(`   ⚠️ Skipping TP checks for this candle to let BE take effect`);
@@ -18710,7 +19024,7 @@ class OrderManager {
                 }
                 
                 // Check for step-based trailing stop activation and adjustment
-                if (position.trailingStop && position.trailingStop.enabled && position.stopLoss && !position.trailingStop.beSupersedesTrailing) {
+                if (position.trailingStop && position.trailingStop.enabled && position.stopLoss && !position.trailingStop.disabledByManual && !position.trailingStop.beSupersedesTrailing) {
                     // Use LOW for SELL trailing (matches SL hit detection logic)
                     const trailPrice = low;
 
@@ -18749,6 +19063,7 @@ class OrderManager {
                                 const oldSL = position.stopLoss;
                                 position.stopLoss = newSL;
                                 position.trailingStop.currentStep = stepsReached;
+                                this._logSLTPModification(position, 'SL', oldSL, newSL, 'TRAIL');
                                 
                                 console.log(`   📉 STEP TRAILING SL: ${oldSL.toFixed(5)} → ${newSL.toFixed(5)} (Step ${stepsReached}) for SELL #${position.id}`);
                                 
@@ -18760,12 +19075,19 @@ class OrderManager {
                             }
                         }
                     }
+                    // Append current trail SL to per-bar path (even if not moved this bar)
+                    if (position.trailingStop.activated && position.stopLoss != null) {
+                        if (!Array.isArray(position.trail_sl_path)) position.trail_sl_path = [];
+                        position.trail_sl_path.push(position.stopLoss);
+                    }
                 }
                 
                 // Check for multiple TP hits (skip if BE was just triggered this candle)
                 if (position.tpTargets && position.tpTargets.length > 0 && !position.beJustTriggered) {
                     console.log(`   📊 Checking ${position.tpTargets.length} TP targets for SELL #${position.id}`);
-                    position.tpTargets.forEach((target, index) => {
+                    // SELL: sort descending (highest price = closest to entry) so partial TPs fire closest-first
+                    const _sellTpSorted = [...position.tpTargets].sort((a, b) => b.price - a.price);
+                    _sellTpSorted.forEach((target, index) => {
                         console.log(`      Target ${index + 1}: price=${target.price.toFixed(5)}, percentage=${target.percentage}%, hit=${target.hit}, low=${low.toFixed(5)}`);
                         const sellTpTgtGuarded = this._isNoTriggerGuardActive(target._noTriggerBeforeTime, target._noTriggerBeforeTick, currentCandle);
                         let sellTpTgtHit;
@@ -18796,6 +19118,19 @@ class OrderManager {
                             });
                         }
                     });
+                    // M3-2: exit-bar clamping — cap bar_high_r to the first partial TP's R-value (SELL)
+                    const _sellTpHitsThisBar = positionsToClose.filter(p => p.id === position.id && p.type.includes('TP'));
+                    if (_sellTpHitsThisBar.length > 0 && Array.isArray(position.bar_high_r) && position.bar_high_r.length > 0) {
+                        const _firstTpPx = Math.max(..._sellTpHitsThisBar.map(p => p.closePrice)); // highest price = closest to SELL entry
+                        const _arrayBase = Number.parseFloat(position.array_base_price ?? position.openPrice);
+                        const _initialSL = Number.parseFloat(position.initialStopLoss ?? position.initial_sl ?? position.stopLoss);
+                        const _riskPts = Math.abs(_arrayBase - _initialSL);
+                        if (_riskPts > 0) {
+                            const _tpR = (_arrayBase - _firstTpPx) / _riskPts;
+                            const _last = position.bar_high_r.length - 1;
+                            position.bar_high_r[_last] = Math.min(position.bar_high_r[_last], _tpR);
+                        }
+                    }
                 } else if (position.beJustTriggered && position.tpTargets && position.tpTargets.length > 0) {
                     console.log(`   ⏭️ Skipping TP checks for SELL #${position.id} - BE was just triggered`);
                 }
@@ -18981,18 +19316,51 @@ class OrderManager {
             if (!position.partialCloses) {
                 position.partialCloses = [];
             }
+
+            // Compute R-multiple at this partial exit
+            const _riskForPartial = position.originalRiskAmount || position.riskAmount || 0;
+            const _rr_at_exit = _riskForPartial > 0 ? pnl / _riskForPartial : null;
+
+            // Commission for this partial lot (per-side × 2 × lots)
+            const _posSettings = position.instrument_settings || null;
+            const _commPerSide = _posSettings?.commission_per_lot ?? 0;
+            const _commission = _commPerSide * 2 * closeQuantity;
+
+            const _exitReasonMap = { 'TP-PARTIAL': 'TP_HIT', 'TP': 'TP_HIT', 'SL': 'SL_HIT', 'MANUAL': 'MANUAL', 'STOP_OUT': 'STOP_OUT' };
+            const _exitReason = _exitReasonMap[hitType] || String(hitType || 'MANUAL');
+            const _barAtExit = Array.isArray(position.bar_close_r) ? position.bar_close_r.length : 0;
             position.partialCloses.push({
                 closePrice: closePrice,
                 closeTime: closeTime,
+                bar: _barAtExit,
                 quantity: closeQuantity,
                 pnl: pnl,
+                pnl_net: pnl - _commission,
+                commission: _commission,
+                rr_at_exit: _rr_at_exit,
                 percentage: percentage,
                 hitType: hitType,
+                exit_reason: _exitReason,
                 targetId: targetId
             });
             
             // Track cumulative partial P&L for easy access
             position.partialClosePnL = (position.partialClosePnL || 0) + pnl;
+            position.last_partial_exit_time = closeTime; // M4-1: anchor for post-exit start
+
+            // entries_locked: after first partial TP, cancel all unfilled split siblings
+            if (!position.entries_locked) {
+                position.entries_locked = true;
+                if (position.splitGroupId) {
+                    this._cancelPendingOrdersInSplitGroup(position.splitGroupId);
+                    console.log(`   🔒 entries_locked for split group #${position.splitGroupId} after partial TP`);
+                }
+            }
+
+            // Proportional margin release: free up the closed fraction of margin
+            if (this.orderService && typeof this.orderService.recomputeSharedMarginState === 'function') {
+                this.orderService.recomputeSharedMarginState();
+            }
             
             console.log(`✅ Partial close: #${orderId} | Closed ${(percentage * 100).toFixed(0)}% (${closeQuantity.toFixed(2)} lots) | P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} | Cumulative Partial P&L: $${position.partialClosePnL.toFixed(2)} | Remaining: ${position.quantity.toFixed(2)} lots | Balance: $${this.balance.toFixed(2)}`);
             
@@ -19285,7 +19653,13 @@ class OrderManager {
                         entryScreenshot: e.entryScreenshot || null
                     })),
                     scaledGroupId: scaledInfo.groupId,
-                    numberOfEntries: scaledInfo.entries.length
+                    numberOfEntries: scaledInfo.entries.length,
+                    // AUDIT / DISCIPLINE DATA (aggregate across scaled entries)
+                    sl_modifications: scaledInfo.entries.flatMap(e => e.sl_modifications || []),
+                    trail_sl_path: scaledInfo.entries.flatMap(e => e.trail_sl_path || []),
+                    initial_sl: firstEntry.initial_sl ?? firstEntry.stopLoss,
+                    active_sl_at_exit: position.stopLoss,
+                    entries_locked: scaledInfo.entries.some(e => e.entries_locked) || false
                 };
                 
                 console.log(`📊 Created AGGREGATE journal entry for scaled trade group #${scaledInfo.groupId}:`);
@@ -19410,7 +19784,24 @@ class OrderManager {
                         partialCloses: e.partialCloses || []
                     })),
                     splitGroupId: splitInfo.groupId,
-                    numberOfEntries: splitInfo.entries.length
+                    numberOfEntries: splitInfo.entries.length,
+                    // AUDIT / DISCIPLINE DATA (aggregate across split entries)
+                    sl_modifications: splitInfo.entries.flatMap(e => e.sl_modifications || []),
+                    trail_sl_path: splitInfo.entries.flatMap(e => e.trail_sl_path || []),
+                    initial_sl: firstEntry.initial_sl ?? firstEntry.stopLoss,
+                    active_sl_at_exit: position.stopLoss,
+                    entries_locked: splitInfo.entries.some(e => e.entries_locked) || false,
+                    ...(() => {
+                        const combinedPos = { originalRiskAmount: totalRisk, riskAmount: totalRisk, partialCloses: allPartialCloses, finalClosePnL: totalPnL - totalPartialPnL };
+                        const blended = this._computeBlendedRR(combinedPos);
+                        return blended ? {
+                            actual_rr_gross: blended.actual_rr_gross,
+                            actual_rr_net:   blended.actual_rr_net,
+                            pnl_dollars_gross: blended.pnl_dollars_gross,
+                            pnl_dollars_net:   blended.pnl_dollars_net,
+                            commission_total:  blended.commission_total
+                        } : {};
+                    })()
                 };
                 
                 console.log(`📊 Created AGGREGATE journal entry for SPLIT trade group ${splitInfo.groupId}:`);
@@ -19486,7 +19877,46 @@ class OrderManager {
                     isSplitEntry: position.isSplitEntry || false,
                     splitGroupId: position.splitGroupId || null,
                     splitIndex: position.splitIndex || null,
-                    splitTotal: position.splitTotal || null
+                    splitTotal: position.splitTotal || null,
+                    // AUDIT / DISCIPLINE DATA
+                    sl_modifications: position.sl_modifications || [],
+                    trail_sl_path: position.trail_sl_path || [],
+                    initial_sl: position.initial_sl ?? position.stopLoss,
+                    active_sl_at_exit: position.stopLoss,
+                    active_tps_at_exit: Array.isArray(position.tpTargets)
+                        ? position.tpTargets.map(t => ({ price: t.price, percentage: t.percentage, hit: !!t.hit, targetId: t.id }))
+                        : (position.takeProfit ? [{ price: position.takeProfit, percentage: 100, hit: true }] : []),
+                    entries_locked: position.entries_locked || false,
+                    // R-ARRAY ACCURACY DATA
+                    array_base_price: position.array_base_price ?? position.openPrice,
+                    entry_offset_r: position.entry_offset_r ?? 0,
+                    // M5 SCHEMA FIELDS
+                    final_exit_bar: Array.isArray(position.bar_close_r) ? position.bar_close_r.length : null,
+                    total_bars_held: Array.isArray(position.bar_close_r) ? position.bar_close_r.length : null,
+                    balance_at_exit: this.balance,
+                    balance_at_creation: position.balance_at_creation ?? null,
+                    planned_risk_pct: (() => {
+                        const _bal = position.balance_at_creation ?? this.initialBalance ?? this.balance;
+                        const _risk = position.riskAmount || position.originalRiskAmount || 0;
+                        return (_bal > 0 && _risk > 0) ? (_risk / _bal) * 100 : null;
+                    })(),
+                    actual_risk_r: (() => {
+                        const _entry = position.openPrice;
+                        const _sl = position.stopLoss;
+                        const _riskPts = Math.abs((position.array_base_price ?? _entry) - (position.initial_sl ?? _sl ?? 0));
+                        if (!_riskPts || !_entry || !_sl) return null;
+                        return Math.abs(_entry - _sl) / _riskPts;
+                    })(),
+                    ...(() => {
+                        const blended = this._computeBlendedRR({ ...position, finalClosePnL });
+                        return blended ? {
+                            actual_rr_gross: blended.actual_rr_gross,
+                            actual_rr_net:   blended.actual_rr_net,
+                            pnl_dollars_gross: blended.pnl_dollars_gross,
+                            pnl_dollars_net:   blended.pnl_dollars_net,
+                            commission_total:  blended.commission_total
+                        } : {};
+                    })()
                 };
                 
                 // Log partial close details
@@ -19630,9 +20060,13 @@ class OrderManager {
         
         // Continue post-exit tracking by configured mode (hours or fixed candles).
         const trackingMode = position.postExitTrackingMode || this.postExitTrackingMode || 'hours';
+        // M4-1: anchor post-exit start at the last partial exit (TP hit), not the full close time.
+        // This ensures the N-candle window begins from when size was last reduced, not when SL finally hits.
+        const _postExitAnchor = position.last_partial_exit_time ?? closeTime;
+        const _reanchoredEndTime = _postExitAnchor + (this.mfeMaeTrackingHours * 60 * 60 * 1000);
         const shouldTrackAfterClose = trackingMode === 'candles'
             ? (Number.parseInt(position.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50, 10) > 0)
-            : (currentCandle && closeTime < position.mfeMaeTrackingEndTime);
+            : (currentCandle && _postExitAnchor < position.mfeMaeTrackingEndTime);
         if (shouldTrackAfterClose) {
             // Continue tracking this position for MFE/MAE
             this.mfeMaeTrackingPositions.push({
@@ -19640,12 +20074,14 @@ class OrderManager {
                 postExitTrackingMode: trackingMode,
                 postExitTrackingCandles: Number.parseInt(position.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50, 10),
                 postExitProcessedCandles: 0,
+                post_exit_anchor_time: _postExitAnchor, // M4-1: candle-mode skips bars before this
+                mfeMaeTrackingEndTime: _reanchoredEndTime, // M4-1: hours-mode end re-anchored
                 journalIndex: null // Will be set when saved to journal
             });
             if (trackingMode === 'candles') {
-                console.log(`📊 Order #${orderId} closed, continuing post-exit tracking for ${Number.parseInt(position.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50, 10)} candles`);
+                console.log(`📊 Order #${orderId} closed, post-exit tracking for ${Number.parseInt(position.postExitTrackingCandles ?? this.postExitTrackingCandles ?? 50, 10)} candles (anchor: ${new Date(_postExitAnchor).toISOString()})`);
             } else {
-                console.log(`📊 Order #${orderId} closed but continuing MFE/MAE tracking until ${new Date(position.mfeMaeTrackingEndTime).toLocaleTimeString()}`);
+                console.log(`📊 Order #${orderId} closed, post-exit tracking until ${new Date(_reanchoredEndTime).toLocaleTimeString()} (anchor: ${new Date(_postExitAnchor).toISOString()})`);
             }
         }
         
@@ -20005,6 +20441,14 @@ class OrderManager {
                     } else if (sib.type === 'SELL' && sib.stopLoss < markPx) {
                         sib._slDragReleaseFillPrice = markPx;
                         sib._slDragReleaseAtBarT = curBarSl.t;
+                    }
+                    // If trailing was active, manual SL drag disables it
+                    if (sib.trailingStop && sib.trailingStop.activated && !sib.trailingStop.disabledByManual) {
+                        sib.trailingStop.disabledByManual = true;
+                        self._logSLTPModification(sib, 'SL', dragStartPrice, sib.stopLoss, 'MANUAL_OVERRIDE_TRAIL');
+                        console.log(`   ✋ Manual SL drag while trailing active — trailing disabled for #${sib.id}`);
+                    } else if (dragStartPrice !== sib.stopLoss) {
+                        self._logSLTPModification(sib, 'SL', dragStartPrice, sib.stopLoss, 'MANUAL');
                     }
                 }
             }
