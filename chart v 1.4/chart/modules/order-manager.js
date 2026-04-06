@@ -8865,15 +8865,13 @@ class OrderManager {
             this.drawSplitHandle(lineData, lineData.labelGroup);
         }
 
-        // Remove leg (✕) — Entry#3+ in multi-entry (matches panel: first two rows locked), or any legacy Entry#2+ split
+        // Remove leg (✕) — same idea as TP/SL close: any Entry# row when 2+ levels (not the last leg alone)
         if (!isBadge && lineData.label && /^Entry#/.test(lineData.label)) {
             let onRemove = null;
-            if (this.isMultiEntryMode && lineData.multiEntryLevelId != null && this.multiEntryLevels) {
-                const ix = this.multiEntryLevels.findIndex((l) => l.id === lineData.multiEntryLevelId);
-                if (ix >= 2) {
-                    const levelId = lineData.multiEntryLevelId;
-                    onRemove = () => this.removeMultiEntryLevel(levelId);
-                }
+            if (this.isMultiEntryMode && lineData.multiEntryLevelId != null && this.multiEntryLevels
+                && this.multiEntryLevels.length > 1) {
+                const levelId = lineData.multiEntryLevelId;
+                onRemove = () => this.removeMultiEntryLevel(levelId);
             } else if (!this.isMultiEntryMode && lineData.splitEntryId != null && this.splitEntriesEnabled) {
                 const sid = lineData.splitEntryId;
                 onRemove = () => this.removeSplitEntry(sid);
@@ -12493,7 +12491,10 @@ class OrderManager {
             }
         }
         this.previewLines.entry = this.drawPreviewLine(entryPrice, entryColor, mainEntryLabel, this.orderSide, true, undefined, undefined, mainEntryOpts);
-        
+        if (this.isMultiEntryMode && this.multiEntryLevels?.length > 0 && this.previewLines.entry) {
+            this.previewLines.entry.multiEntryLevelId = this.multiEntryLevels[0].id;
+        }
+
         // Draw split entry lines if any — using same style as main Entry
         if (this.splitEntries && this.splitEntries.length > 0) {
             this.splitEntries.forEach((splitEntry, index) => {
@@ -14138,10 +14139,10 @@ class OrderManager {
 
             const row = document.createElement('div');
             row.className = 'multi-entry-row';
-            const lockFirstTwo = this.isMultiEntryMode && idx < 2;
-            const deleteBtnHtml = lockFirstTwo
-                ? ''
-                : `<button type="button" class="multi-entry-delete-btn" data-level-id="${level.id}" title="Remove level">✕</button>`;
+            const showRowDelete = this.multiEntryLevels.length > 1;
+            const deleteBtnHtml = showRowDelete
+                ? `<button type="button" class="multi-entry-delete-btn" data-level-id="${level.id}" title="Remove level">✕</button>`
+                : '';
             row.innerHTML = `
                 <div class="multi-entry-row-inputs">
                     <div style="display:flex; gap:4px; align-items:center; min-width:0;">
@@ -14631,16 +14632,12 @@ class OrderManager {
      */
     removeMultiEntryLevel(id) {
         const ix = this.multiEntryLevels.findIndex((l) => l.id === id);
-        if (this.isMultiEntryMode && ix >= 0 && ix < 2) {
-            return;
-        }
-        // Don't allow removing if only 1 level left — switch back to single
+        if (ix === -1) return;
         if (this.multiEntryLevels.length <= 1) {
-            this.toggleEntryMode(); // Back to single
+            this.toggleEntryMode();
             return;
         }
-        this.multiEntryLevels = this.multiEntryLevels.filter(l => l.id !== id);
-        // Auto-equalize amounts across remaining levels
+        this.multiEntryLevels = this.multiEntryLevels.filter((l) => l.id !== id);
         this.equalizeMultiEntryAmounts();
     }
 
