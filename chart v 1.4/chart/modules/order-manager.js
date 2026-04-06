@@ -22740,7 +22740,9 @@ class OrderManager {
         const drag = d3.drag()
             .on('start', function() {
                 isDragging = true;
-                self._isDraggingPendingTarget = true;
+                // Do NOT set _isDraggingPendingTarget here: mousedown alone (click) fires start+end
+                // with no drag — skipping positionPendingOrderTargets for those frames caused a snap
+                // when the next render did a full label rebuild.
                 const tr = target.labelGroup?.attr('transform') || '';
                 const m = /translate\(([^,]+),\s*([^)]+)\)/.exec(tr);
                 dragLabelX = m ? (parseFloat(m[1]) || 0) : null;
@@ -22749,6 +22751,7 @@ class OrderManager {
             })
             .on('drag', function(event) {
                 if (!isDragging || !ch?.scales?.yScale) return;
+                if (!self._isDraggingPendingTarget) self._isDraggingPendingTarget = true;
                 if (event.sourceEvent && ch.updateCrosshair) ch.updateCrosshair(event.sourceEvent);
                 
                 const chartHeight = ch.h || 500;
