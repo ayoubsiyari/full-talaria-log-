@@ -15167,7 +15167,7 @@ class OrderManager {
         if (shareQty <= 0) return fallback;
         const pnl = this.estimatePnLForPriceLevel(side, entryPx, price, shareQty);
         const sign = pnl >= 0 ? '+' : '-';
-        return `${sign}$${Math.abs(pnl).toFixed(2)}`;
+        return `${sign}$${Math.abs(pnl).toFixed(2)}  (${this.formatQuantity(shareQty)})`;
     }
 
     _getReferenceEntryForOrderMath() {
