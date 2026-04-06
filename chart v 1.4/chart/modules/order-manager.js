@@ -8852,9 +8852,7 @@ class OrderManager {
         }
         
         // Add split handle for Entry and TP lines (NOT for SL or BE)
-        const isPlainEntryLabel = lineData.label === 'Entry';
-        const isEntryOneNumberedLabel = !!(lineData.label && /^Entry#1(?:$|:)/.test(lineData.label));
-        const isEntryLine = isPlainEntryLabel || isEntryOneNumberedLabel;
+        const isEntryLine = lineData.label === 'Entry';
         const isTpLine = lineData.label && (lineData.label.startsWith('TP') || lineData.label === 'TP');
         const isSlLine = lineData.label === 'SL';
         const isBeLine = lineData.isBELine || (lineData.label && lineData.label.startsWith('BE'));
@@ -8920,11 +8918,14 @@ class OrderManager {
             }
         }
 
-        // Action badges: Avg Entry in multi-entry; plain "Entry" in single-entry; "Entry#1:…" is the main row in multi-entry (same ✓ ✕ as single Entry).
+        // Place/cancel: on Avg Entry when 2+ priced legs; otherwise on the main entry row (Entry or Entry#1).
         const isAvgEntryLine = lineData.label === 'Avg Entry';
-        const showActionBadges = isAvgEntryLine
-            || (isPlainEntryLabel && !this.isMultiEntryMode)
-            || (this.isMultiEntryMode && isEntryOneNumberedLabel);
+        const isMainEntryNumbered = !!(lineData.label && /^Entry#1(?:$|:)/.test(lineData.label));
+        const pricedEntryLegs = (this.multiEntryLevels || []).filter(l => l.price > 0).length;
+        const placeCancelOnAvgLine = this.isMultiEntryMode && pricedEntryLegs > 1;
+        const showActionBadges = (isAvgEntryLine && placeCancelOnAvgLine)
+            || (!this.isMultiEntryMode && isEntryLine)
+            || (this.isMultiEntryMode && !placeCancelOnAvgLine && (isEntryLine || isMainEntryNumbered));
         if (showActionBadges && !isBadge) {
             const currentBBox = lineData.labelGroup.node().getBBox();
             let actX = currentBBox.x + currentBBox.width + gap;
