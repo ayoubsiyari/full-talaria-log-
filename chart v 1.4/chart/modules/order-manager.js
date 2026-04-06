@@ -24548,21 +24548,19 @@ class OrderManager {
     }
 
     /**
-     * Executed SL line: red when still loss-side, green when stop is past entry (profit lock).
+     * Executed SL row stays classic red; only the price-level number turns green when SL locks profit.
      * @param {object} els - labelBox, labelText, pnlBox, pnlText, priceBox, priceText (D3 selections)
      */
     _styleOpenSlProfitProtectionVisuals(order, line, els) {
         if (!order) return;
         const profit = this._isOpenSlProfitProtection(order, order.stopLoss);
-        const green = '#22c55e';
         const red = '#f23645';
-        const c = profit ? green : red;
-        line?.attr('stroke', c);
-        els.labelBox?.attr('fill', c).attr('stroke', c);
+        line?.attr('stroke', red);
+        els.labelBox?.attr('fill', red).attr('stroke', red);
         els.labelText?.attr('fill', '#ffffff');
-        els.pnlBox?.attr('stroke', c);
-        els.pnlText?.attr('fill', profit ? '#86efac' : '#fca5a5');
-        els.priceBox?.attr('fill', c).attr('stroke', c);
+        els.pnlBox?.attr('stroke', red);
+        els.pnlText?.attr('fill', '#fca5a5');
+        els.priceBox?.attr('fill', red).attr('stroke', red);
         els.priceText?.attr('fill', profit ? '#86efac' : '#ffffff');
     }
 
@@ -24703,8 +24701,7 @@ class OrderManager {
             });
             
             slCloseBtn.on('mouseover', () => {
-                const p = this._isOpenSlProfitProtection(order, order.stopLoss);
-                slCloseBtnBg.attr('fill', p ? '#22c55e' : '#f23645');
+                slCloseBtnBg.attr('fill', '#f23645');
                 slCloseBtnText.attr('fill', '#ffffff');
             }).on('mouseout', () => {
                 slCloseBtnBg.attr('fill', '#0f172a');
@@ -25807,11 +25804,7 @@ class OrderManager {
             
             // Create Y-axis highlights for unique SL prices
             yAxisHighlightPrices.sl.forEach((slPrice) => {
-                const pos = this.openPositions.find(
-                    (p) => p.stopLoss != null && Math.abs(p.stopLoss - slPrice) < 1e-8
-                );
-                const hl = pos && this._isOpenSlProfitProtection(pos, pos.stopLoss) ? '#22c55e' : '#f23645';
-                this.drawYAxisPriceHighlight(slPrice, hl, 'sl', 0, ch);
+                this.drawYAxisPriceHighlight(slPrice, '#f23645', 'sl', 0, ch);
             });
         }
         
