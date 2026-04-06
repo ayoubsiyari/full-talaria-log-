@@ -8865,6 +8865,61 @@ class OrderManager {
             this.drawSplitHandle(lineData, lineData.labelGroup);
         }
 
+        // Remove leg (✕) — Entry#3+ in multi-entry (matches panel: first two rows locked), or any legacy Entry#2+ split
+        if (!isBadge && lineData.label && /^Entry#/.test(lineData.label)) {
+            let onRemove = null;
+            if (this.isMultiEntryMode && lineData.multiEntryLevelId != null && this.multiEntryLevels) {
+                const ix = this.multiEntryLevels.findIndex((l) => l.id === lineData.multiEntryLevelId);
+                if (ix >= 2) {
+                    const levelId = lineData.multiEntryLevelId;
+                    onRemove = () => this.removeMultiEntryLevel(levelId);
+                }
+            } else if (!this.isMultiEntryMode && lineData.splitEntryId != null && this.splitEntriesEnabled) {
+                const sid = lineData.splitEntryId;
+                onRemove = () => this.removeSplitEntry(sid);
+            }
+            if (onRemove) {
+                const bb = lineData.labelGroup.node().getBBox();
+                const delR = 9;
+                const gap = 4;
+                const dg = lineData.labelGroup.append('g')
+                    .attr('class', 'preview-entry-level-delete-btn')
+                    .attr('transform', `translate(${bb.width + gap}, ${(height - delR * 2) / 2})`)
+                    .style('cursor', 'pointer');
+                const dbc = dg.append('circle')
+                    .attr('r', delR)
+                    .attr('cx', delR)
+                    .attr('cy', delR)
+                    .attr('fill', '#0f172a')
+                    .attr('stroke', '#ef4444')
+                    .attr('stroke-width', 1.2);
+                dg.append('text')
+                    .attr('x', delR)
+                    .attr('y', delR)
+                    .attr('dy', '0.35em')
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', '#ef4444')
+                    .attr('font-size', '12px')
+                    .attr('font-weight', '700')
+                    .style('pointer-events', 'none')
+                    .text('✕');
+                dg.on('mousedown', (e) => e.stopPropagation())
+                    .on('click', (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onRemove();
+                    })
+                    .on('mouseenter', () => {
+                        dbc.attr('fill', '#ef4444');
+                        dg.select('text').attr('fill', '#ffffff');
+                    })
+                    .on('mouseleave', () => {
+                        dbc.attr('fill', '#0f172a');
+                        dg.select('text').attr('fill', '#ef4444');
+                    });
+            }
+        }
+
         // Action badges: on Avg Entry in multi-entry mode, or on Entry in single-entry mode
         const isAvgEntryLine = lineData.label === 'Avg Entry';
         const showActionBadges = isAvgEntryLine || (isEntryLine && !this.isMultiEntryMode);
@@ -12770,6 +12825,8 @@ class OrderManager {
                     if (t.closest('.tp-percentage-control')) return false;
                     if (t.closest('.entry-action-btn')) return false;
                     if (t.closest('.split-handle')) return false;
+                    if (t.closest('.preview-entry-level-delete-btn')) return false;
+                    if (t.closest('.preview-enable-multi-modes-btn')) return false;
                 }
                 return true;
             })
