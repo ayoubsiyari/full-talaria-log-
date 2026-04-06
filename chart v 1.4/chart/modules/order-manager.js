@@ -8522,12 +8522,17 @@ class OrderManager {
         return !!(this.isMultiEntryMode && mtp);
     }
 
-    /** Pending-style + control: enables multi-entry + multi-TP together (order panel). */
-    _appendPreviewMultiModesActivatorButton(lineData, startX, height) {
+    /**
+     * Green + on preview: enable only the mode that matches where the button was placed
+     * (entry row → multi-entry only; TP row / TP badge → multi-TP only). Never both at once.
+     * @param {'entry'|'tp'} kind
+     */
+    _appendPreviewMultiModesActivatorButton(lineData, startX, height, kind) {
         const self = this;
         const btnR = 9;
         const g = lineData.labelGroup.append('g')
             .attr('class', 'preview-enable-multi-modes-btn')
+            .attr('data-activator-kind', kind)
             .attr('transform', `translate(${startX}, ${(height - btnR * 2) / 2})`)
             .style('cursor', 'pointer');
         const bg = g.append('circle')
@@ -8548,38 +8553,46 @@ class OrderManager {
             .text('+');
         g.on('click', (e) => {
             e.stopPropagation();
-            self._enableMultiEntryAndMultiTPFromPreview();
+            self._applyPreviewActivator(kind);
         })
             .on('mouseenter', () => bg.attr('fill', '#14532d'))
             .on('mouseleave', () => bg.attr('fill', '#0f172a'));
     }
 
-    _enableMultiEntryAndMultiTPFromPreview() {
-        const multipleTPToggle = document.getElementById('multipleTPToggle');
-        const multipleTPSettings = document.getElementById('multipleTPSettings');
-        const multiTPBtn = document.getElementById('multiTPBtn');
-        const tpSingleView = document.querySelector('.order-tp-single');
-
-        if (multipleTPToggle && !multipleTPToggle.checked) {
-            multipleTPToggle.checked = true;
-            if (multiTPBtn) {
-                multiTPBtn.textContent = 'Single';
-                multiTPBtn.classList.add('active');
+    _applyPreviewActivator(kind) {
+        if (kind === 'entry') {
+            if (!this.isMultiEntryMode) {
+                this.setEntryMode(true);
+            } else {
+                this.updatePreviewLines();
+                this.calculateAdvancedRiskReward();
+                this.updatePlaceButtonText();
             }
-            if (multipleTPSettings) multipleTPSettings.classList.remove('is-hidden');
-            if (tpSingleView) tpSingleView.classList.add('is-hidden');
-            this.initializeTPTargets();
+            this.showNotification('Multi-entry enabled — add legs with the purple ⊕ on each entry line.', 'info', 2800);
+            return;
         }
+        if (kind === 'tp') {
+            const multipleTPToggle = document.getElementById('multipleTPToggle');
+            const multipleTPSettings = document.getElementById('multipleTPSettings');
+            const multiTPBtn = document.getElementById('multiTPBtn');
+            const tpSingleView = document.querySelector('.order-tp-single');
 
-        if (!this.isMultiEntryMode) {
-            this.setEntryMode(true);
-        } else {
-            this.updatePreviewLines();
-            this.calculateAdvancedRiskReward();
-            this.updatePlaceButtonText();
+            if (multipleTPToggle && !multipleTPToggle.checked) {
+                multipleTPToggle.checked = true;
+                if (multiTPBtn) {
+                    multiTPBtn.textContent = 'Single';
+                    multiTPBtn.classList.add('active');
+                }
+                if (multipleTPSettings) multipleTPSettings.classList.remove('is-hidden');
+                if (tpSingleView) tpSingleView.classList.add('is-hidden');
+                this.initializeTPTargets();
+            } else {
+                this.updatePreviewLines();
+                this.calculateAdvancedRiskReward();
+                this.updatePlaceButtonText();
+            }
+            this.showNotification('Multiple take-profits enabled — add targets with the green + on each TP line.', 'info', 2800);
         }
-
-        this.showNotification('Multi-entry & multi-TP enabled — adjust levels in the order panel.', 'info', 2800);
     }
 
     renderPreviewLabel(lineData, overrideY = null) {
@@ -8937,7 +8950,7 @@ class OrderManager {
                 });
         }
 
-        // + enable multi-entry & multi-TP (same as turning both on in the order panel)
+        // Green +: enable multi-entry OR multi-TP only (which line you click), never both.
         if (!this._previewMultiModesActive()) {
             const isMainEntryPreviewLine = !lineData.isBadge && (
                 lineData.label === 'Entry' ||
@@ -8947,7 +8960,8 @@ class OrderManager {
             if (isMainEntryPreviewLine || isSingleTpPreviewLine || isTpBadgeActivator) {
                 const bb = lineData.labelGroup.node().getBBox();
                 const ax = bb.x + bb.width + gap;
-                this._appendPreviewMultiModesActivatorButton(lineData, ax, height);
+                const activatorKind = isMainEntryPreviewLine ? 'entry' : 'tp';
+                this._appendPreviewMultiModesActivatorButton(lineData, ax, height, activatorKind);
             }
         }
 
@@ -14980,6 +14994,10 @@ class OrderManager {
             .attr('font-size', '14px')
             .attr('font-weight', '700')
             .text('⊕');
+
+        splitHandle.on('mousedown', (e) => {
+            e.stopPropagation();
+        });
         
         // Hover effect
         splitHandle
@@ -15107,9 +15125,10 @@ class OrderManager {
                 
                 d3.select(this).style('opacity', 0.7);
                 
-                // Check if this is Entry or TP line
-                const isTpLine = lineData.label && (lineData.label.startsWith('TP') || lineData.label === 'TP');
-                const isEntryLine = lineData.label === 'Entry' || (lineData.label && lineData.label.startsWith('Entry'));
+                // Resolve TP vs Entry without overlap: TP first (TP, TP1, TP2…), then entry-shaped labels only.
+                const label = lineData.label || '';
+                const isTpLine = label === 'TP' || /^TP\d+$/.test(label);
+                const isEntryLine = label === 'Entry' || /^Entry#/.test(label) || /^Entry\s*\(/.test(label);
                 
                 // Only create split if actually moved (no minimum distance requirement)
                 const distance = Math.abs(newPrice - lineData.price);
@@ -15118,24 +15137,20 @@ class OrderManager {
                     return;
                 }
                 
-                if (isEntryLine && self.isMultiEntryMode) {
-                    // Multi-entry mode: add new level to panel and sync
+                if (isTpLine) {
+                    self.addTPFromSplit(newPrice);
+                    self.showNotification(`New TP added at ${self.formatPrice(newPrice)}`, 'success');
+                } else if (isEntryLine && self.isMultiEntryMode) {
                     self.multiEntryLevels.push({
                         id: Date.now(),
                         price: parseFloat(newPrice.toFixed(self.getPricePrecision())),
                         amount: 0
                     });
-                    // Equalize amounts across all levels (includes render + sync)
                     self.equalizeMultiEntryAmounts();
                     self.showNotification(`Entry level added at ${self.formatPrice(newPrice)}`, 'success');
                 } else if (isEntryLine) {
-                    // Legacy split entry
                     self.addSplitEntry(newPrice);
                     self.showNotification(`Split entry added at ${self.formatPrice(newPrice)}`, 'success');
-                } else if (isTpLine) {
-                    // Add new TP target
-                    self.addTPFromSplit(newPrice);
-                    self.showNotification(`New TP added at ${self.formatPrice(newPrice)}`, 'success');
                 }
             });
         
