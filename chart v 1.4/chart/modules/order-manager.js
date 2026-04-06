@@ -167,6 +167,9 @@ class OrderManager {
             lastUpdate: null           // Timestamp of last SL update
         };
         this.priceMonitorInterval = null; // Interval for monitoring price
+        /** Trailing SL inline inputs: 'rr' | 'pips' | 'amount' ($ profit at current lot size) */
+        this.trailingUnitMode = 'rr';
+        this.trailingActivateMode = 'trail-rr';
         
         // MARKET TYPE SYSTEM - Support for different instrument types
         this.marketType = 'forex'; // Default: forex, futures, crypto, stocks
@@ -8286,16 +8289,22 @@ class OrderManager {
                         </label>
                     </div>
                     <div id="trailingSLSettings" class="is-hidden">
+                        <div class="trailing-unit-row" style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; align-items:center;">
+                            <span style="font-size:10px; color:#94a3b8; margin-right:4px;">Units</span>
+                            <button type="button" class="trailing-unit-tab active" data-trail-unit="rr" title="Multiples of initial risk (|entry − SL|)" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:#ca8a04;color:#0f172a;border:none;">R</button>
+                            <button type="button" class="trailing-unit-tab" data-trail-unit="pips" title="Pips" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:transparent;color:#94a3b8;border:1px solid #334155;">Pips</button>
+                            <button type="button" class="trailing-unit-tab" data-trail-unit="amount" title="Profit in account currency (uses lot size)" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:transparent;color:#94a3b8;border:1px solid #334155;">$</button>
+                        </div>
                         <div class="order-adv-card__body">
                             <span>After</span>
                             <input type="number" id="trailingActivateRR" value="1" min="0.1" step="0.1" class="adv-inline-input">
-                            <span class="adv-inline-unit">R</span>
+                            <span class="adv-inline-unit" data-trailing-unit-label>R</span>
                             <span>trail</span>
                             <input type="number" id="trailingStepSize" value="0.5" min="0.1" step="0.1" class="adv-inline-input">
-                            <span class="adv-inline-unit">R</span>
+                            <span class="adv-inline-unit" data-trailing-unit-label>R</span>
                             <span>every</span>
                             <input type="number" id="trailingActivatePips" value="0.25" min="0.01" step="0.01" class="adv-inline-input">
-                            <span class="adv-inline-unit">R</span>
+                            <span class="adv-inline-unit" data-trailing-unit-label>R</span>
                         </div>
                         <div id="trailSummaryText" class="order-adv-card__summary"></div>
                     </div>
@@ -10584,38 +10593,6 @@ class OrderManager {
                     // Update breakeven line when mode changes
                     this.updatePreviewLines();
                 }
-                
-                // Handle trailing stop activation mode tabs
-                if (mode === 'trail-rr' || mode === 'trail-pips') {
-                    this.trailingActivateMode = mode;
-                    
-                    // Update tab styles
-                    const trailRRTab = document.getElementById('trailActivateRRTab');
-                    const trailPipsTab = document.getElementById('trailActivatePipsTab');
-                    if (trailRRTab && trailPipsTab) {
-                        trailRRTab.style.cssText = '';
-                        trailPipsTab.style.cssText = '';
-                        trailRRTab.classList.toggle('active', mode === 'trail-rr');
-                        trailPipsTab.classList.toggle('active', mode === 'trail-pips');
-                    }
-                    
-                    // Toggle inputs
-                    const rrInput = document.getElementById('trailingActivateRRInput');
-                    const pipsInput = document.getElementById('trailingActivatePipsInput');
-                    if (mode === 'trail-rr') {
-                        if (rrInput) rrInput.style.display = 'flex';
-                        if (pipsInput) pipsInput.style.display = 'none';
-                    } else {
-                        if (rrInput) rrInput.style.display = 'none';
-                        if (pipsInput) pipsInput.style.display = 'flex';
-                    }
-
-                    const trailingSLToggleEl = document.getElementById('trailingSLToggle');
-                    if (trailingSLToggleEl?.checked) {
-                        this._updateTrailingSummary();
-                        this.initializeTrailingSL();
-                    }
-                }
             };
         });
 
@@ -10624,7 +10601,6 @@ class OrderManager {
         const trailingSLToggle = document.getElementById('trailingSLToggle');
         const trailingSLSettings = document.getElementById('trailingSLSettings');
         if (trailingSLToggle && trailingSLSettings) {
-            this.trailingActivateMode = 'trail-rr'; // Default mode
             trailingSLToggle.onchange = () => {
                 trailingSLSettings.classList.toggle('is-hidden', !trailingSLToggle.checked);
                 
@@ -10638,13 +10614,22 @@ class OrderManager {
             };
         }
 
+        document.querySelectorAll('.trailing-unit-tab').forEach((btn) => {
+            btn.onclick = () => {
+                const m = btn.getAttribute('data-trail-unit');
+                if (m) this._setTrailingUnitMode(m);
+            };
+        });
+        this._updateTrailingInlineUnits();
+
         // Wire trailing inline inputs to summary updates
         const trActIn = document.getElementById('trailingActivateRR');
         const trStepIn = document.getElementById('trailingStepSize');
         const trEveryIn = document.getElementById('trailingActivatePips');
-        if (trActIn) trActIn.oninput = () => this._updateTrailingSummary();
-        if (trStepIn) trStepIn.oninput = () => this._updateTrailingSummary();
-        if (trEveryIn) trEveryIn.oninput = () => this._updateTrailingSummary();
+        const trInUpd = () => this._updateTrailingSummary();
+        if (trActIn) trActIn.oninput = trInUpd;
+        if (trStepIn) trStepIn.oninput = trInUpd;
+        if (trEveryIn) trEveryIn.oninput = trInUpd;
         
         // Multiple TP toggle (button + hidden checkbox)
         const multipleTPToggle = document.getElementById('multipleTPToggle');
@@ -11600,6 +11585,10 @@ class OrderManager {
             }
         }
 
+        if (document.getElementById('trailingSLToggle')?.checked && this.trailingUnitMode === 'amount') {
+            this._updateTrailingSummary();
+        }
+
         this.updateMarginLevelBadge();
         this.updatePlaceButtonText();
     }
@@ -12330,6 +12319,61 @@ class OrderManager {
         el.textContent = `At ${triggerPrice.toFixed(precision)} \u2192 SL to ${bePrice.toFixed(precision)} (BE)`;
     }
 
+    /** Lot size from order panel — used for $-mode trailing distance conversion. */
+    _getTrailingFormQuantity() {
+        const q = parseFloat(document.getElementById('orderQuantity')?.value || 0);
+        return Number.isFinite(q) && q > 0 ? q : 1e-9;
+    }
+
+    _trailingUnitLabel(mode) {
+        if (mode === 'pips') return 'pips';
+        if (mode === 'amount') return '$';
+        return 'R';
+    }
+
+    /**
+     * Convert a trailing input value to a favorable price distance (same units as |entry−SL|).
+     * @param {'rr'|'pips'|'amount'} unitMode
+     */
+    _trailingValueToPriceDistance(value, unitMode, riskDistance, quantity) {
+        const v = Number(value);
+        if (!Number.isFinite(v) || v < 0) return 0;
+        const pipSz = this.pipSize || 0.0001;
+        const pv = this.pipValuePerLot ?? 10;
+        const q = Math.max(Number(quantity) || 0, 1e-9);
+        const rd = Number(riskDistance) || 0;
+        if (unitMode === 'pips') return v * pipSz;
+        if (unitMode === 'amount') return (v / (pv * q)) * pipSz;
+        if (unitMode === 'rr') return rd > 1e-12 ? v * rd : 0;
+        return rd > 1e-12 ? v * rd : 0;
+    }
+
+    _updateTrailingInlineUnits() {
+        const mode = this.trailingUnitMode || 'rr';
+        const lbl = this._trailingUnitLabel(mode);
+        document.querySelectorAll('[data-trailing-unit-label]').forEach((el) => {
+            el.textContent = lbl;
+        });
+    }
+
+    _setTrailingUnitMode(mode) {
+        if (mode !== 'rr' && mode !== 'pips' && mode !== 'amount') return;
+        this.trailingUnitMode = mode;
+        document.querySelectorAll('.trailing-unit-tab').forEach((btn) => {
+            const m = btn.getAttribute('data-trail-unit');
+            const on = m === mode;
+            btn.classList.toggle('active', on);
+            btn.style.background = on ? '#ca8a04' : 'transparent';
+            btn.style.color = on ? '#0f172a' : '#94a3b8';
+            btn.style.border = on ? 'none' : '1px solid #334155';
+        });
+        this._updateTrailingInlineUnits();
+        this._updateTrailingSummary();
+        if (document.getElementById('trailingSLToggle')?.checked) {
+            this.initializeTrailingSL();
+        }
+    }
+
     _updateTrailingSummary() {
         const el = document.getElementById('trailSummaryText');
         if (!el) return;
@@ -12343,26 +12387,21 @@ class OrderManager {
         const riskDist = Math.abs(entry - sl);
         if (riskDist < 1e-10) { el.textContent = ''; return; }
 
-        const activateMode = this.trailingActivateMode || 'trail-rr';
-        const trailR = parseFloat(document.getElementById('trailingStepSize')?.value || 0.5);
+        const unitMode = this.trailingUnitMode || 'rr';
+        const qty = this._getTrailingFormQuantity();
+        const vAct = parseFloat(document.getElementById('trailingActivateRR')?.value || 1);
+        const vStep = parseFloat(document.getElementById('trailingStepSize')?.value || 0.5);
         const isBuy = this.orderSide === 'BUY';
         const precision = this.getPricePrecision();
         const pipSz = this.pipSize || 0.0001;
 
-        let activateDist;
-        if (activateMode === 'trail-rr') {
-            const activateRR = parseFloat(document.getElementById('trailingActivateRR')?.value || 1);
-            activateDist = activateRR * riskDist;
-        } else {
-            const activateRFraction = parseFloat(document.getElementById('trailingActivatePips')?.value || 0.25);
-            activateDist = activateRFraction * riskDist;
-        }
+        const activateDist = this._trailingValueToPriceDistance(vAct, unitMode, riskDist, qty);
+        const stepDist = this._trailingValueToPriceDistance(vStep, unitMode, riskDist, qty);
         const activatePrice = isBuy ? entry + activateDist : entry - activateDist;
+        const stepPts = pipSz > 0 ? stepDist / pipSz : 0;
 
-        const stepSizePrice = trailR * riskDist;
-        const stepPts = stepSizePrice / pipSz;
-
-        el.textContent = `Activate @ ${activatePrice.toFixed(precision)} · step ${stepPts.toFixed(1)} pts (${trailR}× risk)`;
+        const u = this._trailingUnitLabel(unitMode);
+        el.textContent = `Activate @ ${activatePrice.toFixed(precision)} · each step ≈ ${stepPts.toFixed(1)} pts (inputs in ${u})`;
     }
 
     /**
@@ -16228,38 +16267,32 @@ class OrderManager {
             };
         }
         
-        // Get trailing stop settings (step-based system with activation)
-        // UI labels use "R" for step + pip-mode activation: distances are multiples of initial risk (|entry−SL|),
-        // not raw pip counts (must match _updateTrailingSummary / initializeTrailingSL).
+        // Get trailing stop settings (step-based system with activation).
+        // Unit mode: R = multiples of |entry−SL|; pips; $ = profit at current lot size.
         const trailingEnabled = document.getElementById('trailingSLToggle')?.checked || false;
         let trailingStop = null;
         if (trailingEnabled) {
             const riskDistance = Math.abs(entryPrice - slPrice);
-            const stepR = parseFloat(document.getElementById('trailingStepSize')?.value || 0.5);
-            const stepSize = riskDistance > 0 ? stepR * riskDistance : 0;
-            const activateMode = this.trailingActivateMode || 'trail-rr';
-            
-            // Calculate activation threshold
-            let activationThreshold;
-            if (activateMode === 'trail-rr') {
-                const activateRR = parseFloat(document.getElementById('trailingActivateRR')?.value || 1);
-                const reward = riskDistance * activateRR;
-                activationThreshold = this.orderSide === 'BUY' ? entryPrice + reward : entryPrice - reward;
-            } else {
-                const activateR = parseFloat(document.getElementById('trailingActivatePips')?.value || 0.25);
-                const dist = riskDistance > 0 ? activateR * riskDistance : 0;
-                activationThreshold = this.orderSide === 'BUY' ? entryPrice + dist : entryPrice - dist;
-            }
+            const unitMode = this.trailingUnitMode || 'rr';
+            const qtyPl = this._getTrailingFormQuantity();
+            const vAct = parseFloat(document.getElementById('trailingActivateRR')?.value || 1);
+            const vStep = parseFloat(document.getElementById('trailingStepSize')?.value || 0.5);
+            const activateDist = this._trailingValueToPriceDistance(vAct, unitMode, riskDistance, qtyPl);
+            const stepSize = this._trailingValueToPriceDistance(vStep, unitMode, riskDistance, qtyPl);
+            const activationThreshold = this.orderSide === 'BUY'
+                ? entryPrice + activateDist
+                : entryPrice - activateDist;
             
             trailingStop = {
                 enabled: true,
-                activated: false,                    // Not activated yet
-                activateMode: activateMode,          // 'trail-rr' or 'trail-pips'
-                activationThreshold: activationThreshold,
-                stepSize: stepSize,                  // Price distance per step (= stepR × initial risk)
-                stepPips: riskDistance > 0 ? stepSize / this.pipSize : 0, // Pip equivalent (for display / status)
-                currentStep: 0,                      // Number of steps moved
-                originalSL: slPrice                  // Store original SL
+                activated: false,
+                unitMode,
+                activateMode: 'trail-rr',
+                activationThreshold,
+                stepSize,
+                stepPips: this.pipSize > 0 ? stepSize / this.pipSize : 0,
+                currentStep: 0,
+                originalSL: slPrice
             };
         }
         
@@ -16337,7 +16370,7 @@ class OrderManager {
             console.warn(`⚠️⚠️⚠️ WARNING: Both Auto Breakeven AND Trailing Stop are enabled!`);
             console.warn(`   Only the one that reaches its target FIRST will activate.`);
             console.warn(`   Auto BE Target: ${breakevenSettings.mode === 'rr' ? breakevenSettings.value + 'R' : breakevenSettings.mode === 'pips' ? breakevenSettings.value + ' pips' : '$' + breakevenSettings.value}`);
-            console.warn(`   Trailing Activation: ${trailingStop.activateMode === 'trail-rr' ? 'at profit level' : 'at pip distance'}`);
+            console.warn(`   Trailing units: ${trailingStop.unitMode || 'rr'} (activation @ threshold, then step-based trail)`);
             console.warn(`   💡 TIP: For predictable behavior, enable only ONE breakeven system at a time.`);
             
             this.showNotification(
@@ -28353,6 +28386,7 @@ class OrderManager {
             },
             trailing: {
                 enabled: document.getElementById('trailingSLToggle')?.checked || false,
+                unitMode: this.trailingUnitMode || 'rr',
                 activateMode: this.trailingActivateMode || 'trail-rr',
                 rrValue: parseFloat(document.getElementById('trailingActivateRR')?.value || 1.5),
                 pipsValue: parseFloat(document.getElementById('trailingActivatePips')?.value || 10),
@@ -28389,10 +28423,13 @@ class OrderManager {
         const trailToggle = document.getElementById('trailingSLToggle');
         if (trailToggle) trailToggle.checked = setting.trailing.enabled;
         
-        this.trailingActivateMode = setting.trailing.activateMode;
+        this.trailingActivateMode = setting.trailing.activateMode || 'trail-rr';
         document.getElementById('trailingActivateRR').value = setting.trailing.rrValue;
         document.getElementById('trailingActivatePips').value = setting.trailing.pipsValue;
         document.getElementById('trailingStepSize').value = setting.trailing.stepSize;
+        const tUm = setting.trailing.unitMode
+            || (setting.trailing.activateMode === 'trail-pips' ? 'pips' : 'rr');
+        this._setTrailingUnitMode(tUm === 'amount' || tUm === 'pips' || tUm === 'rr' ? tUm : 'rr');
         
         // Update UI to show correct mode tabs and inputs
         const bePipsInput = document.getElementById('breakevenPipsInput');
@@ -28403,16 +28440,6 @@ class OrderManager {
         } else {
             if (bePipsInput) bePipsInput.style.display = 'none';
             if (beAmountInput) beAmountInput.style.display = 'flex';
-        }
-        
-        const trailRRInput = document.getElementById('trailingActivateRRInput');
-        const trailPipsInput = document.getElementById('trailingActivatePipsInput');
-        if (setting.trailing.activateMode === 'trail-rr') {
-            if (trailRRInput) trailRRInput.style.display = 'flex';
-            if (trailPipsInput) trailPipsInput.style.display = 'none';
-        } else {
-            if (trailRRInput) trailRRInput.style.display = 'none';
-            if (trailPipsInput) trailPipsInput.style.display = 'flex';
         }
         
         // Update tab styling
@@ -28886,40 +28913,21 @@ class OrderManager {
             return;
         }
         
-        // Get activation settings
-        const activateMode = this.trailingActivateMode || 'trail-rr';
-        let activationThreshold;
-        
+        const unitMode = this.trailingUnitMode || 'rr';
         const riskDistance = Math.abs(entryPrice - slPrice);
-        if (riskDistance < 1e-10) {
-            console.warn('⚠️ Entry and SL must differ to compute trailing (R-based) distances');
+        if (riskDistance < 1e-10 && unitMode === 'rr') {
+            console.warn('⚠️ Entry and SL must differ to compute R-based trailing');
             return;
         }
-
-        if (activateMode === 'trail-rr') {
-            const activateRR = parseFloat(document.getElementById('trailingActivateRR')?.value || 1);
-            const reward = riskDistance * activateRR;
-            
-            if (this.orderSide === 'BUY') {
-                activationThreshold = entryPrice + reward;
-            } else {
-                activationThreshold = entryPrice - reward;
-            }
-        } else {
-            // trail-pips mode: input is R multiples of initial risk (same unit as step), not literal pips
-            const activateR = parseFloat(document.getElementById('trailingActivatePips')?.value || 0.25);
-            const dist = activateR * riskDistance;
-            
-            if (this.orderSide === 'BUY') {
-                activationThreshold = entryPrice + dist;
-            } else {
-                activationThreshold = entryPrice - dist;
-            }
-        }
-        
-        const stepR = parseFloat(document.getElementById('trailingStepSize')?.value || 0.5);
-        const stepSize = stepR * riskDistance;
-        const stepPips = stepSize / this.pipSize;
+        const qty = this._getTrailingFormQuantity();
+        const vAct = parseFloat(document.getElementById('trailingActivateRR')?.value || 1);
+        const vStep = parseFloat(document.getElementById('trailingStepSize')?.value || 0.5);
+        const activateDist = this._trailingValueToPriceDistance(vAct, unitMode, riskDistance, qty);
+        const stepSize = this._trailingValueToPriceDistance(vStep, unitMode, riskDistance, qty);
+        const activationThreshold = this.orderSide === 'BUY'
+            ? entryPrice + activateDist
+            : entryPrice - activateDist;
+        const stepPips = this.pipSize > 0 ? stepSize / this.pipSize : 0;
         
         // Initialize trailing state for step-based system with activation
         this.trailingState = {
@@ -28929,7 +28937,8 @@ class OrderManager {
             originalSL: slPrice,
             currentSL: slPrice,
             activationThreshold: activationThreshold,
-            activateMode: activateMode,
+            unitMode,
+            activateMode: 'trail-rr',
             stepSize: stepSize,
             stepPips: stepPips,
             currentStep: 0,  // Number of steps moved
@@ -28941,9 +28950,8 @@ class OrderManager {
             entry: entryPrice.toFixed(5),
             initialSL: slPrice.toFixed(5),
             activationThreshold: activationThreshold.toFixed(5),
-            stepR,
             stepPipsEquivalent: stepPips.toFixed(2),
-            mode: activateMode,
+            unitMode,
             side: this.orderSide
         });
         
@@ -29096,11 +29104,15 @@ class OrderManager {
             const entry = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
             const sl = parseFloat(document.getElementById('slPrice')?.value || 0);
             const riskDist = Math.abs(entry - sl);
-            const stepR = parseFloat(document.getElementById('trailingStepSize')?.value || 0.5);
-            const stepPipsEq = riskDist > 0 ? (stepR * riskDist) / this.pipSize : 0;
-            hint.textContent = riskDist > 0
-                ? `Each step ≈ ${stepPipsEq.toFixed(1)} pips (${stepR}× risk)`
-                : `Set entry & SL — each step is ${stepR}× initial risk`;
+            const um = this.trailingUnitMode || 'rr';
+            const qty = this._getTrailingFormQuantity();
+            const vStep = parseFloat(document.getElementById('trailingStepSize')?.value || 0.5);
+            const stepDist = this._trailingValueToPriceDistance(vStep, um, riskDist, qty);
+            const stepPipsEq = this.pipSize > 0 ? stepDist / this.pipSize : 0;
+            const u = this._trailingUnitLabel(um);
+            hint.textContent = riskDist > 0 || um !== 'rr'
+                ? `Each step ≈ ${stepPipsEq.toFixed(1)} pips (step input: ${vStep} ${u})`
+                : `Set entry & SL — R mode uses |entry−SL| as 1R`;
             hint.style.color = '#787b86';
             hint.style.fontWeight = '400';
         }
@@ -29113,16 +29125,19 @@ class OrderManager {
         const statusDetails = document.getElementById('trailingStatusDetails');
         if (!statusDetails || !this.trailingState) return;
         
-        const { stepPips, activationThreshold, entryPrice, orderSide, activateMode } = this.trailingState;
+        const { stepPips, activationThreshold, entryPrice, orderSide, unitMode } = this.trailingState;
+        const um = unitMode || this.trailingUnitMode || 'rr';
         
         if (!isActivated) {
             // Show waiting for activation message
             const thresholdPips = Math.abs(activationThreshold - entryPrice) / this.pipSize;
             const remainingPips = thresholdPips - Math.abs(profitPips);
             
-            if (activateMode === 'trail-rr') {
+            if (um === 'rr') {
                 const rr = parseFloat(document.getElementById('trailingActivateRR')?.value || 1);
-                statusDetails.textContent = `Reach ${rr}:1 R:R (${Math.ceil(remainingPips)} pips) to activate`;
+                statusDetails.textContent = `Reach ${rr}R profit (~${Math.ceil(remainingPips)} pips) to activate`;
+            } else if (um === 'amount') {
+                statusDetails.textContent = `+${Math.ceil(remainingPips)} pips to activate ($ mode)`;
             } else {
                 statusDetails.textContent = `+${Math.ceil(remainingPips)} pips to activate`;
             }
