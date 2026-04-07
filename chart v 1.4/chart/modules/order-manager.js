@@ -20539,7 +20539,8 @@ class OrderManager {
             }
             // ELSE check SPLIT entries (only if NOT a scaled trade)
             else if (position.splitGroupId && position.isSplitEntry) {
-                splitInfo = this.splitTrades.get(position.splitGroupId);
+                splitInfo = this.splitTrades.get(position.splitGroupId)
+                    || this._rebuildSplitTradeGroupFromPositions(position.splitGroupId);
                 if (splitInfo) {
                     // Update this entry's status in the split group
                     const entryInGroup = splitInfo.entries.find(e => e.id === position.id);
@@ -20807,13 +20808,28 @@ class OrderManager {
                 
                 // Use unique ID with prefix to avoid collision with regular trade IDs
                 const splitTradeId = `split_${splitInfo.groupId}`;
+                const splitTicker = String(
+                    this._positionTicker(firstEntry) || firstEntry.symbol || 'UNKNOWN'
+                ).replace('/', '').toUpperCase();
+                const tpRefLeg = splitInfo.entries.find((e) => Array.isArray(e.tpTargets) && e.tpTargets.length > 1)
+                    || splitInfo.entries.find((e) => Array.isArray(e.tpTargets) && e.tpTargets.length > 0)
+                    || firstEntry;
+                const multiTpSnapshot = (Array.isArray(tpRefLeg.tpTargets) && tpRefLeg.tpTargets.length > 0)
+                    ? tpRefLeg.tpTargets.map((t) => ({
+                        id: t.id,
+                        price: t.price,
+                        percentage: t.percentage,
+                        hit: !!t.hit
+                    }))
+                    : null;
                 
                 journalEntry = {
                     id: splitTradeId,
                     tradeId: splitTradeId,
                     type: splitInfo.side,
                     direction: splitInfo.side,
-                    symbol: firstEntry.symbol || 'USD',
+                    symbol: firstEntry.symbol || splitTicker,
+                    ticker: splitTicker,
                     quantity: totalQty,
                     openPrice: avgEntry,
                     closePrice: lastEntry.closePrice || closePrice,
@@ -20852,6 +20868,10 @@ class OrderManager {
                     rulesFollowed: null,
                     // SPLIT ENTRY SPECIFIC DATA
                     isSplitEntry: true,
+                    isAggregateMultiEntry: true,
+                    hasMultipleTakeProfits: Array.isArray(multiTpSnapshot) && multiTpSnapshot.length > 1,
+                    multiTpSnapshot,
+                    active_tps_at_exit: multiTpSnapshot,
                     hasPartialCloses: allPartialCloses.length > 0,
                     partialCloses: allPartialCloses,
                     partialClosePnL: totalPartialPnL,
@@ -21041,6 +21061,16 @@ class OrderManager {
                 console.log(`📔 ✅ Trade "${tradeId}" (position #${orderId}) saved to journal IMMEDIATELY`);
                 console.log(`📊 Journal now has ${this.tradeJournal.length} trades`);
                 
+                if (journalEntry.splitEntries && journalEntry.splitGroupId && Array.isArray(journalEntry.splitEntries)) {
+                    this._removePerLegJournalDuplicatesForSplit(
+                        journalEntry.splitGroupId,
+                        journalEntry.splitEntries.map((e) => e.id)
+                    );
+                    if (this.splitTrades && journalEntry.splitGroupId) {
+                        this.splitTrades.delete(journalEntry.splitGroupId);
+                    }
+                }
+
                 // Save journal
                 this.persistJournal();
                 console.log('💾 Saved journal');
@@ -23004,6 +23034,59 @@ class OrderManager {
         splitGroup.entries.push(order);
         splitGroup.totalQuantity += order.quantity || 0;
         console.log(`📊 Split entry #${order.id} added to group ${order.splitGroupId} (${splitGroup.entries.length}/${splitGroup.splitTotal})`);
+    }
+
+    /**
+     * Recover splitTrades metadata when the in-memory map was lost but legs still share splitGroupId
+     * (prevents one journal row per leg instead of a single aggregate trade).
+     */
+    _rebuildSplitTradeGroupFromPositions(splitGroupId) {
+        if (!splitGroupId) return null;
+        if (this.splitTrades && this.splitTrades.has(splitGroupId)) {
+            return this.splitTrades.get(splitGroupId);
+        }
+        const byId = new Map();
+        const scan = [...(this.openPositions || []), ...(this.closedPositions || [])];
+        for (const p of scan) {
+            if (!p || p.splitGroupId !== splitGroupId || !p.isSplitEntry) continue;
+            byId.set(p.id, p);
+        }
+        const entries = [...byId.values()];
+        if (entries.length === 0) return null;
+        const splitGroup = {
+            groupId: splitGroupId,
+            entries,
+            side: entries[0].type,
+            status: entries.every((e) => e.status === 'CLOSED') ? 'CLOSED' : 'OPEN',
+            totalQuantity: entries.reduce((s, e) => s + (Number(e.originalQuantity) || Number(e.quantity) || 0), 0),
+            splitTotal: entries[0].splitTotal || entries.length
+        };
+        this.splitTrades.set(splitGroupId, splitGroup);
+        console.log(`📊 Rebuilt splitTrades group ${splitGroupId} from ${entries.length} leg(s) (journal aggregate)`);
+        return splitGroup;
+    }
+
+    /**
+     * Drop per-leg journal rows once the aggregate multi-entry trade is saved (same splitGroupId / leg ids).
+     */
+    _removePerLegJournalDuplicatesForSplit(splitGroupId, legIds) {
+        if (!splitGroupId || !Array.isArray(legIds) || legIds.length === 0) return;
+        const legSet = new Set(legIds.map((id) => Number(id)).filter((n) => Number.isFinite(n)));
+        if (legSet.size === 0) return;
+        const aggregateId = `split_${splitGroupId}`;
+        const n0 = this.tradeJournal.length;
+        this.tradeJournal = this.tradeJournal.filter((t) => {
+            const tid = t.tradeId ?? t.id;
+            if (tid === aggregateId) return true;
+            if (typeof tid === 'string' && tid.startsWith('split_split_')) return true;
+            const n = Number(tid);
+            if (Number.isFinite(n) && legSet.has(n) && t.splitGroupId === splitGroupId) return false;
+            return true;
+        });
+        const removed = n0 - this.tradeJournal.length;
+        if (removed > 0) {
+            console.log(`📔 Merged ${removed} per-leg journal row(s) into aggregate ${aggregateId}`);
+        }
     }
     
     /**
