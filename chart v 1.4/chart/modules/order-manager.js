@@ -1239,6 +1239,34 @@ class OrderManager {
         return Number.isFinite(value) && value > 0 ? value : (this.pipValuePerLot || 10);
     }
 
+    /**
+     * Round-trip commission in account currency (open + close), same basis as partial-close journal lines.
+     */
+    _getRoundTripCommissionUsd(position) {
+        const q = Number(position?.quantity) || 0;
+        if (!(q > 0)) return 0;
+        const st = position.instrument_settings || {};
+        const perSide = Number.parseFloat(
+            st.commission_per_lot ?? st.commission_per_lot_per_side ?? st.commissionPerLotPerSide ?? 0
+        ) || 0;
+        return perSide * 2 * q;
+    }
+
+    /**
+     * Extra distance in **price** (not pips) past gross entry-level BE so that gross P&L at SL ≈ round-trip fees → net ~ $0.
+     * BUY: add to entry; SELL: subtract from entry (profitable side for each).
+     */
+    _getNetBreakevenCommissionPriceOffset(position) {
+        const commUsd = this._getRoundTripCommissionUsd(position);
+        if (!(commUsd > 0)) return 0;
+        const q = Number(position?.quantity) || 0;
+        const pipV = this._getPositionPipValue(position);
+        const pipS = this._getPositionPipSize(position);
+        if (!(q > 0) || !(pipV > 0) || !(pipS > 0)) return 0;
+        const pips = commUsd / (pipV * q);
+        return pips * pipS;
+    }
+
     _calculatePositionPnL(position, markPrice) {
         const pipSize = this._getPositionPipSize(position);
         const pipValue = this._getPositionPipValue(position);
@@ -19432,9 +19460,10 @@ class OrderManager {
                         const oldSL = position.stopLoss;
                         const pipOffset = position.breakevenSettings.pipOffset || 0;
                         const pipOffsetPrice = pipOffset * posPipSize;
-                        console.log(`      Entry: ${position.openPrice.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}`);
-                        position.stopLoss = position.openPrice + pipOffsetPrice;
-                        console.log(`      New SL = ${position.openPrice.toFixed(5)} + ${pipOffsetPrice.toFixed(5)} = ${position.stopLoss.toFixed(5)}`);
+                        const netFeeOffset = this._getNetBreakevenCommissionPriceOffset(position);
+                        console.log(`      Entry: ${position.openPrice.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}, netFeeOffset: ${netFeeOffset.toFixed(5)}`);
+                        position.stopLoss = position.openPrice + pipOffsetPrice + netFeeOffset;
+                        console.log(`      New SL = entry + pts + net(fees) → ${position.stopLoss.toFixed(5)} (gross ≈ round-trip commission so net ~ $0)`);
                         position.breakevenSettings.triggered = true;
                         
                         if (position.trailingStop && !position.trailingStop.activated) {
@@ -19498,7 +19527,8 @@ class OrderManager {
                             let breakevenSL = position.openPrice;
                             if (position.autoBreakeven && position.breakevenSettings?.triggered) {
                                 const pipOffset = position.breakevenSettings.pipOffset || 0;
-                                breakevenSL = position.openPrice + (pipOffset * this._getPositionPipSize(position));
+                                const ps = this._getPositionPipSize(position);
+                                breakevenSL = position.openPrice + (pipOffset * ps) + this._getNetBreakevenCommissionPriceOffset(position);
                             }
                             const minSL = (position.autoBreakeven && position.breakevenSettings?.triggered) 
                                 ? Math.max(position.stopLoss, breakevenSL) 
@@ -19691,9 +19721,10 @@ class OrderManager {
                         const oldSL = position.stopLoss;
                         const pipOffset = position.breakevenSettings.pipOffset || 0;
                         const pipOffsetPrice = pipOffset * posPipSize;
-                        console.log(`      Entry: ${position.openPrice.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}`);
-                        position.stopLoss = position.openPrice - pipOffsetPrice;
-                        console.log(`      New SL = ${position.openPrice.toFixed(5)} - ${pipOffsetPrice.toFixed(5)} = ${position.stopLoss.toFixed(5)}`);
+                        const netFeeOffset = this._getNetBreakevenCommissionPriceOffset(position);
+                        console.log(`      Entry: ${position.openPrice.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}, netFeeOffset: ${netFeeOffset.toFixed(5)}`);
+                        position.stopLoss = position.openPrice - pipOffsetPrice - netFeeOffset;
+                        console.log(`      New SL = entry − pts − net(fees) → ${position.stopLoss.toFixed(5)} (gross ≈ round-trip commission so net ~ $0)`);
                         position.breakevenSettings.triggered = true;
                         
                         if (position.trailingStop && !position.trailingStop.activated) {
@@ -19755,7 +19786,8 @@ class OrderManager {
                             let breakevenSL = position.openPrice;
                             if (position.autoBreakeven && position.breakevenSettings?.triggered) {
                                 const pipOffset = position.breakevenSettings.pipOffset || 0;
-                                breakevenSL = position.openPrice - (pipOffset * this._getPositionPipSize(position));
+                                const ps = this._getPositionPipSize(position);
+                                breakevenSL = position.openPrice - (pipOffset * ps) - this._getNetBreakevenCommissionPriceOffset(position);
                             }
                             const maxSL = (position.autoBreakeven && position.breakevenSettings?.triggered) 
                                 ? Math.min(position.stopLoss, breakevenSL) 
