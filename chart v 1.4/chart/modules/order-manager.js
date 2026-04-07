@@ -3934,15 +3934,30 @@ class OrderManager {
                     if (!Number.isFinite(x)) return '—';
                     return (x <= 1 ? (x * 100).toFixed(0) : x.toFixed(0)) + '%';
                 };
-                const partialRows = pcs.map((pc, i) => {
+                const br = Array.isArray(trade.tpRealizedBreakdown) ? trade.tpRealizedBreakdown : [];
+                const distinctTpKeys = new Set();
+                pcs.forEach((pc, i) => {
+                    const k = pc.targetId != null && String(pc.targetId).length
+                        ? String(pc.targetId) : `__row${i}`;
+                    distinctTpKeys.add(k);
+                });
+                const multiEntryLike = !!(trade.isAggregateMultiEntry
+                    || (Number(trade.numberOfEntries) > 1)
+                    || (Array.isArray(trade.splitEntries) && trade.splitEntries.length > 1));
+                const hasRealizedAgg = br.some((r) => (Number(r.lotsClosed) || 0) > 0 || Math.abs(Number(r.pnl) || 0) > 1e-8);
+                const useAggByTp = hasRealizedAgg && pcs.length > 0 && (
+                    multiEntryLike || pcs.length > distinctTpKeys.size
+                );
+                const perLegRows = pcs.map((pc, i) => {
                     const q = Number(pc.quantity) || 0;
                     const gp = Number(pc.pnl) || 0;
                     const np = pc.pnl_net != null ? Number(pc.pnl_net) : gp;
                     const gpc = gp >= 0 ? '#22c55e' : '#ef4444';
                     const npc = np >= 0 ? '#22c55e' : '#ef4444';
+                    const tid = pc.targetId != null ? String(pc.targetId) : '—';
                     return `
                         <tr style="border-bottom: 1px solid rgba(148,163,184,0.12);">
-                            <td style="padding:10px 8px;color:#cbd5e1;font-size:12px;">TP / partial ${i + 1}</td>
+                            <td style="padding:10px 8px;color:#cbd5e1;font-size:12px;">Fill ${i + 1}${pc.targetId != null ? ` · TP id ${tid}` : ''}</td>
                             <td style="padding:10px 8px;color:#e5e7eb;font-size:12px;font-weight:600;">${q.toFixed(2)}</td>
                             <td style="padding:10px 8px;color:#e5e7eb;font-size:12px;">$${this.formatPrice(pc.closePrice)}</td>
                             <td style="padding:10px 8px;color:#94a3b8;font-size:12px;">${pctLabel(pc.percentage)}</td>
@@ -3950,6 +3965,54 @@ class OrderManager {
                             <td style="padding:10px 8px;font-size:12px;font-weight:600;color:${npc};">${np >= 0 ? '+' : ''}$${np.toFixed(2)}</td>
                         </tr>`;
                 }).join('');
+                const aggRowsHtml = useAggByTp ? br.map((row, idx) => {
+                    const lots = Number(row.lotsClosed) || 0;
+                    const gp = Number(row.pnl) || 0;
+                    if (lots <= 0 && Math.abs(gp) < 1e-8) return '';
+                    const np = Number(row.pnl_net) || 0;
+                    const gpc = gp >= 0 ? '#22c55e' : '#ef4444';
+                    const npc = np >= 0 ? '#22c55e' : '#ef4444';
+                    const priceShow = row.avgClosePrice != null && Number.isFinite(Number(row.avgClosePrice))
+                        ? Number(row.avgClosePrice)
+                        : row.tpPrice;
+                    return `
+                        <tr style="border-bottom: 1px solid rgba(148,163,184,0.12);">
+                            <td style="padding:10px 8px;color:#cbd5e1;font-size:12px;">TP${idx + 1} <span style="color:#64748b;font-weight:500;">(all entries)</span></td>
+                            <td style="padding:10px 8px;color:#e5e7eb;font-size:12px;font-weight:600;">${lots.toFixed(2)}</td>
+                            <td style="padding:10px 8px;color:#e5e7eb;font-size:12px;">$${this.formatPrice(priceShow)}</td>
+                            <td style="padding:10px 8px;color:#94a3b8;font-size:12px;">${row.plannedPct != null ? pctLabel(row.plannedPct) : '—'}</td>
+                            <td style="padding:10px 8px;font-size:12px;font-weight:700;color:${gpc};">${gp >= 0 ? '+' : ''}$${gp.toFixed(2)}</td>
+                            <td style="padding:10px 8px;font-size:12px;font-weight:600;color:${npc};">${np >= 0 ? '+' : ''}$${np.toFixed(2)}</td>
+                        </tr>`;
+                }).join('') : '';
+                const partialRows = useAggByTp ? aggRowsHtml : perLegRows;
+                const aggTpHits = useAggByTp ? br.filter((r) => (Number(r.lotsClosed) || 0) > 0 || Math.abs(Number(r.pnl) || 0) > 1e-8).length : 0;
+                const summaryBadge = useAggByTp
+                    ? `${aggTpHits} TP step${aggTpHits === 1 ? '' : 's'} (combined) · ${pcs.length} leg fill${pcs.length === 1 ? '' : 's'}`
+                    : `${nPart} partial${nPart === 1 ? '' : 's'}${hasSnap ? ' · ' + snap.length + ' TP level' + (snap.length === 1 ? '' : 's') : ''}`;
+                const aggHint = useAggByTp
+                    ? `<p style="color:#94a3b8;font-size:11px;margin:0 0 10px;line-height:1.45;">Rows match chart TP labels: lots and gross P&amp;L are summed across every entry at each TP. Open <strong>Per-leg fills</strong> for each scale-in line.</p>`
+                    : '';
+                const perLegBlock = useAggByTp && pcs.length > 1 ? `
+                    <details style="margin-top:12px;border-radius:6px;border:1px solid rgba(148,163,184,0.2);background:rgba(0,0,0,0.15);">
+                        <summary style="cursor:pointer;padding:10px 12px;font-size:12px;font-weight:600;color:#cbd5e1;">Per-leg fills (${pcs.length})</summary>
+                        <div style="overflow-x:auto;padding:0 8px 12px;">
+                            <table style="width:100%;border-collapse:collapse;">
+                                <thead>
+                                    <tr style="background:rgba(30,41,59,0.6);">
+                                        <th style="text-align:left;padding:8px;font-size:10px;color:#94a3b8;text-transform:uppercase;">Fill</th>
+                                        <th style="text-align:left;padding:8px;font-size:10px;color:#94a3b8;text-transform:uppercase;">Lots</th>
+                                        <th style="text-align:left;padding:8px;font-size:10px;color:#94a3b8;text-transform:uppercase;">Price</th>
+                                        <th style="text-align:left;padding:8px;font-size:10px;color:#94a3b8;text-transform:uppercase;">Share</th>
+                                        <th style="text-align:left;padding:8px;font-size:10px;color:#94a3b8;text-transform:uppercase;">P&amp;L</th>
+                                        <th style="text-align:left;padding:8px;font-size:10px;color:#94a3b8;text-transform:uppercase;">Net</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${perLegRows}</tbody>
+                            </table>
+                        </div>
+                    </details>` : '';
+                const theadLegLabel = useAggByTp ? 'TP step' : 'Leg';
                 const finalRow = (finPnL != null && Number.isFinite(finPnL))
                     ? `<tr style="border-bottom: 1px solid rgba(148,163,184,0.12);">
                             <td style="padding:10px 8px;color:#fbbf24;font-size:12px;font-weight:700;">Final exit</td>
@@ -3978,15 +4041,16 @@ class OrderManager {
             <details class="trade-details-partial-breakdown" open style="background: rgba(124,58,237,0.08); border: 1px solid rgba(124,58,237,0.35); border-radius: 8px; margin-bottom: 28px; overflow: hidden;">
                 <summary style="cursor: pointer; list-style: none; padding: 16px 20px; font-size: 14px; font-weight: 700; color: #e5e7eb; display: flex; align-items: center; justify-content: space-between; user-select: none;">
                     <span>▼ Partial exits &amp; TP ladder</span>
-                    <span style="font-size: 11px; font-weight: 600; color: #a78bfa; text-transform: uppercase; letter-spacing: 0.06em;">${nPart} partial${nPart === 1 ? '' : 's'}${hasSnap ? ' · ' + snap.length + ' TP level' + (snap.length === 1 ? '' : 's') : ''}</span>
+                    <span style="font-size: 11px; font-weight: 600; color: #a78bfa; text-transform: uppercase; letter-spacing: 0.06em;">${summaryBadge}</span>
                 </summary>
                 <div style="padding: 0 20px 20px;">
+                    ${aggHint}
                     ${nPart > 0 || finalRow ? `
                     <div style="overflow-x: auto; border-radius: 6px; border: 1px solid rgba(148,163,184,0.15);">
                         <table style="width:100%;border-collapse:collapse;">
                             <thead>
                                 <tr style="background:rgba(30,41,59,0.6);">
-                                    <th style="text-align:left;padding:8px;font-size:10px;color:#94a3b8;text-transform:uppercase;">Leg</th>
+                                    <th style="text-align:left;padding:8px;font-size:10px;color:#94a3b8;text-transform:uppercase;">${theadLegLabel}</th>
                                     <th style="text-align:left;padding:8px;font-size:10px;color:#94a3b8;text-transform:uppercase;">Lots</th>
                                     <th style="text-align:left;padding:8px;font-size:10px;color:#94a3b8;text-transform:uppercase;">Price</th>
                                     <th style="text-align:left;padding:8px;font-size:10px;color:#94a3b8;text-transform:uppercase;">Share</th>
@@ -3997,6 +4061,7 @@ class OrderManager {
                             <tbody>${partialRows}${finalRow}</tbody>
                         </table>
                     </div>` : '<p style="color:#94a3b8;font-size:12px;margin:0 0 12px;">No per-fill rows stored; see planned TP levels below.</p>'}
+                    ${perLegBlock}
                     ${subtotal}
                     ${plannedTps ? `
                     <div style="margin-top: 16px;">
@@ -20078,21 +20143,28 @@ class OrderManager {
                         );
                         if (comp && comp.stepsReached > position.trailingStop.currentStep && comp.stepsReached > 0) {
                             const newSL = comp.newSL;
-                            
+                            // Only enforce a breakeven floor when SL was actually moved to BE. Setting
+                            // breakevenSettings.triggered=true on trailing activation (to suppress BE) must
+                            // not imply a BE floor — that blocked ratcheting so the line looked "stuck".
+                            const useBeFloor = position.autoBreakeven && position.breakevenSettings?.triggered
+                                && position._slIsBreakevenPlacement;
                             let breakevenSL = position.openPrice;
-                            if (position.autoBreakeven && position.breakevenSettings?.triggered) {
+                            if (useBeFloor) {
                                 const pipOffset = position.breakevenSettings.pipOffset || 0;
                                 const ps = this._getPositionPipSize(position);
                                 breakevenSL = position.openPrice + (pipOffset * ps) + this._getNetBreakevenCommissionPriceOffset(position, trailPrice);
                             }
-                            const minSL = (position.autoBreakeven && position.breakevenSettings?.triggered) 
-                                ? Math.max(position.stopLoss, breakevenSL) 
+                            const minSL = useBeFloor
+                                ? Math.max(position.stopLoss, breakevenSL)
                                 : position.stopLoss;
-                            
+
                             if (newSL > minSL) {
                                 const oldSL = position.stopLoss;
                                 position.stopLoss = newSL;
                                 position.trailingStop.currentStep = comp.stepsReached;
+                                if (position.isSplitEntry && position.splitGroupId) {
+                                    this._syncSplitGroupProtectionPrices(position, 'sl', newSL);
+                                }
                                 this._logSLTPModification(position, 'SL', oldSL, newSL, 'TRAIL');
                                 
                                 const limUsd = Number(position.trailingStop.limitUsd);
@@ -20104,7 +20176,17 @@ class OrderManager {
                                         this.showNotification(`Trailing limit $${limUsd.toFixed(0)} reached — SL fixed | #${position.id}`, 'info');
                                     }
                                 }
-                                
+                                if (position.isSplitEntry && position.splitGroupId) {
+                                    const ts = position.trailingStop;
+                                    this._getSplitGroupOpenPositions(position).forEach((o) => {
+                                        if (!o.trailingStop || o.id === position.id) return;
+                                        o.trailingStop.currentStep = ts.currentStep;
+                                        o.trailingStop.activated = ts.activated;
+                                        o.trailingStop.limitReached = !!ts.limitReached;
+                                        o.trailingStop.cumulativeTrailUsd = ts.cumulativeTrailUsd;
+                                    });
+                                }
+
                                 console.log(`   📈 STEP TRAILING SL: ${oldSL.toFixed(5)} → ${newSL.toFixed(5)} (Step ${comp.stepsReached}) for BUY #${position.id}`);
                                 
                                 this.removeSLTPLines(position.id);
@@ -20356,21 +20438,25 @@ class OrderManager {
                         );
                         if (comp && comp.stepsReached > position.trailingStop.currentStep && comp.stepsReached > 0) {
                             const newSL = comp.newSL;
-                            
+                            const useBeCeil = position.autoBreakeven && position.breakevenSettings?.triggered
+                                && position._slIsBreakevenPlacement;
                             let breakevenSL = position.openPrice;
-                            if (position.autoBreakeven && position.breakevenSettings?.triggered) {
+                            if (useBeCeil) {
                                 const pipOffset = position.breakevenSettings.pipOffset || 0;
                                 const ps = this._getPositionPipSize(position);
                                 breakevenSL = position.openPrice - (pipOffset * ps) - this._getNetBreakevenCommissionPriceOffset(position, trailPrice);
                             }
-                            const maxSL = (position.autoBreakeven && position.breakevenSettings?.triggered) 
-                                ? Math.min(position.stopLoss, breakevenSL) 
+                            const maxSL = useBeCeil
+                                ? Math.min(position.stopLoss, breakevenSL)
                                 : position.stopLoss;
-                            
+
                             if (newSL < maxSL) {
                                 const oldSL = position.stopLoss;
                                 position.stopLoss = newSL;
                                 position.trailingStop.currentStep = comp.stepsReached;
+                                if (position.isSplitEntry && position.splitGroupId) {
+                                    this._syncSplitGroupProtectionPrices(position, 'sl', newSL);
+                                }
                                 this._logSLTPModification(position, 'SL', oldSL, newSL, 'TRAIL');
                                 
                                 const limUsd = Number(position.trailingStop.limitUsd);
@@ -20382,7 +20468,17 @@ class OrderManager {
                                         this.showNotification(`Trailing limit $${limUsd.toFixed(0)} reached — SL fixed | #${position.id}`, 'info');
                                     }
                                 }
-                                
+                                if (position.isSplitEntry && position.splitGroupId) {
+                                    const ts = position.trailingStop;
+                                    this._getSplitGroupOpenPositions(position).forEach((o) => {
+                                        if (!o.trailingStop || o.id === position.id) return;
+                                        o.trailingStop.currentStep = ts.currentStep;
+                                        o.trailingStop.activated = ts.activated;
+                                        o.trailingStop.limitReached = !!ts.limitReached;
+                                        o.trailingStop.cumulativeTrailUsd = ts.cumulativeTrailUsd;
+                                    });
+                                }
+
                                 console.log(`   📉 STEP TRAILING SL: ${oldSL.toFixed(5)} → ${newSL.toFixed(5)} (Step ${comp.stepsReached}) for SELL #${position.id}`);
                                 
                                 this.removeSLTPLines(position.id);
