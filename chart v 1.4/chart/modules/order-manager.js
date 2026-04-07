@@ -19915,6 +19915,8 @@ class OrderManager {
                     if (hitLine.closeBtn) hitLine.closeBtn.remove();
                     if (hitLine.splitBtn) hitLine.splitBtn.remove();
                     if (hitLine.deleteBtn) hitLine.deleteBtn.remove();
+                    if (hitLine.pctDecBtn) hitLine.pctDecBtn.remove();
+                    if (hitLine.pctIncBtn) hitLine.pctIncBtn.remove();
                     if (hitLine.tpPlusBadge) hitLine.tpPlusBadge.remove();
                     if (hitLine.yAxisHighlight) hitLine.yAxisHighlight.remove();
                     this.tpLines = this.tpLines.filter(tpLine => !(tpLine.orderId === orderId && (tpLine.targetId === targetId || String(tpLine.targetId) === String(targetId))));
@@ -26651,6 +26653,8 @@ class OrderManager {
                 if (tpLine.closeBtn) tpLine.closeBtn.remove();
                 if (tpLine.splitBtn) tpLine.splitBtn.remove();
                 if (tpLine.deleteBtn) tpLine.deleteBtn.remove();
+                if (tpLine.pctDecBtn) tpLine.pctDecBtn.remove();
+                if (tpLine.pctIncBtn) tpLine.pctIncBtn.remove();
                 if (tpLine.priceBox) tpLine.priceBox.remove();
                 if (tpLine.priceText) tpLine.priceText.remove();
             });
