@@ -20252,6 +20252,24 @@ class OrderManager {
 
         this.updatePositionsPanel();
     }
+
+    /**
+     * Lots to close for a multi-TP partial. Each target's `percentage` is a share of the **original**
+     * position (e.g. 30% + 70%), not of whatever remains after earlier partials — so we must use
+     * originalQuantity (or infer it) and cap by current quantity.
+     */
+    _multiTpPartialCloseQuantity(position, fraction) {
+        const rem = Number(position.quantity) || 0;
+        const f = Number(fraction);
+        if (!Number.isFinite(f) || f <= 0) return 0;
+        const orig = Number(position.originalQuantity);
+        if (Number.isFinite(orig) && orig > 0) {
+            return Math.min(rem, orig * f);
+        }
+        const prior = (position.partialCloses || []).reduce((s, p) => s + (Number(p.quantity) || 0), 0);
+        const inferredOrig = rem + prior;
+        return Math.min(rem, inferredOrig * f);
+    }
     
     /**
      * Close position at specific price (for SL/TP hits)
@@ -20274,7 +20292,9 @@ class OrderManager {
         // If hitType is 'TP-PARTIAL' and percentage is provided and < 1, it's partial
         // If hitType is 'TP' (final target) or percentage is null, it's a full close
         const isPartialClose = hitType === 'TP-PARTIAL' && percentage && percentage < 1;
-        const closeQuantity = isPartialClose ? position.quantity * percentage : position.quantity;
+        const closeQuantity = isPartialClose
+            ? this._multiTpPartialCloseQuantity(position, percentage)
+            : position.quantity;
         
         console.log(`   isPartialClose=${isPartialClose}, closeQuantity=${closeQuantity}, position.quantity=${position.quantity}`);
         
