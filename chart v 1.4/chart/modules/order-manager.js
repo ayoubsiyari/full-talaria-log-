@@ -23280,7 +23280,10 @@ class OrderManager {
             g.avgText.text('Avg Entry');
             const avgBW = g.avgText.node().getBBox().width + pad * 2;
 
-            g.lotsText.text(this.formatQuantity(filledLots));
+            const lotsLabel = (filledLots < allLots && filledLots > 0)
+                ? `${this.formatQuantity(filledLots)}/${this.formatQuantity(allLots)}`
+                : this.formatQuantity(allLots);
+            g.lotsText.text(lotsLabel);
             const lotsBW = g.lotsText.node().getBBox().width + pad * 2;
 
             let totalPnl = 0;
@@ -24799,14 +24802,37 @@ class OrderManager {
                 // No pending siblings left — clean up shared group visuals
                 this.removeSplitGroupAvgLine(splitGroupId);
 
-                // Only destroy the avg TP line if no executed legs remain in this group
-                const hasOpenLegs = (this.openPositions || []).some(
-                    p => p.splitGroupId == splitGroupId
-                );
-                if (!hasOpenLegs) {
+                // Collect surviving open legs (deduplicated)
+                const seenOpen = new Set();
+                const openLegs = [...(this.openPositions || []), ...(this.orderService?.openPositions || [])]
+                    .filter(p => {
+                        if (!p || p.splitGroupId != splitGroupId || seenOpen.has(p.id)) return false;
+                        seenOpen.add(p.id);
+                        return true;
+                    });
+
+                if (openLegs.length === 0) {
+                    // No executed legs remain — destroy the group avg TP line too
                     const grpAvgTPKey = `splitgrp_${splitGroupId}`;
                     const grpAvgTPIdx = this.multiTPAvgLines.findIndex(g => g.orderId === grpAvgTPKey);
                     if (grpAvgTPIdx !== -1) this._destroyMultiTPAvgEntry(grpAvgTPIdx);
+                } else {
+                    // Promote each surviving open leg to standalone so SL/TP draw correctly
+                    openLegs.forEach(leg => {
+                        leg.isSplitEntry = false;
+                        leg.splitGroupId = undefined;
+                        leg.splitIndex = undefined;
+                        leg.splitTotal = undefined;
+                    });
+                    // Explicitly redraw SL/TP for each leg (now standalone)
+                    openLegs.forEach(leg => {
+                        this.removeSLTPLines(leg.id);
+                        this.drawSLTPLines(leg);
+                        if (Array.isArray(leg.tpTargets) && leg.tpTargets.length >= 1) {
+                            this.removeMultiTPAvgLine(leg.id);
+                            this.drawMultiTPAvgLine(leg);
+                        }
+                    });
                 }
             }
         }
