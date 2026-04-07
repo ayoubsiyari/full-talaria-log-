@@ -13493,10 +13493,7 @@ class OrderManager {
             }
             
             const pipOffset = parseFloat(document.getElementById('breakevenPipOffset')?.value || 0);
-            let beLabel;
-            if (beMode === 'rr') beLabel = `BE @ ${beValue}R`;
-            else if (beMode === 'pips') beLabel = `BE @ ${beValue}p`;
-            else beLabel = `BE @ $${beValue}`;
+            let beLabel = this._formatBreakevenLabelText(beMode, beValue);
             if (pipOffset !== 0) beLabel += ` +${pipOffset}pts`;
             
             this.previewLines.be = this.drawPreviewLine(beTriggerPrice, '#f59e0b', beLabel, null, true);
@@ -13948,19 +13945,19 @@ class OrderManager {
                                 const rVal = profit / riskDistance;
                                 const rInput = document.getElementById('breakevenPips');
                                 if (rInput) rInput.value = parseFloat(rVal.toFixed(2));
-                                lineData.label = `BE @ ${parseFloat(rVal.toFixed(2))}R`;
+                                lineData.label = this._formatBreakevenLabelText('rr', rVal);
                             }
                         } else if (beMode === 'pips') {
                             const newPips = profit / self.pipSize;
                             const pipsInput = document.getElementById('breakevenPips');
                             if (pipsInput) pipsInput.value = Math.round(newPips);
-                            lineData.label = `BE @ ${Math.round(newPips)}p`;
+                            lineData.label = this._formatBreakevenLabelText('pips', Math.round(newPips));
                         } else {
                             const profitPips = profit / self.pipSize;
                             const newAmount = profitPips * quantity * self.pipValuePerLot;
                             const amountInput = document.getElementById('breakevenAmount');
                             if (amountInput) amountInput.value = newAmount.toFixed(2);
-                            lineData.label = `BE @ $${newAmount.toFixed(0)}`;
+                            lineData.label = this._formatBreakevenLabelText('amount', newAmount);
                         }
                         
                         self._updateBreakevenSummary();
@@ -15639,6 +15636,25 @@ class OrderManager {
     }
 
     /**
+     * Chart / panel text for breakeven trigger (avoids float noise e.g. 1.1472491909385258R).
+     * @param {'rr'|'pips'|'amount'|string} mode
+     */
+    _formatBreakevenLabelText(mode, rawValue) {
+        const n = Number(rawValue);
+        const v = Number.isFinite(n) ? n : 0;
+        const m = String(mode || '').toLowerCase();
+        if (m === 'rr') {
+            return `BE @ ${parseFloat(v.toFixed(2))}R`;
+        }
+        if (m === 'pips') {
+            const rounded = Math.round(v * 10) / 10;
+            const disp = Number.isInteger(rounded) ? String(Math.round(rounded)) : rounded.toFixed(1);
+            return `BE @ ${disp}p`;
+        }
+        return `BE @ $${parseFloat(v.toFixed(2))}`;
+    }
+
+    /**
      * P&L text for a single multi-TP level (used on chart label).
      * Uses estimatePnLForPriceLevel with per-target share quantity for consistency with panel.
      */
@@ -16566,12 +16582,13 @@ class OrderManager {
         // End at label edge by default; preview TP/SL extends to right axis price.
         let lineEndX = Math.max(0, x);
         const isPreviewOrder = this.orderType === 'market' || this.orderType === 'limit' || this.orderType === 'stop';
+        const isBePreview = typeof lineData.label === 'string' && lineData.label.startsWith('BE @');
         const isEntryTpSl = lineData.label === 'SL'
             || lineData.label === 'TP'
             || lineData.label === 'Entry'
             || lineData.label === 'Avg Entry'
             || (typeof lineData.label === 'string' && (lineData.label.startsWith('TP') || lineData.label.startsWith('Entry')));
-        if (isPreviewOrder && isEntryTpSl) {
+        if (isPreviewOrder && (isEntryTpSl || isBePreview)) {
             lineEndX = ch.w;
         }
 
@@ -21012,10 +21029,10 @@ class OrderManager {
                     if (beData) beData.triggerPrice = newPrice;
                     // Update label text to reflect new value
                     if (extraElements.labelText) {
-                        let beLabel;
-                        if (order.breakevenSettings.mode === 'rr') beLabel = `BE @ ${order.breakevenSettings.value}R`;
-                        else if (order.breakevenSettings.mode === 'pips') beLabel = `BE @ ${order.breakevenSettings.value}p`;
-                        else beLabel = `BE @ $${order.breakevenSettings.value}`;
+                        const beLabel = self._formatBreakevenLabelText(
+                            order.breakevenSettings.mode,
+                            order.breakevenSettings.value
+                        );
                         extraElements.labelText.text(beLabel);
                     }
                     // Update price text
@@ -24031,11 +24048,7 @@ class OrderManager {
                 if (target.labelText) {
                     displayLabel = target.labelText;
                 } else if (target.type === 'BE') {
-                    displayLabel = target.beMode === 'rr'
-                        ? `BE @ ${target.beValue}R`
-                        : target.beMode === 'pips'
-                            ? `BE @ ${target.beValue}p`
-                            : `BE @ $${target.beValue}`;
+                    displayLabel = this._formatBreakevenLabelText(target.beMode, target.beValue);
                 } else {
                     displayLabel = `${target.type} ${this.formatPrice(target.price)}`;
                 }
@@ -26520,11 +26533,11 @@ class OrderManager {
                 .attr('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
             
-            let beLabel;
-            if (order.breakevenSettings.mode === 'rr') beLabel = `BE @ ${order.breakevenSettings.value}R`;
-            else if (order.breakevenSettings.mode === 'pips') beLabel = `BE @ ${order.breakevenSettings.value}p`;
-            else beLabel = `BE @ $${order.breakevenSettings.value}`;
-            
+            const beLabel = this._formatBreakevenLabelText(
+                order.breakevenSettings.mode,
+                order.breakevenSettings.value
+            );
+
             const beLabelBox = chart.svg.append('rect')
                 .attr('class', `be-label-box be-${order.id}`)
                 .attr('fill', '#f59e0b')
