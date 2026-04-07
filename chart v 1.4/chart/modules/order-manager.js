@@ -1417,6 +1417,31 @@ class OrderManager {
         return pipsMove * (position.quantity || 0) * pipValue;
     }
 
+    /**
+     * Gross P&L for a slice of lots on an open leg from entry → level (TP/SL preview on chart).
+     * Uses the same marketCalcEngine.calcPnL path as closePositionAtPrice when the engine exists,
+     * and per-leg pip snapshot (instrument_settings) in the legacy path — not chart-global pipSize.
+     * Fixes multi-entry + multi-TP labels disagreeing with realized P&L at hit.
+     */
+    estimateOpenLegPnLSlice(leg, levelPrice, sliceQty) {
+        if (!leg) return 0;
+        const side = (leg.type || leg.direction) === 'SELL' ? 'SELL' : 'BUY';
+        const entry = Number(leg.openPrice ?? leg.entryPrice);
+        const exitPx = Number(levelPrice);
+        const q = Number(sliceQty) || 0;
+        if (!Number.isFinite(entry) || !Number.isFinite(exitPx) || q <= 0) return 0;
+        const sym = leg.ticker || leg.symbol || this._getSymbol();
+        const mark = Number.isFinite(exitPx) ? exitPx : entry;
+        if (window.marketCalcEngine && typeof window.marketCalcEngine.calcPnL === 'function') {
+            return window.marketCalcEngine.calcPnL(side, entry, exitPx, q, sym, this.marketType, mark);
+        }
+        const pipSize = this._getPositionPipSize(leg);
+        const pipValue = this._getPositionPipValueForPnL(leg, mark);
+        const priceDiff = side === 'BUY' ? (exitPx - entry) : (entry - exitPx);
+        const pipsMove = priceDiff / pipSize;
+        return pipsMove * q * pipValue;
+    }
+
     _calculateExcursionRValues(position, candle) {
         if (!position || !candle) return null;
         // array_base_price = first fill price; falls back to openPrice for single entries
@@ -3641,24 +3666,23 @@ class OrderManager {
             return;
         }
 
-        if (trade.isAggregateMultiEntry && Array.isArray(trade.splitEntries) && trade.splitEntries.length) {
-            const next = { ...trade };
-            let patched = false;
-            if (!Array.isArray(next.tpRealizedBreakdown) || next.tpRealizedBreakdown.length === 0) {
-                if (Array.isArray(next.partialCloses) && next.partialCloses.length > 0) {
-                    next.tpRealizedBreakdown = this._buildTpRealizedBreakdown(next.partialCloses, next.multiTpSnapshot);
-                    patched = true;
-                }
-            }
-            if (next.aggregateFinalExitPnL == null) {
-                next.aggregateFinalExitPnL = next.splitEntries.reduce(
+        let viewTrade = { ...trade };
+        if (Array.isArray(viewTrade.partialCloses) && viewTrade.partialCloses.length > 0
+            && (!Array.isArray(viewTrade.tpRealizedBreakdown) || viewTrade.tpRealizedBreakdown.length === 0)) {
+            viewTrade.tpRealizedBreakdown = this._buildTpRealizedBreakdown(
+                viewTrade.partialCloses,
+                viewTrade.multiTpSnapshot || viewTrade.active_tps_at_exit
+            );
+        }
+        if (viewTrade.isAggregateMultiEntry && Array.isArray(viewTrade.splitEntries) && viewTrade.splitEntries.length) {
+            if (viewTrade.aggregateFinalExitPnL == null) {
+                viewTrade.aggregateFinalExitPnL = viewTrade.splitEntries.reduce(
                     (s, e) => s + ((Number(e.pnl) || 0) - (Number(e.partialClosePnL) || 0)),
                     0
                 );
-                patched = true;
             }
-            if (patched) trade = next;
         }
+        trade = viewTrade;
         
         // Remove existing modal if any
         const existingModal = document.getElementById('tradeDetailsModal');
@@ -3700,6 +3724,9 @@ class OrderManager {
         // Add custom scrollbar styling
         const style = document.createElement('style');
         style.textContent = `
+            #tradeDetailsModal .trade-details-partial-breakdown > summary::-webkit-details-marker {
+                display: none;
+            }
             #tradeDetailsModal > div::-webkit-scrollbar {
                 width: 10px;
             }
@@ -3890,6 +3917,95 @@ class OrderManager {
                     </div>
                 </div>
             </div>
+
+            ${(() => {
+                const pcs = Array.isArray(trade.partialCloses) ? trade.partialCloses : [];
+                const snap = trade.multiTpSnapshot || trade.active_tps_at_exit;
+                const hasSnap = Array.isArray(snap) && snap.length > 0;
+                const partPnL = Number(trade.partialClosePnL) || 0;
+                const finPnL = trade.finalClosePnL != null ? Number(trade.finalClosePnL) : null;
+                const showBreakdown = pcs.length > 0 || partPnL !== 0 || (finPnL != null && finPnL !== 0)
+                    || (hasSnap && snap.length > 1) || /partial/i.test(String(trade.closeType || ''));
+                if (!showBreakdown) return '';
+                const nPart = pcs.length;
+                const pctLabel = (p) => {
+                    if (p == null) return '—';
+                    const x = Number(p);
+                    if (!Number.isFinite(x)) return '—';
+                    return (x <= 1 ? (x * 100).toFixed(0) : x.toFixed(0)) + '%';
+                };
+                const partialRows = pcs.map((pc, i) => {
+                    const q = Number(pc.quantity) || 0;
+                    const gp = Number(pc.pnl) || 0;
+                    const np = pc.pnl_net != null ? Number(pc.pnl_net) : gp;
+                    const gpc = gp >= 0 ? '#22c55e' : '#ef4444';
+                    const npc = np >= 0 ? '#22c55e' : '#ef4444';
+                    return `
+                        <tr style="border-bottom: 1px solid rgba(148,163,184,0.12);">
+                            <td style="padding:10px 8px;color:#cbd5e1;font-size:12px;">TP / partial ${i + 1}</td>
+                            <td style="padding:10px 8px;color:#e5e7eb;font-size:12px;font-weight:600;">${q.toFixed(2)}</td>
+                            <td style="padding:10px 8px;color:#e5e7eb;font-size:12px;">$${this.formatPrice(pc.closePrice)}</td>
+                            <td style="padding:10px 8px;color:#94a3b8;font-size:12px;">${pctLabel(pc.percentage)}</td>
+                            <td style="padding:10px 8px;font-size:12px;font-weight:700;color:${gpc};">${gp >= 0 ? '+' : ''}$${gp.toFixed(2)}</td>
+                            <td style="padding:10px 8px;font-size:12px;font-weight:600;color:${npc};">${np >= 0 ? '+' : ''}$${np.toFixed(2)}</td>
+                        </tr>`;
+                }).join('');
+                const finalRow = (finPnL != null && Number.isFinite(finPnL))
+                    ? `<tr style="border-bottom: 1px solid rgba(148,163,184,0.12);">
+                            <td style="padding:10px 8px;color:#fbbf24;font-size:12px;font-weight:700;">Final exit</td>
+                            <td style="padding:10px 8px;color:#e5e7eb;font-size:12px;">—</td>
+                            <td style="padding:10px 8px;color:#e5e7eb;font-size:12px;">$${this.formatPrice(trade.exitPrice || trade.closePrice || 0)}</td>
+                            <td style="padding:10px 8px;color:#94a3b8;font-size:12px;">—</td>
+                            <td style="padding:10px 8px;font-size:12px;font-weight:700;color:${finPnL >= 0 ? '#22c55e' : '#ef4444'};">${finPnL >= 0 ? '+' : ''}$${finPnL.toFixed(2)}</td>
+                            <td style="padding:10px 8px;color:#64748b;font-size:11px;">—</td>
+                        </tr>`
+                    : '';
+                const plannedTps = hasSnap ? snap.map((t, i) => {
+                    const px = t.price != null ? this.formatPrice(t.price) : '—';
+                    const pct = t.percentage != null ? pctLabel(t.percentage) : '—';
+                    const hit = t.hit ? ' ✓' : '';
+                    return `<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid rgba(148,163,184,0.08);font-size:12px;">
+                        <span style="color:#94a3b8;">TP${i + 1}</span>
+                        <span style="color:#e5e7eb;font-weight:600;">$${px}</span>
+                        <span style="color:#64748b;">${pct}${hit}</span>
+                    </div>`;
+                }).join('') : '';
+                const subtotal = nPart > 0 ? `<div style="margin-top:12px;padding:10px;background:rgba(8,153,129,0.08);border-radius:6px;font-size:12px;color:#cbd5e1;">
+                    <strong style="color:#94a3b8;">Cumulative from partials:</strong>
+                    <span style="color:${partPnL >= 0 ? '#22c55e' : '#ef4444'};font-weight:700;margin-left:8px;">${partPnL >= 0 ? '+' : ''}$${partPnL.toFixed(2)}</span>
+                </div>` : '';
+                return `
+            <details class="trade-details-partial-breakdown" open style="background: rgba(124,58,237,0.08); border: 1px solid rgba(124,58,237,0.35); border-radius: 8px; margin-bottom: 28px; overflow: hidden;">
+                <summary style="cursor: pointer; list-style: none; padding: 16px 20px; font-size: 14px; font-weight: 700; color: #e5e7eb; display: flex; align-items: center; justify-content: space-between; user-select: none;">
+                    <span>▼ Partial exits &amp; TP ladder</span>
+                    <span style="font-size: 11px; font-weight: 600; color: #a78bfa; text-transform: uppercase; letter-spacing: 0.06em;">${nPart} partial${nPart === 1 ? '' : 's'}${hasSnap ? ' · ' + snap.length + ' TP level' + (snap.length === 1 ? '' : 's') : ''}</span>
+                </summary>
+                <div style="padding: 0 20px 20px;">
+                    ${nPart > 0 || finalRow ? `
+                    <div style="overflow-x: auto; border-radius: 6px; border: 1px solid rgba(148,163,184,0.15);">
+                        <table style="width:100%;border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:rgba(30,41,59,0.6);">
+                                    <th style="text-align:left;padding:8px;font-size:10px;color:#94a3b8;text-transform:uppercase;">Leg</th>
+                                    <th style="text-align:left;padding:8px;font-size:10px;color:#94a3b8;text-transform:uppercase;">Lots</th>
+                                    <th style="text-align:left;padding:8px;font-size:10px;color:#94a3b8;text-transform:uppercase;">Price</th>
+                                    <th style="text-align:left;padding:8px;font-size:10px;color:#94a3b8;text-transform:uppercase;">Share</th>
+                                    <th style="text-align:left;padding:8px;font-size:10px;color:#94a3b8;text-transform:uppercase;">P&amp;L</th>
+                                    <th style="text-align:left;padding:8px;font-size:10px;color:#94a3b8;text-transform:uppercase;">Net</th>
+                                </tr>
+                            </thead>
+                            <tbody>${partialRows}${finalRow}</tbody>
+                        </table>
+                    </div>` : '<p style="color:#94a3b8;font-size:12px;margin:0 0 12px;">No per-fill rows stored; see planned TP levels below.</p>'}
+                    ${subtotal}
+                    ${plannedTps ? `
+                    <div style="margin-top: 16px;">
+                        <div style="color: #94a3b8; font-size: 11px; font-weight: 600; margin-bottom: 8px; text-transform: uppercase;">Planned take-profit levels</div>
+                        <div style="background: rgba(0,0,0,0.2); border-radius: 6px; padding: 8px 12px;">${plannedTps}</div>
+                    </div>` : ''}
+                </div>
+            </details>`;
+            })()}
 
             <!-- Excursion Analysis -->
             <div style="background: rgba(30,41,59,0.3); border: 1px solid rgba(148,163,184,0.15); border-radius: 8px; padding: 24px; margin-bottom: 28px;">
@@ -26943,15 +27059,14 @@ class OrderManager {
         if (order.stopLoss) {
             console.log(`  🛑 Drawing SL line at ${order.stopLoss.toFixed(2)}`);
             
-            // Calculate potential loss at SL — sum all legs for scale-in / split groups
-            let slPnL = this.estimatePnLForPriceLevel(order.type, order.openPrice, order.stopLoss, Number(order.quantity) || 0, orderSym);
+            // Calculate potential loss at SL — sum all legs for scale-in / split groups (per-leg pip snapshot + engine)
+            let slPnL = this.estimateOpenLegPnLSlice(order, order.stopLoss, Number(order.quantity) || 0);
             if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
                 const members = this._getSplitGroupOpenPositions(order);
                 slPnL = members.reduce((sum, m) => {
                     const mq = Number(m.quantity) || 0;
                     if (mq <= 0) return sum;
-                    const legSym = m.ticker || m.symbol || orderSym;
-                    return sum + this.estimatePnLForPriceLevel(m.type, m.openPrice, order.stopLoss, mq, legSym);
+                    return sum + this.estimateOpenLegPnLSlice(m, order.stopLoss, mq);
                 }, 0);
             }
             
@@ -27078,7 +27193,7 @@ class OrderManager {
                     const normalizedPct = totalPctRemaining > 0 ? (target.percentage / totalPctRemaining) * 100 : target.percentage;
                     // Calculate PnL for this target (sum all legs for scale-in)
                     const targetQuantity = (Number(order.quantity) || 0) * (normalizedPct / 100);
-                    let tpPnL = this.estimatePnLForPriceLevel(order.type, order.openPrice, target.price, targetQuantity, orderSym);
+                    let tpPnL = this.estimateOpenLegPnLSlice(order, target.price, targetQuantity);
                     if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
                         const members = this._getSplitGroupOpenPositions(order);
                         tpPnL = members.reduce((sum, m) => {
@@ -27087,8 +27202,7 @@ class OrderManager {
                             const legTgt = (target.id != null ? m.tpTargets?.find((tt) => tt.id === target.id) : null) || m.tpTargets?.[index];
                             if (!legTgt || legTgt.hit) return sum;
                             const tq = mq * (normalizedPct / 100);
-                            const legSym = m.ticker || m.symbol || orderSym;
-                            return sum + this.estimatePnLForPriceLevel(m.type, m.openPrice, target.price, tq, legSym);
+                            return sum + this.estimateOpenLegPnLSlice(m, target.price, tq);
                         }, 0);
                     }
                     
@@ -27261,14 +27375,13 @@ class OrderManager {
             console.log(`  🎯 Drawing single TP line at ${order.takeProfit.toFixed(2)}`);
             
             // Calculate potential profit at TP — sum all legs for scale-in
-            let tpPnL = this.estimatePnLForPriceLevel(order.type, order.openPrice, order.takeProfit, Number(order.quantity) || 0, orderSym);
+            let tpPnL = this.estimateOpenLegPnLSlice(order, order.takeProfit, Number(order.quantity) || 0);
             if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
                 const members = this._getSplitGroupOpenPositions(order);
                 tpPnL = members.reduce((sum, m) => {
                     const mq = Number(m.quantity) || 0;
                     if (mq <= 0) return sum;
-                    const legSym = m.ticker || m.symbol || orderSym;
-                    return sum + this.estimatePnLForPriceLevel(m.type, m.openPrice, order.takeProfit, mq, legSym);
+                    return sum + this.estimateOpenLegPnLSlice(m, order.takeProfit, mq);
                 }, 0);
             }
             
@@ -28032,8 +28145,7 @@ class OrderManager {
                 positionsAtThisSL.forEach((pos) => {
                     const q = Number(pos.quantity) || 0;
                     if (q <= 0) return;
-                    const sym = pos.ticker || pos.symbol || this._getSymbol();
-                    totalSlPnL += this.estimatePnLForPriceLevel(pos.type, pos.openPrice, pos.stopLoss, q, sym);
+                    totalSlPnL += this.estimateOpenLegPnLSlice(pos, pos.stopLoss, q);
                 });
                 
                 if (updatedSLPrices.has(priceKey)) {
@@ -28150,21 +28262,13 @@ class OrderManager {
                         const normalizedPct = totalPctRemaining > 0 ? (target.percentage / totalPctRemaining) * 100 : target.percentage;
 
                         let rowPnL = 0;
-                        const symBase = pos.ticker || pos.symbol || this._getSymbol();
                         for (const m of members) {
                             const q = Number(m.quantity) || 0;
                             if (q <= 0) continue;
                             const legTgt = (target.id != null ? m.tpTargets?.find((tt) => tt.id === target.id) : null) || m.tpTargets?.[idx];
                             if (!legTgt || legTgt.hit) continue;
                             const targetQuantity = q * (normalizedPct / 100);
-                            const legSym = m.ticker || m.symbol || symBase;
-                            rowPnL += this.estimatePnLForPriceLevel(
-                                m.type,
-                                m.openPrice,
-                                target.price,
-                                targetQuantity,
-                                legSym
-                            );
+                            rowPnL += this.estimateOpenLegPnLSlice(m, target.price, targetQuantity);
                         }
 
                         if (!tpPriceGroups[priceKey]) {
@@ -28195,13 +28299,11 @@ class OrderManager {
                     const priceKey = pos.takeProfit.toFixed(5);
 
                     let rowPnL = 0;
-                    const symSingle = pos.ticker || pos.symbol || this._getSymbol();
                     const tpPx = pos.takeProfit;
                     for (const m of members) {
                         const q = Number(m.quantity) || 0;
                         if (q <= 0) continue;
-                        const legSym = m.ticker || m.symbol || symSingle;
-                        rowPnL += this.estimatePnLForPriceLevel(m.type, m.openPrice, tpPx, q, legSym);
+                        rowPnL += this.estimateOpenLegPnLSlice(m, tpPx, q);
                     }
 
                     if (!tpPriceGroups[priceKey]) {
@@ -31528,22 +31630,16 @@ class OrderManager {
      * @returns {number} estimated P&L in account currency
      */
     _estimateSplitPnL(order, targetPrice, pct = 1, mode = 'open') {
-        const type = order.type || order.direction;
-        const entryPx = order.openPrice || order.entryPrice;
-        const sym = order.ticker || order.symbol || this._getSymbol();
         const q0 = Number(order.quantity) || 0;
-        let pnl = this.estimatePnLForPriceLevel(type, entryPx, targetPrice, q0 * pct, sym);
+        let pnl = this.estimateOpenLegPnLSlice(order, targetPrice, q0 * pct);
         if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
             const members = mode === 'open'
                 ? this._getSplitGroupOpenPositions(order)
                 : this._getSplitGroupPendingOrders(order);
             pnl = members.reduce((sum, m) => {
-                const mType = m.type || m.direction;
-                const mEntry = m.openPrice || m.entryPrice;
                 const mq = Number(m.quantity) || 0;
                 if (mq <= 0) return sum;
-                const legSym = m.ticker || m.symbol || sym;
-                return sum + this.estimatePnLForPriceLevel(mType, mEntry, targetPrice, mq * pct, legSym);
+                return sum + this.estimateOpenLegPnLSlice(m, targetPrice, mq * pct);
             }, 0);
         }
         return pnl;
