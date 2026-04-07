@@ -27559,17 +27559,6 @@ class OrderManager {
         if (slForChart.length > 0) {
             console.log(`   Updating ${slForChart.length} SL lines`);
             
-            // Group positions by SL price to aggregate P&L
-            const slPriceGroups = {};
-            this.openPositions.forEach(pos => {
-                if (pos.stopLoss) {
-                    const priceKey = pos.stopLoss.toFixed(5);
-                    if (!slPriceGroups[priceKey]) slPriceGroups[priceKey] = [];
-                    slPriceGroups[priceKey].push(pos);
-                }
-            });
-            
-            // Track which SL prices have been updated (to avoid duplicate labels)
             const updatedSLPrices = new Set();
             
             slForChart.forEach(({ orderId, line, labelBox, labelText, pnlBox, pnlText, closeBtn, priceBox, priceText }, slIndex) => {
@@ -27579,13 +27568,23 @@ class OrderManager {
                 }
                 
                 const priceKey = position.stopLoss.toFixed(5);
-                const positionsAtThisSL = slPriceGroups[priceKey] || [position];
+                const slPx = Number(position.stopLoss);
+                // Multi-entry: only sum this split group's legs (same as drawSLTPLines). Otherwise one row = one position.
+                let positionsAtThisSL;
+                if (position.isSplitEntry && position.splitGroupId && Number(position.splitIndex) === 1) {
+                    positionsAtThisSL = this._getSplitGroupOpenPositions(position).filter(
+                        (p) => p.stopLoss != null && Math.abs(Number(p.stopLoss) - slPx) < 1e-8
+                    );
+                } else {
+                    positionsAtThisSL = [position];
+                }
                 
                 let totalSlPnL = 0;
-                positionsAtThisSL.forEach(pos => {
-                    const grossPnL = this.estimatePnLForPriceLevel(pos.type, pos.openPrice, pos.stopLoss, pos.quantity, pos.ticker || pos.symbol);
-                    const commRoundTrip = this._getRoundTripCommissionUsd(pos);
-                    totalSlPnL += grossPnL - commRoundTrip;
+                positionsAtThisSL.forEach((pos) => {
+                    const q = Number(pos.quantity) || 0;
+                    if (q <= 0) return;
+                    const sym = pos.ticker || pos.symbol || this._getSymbol();
+                    totalSlPnL += this.estimatePnLForPriceLevel(pos.type, pos.openPrice, pos.stopLoss, q, sym);
                 });
                 
                 if (updatedSLPrices.has(priceKey)) {
