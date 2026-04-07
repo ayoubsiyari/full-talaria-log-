@@ -911,6 +911,21 @@ class OrderManager {
     }
 
     /**
+     * BUY long: a TP rung must sit **above** the current stop. If trailing ratcheted SL past that price,
+     * the rung is stale — do not fire TP there (would exit worse than the trailed stop or fight logic).
+     * SELL short: TP must be **below** current SL (mirror).
+     */
+    _takeProfitRunStillAheadOfStopLoss(position, tpLevelPrice) {
+        const sl = Number(position?.stopLoss);
+        const tp = Number(tpLevelPrice);
+        if (!Number.isFinite(tp) || !(tp > 0)) return false;
+        if (!Number.isFinite(sl)) return true;
+        const side = String(position?.type || '').toUpperCase();
+        if (side === 'SELL') return tp < sl;
+        return tp > sl;
+    }
+
+    /**
      * SL/TP vs that instrument's bar high/low while the main chart is on another pair (milestone 8.2).
      * Respects _beTriggeredBarT (same as main path) so BE does not immediately stop out on extra ticks.
      */
@@ -935,6 +950,7 @@ class OrderManager {
                     if (!target || target.hit) return;
                     const tp = Number.parseFloat(target.price);
                     if (!Number.isFinite(tp) || high < tp) return;
+                    if (!this._takeProfitRunStillAheadOfStopLoss(position, tp)) return;
                     target.hit = true;
                     const closePercentage = target.percentage / 100;
                     const allTargetsHit = position.tpTargets.every((t) => t && t.hit);
@@ -966,7 +982,7 @@ class OrderManager {
                     positionsToClose.push({ id: position.id, closePrice: fillPx, type: this._slCloseHitType(position), bgCloseTime: barTime });
                 } else {
                     const tp = Number.parseFloat(position.takeProfit);
-                    if (Number.isFinite(tp) && high >= tp) {
+                    if (Number.isFinite(tp) && high >= tp && this._takeProfitRunStillAheadOfStopLoss(position, tp)) {
                         const fillPx = hasOpen ? this._gapFill(tp, bgOpen, true, true) : tp;
                         positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP', bgCloseTime: barTime });
                     }
@@ -980,6 +996,7 @@ class OrderManager {
                     if (!target || target.hit) return;
                     const tp = Number.parseFloat(target.price);
                     if (!Number.isFinite(tp) || low > tp) return;
+                    if (!this._takeProfitRunStillAheadOfStopLoss(position, tp)) return;
                     target.hit = true;
                     const closePercentage = target.percentage / 100;
                     const allTargetsHit = position.tpTargets.every((t) => t && t.hit);
@@ -1011,7 +1028,7 @@ class OrderManager {
                     positionsToClose.push({ id: position.id, closePrice: fillPx, type: this._slCloseHitType(position), bgCloseTime: barTime });
                 } else {
                     const tp = Number.parseFloat(position.takeProfit);
-                    if (Number.isFinite(tp) && low <= tp) {
+                    if (Number.isFinite(tp) && low <= tp && this._takeProfitRunStillAheadOfStopLoss(position, tp)) {
                         const fillPx = hasOpen ? this._gapFill(tp, bgOpen, false, true) : tp;
                         positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP', bgCloseTime: barTime });
                     }
@@ -20210,6 +20227,11 @@ class OrderManager {
                     // BUY: sort ascending (lowest price = closest to entry) so partial TPs fire closest-first
                     const _buyTpSorted = [...position.tpTargets].sort((a, b) => a.price - b.price);
                     _buyTpSorted.forEach((target, index) => {
+                        if (!target || target.hit) return;
+                        if (!this._takeProfitRunStillAheadOfStopLoss(position, target.price)) {
+                            console.log(`      skip TP rung ${Number(target.price).toFixed(5)} — stop ${Number(position.stopLoss).toFixed(5)} already trailed past it (stale vs trailing SL)`);
+                            return;
+                        }
                         console.log(`      Target ${index + 1}: price=${target.price.toFixed(5)}, percentage=${target.percentage}%, hit=${target.hit}, high=${high.toFixed(5)}`);
                         const tpTgtGuarded = this._isNoTriggerGuardActive(target._noTriggerBeforeTime, target._noTriggerBeforeTick, currentCandle);
                         let tpTgtHit;
@@ -20219,7 +20241,7 @@ class OrderManager {
                         } else {
                             tpTgtHit = high >= target.price;
                         }
-                        if (!target.hit && tpTgtHit) {
+                        if (tpTgtHit) {
                             target._noTriggerBeforeTime = null;
                             target._noTriggerBeforeTick = undefined;
                             target.hit = true;
@@ -20270,9 +20292,10 @@ class OrderManager {
                         const slHit = buySLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'below'))
                             : (position.stopLoss && low <= position.stopLoss);
+                        const tpVsSlOk = this._takeProfitRunStillAheadOfStopLoss(position, position.takeProfit);
                         const tpHit = buyTPGuarded
-                            ? (position.takeProfit && this._tickAnimOverridesGuard(position._tpNoTriggerBeforeTick, currentCandle, position.takeProfit, 'above'))
-                            : (position.takeProfit && high >= position.takeProfit);
+                            ? (position.takeProfit && tpVsSlOk && this._tickAnimOverridesGuard(position._tpNoTriggerBeforeTick, currentCandle, position.takeProfit, 'above'))
+                            : (position.takeProfit && tpVsSlOk && high >= position.takeProfit);
                         if (slHit) {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
@@ -20502,6 +20525,11 @@ class OrderManager {
                     // SELL: sort descending (highest price = closest to entry) so partial TPs fire closest-first
                     const _sellTpSorted = [...position.tpTargets].sort((a, b) => b.price - a.price);
                     _sellTpSorted.forEach((target, index) => {
+                        if (!target || target.hit) return;
+                        if (!this._takeProfitRunStillAheadOfStopLoss(position, target.price)) {
+                            console.log(`      skip TP rung ${Number(target.price).toFixed(5)} — stop ${Number(position.stopLoss).toFixed(5)} already trailed past it (stale vs trailing SL)`);
+                            return;
+                        }
                         console.log(`      Target ${index + 1}: price=${target.price.toFixed(5)}, percentage=${target.percentage}%, hit=${target.hit}, low=${low.toFixed(5)}`);
                         const sellTpTgtGuarded = this._isNoTriggerGuardActive(target._noTriggerBeforeTime, target._noTriggerBeforeTick, currentCandle);
                         let sellTpTgtHit;
@@ -20511,7 +20539,7 @@ class OrderManager {
                         } else {
                             sellTpTgtHit = low <= target.price;
                         }
-                        if (!target.hit && sellTpTgtHit) {
+                        if (sellTpTgtHit) {
                             target._noTriggerBeforeTime = null;
                             target._noTriggerBeforeTick = undefined;
                             target.hit = true;
@@ -20562,9 +20590,10 @@ class OrderManager {
                         const slHitSell = sellSLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'above'))
                             : (position.stopLoss && high >= position.stopLoss);
+                        const tpVsSlOkSell = this._takeProfitRunStillAheadOfStopLoss(position, position.takeProfit);
                         const tpHitSell = sellTPGuarded
-                            ? (position.takeProfit && this._tickAnimOverridesGuard(position._tpNoTriggerBeforeTick, currentCandle, position.takeProfit, 'below'))
-                            : (position.takeProfit && low <= position.takeProfit);
+                            ? (position.takeProfit && tpVsSlOkSell && this._tickAnimOverridesGuard(position._tpNoTriggerBeforeTick, currentCandle, position.takeProfit, 'below'))
+                            : (position.takeProfit && tpVsSlOkSell && low <= position.takeProfit);
                         if (slHitSell) {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
