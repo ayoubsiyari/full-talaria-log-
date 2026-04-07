@@ -847,7 +847,7 @@ class OrderManager {
 
     /**
      * SL/TP vs that instrument's bar high/low while the main chart is on another pair (milestone 8.2).
-     * Does not use beJustTriggered — that flag is tied to the visible chart candle.
+     * Respects _beTriggeredBarT (same as main path) so BE does not immediately stop out on extra ticks.
      */
     _collectBackgroundSLTPTouches(position, bar, positionsToClose) {
         if (!position || !bar) return;
@@ -856,6 +856,9 @@ class OrderManager {
         const low = Number.parseFloat(bar.l);
         if (![high, low].every(Number.isFinite)) return;
         const barTime = Number(bar.t) || undefined;
+        if (barTime != null && position._beTriggeredBarT != null && Number(position._beTriggeredBarT) === Number(barTime)) {
+            return;
+        }
         const hasOpen = Number.isFinite(bgOpen);
         const isBuy = position.type === 'BUY';
 
@@ -1129,6 +1132,17 @@ class OrderManager {
             return true;
         }
         return false;
+    }
+
+    /**
+     * After AUTO_BE moves SL on bar T, skip SL/TP detection for that entire bar — including
+     * multiple updatePositions() invocations per candle (tick replay). Cleared when bar advances.
+     */
+    _shouldSkipSlTpAfterBeThisBar(position, barT) {
+        const t = Number(barT);
+        if (!Number.isFinite(t)) return false;
+        const mark = position._beTriggeredBarT;
+        return mark != null && Number(mark) === t;
     }
 
     /** Pause replay playback when limit/stop fills or TP/SL fires so the chart does not keep advancing. */
@@ -19535,6 +19549,10 @@ class OrderManager {
                 return;
             }
 
+            if (position._beTriggeredBarT != null && position._beTriggeredBarT !== currentCandle.t) {
+                position._beTriggeredBarT = null;
+            }
+
             // Entry bar excluded: skip excursion snapshot on the fill candle itself
             if (currentCandle.t !== position.openTime) {
                 this._appendExcursionSnapshot(position, currentCandle, false);
@@ -19598,7 +19616,7 @@ class OrderManager {
                             console.log(`      📌 Auto BE triggered first - Trailing Stop will not activate`);
                         }
                         
-                        position.beJustTriggered = true;
+                        position._beTriggeredBarT = currentCandle.t;
                         
                         let triggerType;
                         if (position.breakevenSettings.mode === 'rr') triggerType = `${position.breakevenSettings.value}R`;
@@ -19619,6 +19637,7 @@ class OrderManager {
                                 .forEach(sib => {
                                     sib.stopLoss = position.stopLoss;
                                     if (sib.breakevenSettings) sib.breakevenSettings.triggered = true;
+                                    sib._beTriggeredBarT = currentCandle.t;
                                     this.removeSLTPLines(sib.id);
                                     this.drawSLTPLines(sib);
                                 });
@@ -19706,8 +19725,8 @@ class OrderManager {
                     }
                 }
                 
-                // Check for multiple TP hits (skip if BE was just triggered this candle)
-                if (position.tpTargets && position.tpTargets.length > 0 && !position.beJustTriggered) {
+                // Check for multiple TP hits (skip for the rest of the bar after AUTO_BE moved SL)
+                if (position.tpTargets && position.tpTargets.length > 0 && !this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t)) {
                     console.log(`   📊 Checking ${position.tpTargets.length} TP targets for BUY #${position.id}`);
                     // BUY: sort ascending (lowest price = closest to entry) so partial TPs fire closest-first
                     const _buyTpSorted = [...position.tpTargets].sort((a, b) => a.price - b.price);
@@ -19755,14 +19774,14 @@ class OrderManager {
                             position.bar_high_r[_last] = Math.min(position.bar_high_r[_last], _tpR);
                         }
                     }
-                } else if (position.beJustTriggered && position.tpTargets && position.tpTargets.length > 0) {
-                    console.log(`   ⏭️ Skipping TP checks for BUY #${position.id} - BE was just triggered`);
+                } else if (this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t) && position.tpTargets && position.tpTargets.length > 0) {
+                    console.log(`   ⏭️ Skipping TP checks for BUY #${position.id} - AUTO_BE on this bar`);
                 }
                 
-                // Check if SL or TP was hit (skip SL check if BE just triggered this candle!)
+                // Check if SL or TP was hit (skip SL/TP for the whole bar after AUTO_BE — survives tick replay)
                 const buySLGuarded = this._isNoTriggerGuardActive(position._slNoTriggerBeforeTime, position._slNoTriggerBeforeTick, currentCandle);
                 const buyTPGuarded = this._isNoTriggerGuardActive(position._tpNoTriggerBeforeTime, position._tpNoTriggerBeforeTick, currentCandle);
-                const skipBuySL = position.beJustTriggered || this._shouldSkipSLOnFillCandle(position, currentCandle);
+                const skipBuySL = this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t) || this._shouldSkipSLOnFillCandle(position, currentCandle);
                 if (!skipBuySL) {
                     if (!buySLGuarded) {
                         position._slNoTriggerBeforeTime = null;
@@ -19802,17 +19821,13 @@ class OrderManager {
                         }
                     }
                 } else {
-                    if (position.beJustTriggered) {
-                        console.log(`   ⏭️ Skipping SL checks for BUY #${position.id} - BE was just triggered, new SL needs next candle`);
+                    if (this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t)) {
+                        console.log(`   ⏭️ Skipping SL checks for BUY #${position.id} - AUTO_BE on this bar (no same-bar stop-out from new SL)`);
                     } else {
                         console.log(`   ⏭️ Skipping SL on fill candle for BUY #${position.id} - OHLC path: low occurred before entry filled`);
                     }
                 }
                 
-                // Clear single-candle flags
-                if (position.beJustTriggered) {
-                    position.beJustTriggered = false;
-                }
                 if (position._fillCandleTime && position._fillCandleTime !== currentCandle.t) {
                     delete position._fillCandleTime;
                     delete position._fillOrderType;
@@ -19874,7 +19889,7 @@ class OrderManager {
                             console.log(`      📌 Auto BE triggered first - Trailing Stop will not activate`);
                         }
                         
-                        position.beJustTriggered = true;
+                        position._beTriggeredBarT = currentCandle.t;
                         
                         let triggerType;
                         if (position.breakevenSettings.mode === 'rr') triggerType = `${position.breakevenSettings.value}R`;
@@ -19894,6 +19909,7 @@ class OrderManager {
                                 .filter(p => p.splitGroupId === position.splitGroupId && p.id !== position.id)
                                 .forEach(sib => {
                                     sib.stopLoss = position.stopLoss;
+                                    sib._beTriggeredBarT = currentCandle.t;
                                     if (sib.breakevenSettings) sib.breakevenSettings.triggered = true;
                                     this.removeSLTPLines(sib.id);
                                     this.drawSLTPLines(sib);
@@ -19980,8 +19996,8 @@ class OrderManager {
                     }
                 }
                 
-                // Check for multiple TP hits (skip if BE was just triggered this candle)
-                if (position.tpTargets && position.tpTargets.length > 0 && !position.beJustTriggered) {
+                // Check for multiple TP hits (skip SL/TP for the whole bar after AUTO_BE — survives tick replay)
+                if (position.tpTargets && position.tpTargets.length > 0 && !this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t)) {
                     console.log(`   📊 Checking ${position.tpTargets.length} TP targets for SELL #${position.id}`);
                     // SELL: sort descending (highest price = closest to entry) so partial TPs fire closest-first
                     const _sellTpSorted = [...position.tpTargets].sort((a, b) => b.price - a.price);
@@ -20029,14 +20045,14 @@ class OrderManager {
                             position.bar_high_r[_last] = Math.min(position.bar_high_r[_last], _tpR);
                         }
                     }
-                } else if (position.beJustTriggered && position.tpTargets && position.tpTargets.length > 0) {
-                    console.log(`   ⏭️ Skipping TP checks for SELL #${position.id} - BE was just triggered`);
+                } else if (this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t) && position.tpTargets && position.tpTargets.length > 0) {
+                    console.log(`   ⏭️ Skipping TP checks for SELL #${position.id} - AUTO_BE on this bar`);
                 }
                 
-                // Check if SL or TP was hit (skip SL check if BE just triggered this candle!)
+                // Check if SL or TP was hit (skip SL/TP for the whole bar after AUTO_BE — survives tick replay)
                 const sellSLGuarded = this._isNoTriggerGuardActive(position._slNoTriggerBeforeTime, position._slNoTriggerBeforeTick, currentCandle);
                 const sellTPGuarded = this._isNoTriggerGuardActive(position._tpNoTriggerBeforeTime, position._tpNoTriggerBeforeTick, currentCandle);
-                const skipSellSL = position.beJustTriggered || this._shouldSkipSLOnFillCandle(position, currentCandle);
+                const skipSellSL = this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t) || this._shouldSkipSLOnFillCandle(position, currentCandle);
                 if (!skipSellSL) {
                     if (!sellSLGuarded) {
                         position._slNoTriggerBeforeTime = null;
@@ -20076,17 +20092,13 @@ class OrderManager {
                         }
                     }
                 } else {
-                    if (position.beJustTriggered) {
-                        console.log(`   ⏭️ Skipping SL checks for SELL #${position.id} - BE was just triggered, new SL needs next candle`);
+                    if (this._shouldSkipSlTpAfterBeThisBar(position, currentCandle.t)) {
+                        console.log(`   ⏭️ Skipping SL checks for SELL #${position.id} - AUTO_BE on this bar (no same-bar stop-out from new SL)`);
                     } else {
                         console.log(`   ⏭️ Skipping SL on fill candle for SELL #${position.id} - OHLC path: high occurred before entry filled`);
                     }
                 }
                 
-                // Clear single-candle flags
-                if (position.beJustTriggered) {
-                    position.beJustTriggered = false;
-                }
                 if (position._fillCandleTime && position._fillCandleTime !== currentCandle.t) {
                     delete position._fillCandleTime;
                     delete position._fillOrderType;
