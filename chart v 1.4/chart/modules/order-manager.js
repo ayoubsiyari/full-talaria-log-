@@ -926,6 +926,8 @@ class OrderManager {
         }
         const hasOpen = Number.isFinite(bgOpen);
         const isBuy = position.type === 'BUY';
+        const skipSlBgAfterTrail = barTime != null && position._trailSlBarT != null
+            && Number(position._trailSlBarT) === Number(barTime);
 
         if (isBuy) {
             if (position.tpTargets && position.tpTargets.length > 0) {
@@ -953,7 +955,7 @@ class OrderManager {
                     });
                 });
                 const sl = Number.parseFloat(position.stopLoss);
-                if (Number.isFinite(sl) && low <= sl) {
+                if (!skipSlBgAfterTrail && Number.isFinite(sl) && low <= sl) {
                     const fillPx = hasOpen
                         ? this._stopLossFillPrice(sl, bgOpen, high, low, true)
                         : (Number.isFinite(low) ? Math.min(sl, low) : sl);
@@ -961,7 +963,7 @@ class OrderManager {
                 }
             } else {
                 const sl = Number.parseFloat(position.stopLoss);
-                if (Number.isFinite(sl) && low <= sl) {
+                if (!skipSlBgAfterTrail && Number.isFinite(sl) && low <= sl) {
                     const fillPx = hasOpen
                         ? this._stopLossFillPrice(sl, bgOpen, high, low, true)
                         : (Number.isFinite(low) ? Math.min(sl, low) : sl);
@@ -1001,7 +1003,7 @@ class OrderManager {
                     });
                 });
                 const sl = Number.parseFloat(position.stopLoss);
-                if (Number.isFinite(sl) && high >= sl) {
+                if (!skipSlBgAfterTrail && Number.isFinite(sl) && high >= sl) {
                     const fillPx = hasOpen
                         ? this._stopLossFillPrice(sl, bgOpen, high, low, false)
                         : (Number.isFinite(high) ? Math.max(sl, high) : sl);
@@ -1009,7 +1011,7 @@ class OrderManager {
                 }
             } else {
                 const sl = Number.parseFloat(position.stopLoss);
-                if (Number.isFinite(sl) && high >= sl) {
+                if (!skipSlBgAfterTrail && Number.isFinite(sl) && high >= sl) {
                     const fillPx = hasOpen
                         ? this._stopLossFillPrice(sl, bgOpen, high, low, false)
                         : (Number.isFinite(high) ? Math.max(sl, high) : sl);
@@ -20015,6 +20017,9 @@ class OrderManager {
             if (position._beTriggeredBarT != null && position._beTriggeredBarT !== currentCandle.t) {
                 position._beTriggeredBarT = null;
             }
+            if (position._trailSlBarT != null && Number(position._trailSlBarT) !== Number(currentCandle.t)) {
+                delete position._trailSlBarT;
+            }
 
             // Entry bar excluded: skip excursion snapshot on the fill candle itself
             if (currentCandle.t !== position.openTime) {
@@ -20171,6 +20176,11 @@ class OrderManager {
                                 if (position.isSplitEntry && position.splitGroupId) {
                                     this._syncSplitGroupProtectionPrices(position, 'sl', newSL);
                                 }
+                                const _trailBarT = Number(currentCandle.t);
+                                position._trailSlBarT = _trailBarT;
+                                if (position.isSplitEntry && position.splitGroupId) {
+                                    this._getSplitGroupOpenPositions(position).forEach((o) => { o._trailSlBarT = _trailBarT; });
+                                }
                                 this._logSLTPModification(position, 'SL', oldSL, newSL, 'TRAIL');
                                 
                                 const limUsd = Number(position.trailingStop.limitUsd);
@@ -20279,10 +20289,11 @@ class OrderManager {
                         position._slNoTriggerBeforeTime = null;
                         position._slNoTriggerBeforeTick = undefined;
                     }
+                    const deferSlTrailBuy = position._trailSlBarT != null && Number(position._trailSlBarT) === Number(currentCandle.t);
                     if (!position.tpTargets || position.tpTargets.length === 0) {
-                        const slHit = buySLGuarded
+                        const slHit = !deferSlTrailBuy && (buySLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'below'))
-                            : (position.stopLoss && low <= position.stopLoss);
+                            : (position.stopLoss && low <= position.stopLoss));
                         const _slBuy1 = Number(position.stopLoss);
                         const _tpBuy1 = Number(position.takeProfit);
                         const tpOkBuy = Number.isFinite(_tpBuy1) && _tpBuy1 > 0 && (!Number.isFinite(_slBuy1) || _tpBuy1 > _slBuy1);
@@ -20305,9 +20316,9 @@ class OrderManager {
                         }
                     } else {
                         // For multiple TPs, still check SL
-                        const multiSlHit = buySLGuarded
+                        const multiSlHit = !deferSlTrailBuy && (buySLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'below'))
-                            : (position.stopLoss && low <= position.stopLoss);
+                            : (position.stopLoss && low <= position.stopLoss));
                         if (multiSlHit) {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
@@ -20473,6 +20484,11 @@ class OrderManager {
                                 if (position.isSplitEntry && position.splitGroupId) {
                                     this._syncSplitGroupProtectionPrices(position, 'sl', newSL);
                                 }
+                                const _trailBarTSell = Number(currentCandle.t);
+                                position._trailSlBarT = _trailBarTSell;
+                                if (position.isSplitEntry && position.splitGroupId) {
+                                    this._getSplitGroupOpenPositions(position).forEach((o) => { o._trailSlBarT = _trailBarTSell; });
+                                }
                                 this._logSLTPModification(position, 'SL', oldSL, newSL, 'TRAIL');
                                 
                                 const limUsd = Number(position.trailingStop.limitUsd);
@@ -20581,10 +20597,11 @@ class OrderManager {
                         position._slNoTriggerBeforeTime = null;
                         position._slNoTriggerBeforeTick = undefined;
                     }
+                    const deferSlTrailSell = position._trailSlBarT != null && Number(position._trailSlBarT) === Number(currentCandle.t);
                     if (!position.tpTargets || position.tpTargets.length === 0) {
-                        const slHitSell = sellSLGuarded
+                        const slHitSell = !deferSlTrailSell && (sellSLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'above'))
-                            : (position.stopLoss && high >= position.stopLoss);
+                            : (position.stopLoss && high >= position.stopLoss));
                         const _slSell1 = Number(position.stopLoss);
                         const _tpSell1 = Number(position.takeProfit);
                         const tpOkSell = Number.isFinite(_tpSell1) && _tpSell1 > 0 && (!Number.isFinite(_slSell1) || _tpSell1 < _slSell1);
@@ -20607,9 +20624,9 @@ class OrderManager {
                         }
                     } else {
                         // For multiple TPs, still check SL
-                        const multiSlHitSell = sellSLGuarded
+                        const multiSlHitSell = !deferSlTrailSell && (sellSLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'above'))
-                            : (position.stopLoss && high >= position.stopLoss);
+                            : (position.stopLoss && high >= position.stopLoss));
                         if (multiSlHitSell) {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
