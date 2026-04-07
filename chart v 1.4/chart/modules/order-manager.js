@@ -172,8 +172,6 @@ class OrderManager {
         this.trailingActivateMode = 'trail-rr';
         /** Prevents re-entrancy when Auto BE and Trailing SL exclude each other */
         this._beTrailMutex = false;
-        this._tpProfitPopoverEl = null;
-        this._tpProfitPopoverDocHandler = null;
         
         // MARKET TYPE SYSTEM - Support for different instrument types
         this.marketType = 'forex'; // Default: forex, futures, crypto, stocks
@@ -1780,134 +1778,6 @@ class OrderManager {
         if (shareQty <= 0) return null;
         const est = (tp) => Math.max(0, this.estimatePnLForPriceLevel(this.orderSide, entryPx, tp, shareQty));
         return this._binarySearchTpPriceForTargetUsd(targetUsd, est, entryPx);
-    }
-
-    /** Remove floating TP profit editor if open */
-    _closeTpProfitUsdPopover() {
-        if (this._tpProfitPopoverDocHandler) {
-            document.removeEventListener('mousedown', this._tpProfitPopoverDocHandler, true);
-            this._tpProfitPopoverDocHandler = null;
-        }
-        if (this._tpProfitPopoverEl && this._tpProfitPopoverEl.parentNode) {
-            this._tpProfitPopoverEl.parentNode.removeChild(this._tpProfitPopoverEl);
-        }
-        this._tpProfitPopoverEl = null;
-    }
-
-    /**
-     * Click green $ segment on TP preview: set target profit in $; price is solved to match label math.
-     */
-    _openTpProfitUsdPopoverFromPreviewLine(lineData) {
-        if (!lineData?.labelGroup) return;
-        this._closeTpProfitUsdPopover();
-
-        let initialUsd = '';
-        if (lineData.targetIndex !== undefined && lineData.label) {
-            const t = this._formatMultiTpInfoText(lineData.label, lineData.price);
-            const m = t.match(/[\+\-]?\$([\d.]+)/);
-            initialUsd = m ? m[1] : '';
-        } else if (lineData.label === 'TP') {
-            const t = this._formatTpSlInfoText('TP', lineData.price);
-            const m = t.match(/[\+\-]?\$([\d.]+)/);
-            initialUsd = m ? m[1] : '';
-        } else {
-            return;
-        }
-
-        const wrap = document.createElement('div');
-        wrap.className = 'preview-tp-profit-popover';
-        wrap.setAttribute('role', 'dialog');
-        wrap.innerHTML = `
-            <div style="background:#0f172a;border:1px solid #22c55e;border-radius:8px;padding:10px 12px;min-width:200px;box-shadow:0 8px 24px rgba(0,0,0,0.45);">
-                <div style="color:#94a3b8;font-size:11px;margin-bottom:6px;font-weight:600;">Target profit ($)</div>
-                <div style="display:flex;gap:8px;align-items:center;">
-                    <input type="number" class="preview-tp-profit-popover__input" min="0" step="0.01" value="${initialUsd}"
-                        style="flex:1;background:#020617;border:1px solid #334155;border-radius:6px;color:#e2e8f0;padding:8px 10px;font-size:14px;"/>
-                    <button type="button" class="preview-tp-profit-popover__set" style="background:#22c55e;color:#fff;border:none;border-radius:6px;padding:8px 14px;font-weight:700;cursor:pointer;font-size:13px;">Set</button>
-                </div>
-            </div>`;
-        document.body.appendChild(wrap);
-        this._tpProfitPopoverEl = wrap;
-
-        const rect = lineData.labelGroup.node().getBoundingClientRect();
-        let left = rect.left;
-        let top = rect.bottom + 6;
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        wrap.style.position = 'fixed';
-        wrap.style.zIndex = '100050';
-        requestAnimationFrame(() => {
-            const wr = wrap.getBoundingClientRect();
-            if (left + wr.width > vw - 8) left = Math.max(8, vw - wr.width - 8);
-            if (top + wr.height > vh - 8) top = Math.max(8, rect.top - wr.height - 6);
-            wrap.style.left = `${left}px`;
-            wrap.style.top = `${top}px`;
-        });
-        wrap.style.left = `${left}px`;
-        wrap.style.top = `${top}px`;
-
-        const input = wrap.querySelector('.preview-tp-profit-popover__input');
-        const btn = wrap.querySelector('.preview-tp-profit-popover__set');
-        const prec = this.getPricePrecision();
-
-        const apply = () => {
-            const v = parseFloat(input?.value || 0);
-            this._closeTpProfitUsdPopover();
-            if (!(v > 0) || !Number.isFinite(v)) return;
-
-            if (lineData.targetIndex !== undefined) {
-                const tp = this._solveMultiTpPriceForTargetRewardUsd(lineData.targetIndex, v);
-                const tgt = this.tpTargets && this.tpTargets[lineData.targetIndex];
-                if (tp != null && tgt) {
-                    tgt.price = parseFloat(tp.toFixed(prec));
-                    const priceInp = document.getElementById(`tpTarget${tgt.id}Price`);
-                    if (priceInp) priceInp.value = this.formatPrice(tp);
-                    this.tpManuallyPositioned = true;
-                    this.calculateAdvancedRiskReward();
-                    this.renderTPTargets();
-                    this.updatePreviewLines();
-                }
-            } else {
-                this._syncingTpTargetInputs = true;
-                try {
-                    const tp = this._solveTpPriceForTargetRewardUsd(v);
-                    if (tp != null && Number.isFinite(tp)) {
-                        const tpIn = document.getElementById('tpPrice');
-                        if (tpIn) tpIn.value = this.formatPrice(tp);
-                        const usdIn = document.getElementById('tpTargetProfitUSD');
-                        if (usdIn) usdIn.value = parseFloat(v.toFixed(2));
-                        this.tpManuallyPositioned = true;
-                        this.calculateAdvancedRiskReward();
-                        this.updatePreviewLines();
-                    }
-                } finally {
-                    this._syncingTpTargetInputs = false;
-                }
-            }
-        };
-
-        btn.onclick = (e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            apply();
-        };
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                apply();
-            }
-        });
-
-        this._tpProfitPopoverDocHandler = (e) => {
-            if (wrap.contains(e.target)) return;
-            this._closeTpProfitUsdPopover();
-        };
-        setTimeout(() => document.addEventListener('mousedown', this._tpProfitPopoverDocHandler, true), 0);
-
-        if (input) {
-            input.focus();
-            input.select();
-        }
     }
 
     /**
@@ -9102,18 +8972,6 @@ class OrderManager {
 
             if (segment.role === 'price') {
                 priceText = textEl;
-                const isTpProfitSeg =
-                    lineData.label === 'TP' ||
-                    (lineData.label && /^TP\d+$/.test(String(lineData.label)));
-                if (isTpProfitSeg && !lineData.isBadge) {
-                    segmentGroup
-                        .style('cursor', 'pointer')
-                        .on('mousedown', (e) => { e.stopPropagation(); })
-                        .on('click', (e) => {
-                            e.stopPropagation();
-                            this._openTpProfitUsdPopoverFromPreviewLine(lineData);
-                        });
-                }
             }
 
             offsetX += width + gap;
@@ -13650,6 +13508,22 @@ class OrderManager {
         return Math.max(p, high + slPad);
     }
 
+    /**
+     * Keep TP on the profit side of SL: BUY requires tp above SL; SELL requires tp below SL.
+     */
+    _clampTpPriceRelativeToSl(side, tpPrice, slPrice, pipSize) {
+        let p = Number(tpPrice);
+        const sl = Number(slPrice);
+        const ps = Number(pipSize) > 0 ? pipSize : (this.pipSize || 0.0001);
+        const pad = Math.max(ps * 0.5, 1e-12);
+        if (!Number.isFinite(p) || !Number.isFinite(sl) || !(sl > 0)) return p;
+        const s = String(side || 'BUY').toUpperCase();
+        if (s === 'SELL') {
+            return Math.min(p, sl - pad);
+        }
+        return Math.max(p, sl + pad);
+    }
+
     makePreviewLineDraggable(lineData) {
         const self = this;
         let isDragging = false;
@@ -13676,7 +13550,6 @@ class OrderManager {
                     if (t.closest('.split-handle')) return false;
                     if (t.closest('.preview-entry-level-delete-btn')) return false;
                     if (t.closest('.preview-enable-multi-modes-btn')) return false;
-                    if (t.closest('.preview-tp-profit-popover')) return false;
                 }
                 return true;
             })
@@ -13761,6 +13634,25 @@ class OrderManager {
                     newPrice = self._clampSlDragPrice(newPrice);
                     clampedY = ch.scales.yScale(newPrice);
                     clampedY = Math.max(0, Math.min(chartHeight, clampedY));
+                }
+
+                const isTpPreviewDrag =
+                    lineData.label === 'TP' ||
+                    (lineData.label && /^TP\d+$/.test(String(lineData.label)));
+                if (isTpPreviewDrag && enableSL) {
+                    let slP = parseFloat(document.getElementById('slPrice')?.value || 0);
+                    const slPrev = self.previewLines.sl;
+                    if (slPrev && !slPrev.isBadge && Number.isFinite(slPrev.price) && slPrev.price > 0) {
+                        slP = slPrev.price;
+                    }
+                    if (slP > 0) {
+                        const c = self._clampTpPriceRelativeToSl(self.orderSide, newPrice, slP, self.pipSize);
+                        if (c !== newPrice) {
+                            newPrice = c;
+                            clampedY = ch.scales.yScale(newPrice);
+                            clampedY = Math.max(0, Math.min(chartHeight, clampedY));
+                        }
+                    }
                 }
 
                 lineData.price = newPrice;
@@ -20997,8 +20889,15 @@ class OrderManager {
             
             // Convert Y position to price using inverse scale
             if (ctx.scales && ctx.scales.yScale) {
-                const newPrice = ctx.scales.yScale.invert(newY);
-                
+                let newPrice = ctx.scales.yScale.invert(newY);
+                if (lineType === 'tp' && order.stopLoss > 0 && Number.isFinite(order.stopLoss)) {
+                    const c = self._clampTpPriceRelativeToSl(order.type, newPrice, order.stopLoss, self.pipSize);
+                    if (c !== newPrice) {
+                        newPrice = c;
+                        newY = ctx.scales.yScale(newPrice);
+                    }
+                }
+
                 // Update the order object
                 if (lineType === 'entry') {
                     order.openPrice = newPrice;
@@ -21333,8 +21232,15 @@ class OrderManager {
             
             // Convert Y position to price using inverse scale
             if (ctx.scales && ctx.scales.yScale) {
-                const newPrice = ctx.scales.yScale.invert(newY);
-                
+                let newPrice = ctx.scales.yScale.invert(newY);
+                if (order.stopLoss > 0 && Number.isFinite(order.stopLoss)) {
+                    const c = self._clampTpPriceRelativeToSl(order.type, newPrice, order.stopLoss, self.pipSize);
+                    if (c !== newPrice) {
+                        newPrice = c;
+                        newY = ctx.scales.yScale(newPrice);
+                    }
+                }
+
                 // Update target price in the order (and all split siblings)
                 if (order.tpTargets && order.tpTargets[targetIndex]) {
                     const curBar = self.getCurrentCandle();
@@ -21517,8 +21423,15 @@ class OrderManager {
             }
 
             const svgRect = ctx.svg.node().getBoundingClientRect();
-            const mouseY = e.clientY - svgRect.top;
-            const newPrice = ctx.scales.yScale.invert(mouseY);
+            let mouseY = e.clientY - svgRect.top;
+            let newPrice = ctx.scales.yScale.invert(mouseY);
+            if (dragType === 'tp' && pendingOrder.stopLoss > 0 && Number.isFinite(pendingOrder.stopLoss)) {
+                const c = self._clampTpPriceRelativeToSl(pendingOrder.direction, newPrice, pendingOrder.stopLoss, self.pipSize);
+                if (c !== newPrice) {
+                    newPrice = c;
+                    mouseY = ctx.scales.yScale(newPrice);
+                }
+            }
             const precision = self.getPricePrecision();
             const priceStr = newPrice.toFixed(precision);
             const label = dragType === 'tp' ? 'TP' : 'SL';
@@ -21561,7 +21474,10 @@ class OrderManager {
 
             const svgRect = ctx.svg.node().getBoundingClientRect();
             const mouseY = e.clientY - svgRect.top;
-            const newPrice = ctx.scales.yScale.invert(mouseY);
+            let newPrice = ctx.scales.yScale.invert(mouseY);
+            if (dragType === 'tp' && pendingOrder.stopLoss > 0 && Number.isFinite(pendingOrder.stopLoss)) {
+                newPrice = self._clampTpPriceRelativeToSl(pendingOrder.direction, newPrice, pendingOrder.stopLoss, self.pipSize);
+            }
 
             if (dragType === 'tp') {
                 if (isBuy && newPrice <= pendingOrder.entryPrice) return;
@@ -21697,8 +21613,15 @@ class OrderManager {
             }
 
             const svgRect = ctx.svg.node().getBoundingClientRect();
-            const mouseY = e.clientY - svgRect.top;
-            const newPrice = ctx.scales.yScale.invert(mouseY);
+            let mouseY = e.clientY - svgRect.top;
+            let newPrice = ctx.scales.yScale.invert(mouseY);
+            if (dragType === 'tp' && order.stopLoss > 0 && Number.isFinite(order.stopLoss)) {
+                const c = self._clampTpPriceRelativeToSl(order.type, newPrice, order.stopLoss, self.pipSize);
+                if (c !== newPrice) {
+                    newPrice = c;
+                    mouseY = ctx.scales.yScale(newPrice);
+                }
+            }
             const precision = self.getPricePrecision();
             const priceStr = newPrice.toFixed(precision);
             const label = dragType === 'tp' ? 'TP' : 'SL';
@@ -21742,7 +21665,10 @@ class OrderManager {
 
             const svgRect = ctx.svg.node().getBoundingClientRect();
             const mouseY = e.clientY - svgRect.top;
-            const newPrice = ctx.scales.yScale.invert(mouseY);
+            let newPrice = ctx.scales.yScale.invert(mouseY);
+            if (dragType === 'tp' && order.stopLoss > 0 && Number.isFinite(order.stopLoss)) {
+                newPrice = self._clampTpPriceRelativeToSl(order.type, newPrice, order.stopLoss, self.pipSize);
+            }
 
             // Validate direction
             if (dragType === 'tp') {
@@ -24317,9 +24243,17 @@ class OrderManager {
                 if (event.sourceEvent && ch.updateCrosshair) ch.updateCrosshair(event.sourceEvent);
                 
                 const chartHeight = ch.h || 500;
-                const clampedY = Math.max(0, Math.min(chartHeight, event.y));
-                const newPrice = ch.scales.yScale.invert(clampedY);
-                
+                let clampedY = Math.max(0, Math.min(chartHeight, event.y));
+                let newPrice = ch.scales.yScale.invert(clampedY);
+                if (target.type === 'TP' && pendingOrder.stopLoss > 0 && Number.isFinite(pendingOrder.stopLoss)) {
+                    const c = self._clampTpPriceRelativeToSl(pendingOrder.direction, newPrice, pendingOrder.stopLoss, self.pipSize);
+                    if (c !== newPrice) {
+                        newPrice = c;
+                        const ay = ch.scales.yScale(newPrice);
+                        clampedY = Math.max(0, Math.min(chartHeight, ay));
+                    }
+                }
+
                 target.line.attr('y1', clampedY).attr('y2', clampedY);
                 if (target.hitLine) {
                     target.hitLine.attr('y1', clampedY).attr('y2', clampedY);
