@@ -9483,11 +9483,14 @@ class OrderManager {
                     maxW = dim.width;
                 }
             }
-            // Also check split entry lines
-            if (this.previewLines?.splitEntries) {
-                for (const se of this.previewLines.splitEntries) {
-                    if (se?.labelDimensions?.width > maxW && !se.isBadge) {
-                        maxW = se.labelDimensions.width;
+            // Also check split entry lines and multi-TP lines
+            const arrayKeys = ['splitEntries', 'multipleTPs'];
+            for (const key of arrayKeys) {
+                if (this.previewLines?.[key]) {
+                    for (const ld of this.previewLines[key]) {
+                        if (ld?.labelDimensions?.width > maxW && !ld.isBadge) {
+                            maxW = ld.labelDimensions.width;
+                        }
                     }
                 }
             }
@@ -15456,7 +15459,11 @@ class OrderManager {
             return;
         }
         this.multiEntryLevels = this.multiEntryLevels.filter((l) => l.id !== id);
-        this.equalizeMultiEntryAmounts();
+        // Scale remaining levels proportionally to restore the total risk/lot target
+        // (equalizeMultiEntryAmounts resets to equal split — this preserves relative weights)
+        this._rebalanceLevelAmountsToTarget();
+        this.renderMultiEntryRows();
+        this.syncMultiEntryToSplitEntries();
     }
 
     /**
@@ -16439,12 +16446,15 @@ class OrderManager {
         const ch = this.previewLines?._previewChart || this._getPreviewChart();
         if (!this.previewLines || !ch || !ch.scales || !ch.svg) return;
 
-        const activeLines = Object.values(this.previewLines).filter(Boolean);
+        // Flatten array values (multipleTPs, splitEntries) so every lineData is included
+        const activeLines = Object.values(this.previewLines)
+            .flatMap(v => Array.isArray(v) ? v : (v ? [v] : []))
+            .filter(v => v && typeof v === 'object' && v.labelGroup);
         if (!activeLines.length) return;
 
         // Separate badges from full lines - badges don't need horizontal alignment
         const badges = activeLines.filter(line => line.isBadge);
-        const lines = activeLines.filter(line => !line.isBadge && !Array.isArray(line));
+        const lines = activeLines.filter(line => !line.isBadge);
 
         const buckets = [];
         const bucketMap = new Map();
