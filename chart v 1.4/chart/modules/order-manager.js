@@ -12010,90 +12010,138 @@ class OrderManager {
     }
     
     /**
-     * Adjust TP distribution value with +/- buttons (works for percent, amount, and lots modes)
+     * Mutates tpTargets distribution in place (same rules as panel +/-). Used for preview and pending orders.
+     * @param {'percent'|'amount'|'lots'} mode
+     * @returns {boolean} true if values changed
      */
-    adjustTPPercentage(targetIndex, change) {
-        if (!this.tpTargets || targetIndex < 0 || targetIndex >= this.tpTargets.length) return;
-        
-        const numTargets = this.tpTargets.length;
-        if (numTargets <= 1) return; // Need at least 2 TPs to adjust
-        
-        // Get current value
-        let currentValue = this.tpTargets[targetIndex].percentage;
+    _redistributeTpTargetsShare(tpTargets, targetIndex, change, mode) {
+        if (!tpTargets || targetIndex < 0 || targetIndex >= tpTargets.length) return false;
+        const numTargets = tpTargets.length;
+        if (numTargets <= 1) return false;
+        const m = mode || 'percent';
+
+        let currentValue = tpTargets[targetIndex].percentage;
         let newValue = currentValue + change;
-        
-        // Apply mode-specific limits
-        if (this.tpDistributionMode === 'percent') {
+
+        if (m === 'percent') {
             newValue = Math.max(5, Math.min(90, newValue));
-        } else if (this.tpDistributionMode === 'amount') {
-            newValue = Math.max(1, newValue); // Min $1
-        } else if (this.tpDistributionMode === 'lots') {
-            newValue = Math.max(0.01, newValue); // Min 0.01 lots
+        } else if (m === 'amount') {
+            newValue = Math.max(1, newValue);
+        } else if (m === 'lots') {
+            newValue = Math.max(0.01, newValue);
         }
-        
-        // Calculate the actual change
+
         const actualChange = newValue - currentValue;
-        if (Math.abs(actualChange) < 0.01) return; // No significant change
-        
-        // Update this TP's value
-        const precision = this.tpDistributionMode === 'percent' ? 1 : 2;
-        this.tpTargets[targetIndex].percentage = parseFloat(newValue.toFixed(precision));
-        
-        // Redistribute the change among other TPs
-        const otherTargets = this.tpTargets.filter((_, idx) => idx !== targetIndex);
-        
-        if (this.tpDistributionMode === 'percent') {
-            // For percent mode: ensure total = 100%
+        if (Math.abs(actualChange) < 0.01) return false;
+
+        const precision = m === 'percent' ? 1 : 2;
+        tpTargets[targetIndex].percentage = parseFloat(newValue.toFixed(precision));
+
+        const otherTargets = tpTargets.filter((_, idx) => idx !== targetIndex);
+
+        if (m === 'percent') {
             const remainingValue = 100 - newValue;
             const currentOtherTotal = otherTargets.reduce((sum, t) => sum + t.percentage, 0);
-            
+
             if (currentOtherTotal > 0) {
                 otherTargets.forEach((target) => {
                     const proportion = target.percentage / currentOtherTotal;
                     target.percentage = parseFloat((remainingValue * proportion).toFixed(1));
                 });
-                
-                // Fix rounding errors
-                const currentTotal = this.tpTargets.reduce((sum, t) => sum + t.percentage, 0);
+
+                const currentTotal = tpTargets.reduce((sum, t) => sum + t.percentage, 0);
                 const diff = 100 - currentTotal;
                 if (Math.abs(diff) > 0.01) {
-                    const lastOtherIdx = this.tpTargets.findIndex((t, idx) => idx !== targetIndex && idx === this.tpTargets.length - 1);
+                    const lastOtherIdx = tpTargets.findIndex((t, idx) => idx !== targetIndex && idx === tpTargets.length - 1);
                     if (lastOtherIdx >= 0) {
-                        this.tpTargets[lastOtherIdx].percentage += diff;
-                        this.tpTargets[lastOtherIdx].percentage = parseFloat(this.tpTargets[lastOtherIdx].percentage.toFixed(1));
+                        tpTargets[lastOtherIdx].percentage += diff;
+                        tpTargets[lastOtherIdx].percentage = parseFloat(tpTargets[lastOtherIdx].percentage.toFixed(1));
                     }
                 }
             }
         } else {
-            // For amount/lots mode: redistribute evenly among others
-            const currentOtherTotal = otherTargets.reduce((sum, t) => sum + t.percentage, 0);
             const changePerOther = -actualChange / otherTargets.length;
-            
             otherTargets.forEach((target) => {
                 target.percentage = Math.max(
-                    this.tpDistributionMode === 'amount' ? 1 : 0.01,
+                    m === 'amount' ? 1 : 0.01,
                     parseFloat((target.percentage + changePerOther).toFixed(precision))
                 );
             });
         }
-        
-        // Update all input fields in the order panel
+        return true;
+    }
+
+    _findPendingOrderById(orderId) {
+        let po = (this.pendingOrders || []).find(o => o.id === orderId);
+        if (!po && this.orderService?.pendingOrders) {
+            po = this.orderService.pendingOrders.find(o => o.id === orderId);
+        }
+        return po || null;
+    }
+
+    /** Keep split-group pending legs' tpTargets percentages in sync with primary. */
+    _syncPendingTpPercentagesAcrossSplitGroup(primaryPo) {
+        if (!primaryPo?.isSplitEntry || !primaryPo.splitGroupId || !primaryPo.tpTargets?.length) return;
+        const members = this._getSplitGroupPendingOrders(primaryPo);
+        const ref = primaryPo.tpTargets;
+        for (const m of members) {
+            if (m.id === primaryPo.id) continue;
+            if (!m.tpTargets || m.tpTargets.length !== ref.length) continue;
+            for (let i = 0; i < ref.length; i++) {
+                m.tpTargets[i].percentage = ref[i].percentage;
+            }
+        }
+    }
+
+    /**
+     * +/- on pending multi-TP lines: updates stored tpTargets (preview adjustTPPercentage only touched panel state).
+     */
+    adjustPendingTPPercentage(pendingOrderId, targetIndex, change) {
+        const po = this._findPendingOrderById(pendingOrderId);
+        if (!po?.tpTargets?.length || targetIndex < 0 || targetIndex >= po.tpTargets.length) return;
+        const mode = po.tpTargets[0]?.distributionMode || this.tpDistributionMode || 'percent';
+        if (!this._redistributeTpTargetsShare(po.tpTargets, targetIndex, change, mode)) return;
+        if (po.isSplitEntry && po.splitGroupId) {
+            this._syncPendingTpPercentagesAcrossSplitGroup(po);
+        }
+        this.removePendingSLTPLines(po.id);
+        this.removeMultiTPAvgLine(po.id);
+        this.drawPendingOrderTargets(po);
+        if (po.tpTargets.length >= 1) {
+            this.drawMultiTPAvgLine(po, 'pending');
+        }
+        this.positionPendingOrderTargets(this.chart);
+        if (typeof this._updateMultiTPAvgLines === 'function') {
+            this._updateMultiTPAvgLines(this.chart);
+        }
+        this._schedulePendingOrdersPanelRefresh();
+    }
+
+    /**
+     * Adjust TP distribution value with +/- buttons (works for percent, amount, and lots modes)
+     */
+    adjustTPPercentage(targetIndex, change) {
+        if (!this.tpTargets || targetIndex < 0 || targetIndex >= this.tpTargets.length) return;
+        const numTargets = this.tpTargets.length;
+        if (numTargets <= 1) return;
+
+        const currentValue = this.tpTargets[targetIndex].percentage;
+        if (!this._redistributeTpTargetsShare(this.tpTargets, targetIndex, change, this.tpDistributionMode)) return;
+
+        const precision = this.tpDistributionMode === 'percent' ? 1 : 2;
+        let newValue = this.tpTargets[targetIndex].percentage;
+
         this.tpTargets.forEach(target => {
             const pctInput = document.getElementById(`tpTarget${target.id}Pct`);
             if (pctInput) {
                 pctInput.value = target.percentage.toFixed(precision);
             }
         });
-        
-        // Recalculate profit with new values
+
         this.calculateAdvancedRiskReward();
-        
-        // Update preview lines on chart to show new values
         this.updatePreviewLines();
-        
-        // Re-render the order panel to update validation and totals
         this.renderTPTargets();
-        
+
         const unit = this.tpDistributionMode === 'percent' ? '%' : this.tpDistributionMode === 'amount' ? '$' : ' lots';
         console.log(`📊 Adjusted TP${targetIndex + 1}: ${currentValue.toFixed(precision)}${unit} → ${newValue.toFixed(precision)}${unit}`);
     }
@@ -23588,7 +23636,7 @@ class OrderManager {
                     totalCloseQty = this._getSplitGroupPendingOrders(pendingOrder)
                         .reduce((s, m) => s + m.quantity * (normalizedPct / 100), 0);
                 }
-                const labelText = `TP${index + 1} (${target.percentage.toFixed(0)}%) ${totalCloseQty.toFixed(2)}`;
+                const labelText = `TP${index + 1} (${normalizedPct.toFixed(0)}%) ${totalCloseQty.toFixed(2)}`;
                 const pnlStr = `${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
                 const item = createLine(target.price, 'TP', labelText, tpPnL, target.id || index, target.percentage, index);
                 if (item) {
@@ -23798,17 +23846,20 @@ class OrderManager {
                 const totalLabelW = labelWidth + pnlBoxW;
                 target.labelDimensions = { width: totalLabelW, height: labelHeight };
 
-                // Layout: Label+PnL → [+] → [X] (right of label, left of right margin)
+                // Layout: Label+PnL → [−][+] (multi-TP share) → [X] → [+] split
                 const isMultiTP = !!target.isPendingMultiTP;
                 const needsCloseBtn = (target.type === 'SL' || target.type === 'TP');
                 const needsSplitBtn = (target.type === 'TP');
                 const closeBtnR = 10;
                 const splitBtnR = needsSplitBtn ? closeBtnR : 0;
                 const closeBtnGap = 6;
+                const arrowSize = 18;
+                const arrowGap = 2;
+                const showPctArrows = isMultiTP && entry.pendingOrder.tpTargets && entry.pendingOrder.tpTargets.length > 1;
+                target.pctArrowsWidth = showPctArrows ? (arrowSize + arrowGap) * 2 : 0;
                 const xBtnW = needsCloseBtn ? (closeBtnR * 2 + closeBtnGap) : 0;
                 const splitW = needsSplitBtn ? (splitBtnR * 2 + closeBtnGap) : 0;
-                const bGap = 4;
-                const badgesW = xBtnW + splitW;
+                const badgesW = (target.pctArrowsWidth || 0) + xBtnW + splitW;
 
                 const translateX = ch.w - totalLabelW - badgesW - marginRight;
                 const translateY = y - labelHeight / 2;
@@ -23816,9 +23867,56 @@ class OrderManager {
                     .attr('transform', `translate(${translateX}, ${translateY})`)
                     .style('cursor', isDraggable ? 'ns-resize' : 'default');
 
+                let xAfterLabel = translateX + totalLabelW + closeBtnGap;
+                if (showPctArrows) {
+                    const poId = entry.pendingOrder.id;
+                    const tIdx = target.tpTargetIndex;
+                    if (!target._pctDecBtn || !target._pctDecBtn.node()?.parentNode) {
+                        if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} }
+                        if (target._pctIncBtn) { try { target._pctIncBtn.remove(); } catch (_) {} }
+                        const decG = ch.svg.append('g')
+                            .attr('class', `pending-tp-pct-control pending-tp-pct-dec pending-tp-${poId}`)
+                            .attr('pointer-events', 'all')
+                            .style('cursor', 'pointer');
+                        decG.append('rect').attr('width', arrowSize).attr('height', arrowSize).attr('rx', 4)
+                            .attr('fill', 'rgba(239, 68, 68, 0.2)').attr('stroke', '#ef4444').attr('stroke-width', 1);
+                        decG.append('text').attr('x', arrowSize / 2).attr('y', arrowSize / 2).attr('dy', '0.35em')
+                            .attr('text-anchor', 'middle').attr('fill', '#ef4444').attr('font-size', '14px').attr('font-weight', '700').text('−');
+                        decG.on('mousedown', (e) => e.stopPropagation())
+                            .on('click', (e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                this.adjustPendingTPPercentage(poId, tIdx, -5);
+                            });
+                        const incG = ch.svg.append('g')
+                            .attr('class', `pending-tp-pct-control pending-tp-pct-inc pending-tp-${poId}`)
+                            .attr('pointer-events', 'all')
+                            .style('cursor', 'pointer');
+                        incG.append('rect').attr('width', arrowSize).attr('height', arrowSize).attr('rx', 4)
+                            .attr('fill', 'rgba(34, 197, 94, 0.2)').attr('stroke', '#22c55e').attr('stroke-width', 1);
+                        incG.append('text').attr('x', arrowSize / 2).attr('y', arrowSize / 2).attr('dy', '0.35em')
+                            .attr('text-anchor', 'middle').attr('fill', '#22c55e').attr('font-size', '14px').attr('font-weight', '700').text('+');
+                        incG.on('mousedown', (e) => e.stopPropagation())
+                            .on('click', (e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                this.adjustPendingTPPercentage(poId, tIdx, +5);
+                            });
+                        target._pctDecBtn = decG;
+                        target._pctIncBtn = incG;
+                    }
+                    target._pctDecBtn.attr('transform', `translate(${xAfterLabel}, ${y - arrowSize / 2})`);
+                    xAfterLabel += arrowSize + arrowGap;
+                    target._pctIncBtn.attr('transform', `translate(${xAfterLabel}, ${y - arrowSize / 2})`);
+                    xAfterLabel += arrowSize + arrowGap;
+                } else {
+                    if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} target._pctDecBtn = null; }
+                    if (target._pctIncBtn) { try { target._pctIncBtn.remove(); } catch (_) {} target._pctIncBtn = null; }
+                }
+
                 // X close/delete button for SL, single TP, and multi-TP targets
                 if (needsCloseBtn) {
-                    const closeBtnX = translateX + totalLabelW + closeBtnGap + closeBtnR;
+                    const closeBtnX = xAfterLabel + closeBtnR;
                     if (!target._deleteBtn || !target._deleteBtn.node()?.parentNode) {
                         if (target._deleteBtn) { try { target._deleteBtn.remove(); } catch (_) {} }
                         const dbg = ch.svg.append('g')
@@ -23850,11 +23948,12 @@ class OrderManager {
                         target._deleteBtn = dbg;
                     }
                     target._deleteBtn.attr('transform', `translate(${closeBtnX}, ${y})`);
+                    xAfterLabel = closeBtnX + closeBtnR + closeBtnGap;
                 }
 
                 // + split button for TP targets
                 if (needsSplitBtn) {
-                    const splitX = translateX + totalLabelW + (needsCloseBtn ? closeBtnR * 2 + closeBtnGap : 0) + closeBtnGap + splitBtnR;
+                    const splitX = xAfterLabel + splitBtnR;
                     if (!target._splitBtn || !target._splitBtn.node()?.parentNode) {
                         if (target._splitBtn) { try { target._splitBtn.remove(); } catch (_) {} }
                         const sbg = ch.svg.append('g')
@@ -23957,15 +24056,27 @@ class OrderManager {
                     target.hitLine.attr('x1', 0).attr('x2', ch.w);
                 }
 
+                const cBtnR = 10;
+                const cBtnGap = 6;
+                const sBtnR = 10;
+                const sBtnGap = 6;
+                const arrowSize = 18;
+                const arrowGap = 2;
+                const pctExtra = target.pctArrowsWidth || 0;
+                const xBase = translateX + dims.width + cBtnGap;
+                if (target._pctDecBtn) {
+                    target._pctDecBtn.attr('transform', `translate(${xBase}, ${clampedY - arrowSize / 2})`);
+                }
+                if (target._pctIncBtn) {
+                    target._pctIncBtn.attr('transform', `translate(${xBase + arrowSize + arrowGap}, ${clampedY - arrowSize / 2})`);
+                }
                 if (target._deleteBtn) {
-                    const cBtnR = 10, cBtnGap = 6;
-                    const closeBtnX = translateX + dims.width + cBtnGap + cBtnR;
+                    const closeBtnX = translateX + dims.width + pctExtra + cBtnGap + cBtnR;
                     target._deleteBtn.attr('transform', `translate(${closeBtnX}, ${clampedY})`);
                 }
                 if (target._splitBtn) {
-                    const sBtnR = 10, sBtnGap = 6;
                     const hasClose = !!target._deleteBtn;
-                    const splitX = translateX + dims.width + (hasClose ? 10 * 2 + sBtnGap : 0) + sBtnGap + sBtnR;
+                    const splitX = translateX + dims.width + pctExtra + (hasClose ? cBtnR * 2 + cBtnGap : 0) + sBtnGap + sBtnR;
                     target._splitBtn.attr('transform', `translate(${splitX}, ${clampedY})`);
                 }
                 
@@ -24121,6 +24232,8 @@ class OrderManager {
                 target.hitLine?.remove();
                 target.labelGroup?.remove();
                 target.priceHighlight?.remove();
+                if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} }
+                if (target._pctIncBtn) { try { target._pctIncBtn.remove(); } catch (_) {} }
                 if (target._deleteBtn) { try { target._deleteBtn.remove(); } catch (_) {} }
                 if (target._splitBtn) { try { target._splitBtn.remove(); } catch (_) {} }
                 if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} }
