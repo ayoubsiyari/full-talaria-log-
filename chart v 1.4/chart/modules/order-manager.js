@@ -8371,13 +8371,19 @@ class OrderManager {
                         </label>
                     </div>
                     <div id="breakevenSettings" class="is-hidden">
+                        <div class="trailing-unit-row" style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; align-items:center;">
+                            <span style="font-size:10px; color:#94a3b8; margin-right:4px;">Units</span>
+                            <button type="button" class="breakeven-mode-tab active" data-mode="rr" title="Multiples of initial risk (|entry − SL|)" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:#ca8a04;color:#0f172a;border:none;">R</button>
+                            <button type="button" class="breakeven-mode-tab" data-mode="pips" title="Points / Pips" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:transparent;color:#94a3b8;border:1px solid #334155;">Pips</button>
+                            <button type="button" class="breakeven-mode-tab" data-mode="amount" title="Profit in account currency" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:transparent;color:#94a3b8;border:1px solid #334155;">$</button>
+                        </div>
                         <div class="order-adv-card__body">
                             <span>After</span>
                             <input type="number" id="breakevenPips" value="0.5" min="0.1" step="0.1" class="adv-inline-input">
-                            <span class="adv-inline-unit">R</span>
-                            <span>to entry +</span>
-                            <input type="number" id="breakevenPipOffset" value="0" min="-50" max="50" step="0.1" class="adv-inline-input">
-                            <span class="adv-inline-unit">pts</span>
+                            <span class="adv-inline-unit" data-be-unit-label>R</span>
+                            <span class="be-offset-label">to entry +</span>
+                            <input type="number" id="breakevenPipOffset" value="0" min="-50" max="50" step="0.1" class="adv-inline-input be-offset-input">
+                            <span class="adv-inline-unit be-offset-input">pts</span>
                         </div>
                         <div id="beSummaryText" class="order-adv-card__summary"></div>
                     </div>
@@ -10697,34 +10703,35 @@ class OrderManager {
         document.querySelectorAll('.breakeven-mode-tab').forEach(tab => {
             tab.onclick = () => {
                 const mode = tab.getAttribute('data-mode');
-                
-                // Handle breakeven tabs (pips or amount)
-                if (mode === 'pips' || mode === 'amount') {
-                    this.breakevenMode = mode;
-                    
-                    // Update tab styles
-                    document.querySelectorAll('.breakeven-mode-tab').forEach(t => {
-                        if (t.getAttribute('data-mode') === 'pips' || t.getAttribute('data-mode') === 'amount') {
-                            t.style.cssText = '';
-                            t.classList.remove('active');
-                        }
-                    });
-                    tab.classList.add('active');
-                    
-                    // Toggle inputs
-                    const pipsInput = document.getElementById('breakevenPipsInput');
-                    const amountInput = document.getElementById('breakevenAmountInput');
-                    if (mode === 'pips') {
-                        if (pipsInput) pipsInput.style.display = 'flex';
-                        if (amountInput) amountInput.style.display = 'none';
-                    } else {
-                        if (pipsInput) pipsInput.style.display = 'none';
-                        if (amountInput) amountInput.style.display = 'flex';
-                    }
-                    
-                    // Update breakeven line when mode changes
-                    this.updatePreviewLines();
+                if (!['rr', 'pips', 'amount'].includes(mode)) return;
+                this.breakevenMode = mode;
+
+                // Update tab styles
+                document.querySelectorAll('.breakeven-mode-tab').forEach(t => {
+                    t.style.cssText = 'padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:transparent;color:#94a3b8;border:1px solid #334155;';
+                    t.classList.remove('active');
+                });
+                tab.style.cssText = 'padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:#ca8a04;color:#0f172a;border:none;';
+                tab.classList.add('active');
+
+                // Update unit label
+                const unitText = mode === 'rr' ? 'R' : mode === 'pips' ? 'Pips' : '$';
+                document.querySelectorAll('[data-be-unit-label]').forEach(el => { el.textContent = unitText; });
+
+                // Update input step/min
+                const pipsInput = document.getElementById('breakevenPips');
+                if (pipsInput) {
+                    if (mode === 'rr')     { pipsInput.step = '0.1'; pipsInput.min = '0.1'; }
+                    else if (mode === 'pips') { pipsInput.step = '1';   pipsInput.min = '1'; }
+                    else                      { pipsInput.step = '1';   pipsInput.min = '1'; }
                 }
+
+                // Toggle pip-offset row visibility (offset only makes sense for rr / pips)
+                document.querySelectorAll('.be-offset-input, .be-offset-label').forEach(el => {
+                    el.style.display = mode === 'amount' ? 'none' : '';
+                });
+
+                this.updatePreviewLines();
             };
         });
 
@@ -18721,7 +18728,36 @@ class OrderManager {
             this.removeSplitGroupAvgLine(position.splitGroupId);
         }
         this._cleanupOrphanedYAxisHighlights();
-        
+
+        // Promote remaining open siblings to standalone so SL/TP draw correctly
+        if (position.splitGroupId && position.isSplitEntry) {
+            const _seenOpen = new Set();
+            const _openSiblings = [...(this.openPositions || []), ...(this.orderService?.openPositions || [])]
+                .filter(p => {
+                    if (!p || p.splitGroupId !== position.splitGroupId || _seenOpen.has(p.id)) return false;
+                    _seenOpen.add(p.id);
+                    return true;
+                });
+            if (_openSiblings.length > 0) {
+                this.removeSplitGroupAvgLine(position.splitGroupId);
+                this.removeMultiTPAvgLine(`splitgrp_${position.splitGroupId}`);
+                _openSiblings.forEach(leg => {
+                    leg.isSplitEntry = false;
+                    leg.splitGroupId = undefined;
+                    leg.splitIndex = undefined;
+                    leg.splitTotal = undefined;
+                });
+                _openSiblings.forEach(leg => {
+                    this.removeSLTPLines(leg.id);
+                    this.drawSLTPLines(leg);
+                    if (Array.isArray(leg.tpTargets) && leg.tpTargets.length >= 1) {
+                        this.removeMultiTPAvgLine(leg.id);
+                        this.drawMultiTPAvgLine(leg);
+                    }
+                });
+            }
+        }
+
         // Clean up any preview lines that might be lingering
         this.removePreviewLines();
         
@@ -20285,6 +20321,34 @@ class OrderManager {
                     this.removeSplitGroupAvgLine(position.splitGroupId);
                 }
                 this._cleanupOrphanedYAxisHighlights();
+                // Promote remaining open siblings to standalone so SL/TP draw correctly
+                if (position.splitGroupId && position.isSplitEntry) {
+                    const _seenOpen2 = new Set();
+                    const _openSiblings2 = [...(this.openPositions || []), ...(this.orderService?.openPositions || [])]
+                        .filter(p => {
+                            if (!p || p.splitGroupId !== position.splitGroupId || _seenOpen2.has(p.id)) return false;
+                            _seenOpen2.add(p.id);
+                            return true;
+                        });
+                    if (_openSiblings2.length > 0) {
+                        this.removeSplitGroupAvgLine(position.splitGroupId);
+                        this.removeMultiTPAvgLine(`splitgrp_${position.splitGroupId}`);
+                        _openSiblings2.forEach(leg => {
+                            leg.isSplitEntry = false;
+                            leg.splitGroupId = undefined;
+                            leg.splitIndex = undefined;
+                            leg.splitTotal = undefined;
+                        });
+                        _openSiblings2.forEach(leg => {
+                            this.removeSLTPLines(leg.id);
+                            this.drawSLTPLines(leg);
+                            if (Array.isArray(leg.tpTargets) && leg.tpTargets.length >= 1) {
+                                this.removeMultiTPAvgLine(leg.id);
+                                this.drawMultiTPAvgLine(leg);
+                            }
+                        });
+                    }
+                }
                 if (position.splitGroupId && position.isSplitEntry) {
                     this._cancelPendingOrdersInSplitGroup(position.splitGroupId);
                 }
@@ -21982,7 +22046,17 @@ class OrderManager {
             if (total !== 100) source.tpTargets[source.tpTargets.length - 1].percentage += (100 - total);
         }
 
-        // Per-leg TP: do not copy tpTargets to other split-entry legs — only this order splits.
+        // Propagate new tpTargets structure to all other open legs in the same split group
+        if (!isPending && source.isSplitEntry && source.splitGroupId) {
+            const siblings = [...(this.openPositions || []), ...(this.orderService?.openPositions || [])]
+                .filter(p => p && p.splitGroupId === source.splitGroupId && p.id !== source.id && p.isSplitEntry);
+            siblings.forEach(sib => {
+                sib.tpTargets = source.tpTargets.map(t => {
+                    const existing = (sib.tpTargets || []).find(e => e.id === t.id);
+                    return { ...t, hit: existing ? !!existing.hit : false };
+                });
+            });
+        }
 
         // Redraw (this order only)
         if (isPending) {
@@ -22038,7 +22112,22 @@ class OrderManager {
             });
         }
 
-        // Per-leg TP: do not mirror deletes/changes to other split-entry legs.
+        // Propagate tpTargets structure change to all other open legs in the same split group
+        if (!isPending && source.isSplitEntry && source.splitGroupId) {
+            const siblings = [...(this.openPositions || []), ...(this.orderService?.openPositions || [])]
+                .filter(p => p && p.splitGroupId === source.splitGroupId && p.id !== source.id && p.isSplitEntry);
+            siblings.forEach(sib => {
+                if (source.tpTargets.length === 0) {
+                    sib.tpTargets = [];
+                    sib.takeProfit = source.takeProfit;
+                } else {
+                    sib.tpTargets = source.tpTargets.map(t => {
+                        const existing = (sib.tpTargets || []).find(e => e.id === t.id);
+                        return { ...t, hit: existing ? !!existing.hit : false };
+                    });
+                }
+            });
+        }
 
         // Redraw (this order only)
         if (isPending) {
@@ -26116,7 +26205,14 @@ class OrderManager {
         for (const m of members) {
             if (m.id === donor.id) continue;
             if (!m.tpTargets || m.tpTargets.length === 0) {
+                // Member has no targets: full copy from donor
                 m.tpTargets = donor.tpTargets.map(t => ({ ...t }));
+            } else if (m.tpTargets.length !== donor.tpTargets.length) {
+                // Structure mismatch (e.g. split happened on primary only): sync structure, preserve hit state
+                m.tpTargets = donor.tpTargets.map(t => {
+                    const existing = m.tpTargets.find(e => e.id === t.id);
+                    return { ...t, hit: existing ? !!existing.hit : false };
+                });
             }
         }
     }
@@ -27252,8 +27348,9 @@ class OrderManager {
                 
                 let totalSlPnL = 0;
                 positionsAtThisSL.forEach(pos => {
-                    const priceDiff = pos.type === 'BUY' ? pos.stopLoss - pos.openPrice : pos.openPrice - pos.stopLoss;
-                    totalSlPnL += (priceDiff / this.pipSize) * pos.quantity * this.pipValuePerLot;
+                    const grossPnL = this.estimatePnLForPriceLevel(pos.type, pos.openPrice, pos.stopLoss, pos.quantity, pos.ticker || pos.symbol);
+                    const commRoundTrip = this._getRoundTripCommissionUsd(pos);
+                    totalSlPnL += grossPnL - commRoundTrip;
                 });
                 
                 if (updatedSLPrices.has(priceKey)) {
