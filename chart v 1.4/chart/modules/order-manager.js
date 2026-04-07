@@ -13245,7 +13245,7 @@ class OrderManager {
         
         if (tpEnabled && multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
             // Draw full lines for targets that have a price set
-            const tpColors = ['#4ade80', '#22c55e', '#16a34a', '#15803d', '#166534'];
+            const tpColors = ['#089981', '#089981', '#089981', '#089981', '#089981'];
             this.tpTargets.forEach((target, index) => {
                 if (target.price > 0) {
                     const color = tpColors[Math.min(index, tpColors.length - 1)];
@@ -13290,12 +13290,12 @@ class OrderManager {
             }
 
             if (tpEnabled && this.tpManuallyPositioned && tpPrice > 0) {
-                this.previewLines.tp = this.drawPreviewLine(tpPrice, '#22c55e', 'TP', null, true);
+                this.previewLines.tp = this.drawPreviewLine(tpPrice, '#089981', 'TP', null, true);
                 if (this.previewLines.tp) {
                     this.previewLines.tp.targetPrice = tpPrice;
                 }
             } else if (tpEnabled && !this.tpManuallyPositioned) {
-                this.previewLines.tp = this.drawPreviewBadge(tpBadgeAnchorPrice, '#22c55e', 'TP', tpPrice);
+                this.previewLines.tp = this.drawPreviewBadge(tpBadgeAnchorPrice, '#089981', 'TP', tpPrice);
             }
         }
 
