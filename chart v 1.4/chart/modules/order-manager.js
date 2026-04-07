@@ -1240,15 +1240,32 @@ class OrderManager {
     }
 
     /**
+     * $/lot/side for commission — position snapshot first, then session instrument (same ticker).
+     * If both are missing, net-BE offset is 0 and SL stays at gross entry → journal can still show −2×comm×lots.
+     */
+    _getCommissionPerLotSideForPosition(position) {
+        const st = position?.instrument_settings || {};
+        let perSide = Number.parseFloat(
+            st.commission_per_lot ?? st.commission_per_lot_per_side ?? st.commissionPerLotPerSide ?? 0
+        ) || 0;
+        if (perSide > 0) return perSide;
+        const t = this._positionTicker(position);
+        if (this.orderService && typeof this.orderService.getInstrumentSettings === 'function' && t) {
+            const inst = this.orderService.getInstrumentSettings(t, {});
+            perSide = Number.parseFloat(
+                inst.commission_per_lot ?? inst.commission_per_lot_per_side ?? inst.commissionPerLotPerSide ?? 0
+            ) || 0;
+        }
+        return perSide;
+    }
+
+    /**
      * Round-trip commission in account currency (open + close), same basis as partial-close journal lines.
      */
     _getRoundTripCommissionUsd(position) {
         const q = Number(position?.quantity) || 0;
         if (!(q > 0)) return 0;
-        const st = position.instrument_settings || {};
-        const perSide = Number.parseFloat(
-            st.commission_per_lot ?? st.commission_per_lot_per_side ?? st.commissionPerLotPerSide ?? 0
-        ) || 0;
+        const perSide = this._getCommissionPerLotSideForPosition(position);
         return perSide * 2 * q;
     }
 
@@ -20083,8 +20100,7 @@ class OrderManager {
             const _rr_at_exit = _riskForPartial > 0 ? pnl / _riskForPartial : null;
 
             // Commission for this partial lot (per-side × 2 × lots)
-            const _posSettings = position.instrument_settings || null;
-            const _commPerSide = _posSettings?.commission_per_lot ?? 0;
+            const _commPerSide = this._getCommissionPerLotSideForPosition(position);
             const _commission = _commPerSide * 2 * closeQuantity;
 
             const _exitReasonMap = { 'TP-PARTIAL': 'TP_HIT', 'TP': 'TP_HIT', 'SL': 'SL_HIT', 'MANUAL': 'MANUAL', 'STOP_OUT': 'STOP_OUT' };
