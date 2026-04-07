@@ -8862,14 +8862,14 @@ class OrderManager {
             .attr('cx', btnR)
             .attr('cy', btnR)
             .attr('fill', '#0f172a')
-            .attr('stroke', '#22c55e')
+            .attr('stroke', '#089981')
             .attr('stroke-width', 1.2);
         g.append('text')
             .attr('x', btnR)
             .attr('y', btnR)
             .attr('dy', '0.35em')
             .attr('text-anchor', 'middle')
-            .attr('fill', '#22c55e')
+            .attr('fill', '#089981')
             .attr('font-size', '12px')
             .attr('font-weight', '700')
             .text('+');
@@ -8877,7 +8877,7 @@ class OrderManager {
             e.stopPropagation();
             self._applyPreviewActivator(kind);
         })
-            .on('mouseenter', () => bg.attr('fill', '#14532d'))
+            .on('mouseenter', () => bg.attr('fill', '#0d4d40'))
             .on('mouseleave', () => bg.attr('fill', '#0f172a'));
     }
 
@@ -9073,8 +9073,8 @@ class OrderManager {
                 .attr('width', arrowSize)
                 .attr('height', arrowSize)
                 .attr('rx', 4)
-                .attr('fill', 'rgba(34, 197, 94, 0.2)')
-                .attr('stroke', '#22c55e')
+                .attr('fill', 'rgba(8, 153, 129, 0.2)')
+                .attr('stroke', '#089981')
                 .attr('stroke-width', 1);
             
             increaseGroup.append('text')
@@ -9082,7 +9082,7 @@ class OrderManager {
                 .attr('y', arrowSize / 2)
                 .attr('dy', '0.35em')
                 .attr('text-anchor', 'middle')
-                .attr('fill', '#22c55e')
+                .attr('fill', '#089981')
                 .attr('font-size', '14px')
                 .attr('font-weight', '700')
                 .text('+');
@@ -9145,14 +9145,14 @@ class OrderManager {
                     .attr('cx', splitBtnR)
                     .attr('cy', splitBtnR)
                     .attr('fill', '#0f172a')
-                    .attr('stroke', '#22c55e')
+                    .attr('stroke', '#089981')
                     .attr('stroke-width', 1.2);
                 splitG.append('text')
                     .attr('x', splitBtnR)
                     .attr('y', splitBtnR)
                     .attr('dy', '0.35em')
                     .attr('text-anchor', 'middle')
-                    .attr('fill', '#22c55e')
+                    .attr('fill', '#089981')
                     .attr('font-size', '14px')
                     .attr('font-weight', '700')
                     .text('+');
@@ -9162,12 +9162,12 @@ class OrderManager {
                         self._splitPreviewTPFromLine(lineData.price);
                     })
                     .on('mouseenter', () => {
-                        sbc.attr('fill', '#22c55e');
+                        sbc.attr('fill', '#089981');
                         splitG.select('text').attr('fill', '#ffffff');
                     })
                     .on('mouseleave', () => {
                         sbc.attr('fill', '#0f172a');
-                        splitG.select('text').attr('fill', '#22c55e');
+                        splitG.select('text').attr('fill', '#089981');
                     });
                 offsetX += splitBtnR * 2 + gap;
             }
@@ -13378,7 +13378,7 @@ class OrderManager {
                 this.previewLines.be.line
                     .attr('stroke-width', 1)
                     .attr('stroke-dasharray', null)
-                    .attr('opacity', 0.92);
+                    .attr('opacity', 0.85);
             }
         }
 
@@ -14289,7 +14289,7 @@ class OrderManager {
             .on('end', () => {
                 if (!isDragging) return;
                 isDragging = false;
-                lineData.line.attr('stroke-width', 1).attr('opacity', 0.92);
+                lineData.line.attr('stroke-width', 1).attr('opacity', 0.85);
                 
                 // Clear dragging flag
                 self.isDraggingPreviewLine = false;
@@ -21030,12 +21030,12 @@ class OrderManager {
                         const pnl = self.estimatePnLForPriceLevel(order.type, order.openPrice, newPrice, order.quantity, sym);
                         extraElements.pnlText.text(`${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`);
                     }
-                    const boxH = 18;
+                    const boxH = 22;
                     const boxY = newY - boxH / 2;
                     const gap = 4;
                     const pad = 8;
                     const yAxisWidth = 70;
-                    const closeBtnR = 10;
+                    const closeBtnR = 9;
                     const closeBtnGap = 6;
                     const lt = extraElements.labelText;
                     const pt = extraElements.pnlText;
@@ -21054,7 +21054,7 @@ class OrderManager {
                             const delBtn = extraElements.deleteBtn;
                             const splBtn = extraElements.splitBtn;
                             const deleteBtnR = 8;
-                            const splitBtnR = splBtn ? (delBtn ? 8 : 10) : 0;
+                            const splitBtnR = splBtn ? (delBtn ? 8 : 9) : 0;
                             const deleteSpace = delBtn ? (deleteBtnR * 2 + gap) : 0;
                             const splitSpace = splBtn ? (splitBtnR * 2 + gap) : 0;
                             const badgesW = deleteSpace + splitSpace;
@@ -21074,7 +21074,7 @@ class OrderManager {
                             const delBtn = extraElements.deleteBtn;
                             const splBtn = extraElements.splitBtn;
                             const deleteBtnR = 8;
-                            const splitBtnR = splBtn ? (delBtn ? 8 : 10) : 0;
+                            const splitBtnR = splBtn ? (delBtn ? 8 : 9) : 0;
                             if (delBtn) {
                                 delBtn.attr('transform', `translate(${cx + deleteBtnR}, ${newY})`);
                                 cx += deleteBtnR * 2 + gap;
@@ -21150,7 +21150,7 @@ class OrderManager {
                 frameId = null;
             }
             
-            line.attr('stroke-width', 1).attr('opacity', 0.92);
+            line.attr('stroke-width', 1).attr('opacity', 0.85);
             
             let finalPrice;
             if (lineType === 'entry') finalPrice = order.openPrice;
@@ -21365,7 +21365,7 @@ class OrderManager {
                 frameId = null;
             }
             
-            line.attr('stroke-width', 1).attr('opacity', 0.92);
+            line.attr('stroke-width', 1).attr('opacity', 0.85);
             
             const finalPrice = target.price;
 
@@ -21462,23 +21462,26 @@ class OrderManager {
                     document.removeEventListener('mouseup', onMouseUp);
                     return;
                 }
-                const color = dragType === 'tp' ? '#22c55e' : '#f23645';
+                const color = dragType === 'tp' ? '#089981' : '#f23645';
+                const pnlFill = dragType === 'tp' ? 'rgba(8,153,129,0.15)' : 'rgba(242,54,69,0.15)';
                 previewLine = ctx.svg.append('line')
                     .attr('stroke', color).attr('stroke-width', 1.5)
                     .attr('stroke-dasharray', '6 3').attr('opacity', 0.9)
                     .attr('x1', 0).attr('x2', ctx.w - (ctx.margin?.r || 70))
                     .style('pointer-events', 'none');
                 previewLabelBg = ctx.svg.append('rect')
-                    .attr('fill', color).attr('rx', 3).attr('height', 20)
+                    .attr('fill', color).attr('rx', 3).attr('height', 22)
                     .style('pointer-events', 'none');
                 previewLabel = ctx.svg.append('text')
-                    .attr('fill', '#fff').attr('font-size', '11px').attr('font-weight', '700')
+                    .attr('fill', '#fff').attr('font-size', '11px').attr('font-weight', '600')
+                    .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                     .attr('dy', '0.35em').style('pointer-events', 'none');
                 previewPnlBg = ctx.svg.append('rect')
-                    .attr('fill', '#0f172a').attr('stroke', color).attr('stroke-width', 1)
-                    .attr('rx', 3).attr('height', 20).style('pointer-events', 'none');
+                    .attr('fill', pnlFill).attr('stroke', color).attr('stroke-width', 1)
+                    .attr('rx', 3).attr('height', 22).style('pointer-events', 'none');
                 previewPnlText = ctx.svg.append('text')
-                    .attr('fill', color).attr('font-size', '11px').attr('font-weight', '700')
+                    .attr('fill', color).attr('font-size', '11px').attr('font-weight', '600')
+                    .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                     .attr('dy', '0.35em').style('pointer-events', 'none');
             }
 
@@ -21526,9 +21529,9 @@ class OrderManager {
             const totalW = labelW + 4 + pnlW;
             const xStart = xRight - totalW;
 
-            previewLabelBg.attr('x', xStart).attr('y', mouseY - 10).attr('width', labelW);
+            previewLabelBg.attr('x', xStart).attr('y', mouseY - 11).attr('width', labelW);
             previewLabel.attr('x', xStart + pad).attr('y', mouseY);
-            previewPnlBg.attr('x', xStart + labelW + 4).attr('y', mouseY - 10).attr('width', pnlW);
+            previewPnlBg.attr('x', xStart + labelW + 4).attr('y', mouseY - 11).attr('width', pnlW);
             previewPnlText.text(pnlStr).attr('x', xStart + labelW + 4 + pad).attr('y', mouseY);
         };
 
@@ -21672,7 +21675,8 @@ class OrderManager {
                     document.removeEventListener('mouseup', onMouseUp);
                     return;
                 }
-                const color = dragType === 'tp' ? '#22c55e' : '#f23645';
+                const color = dragType === 'tp' ? '#089981' : '#f23645';
+                const pnlFill = dragType === 'tp' ? 'rgba(8,153,129,0.15)' : 'rgba(242,54,69,0.15)';
                 previewLine = ctx.svg.append('line')
                     .attr('stroke', color)
                     .attr('stroke-width', 1.5)
@@ -21682,16 +21686,18 @@ class OrderManager {
                     .attr('x2', ctx.w - (ctx.margin?.r || 70))
                     .style('pointer-events', 'none');
                 previewLabelBg = ctx.svg.append('rect')
-                    .attr('fill', color).attr('rx', 3).attr('height', 20)
+                    .attr('fill', color).attr('rx', 3).attr('height', 22)
                     .style('pointer-events', 'none');
                 previewLabel = ctx.svg.append('text')
-                    .attr('fill', '#fff').attr('font-size', '11px').attr('font-weight', '700')
+                    .attr('fill', '#fff').attr('font-size', '11px').attr('font-weight', '600')
+                    .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                     .attr('dy', '0.35em').style('pointer-events', 'none');
                 previewPnlBg = ctx.svg.append('rect')
-                    .attr('fill', '#0f172a').attr('stroke', color).attr('stroke-width', 1)
-                    .attr('rx', 3).attr('height', 20).style('pointer-events', 'none');
+                    .attr('fill', pnlFill).attr('stroke', color).attr('stroke-width', 1)
+                    .attr('rx', 3).attr('height', 22).style('pointer-events', 'none');
                 previewPnlText = ctx.svg.append('text')
-                    .attr('fill', color).attr('font-size', '11px').attr('font-weight', '700')
+                    .attr('fill', color).attr('font-size', '11px').attr('font-weight', '600')
+                    .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                     .attr('dy', '0.35em').style('pointer-events', 'none');
             }
 
@@ -21734,9 +21740,9 @@ class OrderManager {
             const totalW = labelW + 4 + pnlW;
             const xStart = xRight - totalW;
 
-            previewLabelBg.attr('x', xStart).attr('y', mouseY - 10).attr('width', labelW);
+            previewLabelBg.attr('x', xStart).attr('y', mouseY - 11).attr('width', labelW);
             previewLabel.attr('x', xStart + pad).attr('y', mouseY);
-            previewPnlBg.attr('x', xStart + labelW + 4).attr('y', mouseY - 10).attr('width', pnlW);
+            previewPnlBg.attr('x', xStart + labelW + 4).attr('y', mouseY - 11).attr('width', pnlW);
             previewPnlText.text(pnlStr).attr('x', xStart + labelW + 4 + pad).attr('y', mouseY);
         };
 
@@ -22194,15 +22200,15 @@ class OrderManager {
 
             g.append('rect')
                 .attr('width', bW).attr('height', bH).attr('rx', bR)
-                .attr('fill', isSet ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.10)')
-                .attr('stroke', '#22c55e')
+                .attr('fill', isSet ? 'rgba(8,153,129,0.25)' : 'rgba(8,153,129,0.10)')
+                .attr('stroke', '#089981')
                 .attr('stroke-width', 1)
                 .attr('stroke-dasharray', isSet ? null : '3 2')
                 .style('pointer-events', 'all');
 
             g.append('text')
                 .attr('x', bW / 2).attr('y', bH / 2)
-                .attr('fill', '#22c55e')
+                .attr('fill', '#089981')
                 .attr('font-size', fontSize).attr('font-weight', '700')
                 .attr('dy', '0.35em').attr('text-anchor', 'middle')
                 .attr('opacity', isSet ? 1 : 0.7)
@@ -22212,12 +22218,12 @@ class OrderManager {
             // Hover effect
             g.on('mouseenter', function() {
                 d3.select(this).select('rect')
-                    .attr('fill', 'rgba(34,197,94,0.4)')
+                    .attr('fill', 'rgba(8,153,129,0.4)')
                     .attr('stroke-dasharray', null);
                 d3.select(this).select('text').attr('opacity', 1);
             }).on('mouseleave', function() {
                 d3.select(this).select('rect')
-                    .attr('fill', isSet ? 'rgba(34,197,94,0.25)' : 'rgba(34,197,94,0.10)')
+                    .attr('fill', isSet ? 'rgba(8,153,129,0.25)' : 'rgba(8,153,129,0.10)')
                     .attr('stroke-dasharray', isSet ? null : '3 2');
                 d3.select(this).select('text').attr('opacity', isSet ? 1 : 0.7);
             });
@@ -22526,12 +22532,12 @@ class OrderManager {
             .style('display', 'none');
         tpBadgeGroup.append('rect')
             .attr('height', badgeH).attr('rx', badgeR)
-            .attr('fill', 'rgba(34,197,94,0.12)')
-            .attr('stroke', '#22c55e').attr('stroke-width', 1)
+            .attr('fill', 'rgba(8,153,129,0.12)')
+            .attr('stroke', '#089981').attr('stroke-width', 1)
             .attr('stroke-dasharray', '3 2')
             .style('pointer-events', 'all');
         tpBadgeGroup.append('text')
-            .attr('fill', '#22c55e')
+            .attr('fill', '#089981')
             .attr('font-size', badgeFontSize).attr('font-weight', '700')
             .attr('dy', '0.35em').attr('text-anchor', 'middle')
             .attr('opacity', 0.8)
@@ -22539,11 +22545,11 @@ class OrderManager {
             .text('TP');
         tpBadgeGroup
             .on('mouseenter', function() {
-                d3.select(this).select('rect').attr('fill', 'rgba(34,197,94,0.35)').attr('stroke-dasharray', null);
+                d3.select(this).select('rect').attr('fill', 'rgba(8,153,129,0.35)').attr('stroke-dasharray', null);
                 d3.select(this).select('text').attr('opacity', 1);
             })
             .on('mouseleave', function() {
-                d3.select(this).select('rect').attr('fill', 'rgba(34,197,94,0.12)').attr('stroke-dasharray', '3 2');
+                d3.select(this).select('rect').attr('fill', 'rgba(8,153,129,0.12)').attr('stroke-dasharray', '3 2');
                 d3.select(this).select('text').attr('opacity', 0.8);
             });
 
@@ -23707,7 +23713,7 @@ class OrderManager {
                 self._isDraggingOrderLine = false;
                 if (self._draggingPendingOrderIds) self._draggingPendingOrderIds.delete(pendingOrder.id);
                 
-                line.attr('stroke-width', 1).attr('opacity', 0.92);
+                line.attr('stroke-width', 1).attr('opacity', 0.85);
 
                 // Relax guard from Infinity (set during drag) to current tick
                 // so the pending order can fill from the next tick onward.
@@ -23797,12 +23803,12 @@ class OrderManager {
             .style('display', 'none');
         tpBadgeGroup.append('rect')
             .attr('height', badgeH).attr('rx', badgeR)
-            .attr('fill', 'rgba(34,197,94,0.12)')
-            .attr('stroke', '#22c55e').attr('stroke-width', 1)
+            .attr('fill', 'rgba(8,153,129,0.12)')
+            .attr('stroke', '#089981').attr('stroke-width', 1)
             .attr('stroke-dasharray', '3 2')
             .style('pointer-events', 'all');
         tpBadgeGroup.append('text')
-            .attr('fill', '#22c55e')
+            .attr('fill', '#089981')
             .attr('font-size', badgeFontSize).attr('font-weight', '700')
             .attr('dy', '0.35em').attr('text-anchor', 'middle')
             .attr('opacity', 0.8)
@@ -23810,11 +23816,11 @@ class OrderManager {
             .text('TP');
         tpBadgeGroup
             .on('mouseenter', function() {
-                d3.select(this).select('rect').attr('fill', 'rgba(34,197,94,0.35)').attr('stroke-dasharray', null);
+                d3.select(this).select('rect').attr('fill', 'rgba(8,153,129,0.35)').attr('stroke-dasharray', null);
                 d3.select(this).select('text').attr('opacity', 1);
             })
             .on('mouseleave', function() {
-                d3.select(this).select('rect').attr('fill', 'rgba(34,197,94,0.12)').attr('stroke-dasharray', '3 2');
+                d3.select(this).select('rect').attr('fill', 'rgba(8,153,129,0.12)').attr('stroke-dasharray', '3 2');
                 d3.select(this).select('text').attr('opacity', 0.8);
             });
 
@@ -23883,10 +23889,9 @@ class OrderManager {
 
         const self = this;
         
-        const tpColors = ['#4ade80', '#22c55e', '#16a34a', '#15803d', '#166534'];
         const createLine = (price, type, labelText = null, pnl = null, targetId = null, percentage = null, tpIndex = 0) => {
             if (!price) return null;
-            const color = type === 'TP' ? tpColors[Math.min(tpIndex, tpColors.length - 1)] : type === 'SL' ? '#f23645' : '#f59e0b';
+            const color = type === 'TP' ? '#089981' : type === 'SL' ? '#f23645' : '#f59e0b';
             const isDraggable = (type === 'TP' || type === 'SL' || type === 'BE');
             
             const line = chart.svg.append('line')
@@ -23895,7 +23900,7 @@ class OrderManager {
                 .attr('stroke-width', 1)
                 .attr('stroke-linecap', 'butt')
                 .attr('stroke-dasharray', null)
-                .attr('opacity', 0.92)
+                .attr('opacity', 0.85)
                 .style('pointer-events', isDraggable ? 'all' : 'none')
                 .style('cursor', isDraggable ? 'ns-resize' : 'default');
 
@@ -24073,9 +24078,7 @@ class OrderManager {
                 const labelGroup = target.labelGroup;
                 labelGroup.selectAll('*').remove();
 
-                const tpIndexColors = ['#4ade80', '#22c55e', '#16a34a', '#15803d', '#166534'];
-                const bgColor = target.type === 'TP'
-                    ? (target.tpTargetIndex != null ? tpIndexColors[Math.min(target.tpTargetIndex, tpIndexColors.length - 1)] : '#22c55e')
+                const bgColor = target.type === 'TP' ? '#089981'
                     : target.type === 'SL' ? '#f23645'
                     : '#f59e0b';
 
@@ -24097,13 +24100,14 @@ class OrderManager {
                 const text = labelGroup.append('text')
                     .attr('fill', '#ffffff')
                     .attr('font-size', '11px')
-                    .attr('font-weight', '700')
+                    .attr('font-weight', '600')
+                    .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                     .style('pointer-events', 'none')
                     .text(displayLabel);
 
                 const bbox = text.node().getBBox();
                 const labelWidth = bbox.width + 16;
-                const labelHeight = bbox.height + 8;
+                const labelHeight = 22;
 
                 labelRect
                     .attr('width', labelWidth)
@@ -24117,14 +24121,16 @@ class OrderManager {
                     .attr('text-anchor', 'middle')
                     .attr('dy', '0.35em');
 
-                const pnlAccent = target.type === 'TP' ? '#86efac' : target.type === 'SL' ? '#fca5a5' : '#fde68a';
+                const pnlAccent = target.type === 'TP' ? '#089981' : target.type === 'SL' ? '#f23645' : '#fde68a';
+                const pnlBgFill = target.type === 'TP' ? 'rgba(8,153,129,0.15)' : target.type === 'SL' ? 'rgba(242,54,69,0.15)' : 'rgba(245,158,11,0.15)';
                 let pnlBoxW = 0;
                 const hasPnl = target.pnlStr && (target.type === 'TP' || target.type === 'SL');
                 if (hasPnl) {
                     const pnlText = labelGroup.append('text')
                         .attr('fill', pnlAccent)
                         .attr('font-size', '11px')
-                        .attr('font-weight', '700')
+                        .attr('font-weight', '600')
+                        .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                         .style('pointer-events', 'none')
                         .text(target.pnlStr);
                     const pnlBbox = pnlText.node().getBBox();
@@ -24132,8 +24138,8 @@ class OrderManager {
                     const pnlBoxX = labelWidth + 2;
                     labelGroup.insert('rect', 'text:last-of-type')
                         .attr('rx', 3)
-                        .attr('fill', '#0f172a')
-                        .attr('stroke', bgColor)
+                        .attr('fill', pnlBgFill)
+                        .attr('stroke', pnlAccent)
                         .attr('stroke-width', 1)
                         .attr('width', pnlBoxW)
                         .attr('height', labelHeight)
@@ -24154,8 +24160,8 @@ class OrderManager {
                 const isMultiTP = !!target.isPendingMultiTP;
                 const needsCloseBtn = (target.type === 'SL' || target.type === 'TP');
                 const needsSplitBtn = (target.type === 'TP');
-                const closeBtnR = 10;
-                const splitBtnR = needsSplitBtn ? closeBtnR : 0;
+                const closeBtnR = 9;
+                const splitBtnR = needsSplitBtn ? 9 : 0;
                 const closeBtnGap = 6;
                 const arrowSize = 18;
                 const arrowGap = 2;
@@ -24197,9 +24203,9 @@ class OrderManager {
                             .attr('pointer-events', 'all')
                             .style('cursor', 'pointer');
                         incG.append('rect').attr('width', arrowSize).attr('height', arrowSize).attr('rx', 4)
-                            .attr('fill', 'rgba(34, 197, 94, 0.2)').attr('stroke', '#22c55e').attr('stroke-width', 1);
+                            .attr('fill', 'rgba(8, 153, 129, 0.2)').attr('stroke', '#089981').attr('stroke-width', 1);
                         incG.append('text').attr('x', arrowSize / 2).attr('y', arrowSize / 2).attr('dy', '0.35em')
-                            .attr('text-anchor', 'middle').attr('fill', '#22c55e').attr('font-size', '14px').attr('font-weight', '700').text('+');
+                            .attr('text-anchor', 'middle').attr('fill', '#089981').attr('font-size', '14px').attr('font-weight', '700').text('+');
                         incG.on('mousedown', (e) => e.stopPropagation())
                             .on('click', (e) => {
                                 e.stopPropagation();
@@ -24265,8 +24271,8 @@ class OrderManager {
                             .attr('pointer-events', 'all')
                             .style('cursor', 'pointer');
                         sbg.append('circle').attr('r', splitBtnR)
-                            .attr('fill', '#0f172a').attr('stroke', '#22c55e').attr('stroke-width', 1.2);
-                        sbg.append('text').attr('fill', '#22c55e').attr('font-size', '14px')
+                            .attr('fill', '#0f172a').attr('stroke', '#089981').attr('stroke-width', 1.2);
+                        sbg.append('text').attr('fill', '#089981').attr('font-size', '14px')
                             .attr('font-weight', '700').attr('text-anchor', 'middle').attr('dy', '0.35em')
                             .style('pointer-events', 'none').text('+');
                         sbg.on('click', (event) => {
@@ -24280,11 +24286,11 @@ class OrderManager {
                             this._splitTPAtPrice(po.id, newTP, true);
                         });
                         sbg.on('mouseover', function() {
-                            sbg.select('circle').attr('fill', '#22c55e');
+                            sbg.select('circle').attr('fill', '#089981');
                             sbg.select('text').attr('fill', '#ffffff');
                         }).on('mouseout', function() {
                             sbg.select('circle').attr('fill', '#0f172a');
-                            sbg.select('text').attr('fill', '#22c55e');
+                            sbg.select('text').attr('fill', '#089981');
                         });
                         target._splitBtn = sbg;
                     }
@@ -24469,7 +24475,7 @@ class OrderManager {
                 self._isDraggingPendingTarget = false;
                 dragLabelX = null;
                 
-                target.line.attr('stroke-width', 1).attr('opacity', 0.92);
+                target.line.attr('stroke-width', 1).attr('opacity', 0.85);
                 
                 const formattedPrice = self.formatPrice(target.price);
                 console.log(`📍 Pending ${target.type} moved to ${formattedPrice}`);
@@ -26159,6 +26165,7 @@ class OrderManager {
                 .attr('fill', '#ffffff')
                 .attr('font-size', '11px')
                 .attr('font-weight', '700')
+                .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize')
                 .text(`SL  ${slTotalQty.toFixed(2)}`);
@@ -26290,6 +26297,7 @@ class OrderManager {
                         .attr('fill', '#ffffff')
                         .attr('font-size', '11px')
                         .attr('font-weight', '700')
+                        .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize')
                         .text(tpLabelStr);
@@ -26360,9 +26368,9 @@ class OrderManager {
                             .attr('pointer-events', 'all')
                             .style('cursor', 'pointer');
                         tpPctIncBtn.append('rect').attr('width', tpPctArrowSize).attr('height', tpPctArrowSize).attr('rx', 4)
-                            .attr('fill', 'rgba(34, 197, 94, 0.2)').attr('stroke', '#22c55e').attr('stroke-width', 1);
+                            .attr('fill', 'rgba(8, 153, 129, 0.2)').attr('stroke', '#089981').attr('stroke-width', 1);
                         tpPctIncBtn.append('text').attr('x', tpPctArrowSize / 2).attr('y', tpPctArrowSize / 2).attr('dy', '0.35em')
-                            .attr('text-anchor', 'middle').attr('fill', '#22c55e').attr('font-size', '14px').attr('font-weight', '700').text('+');
+                            .attr('text-anchor', 'middle').attr('fill', '#089981').attr('font-size', '14px').attr('font-weight', '700').text('+');
                         tpPctIncBtn.on('mousedown', (e) => e.stopPropagation())
                             .on('click', (e) => {
                                 e.stopPropagation();
@@ -26443,17 +26451,17 @@ class OrderManager {
             
             const tpLine = chart.svg.append('line')
                 .attr('class', `tp-line tp-${order.id}`)
-                .attr('stroke', '#22c55e')
+                .attr('stroke', '#089981')
                 .attr('stroke-width', 1)
-                .attr('opacity', 0.92)
+                .attr('opacity', 0.85)
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
             
             // Left side label box (green background)
             const tpLabelBox = chart.svg.append('rect')
                 .attr('class', `tp-label-box tp-${order.id}`)
-                .attr('fill', '#22c55e')
-                .attr('stroke', '#22c55e')
+                .attr('fill', '#089981')
+                .attr('stroke', '#089981')
                 .attr('stroke-width', 1)
                 .attr('rx', 3)
                 .style('pointer-events', 'all')
@@ -26468,14 +26476,15 @@ class OrderManager {
                 .attr('fill', '#ffffff')
                 .attr('font-size', '11px')
                 .attr('font-weight', '700')
+                .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize')
                 .text(`TP  ${tpTotalQty.toFixed(2)}`);
 
             const tpPnlBox = chart.svg.append('rect')
                 .attr('class', `tp-pnl-box tp-${order.id}`)
-                .attr('fill', '#0f172a')
-                .attr('stroke', '#22c55e')
+                .attr('fill', 'rgba(8,153,129,0.15)')
+                .attr('stroke', '#089981')
                 .attr('stroke-width', 1)
                 .attr('rx', 3)
                 .style('pointer-events', 'all')
@@ -26483,9 +26492,10 @@ class OrderManager {
 
             const tpPnlText = chart.svg.append('text')
                 .attr('class', `tp-pnl-text tp-${order.id}`)
-                .attr('fill', '#86efac')
+                .attr('fill', '#089981')
                 .attr('font-size', '11px')
-                .attr('font-weight', '700')
+                .attr('font-weight', '600')
+                .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize')
                 .text(`${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
@@ -26493,7 +26503,7 @@ class OrderManager {
             const tpCloseBtn = this._createCloseCircleButton(
                 chart.svg,
                 `tp-close-btn tp-${order.id}`,
-                '#22c55e',
+                '#089981',
                 () => { if (confirm(`Remove Take Profit from order #${order.id}?`)) this.removeTakeProfit(order.id); }
             );
 
@@ -26501,7 +26511,7 @@ class OrderManager {
             const tpSplitBtn = this._createSplitPlusButton(
                 chart.svg,
                 `tp-split-btn tp-${order.id}`,
-                '#22c55e',
+                '#089981',
                 () => {
                     const entry = order.openPrice;
                     const tp = order.takeProfit;
@@ -26514,7 +26524,7 @@ class OrderManager {
             // Right side price box (green)
             const tpPriceBox = chart.svg.append('rect')
                 .attr('class', `tp-price-box tp-${order.id}`)
-                .attr('fill', '#22c55e')
+                .attr('fill', '#089981')
                 .attr('rx', 2)
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
@@ -26523,8 +26533,9 @@ class OrderManager {
             const tpPriceText = chart.svg.append('text')
                 .attr('class', `tp-price-text tp-${order.id}`)
                 .attr('fill', '#ffffff')
-                .attr('font-size', '11px')
-                .attr('font-weight', '700')
+                .attr('font-size', '12px')
+                .attr('font-weight', '600')
+                .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                 .attr('text-anchor', 'middle')
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize')
@@ -26596,7 +26607,7 @@ class OrderManager {
                 .attr('stroke', '#f59e0b')
                 .attr('stroke-width', 1)
                 .attr('stroke-dasharray', null)
-                .attr('opacity', 0.92)
+                .attr('opacity', 0.85)
                 .attr('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
             
@@ -26615,7 +26626,8 @@ class OrderManager {
                 .attr('class', `be-label-text be-${order.id}`)
                 .attr('fill', '#ffffff')
                 .attr('font-size', '11px')
-                .attr('font-weight', '700')
+                .attr('font-weight', '600')
+                .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                 .style('cursor', 'ns-resize')
                 .text(beLabel);
             
@@ -26629,8 +26641,9 @@ class OrderManager {
             const bePriceText = chart.svg.append('text')
                 .attr('class', `be-price-text be-${order.id}`)
                 .attr('fill', '#ffffff')
-                .attr('font-size', '11px')
-                .attr('font-weight', '700')
+                .attr('font-size', '12px')
+                .attr('font-weight', '600')
+                .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                 .attr('text-anchor', 'middle')
                 .style('cursor', 'ns-resize')
                 .text(this.formatPrice(beTriggerPrice));
