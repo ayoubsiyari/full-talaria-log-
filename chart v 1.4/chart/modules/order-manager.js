@@ -3456,6 +3456,17 @@ class OrderManager {
             font-size: 10px;
             margin-left: 4px;
         ">${numberOfEntries}x SCALED</span>` : '';
+        const isAggMulti = trade.isAggregateMultiEntry === true;
+        const nSplit = trade.numberOfEntries || (trade.splitEntries && trade.splitEntries.length) || 0;
+        const aggMultiBadge = isAggMulti && nSplit ? `<span style="
+            background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%);
+            color: #000;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 10px;
+            margin-left: 4px;
+        ">${nSplit}x ENTRIES</span>` : '';
         
         // Store trade data directly on the element via data attribute
         const tradeDataJson = JSON.stringify(trade).replace(/"/g, '&quot;');
@@ -3497,6 +3508,7 @@ class OrderManager {
                         ">${direction}</span>
                         <span style="color: #787b86; font-size: 11px; font-weight: 500;">#${tradeId}</span>
                         ${scaledBadge}
+                        ${aggMultiBadge}
                         <span style="font-size: 14px;">${closeTypeIcon}</span>
                     </div>
                     <div style="
@@ -3627,6 +3639,25 @@ class OrderManager {
             console.error('❌ No trade data provided!');
             alert('Error: No trade data available');
             return;
+        }
+
+        if (trade.isAggregateMultiEntry && Array.isArray(trade.splitEntries) && trade.splitEntries.length) {
+            const next = { ...trade };
+            let patched = false;
+            if (!Array.isArray(next.tpRealizedBreakdown) || next.tpRealizedBreakdown.length === 0) {
+                if (Array.isArray(next.partialCloses) && next.partialCloses.length > 0) {
+                    next.tpRealizedBreakdown = this._buildTpRealizedBreakdown(next.partialCloses, next.multiTpSnapshot);
+                    patched = true;
+                }
+            }
+            if (next.aggregateFinalExitPnL == null) {
+                next.aggregateFinalExitPnL = next.splitEntries.reduce(
+                    (s, e) => s + ((Number(e.pnl) || 0) - (Number(e.partialClosePnL) || 0)),
+                    0
+                );
+                patched = true;
+            }
+            if (patched) trade = next;
         }
         
         // Remove existing modal if any
@@ -3952,6 +3983,119 @@ class OrderManager {
                             </div>
                         </div>
                     </div>
+                </div>
+            ` : ''}
+            
+            ${trade.isAggregateMultiEntry && trade.splitEntries && trade.splitEntries.length ? `
+                <div style="background: rgba(234, 179, 8, 0.08); border: 1px solid rgba(234, 179, 8, 0.35); border-radius: 8px; padding: 24px; margin-bottom: 28px;">
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+                        <div style="background: #eab308; color: #000; padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 12px;">
+                            MULTI-ENTRY
+                        </div>
+                        <div style="color: #cbd5e1; font-size: 14px; font-weight: 600;">
+                            ${trade.numberOfEntries || trade.splitEntries.length} fills · ${(trade.tpRealizedBreakdown && trade.tpRealizedBreakdown.length) ? trade.tpRealizedBreakdown.filter(r => (Number(r.pnl) || 0) !== 0 || (Number(r.lotsClosed) || 0) > 0).length + ' TP leg(s)' : 'TP detail below'}
+                        </div>
+                    </div>
+                    <div style="color: #94a3b8; font-size: 11px; margin-bottom: 10px; font-weight: 600; letter-spacing: 0.04em;">BY ENTRY (LOT SIZE &amp; P&amp;L)</div>
+                    <div style="background: rgba(0,0,0,0.2); border-radius: 6px; padding: 12px; margin-bottom: 20px;">
+                        ${trade.splitEntries.map((entry, idx) => {
+                            const lots = Number(entry.lotSize != null ? entry.lotSize : entry.quantity) || 0;
+                            const part = Number(entry.partialClosePnL) || 0;
+                            const tot = Number(entry.pnl) || 0;
+                            const fin = Number(entry.finalClosePnL) || (tot - part);
+                            const si = entry.splitIndex != null ? entry.splitIndex : idx + 1;
+                            return `
+                            <div style="
+                                background: rgba(30,41,59,0.5);
+                                border: 1px solid rgba(148,163,184,0.15);
+                                border-radius: 6px;
+                                padding: 12px 16px;
+                                ${idx < trade.splitEntries.length - 1 ? 'margin-bottom: 8px;' : ''}
+                                display: grid;
+                                grid-template-columns: auto repeat(6, minmax(0,1fr));
+                                gap: 12px;
+                                align-items: center;
+                                font-size: 11px;
+                            ">
+                                <div style="color: #fbbf24; font-weight: 700;">E${si}</div>
+                                <div>
+                                    <div style="color: #94a3b8; font-size: 9px; margin-bottom: 2px;">Lots</div>
+                                    <div style="color: #e5e7eb; font-weight: 700;">${lots.toFixed(2)}</div>
+                                </div>
+                                <div>
+                                    <div style="color: #94a3b8; font-size: 9px; margin-bottom: 2px;">Entry</div>
+                                    <div style="color: #e5e7eb; font-weight: 700;">$${this.formatPrice(entry.openPrice)}</div>
+                                </div>
+                                <div>
+                                    <div style="color: #94a3b8; font-size: 9px; margin-bottom: 2px;">Exit</div>
+                                    <div style="color: #e5e7eb; font-weight: 700;">$${this.formatPrice(entry.closePrice)}</div>
+                                </div>
+                                <div>
+                                    <div style="color: #94a3b8; font-size: 9px; margin-bottom: 2px;">TP partials</div>
+                                    <div style="color: ${part >= 0 ? '#22c55e' : '#ef4444'}; font-weight: 700;">${part >= 0 ? '+' : ''}$${part.toFixed(2)}</div>
+                                </div>
+                                <div>
+                                    <div style="color: #94a3b8; font-size: 9px; margin-bottom: 2px;">Final exit</div>
+                                    <div style="color: ${fin >= 0 ? '#22c55e' : '#ef4444'}; font-weight: 700;">${fin >= 0 ? '+' : ''}$${fin.toFixed(2)}</div>
+                                </div>
+                                <div>
+                                    <div style="color: #94a3b8; font-size: 9px; margin-bottom: 2px;">Total</div>
+                                    <div style="color: ${tot >= 0 ? '#22c55e' : '#ef4444'}; font-weight: 700;">${tot >= 0 ? '+' : ''}$${tot.toFixed(2)}</div>
+                                </div>
+                            </div>`;
+                        }).join('')}
+                    </div>
+                    ${trade.tpRealizedBreakdown && trade.tpRealizedBreakdown.length ? `
+                    <div style="color: #94a3b8; font-size: 11px; margin-bottom: 10px; font-weight: 600; letter-spacing: 0.04em;">BY TAKE-PROFIT (REALIZED)</div>
+                    <div style="background: rgba(0,0,0,0.2); border-radius: 6px; padding: 12px; margin-bottom: 12px;">
+                        ${trade.tpRealizedBreakdown.map((row, tidx) => {
+                            const px = row.tpPrice != null ? this.formatPrice(row.tpPrice) : (row.avgClosePrice != null ? this.formatPrice(row.avgClosePrice) : '—');
+                            const pct = row.plannedPct != null ? (Number(row.plannedPct) <= 1 ? (Number(row.plannedPct) * 100).toFixed(0) + '%' : Number(row.plannedPct).toFixed(0) + '%') : '—';
+                            const lots = Number(row.lotsClosed) || 0;
+                            const gp = Number(row.pnl) || 0;
+                            const np = Number(row.pnl_net) || 0;
+                            return `
+                            <div style="
+                                background: rgba(30,41,59,0.5);
+                                border: 1px solid rgba(148,163,184,0.15);
+                                border-radius: 6px;
+                                padding: 12px 16px;
+                                ${tidx < trade.tpRealizedBreakdown.length - 1 ? 'margin-bottom: 8px;' : ''}
+                                display: grid;
+                                grid-template-columns: auto 1fr 1fr 1fr 1fr;
+                                gap: 12px;
+                                align-items: center;
+                                font-size: 11px;
+                            ">
+                                <div style="color: #fbbf24; font-weight: 700;">TP${tidx + 1}</div>
+                                <div>
+                                    <div style="color: #94a3b8; font-size: 9px; margin-bottom: 2px;">Target</div>
+                                    <div style="color: #e5e7eb; font-weight: 700;">$${px}</div>
+                                </div>
+                                <div>
+                                    <div style="color: #94a3b8; font-size: 9px; margin-bottom: 2px;">Plan %</div>
+                                    <div style="color: #e5e7eb; font-weight: 700;">${pct}</div>
+                                </div>
+                                <div>
+                                    <div style="color: #94a3b8; font-size: 9px; margin-bottom: 2px;">Lots out</div>
+                                    <div style="color: #e5e7eb; font-weight: 700;">${lots.toFixed(2)}</div>
+                                </div>
+                                <div>
+                                    <div style="color: #94a3b8; font-size: 9px; margin-bottom: 2px;">P&amp;L</div>
+                                    <div style="color: ${gp >= 0 ? '#22c55e' : '#ef4444'}; font-weight: 700;">${gp >= 0 ? '+' : ''}$${gp.toFixed(2)} <span style="color:#64748b;font-weight:500;">(net ${np >= 0 ? '+' : ''}$${np.toFixed(2)})</span></div>
+                                </div>
+                            </div>`;
+                        }).join('')}
+                    </div>
+                    ` : ''}
+                    ${trade.aggregateFinalExitPnL !== undefined && trade.aggregateFinalExitPnL !== null ? `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: rgba(30,41,59,0.4); border-radius: 6px; font-size: 12px;">
+                        <span style="color: #94a3b8; font-weight: 600;">Final exit (all entries, after partials)</span>
+                        <span style="color: ${Number(trade.aggregateFinalExitPnL) >= 0 ? '#22c55e' : '#ef4444'}; font-weight: 800;">
+                            ${Number(trade.aggregateFinalExitPnL) >= 0 ? '+' : ''}$${Number(trade.aggregateFinalExitPnL).toFixed(2)}
+                        </span>
+                    </div>
+                    ` : ''}
                 </div>
             ` : ''}
             
@@ -5258,18 +5402,42 @@ class OrderManager {
                     journalEntry.entryScreenshot = splitInfo.entries[0]?.entryScreenshot || null;
                     
                     // Update splitEntries with screenshots
-                    journalEntry.splitEntries = splitInfo.entries.map(e => ({
-                        id: e.id,
-                        quantity: e.originalQuantity || e.quantity,
-                        openPrice: e.openPrice,
-                        closePrice: e.closePrice,
-                        pnl: e.pnl,
-                        partialClosePnL: e.partialClosePnL || 0,
-                        openTime: e.openTime,
-                        closeTime: e.closeTime,
-                        entryScreenshot: e.entryScreenshot || null,
-                        partialCloses: e.partialCloses || []
-                    }));
+                    journalEntry.splitEntries = splitInfo.entries.map((e, idx) => {
+                        const lot = Number(e.originalQuantity) || Number(e.quantity) || 0;
+                        const partPnL = Number(e.partialClosePnL) || 0;
+                        const totPnL = Number(e.pnl) || 0;
+                        return {
+                            id: e.id,
+                            splitIndex: e.splitIndex != null ? e.splitIndex : idx + 1,
+                            quantity: lot,
+                            lotSize: lot,
+                            openPrice: e.openPrice,
+                            closePrice: e.closePrice,
+                            pnl: totPnL,
+                            partialClosePnL: partPnL,
+                            finalClosePnL: totPnL - partPnL,
+                            openTime: e.openTime,
+                            closeTime: e.closeTime,
+                            closeType: e.closeType || null,
+                            entryScreenshot: e.entryScreenshot || null,
+                            partialCloses: e.partialCloses || []
+                        };
+                    });
+                    const flatPartials = (journalEntry.partialCloses && journalEntry.partialCloses.length)
+                        ? journalEntry.partialCloses
+                        : (journalEntry.splitEntries || []).flatMap((ent) => (ent.partialCloses || []).map((pc) => ({
+                            ...pc,
+                            entryId: ent.id,
+                            entryPrice: ent.openPrice
+                        })));
+                    journalEntry.tpRealizedBreakdown = this._buildTpRealizedBreakdown(
+                        flatPartials,
+                        journalEntry.multiTpSnapshot
+                    );
+                    journalEntry.aggregateFinalExitPnL = splitInfo.entries.reduce(
+                        (s, ent) => s + ((Number(ent.pnl) || 0) - (Number(ent.partialClosePnL) || 0)),
+                        0
+                    );
                     
                     console.log(`📸 Updated split journal entry with ${updatedScreenshots.length} entry screenshots`);
                 }
@@ -20822,6 +20990,11 @@ class OrderManager {
                         hit: !!t.hit
                     }))
                     : null;
+                const tpRealizedBreakdown = this._buildTpRealizedBreakdown(allPartialCloses, multiTpSnapshot);
+                const aggregateFinalExitPnL = splitInfo.entries.reduce(
+                    (s, e) => s + ((Number(e.pnl) || 0) - (Number(e.partialClosePnL) || 0)),
+                    0
+                );
                 
                 journalEntry = {
                     id: splitTradeId,
@@ -20872,22 +21045,32 @@ class OrderManager {
                     hasMultipleTakeProfits: Array.isArray(multiTpSnapshot) && multiTpSnapshot.length > 1,
                     multiTpSnapshot,
                     active_tps_at_exit: multiTpSnapshot,
+                    tpRealizedBreakdown,
+                    aggregateFinalExitPnL,
                     hasPartialCloses: allPartialCloses.length > 0,
                     partialCloses: allPartialCloses,
                     partialClosePnL: totalPartialPnL,
-                    splitEntries: splitInfo.entries.map(e => ({
-                        id: e.id,
-                        quantity: e.originalQuantity || e.quantity,
-                        openPrice: e.openPrice,
-                        closePrice: e.closePrice,
-                        pnl: e.pnl,
-                        partialClosePnL: e.partialClosePnL || 0,
-                        openTime: e.openTime,
-                        closeTime: e.closeTime,
-                        closeType: e.closeType || null,
-                        entryScreenshot: e.entryScreenshot || null,
-                        partialCloses: e.partialCloses || []
-                    })),
+                    splitEntries: splitInfo.entries.map((e, idx) => {
+                        const lot = Number(e.originalQuantity) || Number(e.quantity) || 0;
+                        const partPnL = Number(e.partialClosePnL) || 0;
+                        const totPnL = Number(e.pnl) || 0;
+                        return {
+                            id: e.id,
+                            splitIndex: e.splitIndex != null ? e.splitIndex : idx + 1,
+                            quantity: lot,
+                            lotSize: lot,
+                            openPrice: e.openPrice,
+                            closePrice: e.closePrice,
+                            pnl: totPnL,
+                            partialClosePnL: partPnL,
+                            finalClosePnL: totPnL - partPnL,
+                            openTime: e.openTime,
+                            closeTime: e.closeTime,
+                            closeType: e.closeType || null,
+                            entryScreenshot: e.entryScreenshot || null,
+                            partialCloses: e.partialCloses || []
+                        };
+                    }),
                     splitGroupId: splitInfo.groupId,
                     numberOfEntries: splitInfo.entries.length,
                     // AUDIT / DISCIPLINE DATA (aggregate across split entries)
@@ -23087,6 +23270,85 @@ class OrderManager {
         if (removed > 0) {
             console.log(`📔 Merged ${removed} per-leg journal row(s) into aggregate ${aggregateId}`);
         }
+    }
+
+    /**
+     * Sum partial-close P&L per TP target (for aggregate multi-entry journal + export).
+     * @param {Array} allPartialCloses - flattened partial closes (may include entryId)
+     * @param {Array|null} multiTpSnapshot - planned TP rows { id, price, percentage, hit? }
+     * @returns {Array<{targetId,tpPrice,plannedPct,lotsClosed,pnl,pnl_net,hitCount,avgClosePrice}>}
+     */
+    _buildTpRealizedBreakdown(allPartialCloses, multiTpSnapshot) {
+        const partials = Array.isArray(allPartialCloses) ? allPartialCloses : [];
+        const snap = Array.isArray(multiTpSnapshot) ? multiTpSnapshot : [];
+        const byId = new Map();
+        let anon = 0;
+        for (const pc of partials) {
+            const tid = pc.targetId != null && String(pc.targetId).length
+                ? String(pc.targetId)
+                : `__anon_${anon++}`;
+            let row = byId.get(tid);
+            if (!row) {
+                row = {
+                    targetId: tid.startsWith('__anon_') ? null : tid,
+                    lotsClosed: 0,
+                    pnl: 0,
+                    pnl_net: 0,
+                    hitCount: 0,
+                    closePrices: []
+                };
+                byId.set(tid, row);
+            }
+            row.lotsClosed += Number(pc.quantity) || 0;
+            row.pnl += Number(pc.pnl) || 0;
+            row.pnl_net += Number(pc.pnl_net != null ? pc.pnl_net : pc.pnl) || 0;
+            row.hitCount += 1;
+            if (pc.closePrice != null && Number.isFinite(Number(pc.closePrice))) {
+                row.closePrices.push(Number(pc.closePrice));
+            }
+        }
+        const out = [];
+        const consume = (idStr) => {
+            const row = byId.get(idStr);
+            if (row) {
+                byId.delete(idStr);
+                return row;
+            }
+            return null;
+        };
+        for (const t of snap) {
+            const idStr = t.id != null ? String(t.id) : null;
+            const agg = idStr ? consume(idStr) : null;
+            const avgPx = agg && agg.closePrices.length
+                ? agg.closePrices.reduce((a, b) => a + b, 0) / agg.closePrices.length
+                : null;
+            out.push({
+                targetId: t.id,
+                tpPrice: t.price,
+                plannedPct: t.percentage,
+                lotsClosed: agg ? agg.lotsClosed : 0,
+                pnl: agg ? agg.pnl : 0,
+                pnl_net: agg ? agg.pnl_net : 0,
+                hitCount: agg ? agg.hitCount : 0,
+                avgClosePrice: avgPx
+            });
+        }
+        for (const [, row] of byId) {
+            const avgPx = row.closePrices.length
+                ? row.closePrices.reduce((a, b) => a + b, 0) / row.closePrices.length
+                : null;
+            out.push({
+                targetId: row.targetId,
+                tpPrice: avgPx,
+                plannedPct: null,
+                lotsClosed: row.lotsClosed,
+                pnl: row.pnl,
+                pnl_net: row.pnl_net,
+                hitCount: row.hitCount,
+                avgClosePrice: avgPx
+            });
+        }
+        return out;
     }
     
     /**
