@@ -890,7 +890,7 @@ class OrderManager {
                     const fillPx = hasOpen
                         ? this._stopLossFillPrice(sl, bgOpen, high, low, true)
                         : (Number.isFinite(low) ? Math.min(sl, low) : sl);
-                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL', bgCloseTime: barTime });
+                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: this._slCloseHitType(position), bgCloseTime: barTime });
                 }
             } else {
                 const sl = Number.parseFloat(position.stopLoss);
@@ -898,7 +898,7 @@ class OrderManager {
                     const fillPx = hasOpen
                         ? this._stopLossFillPrice(sl, bgOpen, high, low, true)
                         : (Number.isFinite(low) ? Math.min(sl, low) : sl);
-                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL', bgCloseTime: barTime });
+                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: this._slCloseHitType(position), bgCloseTime: barTime });
                 } else {
                     const tp = Number.parseFloat(position.takeProfit);
                     if (Number.isFinite(tp) && high >= tp) {
@@ -935,7 +935,7 @@ class OrderManager {
                     const fillPx = hasOpen
                         ? this._stopLossFillPrice(sl, bgOpen, high, low, false)
                         : (Number.isFinite(high) ? Math.max(sl, high) : sl);
-                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL', bgCloseTime: barTime });
+                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: this._slCloseHitType(position), bgCloseTime: barTime });
                 }
             } else {
                 const sl = Number.parseFloat(position.stopLoss);
@@ -943,7 +943,7 @@ class OrderManager {
                     const fillPx = hasOpen
                         ? this._stopLossFillPrice(sl, bgOpen, high, low, false)
                         : (Number.isFinite(high) ? Math.max(sl, high) : sl);
-                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL', bgCloseTime: barTime });
+                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: this._slCloseHitType(position), bgCloseTime: barTime });
                 } else {
                     const tp = Number.parseFloat(position.takeProfit);
                     if (Number.isFinite(tp) && low <= tp) {
@@ -1421,6 +1421,27 @@ class OrderManager {
             new: newVal,
             trigger
         });
+        if (field === 'SL' && trigger) {
+            if (trigger === 'AUTO_BE' || trigger === 'AUTO_BE_RECALC') {
+                position._slIsBreakevenPlacement = true;
+            } else if (trigger === 'TRAIL' || trigger === 'MANUAL' || trigger === 'MANUAL_OVERRIDE_TRAIL') {
+                position._slIsBreakevenPlacement = false;
+            }
+        }
+    }
+
+    /** SL fill → journal / exports use BE when stop was last set by auto-BE (not trail/manual). */
+    _slCloseHitType(position) {
+        return position && position._slIsBreakevenPlacement ? 'BE' : 'SL';
+    }
+
+    /** Human-readable closeType for journal / CSV (partial TP + final leg). */
+    _journalCloseTypeLabel(position, hitType) {
+        const h = hitType || 'MANUAL';
+        const hasPc = position && Array.isArray(position.partialCloses) && position.partialCloses.length > 0;
+        if (hasPc && h === 'SL') return 'SL (after partial TPs)';
+        if (hasPc && h === 'BE') return 'BE (after partial TPs)';
+        return h;
     }
 
     /**
@@ -2192,6 +2213,7 @@ class OrderManager {
         const beTriggeredTrades = trades.filter(t => t.breakevenSettings?.triggered || t.be_triggered);
         const beStoppedAtBE = beTriggeredTrades.filter(t => {
             const closeType = String(t.closeType || '').toUpperCase();
+            if (closeType.includes('BE')) return true;
             return closeType.includes('SL') && Math.abs(safeN(t.exitPrice ?? t.closePrice) - safeN(t.entryPrice ?? t.openPrice)) < 0.0005;
         });
         const beTriggeredPct = pct(beTriggeredTrades.length, trades.length);
@@ -3347,7 +3369,7 @@ class OrderManager {
         
         const date = new Date(trade.closeTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         const time = this.formatTimeOnly(trade.closeTime);
-        const closeTypeIcon = trade.closeType === 'TP' ? '🎯' : trade.closeType === 'SL' ? '🛑' : '✋';
+        const closeTypeIcon = trade.closeType === 'TP' ? '🎯' : trade.closeType === 'BE' || String(trade.closeType || '').startsWith('BE') ? '⚖️' : trade.closeType === 'SL' ? '🛑' : '✋';
         const hasNotes = trade.preTradeNotes?.reason || trade.postTradeNotes?.reason;
         const tradeId = trade.tradeId || trade.id;
         const pnl = trade.netPnL || trade.pnl || 0;
@@ -3608,7 +3630,7 @@ class OrderManager {
         
         const openDate = this.format24Hour(trade.openTime);
         const closeDate = this.format24Hour(trade.closeTime);
-        const closeTypeIcon = trade.closeType === 'TP' ? '🎯 Take Profit' : trade.closeType === 'SL' ? '🛑 Stop Loss' : '✋ Manual Close';
+        const closeTypeIcon = trade.closeType === 'TP' ? '🎯 Take Profit' : trade.closeType === 'BE' || String(trade.closeType || '').startsWith('BE') ? '⚖️ Breakeven' : trade.closeType === 'SL' ? '🛑 Stop Loss' : '✋ Manual Close';
         
         // Calculate price move in pips using helper
         const priceDiff = Math.abs((exitPrice || 0) - (entryPrice || 0));
@@ -4884,7 +4906,7 @@ class OrderManager {
                     ${closeData.pnl >= 0 ? '+' : ''}$${closeData.pnl.toFixed(2)} ${rMultiple}
                 </div>
                 <div style="font-size: 12px; color: #787b86;">
-                    ${closeData.type === 'TP' ? '🎯 Take Profit' : closeData.type === 'SL' ? '🛑 Stop Loss' : '✋ Manual Close'}
+                    ${closeData.type === 'TP' ? '🎯 Take Profit' : closeData.type === 'BE' ? '⚖️ Breakeven' : closeData.type === 'SL' ? '🛑 Stop Loss' : '✋ Manual Close'}
                     ${isMultiTrade ? ' (Combined)' : ''}
                 </div>
             </div>
@@ -5324,7 +5346,7 @@ class OrderManager {
             
             // Position Details
             quantity: order.quantity,
-            closeType: closeData.type, // SL, TP, or MANUAL
+            closeType: closeData.type, // BE, SL, TP, or MANUAL
             spread_pips_at_entry: Number.parseFloat(
                 instrumentSettings.spread_pips ?? instrumentSettings.spreadPips ?? 0
             ) || 0,
@@ -19669,6 +19691,7 @@ class OrderManager {
                                 .forEach(sib => {
                                     const sibPip = this._getPositionPipSize(sib);
                                     sib.stopLoss = sib.openPrice + pipOffset * sibPip + this._getNetBreakevenCommissionPriceOffset(sib, markBePip);
+                                    sib._slIsBreakevenPlacement = true;
                                     if (sib.breakevenSettings) sib.breakevenSettings.triggered = true;
                                     sib._beTriggeredBarT = currentCandle.t;
                                     this.removeSLTPLines(sib.id);
@@ -19831,8 +19854,9 @@ class OrderManager {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, low, true, position, currentCandle.t);
-                            console.log(`   🛑 STOP LOSS HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
-                            positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
+                            const _slBuy = this._slCloseHitType(position);
+                            console.log(`   ${_slBuy === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
+                            positionsToClose.push({ id: position.id, closePrice: fillPx, type: _slBuy });
                         } else if (tpHit) {
                             position._tpNoTriggerBeforeTime = null;
                             position._tpNoTriggerBeforeTick = undefined;
@@ -19849,8 +19873,9 @@ class OrderManager {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, low, true, position, currentCandle.t);
-                            console.log(`   🛑 STOP LOSS HIT! Closing remaining position BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
-                            positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
+                            const _slT = this._slCloseHitType(position);
+                            console.log(`   ${_slT === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing remaining position BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
+                            positionsToClose.push({ id: position.id, closePrice: fillPx, type: _slT });
                         }
                     }
                 } else {
@@ -19946,6 +19971,7 @@ class OrderManager {
                                 .forEach(sib => {
                                     const sibPip = this._getPositionPipSize(sib);
                                     sib.stopLoss = sib.openPrice - pipOffset * sibPip - this._getNetBreakevenCommissionPriceOffset(sib, markBePipSell);
+                                    sib._slIsBreakevenPlacement = true;
                                     sib._beTriggeredBarT = currentCandle.t;
                                     if (sib.breakevenSettings) sib.breakevenSettings.triggered = true;
                                     this.removeSLTPLines(sib.id);
@@ -20106,8 +20132,9 @@ class OrderManager {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, low, false, position, currentCandle.t);
-                            console.log(`   🛑 STOP LOSS HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
-                            positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
+                            const _slSell = this._slCloseHitType(position);
+                            console.log(`   ${_slSell === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
+                            positionsToClose.push({ id: position.id, closePrice: fillPx, type: _slSell });
                         } else if (tpHitSell) {
                             position._tpNoTriggerBeforeTime = null;
                             position._tpNoTriggerBeforeTick = undefined;
@@ -20124,8 +20151,9 @@ class OrderManager {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, low, false, position, currentCandle.t);
-                            console.log(`   🛑 STOP LOSS HIT! Closing remaining position SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
-                            positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'SL' });
+                            const _slSellM = this._slCloseHitType(position);
+                            console.log(`   ${_slSellM === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing remaining position SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
+                            positionsToClose.push({ id: position.id, closePrice: fillPx, type: _slSellM });
                         }
                     }
                 } else {
@@ -20272,7 +20300,7 @@ class OrderManager {
             const _commPerSide = this._getCommissionPerLotSideForPosition(position);
             const _commission = _commPerSide * 2 * closeQuantity;
 
-            const _exitReasonMap = { 'TP-PARTIAL': 'TP_HIT', 'TP': 'TP_HIT', 'SL': 'SL_HIT', 'MANUAL': 'MANUAL', 'STOP_OUT': 'STOP_OUT' };
+            const _exitReasonMap = { 'TP-PARTIAL': 'TP_HIT', 'TP': 'TP_HIT', 'SL': 'SL_HIT', 'BE': 'BE_HIT', 'MANUAL': 'MANUAL', 'STOP_OUT': 'STOP_OUT' };
             const _exitReason = _exitReasonMap[hitType] || String(hitType || 'MANUAL');
             const _barAtExit = Array.isArray(position.bar_close_r) ? position.bar_close_r.length : 0;
             position.partialCloses.push({
@@ -20408,6 +20436,7 @@ class OrderManager {
                         entryInGroup.closePrice = closePrice;
                         entryInGroup.closeTime = closeTime;
                         entryInGroup.partialClosePnL = position.partialClosePnL || 0;
+                        entryInGroup.closeType = this._journalCloseTypeLabel(position, hitType);
                         console.log(`📊 Updated scaled entry #${position.id} in group: status=CLOSED, pnl=$${position.pnl?.toFixed(2)}`);
                     }
                 }
@@ -20443,6 +20472,7 @@ class OrderManager {
                         entryInGroup.closePrice = closePrice;
                         entryInGroup.closeTime = closeTime;
                         entryInGroup.partialClosePnL = position.partialClosePnL || 0;
+                        entryInGroup.closeType = this._journalCloseTypeLabel(position, hitType);
                     }
                     
                     // Check if all entries in split group are closed
@@ -20592,7 +20622,7 @@ class OrderManager {
                     realizedPnL: totalPnL,
                     stopLoss: firstEntry.stopLoss,
                     takeProfit: firstEntry.takeProfit,
-                    closeType: hitType || 'MANUAL',
+                    closeType: this._journalCloseTypeLabel(position, hitType),
                     status: 'closed',
                     // Entry screenshots - primary for backward compat + all screenshots array
                     entryScreenshot: firstEntry.entryScreenshot || null,
@@ -20626,6 +20656,7 @@ class OrderManager {
                         pnl: e.pnl,
                         openTime: e.openTime,
                         closeTime: e.closeTime,
+                        closeType: e.closeType || null,
                         entryScreenshot: e.entryScreenshot || null
                     })),
                     scaledGroupId: scaledInfo.groupId,
@@ -20718,7 +20749,7 @@ class OrderManager {
                     realizedPnL: totalPnL,
                     stopLoss: firstEntry.stopLoss,
                     takeProfit: firstEntry.takeProfit,
-                    closeType: hitType || 'MANUAL',
+                    closeType: this._journalCloseTypeLabel(position, hitType),
                     status: 'closed',
                     // Entry screenshots
                     entryScreenshot: firstEntry.entryScreenshot || null,
@@ -20756,6 +20787,7 @@ class OrderManager {
                         partialClosePnL: e.partialClosePnL || 0,
                         openTime: e.openTime,
                         closeTime: e.closeTime,
+                        closeType: e.closeType || null,
                         entryScreenshot: e.entryScreenshot || null,
                         partialCloses: e.partialCloses || []
                     })),
@@ -20797,11 +20829,7 @@ class OrderManager {
                 const finalClosePnL = position.finalClosePnL || pnl;
                 const hasPartialCloses = position.partialCloses && position.partialCloses.length > 0;
                 
-                // Determine close type - if had partial TPs and then SL, note it
-                let closeType = hitType || 'MANUAL';
-                if (hasPartialCloses && hitType === 'SL') {
-                    closeType = 'SL (after partial TPs)';
-                }
+                const closeType = this._journalCloseTypeLabel(position, hitType);
                 
                 journalEntry = {
                     id: position.id,
@@ -20975,7 +21003,12 @@ class OrderManager {
                 onClick: () => this.switchChartToTicker(closedTicker, { preserveTime: true })
             } : {};
 
-            if (hitType === 'SL') {
+            if (hitType === 'BE') {
+                const msg = isBackgroundClose
+                    ? `${closedTicker} ${sideLabel} ${Number(position.quantity || 0).toFixed(2)}L closed at breakeven (${rValue >= 0 ? '+' : ''}${rValue.toFixed(2)}R, ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)})`
+                    : `⚖️ Breakeven exit | Order #${orderId} closed | P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+                this.showNotification(msg, 'info', bgOpts);
+            } else if (hitType === 'SL') {
                 const msg = isBackgroundClose
                     ? `${closedTicker} ${sideLabel} ${Number(position.quantity || 0).toFixed(2)}L closed at SL (${rValue >= 0 ? '+' : ''}${rValue.toFixed(2)}R, ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)})`
                     : `🛑 Stop Loss Hit! Order #${orderId} closed | P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
@@ -24217,8 +24250,11 @@ class OrderManager {
                 if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
                     const members = this._getSplitGroupPendingOrders(pendingOrder);
                     tpPnL = members.reduce((sum, m) => {
-                        const cq = m.quantity * (normalizedPct / 100);
-                        return sum + this.estimatePnLForPriceLevel(m.direction, m.entryPrice, target.price, cq, pendingSym);
+                        const q = Number(m.quantity) || 0;
+                        if (q <= 0) return sum;
+                        const cq = q * (normalizedPct / 100);
+                        const legSym = m.ticker || m.symbol || pendingSym;
+                        return sum + this.estimatePnLForPriceLevel(m.direction, m.entryPrice, target.price, cq, legSym);
                     }, 0);
                 }
                 
@@ -24243,9 +24279,12 @@ class OrderManager {
             let totalTpQty = quantity;
             if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
                 const members = this._getSplitGroupPendingOrders(pendingOrder);
-                tpPnL = members.reduce((sum, m) => sum + this.estimatePnLForPriceLevel(
-                    m.direction, m.entryPrice, pendingOrder.takeProfit, m.quantity, pendingSym
-                ), 0);
+                tpPnL = members.reduce((sum, m) => {
+                    const q = Number(m.quantity) || 0;
+                    if (q <= 0) return sum;
+                    const legSym = m.ticker || m.symbol || pendingSym;
+                    return sum + this.estimatePnLForPriceLevel(m.direction, m.entryPrice, pendingOrder.takeProfit, q, legSym);
+                }, 0);
                 totalTpQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
             }
             const labelText = `TP  ${totalTpQty.toFixed(2)}`;
@@ -24260,9 +24299,12 @@ class OrderManager {
             let totalSlQty = quantity;
             if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
                 const members = this._getSplitGroupPendingOrders(pendingOrder);
-                slPnL = members.reduce((sum, m) => sum + this.estimatePnLForPriceLevel(
-                    m.direction, m.entryPrice, pendingOrder.stopLoss, m.quantity, pendingSym
-                ), 0);
+                slPnL = members.reduce((sum, m) => {
+                    const q = Number(m.quantity) || 0;
+                    if (q <= 0) return sum;
+                    const legSym = m.ticker || m.symbol || pendingSym;
+                    return sum + this.estimatePnLForPriceLevel(m.direction, m.entryPrice, pendingOrder.stopLoss, q, legSym);
+                }, 0);
                 totalSlQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
             }
             const labelText = `SL  ${totalSlQty.toFixed(2)}`;
@@ -25429,6 +25471,7 @@ class OrderManager {
     _tradeMarkerTooltipTag(hitType, order) {
         const t = String(hitType || 'MANUAL').toUpperCase();
         if (t.includes('TP-PARTIAL') || t === 'TP-PARTIAL' || t === 'TP' || t.startsWith('TP')) return 'TP';
+        if (t === 'BE' || t.startsWith('BE ') || t.includes('BE (')) return 'BE';
         if (t.includes('STOP_OUT') || t.includes('SL') || t === 'SL') return 'SL';
         return order && order.type === 'BUY' ? 'SELL' : 'BUY';
     }
@@ -26384,6 +26427,18 @@ class OrderManager {
                     const existing = m.tpTargets.find(e => e.id === t.id);
                     return { ...t, hit: existing ? !!existing.hit : false };
                 });
+            } else {
+                // Same count: keep ladder aligned when a new leg fills or primary dragged (price / % / mode).
+                for (let i = 0; i < donor.tpTargets.length; i++) {
+                    const d = donor.tpTargets[i];
+                    const t = m.tpTargets[i];
+                    if (!d || !t) continue;
+                    t.price = d.price;
+                    t.percentage = d.percentage;
+                    if (d.distributionMode) t.distributionMode = d.distributionMode;
+                    if (d.originalValue != null) t.originalValue = d.originalValue;
+                    t.hit = Boolean(t.hit || d.hit);
+                }
             }
         }
     }
@@ -27639,13 +27694,19 @@ class OrderManager {
                         const normalizedPct = totalPctRemaining > 0 ? (target.percentage / totalPctRemaining) * 100 : target.percentage;
 
                         let rowPnL = 0;
+                        const symBase = pos.ticker || pos.symbol || this._getSymbol();
                         for (const m of members) {
-                            const targetQuantity = m.quantity * (normalizedPct / 100);
-                            let priceDiff = m.type === 'BUY'
-                                ? target.price - m.openPrice
-                                : m.openPrice - target.price;
-                            const pipsMove = priceDiff / this.pipSize;
-                            rowPnL += pipsMove * targetQuantity * this.pipValuePerLot;
+                            const q = Number(m.quantity) || 0;
+                            if (q <= 0) continue;
+                            const targetQuantity = q * (normalizedPct / 100);
+                            const legSym = m.ticker || m.symbol || symBase;
+                            rowPnL += this.estimatePnLForPriceLevel(
+                                m.type,
+                                m.openPrice,
+                                target.price,
+                                targetQuantity,
+                                legSym
+                            );
                         }
 
                         if (!tpPriceGroups[priceKey]) {
@@ -27676,13 +27737,13 @@ class OrderManager {
                     const priceKey = pos.takeProfit.toFixed(5);
 
                     let rowPnL = 0;
+                    const symSingle = pos.ticker || pos.symbol || this._getSymbol();
+                    const tpPx = pos.takeProfit;
                     for (const m of members) {
-                        const tpPx = pos.takeProfit;
-                        let priceDiff = m.type === 'BUY'
-                            ? tpPx - m.openPrice
-                            : m.openPrice - tpPx;
-                        const pipsMove = priceDiff / this.pipSize;
-                        rowPnL += pipsMove * m.quantity * this.pipValuePerLot;
+                        const q = Number(m.quantity) || 0;
+                        if (q <= 0) continue;
+                        const legSym = m.ticker || m.symbol || symSingle;
+                        rowPnL += this.estimatePnLForPriceLevel(m.type, m.openPrice, tpPx, q, legSym);
                     }
 
                     if (!tpPriceGroups[priceKey]) {
@@ -30920,7 +30981,8 @@ class OrderManager {
         const type = order.type || order.direction;
         const entryPx = order.openPrice || order.entryPrice;
         const sym = order.ticker || order.symbol || this._getSymbol();
-        let pnl = this.estimatePnLForPriceLevel(type, entryPx, targetPrice, order.quantity * pct, sym);
+        const q0 = Number(order.quantity) || 0;
+        let pnl = this.estimatePnLForPriceLevel(type, entryPx, targetPrice, q0 * pct, sym);
         if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
             const members = mode === 'open'
                 ? this._getSplitGroupOpenPositions(order)
@@ -30928,7 +30990,10 @@ class OrderManager {
             pnl = members.reduce((sum, m) => {
                 const mType = m.type || m.direction;
                 const mEntry = m.openPrice || m.entryPrice;
-                return sum + this.estimatePnLForPriceLevel(mType, mEntry, targetPrice, m.quantity * pct, sym);
+                const mq = Number(m.quantity) || 0;
+                if (mq <= 0) return sum;
+                const legSym = m.ticker || m.symbol || sym;
+                return sum + this.estimatePnLForPriceLevel(mType, mEntry, targetPrice, mq * pct, legSym);
             }, 0);
         }
         return pnl;
