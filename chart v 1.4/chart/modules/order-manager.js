@@ -12093,6 +12093,45 @@ class OrderManager {
         }
     }
 
+    /** Split-entry open legs: mirror tpTargets[].percentage from the leg that was adjusted (chart lines use primary leg). */
+    _syncOpenTpPercentagesAcrossSplitGroup(primaryPos) {
+        if (!primaryPos?.isSplitEntry || !primaryPos.splitGroupId || !primaryPos.tpTargets?.length) return;
+        const members = this._getSplitGroupOpenPositions(primaryPos);
+        const ref = primaryPos.tpTargets;
+        for (const m of members) {
+            if (m.id === primaryPos.id) continue;
+            if (!m.tpTargets || m.tpTargets.length !== ref.length) continue;
+            for (let i = 0; i < ref.length; i++) {
+                m.tpTargets[i].percentage = ref[i].percentage;
+            }
+        }
+    }
+
+    /**
+     * +/- on open position multi-TP lines: updates position.tpTargets (same as panel redistribution).
+     */
+    adjustOpenPositionTPPercentage(orderId, targetIndex, change) {
+        const pos = this._findOpenPositionById(orderId);
+        if (!pos?.tpTargets?.length || targetIndex < 0 || targetIndex >= pos.tpTargets.length) return;
+        const mode = pos.tpTargets[0]?.distributionMode || 'percent';
+        if (!this._redistributeTpTargetsShare(pos.tpTargets, targetIndex, change, mode)) return;
+        if (pos.isSplitEntry && pos.splitGroupId) {
+            this._syncOpenTpPercentagesAcrossSplitGroup(pos);
+        }
+        if (this._isMultiPanelLayout()) {
+            this._collectLayoutCharts().forEach((c) => {
+                if (c?.scales?.yScale) {
+                    this.updateSLTPLines(c);
+                    if (typeof this._updateMultiTPAvgLines === 'function') this._updateMultiTPAvgLines(c);
+                }
+            });
+        } else {
+            this.updateSLTPLines(this.chart);
+            if (typeof this._updateMultiTPAvgLines === 'function') this._updateMultiTPAvgLines(this.chart);
+        }
+        if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
+    }
+
     /**
      * +/- on pending multi-TP lines: updates stored tpTargets (preview adjustTPPercentage only touched panel state).
      */
@@ -25986,6 +26025,46 @@ class OrderManager {
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize')
                         .text(this.formatPrice(target.price));
+
+                    // − / + share (open position multi-TP): same redistribution as preview/pending
+                    let tpPctDecBtn = null;
+                    let tpPctIncBtn = null;
+                    const tpPctArrowSize = 18;
+                    const tpPctArrowGap = 2;
+                    const tpPctArrowsW = nonHitTargets.length > 1 ? (tpPctArrowSize + tpPctArrowGap) * 2 : 0;
+                    if (nonHitTargets.length > 1) {
+                        const oid = order.id;
+                        const tIdx = index;
+                        const self = this;
+                        tpPctDecBtn = chart.svg.append('g')
+                            .attr('class', `open-tp-pct-control open-tp-pct-dec tp-${oid} tp-target-${target.id || index}`)
+                            .attr('pointer-events', 'all')
+                            .style('cursor', 'pointer');
+                        tpPctDecBtn.append('rect').attr('width', tpPctArrowSize).attr('height', tpPctArrowSize).attr('rx', 4)
+                            .attr('fill', 'rgba(239, 68, 68, 0.2)').attr('stroke', '#ef4444').attr('stroke-width', 1);
+                        tpPctDecBtn.append('text').attr('x', tpPctArrowSize / 2).attr('y', tpPctArrowSize / 2).attr('dy', '0.35em')
+                            .attr('text-anchor', 'middle').attr('fill', '#ef4444').attr('font-size', '14px').attr('font-weight', '700').text('−');
+                        tpPctDecBtn.on('mousedown', (e) => e.stopPropagation())
+                            .on('click', (e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                self.adjustOpenPositionTPPercentage(oid, tIdx, -5);
+                            });
+                        tpPctIncBtn = chart.svg.append('g')
+                            .attr('class', `open-tp-pct-control open-tp-pct-inc tp-${oid} tp-target-${target.id || index}`)
+                            .attr('pointer-events', 'all')
+                            .style('cursor', 'pointer');
+                        tpPctIncBtn.append('rect').attr('width', tpPctArrowSize).attr('height', tpPctArrowSize).attr('rx', 4)
+                            .attr('fill', 'rgba(34, 197, 94, 0.2)').attr('stroke', '#22c55e').attr('stroke-width', 1);
+                        tpPctIncBtn.append('text').attr('x', tpPctArrowSize / 2).attr('y', tpPctArrowSize / 2).attr('dy', '0.35em')
+                            .attr('text-anchor', 'middle').attr('fill', '#22c55e').attr('font-size', '14px').attr('font-weight', '700').text('+');
+                        tpPctIncBtn.on('mousedown', (e) => e.stopPropagation())
+                            .on('click', (e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                self.adjustOpenPositionTPPercentage(oid, tIdx, +5);
+                            });
+                    }
                     
                     // Make multiple TP line draggable
                     this.makeLineDraggableMultiTP(tpLine, tpLabelBox, tpLabelText, tpPriceBox, tpPriceText, order, index, target, chart);
@@ -26034,6 +26113,9 @@ class OrderManager {
                         pnlText: tpPnlText,
                         priceBox: tpPriceBox,
                         priceText: tpPriceText,
+                        pctDecBtn: tpPctDecBtn,
+                        pctIncBtn: tpPctIncBtn,
+                        pctArrowsWidth: tpPctArrowsW,
                         deleteBtn: tpDeleteBtn,
                         splitBtn: tpMultiSplitBtn,
                         type: 'TP',
@@ -26332,6 +26414,8 @@ class OrderManager {
                     if (tpLine.priceBox) tpLine.priceBox.remove();
                     if (tpLine.priceText) tpLine.priceText.remove();
                     if (tpLine.deleteBtn) tpLine.deleteBtn.remove();
+                    if (tpLine.pctDecBtn) tpLine.pctDecBtn.remove();
+                    if (tpLine.pctIncBtn) tpLine.pctIncBtn.remove();
                     if (tpLine.tpPlusBadge) tpLine.tpPlusBadge.remove();
                     if (tpLine.yAxisHighlight) tpLine.yAxisHighlight.remove();
                 });
@@ -26991,8 +27075,8 @@ class OrderManager {
             // Track which TP prices have been updated
             const updatedTPPrices = new Set();
             
-            tpForChart.forEach(({ orderId, targetId, line, labelBox, labelText, pnlBox, pnlText, closeBtn, splitBtn, priceBox, priceText, deleteBtn }) => {
-                const position = this.openPositions.find(p => p.id === orderId);
+            tpForChart.forEach(({ orderId, targetId, line, labelBox, labelText, pnlBox, pnlText, closeBtn, splitBtn, priceBox, priceText, deleteBtn, pctDecBtn, pctIncBtn, pctArrowsWidth }) => {
+                const position = this._findOpenPositionById(orderId);
                 if (!position) return;
                 
                 let tpPrice;
@@ -27030,6 +27114,8 @@ class OrderManager {
                     if (closeBtn) closeBtn.style('display', 'none');
                     if (splitBtn) splitBtn.style('display', 'none');
                     if (deleteBtn) deleteBtn.style('display', 'none');
+                    if (pctDecBtn) pctDecBtn.style('display', 'none');
+                    if (pctIncBtn) pctIncBtn.style('display', 'none');
                 } else {
                     updatedTPPrices.add(priceKey);
                     const numPositions = groupData ? groupData.positions.length : 1;
@@ -27057,7 +27143,8 @@ class OrderManager {
                         } else if (tpMode === 'lots') {
                             valStr = `${tpOrigVal.toFixed(2)}L`;
                         } else {
-                            valStr = `${percentage.toFixed(0)}%`;
+                            const dispPct = groupData?.normalizedPct != null ? groupData.normalizedPct : percentage;
+                            valStr = `${dispPct.toFixed(0)}%`;
                         }
                         // Split-entry: one chart row uses full group lot size (aligned with SL / Avg Entry).
                         // Multiple unrelated positions at the same TP price still sum per-position qty.
@@ -27087,6 +27174,8 @@ class OrderManager {
                     if (closeBtn) closeBtn.style('display', null);
                     if (splitBtn) splitBtn.style('display', null);
                     if (deleteBtn) deleteBtn.style('display', null);
+                    if (pctDecBtn) pctDecBtn.style('display', null);
+                    if (pctIncBtn) pctIncBtn.style('display', null);
                     if (priceBox) priceBox.style('display', 'none');
                     if (priceText) priceText.style('display', 'none');
                 }
@@ -27105,16 +27194,21 @@ class OrderManager {
                     const splitBtnR = splitBtn ? (deleteBtn ? 8 : 10) : 0;
                     const closeBtnGap = 6;
                     const deleteBtnR = 8;
+                    const tpPctArrowSize = 18;
+                    const tpPctArrowGap = 2;
+                    const pctW = (pctArrowsWidth != null && pctArrowsWidth > 0)
+                        ? pctArrowsWidth
+                        : ((pctDecBtn && pctIncBtn) ? (tpPctArrowSize + tpPctArrowGap) * 2 : 0);
 
                     const labelTW = labelText.node()?.getBBox()?.width || 0;
                     const labelBW = labelTW + pad * 2;
                     const pnlTW = pnlText?.node()?.getBBox()?.width || 0;
                     const pnlBW = pnlTW > 0 ? pnlTW + pad * 2 : 0;
 
-                    // Layout: Label → PnL → [Delete] → [Split+] → CloseBtn
+                    // Layout: Label → PnL → [−][+] share → [Delete] → [Split+] → CloseBtn
                     const deleteSpace = deleteBtn ? (deleteBtnR * 2 + gap) : 0;
                     const splitSpace = splitBtn ? (splitBtnR * 2 + gap) : 0;
-                    const badgesW = deleteSpace + splitSpace;
+                    const badgesW = pctW + deleteSpace + splitSpace;
 
                     const rightEdge = ch.w - yAxisWidth - 10;
                     const closeBtnX = rightEdge - closeBtnR;
@@ -27133,6 +27227,14 @@ class OrderManager {
                         pnlBox.attr('x', cx).attr('y', boxY).attr('width', pnlBW).attr('height', boxH);
                         pnlText.attr('x', cx + pad).attr('y', y + 4);
                         cx += pnlBW + gap;
+                    }
+
+                    // − / + TP share (open multi-TP)
+                    if (pctDecBtn && pctIncBtn && pctW > 0) {
+                        pctDecBtn.attr('transform', `translate(${cx}, ${y - tpPctArrowSize / 2})`);
+                        cx += tpPctArrowSize + tpPctArrowGap;
+                        pctIncBtn.attr('transform', `translate(${cx}, ${y - tpPctArrowSize / 2})`);
+                        cx += tpPctArrowSize + tpPctArrowGap;
                     }
 
                     // X delete button (multi-TP only)
