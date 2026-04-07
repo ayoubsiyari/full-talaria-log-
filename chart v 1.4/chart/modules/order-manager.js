@@ -10735,12 +10735,6 @@ class OrderManager {
             updateBreakevenVisibility();
         }
 
-        // Wire breakeven inline inputs to summary updates
-        const bePipsIn = document.getElementById('breakevenPips');
-        const beOffsetIn = document.getElementById('breakevenPipOffset');
-        if (bePipsIn) bePipsIn.oninput = () => { this._updateBreakevenSummary(); this.updatePreviewLines(); };
-        if (beOffsetIn) beOffsetIn.oninput = () => { this._updateBreakevenSummary(); this.updatePreviewLines(); };
-        
         // Custom Protection Settings System
         this.loadSavedProtectionSettings();
         
@@ -10957,17 +10951,23 @@ class OrderManager {
         
         if (breakevenPipsInput) {
             breakevenPipsInput.oninput = () => {
+                this._updateBreakevenSummary();
                 this.updatePreviewLines();
+                this._syncPendingOrdersBreakevenFromPanel();
             };
         }
         if (breakevenAmountInput) {
             breakevenAmountInput.oninput = () => {
+                this._updateBreakevenSummary();
                 this.updatePreviewLines();
+                this._syncPendingOrdersBreakevenFromPanel();
             };
         }
         if (breakevenPipOffsetInput) {
             breakevenPipOffsetInput.oninput = () => {
+                this._updateBreakevenSummary();
                 this.updatePreviewLines();
+                this._syncPendingOrdersBreakevenFromPanel();
             };
         }
         
@@ -12726,6 +12726,96 @@ class OrderManager {
         el.textContent = `At ${triggerPrice.toFixed(precision)} \u2192 SL to ${bePrice.toFixed(precision)} (BE)`;
     }
 
+    /** Push order-panel Auto BE fields to pending orders (same instrument) so chart + panel stay aligned. */
+    _syncPendingOrdersBreakevenFromPanel() {
+        const beToggle = document.getElementById('autoBreakevenToggle');
+        if (!beToggle?.checked) return;
+        const mode = this.breakevenMode || 'rr';
+        let value;
+        if (mode === 'amount') {
+            value = parseFloat(document.getElementById('breakevenAmount')?.value || 50);
+        } else {
+            value = parseFloat(document.getElementById('breakevenPips')?.value || 0.5);
+        }
+        const pipOffset = parseFloat(document.getElementById('breakevenPipOffset')?.value || 0);
+        const activeTicker = this._getActiveTicker();
+        const raw = [...(this.pendingOrders || []), ...(this.orderService?.pendingOrders || [])];
+        const seen = new Set();
+        let any = false;
+        for (const po of raw) {
+            if (!po || seen.has(po.id)) continue;
+            seen.add(po.id);
+            if (!po.autoBreakeven || !po.breakevenSettings) continue;
+            const poTicker = po.ticker || po.symbol;
+            if (activeTicker && poTicker && poTicker !== activeTicker) continue;
+            po.breakevenSettings.mode = mode;
+            po.breakevenSettings.value = value;
+            po.breakevenSettings.pipOffset = pipOffset;
+            if (po.isSplitEntry && po.splitGroupId) {
+                this._getSplitGroupPendingOrders(po).forEach((m) => {
+                    if (m.id === po.id) return;
+                    if (!m.breakevenSettings) {
+                        m.breakevenSettings = { mode, value, pipOffset };
+                    } else {
+                        m.breakevenSettings.mode = mode;
+                        m.breakevenSettings.value = value;
+                        m.breakevenSettings.pipOffset = pipOffset;
+                    }
+                });
+            }
+            any = true;
+            this.removePendingSLTPLines(po.id);
+            this.removeMultiTPAvgLine(po.id);
+            this.drawPendingOrderTargets(po);
+            if (po.tpTargets?.length >= 1) {
+                this.drawMultiTPAvgLine(po, 'pending');
+            }
+        }
+        if (!any) return;
+        if (this._isMultiPanelLayout()) {
+            this._collectLayoutCharts().forEach((c) => {
+                if (c?.scales?.yScale) this.positionPendingOrderTargets(c);
+            });
+        } else {
+            this.positionPendingOrderTargets(this.chart);
+        }
+        if (typeof this._updateMultiTPAvgLines === 'function') {
+            this._updateMultiTPAvgLines(this.chart);
+        }
+        this._schedulePendingOrdersPanelRefresh();
+    }
+
+    /** After dragging a pending BE line, mirror breakevenSettings into the order panel + preview. */
+    _applyBreakevenFromPendingToPanel(pendingOrder) {
+        if (!pendingOrder?.breakevenSettings) return;
+        const bs = pendingOrder.breakevenSettings;
+        this.breakevenMode = bs.mode || 'rr';
+        const pipsEl = document.getElementById('breakevenPips');
+        if (pipsEl && (bs.mode === 'pips' || bs.mode === 'rr')) {
+            pipsEl.value = bs.value;
+        }
+        const amtEl = document.getElementById('breakevenAmount');
+        if (amtEl && bs.mode === 'amount') {
+            amtEl.value = bs.value;
+        }
+        const offEl = document.getElementById('breakevenPipOffset');
+        if (offEl && bs.pipOffset != null) {
+            offEl.value = bs.pipOffset;
+        }
+        document.querySelectorAll('.breakeven-mode-tab').forEach((tab) => {
+            const m = tab.getAttribute('data-mode');
+            tab.classList.toggle('active', m === this.breakevenMode);
+        });
+        const beToggle = document.getElementById('autoBreakevenToggle');
+        if (beToggle && pendingOrder.autoBreakeven) beToggle.checked = true;
+        const breakevenSettingsEl = document.getElementById('breakevenSettings');
+        if (breakevenSettingsEl && pendingOrder.autoBreakeven) {
+            breakevenSettingsEl.classList.remove('is-hidden');
+        }
+        this._updateBreakevenSummary();
+        this.updatePreviewLines();
+    }
+
     /** Lot size from order panel — used for $-mode trailing distance conversion. */
     _getTrailingFormQuantity() {
         const q = parseFloat(document.getElementById('orderQuantity')?.value || 0);
@@ -13815,36 +13905,37 @@ class OrderManager {
                     // Mark BE as manually positioned
                     self.beManuallyPositioned = true;
                     
-                    // BE line drag: Calculate new pips or amount based on new position
+                    // BE line drag: update panel inputs (R / pips / $) from Y position
                     const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
                     const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+                    const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
+                    const beMode = self.breakevenMode || 'rr';
                     
                     if (entryPrice) {
                         const profit = Math.abs(newPrice - entryPrice);
                         
-                        if (self.breakevenMode === 'pips') {
-                            // Update Pips value
+                        if (beMode === 'rr' && slPrice > 0) {
+                            const riskDistance = Math.abs(entryPrice - slPrice);
+                            if (riskDistance > 0) {
+                                const rVal = profit / riskDistance;
+                                const rInput = document.getElementById('breakevenPips');
+                                if (rInput) rInput.value = parseFloat(rVal.toFixed(2));
+                                lineData.label = `BE @ ${parseFloat(rVal.toFixed(2))}R`;
+                            }
+                        } else if (beMode === 'pips') {
                             const newPips = profit / self.pipSize;
                             const pipsInput = document.getElementById('breakevenPips');
-                            if (pipsInput) {
-                                pipsInput.value = Math.round(newPips);
-                            }
-                            // Update label
+                            if (pipsInput) pipsInput.value = Math.round(newPips);
                             lineData.label = `BE @ ${Math.round(newPips)}p`;
                         } else {
-                            // Update amount value
-                            const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
                             const profitPips = profit / self.pipSize;
                             const newAmount = profitPips * quantity * self.pipValuePerLot;
                             const amountInput = document.getElementById('breakevenAmount');
-                            if (amountInput) {
-                                amountInput.value = newAmount.toFixed(2);
-                            }
-                            // Update label
+                            if (amountInput) amountInput.value = newAmount.toFixed(2);
                             lineData.label = `BE @ $${newAmount.toFixed(0)}`;
                         }
                         
-                        // Re-render the label with updated text
+                        self._updateBreakevenSummary();
                         self.renderPreviewLabel(lineData, clampedY);
                         self.adjustPreviewLineForLabel(lineData);
                     }
@@ -14112,12 +14203,21 @@ class OrderManager {
                     // Update BE line position when Entry or SL changes
                     if (self.previewLines.be && document.getElementById('autoBreakevenToggle')?.checked) {
                         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
-                        const beMode = self.breakevenMode || 'pips';
+                        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+                        const beMode = self.breakevenMode || 'rr';
+                        const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
                         
                         if (entryPrice) {
                             let newBEPrice = 0;
                             
-                            if (beMode === 'pips') {
+                            if (beMode === 'rr' && slPrice > 0) {
+                                const beVal = parseFloat(document.getElementById('breakevenPips')?.value || 0.5);
+                                const riskDist = Math.abs(entryPrice - slPrice);
+                                const profitDistance = beVal * riskDist;
+                                newBEPrice = self.orderSide === 'BUY'
+                                    ? entryPrice + profitDistance
+                                    : entryPrice - profitDistance;
+                            } else if (beMode === 'pips') {
                                 const bePips = parseFloat(document.getElementById('breakevenPips')?.value || 10);
                                 const profitPrice = bePips * self.pipSize;
                                 newBEPrice = self.orderSide === 'BUY' 
@@ -14125,7 +14225,6 @@ class OrderManager {
                                     : entryPrice - profitPrice;
                             } else {
                                 const beAmount = parseFloat(document.getElementById('breakevenAmount')?.value || 50);
-                                const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
                                 const profitPips = beAmount / (quantity * self.pipValuePerLot);
                                 const profitPrice = profitPips * self.pipSize;
                                 newBEPrice = self.orderSide === 'BUY' 
@@ -14137,6 +14236,9 @@ class OrderManager {
                             const newBEY = ch.scales.yScale(newBEPrice);
                             self.previewLines.be.price = newBEPrice;
                             self.previewLines.be.line.attr('y1', newBEY).attr('y2', newBEY);
+                            if (self.previewLines.be.hitLine) {
+                                self.previewLines.be.hitLine.attr('y1', newBEY).attr('y2', newBEY);
+                            }
                             
                             // Update BE label position
                             const beBbox = self.previewLines.be.labelDimensions;
@@ -14238,9 +14340,15 @@ class OrderManager {
                 if (typeof requestAnimationFrame === 'function') {
                     requestAnimationFrame(() => {
                         self.updatePreviewLines();
+                        if (document.getElementById('autoBreakevenToggle')?.checked) {
+                            self._syncPendingOrdersBreakevenFromPanel();
+                        }
                     });
                 } else {
                     self.updatePreviewLines();
+                    if (document.getElementById('autoBreakevenToggle')?.checked) {
+                        self._syncPendingOrdersBreakevenFromPanel();
+                    }
                 }
                 
                 const dragDuration = Date.now() - dragStartTime;
@@ -23891,9 +23999,11 @@ class OrderManager {
                 if (target.labelText) {
                     displayLabel = target.labelText;
                 } else if (target.type === 'BE') {
-                    displayLabel = target.beMode === 'pips'
-                        ? `BE @ ${target.beValue}p`
-                        : `BE @ $${target.beValue}`;
+                    displayLabel = target.beMode === 'rr'
+                        ? `BE @ ${target.beValue}R`
+                        : target.beMode === 'pips'
+                            ? `BE @ ${target.beValue}p`
+                            : `BE @ $${target.beValue}`;
                 } else {
                     displayLabel = `${target.type} ${this.formatPrice(target.price)}`;
                 }
@@ -24191,7 +24301,7 @@ class OrderManager {
                 if (target.priceHighlight) {
                     target.priceHighlight.remove();
                 }
-                const color = target.type === 'TP' ? '#22c55e' : '#f23645';
+                const color = target.type === 'TP' ? '#22c55e' : target.type === 'SL' ? '#f23645' : '#f59e0b';
                 target.priceHighlight = self.drawYAxisPriceHighlight(newPrice, color, `pending-${target.type.toLowerCase()}`, 0, ch);
                 
                 target.price = newPrice;
@@ -24293,15 +24403,29 @@ class OrderManager {
                     if (entryP > 0 && slP > 0 && pendingOrder.breakevenSettings) {
                         const dist = Math.abs(target.price - entryP);
                         const mode = pendingOrder.breakevenSettings.mode;
+                        let newVal;
                         if (mode === 'rr') {
                             const riskDist = Math.abs(entryP - slP);
-                            pendingOrder.breakevenSettings.value = riskDist > 0 ? +(dist / riskDist).toFixed(1) : pendingOrder.breakevenSettings.value;
+                            newVal = riskDist > 0 ? +(dist / riskDist).toFixed(2) : pendingOrder.breakevenSettings.value;
                         } else if (mode === 'pips') {
-                            pendingOrder.breakevenSettings.value = +(dist / self.pipSize).toFixed(1);
+                            newVal = +(dist / self.pipSize).toFixed(1);
                         } else {
                             const pips = dist / self.pipSize;
-                            pendingOrder.breakevenSettings.value = +(pips * pendingOrder.quantity * self.pipValuePerLot).toFixed(2);
+                            newVal = +(pips * pendingOrder.quantity * self.pipValuePerLot).toFixed(2);
                         }
+                        pendingOrder.breakevenSettings.value = newVal;
+                        if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
+                            self._getSplitGroupPendingOrders(pendingOrder).forEach((m) => {
+                                if (m.id === pendingOrder.id) return;
+                                if (!m.breakevenSettings) {
+                                    m.breakevenSettings = { ...pendingOrder.breakevenSettings };
+                                } else {
+                                    m.breakevenSettings.mode = mode;
+                                    m.breakevenSettings.value = newVal;
+                                }
+                            });
+                        }
+                        self._applyBreakevenFromPendingToPanel(pendingOrder);
                     }
                 }
                 
