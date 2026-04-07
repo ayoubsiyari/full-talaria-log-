@@ -13479,36 +13479,6 @@ class OrderManager {
     }
 
     /**
-     * Keep SL on the loss side of every entry: BUY → strictly below lowest entry; SELL → strictly above highest.
-     */
-    _clampSlDragPrice(price) {
-        let p = Number(price);
-        if (!Number.isFinite(p)) return price;
-        const pip = this.pipSize || 0.0001;
-        const slPad = Math.max(pip * 0.5, 1e-12);
-        let priced = [];
-        if (this.isMultiEntryMode && this.multiEntryLevels?.length) {
-            priced = this.multiEntryLevels.filter(l => l.price > 0).map(l => l.price);
-        }
-        if (priced.length === 0) {
-            const main = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
-            if (main > 0) priced = [main];
-        }
-        if (priced.length === 0 && this.previewLines?.entry?.price > 0) {
-            priced = [this.previewLines.entry.price];
-        }
-        if (priced.length === 0) return p;
-
-        const side = (this.orderSide || 'BUY').toUpperCase();
-        if (side === 'BUY') {
-            const low = Math.min(...priced);
-            return Math.min(p, low - slPad);
-        }
-        const high = Math.max(...priced);
-        return Math.max(p, high + slPad);
-    }
-
-    /**
      * Keep TP on the profit side of entry and SL: BUY → above both; SELL → below both.
      */
     _clampTpDragPrice(side, tpPrice, entryPrice, slPrice, pipSize) {
@@ -13536,6 +13506,68 @@ class OrderManager {
             p = Math.max(p, sl + pad);
         }
         return p;
+    }
+
+    /**
+     * SL must stay on the loss side of TP: BUY → SL below TP; SELL → SL above TP.
+     * @param {number} tpRef — lowest TP (BUY) or highest TP (SELL) when multiple TPs exist
+     */
+    _clampSlDragPriceVsTp(side, slPrice, tpRef, pipSize) {
+        let p = Number(slPrice);
+        const ps = Number(pipSize) > 0 ? pipSize : (this.pipSize || 0.0001);
+        const pad = Math.max(ps * 0.5, 1e-12);
+        if (!Number.isFinite(p)) return p;
+        const tp = Number(tpRef);
+        if (!Number.isFinite(tp) || !(tp > 0)) return p;
+        const s = String(side || 'BUY').toUpperCase();
+        if (s === 'SELL') {
+            return Math.max(p, tp + pad);
+        }
+        return Math.min(p, tp - pad);
+    }
+
+    /** Single TP or extreme of multi-TP for open-position SL clamping. */
+    _getTpReferencePriceForOpenOrder(order) {
+        if (!order) return null;
+        if (order.tpTargets && order.tpTargets.length > 0) {
+            const active = order.tpTargets.filter((t) => t.price > 0 && !t.hit);
+            if (!active.length) return null;
+            const prices = active.map((t) => t.price);
+            const s = String(order.type || 'BUY').toUpperCase();
+            return s === 'SELL' ? Math.max(...prices) : Math.min(...prices);
+        }
+        if (order.takeProfit > 0 && Number.isFinite(order.takeProfit)) return order.takeProfit;
+        return null;
+    }
+
+    _getPendingTpReferenceForSlClamp(pendingOrder) {
+        if (!pendingOrder) return null;
+        if (pendingOrder.tpTargets && pendingOrder.tpTargets.length > 0) {
+            const active = pendingOrder.tpTargets.filter((t) => t.price > 0 && !t.hit && (t.percentage == null || t.percentage > 0));
+            if (!active.length) return null;
+            const prices = active.map((t) => t.price);
+            const s = String(pendingOrder.direction || 'BUY').toUpperCase();
+            return s === 'SELL' ? Math.max(...prices) : Math.min(...prices);
+        }
+        if (pendingOrder.takeProfit > 0 && Number.isFinite(pendingOrder.takeProfit)) return pendingOrder.takeProfit;
+        return null;
+    }
+
+    /** Lowest TP (BUY) or highest TP (SELL) from preview lines for SL clamping. */
+    _getPreviewTpReferenceForSlClamp() {
+        const prices = [];
+        const tpSingle = this.previewLines?.tp;
+        if (tpSingle && !tpSingle.isBadge && Number.isFinite(tpSingle.price) && tpSingle.price > 0) {
+            prices.push(tpSingle.price);
+        }
+        if (this.previewLines?.multipleTPs && Array.isArray(this.previewLines.multipleTPs)) {
+            this.previewLines.multipleTPs.forEach((pl) => {
+                if (pl && Number.isFinite(pl.price) && pl.price > 0) prices.push(pl.price);
+            });
+        }
+        if (!prices.length) return null;
+        const s = (this.orderSide || 'BUY').toUpperCase();
+        return s === 'SELL' ? Math.max(...prices) : Math.min(...prices);
     }
 
     makePreviewLineDraggable(lineData) {
@@ -13645,7 +13677,10 @@ class OrderManager {
                 }
 
                 if (lineData.label === 'SL' && enableSL) {
-                    newPrice = self._clampSlDragPrice(newPrice);
+                    const tpRef = self._getPreviewTpReferenceForSlClamp();
+                    if (tpRef != null) {
+                        newPrice = self._clampSlDragPriceVsTp(self.orderSide, newPrice, tpRef, self.pipSize);
+                    }
                     clampedY = ch.scales.yScale(newPrice);
                     clampedY = Math.max(0, Math.min(chartHeight, clampedY));
                 }
@@ -14434,7 +14469,10 @@ class OrderManager {
                 let clampedY = Math.max(0, Math.min(chartHeight, event.y));
                 let newPrice = ch.scales.yScale.invert(clampedY);
                 if (label === 'SL' && document.getElementById('enableSL')?.checked) {
-                    newPrice = self._clampSlDragPrice(newPrice);
+                    const tpRef = self._getPreviewTpReferenceForSlClamp();
+                    if (tpRef != null) {
+                        newPrice = self._clampSlDragPriceVsTp(self.orderSide, newPrice, tpRef, self.pipSize);
+                    }
                     clampedY = ch.scales.yScale(newPrice);
                     clampedY = Math.max(0, Math.min(chartHeight, clampedY));
                 }
@@ -20911,6 +20949,15 @@ class OrderManager {
                         newPrice = c;
                         newY = ctx.scales.yScale(newPrice);
                     }
+                } else if (lineType === 'sl') {
+                    const tpRef = self._getTpReferencePriceForOpenOrder(order);
+                    if (tpRef != null) {
+                        const c = self._clampSlDragPriceVsTp(order.type, newPrice, tpRef, self.pipSize);
+                        if (c !== newPrice) {
+                            newPrice = c;
+                            newY = ctx.scales.yScale(newPrice);
+                        }
+                    }
                 }
 
                 // Update the order object
@@ -21450,6 +21497,15 @@ class OrderManager {
                     newPrice = c;
                     mouseY = ctx.scales.yScale(newPrice);
                 }
+            } else if (dragType === 'sl') {
+                const tpRef = self._getPendingTpReferenceForSlClamp(pendingOrder);
+                if (tpRef != null) {
+                    const c = self._clampSlDragPriceVsTp(pendingOrder.direction, newPrice, tpRef, self.pipSize);
+                    if (c !== newPrice) {
+                        newPrice = c;
+                        mouseY = ctx.scales.yScale(newPrice);
+                    }
+                }
             }
             const precision = self.getPricePrecision();
             const priceStr = newPrice.toFixed(precision);
@@ -21502,14 +21558,16 @@ class OrderManager {
                     pendingOrder.stopLoss,
                     self.pipSize
                 );
+            } else if (dragType === 'sl') {
+                const tpRef = self._getPendingTpReferenceForSlClamp(pendingOrder);
+                if (tpRef != null) {
+                    newPrice = self._clampSlDragPriceVsTp(pendingOrder.direction, newPrice, tpRef, self.pipSize);
+                }
             }
 
             if (dragType === 'tp') {
                 if (isBuy && newPrice <= pendingOrder.entryPrice) return;
                 if (!isBuy && newPrice >= pendingOrder.entryPrice) return;
-            } else {
-                if (isBuy && newPrice >= pendingOrder.entryPrice) return;
-                if (!isBuy && newPrice <= pendingOrder.entryPrice) return;
             }
 
             const siblings = pendingOrder.isSplitEntry && pendingOrder.splitGroupId
@@ -21646,6 +21704,15 @@ class OrderManager {
                     newPrice = c;
                     mouseY = ctx.scales.yScale(newPrice);
                 }
+            } else if (dragType === 'sl') {
+                const tpRef = self._getTpReferencePriceForOpenOrder(order);
+                if (tpRef != null) {
+                    const c = self._clampSlDragPriceVsTp(order.type, newPrice, tpRef, self.pipSize);
+                    if (c !== newPrice) {
+                        newPrice = c;
+                        mouseY = ctx.scales.yScale(newPrice);
+                    }
+                }
             }
             const precision = self.getPricePrecision();
             const priceStr = newPrice.toFixed(precision);
@@ -21693,15 +21760,17 @@ class OrderManager {
             let newPrice = ctx.scales.yScale.invert(mouseY);
             if (dragType === 'tp') {
                 newPrice = self._clampTpDragPrice(order.type, newPrice, order.openPrice, order.stopLoss, self.pipSize);
+            } else if (dragType === 'sl') {
+                const tpRef = self._getTpReferencePriceForOpenOrder(order);
+                if (tpRef != null) {
+                    newPrice = self._clampSlDragPriceVsTp(order.type, newPrice, tpRef, self.pipSize);
+                }
             }
 
             // Validate direction
             if (dragType === 'tp') {
                 if (isBuy && newPrice <= order.openPrice) return;
                 if (!isBuy && newPrice >= order.openPrice) return;
-            } else {
-                if (isBuy && newPrice >= order.openPrice) return;
-                if (!isBuy && newPrice <= order.openPrice) return;
             }
 
             const curBar = self.getCurrentCandle();
@@ -22337,7 +22406,7 @@ class OrderManager {
             .attr('class', `order-line order-${order.id}`)
             .attr('stroke', lineColor)
             .attr('stroke-width', 1)
-            .attr('opacity', 0.92)
+            .attr('opacity', 0.85)
             .attr('pointer-events', 'none');
 
         // Wide invisible hit area for easy dragging from the line
@@ -22362,7 +22431,8 @@ class OrderManager {
             .attr('fill', '#ffffff')
             .attr('font-size', '11px')
             .attr('font-weight', '700')
-            .attr('letter-spacing', '0.01em')
+            .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
+            .attr('letter-spacing', '0')
             .attr('pointer-events', 'all')
             .style('cursor', 'ns-resize')
             .text(`${order.type.toLowerCase()} ${order.quantity.toFixed(2)}`);
@@ -22386,8 +22456,9 @@ class OrderManager {
         const priceText = chart.svg.append('text')
             .attr('class', `order-price-text order-${order.id}`)
             .attr('fill', '#ffffff')
-            .attr('font-size', '11px')
-            .attr('font-weight', '700')
+            .attr('font-size', '12px')
+            .attr('font-weight', '600')
+            .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
             .attr('text-anchor', 'middle')
             .attr('pointer-events', 'all')
             .style('cursor', 'ns-resize')
@@ -22402,17 +22473,18 @@ class OrderManager {
 
         const pnlBox = chart.svg.append('rect')
             .attr('class', `order-pnl-box order-${order.id}`)
-            .attr('fill', '#0f172a')
-            .attr('stroke', color)
+            .attr('fill', '#1e222d')
+            .attr('stroke', '#363a45')
             .attr('stroke-width', 1)
             .attr('rx', 3)
             .style('pointer-events', 'none');
 
         const pnlText = chart.svg.append('text')
             .attr('class', `order-pnl-text order-${order.id}`)
-            .attr('fill', color)
+            .attr('fill', '#d1d4dc')
             .attr('font-size', '11px')
-            .attr('font-weight', '700')
+            .attr('font-weight', '600')
+            .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
             .style('pointer-events', 'none')
             .text('$0.00');
 
@@ -23453,7 +23525,7 @@ class OrderManager {
             .attr('stroke-width', 1)
             .attr('stroke-linecap', 'butt')
             .attr('stroke-dasharray', null)
-            .attr('opacity', 0.92)
+            .attr('opacity', 0.85)
             .style('pointer-events', 'all')
             .style('cursor', 'ns-resize');
         const dragHitLine = chart.svg.append('line')
@@ -23482,7 +23554,8 @@ class OrderManager {
             .attr('fill', '#ffffff')
             .attr('font-size', '11px')
             .attr('font-weight', '700')
-            .attr('letter-spacing', '0.01em')
+            .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
+            .attr('letter-spacing', '0')
             .style('cursor', 'pointer')
             .text(`${orderTypeLabel} ${directionLabel} ${this.formatQuantity(pendingOrder.quantity || 0)}`);
         
@@ -23493,19 +23566,20 @@ class OrderManager {
         if (!pendingOrder.createdFromTool) {
             priceBox = chart.svg.append('rect')
                 .attr('class', `pending-order-price-box pending-${pendingOrder.id}`)
-                .attr('fill', '#0f172a')
+                .attr('fill', lineColor)
                 .attr('stroke', lineColor)
                 .attr('stroke-width', 1)
-                .attr('rx', 3)
+                .attr('rx', 2)
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
             
             // Price text
             priceText = chart.svg.append('text')
                 .attr('class', `pending-order-price-text pending-${pendingOrder.id}`)
-                .attr('fill', '#e2e8f0')
-                .attr('font-size', '11px')
-                .attr('font-weight', '700')
+                .attr('fill', '#ffffff')
+                .attr('font-size', '12px')
+                .attr('font-weight', '600')
+                .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                 .attr('text-anchor', 'middle')
                 .style('cursor', 'pointer')
                 .text(this.formatPrice(pendingOrder.entryPrice));
@@ -24282,6 +24356,16 @@ class OrderManager {
                         newPrice = c;
                         const ay = ch.scales.yScale(newPrice);
                         clampedY = Math.max(0, Math.min(chartHeight, ay));
+                    }
+                } else if (target.type === 'SL') {
+                    const tpRef = self._getPendingTpReferenceForSlClamp(pendingOrder);
+                    if (tpRef != null) {
+                        const c = self._clampSlDragPriceVsTp(pendingOrder.direction, newPrice, tpRef, self.pipSize);
+                        if (c !== newPrice) {
+                            newPrice = c;
+                            const ay = ch.scales.yScale(newPrice);
+                            clampedY = Math.max(0, Math.min(chartHeight, ay));
+                        }
                     }
                 }
 
@@ -25961,8 +26045,8 @@ class OrderManager {
         line?.attr('stroke', red);
         els.labelBox?.attr('fill', red).attr('stroke', red);
         els.labelText?.attr('fill', '#ffffff');
-        els.pnlBox?.attr('stroke', red);
-        els.pnlText?.attr('fill', profit ? '#86efac' : '#fca5a5');
+        els.pnlBox?.attr('fill', profit ? 'rgba(8,153,129,0.15)' : 'rgba(242,54,69,0.15)').attr('stroke', profit ? '#089981' : red);
+        els.pnlText?.attr('fill', profit ? '#089981' : '#f23645');
         els.priceBox?.attr('fill', red).attr('stroke', red);
         els.priceText?.attr('fill', '#ffffff');
     }
@@ -26053,7 +26137,7 @@ class OrderManager {
                 .attr('class', `sl-line sl-${order.id}`)
                 .attr('stroke', '#f23645')
                 .attr('stroke-width', 1)
-                .attr('opacity', 0.92)
+                .attr('opacity', 0.85)
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
             
@@ -26081,7 +26165,7 @@ class OrderManager {
 
             const slPnlBox = chart.svg.append('rect')
                 .attr('class', `sl-pnl-box sl-${order.id}`)
-                .attr('fill', '#0f172a')
+                .attr('fill', 'rgba(242,54,69,0.15)')
                 .attr('stroke', '#f23645')
                 .attr('stroke-width', 1)
                 .attr('rx', 3)
@@ -26090,9 +26174,10 @@ class OrderManager {
 
             const slPnlText = chart.svg.append('text')
                 .attr('class', `sl-pnl-text sl-${order.id}`)
-                .attr('fill', '#fca5a5')
+                .attr('fill', '#f23645')
                 .attr('font-size', '11px')
-                .attr('font-weight', '700')
+                .attr('font-weight', '600')
+                .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize')
                 .text(`${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`);
@@ -26117,8 +26202,9 @@ class OrderManager {
             const slPriceText = chart.svg.append('text')
                 .attr('class', `sl-price-text sl-${order.id}`)
                 .attr('fill', '#ffffff')
-                .attr('font-size', '11px')
-                .attr('font-weight', '700')
+                .attr('font-size', '12px')
+                .attr('font-weight', '600')
+                .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                 .attr('text-anchor', 'middle')
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize')
@@ -26179,15 +26265,13 @@ class OrderManager {
                         }, 0);
                     }
                     
-                    // Color gradient from light to dark green
-                    const colors = ['#4ade80', '#22c55e', '#16a34a', '#15803d', '#166534'];
-                    const color = colors[Math.min(index, colors.length - 1)];
+                    const color = '#089981';
                     
                     const tpLine = chart.svg.append('line')
                         .attr('class', `tp-line tp-${order.id} tp-target-${target.id || index}`)
                         .attr('stroke', color)
                         .attr('stroke-width', 1)
-                        .attr('opacity', 0.92)
+                        .attr('opacity', 0.85)
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize');
                     
@@ -26212,8 +26296,8 @@ class OrderManager {
 
                     const tpPnlBox = chart.svg.append('rect')
                         .attr('class', `tp-pnl-box tp-${order.id} tp-target-${target.id || index}`)
-                        .attr('fill', '#0f172a')
-                        .attr('stroke', color)
+                        .attr('fill', 'rgba(8,153,129,0.15)')
+                        .attr('stroke', '#089981')
                         .attr('stroke-width', 1)
                         .attr('rx', 3)
                         .style('pointer-events', 'all')
@@ -26221,9 +26305,10 @@ class OrderManager {
 
                     const tpPnlText = chart.svg.append('text')
                         .attr('class', `tp-pnl-text tp-${order.id} tp-target-${target.id || index}`)
-                        .attr('fill', '#86efac')
+                        .attr('fill', '#089981')
                         .attr('font-size', '11px')
-                        .attr('font-weight', '700')
+                        .attr('font-weight', '600')
+                        .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize')
                         .text(`${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
@@ -26238,8 +26323,9 @@ class OrderManager {
                     const tpPriceText = chart.svg.append('text')
                         .attr('class', `tp-price-text tp-${order.id} tp-target-${target.id || index}`)
                         .attr('fill', '#ffffff')
-                        .attr('font-size', '11px')
-                        .attr('font-weight', '700')
+                        .attr('font-size', '12px')
+                        .attr('font-weight', '600')
+                        .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                         .attr('text-anchor', 'middle')
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize')
@@ -27148,12 +27234,12 @@ class OrderManager {
                 line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
                 
                 if (labelText && labelBox) {
-                    const boxH = 18;
+                    const boxH = 22;
                     const boxY = y - boxH / 2;
                     const gap = 4;
                     const pad = 8;
                     const yAxisWidth = 70;
-                    const closeBtnR = 10;
+                    const closeBtnR = 9;
                     const closeBtnGap = 6;
                     
                     const labelTW = labelText.node()?.getBBox()?.width || 0;
@@ -27406,13 +27492,13 @@ class OrderManager {
                 line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
                 
                 if (labelText && labelBox) {
-                    const boxH = 18;
+                    const boxH = 22;
                     const boxY = y - boxH / 2;
                     const gap = 4;
                     const pad = 8;
                     const yAxisWidth = 70;
-                    const closeBtnR = 10;
-                    const splitBtnR = splitBtn ? (deleteBtn ? 8 : 10) : 0;
+                    const closeBtnR = 9;
+                    const splitBtnR = splitBtn ? (deleteBtn ? 8 : 9) : 0;
                     const closeBtnGap = 6;
                     const deleteBtnR = 8;
                     const tpPctArrowSize = 18;
@@ -27479,7 +27565,7 @@ class OrderManager {
             
             // Create Y-axis highlights for unique TP prices
             yAxisHighlightPrices.tp.forEach((tpPrice) => {
-                this.drawYAxisPriceHighlight(tpPrice, '#22c55e', 'tp', 0, ch);
+                this.drawYAxisPriceHighlight(tpPrice, '#089981', 'tp', 0, ch);
             });
         }
         
@@ -27514,7 +27600,7 @@ class OrderManager {
         beForChart.forEach((beData) => {
             const { orderId, line, hitLine, labelBox, labelText, priceBox, priceText, triggerPrice } = beData;
             const y = ch.scales.yScale(triggerPrice);
-            const boxHeight = 18;
+            const boxHeight = 22;
             const boxY = y - boxHeight / 2;
             const gap = 4;
             const pad = 8;
@@ -27654,21 +27740,28 @@ class OrderManager {
                         const realizedPartials = Number(orderData.partialClosePnL) || 0;
                         const livePnl = unrealizedPnl + realizedPartials;
                         const sign = livePnl >= 0 ? '+' : '';
-                        const pnlColor = livePnl >= 0 ? '#22c55e' : '#ef4444';
-                        pnlText.text(`${sign}$${livePnl.toFixed(2)}`).attr('fill', pnlColor);
-                        pnlBox.attr('stroke', pnlColor);
+                        if (livePnl > 0) {
+                            pnlBox.attr('fill', 'rgba(8,153,129,0.15)').attr('stroke', '#089981');
+                            pnlText.text(`${sign}$${livePnl.toFixed(2)}`).attr('fill', '#089981');
+                        } else if (livePnl < 0) {
+                            pnlBox.attr('fill', 'rgba(242,54,69,0.15)').attr('stroke', '#f23645');
+                            pnlText.text(`${sign}$${livePnl.toFixed(2)}`).attr('fill', '#f23645');
+                        } else {
+                            pnlBox.attr('fill', '#1e222d').attr('stroke', '#363a45');
+                            pnlText.text(`+$0.00`).attr('fill', '#d1d4dc');
+                        }
                     }
                 }
                 if (isPending && pnlBox) pnlBox.style('display', 'none');
                 if (isPending && pnlText) pnlText.style('display', 'none');
 
                 if (!skipPendingEntryGeom && labelText && closeBtn && labelBox) {
-                    const boxH = 18;
+                    const boxH = 22;
                     const boxY = y - boxH / 2;
                     const gap = 4;
                     const pad = 8;
                     const yAxisWidth = 70;
-                    const closeBtnR = 10;
+                    const closeBtnR = 9;
                     const closeBtnGap = 6;
 
                     const arrowW = arrow ? (arrow.node()?.getBBox()?.width || 0) : 0;
@@ -30393,15 +30486,15 @@ class OrderManager {
             .attr('pointer-events', 'all')
             .style('cursor', 'pointer');
         const bg = btn.append('circle')
-            .attr('r', 10)
-            .attr('fill', '#0f172a')
-            .attr('stroke', '#e2e8f0')
-            .attr('stroke-width', 1.2)
+            .attr('r', 9)
+            .attr('fill', 'transparent')
+            .attr('stroke', '#787b86')
+            .attr('stroke-width', 1)
             .style('pointer-events', 'all')
             .style('cursor', 'pointer');
         const txt = btn.append('text')
-            .attr('fill', '#e2e8f0')
-            .attr('font-size', '14px')
+            .attr('fill', '#787b86')
+            .attr('font-size', '12px')
             .attr('font-weight', '700')
             .attr('text-anchor', 'middle')
             .attr('dy', '0.35em')
@@ -30412,11 +30505,11 @@ class OrderManager {
             event.preventDefault();
             onClickFn(event);
         }).on('mouseover', function() {
-            bg.attr('fill', hoverColor);
+            bg.attr('fill', 'rgba(242,54,69,0.2)');
             txt.attr('fill', '#ffffff');
         }).on('mouseout', function() {
-            bg.attr('fill', '#0f172a');
-            txt.attr('fill', '#e2e8f0');
+            bg.attr('fill', 'transparent');
+            txt.attr('fill', '#787b86');
         });
         return btn;
     }
