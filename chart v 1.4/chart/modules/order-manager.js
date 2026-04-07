@@ -21727,8 +21727,17 @@ class OrderManager {
                 
                 if (lineType === 'sl' || lineType === 'tp' || lineType === 'be') {
                     if (extraElements.pnlText) {
-                        const sym = order.ticker || order.symbol || self._getSymbol();
-                        const pnl = self.estimatePnLForPriceLevel(order.type, order.openPrice, newPrice, order.quantity, sym);
+                        let pnl = 0;
+                        if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
+                            const members = self._getSplitGroupOpenPositions(order);
+                            pnl = members.reduce((sum, m) => {
+                                const mq = Number(m.quantity) || 0;
+                                if (mq <= 0) return sum;
+                                return sum + self.estimateOpenLegPnLSlice(m, newPrice, mq);
+                            }, 0);
+                        } else {
+                            pnl = self.estimateOpenLegPnLSlice(order, newPrice, Number(order.quantity) || 0);
+                        }
                         extraElements.pnlText.text(`${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`);
                     }
                     const boxH = 22;
@@ -23013,10 +23022,26 @@ class OrderManager {
             const newPrice = ctx.scales.yScale.invert(mouseY);
             const precision = self.getPricePrecision();
             const priceStr = newPrice.toFixed(precision);
-            const sym = order.ticker || order.symbol || self._getSymbol();
-            const pct = target.percentage || (100 / (order.tpTargets || []).length);
-            const shareQty = order.quantity * (pct / 100);
-            const pnl = self.estimatePnLForPriceLevel(order.type, order.openPrice, newPrice, shareQty, sym);
+            const tIdx = (order.tpTargets || []).indexOf(target);
+            const nonHitTargets = (order.tpTargets || []).filter((t, i) => self._tpTargetStillActiveOnChart(order, t, i));
+            const totalPctRemaining = nonHitTargets.reduce((sum, t) => sum + (t.percentage || 0), 0);
+            const normalizedPct = totalPctRemaining > 0 ? (target.percentage / totalPctRemaining) * 100 : (target.percentage || 0);
+            let pnl = 0;
+            if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
+                const members = self._getSplitGroupOpenPositions(order);
+                for (const m of members) {
+                    const mq = Number(m.quantity) || 0;
+                    if (mq <= 0) continue;
+                    const legTgt = (target.id != null ? m.tpTargets?.find((tt) => tt.id === target.id) : null)
+                        || (tIdx >= 0 ? m.tpTargets?.[tIdx] : null);
+                    if (!legTgt || legTgt.hit) continue;
+                    const tq = mq * (normalizedPct / 100);
+                    pnl += self.estimateOpenLegPnLSlice(m, newPrice, tq);
+                }
+            } else {
+                const shareQty = (Number(order.quantity) || 0) * (normalizedPct / 100);
+                pnl = self.estimateOpenLegPnLSlice(order, newPrice, shareQty);
+            }
             const pnlStr = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
 
             previewLine.attr('y1', mouseY).attr('y2', mouseY);
@@ -24743,10 +24768,7 @@ class OrderManager {
         }
 
         const entries = [];
-        const entryPrice = pendingOrder.entryPrice;
         const quantity = pendingOrder.quantity;
-        const direction = pendingOrder.direction; // 'BUY' or 'SELL'
-        const pendingSym = pendingOrder.ticker || pendingOrder.symbol || this._getSymbol();
 
         const self = this;
         
@@ -24794,15 +24816,14 @@ class OrderManager {
                 // Normalize percentage among remaining non-hit targets
                 const normalizedPct = totalPctRemaining > 0 ? (target.percentage / totalPctRemaining) * 100 : target.percentage;
                 const closeQty = quantity * (normalizedPct / 100);
-                let tpPnL = this.estimatePnLForPriceLevel(direction, entryPrice, target.price, closeQty, pendingSym);
+                let tpPnL = this.estimateOpenLegPnLSlice(pendingOrder, target.price, closeQty);
                 if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
                     const members = this._getSplitGroupPendingOrders(pendingOrder);
                     tpPnL = members.reduce((sum, m) => {
                         const q = Number(m.quantity) || 0;
                         if (q <= 0) return sum;
                         const cq = q * (normalizedPct / 100);
-                        const legSym = m.ticker || m.symbol || pendingSym;
-                        return sum + this.estimatePnLForPriceLevel(m.direction, m.entryPrice, target.price, cq, legSym);
+                        return sum + this.estimateOpenLegPnLSlice(m, target.price, cq);
                     }, 0);
                 }
                 
@@ -24823,15 +24844,14 @@ class OrderManager {
             });
         } else if (pendingOrder.takeProfit) {
             // Single TP - calculate P&L (sum all legs for scale-in)
-            let tpPnL = this.estimatePnLForPriceLevel(direction, entryPrice, pendingOrder.takeProfit, quantity, pendingSym);
+            let tpPnL = this.estimateOpenLegPnLSlice(pendingOrder, pendingOrder.takeProfit, quantity);
             let totalTpQty = quantity;
             if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
                 const members = this._getSplitGroupPendingOrders(pendingOrder);
                 tpPnL = members.reduce((sum, m) => {
                     const q = Number(m.quantity) || 0;
                     if (q <= 0) return sum;
-                    const legSym = m.ticker || m.symbol || pendingSym;
-                    return sum + this.estimatePnLForPriceLevel(m.direction, m.entryPrice, pendingOrder.takeProfit, q, legSym);
+                    return sum + this.estimateOpenLegPnLSlice(m, pendingOrder.takeProfit, q);
                 }, 0);
                 totalTpQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
             }
@@ -24843,15 +24863,14 @@ class OrderManager {
         
         // Draw SL with P&L (sum all legs for scale-in)
         if (pendingOrder.stopLoss) {
-            let slPnL = this.estimatePnLForPriceLevel(direction, entryPrice, pendingOrder.stopLoss, quantity, pendingSym);
+            let slPnL = this.estimateOpenLegPnLSlice(pendingOrder, pendingOrder.stopLoss, quantity);
             let totalSlQty = quantity;
             if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
                 const members = this._getSplitGroupPendingOrders(pendingOrder);
                 slPnL = members.reduce((sum, m) => {
                     const q = Number(m.quantity) || 0;
                     if (q <= 0) return sum;
-                    const legSym = m.ticker || m.symbol || pendingSym;
-                    return sum + this.estimatePnLForPriceLevel(m.direction, m.entryPrice, pendingOrder.stopLoss, q, legSym);
+                    return sum + this.estimateOpenLegPnLSlice(m, pendingOrder.stopLoss, q);
                 }, 0);
                 totalSlQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
             }
@@ -27053,7 +27072,6 @@ class OrderManager {
 
         const slLines = [];
         const tpLines = [];
-        const orderSym = order.ticker || order.symbol || this._getSymbol();
 
         // Draw Stop Loss line (red)
         if (order.stopLoss) {
