@@ -370,6 +370,29 @@ class OrderManager {
         return out;
     }
 
+    /**
+     * Charts that may host draft preview SVG (layout panels + whichever surface getActiveChart() uses).
+     * Used when scrubbing preview on panel close so lines cannot linger on a non-listed instance.
+     */
+    _collectChartsForPreviewCleanup() {
+        const out = [];
+        const seen = new Set();
+        const add = (c) => {
+            if (!c || typeof c.svg?.append !== 'function') return;
+            if (seen.has(c)) return;
+            seen.add(c);
+            out.push(c);
+        };
+        (this._collectLayoutCharts() || []).forEach(add);
+        if (typeof window !== 'undefined' && typeof window.getActiveChart === 'function') {
+            try {
+                add(window.getActiveChart());
+            } catch (_e) { /* ignore */ }
+        }
+        if (!out.length && this.chart) add(this.chart);
+        return out;
+    }
+
     _positionTickerMatchesChartSymbol(position, chart) {
         if (!chart) return false;
         const pt = this._positionTicker(position);
@@ -12994,6 +13017,11 @@ class OrderManager {
      * This function efficiently updates Y-positions without full redraw
      */
     updatePreviewLinePositions() {
+        const orderPanelEl = document.getElementById('orderPanel');
+        if (!orderPanelEl || !orderPanelEl.classList.contains('visible')) {
+            if (this.previewLines) this.removePreviewLines();
+            return;
+        }
         const pc = this._previewChartFromContext();
         if (!pc || !pc.scales || !this.previewLines) {
             return;
@@ -13235,9 +13263,10 @@ class OrderManager {
         }
 
         // Draft order preview (LIMIT/STOP BUY, AVG, SL/TP badges) only exists while the drawer is open.
-        // Otherwise scheduled rAF callbacks (e.g. from calculatePositionFromRisk) redraw a ghost line after place + close.
+        // Scheduled rAF/setTimeout callbacks may still call this after close — scrub SVG + state so nothing sticks.
         const orderPanelEl = document.getElementById('orderPanel');
         if (!orderPanelEl || !orderPanelEl.classList.contains('visible')) {
+            this.removePreviewLines();
             return;
         }
 
@@ -16479,6 +16508,8 @@ class OrderManager {
     removePreviewLines() {
         console.log('🗑️ Removing preview lines...');
         this._removePendingLimitStopConnector();
+        // Always drop preview avg-TP registry entry — previewLines may already be null while SVG orphans remain.
+        this.removeMultiTPAvgLine('__preview__');
 
         if (this.previewLines) {
             ['entry', 'tp', 'sl', 'be', 'avgEntry'].forEach(key => {
@@ -16529,15 +16560,12 @@ class OrderManager {
                     try { if (bd.labelGroup) bd.labelGroup.remove(); } catch (_) {}
                 });
             }
-            const _badgeCharts = (typeof this._collectLayoutCharts === 'function' ? this._collectLayoutCharts() : null)
+            const _badgeCharts = (typeof this._collectChartsForPreviewCleanup === 'function' ? this._collectChartsForPreviewCleanup() : null)
                 || (this.chart ? [this.chart] : []);
             _badgeCharts.forEach((c) => {
                 if (c?.svg) c.svg.selectAll('.multi-tp-preview-badge').remove();
             });
 
-            // Remove multi-TP avg preview line
-            this.removeMultiTPAvgLine('__preview__');
-            
             // Remove split entry lines
             if (this.previewLines.splitEntries && Array.isArray(this.previewLines.splitEntries)) {
                 this.previewLines.splitEntries.forEach((splitLine, index) => {
@@ -16572,10 +16600,11 @@ class OrderManager {
         }
 
         // Aggressively remove any orphaned preview elements (all panels — stale preview can linger off-main)
-        const _orphanCharts = (typeof this._collectLayoutCharts === 'function' ? this._collectLayoutCharts() : null)
+        const _orphanCharts = (typeof this._collectChartsForPreviewCleanup === 'function' ? this._collectChartsForPreviewCleanup() : null)
             || (this.chart ? [this.chart] : []);
         _orphanCharts.forEach((c) => {
             if (!c?.svg) return;
+            const previewAvgTp = c.svg.selectAll('[class*="multi-tp-avg-__preview__"]');
             const removed = {
                 lines: c.svg.selectAll('.preview-line').size(),
                 labelGroups: c.svg.selectAll('.preview-label-group').size(),
@@ -16583,7 +16612,8 @@ class OrderManager {
                 yAxisHighlights: c.svg.selectAll('.y-axis-price-highlight').size(),
                 splitEntryLines: c.svg.selectAll('.split-entry-line').size(),
                 splitEntryLabels: c.svg.selectAll('.split-entry-label-group').size(),
-                splitDragGhosts: c.svg.selectAll('.split-drag-ghost').size()
+                splitDragGhosts: c.svg.selectAll('.split-drag-ghost').size(),
+                previewAvgTp: previewAvgTp.size()
             };
 
             c.svg.selectAll('.preview-line').remove();
@@ -16596,6 +16626,7 @@ class OrderManager {
             c.svg.selectAll('.split-drag-ghost').remove();
             c.svg.selectAll('.split-drag-label').remove();
             c.svg.selectAll('.preview-pending-connector').remove();
+            previewAvgTp.remove();
 
             const totalRemoved = Object.values(removed).reduce((a, b) => a + b, 0);
             if (totalRemoved > 0) {
