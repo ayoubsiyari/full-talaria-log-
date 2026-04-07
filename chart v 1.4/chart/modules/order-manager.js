@@ -393,6 +393,48 @@ class OrderManager {
         return out;
     }
 
+    /**
+     * Remove known preview/draft SVG classes from one D3 svg selection (orphan pass).
+     */
+    _stripPreviewOrphansFromSvg(svg) {
+        if (!svg || typeof svg.selectAll !== 'function') return;
+        const previewAvgTp = svg.selectAll('[class*="multi-tp-avg-__preview__"]');
+        svg.selectAll('.preview-line').remove();
+        svg.selectAll('.preview-line-hit').remove();
+        svg.selectAll('.preview-label-group').remove();
+        svg.selectAll('.preview-badge-group').remove();
+        svg.selectAll('.y-axis-price-highlight').remove();
+        svg.selectAll('.split-entry-line').remove();
+        svg.selectAll('.split-entry-label-group').remove();
+        svg.selectAll('.split-drag-ghost').remove();
+        svg.selectAll('.split-drag-label').remove();
+        svg.selectAll('.preview-pending-connector').remove();
+        previewAvgTp.remove();
+    }
+
+    /**
+     * Scrub every chart surface that can host draft preview, including SVG roots not reachable
+     * from stale Chart instances (fixes "stuck" lines after closing the order drawer).
+     */
+    _stripPreviewOrphansFromAllChartSurfaces() {
+        const seen = new Set();
+        (this._collectChartsForPreviewCleanup() || []).forEach((c) => {
+            const node = c?.svg?.node?.();
+            if (node) seen.add(node);
+            this._stripPreviewOrphansFromSvg(c?.svg);
+        });
+        if (typeof document === 'undefined' || typeof d3 === 'undefined') return;
+        const roots = [];
+        const dw = document.getElementById('drawingSvg');
+        if (dw) roots.push(dw);
+        document.querySelectorAll('#panels-container svg').forEach((el) => roots.push(el));
+        roots.forEach((el) => {
+            if (!el || seen.has(el)) return;
+            seen.add(el);
+            this._stripPreviewOrphansFromSvg(d3.select(el));
+        });
+    }
+
     _positionTickerMatchesChartSymbol(position, chart) {
         if (!chart) return false;
         const pt = this._positionTicker(position);
@@ -9682,9 +9724,15 @@ class OrderManager {
             // Reset TP/SL positioning flags
             this.tpManuallyPositioned = false;
             this.slManuallyPositioned = false;
+            this.isDraggingPreviewLine = false;
 
+            (this._collectLayoutCharts() || []).forEach((c) => {
+                if (c && typeof c.updateSVGPointerEvents === 'function') {
+                    try { c.updateSVGPointerEvents(); } catch (_e) { /* ignore */ }
+                }
+            });
             if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
-                this.chart.updateSVGPointerEvents();
+                try { this.chart.updateSVGPointerEvents(); } catch (_e) { /* ignore */ }
             }
             return;
         }
@@ -9762,6 +9810,8 @@ class OrderManager {
      * and show "Make new order" button. No new entry or preview lines.
      */
     _resetPanelForNewOrder() {
+        this.isDraggingPreviewLine = false;
+
         const placeBtn = document.getElementById('placeOrderButton');
         if (placeBtn) {
             this._orderPlacedAwaitingReset = true;
@@ -9771,6 +9821,8 @@ class OrderManager {
             placeBtn.style.cursor = 'pointer';
             placeBtn.classList.remove('sell-mode');
             placeBtn.style.background = '#3b82f6';
+        } else {
+            this._orderPlacedAwaitingReset = true;
         }
 
         const zero = (id) => { const el = document.getElementById(id); if (el) el.value = '0'; };
@@ -9810,8 +9862,13 @@ class OrderManager {
 
         this.removePreviewLines();
 
+        (this._collectLayoutCharts() || []).forEach((c) => {
+            if (c && typeof c.updateSVGPointerEvents === 'function') {
+                try { c.updateSVGPointerEvents(); } catch (_e) { /* ignore */ }
+            }
+        });
         if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
-            this.chart.updateSVGPointerEvents();
+            try { this.chart.updateSVGPointerEvents(); } catch (_e) { /* ignore */ }
         }
     }
 
@@ -13272,6 +13329,7 @@ class OrderManager {
 
         // Order was placed via ✓ badge — wait for "Make new order" before drawing anything
         if (this._orderPlacedAwaitingReset) {
+            this.removePreviewLines();
             return;
         }
         
@@ -16599,40 +16657,8 @@ class OrderManager {
             this.pendingPreviewAlignTimeout = null;
         }
 
-        // Aggressively remove any orphaned preview elements (all panels — stale preview can linger off-main)
-        const _orphanCharts = (typeof this._collectChartsForPreviewCleanup === 'function' ? this._collectChartsForPreviewCleanup() : null)
-            || (this.chart ? [this.chart] : []);
-        _orphanCharts.forEach((c) => {
-            if (!c?.svg) return;
-            const previewAvgTp = c.svg.selectAll('[class*="multi-tp-avg-__preview__"]');
-            const removed = {
-                lines: c.svg.selectAll('.preview-line').size(),
-                labelGroups: c.svg.selectAll('.preview-label-group').size(),
-                badgeGroups: c.svg.selectAll('.preview-badge-group').size(),
-                yAxisHighlights: c.svg.selectAll('.y-axis-price-highlight').size(),
-                splitEntryLines: c.svg.selectAll('.split-entry-line').size(),
-                splitEntryLabels: c.svg.selectAll('.split-entry-label-group').size(),
-                splitDragGhosts: c.svg.selectAll('.split-drag-ghost').size(),
-                previewAvgTp: previewAvgTp.size()
-            };
-
-            c.svg.selectAll('.preview-line').remove();
-            c.svg.selectAll('.preview-line-hit').remove();
-            c.svg.selectAll('.preview-label-group').remove();
-            c.svg.selectAll('.preview-badge-group').remove();
-            c.svg.selectAll('.y-axis-price-highlight').remove();
-            c.svg.selectAll('.split-entry-line').remove();
-            c.svg.selectAll('.split-entry-label-group').remove();
-            c.svg.selectAll('.split-drag-ghost').remove();
-            c.svg.selectAll('.split-drag-label').remove();
-            c.svg.selectAll('.preview-pending-connector').remove();
-            previewAvgTp.remove();
-
-            const totalRemoved = Object.values(removed).reduce((a, b) => a + b, 0);
-            if (totalRemoved > 0) {
-                console.log(`   🧹 Cleaned up orphaned elements: lines=${removed.lines}, labels=${removed.labelGroups}, badges=${removed.badgeGroups}, splits=${removed.splitEntryLines + removed.splitEntryLabels}`);
-            }
-        });
+        // Aggressively remove any orphaned preview elements (all panels + DOM SVG roots)
+        this._stripPreviewOrphansFromAllChartSurfaces();
 
         console.log('✅ Preview lines cleanup complete');
     }
