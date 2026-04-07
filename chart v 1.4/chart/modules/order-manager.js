@@ -12093,6 +12093,71 @@ class OrderManager {
         }
     }
 
+    /**
+     * Preview panel (`this.tpTargets`) and placed pending orders each hold their own tpTargets copy.
+     * Keep percentages aligned when the user edits either side (same length + instrument).
+     */
+    _syncPreviewTpTargetsFromPending(pendingOrder) {
+        if (!pendingOrder?.tpTargets?.length || !this.tpTargets || this.tpTargets.length !== pendingOrder.tpTargets.length) return;
+        const mode = pendingOrder.tpTargets[0]?.distributionMode || this.tpDistributionMode || 'percent';
+        for (let i = 0; i < this.tpTargets.length; i++) {
+            this.tpTargets[i].percentage = pendingOrder.tpTargets[i].percentage;
+            const dm = pendingOrder.tpTargets[i].distributionMode;
+            if (dm) this.tpTargets[i].distributionMode = dm;
+        }
+        const precision = mode === 'percent' ? 1 : 2;
+        this.tpTargets.forEach((target) => {
+            const pctInput = document.getElementById(`tpTarget${target.id}Pct`);
+            if (pctInput) pctInput.value = target.percentage.toFixed(precision);
+        });
+        this.calculateAdvancedRiskReward();
+        this.updatePreviewLines();
+        this.renderTPTargets();
+    }
+
+    /**
+     * After preview +/- , push the same share split to all pending orders on this instrument with matching TP count.
+     */
+    _syncPendingOrdersTpTargetsFromPreview() {
+        if (!this.tpTargets || this.tpTargets.length <= 1) return;
+        const activeTicker = this._getActiveTicker();
+        const raw = [...(this.pendingOrders || []), ...(this.orderService?.pendingOrders || [])];
+        const seen = new Set();
+        const list = raw.filter((po) => {
+            if (!po || seen.has(po.id)) return false;
+            seen.add(po.id);
+            return true;
+        });
+        let any = false;
+        for (const po of list) {
+            if (!po.tpTargets || po.tpTargets.length !== this.tpTargets.length) continue;
+            const poTicker = po.ticker || po.symbol;
+            if (activeTicker && poTicker && poTicker !== activeTicker) continue;
+            for (let i = 0; i < this.tpTargets.length; i++) {
+                po.tpTargets[i].percentage = this.tpTargets[i].percentage;
+                const dm = this.tpTargets[i].distributionMode;
+                if (dm) po.tpTargets[i].distributionMode = dm;
+            }
+            if (po.isSplitEntry && po.splitGroupId) {
+                this._syncPendingTpPercentagesAcrossSplitGroup(po);
+            }
+            any = true;
+            this.removePendingSLTPLines(po.id);
+            this.removeMultiTPAvgLine(po.id);
+            this.drawPendingOrderTargets(po);
+            if (po.tpTargets.length >= 1) {
+                this.drawMultiTPAvgLine(po, 'pending');
+            }
+        }
+        if (any) {
+            this.positionPendingOrderTargets(this.chart);
+            if (typeof this._updateMultiTPAvgLines === 'function') {
+                this._updateMultiTPAvgLines(this.chart);
+            }
+            this._schedulePendingOrdersPanelRefresh();
+        }
+    }
+
     /** Split-entry open legs: mirror tpTargets[].percentage from the leg that was adjusted (chart lines use primary leg). */
     _syncOpenTpPercentagesAcrossSplitGroup(primaryPos) {
         if (!primaryPos?.isSplitEntry || !primaryPos.splitGroupId || !primaryPos.tpTargets?.length) return;
@@ -12153,6 +12218,7 @@ class OrderManager {
         if (typeof this._updateMultiTPAvgLines === 'function') {
             this._updateMultiTPAvgLines(this.chart);
         }
+        this._syncPreviewTpTargetsFromPending(po);
         this._schedulePendingOrdersPanelRefresh();
     }
 
@@ -12180,6 +12246,7 @@ class OrderManager {
         this.calculateAdvancedRiskReward();
         this.updatePreviewLines();
         this.renderTPTargets();
+        this._syncPendingOrdersTpTargetsFromPreview();
 
         const unit = this.tpDistributionMode === 'percent' ? '%' : this.tpDistributionMode === 'amount' ? '$' : ' lots';
         console.log(`📊 Adjusted TP${targetIndex + 1}: ${currentValue.toFixed(precision)}${unit} → ${newValue.toFixed(precision)}${unit}`);
