@@ -16237,15 +16237,22 @@ class OrderManager {
             if (multipleTPSettings) multipleTPSettings.classList.add('is-hidden');
             this._syncMultiTPButtonState();
         } else {
-            // Recalculate percentages
-            const equalPercent = Math.round(100 / this.tpTargets.length);
-            this.tpTargets.forEach((t, i) => {
-                if (i === this.tpTargets.length - 1) {
-                    t.percentage = 100 - (equalPercent * (this.tpTargets.length - 1));
-                } else {
-                    t.percentage = equalPercent;
+            // Redistribute proportionally: normalize remaining targets to sum to 100
+            // preserving their relative weights rather than resetting to equal split
+            const currentSum = this.tpTargets.reduce((s, t) => s + (t.percentage || 0), 0);
+            const n = this.tpTargets.length;
+            if (currentSum > 0) {
+                for (let i = 0; i < n - 1; i++) {
+                    this.tpTargets[i].percentage = parseFloat(((this.tpTargets[i].percentage / currentSum) * 100).toFixed(1));
                 }
-            });
+                const usedSum = this.tpTargets.slice(0, -1).reduce((s, t) => s + t.percentage, 0);
+                this.tpTargets[n - 1].percentage = parseFloat((100 - usedSum).toFixed(1));
+            } else {
+                const equalPct = Math.round(100 / n);
+                this.tpTargets.forEach((t, i) => {
+                    t.percentage = i < n - 1 ? equalPct : 100 - equalPct * (n - 1);
+                });
+            }
         }
         
         console.log(`🗑️ Removed TP target (ref ${targetIdOrIndex}) - Remaining: ${this.tpTargets.length}`);
