@@ -20491,6 +20491,16 @@ class OrderManager {
             : position.quantity;
         
         console.log(`   isPartialClose=${isPartialClose}, closeQuantity=${closeQuantity}, position.quantity=${position.quantity}`);
+
+        if (isPartialClose && (!Number.isFinite(closeQuantity) || closeQuantity <= 0)) {
+            if (targetId != null && Array.isArray(position.tpTargets)) {
+                const tid = String(targetId);
+                const tgt = position.tpTargets.find((t) => t && (String(t.id) === tid || t.id === targetId));
+                if (tgt) tgt.hit = false;
+            }
+            console.warn(`⚠️ Partial TP skipped for #${orderId}: closeQuantity=${closeQuantity} — reverted target hit so the engine can retry`);
+            return;
+        }
         
         // Calculate P&L using per-position instrument settings (safe across pair switches)
         const posSettings = position.instrument_settings || null;
@@ -26841,8 +26851,8 @@ class OrderManager {
         for (const m of members) {
             if (m.id === donor.id) continue;
             if (!m.tpTargets || m.tpTargets.length === 0) {
-                // Member has no targets: full copy from donor
-                m.tpTargets = donor.tpTargets.map(t => ({ ...t }));
+                // Member has no targets: copy ladder only — each leg tracks its own TP hits.
+                m.tpTargets = donor.tpTargets.map(t => ({ ...t, hit: false }));
             } else if (m.tpTargets.length !== donor.tpTargets.length) {
                 // Structure mismatch (e.g. split happened on primary only): sync structure, preserve hit state
                 m.tpTargets = donor.tpTargets.map(t => {
@@ -26859,10 +26869,26 @@ class OrderManager {
                     t.percentage = d.percentage;
                     if (d.distributionMode) t.distributionMode = d.distributionMode;
                     if (d.originalValue != null) t.originalValue = d.originalValue;
-                    t.hit = Boolean(t.hit || d.hit);
+                    // Never copy donor.hit onto siblings: each leg must run its own partial at this TP.
+                    // Copying hit caused updatePositions to skip closes while price was beyond the line.
                 }
             }
         }
+    }
+
+    /**
+     * Whether a TP ladder row should still be shown / counted: for split groups, any leg with that target !hit.
+     */
+    _tpTargetStillActiveOnChart(order, target, targetIndex) {
+        if (!target || !(target.price > 0) || !((target.percentage || 0) > 0)) return false;
+        if (!order?.isSplitEntry || !order.splitGroupId) return !target.hit;
+        const members = this._getSplitGroupOpenPositions(order);
+        if (!members.length) return !target.hit;
+        return members.some((m) => {
+            if (!m.tpTargets?.length) return false;
+            const mt = (target.id != null ? m.tpTargets.find((tt) => tt.id === target.id) : null) || m.tpTargets[targetIndex];
+            return mt && mt.price > 0 && (mt.percentage || 0) > 0 && !mt.hit;
+        });
     }
 
     /**
@@ -27042,13 +27068,12 @@ class OrderManager {
         
         // Draw Take Profit lines (check for multiple TPs first)
         if (order.tpTargets && Array.isArray(order.tpTargets) && order.tpTargets.length > 0) {
-            // Draw multiple TP lines (filter out hit targets)
-            const nonHitTargets = order.tpTargets.filter(t => t.price > 0 && t.percentage > 0 && !t.hit);
+            const nonHitTargets = order.tpTargets.filter((t, i) => this._tpTargetStillActiveOnChart(order, t, i));
             const totalPctRemaining = nonHitTargets.reduce((sum, t) => sum + (t.percentage || 0), 0);
             console.log(`  🎯 Drawing ${nonHitTargets.length} TP lines for order #${order.id} (${order.tpTargets.length - nonHitTargets.length} hit)`);
             
             order.tpTargets.forEach((target, index) => {
-                if (target.price > 0 && target.percentage > 0 && !target.hit) {
+                if (this._tpTargetStillActiveOnChart(order, target, index)) {
                     // Normalize percentage among remaining non-hit targets for correct lot calculation
                     const normalizedPct = totalPctRemaining > 0 ? (target.percentage / totalPctRemaining) * 100 : target.percentage;
                     // Calculate PnL for this target (sum all legs for scale-in)
@@ -27059,6 +27084,8 @@ class OrderManager {
                         tpPnL = members.reduce((sum, m) => {
                             const mq = Number(m.quantity) || 0;
                             if (mq <= 0) return sum;
+                            const legTgt = (target.id != null ? m.tpTargets?.find((tt) => tt.id === target.id) : null) || m.tpTargets?.[index];
+                            if (!legTgt || legTgt.hit) return sum;
                             const tq = mq * (normalizedPct / 100);
                             const legSym = m.ticker || m.symbol || orderSym;
                             return sum + this.estimatePnLForPriceLevel(m.type, m.openPrice, target.price, tq, legSym);
@@ -28114,12 +28141,11 @@ class OrderManager {
                         : [pos];
                     const splitGroupTotalQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
 
-                    const nonHitTargets = pos.tpTargets.filter(t => t.price > 0 && t.percentage > 0 && !t.hit);
+                    const nonHitTargets = pos.tpTargets.filter((t, i) => this._tpTargetStillActiveOnChart(pos, t, i));
                     const totalPctRemaining = nonHitTargets.reduce((sum, t) => sum + (t.percentage || 0), 0);
                     
                     pos.tpTargets.forEach((target, idx) => {
-                        if (target.hit) return;
-                        if (!(target.price > 0 && target.percentage > 0)) return;
+                        if (!this._tpTargetStillActiveOnChart(pos, target, idx)) return;
                         const priceKey = target.price.toFixed(5);
                         const normalizedPct = totalPctRemaining > 0 ? (target.percentage / totalPctRemaining) * 100 : target.percentage;
 
@@ -28128,6 +28154,8 @@ class OrderManager {
                         for (const m of members) {
                             const q = Number(m.quantity) || 0;
                             if (q <= 0) continue;
+                            const legTgt = (target.id != null ? m.tpTargets?.find((tt) => tt.id === target.id) : null) || m.tpTargets?.[idx];
+                            if (!legTgt || legTgt.hit) continue;
                             const targetQuantity = q * (normalizedPct / 100);
                             const legSym = m.ticker || m.symbol || symBase;
                             rowPnL += this.estimatePnLForPriceLevel(
@@ -29020,6 +29048,90 @@ class OrderManager {
             markerData.hasPriceElements = false;
         });
     }
+
+    /** Closed-trade row: how many entry legs (multi-entry / scaled / journal aggregate). */
+    _historyPanelEntryCount(trade) {
+        if (!trade || typeof trade !== 'object') return 1;
+        const n = Number(trade.numberOfEntries);
+        if (Number.isFinite(n) && n > 0) return n;
+        if (Array.isArray(trade.splitEntries) && trade.splitEntries.length) return trade.splitEntries.length;
+        if (Array.isArray(trade.scaledEntries) && trade.scaledEntries.length) return trade.scaledEntries.length;
+        return 1;
+    }
+
+    /** Closed-trade row: how many TP / partial exit legs to show in the TPs column. */
+    _historyPanelTpLegCount(trade) {
+        if (!trade || typeof trade !== 'object') return 0;
+        if (Array.isArray(trade.tpRealizedBreakdown) && trade.tpRealizedBreakdown.length) {
+            const active = trade.tpRealizedBreakdown.filter(
+                (r) => (Number(r.pnl) || 0) !== 0 || (Number(r.lotsClosed) || 0) > 0
+            );
+            return active.length || trade.tpRealizedBreakdown.length;
+        }
+        if (Array.isArray(trade.partialCloses) && trade.partialCloses.length) return trade.partialCloses.length;
+        if (Array.isArray(trade.multiTpSnapshot) && trade.multiTpSnapshot.length > 1) return trade.multiTpSnapshot.length;
+        if (trade.hasMultipleTakeProfits && Array.isArray(trade.multiTpSnapshot) && trade.multiTpSnapshot.length) {
+            return trade.multiTpSnapshot.length;
+        }
+        const ct = String(trade.closeType || '');
+        if (ct.includes('TP') || ct === 'TP') return 1;
+        return 0;
+    }
+
+    /** History table cell: per-entry and per-TP realized P&amp;L (compact HTML). */
+    _historyPanelBreakdownHtml(trade) {
+        if (!trade || typeof trade !== 'object') return '<span style="color:#64748b">—</span>';
+        const rows = [];
+        if (trade.isAggregateMultiEntry && Array.isArray(trade.splitEntries) && trade.splitEntries.length) {
+            const bits = trade.splitEntries.map((e, i) => {
+                const si = e.splitIndex != null ? e.splitIndex : i + 1;
+                const lots = Number(e.lotSize != null ? e.lotSize : e.quantity) || 0;
+                const p = Number(e.pnl) || 0;
+                return `E${si} ${lots.toFixed(2)}L ${p >= 0 ? '+' : ''}$${p.toFixed(2)}`;
+            });
+            rows.push(`<div style="margin-bottom:2px;"><span style="color:#eab308;font-weight:600;">Ent</span> ${bits.join(' · ')}</div>`);
+        } else if (trade.isScaledTrade && Array.isArray(trade.scaledEntries) && trade.scaledEntries.length) {
+            const bits = trade.scaledEntries.map((e, i) => {
+                const lots = Number(e.quantity) || 0;
+                const p = Number(e.pnl) || 0;
+                return `#${i + 1} ${lots.toFixed(2)}L ${p >= 0 ? '+' : ''}$${p.toFixed(2)}`;
+            });
+            rows.push(`<div style="margin-bottom:2px;"><span style="color:#f59e0b;font-weight:600;">Scaled</span> ${bits.join(' · ')}</div>`);
+        }
+        const tpBits = [];
+        if (Array.isArray(trade.tpRealizedBreakdown) && trade.tpRealizedBreakdown.length) {
+            trade.tpRealizedBreakdown.forEach((r, i) => {
+                const p = Number(r.pnl) || 0;
+                const lc = Number(r.lotsClosed) || 0;
+                if (p === 0 && lc === 0) return;
+                tpBits.push(`TP${i + 1} ${p >= 0 ? '+' : ''}$${p.toFixed(2)}`);
+            });
+        }
+        if (tpBits.length === 0 && Array.isArray(trade.partialCloses) && trade.partialCloses.length) {
+            trade.partialCloses.forEach((pc, i) => {
+                const p = Number(pc.pnl) || 0;
+                tpBits.push(`P${i + 1} ${p >= 0 ? '+' : ''}$${p.toFixed(2)}`);
+            });
+        }
+        if (tpBits.length) {
+            rows.push(`<div style="margin-bottom:2px;"><span style="color:#22c55e;font-weight:600;">TP</span> ${tpBits.join(' · ')}</div>`);
+        }
+        const finAgg = trade.aggregateFinalExitPnL;
+        if (finAgg != null && Number.isFinite(Number(finAgg)) && Number(finAgg) !== 0) {
+            const f = Number(finAgg);
+            rows.push(`<div><span style="color:#94a3b8;font-weight:600;">Final</span> ${f >= 0 ? '+' : ''}$${f.toFixed(2)}</div>`);
+        } else if (
+            !trade.isAggregateMultiEntry
+            && trade.finalClosePnL != null
+            && Number.isFinite(Number(trade.finalClosePnL))
+            && Number(trade.finalClosePnL) !== 0
+        ) {
+            const f = Number(trade.finalClosePnL);
+            rows.push(`<div><span style="color:#94a3b8;font-weight:600;">Final</span> ${f >= 0 ? '+' : ''}$${f.toFixed(2)}</div>`);
+        }
+        if (rows.length === 0) return '<span style="color:#64748b">—</span>';
+        return `<div style="font-size:10px;line-height:1.35;color:#cbd5e1;text-align:left;max-width:280px;">${rows.join('')}</div>`;
+    }
     
     /**
      * Update positions panel
@@ -29560,7 +29672,7 @@ class OrderManager {
             if (this.tradeJournal.length === 0) {
                 replayPositionsBodyEl.innerHTML = `
                     <tr class="replay-empty-row">
-                        <td colspan="12">
+                        <td colspan="14">
                             <div class="replay-tab-empty">
                                 No closed positions yet. Once trades are executed, they will appear here.
                             </div>
@@ -29584,11 +29696,17 @@ class OrderManager {
                     const pnlClass = pnl > 0 ? 'order-value--profit' : pnl < 0 ? 'order-value--loss' : '';
                     const tags = trade.tags && trade.tags.length > 0 ? trade.tags.join(', ') : '—';
                     
-                    // Entries column: show number of entries (1 for regular, 2+ for scaled)
-                    const numberOfEntries = trade.numberOfEntries || 1;
-                    const entriesDisplay = numberOfEntries > 1 
-                        ? `<span style="background: #f59e0b; color: #000; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 12px;">${numberOfEntries}</span>`
+                    const numberOfEntries = this._historyPanelEntryCount(trade);
+                    const entriesDisplay = numberOfEntries > 1
+                        ? `<span style="background: #eab308; color: #000; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 12px;">${numberOfEntries}</span>`
                         : `<span style="color: #94a3b8;">${numberOfEntries}</span>`;
+                    const tpLegs = this._historyPanelTpLegCount(trade);
+                    const tpDisplay = tpLegs <= 0
+                        ? `<span style="color:#94a3b8">—</span>`
+                        : (tpLegs > 1
+                            ? `<span style="background:#089981;color:#fff;padding:2px 8px;border-radius:4px;font-weight:700;font-size:12px;">${tpLegs}</span>`
+                            : `<span style="color:#94a3b8">${tpLegs}</span>`);
+                    const breakdownHtml = this._historyPanelBreakdownHtml(trade);
 
                     return `
                         <tr style="cursor: pointer;" onclick="window.chart.orderManager.showTradeDetailsFromBottom(${index})">
@@ -29597,6 +29715,8 @@ class OrderManager {
                             <td><span class="replay-badge ${sideClass}">${direction}</span></td>
                             <td class="replay-cell-number">${quantity.toFixed(2)}</td>
                             <td class="replay-cell-center">${entriesDisplay}</td>
+                            <td class="replay-cell-center">${tpDisplay}</td>
+                            <td class="replay-cell-left" style="vertical-align:middle;padding:6px 8px;">${breakdownHtml}</td>
                             <td><span class="replay-badge ${statusClass}">${status}</span></td>
                             <td>${openTime}</td>
                             <td>${closeTime}</td>
