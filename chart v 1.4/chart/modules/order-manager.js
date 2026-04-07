@@ -1252,6 +1252,25 @@ class OrderManager {
     }
 
     /**
+     * Pip $/lot aligned with `_enginePnL` / marketCalcEngine (varies with mark on crosses).
+     * Falls back to position snapshot when the engine is unavailable.
+     */
+    _getPositionPipValueForPnL(position, markPrice) {
+        const mark = Number(markPrice);
+        const t = this._positionTicker(position);
+        if (window.marketCalcEngine && typeof window.marketCalcEngine.getCalculator === 'function' && t) {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(t, this.marketType);
+                if (calc && typeof calc.calcPipValuePerLot === 'function') {
+                    const pv = calc.calcPipValuePerLot(Number.isFinite(mark) && mark > 0 ? mark : undefined);
+                    if (Number.isFinite(pv) && pv > 0) return pv;
+                }
+            } catch (e) { /* keep fallback */ }
+        }
+        return this._getPositionPipValue(position);
+    }
+
+    /**
      * $/lot/side for commission — position snapshot first, then session instrument (same ticker).
      * If both are missing, net-BE offset is 0 and SL stays at gross entry → journal can still show −2×comm×lots.
      */
@@ -1306,14 +1325,17 @@ class OrderManager {
     }
 
     /**
-     * Extra distance in **price** (not pips) past gross entry-level BE so that gross P&L at SL ≈ round-trip fees → net ~ $0.
+     * Extra distance in **price** (not pips) past gross entry so gross P&L at SL ≈ round-trip fees (matches `_enginePnL` pip value when mark is set).
      * BUY: add to entry; SELL: subtract from entry (profitable side for each).
+     * @param {number} [markPriceForPip] - quote for pip-value conversion (e.g. candle close); defaults to leg open price.
      */
-    _getNetBreakevenCommissionPriceOffset(position) {
+    _getNetBreakevenCommissionPriceOffset(position, markPriceForPip) {
         const commUsd = this._getRoundTripCommissionUsd(position);
         if (!(commUsd > 0)) return 0;
         const q = Number(position?.quantity) || 0;
-        const pipV = this._getPositionPipValue(position);
+        const mark = Number(markPriceForPip);
+        const pipMark = Number.isFinite(mark) && mark > 0 ? mark : (Number(position?.openPrice) || undefined);
+        const pipV = this._getPositionPipValueForPnL(position, pipMark);
         const pipS = this._getPositionPipSize(position);
         if (!(q > 0) || !(pipV > 0) || !(pipS > 0)) return 0;
         const pips = commUsd / (pipV * q);
@@ -19371,19 +19393,26 @@ class OrderManager {
                     ? allFilled.reduce((s, p) => s + p.openPrice * (p.quantity || 0), 0) / totalQty
                     : order.openPrice;
 
-                // Re-anchor SL for all BE-triggered siblings and this new order
+                const ccRecalc = typeof this.getCurrentCandle === 'function' ? this.getCurrentCandle() : null;
+                const markRecalc = Number.isFinite(Number.parseFloat(ccRecalc?.c)) && Number.parseFloat(ccRecalc.c) > 0
+                    ? Number.parseFloat(ccRecalc.c)
+                    : order.openPrice;
+
+                // Re-anchor SL per leg so gross P&L at stop matches that leg's round-trip comm (avg is only for triggers).
                 allFilled.forEach(pos => {
                     if (!pos.breakevenSettings) return;
                     const pipOffset = pos.breakevenSettings.pipOffset || 0;
                     const pipSize = this._getPositionPipSize(pos);
+                    const pipOffsetPrice = pipOffset * pipSize;
+                    const netFee = this._getNetBreakevenCommissionPriceOffset(pos, markRecalc);
                     const oldSL = pos.stopLoss;
                     const newSL = pos.type === 'BUY'
-                        ? weightedAvg + pipOffset * pipSize
-                        : weightedAvg - pipOffset * pipSize;
+                        ? pos.openPrice + pipOffsetPrice + netFee
+                        : pos.openPrice - pipOffsetPrice - netFee;
                     pos.stopLoss = newSL;
                     pos.breakevenSettings.be_recalculated = true;
                     this._logSLTPModification(pos, 'SL', oldSL, newSL, 'AUTO_BE_RECALC');
-                    console.log(`   🔄 BE_RECALC for #${pos.id}: SL re-anchored ${oldSL?.toFixed(5)} → ${newSL.toFixed(5)} (new avg entry ${weightedAvg.toFixed(5)})`);
+                    console.log(`   🔄 BE_RECALC for #${pos.id}: SL re-anchored ${oldSL?.toFixed(5)} → ${newSL.toFixed(5)} (leg ${pos.openPrice.toFixed(5)}, group avg ${weightedAvg.toFixed(5)})`);
                 });
             }
         }
@@ -19605,10 +19634,13 @@ class OrderManager {
                         const oldSL = position.stopLoss;
                         const pipOffset = position.breakevenSettings.pipOffset || 0;
                         const pipOffsetPrice = pipOffset * posPipSize;
-                        const netFeeOffset = this._getNetBreakevenCommissionPriceOffset(position);
-                        console.log(`      AvgEntry: ${beEntryBuy.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}, netFeeOffset: ${netFeeOffset.toFixed(5)}`);
-                        position.stopLoss = beEntryBuy + pipOffsetPrice + netFeeOffset;
-                        console.log(`      New SL = avgEntry + pts + net(fees) → ${position.stopLoss.toFixed(5)} (gross ≈ round-trip commission so net ~ $0)`);
+                        const markBePip = Number.isFinite(Number.parseFloat(currentCandle?.c)) && Number.parseFloat(currentCandle.c) > 0
+                            ? Number.parseFloat(currentCandle.c)
+                            : position.openPrice;
+                        const netFeeOffset = this._getNetBreakevenCommissionPriceOffset(position, markBePip);
+                        console.log(`      LegEntry: ${position.openPrice.toFixed(5)}, AvgEntry (trigger): ${beEntryBuy.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}, netFeeOffset: ${netFeeOffset.toFixed(5)}`);
+                        position.stopLoss = position.openPrice + pipOffsetPrice + netFeeOffset;
+                        console.log(`      New SL = legEntry + pts + net(fees) → ${position.stopLoss.toFixed(5)} (gross P&L at SL ≈ round-trip commission for this leg)`);
                         position.breakevenSettings.triggered = true;
                         
                         if (position.trailingStop && !position.trailingStop.activated) {
@@ -19635,7 +19667,8 @@ class OrderManager {
                             (this.openPositions || [])
                                 .filter(p => p.splitGroupId === position.splitGroupId && p.id !== position.id)
                                 .forEach(sib => {
-                                    sib.stopLoss = position.stopLoss;
+                                    const sibPip = this._getPositionPipSize(sib);
+                                    sib.stopLoss = sib.openPrice + pipOffset * sibPip + this._getNetBreakevenCommissionPriceOffset(sib, markBePip);
                                     if (sib.breakevenSettings) sib.breakevenSettings.triggered = true;
                                     sib._beTriggeredBarT = currentCandle.t;
                                     this.removeSLTPLines(sib.id);
@@ -19686,7 +19719,7 @@ class OrderManager {
                             if (position.autoBreakeven && position.breakevenSettings?.triggered) {
                                 const pipOffset = position.breakevenSettings.pipOffset || 0;
                                 const ps = this._getPositionPipSize(position);
-                                breakevenSL = position.openPrice + (pipOffset * ps) + this._getNetBreakevenCommissionPriceOffset(position);
+                                breakevenSL = position.openPrice + (pipOffset * ps) + this._getNetBreakevenCommissionPriceOffset(position, trailPrice);
                             }
                             const minSL = (position.autoBreakeven && position.breakevenSettings?.triggered) 
                                 ? Math.max(position.stopLoss, breakevenSL) 
@@ -19878,10 +19911,13 @@ class OrderManager {
                         const oldSL = position.stopLoss;
                         const pipOffset = position.breakevenSettings.pipOffset || 0;
                         const pipOffsetPrice = pipOffset * posPipSize;
-                        const netFeeOffset = this._getNetBreakevenCommissionPriceOffset(position);
-                        console.log(`      AvgEntry: ${beEntrySell.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}, netFeeOffset: ${netFeeOffset.toFixed(5)}`);
-                        position.stopLoss = beEntrySell - pipOffsetPrice - netFeeOffset;
-                        console.log(`      New SL = avgEntry − pts − net(fees) → ${position.stopLoss.toFixed(5)} (gross ≈ round-trip commission so net ~ $0)`);
+                        const markBePipSell = Number.isFinite(Number.parseFloat(currentCandle?.c)) && Number.parseFloat(currentCandle.c) > 0
+                            ? Number.parseFloat(currentCandle.c)
+                            : position.openPrice;
+                        const netFeeOffset = this._getNetBreakevenCommissionPriceOffset(position, markBePipSell);
+                        console.log(`      LegEntry: ${position.openPrice.toFixed(5)}, AvgEntry (trigger): ${beEntrySell.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}, netFeeOffset: ${netFeeOffset.toFixed(5)}`);
+                        position.stopLoss = position.openPrice - pipOffsetPrice - netFeeOffset;
+                        console.log(`      New SL = legEntry − pts − net(fees) → ${position.stopLoss.toFixed(5)} (gross P&L at SL ≈ round-trip commission for this leg)`);
                         position.breakevenSettings.triggered = true;
                         
                         if (position.trailingStop && !position.trailingStop.activated) {
@@ -19908,7 +19944,8 @@ class OrderManager {
                             (this.openPositions || [])
                                 .filter(p => p.splitGroupId === position.splitGroupId && p.id !== position.id)
                                 .forEach(sib => {
-                                    sib.stopLoss = position.stopLoss;
+                                    const sibPip = this._getPositionPipSize(sib);
+                                    sib.stopLoss = sib.openPrice - pipOffset * sibPip - this._getNetBreakevenCommissionPriceOffset(sib, markBePipSell);
                                     sib._beTriggeredBarT = currentCandle.t;
                                     if (sib.breakevenSettings) sib.breakevenSettings.triggered = true;
                                     this.removeSLTPLines(sib.id);
@@ -19957,7 +19994,7 @@ class OrderManager {
                             if (position.autoBreakeven && position.breakevenSettings?.triggered) {
                                 const pipOffset = position.breakevenSettings.pipOffset || 0;
                                 const ps = this._getPositionPipSize(position);
-                                breakevenSL = position.openPrice - (pipOffset * ps) - this._getNetBreakevenCommissionPriceOffset(position);
+                                breakevenSL = position.openPrice - (pipOffset * ps) - this._getNetBreakevenCommissionPriceOffset(position, trailPrice);
                             }
                             const maxSL = (position.autoBreakeven && position.breakevenSettings?.triggered) 
                                 ? Math.min(position.stopLoss, breakevenSL) 
