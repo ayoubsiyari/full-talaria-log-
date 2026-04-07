@@ -13509,19 +13509,33 @@ class OrderManager {
     }
 
     /**
-     * Keep TP on the profit side of SL: BUY requires tp above SL; SELL requires tp below SL.
+     * Keep TP on the profit side of entry and SL: BUY → above both; SELL → below both.
      */
-    _clampTpPriceRelativeToSl(side, tpPrice, slPrice, pipSize) {
+    _clampTpDragPrice(side, tpPrice, entryPrice, slPrice, pipSize) {
         let p = Number(tpPrice);
-        const sl = Number(slPrice);
         const ps = Number(pipSize) > 0 ? pipSize : (this.pipSize || 0.0001);
         const pad = Math.max(ps * 0.5, 1e-12);
-        if (!Number.isFinite(p) || !Number.isFinite(sl) || !(sl > 0)) return p;
+        if (!Number.isFinite(p)) return p;
+        const e = Number(entryPrice);
+        const sl = Number(slPrice);
         const s = String(side || 'BUY').toUpperCase();
+
         if (s === 'SELL') {
-            return Math.min(p, sl - pad);
+            if (Number.isFinite(e) && e > 0) {
+                p = Math.min(p, e - pad);
+            }
+            if (Number.isFinite(sl) && sl > 0) {
+                p = Math.min(p, sl - pad);
+            }
+            return p;
         }
-        return Math.max(p, sl + pad);
+        if (Number.isFinite(e) && e > 0) {
+            p = Math.max(p, e + pad);
+        }
+        if (Number.isFinite(sl) && sl > 0) {
+            p = Math.max(p, sl + pad);
+        }
+        return p;
     }
 
     makePreviewLineDraggable(lineData) {
@@ -13639,14 +13653,15 @@ class OrderManager {
                 const isTpPreviewDrag =
                     lineData.label === 'TP' ||
                     (lineData.label && /^TP\d+$/.test(String(lineData.label)));
-                if (isTpPreviewDrag && enableSL) {
+                if (isTpPreviewDrag) {
                     let slP = parseFloat(document.getElementById('slPrice')?.value || 0);
                     const slPrev = self.previewLines.sl;
                     if (slPrev && !slPrev.isBadge && Number.isFinite(slPrev.price) && slPrev.price > 0) {
                         slP = slPrev.price;
                     }
-                    if (slP > 0) {
-                        const c = self._clampTpPriceRelativeToSl(self.orderSide, newPrice, slP, self.pipSize);
+                    const entryPx = self._getReferenceEntryForOrderMath();
+                    if ((entryPx > 0) || (enableSL && slP > 0)) {
+                        const c = self._clampTpDragPrice(self.orderSide, newPrice, entryPx, slP, self.pipSize);
                         if (c !== newPrice) {
                             newPrice = c;
                             clampedY = ch.scales.yScale(newPrice);
@@ -20890,8 +20905,8 @@ class OrderManager {
             // Convert Y position to price using inverse scale
             if (ctx.scales && ctx.scales.yScale) {
                 let newPrice = ctx.scales.yScale.invert(newY);
-                if (lineType === 'tp' && order.stopLoss > 0 && Number.isFinite(order.stopLoss)) {
-                    const c = self._clampTpPriceRelativeToSl(order.type, newPrice, order.stopLoss, self.pipSize);
+                if (lineType === 'tp') {
+                    const c = self._clampTpDragPrice(order.type, newPrice, order.openPrice, order.stopLoss, self.pipSize);
                     if (c !== newPrice) {
                         newPrice = c;
                         newY = ctx.scales.yScale(newPrice);
@@ -21233,12 +21248,10 @@ class OrderManager {
             // Convert Y position to price using inverse scale
             if (ctx.scales && ctx.scales.yScale) {
                 let newPrice = ctx.scales.yScale.invert(newY);
-                if (order.stopLoss > 0 && Number.isFinite(order.stopLoss)) {
-                    const c = self._clampTpPriceRelativeToSl(order.type, newPrice, order.stopLoss, self.pipSize);
-                    if (c !== newPrice) {
-                        newPrice = c;
-                        newY = ctx.scales.yScale(newPrice);
-                    }
+                const cTp = self._clampTpDragPrice(order.type, newPrice, order.openPrice, order.stopLoss, self.pipSize);
+                if (cTp !== newPrice) {
+                    newPrice = cTp;
+                    newY = ctx.scales.yScale(newPrice);
                 }
 
                 // Update target price in the order (and all split siblings)
@@ -21425,8 +21438,14 @@ class OrderManager {
             const svgRect = ctx.svg.node().getBoundingClientRect();
             let mouseY = e.clientY - svgRect.top;
             let newPrice = ctx.scales.yScale.invert(mouseY);
-            if (dragType === 'tp' && pendingOrder.stopLoss > 0 && Number.isFinite(pendingOrder.stopLoss)) {
-                const c = self._clampTpPriceRelativeToSl(pendingOrder.direction, newPrice, pendingOrder.stopLoss, self.pipSize);
+            if (dragType === 'tp') {
+                const c = self._clampTpDragPrice(
+                    pendingOrder.direction,
+                    newPrice,
+                    pendingOrder.entryPrice,
+                    pendingOrder.stopLoss,
+                    self.pipSize
+                );
                 if (c !== newPrice) {
                     newPrice = c;
                     mouseY = ctx.scales.yScale(newPrice);
@@ -21475,8 +21494,14 @@ class OrderManager {
             const svgRect = ctx.svg.node().getBoundingClientRect();
             const mouseY = e.clientY - svgRect.top;
             let newPrice = ctx.scales.yScale.invert(mouseY);
-            if (dragType === 'tp' && pendingOrder.stopLoss > 0 && Number.isFinite(pendingOrder.stopLoss)) {
-                newPrice = self._clampTpPriceRelativeToSl(pendingOrder.direction, newPrice, pendingOrder.stopLoss, self.pipSize);
+            if (dragType === 'tp') {
+                newPrice = self._clampTpDragPrice(
+                    pendingOrder.direction,
+                    newPrice,
+                    pendingOrder.entryPrice,
+                    pendingOrder.stopLoss,
+                    self.pipSize
+                );
             }
 
             if (dragType === 'tp') {
@@ -21615,8 +21640,8 @@ class OrderManager {
             const svgRect = ctx.svg.node().getBoundingClientRect();
             let mouseY = e.clientY - svgRect.top;
             let newPrice = ctx.scales.yScale.invert(mouseY);
-            if (dragType === 'tp' && order.stopLoss > 0 && Number.isFinite(order.stopLoss)) {
-                const c = self._clampTpPriceRelativeToSl(order.type, newPrice, order.stopLoss, self.pipSize);
+            if (dragType === 'tp') {
+                const c = self._clampTpDragPrice(order.type, newPrice, order.openPrice, order.stopLoss, self.pipSize);
                 if (c !== newPrice) {
                     newPrice = c;
                     mouseY = ctx.scales.yScale(newPrice);
@@ -21666,8 +21691,8 @@ class OrderManager {
             const svgRect = ctx.svg.node().getBoundingClientRect();
             const mouseY = e.clientY - svgRect.top;
             let newPrice = ctx.scales.yScale.invert(mouseY);
-            if (dragType === 'tp' && order.stopLoss > 0 && Number.isFinite(order.stopLoss)) {
-                newPrice = self._clampTpPriceRelativeToSl(order.type, newPrice, order.stopLoss, self.pipSize);
+            if (dragType === 'tp') {
+                newPrice = self._clampTpDragPrice(order.type, newPrice, order.openPrice, order.stopLoss, self.pipSize);
             }
 
             // Validate direction
@@ -24245,8 +24270,14 @@ class OrderManager {
                 const chartHeight = ch.h || 500;
                 let clampedY = Math.max(0, Math.min(chartHeight, event.y));
                 let newPrice = ch.scales.yScale.invert(clampedY);
-                if (target.type === 'TP' && pendingOrder.stopLoss > 0 && Number.isFinite(pendingOrder.stopLoss)) {
-                    const c = self._clampTpPriceRelativeToSl(pendingOrder.direction, newPrice, pendingOrder.stopLoss, self.pipSize);
+                if (target.type === 'TP') {
+                    const c = self._clampTpDragPrice(
+                        pendingOrder.direction,
+                        newPrice,
+                        pendingOrder.entryPrice,
+                        pendingOrder.stopLoss,
+                        self.pipSize
+                    );
                     if (c !== newPrice) {
                         newPrice = c;
                         const ay = ch.scales.yScale(newPrice);
