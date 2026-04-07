@@ -26496,12 +26496,15 @@ class OrderManager {
             console.log(`  🛑 Drawing SL line at ${order.stopLoss.toFixed(2)}`);
             
             // Calculate potential loss at SL — sum all legs for scale-in / split groups
-            let slPnL = this.estimatePnLForPriceLevel(order.type, order.openPrice, order.stopLoss, order.quantity, orderSym);
+            let slPnL = this.estimatePnLForPriceLevel(order.type, order.openPrice, order.stopLoss, Number(order.quantity) || 0, orderSym);
             if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
                 const members = this._getSplitGroupOpenPositions(order);
-                slPnL = members.reduce((sum, m) => sum + this.estimatePnLForPriceLevel(
-                    m.type, m.openPrice, order.stopLoss, m.quantity, orderSym
-                ), 0);
+                slPnL = members.reduce((sum, m) => {
+                    const mq = Number(m.quantity) || 0;
+                    if (mq <= 0) return sum;
+                    const legSym = m.ticker || m.symbol || orderSym;
+                    return sum + this.estimatePnLForPriceLevel(m.type, m.openPrice, order.stopLoss, mq, legSym);
+                }, 0);
             }
             
             const slLine = chart.svg.append('line')
@@ -26627,13 +26630,16 @@ class OrderManager {
                     // Normalize percentage among remaining non-hit targets for correct lot calculation
                     const normalizedPct = totalPctRemaining > 0 ? (target.percentage / totalPctRemaining) * 100 : target.percentage;
                     // Calculate PnL for this target (sum all legs for scale-in)
-                    const targetQuantity = order.quantity * (normalizedPct / 100);
+                    const targetQuantity = (Number(order.quantity) || 0) * (normalizedPct / 100);
                     let tpPnL = this.estimatePnLForPriceLevel(order.type, order.openPrice, target.price, targetQuantity, orderSym);
                     if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
                         const members = this._getSplitGroupOpenPositions(order);
                         tpPnL = members.reduce((sum, m) => {
-                            const tq = m.quantity * (normalizedPct / 100);
-                            return sum + this.estimatePnLForPriceLevel(m.type, m.openPrice, target.price, tq, orderSym);
+                            const mq = Number(m.quantity) || 0;
+                            if (mq <= 0) return sum;
+                            const tq = mq * (normalizedPct / 100);
+                            const legSym = m.ticker || m.symbol || orderSym;
+                            return sum + this.estimatePnLForPriceLevel(m.type, m.openPrice, target.price, tq, legSym);
                         }, 0);
                     }
                     
@@ -26806,12 +26812,15 @@ class OrderManager {
             console.log(`  🎯 Drawing single TP line at ${order.takeProfit.toFixed(2)}`);
             
             // Calculate potential profit at TP — sum all legs for scale-in
-            let tpPnL = this.estimatePnLForPriceLevel(order.type, order.openPrice, order.takeProfit, order.quantity, orderSym);
+            let tpPnL = this.estimatePnLForPriceLevel(order.type, order.openPrice, order.takeProfit, Number(order.quantity) || 0, orderSym);
             if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
                 const members = this._getSplitGroupOpenPositions(order);
-                tpPnL = members.reduce((sum, m) => sum + this.estimatePnLForPriceLevel(
-                    m.type, m.openPrice, order.takeProfit, m.quantity, orderSym
-                ), 0);
+                tpPnL = members.reduce((sum, m) => {
+                    const mq = Number(m.quantity) || 0;
+                    if (mq <= 0) return sum;
+                    const legSym = m.ticker || m.symbol || orderSym;
+                    return sum + this.estimatePnLForPriceLevel(m.type, m.openPrice, order.takeProfit, mq, legSym);
+                }, 0);
             }
             
             const tpLine = chart.svg.append('line')
