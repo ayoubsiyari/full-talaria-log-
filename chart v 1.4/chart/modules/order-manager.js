@@ -13717,11 +13717,13 @@ class OrderManager {
     }
 
     /**
-     * Trailing activation / step distances must use one consistent "entry" vs initial SL:
+     * Trailing activation / step distances vs initial SL:
      * - Single leg: that leg's open price.
-     * - Split / multi-entry: weighted average entry (same basket as SL $ label and basket R).
-     * Stored trailingActivateValue / trailingStepValue are re-applied when the basket avg is known.
-     * Legacy positions without those fields keep frozen activationThreshold / stepSize.
+     * - Split / multi-entry: **first activated leg** (lowest splitIndex, then earliest openTime) — same anchor
+     *   as ladder placement (main entry vs SL), not basket avg (avg stays for BE / shared R labels elsewhere).
+     * Stored trailingActivateValue / trailingStepValue are re-applied from that first-fill entry.
+     * Legacy positions without those fields keep frozen activationThreshold / stepSize but use first-fill
+     * entry for step math so every leg matches the group's trail geometry.
      */
     _getTrailingDynamicsForPosition(position) {
         const ts = position && position.trailingStop;
@@ -13730,11 +13732,13 @@ class OrderManager {
         if (!Number.isFinite(osl)) return null;
         const side = (position.type || 'BUY').toUpperCase();
         const isSplit = !!(position.isSplitEntry && position.splitGroupId);
-        const anchor = isSplit ? this._getSplitGroupAvgEntry(position) : Number(position.openPrice);
-        if (!Number.isFinite(anchor)) return null;
+        const trailEntryAnchor = isSplit
+            ? this._getSplitGroupFirstActivatedEntryPrice(position)
+            : Number(position.openPrice);
+        if (!Number.isFinite(trailEntryAnchor)) return null;
         const qty = isSplit ? this._slChartLabelQtyForOpenOrder(position) : (Number(position.quantity) || 0);
         if (!(qty > 0)) return null;
-        const riskDistance = side === 'BUY' ? anchor - osl : osl - anchor;
+        const riskDistance = side === 'BUY' ? trailEntryAnchor - osl : osl - trailEntryAnchor;
         if (!(riskDistance > 1e-12)) return null;
         const unitMode = ts.unitMode || 'rr';
         const vAct = ts.trailingActivateValue;
@@ -13742,19 +13746,19 @@ class OrderManager {
         if (Number.isFinite(Number(vAct)) && Number.isFinite(Number(vStep))) {
             const ad = this._trailingValueToPriceDistance(Number(vAct), unitMode, riskDistance, qty);
             const sd = this._trailingValueToPriceDistance(Number(vStep), unitMode, riskDistance, qty);
-            const activationThreshold = side === 'BUY' ? anchor + ad : anchor - ad;
+            const activationThreshold = side === 'BUY' ? trailEntryAnchor + ad : trailEntryAnchor - ad;
             return {
-                anchor,
+                anchor: trailEntryAnchor,
                 activationThreshold,
                 stepSize: sd,
-                openPriceForCompute: anchor
+                openPriceForCompute: trailEntryAnchor
             };
         }
         return {
-            anchor,
+            anchor: trailEntryAnchor,
             activationThreshold: ts.activationThreshold,
             stepSize: ts.stepSize,
-            openPriceForCompute: Number(position.openPrice)
+            openPriceForCompute: trailEntryAnchor
         };
     }
 
@@ -13781,11 +13785,11 @@ class OrderManager {
         return this.estimatePnLForPriceLevel(t, position.openPrice, stopPrice, q, sym);
     }
 
-    /** Trailing $ limit may freeze only after SL has trailed past basket avg entry (split / ladder). */
+    /** Trailing $ limit may freeze only after SL has trailed past first activated split entry (trail anchor). */
     _trailingLimitPastFirstEntry(position, stopPrice) {
         if (!position || stopPrice == null) return true;
         if (!position.isSplitEntry || !position.splitGroupId) return true;
-        const anchor = this._getSplitGroupAvgEntry(position);
+        const anchor = this._getSplitGroupFirstActivatedEntryPrice(position);
         const sp = Number(stopPrice);
         if (!Number.isFinite(sp) || !Number.isFinite(anchor)) return true;
         const side = (position.type || 'BUY').toUpperCase();
