@@ -27194,36 +27194,59 @@ class OrderManager {
         console.log(`✅ Order line removed. Remaining lines: ${this.orderLines.length}`);
     }
     
-    /** All open legs in a split / multi-entry group (deduped by id). */
+    /** All open legs in a split / multi-entry group (deduped by id and by splitIndex). */
     _getSplitGroupOpenPositions(order) {
         if (!order?.splitGroupId || !order.isSplitEntry) return order ? [order] : [];
-        const byId = new Map();
-        const add = (arr) => {
+        const raw = [];
+        const pushMatch = (arr) => {
             (arr || []).forEach((o) => {
-                if (o && o.splitGroupId === order.splitGroupId && o.isSplitEntry && !byId.has(o.id)) {
-                    byId.set(o.id, o);
-                }
+                if (o && o.splitGroupId === order.splitGroupId && o.isSplitEntry) raw.push(o);
             });
         };
-        add(this.openPositions);
-        add(this.orderService?.openPositions);
-        return [...byId.values()];
+        // Prefer orderManager list first so the canonical leg wins over a synced duplicate in orderService.
+        pushMatch(this.openPositions);
+        pushMatch(this.orderService?.openPositions);
+        const seenId = new Set();
+        const seenSplitIdx = new Set();
+        const out = [];
+        for (const o of raw) {
+            if (seenId.has(o.id)) continue;
+            seenId.add(o.id);
+            const si = Number(o.splitIndex);
+            if (Number.isFinite(si) && si > 0) {
+                if (seenSplitIdx.has(si)) continue;
+                seenSplitIdx.add(si);
+            }
+            out.push(o);
+        }
+        return out;
     }
 
-    /** All pending legs in the same split group. */
+    /** All pending legs in the same split group (deduped by id and by splitIndex). */
     _getSplitGroupPendingOrders(pendingOrder) {
         if (!pendingOrder?.splitGroupId || !pendingOrder.isSplitEntry) return pendingOrder ? [pendingOrder] : [];
-        const byId = new Map();
-        const add = (arr) => {
+        const raw = [];
+        const pushMatch = (arr) => {
             (arr || []).forEach((o) => {
-                if (o && o.splitGroupId === pendingOrder.splitGroupId && o.isSplitEntry && !byId.has(o.id)) {
-                    byId.set(o.id, o);
-                }
+                if (o && o.splitGroupId === pendingOrder.splitGroupId && o.isSplitEntry) raw.push(o);
             });
         };
-        add(this.pendingOrders);
-        add(this.orderService?.pendingOrders);
-        return [...byId.values()];
+        pushMatch(this.pendingOrders);
+        pushMatch(this.orderService?.pendingOrders);
+        const seenId = new Set();
+        const seenSplitIdx = new Set();
+        const out = [];
+        for (const o of raw) {
+            if (seenId.has(o.id)) continue;
+            seenId.add(o.id);
+            const si = Number(o.splitIndex);
+            if (Number.isFinite(si) && si > 0) {
+                if (seenSplitIdx.has(si)) continue;
+                seenSplitIdx.add(si);
+            }
+            out.push(o);
+        }
+        return out;
     }
 
     _findOpenPositionById(orderId) {
