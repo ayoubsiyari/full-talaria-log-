@@ -923,7 +923,7 @@ class OrderManager {
      * SL/TP vs that instrument's bar high/low while the main chart is on another pair (milestone 8.2).
      * Respects _beTriggeredBarT (same as main path) so BE does not immediately stop out on extra ticks.
      */
-    _collectBackgroundSLTPTouches(position, bar, positionsToClose, queuedSplitSlGroupIds) {
+    _collectBackgroundSLTPTouches(position, bar, positionsToClose, queuedSplitSlGroupIds, queuedSplitTpKeys) {
         if (!position || !bar) return;
         const bgOpen = Number.parseFloat(bar.o);
         const high = Number.parseFloat(bar.h);
@@ -948,20 +948,8 @@ class OrderManager {
                     if (!Number.isFinite(tp) || high < tp) return;
                     const slBgBuy = Number.parseFloat(position.stopLoss);
                     if (Number.isFinite(slBgBuy) && tp <= slBgBuy) return; // trailing SL already above this TP rung (BUY)
-                    target.hit = true;
-                    const closePercentage = target.percentage / 100;
-                    const allTargetsHit = position.tpTargets.every((t) => t && t.hit);
-                    const closeType = allTargetsHit ? 'TP' : 'TP-PARTIAL';
                     const fillPx = hasOpen ? this._gapFill(tp, bgOpen, true, true) : tp;
-                    const resolvedTargetId = target.id != null ? target.id : index;
-                    positionsToClose.push({
-                        id: position.id,
-                        closePrice: fillPx,
-                        type: closeType,
-                        percentage: allTargetsHit ? null : closePercentage,
-                        targetId: resolvedTargetId,
-                        bgCloseTime: barTime
-                    });
+                    this._pushSplitGroupMultiTpClosesFromHit(position, target, index, fillPx, positionsToClose, queuedSplitTpKeys, barTime);
                 });
                 const sl = Number.parseFloat(position.stopLoss);
                 if (!skipSlBgAfterTrail && Number.isFinite(sl) && low <= sl) {
@@ -996,20 +984,8 @@ class OrderManager {
                     if (!Number.isFinite(tp) || low > tp) return;
                     const slBgSell = Number.parseFloat(position.stopLoss);
                     if (Number.isFinite(slBgSell) && tp >= slBgSell) return; // trailing SL already below this TP rung (SELL)
-                    target.hit = true;
-                    const closePercentage = target.percentage / 100;
-                    const allTargetsHit = position.tpTargets.every((t) => t && t.hit);
-                    const closeType = allTargetsHit ? 'TP' : 'TP-PARTIAL';
                     const fillPx = hasOpen ? this._gapFill(tp, bgOpen, false, true) : tp;
-                    const resolvedTargetId = target.id != null ? target.id : index;
-                    positionsToClose.push({
-                        id: position.id,
-                        closePrice: fillPx,
-                        type: closeType,
-                        percentage: allTargetsHit ? null : closePercentage,
-                        targetId: resolvedTargetId,
-                        bgCloseTime: barTime
-                    });
+                    this._pushSplitGroupMultiTpClosesFromHit(position, target, index, fillPx, positionsToClose, queuedSplitTpKeys, barTime);
                 });
                 const sl = Number.parseFloat(position.stopLoss);
                 if (!skipSlBgAfterTrail && Number.isFinite(sl) && high >= sl) {
@@ -1619,6 +1595,81 @@ class OrderManager {
         for (const m of this._getSplitGroupOpenPositions(position)) {
             if ((Number(m.quantity) || 0) <= 0) continue;
             pushRow(m.id, this._slCloseHitType(m));
+        }
+    }
+
+    /** Match the same TP ladder rung across split legs (id first, then price). */
+    _findMatchingTpTargetOnLeg(leg, refTarget) {
+        if (!leg?.tpTargets?.length || !refTarget) return null;
+        if (refTarget.id != null && refTarget.id !== undefined) {
+            const byId = leg.tpTargets.find(
+                (t) => t && (t.id === refTarget.id || String(t.id) === String(refTarget.id))
+            );
+            if (byId) return byId;
+        }
+        const rp = Number(refTarget.price);
+        if (!Number.isFinite(rp)) return null;
+        return (
+            leg.tpTargets.find(
+                (t) => t && Number.isFinite(Number(t.price)) && Math.abs(Number(t.price) - rp) < 1e-5
+            ) || null
+        );
+    }
+
+    /**
+     * Multi-TP hit on split entry: same ladder rung must close a slice on **every** open leg (like shared SL).
+     * Idempotent per `splitGroupId` + TP rung per bar via `queuedSplitTpKeys`.
+     */
+    _pushSplitGroupMultiTpClosesFromHit(position, refTarget, sortedIndex, fillPx, positionsToClose, queuedSplitTpKeys, bgCloseTime) {
+        const resolvedTpId = refTarget.id != null ? refTarget.id : sortedIndex;
+        const pctFrac = Number(refTarget.percentage) / 100;
+
+        const pushTpRow = (row) => {
+            if (bgCloseTime != null) row.bgCloseTime = bgCloseTime;
+            positionsToClose.push(row);
+        };
+
+        if (!queuedSplitTpKeys || !position.isSplitEntry || !position.splitGroupId) {
+            refTarget.hit = true;
+            refTarget._noTriggerBeforeTime = null;
+            refTarget._noTriggerBeforeTick = undefined;
+            const allHit = position.tpTargets.every((t) => t && t.hit);
+            const ct = allHit ? 'TP' : 'TP-PARTIAL';
+            pushTpRow({
+                id: position.id,
+                closePrice: fillPx,
+                type: ct,
+                percentage: allHit ? null : pctFrac,
+                targetId: resolvedTpId
+            });
+            return;
+        }
+
+        const dedupeKey = `${position.splitGroupId}|mtp|${String(resolvedTpId)}|${Number(refTarget.price)}`;
+        if (queuedSplitTpKeys.has(dedupeKey)) return;
+        queuedSplitTpKeys.add(dedupeKey);
+
+        const legs = this._getSplitGroupOpenPositions(position);
+        for (const m of legs) {
+            const mt = this._findMatchingTpTargetOnLeg(m, refTarget);
+            if (!mt || mt.hit) continue;
+            mt.hit = true;
+            mt._noTriggerBeforeTime = null;
+            mt._noTriggerBeforeTick = undefined;
+        }
+        for (const m of legs) {
+            if ((Number(m.quantity) || 0) <= 0) continue;
+            const mt = this._findMatchingTpTargetOnLeg(m, refTarget);
+            if (!mt) continue;
+            const allHit = m.tpTargets.every((t) => t && t.hit);
+            const ct = allHit ? 'TP' : 'TP-PARTIAL';
+            pushTpRow({
+                id: m.id,
+                closePrice: fillPx,
+                type: ct,
+                percentage: allHit ? null : pctFrac,
+                targetId: resolvedTpId
+            });
         }
     }
 
@@ -20189,6 +20240,8 @@ class OrderManager {
         const positionsToClose = [];
         /** One enqueue per splitGroupId when shared SL/BE fires (all legs close at same stop). */
         const queuedSplitSlGroupIds = new Set();
+        /** One enqueue per splitGroupId + TP rung when multi-TP hits (partial/final on every leg). */
+        const queuedSplitTpKeys = new Set();
         const chartTickerForBar = this._getActiveTicker();
         const chartFileId = (() => {
             const oc = this._getOrderContextChart() || this.chart;
@@ -20218,7 +20271,7 @@ class OrderManager {
                     const bh = Number.parseFloat(bgBar.h);
                     const bl = Number.parseFloat(bgBar.l);
                     if (Number.isFinite(bh) && Number.isFinite(bl) && !this._shouldDeferBackgroundSLTPTouches(bgBar)) {
-                        this._collectBackgroundSLTPTouches(position, bgBar, positionsToClose, queuedSplitSlGroupIds);
+                        this._collectBackgroundSLTPTouches(position, bgBar, positionsToClose, queuedSplitSlGroupIds, queuedSplitTpKeys);
                     }
                 }
                 totalPnL += Number.parseFloat(position.unrealizedPnL) || 0;
@@ -20473,28 +20526,24 @@ class OrderManager {
                             tpTgtHit = high >= target.price;
                         }
                         if (tpTgtHit) {
-                            target._noTriggerBeforeTime = null;
-                            target._noTriggerBeforeTick = undefined;
-                            target.hit = true;
-                            const closePercentage = target.percentage / 100;
-                            const allTargetsHit = position.tpTargets.every(t => t.hit);
-                            const closeType = allTargetsHit ? 'TP' : 'TP-PARTIAL';
                             const fillPx = this._gapFill(target.price, open, true, true);
-                            
                             const resolvedTpId = target.id != null ? target.id : index;
-                            console.log(`   🎯 TP TARGET #${resolvedTpId} HIT! ${allTargetsHit ? 'FINAL TARGET - ' : ''}Closing ${(closePercentage * 100).toFixed(0)}% at ${fillPx.toFixed(5)} for BUY #${position.id}`);
-                            console.log(`      allTargetsHit=${allTargetsHit}, closeType=${closeType}, percentage=${closePercentage}`);
-                            positionsToClose.push({ 
-                                id: position.id, 
-                                closePrice: fillPx, 
-                                type: closeType,
-                                percentage: allTargetsHit ? null : closePercentage,
-                                targetId: resolvedTpId
-                            });
+                            const _pctPrev = Number(target.percentage) / 100;
+                            console.log(
+                                `   🎯 TP TARGET #${resolvedTpId} HIT! (split group enqueues all legs) at ${fillPx.toFixed(5)} for BUY #${position.id} — ~${_pctPrev * 100}% leg slice`
+                            );
+                            this._pushSplitGroupMultiTpClosesFromHit(position, target, index, fillPx, positionsToClose, queuedSplitTpKeys);
                         }
                     });
                     // M3-2: exit-bar clamping — cap bar_high_r to the first partial TP's R-value
-                    const _buyTpHitsThisBar = positionsToClose.filter(p => p.id === position.id && p.type.includes('TP'));
+                    const _splitBuyIds = position.isSplitEntry && position.splitGroupId
+                        ? new Set(this._getSplitGroupOpenPositions(position).map((m) => m.id))
+                        : null;
+                    const _buyTpHitsThisBar = positionsToClose.filter((p) => {
+                        if (!p.type.includes('TP')) return false;
+                        if (_splitBuyIds) return _splitBuyIds.has(p.id);
+                        return p.id === position.id;
+                    });
                     if (_buyTpHitsThisBar.length > 0 && Array.isArray(position.bar_high_r) && position.bar_high_r.length > 0) {
                         const _firstTpPx = Math.min(..._buyTpHitsThisBar.map(p => p.closePrice));
                         const _arrayBase = Number.parseFloat(position.array_base_price ?? position.openPrice);
@@ -20796,28 +20845,24 @@ class OrderManager {
                             sellTpTgtHit = low <= target.price;
                         }
                         if (sellTpTgtHit) {
-                            target._noTriggerBeforeTime = null;
-                            target._noTriggerBeforeTick = undefined;
-                            target.hit = true;
-                            const closePercentage = target.percentage / 100;
-                            const allTargetsHit = position.tpTargets.every(t => t.hit);
-                            const closeType = allTargetsHit ? 'TP' : 'TP-PARTIAL';
                             const fillPx = this._gapFill(target.price, open, false, true);
-                            
                             const resolvedTpId = target.id != null ? target.id : index;
-                            console.log(`   🎯 TP TARGET #${resolvedTpId} HIT! ${allTargetsHit ? 'FINAL TARGET - ' : ''}Closing ${(closePercentage * 100).toFixed(0)}% at ${fillPx.toFixed(5)} for SELL #${position.id}`);
-                            console.log(`      allTargetsHit=${allTargetsHit}, closeType=${closeType}, percentage=${closePercentage}`);
-                            positionsToClose.push({ 
-                                id: position.id, 
-                                closePrice: fillPx, 
-                                type: closeType,
-                                percentage: allTargetsHit ? null : closePercentage,
-                                targetId: resolvedTpId
-                            });
+                            const _pctPrevS = Number(target.percentage) / 100;
+                            console.log(
+                                `   🎯 TP TARGET #${resolvedTpId} HIT! (split group enqueues all legs) at ${fillPx.toFixed(5)} for SELL #${position.id} — ~${_pctPrevS * 100}% leg slice`
+                            );
+                            this._pushSplitGroupMultiTpClosesFromHit(position, target, index, fillPx, positionsToClose, queuedSplitTpKeys);
                         }
                     });
                     // M3-2: exit-bar clamping — cap bar_high_r to the first partial TP's R-value (SELL)
-                    const _sellTpHitsThisBar = positionsToClose.filter(p => p.id === position.id && p.type.includes('TP'));
+                    const _splitSellIds = position.isSplitEntry && position.splitGroupId
+                        ? new Set(this._getSplitGroupOpenPositions(position).map((m) => m.id))
+                        : null;
+                    const _sellTpHitsThisBar = positionsToClose.filter((p) => {
+                        if (!p.type.includes('TP')) return false;
+                        if (_splitSellIds) return _splitSellIds.has(p.id);
+                        return p.id === position.id;
+                    });
                     if (_sellTpHitsThisBar.length > 0 && Array.isArray(position.bar_high_r) && position.bar_high_r.length > 0) {
                         const _firstTpPx = Math.max(..._sellTpHitsThisBar.map(p => p.closePrice)); // highest price = closest to SELL entry
                         const _arrayBase = Number.parseFloat(position.array_base_price ?? position.openPrice);
