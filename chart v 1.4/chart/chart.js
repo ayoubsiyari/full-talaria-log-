@@ -335,6 +335,8 @@ class Chart {
         this.apiUrl = window.CHART_API_URL || '/api';
         this.tileManager = new TileManager(this.apiUrl, 150);
         this.currentFileId = null;
+        /** Bumps on each server timeframe load so stale async responses are ignored. */
+        this._timeframeLoadSeq = 0;
         this.currentSymbol = null; // Store detected symbol from CSV
         this._RAW_DATA_CAP = 300_000; // ring buffer: max candles in memory
         /**
@@ -9691,8 +9693,10 @@ class Chart {
      * @param {string} timeframe - Timeframe identifier (e.g., '1m', '5m', '1h', '1d')
      */
     setTimeframe(timeframe) {
-        if (!this.rawData || this.rawData.length === 0) return;
-        
+        const hasData = Array.isArray(this.rawData) && this.rawData.length > 0;
+        // Empty rawData is normal during sync/replay races; still refetch when this panel is tied to a server file.
+        if (!hasData && !this.currentFileId) return;
+
         if (this.drawingManager && this.drawings && this.drawings.length > 0) {
             this.drawingManager.saveDrawings();
         }
@@ -9732,6 +9736,7 @@ class Chart {
         }
         
         // Fallback for non-file data (small local datasets)
+        if (!hasData) return;
         this.data = this.resampleData(this.rawData, timeframe);
         if (typeof this.recalculateIndicators === 'function') this.recalculateIndicators();
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
@@ -9749,12 +9754,14 @@ class Chart {
      * Fetches last 5000 candles at the requested timeframe.
      */
     async _loadTimeframeFromServer(timeframe) {
+        const loadId = ++this._timeframeLoadSeq;
         try {
             if (this.showLoader) this.showLoader('Changing timeframe...');
 
             const session = this.backtestingSession || {};
             const result = await this._fetchSmartWindow(this.currentFileId, timeframe, session);
 
+            if (loadId !== this._timeframeLoadSeq) return;
             if (!this._smartResponseHasPayload(result)) throw new Error('No data');
 
             this.rawData = [];
@@ -9787,8 +9794,10 @@ class Chart {
             });
 
         } catch (error) {
-            console.error('❌ Timeframe change failed:', error);
-            if (this.hideLoader) this.hideLoader();
+            if (loadId === this._timeframeLoadSeq) {
+                console.error('❌ Timeframe change failed:', error);
+                if (this.hideLoader) this.hideLoader();
+            }
         }
     }
     
