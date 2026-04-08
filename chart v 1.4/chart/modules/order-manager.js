@@ -1428,7 +1428,9 @@ class OrderManager {
      */
     _getSplitGroupAvgEntry(position) {
         if (!position.isSplitEntry || !position.splitGroupId) return position.openPrice;
-        const members = (this.openPositions || []).filter(p => p.splitGroupId === position.splitGroupId);
+        // Must match _getSplitGroupOpenPositions (manager + orderService lists) — using only
+        // this.openPositions drops legs that live only in the service copy → wrong avg ("last entry" BE).
+        const members = this._getSplitGroupOpenPositions(position);
         const totalQty = members.reduce((s, p) => s + (Number(p.quantity) || 0), 0);
         if (!(totalQty > 0)) return position.openPrice;
         const weightedSum = members.reduce((s, p) => s + (p.openPrice * (Number(p.quantity) || 0)), 0);
