@@ -31047,20 +31047,29 @@ class OrderManager {
     updateTrailingSL() {
         if (!this.trailingState || !this.chart) return;
         
-        // Match open-position trailing: BUY uses candle HIGH, SELL uses LOW (same as updatePositions).
         const data = this.chart.data;
         if (!data || data.length === 0) return;
         
         const lastCandle = data[data.length - 1];
-        const close = Number.parseFloat(lastCandle.c ?? lastCandle.close);
-        const high = Number.parseFloat(lastCandle.h ?? lastCandle.high);
-        const low = Number.parseFloat(lastCandle.l ?? lastCandle.low);
-        const hasHL = Number.isFinite(high) && Number.isFinite(low);
-        
         const ts = this.trailingState;
         const { entryPrice, originalSL, currentSL, activationThreshold, stepPips, currentStep, orderSide, activated } = ts;
         
-        const trailPrice = hasHL ? (orderSide === 'BUY' ? high : low) : close;
+        // Pre-order preview only: trail off the running last price (close, or replay tick path) so the
+        // SL follows price as it moves. Open positions still use bar H/L in updatePositions().
+        let trailPrice = Number.parseFloat(lastCandle.c ?? lastCandle.close);
+        const rs = this.replaySystem;
+        if (rs && typeof rs.getCurrentAnimatedPrice === 'function') {
+            const ap = rs.getCurrentAnimatedPrice();
+            if (Number.isFinite(ap)) trailPrice = ap;
+        }
+        if (!Number.isFinite(trailPrice)) {
+            const hi = Number.parseFloat(lastCandle.h ?? lastCandle.high);
+            const lo = Number.parseFloat(lastCandle.l ?? lastCandle.low);
+            if (Number.isFinite(hi) && Number.isFinite(lo)) {
+                trailPrice = orderSide === 'BUY' ? hi : lo;
+            }
+        }
+        if (!Number.isFinite(trailPrice)) return;
         
         let justActivatedThisBar = false;
         
@@ -31080,7 +31089,7 @@ class OrderManager {
                 ts.isActive = true;
                 
                 this.showNotification('🎯 Trailing SL Activated! Now trails in steps.', 'success');
-                console.log(`✅ Trailing activated! Trail price (H/L): ${trailPrice.toFixed(5)}, Threshold: ${activationThreshold.toFixed(5)}`);
+                console.log(`✅ Trailing activated! Trail price (last): ${trailPrice.toFixed(5)}, Threshold: ${activationThreshold.toFixed(5)}`);
                 
                 this.updateTrailingIndicator(true);
             } else {
