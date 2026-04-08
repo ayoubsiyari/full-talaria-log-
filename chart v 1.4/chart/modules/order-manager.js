@@ -21293,33 +21293,9 @@ class OrderManager {
                     this.removeSplitGroupAvgLine(position.splitGroupId);
                 }
                 this._cleanupOrphanedYAxisHighlights();
-                // Promote remaining open siblings to standalone so SL/TP draw correctly
+                // Defer promoting remaining siblings until after all batch closes this tick (see _scheduleSplitGroupSiblingPromotion).
                 if (position.splitGroupId && position.isSplitEntry) {
-                    const _seenOpen2 = new Set();
-                    const _openSiblings2 = [...(this.openPositions || []), ...(this.orderService?.openPositions || [])]
-                        .filter(p => {
-                            if (!p || p.splitGroupId !== position.splitGroupId || _seenOpen2.has(p.id)) return false;
-                            _seenOpen2.add(p.id);
-                            return true;
-                        });
-                    if (_openSiblings2.length > 0) {
-                        this.removeSplitGroupAvgLine(position.splitGroupId);
-                        this.removeMultiTPAvgLine(`splitgrp_${position.splitGroupId}`);
-                        _openSiblings2.forEach(leg => {
-                            leg.isSplitEntry = false;
-                            leg.splitGroupId = undefined;
-                            leg.splitIndex = undefined;
-                            leg.splitTotal = undefined;
-                        });
-                        _openSiblings2.forEach(leg => {
-                            this.removeSLTPLines(leg.id);
-                            this.drawSLTPLines(leg);
-                            if (Array.isArray(leg.tpTargets) && leg.tpTargets.length >= 1) {
-                                this.removeMultiTPAvgLine(leg.id);
-                                this.drawMultiTPAvgLine(leg);
-                            }
-                        });
-                    }
+                    this._scheduleSplitGroupSiblingPromotion(position.splitGroupId);
                 }
                 if (position.splitGroupId && position.isSplitEntry) {
                     this._cancelPendingOrdersInSplitGroup(position.splitGroupId);
@@ -27286,7 +27262,7 @@ class OrderManager {
         console.log(`✅ Order line removed. Remaining lines: ${this.orderLines.length}`);
     }
     
-    /** All open legs in a split / multi-entry group (deduped by id and by splitIndex). */
+    /** All open legs in a split / multi-entry group (deduped by **id** only — same row may appear in manager + service lists). */
     _getSplitGroupOpenPositions(order) {
         if (!order?.splitGroupId || !order.isSplitEntry) return order ? [order] : [];
         const raw = [];
@@ -27299,22 +27275,16 @@ class OrderManager {
         pushMatch(this.openPositions);
         pushMatch(this.orderService?.openPositions);
         const seenId = new Set();
-        const seenSplitIdx = new Set();
         const out = [];
         for (const o of raw) {
             if (seenId.has(o.id)) continue;
             seenId.add(o.id);
-            const si = Number(o.splitIndex);
-            if (Number.isFinite(si) && si > 0) {
-                if (seenSplitIdx.has(si)) continue;
-                seenSplitIdx.add(si);
-            }
             out.push(o);
         }
         return out;
     }
 
-    /** All pending legs in the same split group (deduped by id and by splitIndex). */
+    /** All pending legs in the same split group (deduped by id only). */
     _getSplitGroupPendingOrders(pendingOrder) {
         if (!pendingOrder?.splitGroupId || !pendingOrder.isSplitEntry) return pendingOrder ? [pendingOrder] : [];
         const raw = [];
@@ -27326,19 +27296,59 @@ class OrderManager {
         pushMatch(this.pendingOrders);
         pushMatch(this.orderService?.pendingOrders);
         const seenId = new Set();
-        const seenSplitIdx = new Set();
         const out = [];
         for (const o of raw) {
             if (seenId.has(o.id)) continue;
             seenId.add(o.id);
-            const si = Number(o.splitIndex);
-            if (Number.isFinite(si) && si > 0) {
-                if (seenSplitIdx.has(si)) continue;
-                seenSplitIdx.add(si);
-            }
             out.push(o);
         }
         return out;
+    }
+
+    /**
+     * After a split leg closes, promoting remaining siblings (strip splitGroupId, redraw SL) must run **after**
+     * all `closePositionAtPrice` calls in the same tick — otherwise mid-batch redraw can leave the next leg
+     * without a correct close / balance only reflects one leg while the SL label still showed the basket.
+     */
+    _scheduleSplitGroupSiblingPromotion(splitGroupId) {
+        if (!splitGroupId) return;
+        if (!this._splitPromotePending) this._splitPromotePending = new Set();
+        this._splitPromotePending.add(splitGroupId);
+        if (this._splitPromoteFlushScheduled) return;
+        this._splitPromoteFlushScheduled = true;
+        queueMicrotask(() => {
+            this._splitPromoteFlushScheduled = false;
+            const gids = this._splitPromotePending ? [...this._splitPromotePending] : [];
+            if (this._splitPromotePending) this._splitPromotePending.clear();
+            gids.forEach((gid) => this._promoteRemainingSplitGroupSiblings(gid));
+        });
+    }
+
+    _promoteRemainingSplitGroupSiblings(splitGroupId) {
+        const _seenOpen2 = new Set();
+        const _openSiblings2 = [...(this.openPositions || []), ...(this.orderService?.openPositions || [])]
+            .filter((p) => {
+                if (!p || p.splitGroupId !== splitGroupId || _seenOpen2.has(p.id)) return false;
+                _seenOpen2.add(p.id);
+                return true;
+            });
+        if (_openSiblings2.length === 0) return;
+        this.removeSplitGroupAvgLine(splitGroupId);
+        this.removeMultiTPAvgLine(`splitgrp_${splitGroupId}`);
+        _openSiblings2.forEach((leg) => {
+            leg.isSplitEntry = false;
+            leg.splitGroupId = undefined;
+            leg.splitIndex = undefined;
+            leg.splitTotal = undefined;
+        });
+        _openSiblings2.forEach((leg) => {
+            this.removeSLTPLines(leg.id);
+            this.drawSLTPLines(leg);
+            if (Array.isArray(leg.tpTargets) && leg.tpTargets.length >= 1) {
+                this.removeMultiTPAvgLine(leg.id);
+                this.drawMultiTPAvgLine(leg);
+            }
+        });
     }
 
     _findOpenPositionById(orderId) {
