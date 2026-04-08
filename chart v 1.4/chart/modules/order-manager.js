@@ -872,7 +872,8 @@ class OrderManager {
      * Executable stop-loss fill: gap-aware open, then price at stop when touched.
      * BUY: if low <= SL, fill at stop price (matches chart line); gap-through-open uses open.
      * SELL: if high >= SL, fill at stop price; gap-through-open uses open.
-     * Non–tick-animation path still uses min(gapFill, low) / max(gapFill, high) for full-bar fills.
+     * Live (non-replay) full-bar path still uses min(gapFill, low) / max(gapFill, high). Active replay
+     * without tick animation fills at the stop when touched (same as animating path).
      * If SL was just released with stop on the wrong side of current price, _slDragReleaseFillPrice
      * (same bar only) fills at that market snapshot instead of the dragged stop.
      */
@@ -905,6 +906,19 @@ class OrderManager {
             if (!isBuy && Number.isFinite(high) && high >= sl && Number.isFinite(sl)) {
                 const gapOpenThroughStop = Number.isFinite(openPx) && openPx > sl && tp <= 1;
                 if (gapOpenThroughStop) return openPx;
+                return sl;
+            }
+        }
+        // Candle / fast replay: no animatingCandle — fill at the stop line when touched (same as tick path).
+        // Otherwise Math.min(base, low) exits at the wick / looks like “next candle close” on the marker.
+        if (rsIb && rsIb.isActive && !rsIb.animatingCandle) {
+            const openPx = Number.isFinite(candleOpen) ? candleOpen : NaN;
+            if (isBuy && Number.isFinite(low) && low <= sl && Number.isFinite(sl)) {
+                if (Number.isFinite(openPx) && openPx < sl) return openPx;
+                return sl;
+            }
+            if (!isBuy && Number.isFinite(high) && high >= sl && Number.isFinite(sl)) {
+                if (Number.isFinite(openPx) && openPx > sl) return openPx;
                 return sl;
             }
         }
@@ -1478,6 +1492,20 @@ class OrderManager {
         if (!rs || !rs.isActive) return false;
         const mode = typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : (rs.playbackMode || 'tick');
         return mode === 'candle';
+    }
+
+    /** Chart TF matches raw bar spacing (e.g. 1m on 1m raw) — resampled `t` can still be bucket-open. */
+    _replayChartTimeframeMatchesRawStep(chart, rs) {
+        if (!chart || !rs || !Array.isArray(rs.fullRawData) || rs.fullRawData.length < 2) return false;
+        const rawStep = Number(rs.fullRawData[1].t) - Number(rs.fullRawData[0].t);
+        if (!Number.isFinite(rawStep) || rawStep <= 0) return false;
+        let tfMs = null;
+        if (typeof chart.parseTimeframe === 'function') {
+            tfMs = chart.parseTimeframe(chart.currentTimeframe);
+        }
+        if (!Number.isFinite(tfMs) || tfMs <= 0) return false;
+        const tol = Math.max(1, Math.floor(rawStep * 0.002));
+        return Math.abs(tfMs - rawStep) <= tol;
     }
 
     /**
@@ -19748,6 +19776,13 @@ class OrderManager {
                     c,
                     v: anim.volume ?? anim.v
                 };
+            }
+
+            const pbMode = typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : (rs.playbackMode || 'tick');
+            const useRawReplayBar = pbMode === 'candle' || this._replayChartTimeframeMatchesRawStep(ch, rs);
+            if (useRawReplayBar && Array.isArray(ch.rawData) && ch.rawData.length > 0) {
+                const coerced = coerceBar(ch.rawData[ch.rawData.length - 1]);
+                if (coerced) return coerced;
             }
 
             if (Array.isArray(ch.data) && ch.data.length > 0) {
