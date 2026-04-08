@@ -1239,11 +1239,11 @@ class OrderManager {
     }
 
     /**
-     * During replay on a guarded candle, decide if price has touched `level` after the guard
-     * (same economics as unguarded OHLC: wicks / path, not “only if close is there now”).
-     * - Candle playback: bar high/low (must run even when guardTick is -1).
-     * - Tick animation: min/max of cached tick path from guardTick through current progress
-     *   so SL/TP still fire if price crossed the level mid-path and then bounced; close-only missed that.
+     * Guarded SL/TP on the entry candle: after the guard, decide if `level` has been touched.
+     * - Candle replay (active + mode candle): same as unguarded checks — `high` for `dir === 'above'`
+     *   (e.g. BUY TP, SELL SL), `low` for `dir === 'below'` (e.g. SELL TP, BUY SL). Runs even when guardTick is -1.
+     * - Tick replay: unchanged — requires animatingCandle, tickProgress > guardTick, then tests `candle.c`
+     *   vs level (not bar wicks in this guarded path).
      * @param {number} guardTick - tickProgress when the guard was set (-1 if not tick anim)
      * @param {object} candle    - current candle from getCurrentCandle()
      * @param {number} level     - the price level to test
@@ -1259,7 +1259,6 @@ class OrderManager {
         const mode = typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : (rs.playbackMode || 'tick');
         const candlePlayback = !!rs.isActive && mode === 'candle';
 
-        // Candle replay: no animatingCandle / tickProgress — use full bar wicks (guardTick is often -1).
         if (candlePlayback) {
             const h = Number.parseFloat(candle.h);
             const l = Number.parseFloat(candle.l);
@@ -1269,33 +1268,7 @@ class OrderManager {
 
         if (!(guardTick >= 0)) return false;
         if (!rs.animatingCandle) return false;
-        const tickProgress = Number(rs.tickProgress) || 0;
-        if (tickProgress <= guardTick) return false;
-
-        const anim = rs.animatingCandle;
-        if (typeof rs.getTickPath === 'function' && !anim.cachedPath) {
-            anim.cachedPath = rs.getTickPath(anim.target || anim);
-        }
-        const path = anim.cachedPath;
-        if (Array.isArray(path) && path.length > 0) {
-            const g = Math.max(0, Math.min(Math.floor(Number(guardTick) || 0), path.length - 1));
-            const end = Math.min(tickProgress - 1, path.length - 1);
-            if (end >= g) {
-                let mn = Number(path[g]);
-                let mx = mn;
-                if (Number.isFinite(mn)) {
-                    for (let i = g + 1; i <= end; i++) {
-                        const p = Number(path[i]);
-                        if (!Number.isFinite(p)) continue;
-                        if (p < mn) mn = p;
-                        if (p > mx) mx = p;
-                    }
-                    if (dir === 'above') return mx >= lv;
-                    return mn <= lv;
-                }
-            }
-        }
-
+        if ((Number(rs.tickProgress) || 0) <= guardTick) return false;
         const close = Number(candle.c);
         if (!Number.isFinite(close)) return false;
         return dir === 'above' ? close >= lv : close <= lv;
