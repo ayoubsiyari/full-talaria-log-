@@ -13405,6 +13405,48 @@ class OrderManager {
     }
 
     /**
+     * Trailing activation / step distances must use one consistent "entry" vs initial SL:
+     * - Single leg: that leg's open price.
+     * - Split / multi-entry: weighted average entry (same basket as SL $ label and basket R).
+     * Stored trailingActivateValue / trailingStepValue are re-applied when the basket avg is known.
+     * Legacy positions without those fields keep frozen activationThreshold / stepSize.
+     */
+    _getTrailingDynamicsForPosition(position) {
+        const ts = position && position.trailingStop;
+        if (!ts || !ts.enabled) return null;
+        const osl = Number(ts.originalSL);
+        if (!Number.isFinite(osl)) return null;
+        const side = (position.type || 'BUY').toUpperCase();
+        const isSplit = !!(position.isSplitEntry && position.splitGroupId);
+        const anchor = isSplit ? this._getSplitGroupAvgEntry(position) : Number(position.openPrice);
+        if (!Number.isFinite(anchor)) return null;
+        const qty = isSplit ? this._slChartLabelQtyForOpenOrder(position) : (Number(position.quantity) || 0);
+        if (!(qty > 0)) return null;
+        const riskDistance = side === 'BUY' ? anchor - osl : osl - anchor;
+        if (!(riskDistance > 1e-12)) return null;
+        const unitMode = ts.unitMode || 'rr';
+        const vAct = ts.trailingActivateValue;
+        const vStep = ts.trailingStepValue;
+        if (Number.isFinite(Number(vAct)) && Number.isFinite(Number(vStep))) {
+            const ad = this._trailingValueToPriceDistance(Number(vAct), unitMode, riskDistance, qty);
+            const sd = this._trailingValueToPriceDistance(Number(vStep), unitMode, riskDistance, qty);
+            const activationThreshold = side === 'BUY' ? anchor + ad : anchor - ad;
+            return {
+                anchor,
+                activationThreshold,
+                stepSize: sd,
+                openPriceForCompute: anchor
+            };
+        }
+        return {
+            anchor,
+            activationThreshold: ts.activationThreshold,
+            stepSize: ts.stepSize,
+            openPriceForCompute: Number(position.openPrice)
+        };
+    }
+
+    /**
      * Exit PnL at stop price (full position). Used for trailing $ limit: freeze when this >= limitUsd.
      * Split / multi-entry groups: sum each leg's P&L at the shared stop (same as basket exit).
      */
@@ -17547,6 +17589,8 @@ class OrderManager {
                 activateMode: 'trail-rr',
                 activationThreshold,
                 stepSize,
+                trailingActivateValue: vAct,
+                trailingStepValue: vStep,
                 stepPips: this.pipSize > 0 ? stepSize / this.pipSize : 0,
                 currentStep: 0,
                 originalSL: slPrice,
@@ -20265,11 +20309,16 @@ class OrderManager {
                 if (position.trailingStop && position.trailingStop.enabled && position.stopLoss && !position.trailingStop.disabledByManual && !position.trailingStop.beSupersedesTrailing) {
                     // Use HIGH for BUY trailing (matches TP hit detection logic)
                     const trailPrice = high;
+                    const trailDyn = this._getTrailingDynamicsForPosition(position);
+                    const tsEff = trailDyn
+                        ? { ...position.trailingStop, activationThreshold: trailDyn.activationThreshold, stepSize: trailDyn.stepSize }
+                        : position.trailingStop;
+                    const openForTrail = trailDyn ? trailDyn.openPriceForCompute : position.openPrice;
 
                     let justActivatedTrailing = false;
                     // Check if trailing should activate (reach threshold first)
                     if (!position.trailingStop.activated) {
-                        if (trailPrice >= position.trailingStop.activationThreshold) {
+                        if (trailPrice >= tsEff.activationThreshold) {
                             position.trailingStop.activated = true;
                             justActivatedTrailing = true;
                             console.log(`   🔥 TRAILING STOP ACTIVATED for BUY #${position.id} at high=${trailPrice.toFixed(5)}`);
@@ -20287,8 +20336,8 @@ class OrderManager {
                     if (position.trailingStop.activated && !position.trailingStop.limitReached) {
                         const comp = this._computeTrailingStepNewSl(
                             'BUY',
-                            position.openPrice,
-                            position.trailingStop,
+                            openForTrail,
+                            tsEff,
                             trailPrice,
                             justActivatedTrailing
                         );
@@ -20588,10 +20637,15 @@ class OrderManager {
                 if (position.trailingStop && position.trailingStop.enabled && position.stopLoss && !position.trailingStop.disabledByManual && !position.trailingStop.beSupersedesTrailing) {
                     // Use LOW for SELL trailing (matches SL hit detection logic)
                     const trailPrice = low;
+                    const trailDynSell = this._getTrailingDynamicsForPosition(position);
+                    const tsEffSell = trailDynSell
+                        ? { ...position.trailingStop, activationThreshold: trailDynSell.activationThreshold, stepSize: trailDynSell.stepSize }
+                        : position.trailingStop;
+                    const openForTrailSell = trailDynSell ? trailDynSell.openPriceForCompute : position.openPrice;
 
                     let justActivatedTrailingSell = false;
                     if (!position.trailingStop.activated) {
-                        if (trailPrice <= position.trailingStop.activationThreshold) {
+                        if (trailPrice <= tsEffSell.activationThreshold) {
                             position.trailingStop.activated = true;
                             justActivatedTrailingSell = true;
                             console.log(`   🔥 TRAILING STOP ACTIVATED for SELL #${position.id} at low=${trailPrice.toFixed(5)}`);
@@ -20608,8 +20662,8 @@ class OrderManager {
                     if (position.trailingStop.activated && !position.trailingStop.limitReached) {
                         const comp = this._computeTrailingStepNewSl(
                             'SELL',
-                            position.openPrice,
-                            position.trailingStop,
+                            openForTrailSell,
+                            tsEffSell,
                             trailPrice,
                             justActivatedTrailingSell
                         );
