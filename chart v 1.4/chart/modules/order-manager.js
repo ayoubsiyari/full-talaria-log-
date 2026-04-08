@@ -1371,17 +1371,36 @@ class OrderManager {
     }
 
     /**
-     * SL chart label: net $ at stop for **this** open order only (gross − round-trip comm).
-     * Split / multi-entry: each leg is a separate position and closes with its own P&L — summing the
-     * group on every line showed ~full basket $ while a hit notification showed one leg (~+$34 vs ~+$98).
+     * SL chart label: net $ at stop (gross − round-trip comm per leg).
+     * Split / multi-entry: **shared** SL — sum all open legs so the line matches total size and basket P&L at that stop.
      */
     _slChartNetPnLAtStopForOpenOrder(order, stopPrice) {
         if (!order || stopPrice == null) return 0;
         const sp = Number(stopPrice);
         if (!Number.isFinite(sp)) return 0;
+        if (order.isSplitEntry && order.splitGroupId) {
+            let gross = 0;
+            let comm = 0;
+            for (const m of this._getSplitGroupOpenPositions(order)) {
+                const mq = Number(m.quantity) || 0;
+                if (mq <= 0) continue;
+                gross += this.estimateOpenLegPnLSlice(m, sp, mq);
+                comm += this._getRoundTripCommissionUsd(m);
+            }
+            return gross - comm;
+        }
         const q = Number(order.quantity) || 0;
         const g = this.estimateOpenLegPnLSlice(order, sp, q);
         return g - this._getRoundTripCommissionUsd(order);
+    }
+
+    /** Total open lots for split group (shared SL label), else this order’s qty. */
+    _slChartLabelQtyForOpenOrder(order) {
+        if (!order) return 0;
+        if (order.isSplitEntry && order.splitGroupId) {
+            return this._getSplitGroupOpenPositions(order).reduce((s, m) => s + (Number(m.quantity) || 0), 0);
+        }
+        return Number(order.quantity) || 0;
     }
 
     /**
@@ -27326,7 +27345,7 @@ class OrderManager {
         if (order.stopLoss) {
             console.log(`  🛑 Drawing SL line at ${order.stopLoss.toFixed(2)}`);
             
-            // Net $ at SL for this leg only (split groups: one line per leg, matches that leg’s exit $).
+            // Net $ at SL: full split group at shared stop + total lots (matches Avg Entry basket).
             const slPnL = this._slChartNetPnLAtStopForOpenOrder(order, order.stopLoss);
             
             const slLine = chart.svg.append('line')
@@ -27346,7 +27365,7 @@ class OrderManager {
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
             
-            const slTotalQty = order.quantity || 0;
+            const slTotalQty = this._slChartLabelQtyForOpenOrder(order);
             const slLabelText = chart.svg.append('text')
                 .attr('class', `sl-label-text sl-${order.id}`)
                 .attr('fill', '#ffffff')
@@ -28386,13 +28405,8 @@ class OrderManager {
                 }
                 
                 const priceKey = position.stopLoss.toFixed(5);
-                // Per-position row: this leg’s net $ at SL (split legs each have their own close P&L).
-                const _qSl = Number(position.quantity) || 0;
-                let totalSlPnL = 0;
-                if (_qSl > 0) {
-                    const g = this.estimateOpenLegPnLSlice(position, position.stopLoss, _qSl);
-                    totalSlPnL = g - this._getRoundTripCommissionUsd(position);
-                }
+                const totalSlPnL = this._slChartNetPnLAtStopForOpenOrder(position, position.stopLoss);
+                const labelQty = this._slChartLabelQtyForOpenOrder(position);
                 
                 if (updatedSLPrices.has(priceKey)) {
                     if (labelBox) labelBox.style('display', 'none');
@@ -28404,8 +28418,7 @@ class OrderManager {
                     if (closeBtn) closeBtn.style('display', 'none');
                 } else {
                     updatedSLPrices.add(priceKey);
-                    const legQty = Number(position.quantity) || 0;
-                    const labelPrefix = `SL  ${legQty.toFixed(2)}`;
+                    const labelPrefix = `SL  ${labelQty.toFixed(2)}`;
                     if (labelText) labelText.text(labelPrefix);
                     if (pnlText) pnlText.text(`${totalSlPnL >= 0 ? '+' : ''}$${totalSlPnL.toFixed(2)}`);
                     if (labelBox) labelBox.style('display', null);
