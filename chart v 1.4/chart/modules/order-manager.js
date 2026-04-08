@@ -1387,6 +1387,24 @@ class OrderManager {
     }
 
     /**
+     * First split leg: lowest splitIndex, then earliest openTime (first activated entry in the ladder).
+     */
+    _getSplitGroupFirstActivatedEntryPrice(position) {
+        if (!position?.isSplitEntry || !position.splitGroupId) return Number(position?.openPrice) || 0;
+        const legs = this._getSplitGroupOpenPositions(position);
+        if (legs.length === 0) return Number(position.openPrice) || 0;
+        const sorted = [...legs].sort((a, b) => {
+            const ia = Number(a.splitIndex);
+            const ib = Number(b.splitIndex);
+            if (Number.isFinite(ia) && Number.isFinite(ib) && ia !== ib) return ia - ib;
+            if (Number.isFinite(ia) && !Number.isFinite(ib)) return -1;
+            if (!Number.isFinite(ia) && Number.isFinite(ib)) return 1;
+            return (Number(a.openTime) || 0) - (Number(b.openTime) || 0);
+        });
+        return Number(sorted[0].openPrice) || Number(position.openPrice) || 0;
+    }
+
+    /**
      * Sum of unrealizedPnL across all legs of a split group (for amount-mode BE trigger).
      * Falls back to position.unrealizedPnL when standalone.
      */
@@ -13345,13 +13363,84 @@ class OrderManager {
 
     /**
      * Exit PnL at stop price (full position). Used for trailing $ limit: freeze when this >= limitUsd.
+     * Split / multi-entry groups: sum each leg's P&L at the shared stop (same as basket exit).
      */
     _trailingPnlUsdAtStop(position, stopPrice) {
         if (!position || stopPrice == null) return NaN;
+        if (position.isSplitEntry && position.splitGroupId) {
+            const legs = this._getSplitGroupOpenPositions(position);
+            if (legs.length === 0) return NaN;
+            let sum = 0;
+            for (const leg of legs) {
+                const q = Number(leg.quantity) || 0;
+                if (q <= 0) continue;
+                sum += this.estimateOpenLegPnLSlice(leg, stopPrice, q);
+            }
+            return sum;
+        }
         const sym = position.ticker || position.symbol || this._getSymbol();
         const t = position.type || 'BUY';
         const q = position.quantity || 0;
         return this.estimatePnLForPriceLevel(t, position.openPrice, stopPrice, q, sym);
+    }
+
+    /** Trailing $ limit may freeze only after SL has trailed past the first activated entry (split / ladder). */
+    _trailingLimitPastFirstEntry(position, stopPrice) {
+        if (!position || stopPrice == null) return true;
+        if (!position.isSplitEntry || !position.splitGroupId) return true;
+        const first = this._getSplitGroupFirstActivatedEntryPrice(position);
+        const sp = Number(stopPrice);
+        if (!Number.isFinite(sp) || !Number.isFinite(first)) return true;
+        const side = (position.type || 'BUY').toUpperCase();
+        if (side === 'BUY') return sp >= first;
+        return sp <= first;
+    }
+
+    /** First multi-entry row price (order panel), else main entry field. */
+    _trailingFormFirstEntryPrice() {
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+            for (let i = 0; i < this.multiEntryLevels.length; i++) {
+                const l = this.multiEntryLevels[i];
+                if (l && Number(l.price) > 0) return Number(l.price);
+            }
+        }
+        return parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+    }
+
+    /** Preview: basket P&L at SL (multi-entry sums levels; else single entry × qty). */
+    _trailingFormPnlUsdAtStop(orderSide, stopPrice) {
+        const sp = Number(stopPrice);
+        if (!Number.isFinite(sp)) return NaN;
+        const side = (orderSide || 'BUY').toUpperCase();
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+            const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
+            const ps = this.pipSize || 0.0001;
+            const pv = this.pipValuePerLot || 10;
+            const minLot = this.getMarketConfig()?.minSize ?? 0.01;
+            let totalPnl = 0;
+            for (const level of this.multiEntryLevels) {
+                if (!(level.price > 0)) continue;
+                if (!this._multiEntryLevelMeetsMinLot(level, slPx, ps, pv, minLot)) continue;
+                const lots = parseFloat(this._calcLevelLotSize(level, slPx, ps, pv)) || 0;
+                if (lots <= 0) continue;
+                totalPnl += this.estimatePnLForPriceLevel(side, level.price, sp, lots);
+            }
+            return totalPnl;
+        }
+        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        const q = this._getTrailingFormQuantity();
+        const sym = this._getSymbol();
+        return this.estimatePnLForPriceLevel(orderSide, entryPrice, sp, q, sym);
+    }
+
+    _trailingFormPastFirstEntry(orderSide, stopPrice) {
+        const sp = Number(stopPrice);
+        if (!this.isMultiEntryMode || !this.multiEntryLevels?.length) return true;
+        const first = this._trailingFormFirstEntryPrice();
+        if (!Number.isFinite(sp) || !Number.isFinite(first)) return true;
+        const side = (orderSide || 'BUY').toUpperCase();
+        if (side === 'BUY') return sp >= first;
+        return sp <= first;
     }
 
     _updateTrailingInlineUnits() {
@@ -20183,8 +20272,9 @@ class OrderManager {
                                 const limUsd = Number(position.trailingStop.limitUsd);
                                 if (limUsd > 0) {
                                     const pnlAtSl = this._trailingPnlUsdAtStop(position, newSL);
+                                    const pastFirst = this._trailingLimitPastFirstEntry(position, newSL);
                                     position.trailingStop.cumulativeTrailUsd = Number.isFinite(pnlAtSl) ? pnlAtSl : 0;
-                                    if (Number.isFinite(pnlAtSl) && pnlAtSl >= limUsd) {
+                                    if (Number.isFinite(pnlAtSl) && pnlAtSl >= limUsd && pastFirst) {
                                         position.trailingStop.limitReached = true;
                                         this.showNotification(`Trailing limit $${limUsd.toFixed(0)} profit at SL — SL fixed | #${position.id}`, 'info');
                                     }
@@ -20491,8 +20581,9 @@ class OrderManager {
                                 const limUsd = Number(position.trailingStop.limitUsd);
                                 if (limUsd > 0) {
                                     const pnlAtSl = this._trailingPnlUsdAtStop(position, newSL);
+                                    const pastFirst = this._trailingLimitPastFirstEntry(position, newSL);
                                     position.trailingStop.cumulativeTrailUsd = Number.isFinite(pnlAtSl) ? pnlAtSl : 0;
-                                    if (Number.isFinite(pnlAtSl) && pnlAtSl >= limUsd) {
+                                    if (Number.isFinite(pnlAtSl) && pnlAtSl >= limUsd && pastFirst) {
                                         position.trailingStop.limitReached = true;
                                         this.showNotification(`Trailing limit $${limUsd.toFixed(0)} profit at SL — SL fixed | #${position.id}`, 'info');
                                     }
@@ -31121,11 +31212,10 @@ class OrderManager {
                 
                 const limUsd = Number(ts.limitUsd || 0);
                 if (limUsd > 0) {
-                    const q = this._getTrailingFormQuantity();
-                    const sym = this._getSymbol();
-                    const pnlAtSl = this.estimatePnLForPriceLevel(orderSide, entryPrice, newSL, q, sym);
+                    const pnlAtSl = this._trailingFormPnlUsdAtStop(orderSide, newSL);
+                    const pastFirst = this._trailingFormPastFirstEntry(orderSide, newSL);
                     ts.cumulativeTrailUsd = Number.isFinite(pnlAtSl) ? pnlAtSl : 0;
-                    if (Number.isFinite(pnlAtSl) && pnlAtSl >= limUsd) {
+                    if (Number.isFinite(pnlAtSl) && pnlAtSl >= limUsd && pastFirst) {
                         ts.limitReached = true;
                         this.showNotification(`Trailing limit $${limUsd.toFixed(0)} profit at SL — fixed (preview)`, 'info');
                     }
