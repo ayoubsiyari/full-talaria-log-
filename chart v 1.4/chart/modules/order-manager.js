@@ -19609,22 +19609,25 @@ class OrderManager {
     }
     
     /**
-     * Get current candle from replay
+     * Get current candle from replay (uses selected panel / getActiveChart).
      */
     getCurrentCandle() {
-        const ch = this._getOrderContextChart() || this.chart;
+        return this._getCurrentCandleForChart(this._getOrderContextChart() || this.chart);
+    }
+
+    /**
+     * Current candle for a specific chart surface — use the chart under the cursor when dragging SL/TP on a panel.
+     */
+    _getCurrentCandleForChart(chart) {
+        const ch = chart;
         if (!ch?.data || ch.data.length === 0) return null;
-        
-        // Replay state must match the chart that owns the dataset (active panel can differ from this.chart).
+
         const rs = (ch && ch.replaySystem) || this.replaySystem;
-        
-        // Get the last visible candle in replay mode
+
         if (rs && rs.isActive) {
-            // Intra-candle tick animation: use animated OHLC (same source as the canvas).
             if (rs.animatingCandle) {
                 const anim = rs.animatingCandle;
                 let c = Number.parseFloat(anim.close);
-                // tickProgress === 0: anim.close is the new bar open — do not fall back to prior raw index.
                 const tickProg = Number(rs.tickProgress) || 0;
                 if (tickProg > 0 && typeof rs.getCurrentAnimatedPrice === 'function') {
                     const px = rs.getCurrentAnimatedPrice();
@@ -19642,7 +19645,6 @@ class OrderManager {
                 };
             }
 
-            // Prefer the last resampled bar on the chart (matches what the user sees on non-1m TFs).
             const last = ch.data[ch.data.length - 1];
             if (last && Number.isFinite(Number.parseFloat(last.c))) {
                 return last;
@@ -19652,8 +19654,30 @@ class OrderManager {
             const rawData = rs.fullRawData || ch.rawData;
             return rawData[index];
         }
-        
+
         return ch.data[ch.data.length - 1];
+    }
+
+    /**
+     * After SL/TP/BE drag on one surface, reposition the same logical lines on every panel that shows that symbol.
+     */
+    _refreshOrderLineVisualsAfterDrag(ctx) {
+        if (this._isMultiPanelLayout()) {
+            this.updateSLTPLines();
+            this.updateBELines();
+            this._updateSplitGroupAvgLines();
+            this._updateMultiTPAvgLines();
+            this._collectLayoutCharts().forEach((c) => {
+                if (c) this._drawExecutedOrderConnectors(c);
+            });
+        } else {
+            this.updateSLTPLines(ctx);
+            this.updateBELines(ctx);
+            this._updateSplitGroupAvgLines(ctx);
+            this._updateMultiTPAvgLines(ctx);
+            this._drawExecutedOrderConnectors(ctx);
+        }
+        if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
     }
     
     /**
@@ -22120,7 +22144,7 @@ class OrderManager {
                 if (lineType === 'entry') {
                     order.openPrice = newPrice;
                 } else if (lineType === 'sl') {
-                    const curBar = self.getCurrentCandle();
+                    const curBar = self._getCurrentCandleForChart(ctx);
                     const siblings = order.isSplitEntry && order.splitGroupId
                         ? self._getSplitGroupOpenPositions(order) : [order];
                     for (const sib of siblings) {
@@ -22131,7 +22155,7 @@ class OrderManager {
                         }
                     }
                 } else if (lineType === 'tp') {
-                    const curBar = self.getCurrentCandle();
+                    const curBar = self._getCurrentCandleForChart(ctx);
                     const siblings = order.isSplitEntry && order.splitGroupId
                         ? self._getSplitGroupOpenPositions(order) : [order];
                     for (const sib of siblings) {
@@ -22279,10 +22303,11 @@ class OrderManager {
                 // Throttled panel update and connector redraw (SL/TP also sync chart labels vs order state)
                 throttledUpdate(() => {
                     if (lineType === 'sl' || lineType === 'tp') {
-                        self.updateSLTPLines(ctx);
+                        self._refreshOrderLineVisualsAfterDrag(ctx);
+                    } else {
+                        self.updatePositionsPanel();
+                        self._drawExecutedOrderConnectors(ctx);
                     }
-                    self.updatePositionsPanel();
-                    self._drawExecutedOrderConnectors(ctx);
                 });
             }
             
@@ -22334,7 +22359,7 @@ class OrderManager {
 
             // SL released with stop on the "wrong" side of current price: next SL fill uses market at release, not dragged level.
             if (lineType === 'sl') {
-                const curBarSl = self.getCurrentCandle();
+                const curBarSl = self._getCurrentCandleForChart(ctx);
                 const markPx = Number(curBarSl?.c);
                 const sibsSl = order.isSplitEntry && order.splitGroupId
                     ? self._getSplitGroupOpenPositions(order) : [order];
@@ -22364,7 +22389,7 @@ class OrderManager {
             // Use current tickProgress so the SL/TP can trigger from
             // the very next tick after the drag ends.
             if (lineType === 'sl' || lineType === 'tp') {
-                const curBar = self.getCurrentCandle();
+                const curBar = self._getCurrentCandleForChart(ctx);
                 const endTick = self._getCurrentTickSnapshot().tick;
                 if (curBar) {
                     const siblings = order.isSplitEntry && order.splitGroupId
@@ -22381,12 +22406,28 @@ class OrderManager {
                 }
             }
             
-            // Final update - refresh all lines and positions panel
-            self.updateSLTPLines(ctx);
-            self.updateBELines(ctx);
-            self._updateSplitGroupAvgLines(ctx);
-            self._updateMultiTPAvgLines(ctx);
-            self.updatePositionsPanel();
+            // Final update — SL/TP/BE: refresh every panel that shows this symbol; entry: update order lines on all surfaces
+            if (lineType === 'sl' || lineType === 'tp' || lineType === 'be') {
+                self._refreshOrderLineVisualsAfterDrag(ctx);
+            } else {
+                if (typeof self.updateOrderLines === 'function') self.updateOrderLines();
+                if (self._isMultiPanelLayout()) {
+                    self.updateSLTPLines();
+                    self.updateBELines();
+                    self._updateSplitGroupAvgLines();
+                    self._updateMultiTPAvgLines();
+                    self._collectLayoutCharts().forEach((c) => {
+                        if (c) self._drawExecutedOrderConnectors(c);
+                    });
+                } else {
+                    self.updateSLTPLines(ctx);
+                    self.updateBELines(ctx);
+                    self._updateSplitGroupAvgLines(ctx);
+                    self._updateMultiTPAvgLines(ctx);
+                    self._drawExecutedOrderConnectors(ctx);
+                }
+                if (typeof self.updatePositionsPanel === 'function') self.updatePositionsPanel();
+            }
             
             console.log(`✅ Drag ended: ${lineType.toUpperCase()} @ ${finalPrice.toFixed(5)}`);
             
@@ -22470,7 +22511,7 @@ class OrderManager {
 
                 // Update target price in the order (and all split siblings)
                 if (order.tpTargets && order.tpTargets[targetIndex]) {
-                    const curBar = self.getCurrentCandle();
+                    const curBar = self._getCurrentCandleForChart(ctx);
                     const siblings = order.isSplitEntry && order.splitGroupId
                         ? self._getSplitGroupOpenPositions(order) : [order];
                     for (const sib of siblings) {
@@ -22497,10 +22538,7 @@ class OrderManager {
                 // Update SL/TP lines + Avg TP line (throttled)
                 if (!frameId) {
                     frameId = requestAnimationFrame(() => {
-                        self.updateSLTPLines(ctx);
-                        self.updatePositionsPanel();
-                        self._drawExecutedOrderConnectors(ctx);
-                        self._updateMultiTPAvgLines(ctx);
+                        self._refreshOrderLineVisualsAfterDrag(ctx);
                         frameId = null;
                     });
                 }
@@ -22539,7 +22577,7 @@ class OrderManager {
             // Refresh guard on this order AND all split siblings.
             // Use current tickProgress (not Infinity) so the TP can trigger
             // from the very next tick after the drag ends.
-            const curBar = self.getCurrentCandle();
+            const curBar = self._getCurrentCandleForChart(ctx);
             const endTick = self._getCurrentTickSnapshot().tick;
             if (curBar) {
                 const siblings = order.isSplitEntry && order.splitGroupId
@@ -22553,10 +22591,8 @@ class OrderManager {
                 }
             }
             
-            // Final update
-            self.updateSLTPLines(ctx);
-            self.updatePositionsPanel();
-            self._updateMultiTPAvgLines(ctx);
+            // Final update (all panels)
+            self._refreshOrderLineVisualsAfterDrag(ctx);
             
             console.log(`✅ Multi-TP drag ended: TP${targetIndex + 1} @ ${finalPrice.toFixed(5)}`);
             
@@ -23955,100 +23991,109 @@ class OrderManager {
      * Shows total lot size and live aggregated P&L across all orders in the group.
      */
     drawSplitGroupAvgLine(splitGroupId, avgPrice, totalLots, side, orderIds) {
-        const chart = this.chart;
-        if (!chart?.svg) return;
+        const refOrder = this._findOpenPositionById(orderIds[0]) || this._findPendingOrderById(orderIds[0]);
+        const charts = this._isMultiPanelLayout()
+            ? this._collectLayoutCharts().filter((c) => c && (!refOrder || this._positionTickerMatchesChartSymbol(refOrder, c)))
+            : [this.chart];
+        if (!charts.length) charts.push(this.chart);
 
         const accent = '#ca8a04';
-        const yScale = chart.scales?.yScale;
-        const y = yScale ? yScale(avgPrice) : 100;
-        const yAxisWidth = chart.margin?.r || 70;
 
-        const line = chart.svg.append('line')
-            .attr('class', `split-avg-line split-avg-${splitGroupId}`)
-            .attr('stroke', accent)
-            .attr('stroke-width', 1)
-            .attr('stroke-dasharray', '7 5')
-            .attr('opacity', 0.85)
-            .attr('x1', 0).attr('x2', chart.w).attr('y1', y).attr('y2', y)
-            .style('pointer-events', 'none');
+        charts.forEach((chart) => {
+            if (!chart?.svg) return;
+            if (this.splitGroupAvgLines.some((g) => g.splitGroupId === splitGroupId && g.chart === chart)) return;
 
-        const avgBox = chart.svg.append('rect')
-            .attr('class', `split-avg-label split-avg-${splitGroupId}`)
-            .attr('fill', 'rgba(234, 179, 8, 0.12)')
-            .attr('stroke', accent)
-            .attr('stroke-width', 1)
-            .attr('rx', 3);
-        const avgText = chart.svg.append('text')
-            .attr('class', `split-avg-label split-avg-${splitGroupId}`)
-            .attr('fill', '#fbbf24')
-            .attr('font-size', '11px')
-            .attr('font-weight', '600')
-            .attr('x', 0).attr('y', y + 4)
-            .text('Avg Entry');
+            const yScale = chart.scales?.yScale;
+            const y = yScale ? yScale(avgPrice) : 100;
 
-        const lotsBox = chart.svg.append('rect')
-            .attr('class', `split-avg-label split-avg-${splitGroupId}`)
-            .attr('fill', '#0f172a')
-            .attr('stroke', accent)
-            .attr('stroke-width', 1)
-            .attr('rx', 3);
-        const lotsText = chart.svg.append('text')
-            .attr('class', `split-avg-label split-avg-${splitGroupId}`)
-            .attr('fill', '#fde68a')
-            .attr('font-size', '11px')
-            .attr('font-weight', '600')
-            .attr('x', 0).attr('y', y + 4)
-            .text(this.formatQuantity(totalLots));
+            const line = chart.svg.append('line')
+                .attr('class', `split-avg-line split-avg-${splitGroupId}`)
+                .attr('stroke', accent)
+                .attr('stroke-width', 1)
+                .attr('stroke-dasharray', '7 5')
+                .attr('opacity', 0.85)
+                .attr('x1', 0).attr('x2', chart.w).attr('y1', y).attr('y2', y)
+                .style('pointer-events', 'none');
 
-        const pnlBox = chart.svg.append('rect')
-            .attr('class', `split-avg-label split-avg-${splitGroupId}`)
-            .attr('fill', '#0f172a')
-            .attr('stroke', accent)
-            .attr('stroke-width', 1)
-            .attr('rx', 3);
-        const pnlText = chart.svg.append('text')
-            .attr('class', `split-avg-label split-avg-${splitGroupId}`)
-            .attr('fill', '#fde68a')
-            .attr('font-size', '11px')
-            .attr('font-weight', '700')
-            .attr('x', 0).attr('y', y + 4)
-            .text('+$0.00');
+            const avgBox = chart.svg.append('rect')
+                .attr('class', `split-avg-label split-avg-${splitGroupId}`)
+                .attr('fill', 'rgba(234, 179, 8, 0.12)')
+                .attr('stroke', accent)
+                .attr('stroke-width', 1)
+                .attr('rx', 3);
+            const avgText = chart.svg.append('text')
+                .attr('class', `split-avg-label split-avg-${splitGroupId}`)
+                .attr('fill', '#fbbf24')
+                .attr('font-size', '11px')
+                .attr('font-weight', '600')
+                .attr('x', 0).attr('y', y + 4)
+                .text('Avg Entry');
 
-        this.splitGroupAvgLines.push({
-            splitGroupId,
-            avgPrice,
-            totalLots,
-            side,
-            orderIds: [...orderIds],
-            line,
-            avgBox, avgText,
-            lotsBox, lotsText,
-            pnlBox, pnlText,
-            chart
+            const lotsBox = chart.svg.append('rect')
+                .attr('class', `split-avg-label split-avg-${splitGroupId}`)
+                .attr('fill', '#0f172a')
+                .attr('stroke', accent)
+                .attr('stroke-width', 1)
+                .attr('rx', 3);
+            const lotsText = chart.svg.append('text')
+                .attr('class', `split-avg-label split-avg-${splitGroupId}`)
+                .attr('fill', '#fde68a')
+                .attr('font-size', '11px')
+                .attr('font-weight', '600')
+                .attr('x', 0).attr('y', y + 4)
+                .text(this.formatQuantity(totalLots));
+
+            const pnlBox = chart.svg.append('rect')
+                .attr('class', `split-avg-label split-avg-${splitGroupId}`)
+                .attr('fill', '#0f172a')
+                .attr('stroke', accent)
+                .attr('stroke-width', 1)
+                .attr('rx', 3);
+            const pnlText = chart.svg.append('text')
+                .attr('class', `split-avg-label split-avg-${splitGroupId}`)
+                .attr('fill', '#fde68a')
+                .attr('font-size', '11px')
+                .attr('font-weight', '700')
+                .attr('x', 0).attr('y', y + 4)
+                .text('+$0.00');
+
+            this.splitGroupAvgLines.push({
+                splitGroupId,
+                avgPrice,
+                totalLots,
+                side,
+                orderIds: [...orderIds],
+                line,
+                avgBox, avgText,
+                lotsBox, lotsText,
+                pnlBox, pnlText,
+                chart
+            });
+
+            if (!this._suppressChartRender && chart.renderPending !== undefined) {
+                chart.renderPending = true;
+                chart.render();
+            }
         });
-
-        if (!this._suppressChartRender && chart.renderPending !== undefined) {
-            chart.renderPending = true;
-            chart.render();
-        }
     }
 
     /**
      * Remove a split-group avg line (when all orders in the group are closed).
      */
     removeSplitGroupAvgLine(splitGroupId) {
-        const idx = this.splitGroupAvgLines.findIndex(g => g.splitGroupId === splitGroupId);
-        if (idx === -1) return;
-        const g = this.splitGroupAvgLines[idx];
-        try { g.line?.remove(); } catch (_) {}
-        try { g.avgBox?.remove(); } catch (_) {}
-        try { g.avgText?.remove(); } catch (_) {}
-        try { g.lotsBox?.remove(); } catch (_) {}
-        try { g.lotsText?.remove(); } catch (_) {}
-        try { g.pnlBox?.remove(); } catch (_) {}
-        try { g.pnlText?.remove(); } catch (_) {}
-        try { g._connector?.remove(); } catch (_) {}
-        this.splitGroupAvgLines.splice(idx, 1);
+        const toRemove = this.splitGroupAvgLines.filter((g) => g.splitGroupId === splitGroupId);
+        if (!toRemove.length) return;
+        toRemove.forEach((g) => {
+            try { g.line?.remove(); } catch (_) {}
+            try { g.avgBox?.remove(); } catch (_) {}
+            try { g.avgText?.remove(); } catch (_) {}
+            try { g.lotsBox?.remove(); } catch (_) {}
+            try { g.lotsText?.remove(); } catch (_) {}
+            try { g.pnlBox?.remove(); } catch (_) {}
+            try { g.pnlText?.remove(); } catch (_) {}
+            try { g._connector?.remove(); } catch (_) {}
+        });
+        this.splitGroupAvgLines = this.splitGroupAvgLines.filter((g) => g.splitGroupId !== splitGroupId);
     }
 
     /**
@@ -24165,33 +24210,44 @@ class OrderManager {
      * @param {string} mode - 'open' | 'pending' | 'preview'
      */
     drawMultiTPAvgLine(order, mode = 'open') {
-        const chart = mode === 'preview'
-            ? (this.previewLines?._previewChart || this._getPreviewChart() || this.chart)
-            : this.chart;
-        if (!chart?.svg) return;
-
         let id;
         let avgTP;
         let qty;
 
         if (mode === 'preview') {
+            const chart = this.previewLines?._previewChart || this._getPreviewChart() || this.chart;
+            if (!chart?.svg) return;
             const targets = order.tpTargets || [];
             const priced = targets.filter(t => t.price > 0 && !t.hit);
             if (priced.length < 1) return;
             id = '__preview__';
-            if (this.multiTPAvgLines.some(g => g.orderId === id)) return;
+            if (this.multiTPAvgLines.some((g) => g.orderId === id && g.chart === chart)) return;
             avgTP = this._weightedAvgTPFromPricedTargets(priced, mode, order);
             if (avgTP == null || !Number.isFinite(avgTP)) return;
             qty = order.quantity || parseFloat(document.getElementById('orderQuantity')?.value) || 0;
-        } else if (order.isSplitEntry && order.splitGroupId) {
+            this._drawMultiTPAvgLineOnChart(order, mode, id, avgTP, qty, chart);
+            this._updateMultiTPAvgLines(chart);
+            return;
+        }
+
+        let targetCharts;
+        if (this._isMultiPanelLayout()) {
+            targetCharts = this._collectLayoutCharts().filter((c) => c && this._positionTickerMatchesChartSymbol(order, c));
+        } else {
+            targetCharts = [this.chart];
+        }
+        if (!targetCharts.length) targetCharts = [this.chart];
+
+        if (order.isSplitEntry && order.splitGroupId) {
             id = `splitgrp_${order.splitGroupId}`;
             const legs = this._getSplitGroupLegsForMultiTP(order.splitGroupId);
             for (const leg of legs) {
                 this.removeMultiTPAvgLine(leg.id);
             }
-            if (this.multiTPAvgLines.some(g => g.orderId === id)) {
-                this._updateMultiTPAvgLines(chart);
-                return;
+            while (this.multiTPAvgLines.some((g) => g.orderId === id)) {
+                const ix = this.multiTPAvgLines.findIndex((g) => g.orderId === id);
+                if (ix === -1) break;
+                this._destroyMultiTPAvgEntry(ix);
             }
             const comb = this._computeSplitGroupCombinedAvgTP(order.splitGroupId, mode);
             if (!comb) return;
@@ -24202,16 +24258,30 @@ class OrderManager {
             const priced = targets.filter(t => t.price > 0 && !t.hit);
             if (priced.length < 2) return;
             id = order.id;
-            if (this.multiTPAvgLines.some(g => g.orderId === id)) return;
+            this.removeMultiTPAvgLine(id);
             avgTP = this._weightedAvgTPFromPricedTargets(priced, mode, order);
             if (avgTP == null || !Number.isFinite(avgTP)) return;
             qty = order.quantity || order.lots || 0;
         }
 
+        targetCharts.forEach((chart) => {
+            if (!chart?.svg) return;
+            if (this.multiTPAvgLines.some((g) => g.orderId === id && g.chart === chart)) {
+                this._updateMultiTPAvgLines(chart);
+                return;
+            }
+            this._drawMultiTPAvgLineOnChart(order, mode, id, avgTP, qty, chart);
+            this._updateMultiTPAvgLines(chart);
+        });
+    }
+
+    /**
+     * Single-chart SVG for a multi-TP average line (shared by drawMultiTPAvgLine).
+     */
+    _drawMultiTPAvgLineOnChart(order, mode, id, avgTP, qty, chart) {
         const accent = '#ca8a04';
         const yScale = chart.scales?.yScale;
         const y = yScale ? yScale(avgTP) : 100;
-
         const cls = `multi-tp-avg-${id}`;
 
         const line = chart.svg.append('line')
@@ -24261,8 +24331,10 @@ class OrderManager {
             chart
         });
 
-        // Position labels immediately so they don't flash at x=0
-        this._updateMultiTPAvgLines(chart);
+        if (!this._suppressChartRender && chart && typeof chart.render === 'function') {
+            chart.renderPending = true;
+            chart.render();
+        }
     }
 
     _destroyMultiTPAvgEntry(idx) {
@@ -24283,26 +24355,29 @@ class OrderManager {
      */
     _removeSplitGroupTPAvgIfEmpty(splitGroupId, excludeOrderId) {
         const grpKey = `splitgrp_${splitGroupId}`;
-        const gIdx = this.multiTPAvgLines.findIndex(g => g.orderId === grpKey);
-        if (gIdx === -1) return;
+        if (!this.multiTPAvgLines.some((g) => g.orderId === grpKey)) return;
         const hasOtherOpen = (this.openPositions || []).some(
-            p => p.id !== excludeOrderId && p.splitGroupId === splitGroupId);
+            (p) => p.id !== excludeOrderId && p.splitGroupId === splitGroupId);
         const hasOtherPending = (this.pendingOrders || []).some(
-            p => p.id !== excludeOrderId && p.splitGroupId === splitGroupId);
+            (p) => p.id !== excludeOrderId && p.splitGroupId === splitGroupId);
         if (hasOtherOpen || hasOtherPending) return;
-        this._destroyMultiTPAvgEntry(gIdx);
+        while (this.multiTPAvgLines.some((g) => g.orderId === grpKey)) {
+            const ix = this.multiTPAvgLines.findIndex((g) => g.orderId === grpKey);
+            if (ix === -1) break;
+            this._destroyMultiTPAvgEntry(ix);
+        }
     }
 
     removeMultiTPAvgLine(orderId) {
-        let idx = this.multiTPAvgLines.findIndex(g => g.orderId === orderId);
+        let idx = this.multiTPAvgLines.findIndex((g) => g.orderId === orderId);
 
         // For split-entry orders the avg line is keyed by splitgrp_<groupId>.
         // Look up the order to resolve the group key, and only remove if no
         // other legs in the group are still open/pending.
         if (idx === -1) {
-            const pos = (this.openPositions || []).find(p => p.id === orderId)
-                     || (this.pendingOrders || []).find(p => p.id === orderId)
-                     || (this.closedPositions || []).find(p => p.id === orderId);
+            const pos = (this.openPositions || []).find((p) => p.id === orderId)
+                     || (this.pendingOrders || []).find((p) => p.id === orderId)
+                     || (this.closedPositions || []).find((p) => p.id === orderId);
             if (pos && pos.isSplitEntry && pos.splitGroupId) {
                 this._removeSplitGroupTPAvgIfEmpty(pos.splitGroupId, orderId);
                 return;
@@ -24310,17 +24385,28 @@ class OrderManager {
         }
 
         if (idx === -1) return;
-        this._destroyMultiTPAvgEntry(idx);
+        while ((idx = this.multiTPAvgLines.findIndex((g) => g.orderId === orderId)) !== -1) {
+            this._destroyMultiTPAvgEntry(idx);
+        }
     }
 
     _rebuildMultiTPAvgLines() {
         const drawnGroups = new Set();
+        const lineIdFor = (o) => (o.isSplitEntry && o.splitGroupId ? `splitgrp_${o.splitGroupId}` : o.id);
+        const isCompleteOnLayout = (o, lineId) => {
+            if (!this._isMultiPanelLayout()) {
+                return this.multiTPAvgLines.some((g) => g.orderId === lineId);
+            }
+            const charts = this._collectLayoutCharts().filter((c) => c && this._positionTickerMatchesChartSymbol(o, c));
+            if (!charts.length) return this.multiTPAvgLines.some((g) => g.orderId === lineId);
+            return charts.every((c) => this.multiTPAvgLines.some((g) => g.orderId === lineId && g.chart === c));
+        };
         for (const pos of (this.openPositions || [])) {
             if (pos.tpTargets && pos.tpTargets.length >= 1) {
                 const key = pos.id;
                 if (drawnGroups.has(key)) continue;
-                const already = this.multiTPAvgLines.some(g => g.orderId === key);
-                if (!already) this.drawMultiTPAvgLine(pos, 'open');
+                const lid = lineIdFor(pos);
+                if (!isCompleteOnLayout(pos, lid)) this.drawMultiTPAvgLine(pos, 'open');
                 drawnGroups.add(key);
             }
         }
@@ -24328,14 +24414,20 @@ class OrderManager {
             if (po.tpTargets && po.tpTargets.length >= 1) {
                 const key = po.id;
                 if (drawnGroups.has(key)) continue;
-                const already = this.multiTPAvgLines.some(g => g.orderId === key);
-                if (!already) this.drawMultiTPAvgLine(po, 'pending');
+                const lid = lineIdFor(po);
+                if (!isCompleteOnLayout(po, lid)) this.drawMultiTPAvgLine(po, 'pending');
                 drawnGroups.add(key);
             }
         }
     }
 
     _updateMultiTPAvgLines(ch) {
+        if (ch === undefined && this._isMultiPanelLayout()) {
+            this._collectLayoutCharts().forEach((c) => {
+                if (c?.scales?.yScale) this._updateMultiTPAvgLines(c);
+            });
+            return;
+        }
         if (!this.multiTPAvgLines || !this.multiTPAvgLines.length) return;
         const yScale = ch?.scales?.yScale;
         if (!yScale) return;
@@ -24537,6 +24629,12 @@ class OrderManager {
      * and align the individual order lines in each group to the same left edge.
      */
     _updateSplitGroupAvgLines(ch) {
+        if (ch === undefined && this._isMultiPanelLayout()) {
+            this._collectLayoutCharts().forEach((c) => {
+                if (c?.scales?.yScale) this._updateSplitGroupAvgLines(c);
+            });
+            return;
+        }
         if (!this.splitGroupAvgLines || !this.splitGroupAvgLines.length) return;
         const yScale = ch?.scales?.yScale;
         if (!yScale) return;
@@ -26046,10 +26144,13 @@ class OrderManager {
                 this.removePendingSLTPLines(primaryLegId);
                 // Also remove any targets keyed under each sibling's own ID (belt-and-suspenders)
                 remainingSiblings.forEach(sib => this.removePendingSLTPLines(sib.id));
-                // Destroy the split-group avg TP line
+                // Destroy the split-group avg TP line (all chart surfaces)
                 const grpAvgTPKey = `splitgrp_${splitGroupId}`;
-                const grpAvgTPIdx = this.multiTPAvgLines.findIndex(g => g.orderId === grpAvgTPKey);
-                if (grpAvgTPIdx !== -1) this._destroyMultiTPAvgEntry(grpAvgTPIdx);
+                while (this.multiTPAvgLines.some((g) => g.orderId === grpAvgTPKey)) {
+                    const grpAvgTPIdx = this.multiTPAvgLines.findIndex((g) => g.orderId === grpAvgTPKey);
+                    if (grpAvgTPIdx === -1) break;
+                    this._destroyMultiTPAvgEntry(grpAvgTPIdx);
+                }
                 // Also remove any avg TP keyed under the primary or individual IDs
                 this.removeMultiTPAvgLine(primaryLegId);
                 remainingSiblings.forEach(sib => this.removeMultiTPAvgLine(sib.id));
@@ -26122,8 +26223,11 @@ class OrderManager {
                 if (openLegs.length === 0) {
                     // No executed legs remain — destroy the group avg TP line too
                     const grpAvgTPKey = `splitgrp_${splitGroupId}`;
-                    const grpAvgTPIdx = this.multiTPAvgLines.findIndex(g => g.orderId === grpAvgTPKey);
-                    if (grpAvgTPIdx !== -1) this._destroyMultiTPAvgEntry(grpAvgTPIdx);
+                    while (this.multiTPAvgLines.some((g) => g.orderId === grpAvgTPKey)) {
+                        const grpAvgTPIdx = this.multiTPAvgLines.findIndex((g) => g.orderId === grpAvgTPKey);
+                        if (grpAvgTPIdx === -1) break;
+                        this._destroyMultiTPAvgEntry(grpAvgTPIdx);
+                    }
                 } else {
                     // Promote each surviving open leg to standalone so SL/TP draw correctly
                     openLegs.forEach(leg => {
@@ -28981,6 +29085,12 @@ class OrderManager {
      * Update BE line positions
      */
     updateBELines(sourceChart) {
+        if (sourceChart === undefined && this._isMultiPanelLayout()) {
+            this._collectLayoutCharts().forEach((c) => {
+                if (c?.scales?.yScale) this.updateBELines(c);
+            });
+            return;
+        }
         const ch = sourceChart || this.chart;
         if (!ch?.scales) {
             return;
@@ -29490,7 +29600,7 @@ class OrderManager {
                             .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
                     }
                 }
-                const avgG = this.multiTPAvgLines.find(g => g.orderId === pos.id);
+                const avgG = this.multiTPAvgLines.find((g) => g.orderId === pos.id && g.chart === ch);
                 if (avgG && Number.isFinite(avgG.avgTP)) {
                     const avgY = yScale(avgG.avgTP);
                     if (Number.isFinite(avgY)) {
@@ -29542,7 +29652,7 @@ class OrderManager {
                             .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
                     }
                 }
-                const avgG = this.multiTPAvgLines.find(g => g.orderId === po.id);
+                const avgG = this.multiTPAvgLines.find((g) => g.orderId === po.id && g.chart === ch);
                 if (avgG && Number.isFinite(avgG.avgTP)) {
                     const avgY = yScale(avgG.avgTP);
                     if (Number.isFinite(avgY)) {
