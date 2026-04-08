@@ -26987,7 +26987,6 @@ class OrderManager {
         const y = yScale(order.openPrice);
         const candle = chart.data[dataIndex];
         const isBuy = order.type === 'BUY';
-        const color = isBuy ? '#2962ff' : '#ef4444';
         const sz = 12;
         const gap = 4;
         const tickW = Math.max(candleSpacing * 0.6, 8);
@@ -26995,6 +26994,7 @@ class OrderManager {
         // Arrow at the wick: BUY below candle low, SELL above candle high
         const wickY = isBuy ? yScale(candle.l) : yScale(candle.h);
         const arrowCY = isBuy ? wickY + sz + gap : wickY - sz - gap;
+        const color = arrowCY < wickY ? '#ef4444' : '#22c55e';
 
         const markerGroup = chart.svg.append('g')
             .attr('class', `entry-marker entry-marker-${order.id}`)
@@ -27151,8 +27151,6 @@ class OrderManager {
         const x = this.chart.dataIndexToPixel(dataIndex);
         const y = yScale(closeData.closePrice);
         const candle = this.chart.data[dataIndex];
-        const isProfitable = closeData.pnl >= 0;
-        const color = isProfitable ? '#22c55e' : '#ef4444';
         const sz = 12;
         const gap = 4;
         const tickW = Math.max(candleSpacing * 0.6, 8);
@@ -27161,6 +27159,7 @@ class OrderManager {
         const isBuyExit = order.type === 'BUY';
         const wickY = isBuyExit ? yScale(candle.h) : yScale(candle.l);
         const arrowCY = isBuyExit ? wickY - sz - gap : wickY + sz + gap;
+        const color = arrowCY < wickY ? '#ef4444' : '#22c55e';
 
         const markerGroup = this.chart.svg.append('g')
             .attr('class', `exit-marker exit-marker-${order.id}`)
@@ -27351,8 +27350,6 @@ class OrderManager {
         const x = this.chart.dataIndexToPixel(dataIndex);
         const y = yScale(closeData.closePrice);
         const candle = this.chart.data[dataIndex];
-        const isProfitable = closeData.pnl >= 0;
-        const color = isProfitable ? '#22c55e' : '#ef4444';
         const sz = 12;
         const gap = 4;
         const tickW = Math.max(candleSpacing * 0.6, 8);
@@ -27361,6 +27358,7 @@ class OrderManager {
         const isBuyExit = order.type === 'BUY';
         const wickY = isBuyExit ? yScale(candle.h) : yScale(candle.l);
         const arrowCY = isBuyExit ? wickY - sz - gap : wickY + sz + gap;
+        const color = arrowCY < wickY ? '#ef4444' : '#22c55e';
 
         const markerGroup = this.chart.svg.append('g')
             .attr('class', `partial-close-marker partial-close-marker-${order.id}-${closeData.targetId}`)
@@ -27463,7 +27461,7 @@ class OrderManager {
 
         this._drawTradeConnector(order, closeData);
 
-        const pnlText = `${isProfitable ? '+' : ''}$${closeData.pnl.toFixed(2)}`;
+        const pnlText = `${closeData.pnl >= 0 ? '+' : ''}$${closeData.pnl.toFixed(2)}`;
         console.log(`✅ Partial close marker drawn for order #${order.id} target #${closeData.targetId} (P&L: ${pnlText})`);
     }
     
