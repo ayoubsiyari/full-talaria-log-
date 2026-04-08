@@ -31107,8 +31107,10 @@ class OrderManager {
         // Update visual indicator (waiting state)
         this.updateTrailingIndicator(false);
         
-        // Start monitoring price
-        this.startPriceMonitoring();
+        // No live preview timer: do not mutate #slPrice while the order is only on the panel.
+        // (Switching R / pips / $ re-inits this and was moving the SL.) Trailing for open
+        // positions is applied in updatePositions(), not updateTrailingSL().
+        this.stopPriceMonitoring();
     }
     
     /**
