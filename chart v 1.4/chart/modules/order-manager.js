@@ -20170,7 +20170,12 @@ class OrderManager {
             const posFileId = position.sourceFileId != null ? String(position.sourceFileId) : '';
             const tickerMismatch = !!(posTicker && chartTickerForBar && posTicker !== chartTickerForBar);
             const fileMismatch = !!(posFileId && chartFileId && posFileId !== chartFileId);
-            if (tickerMismatch || fileMismatch) {
+            // Split / multi-entry: shared SL/TP must use the **active chart's OHLC** whenever this leg is the
+            // same instrument as the chart (`!tickerMismatch`). Per-leg `sourceFileId` can still differ
+            // (`fileMismatch`) — those legs used to take the background branch only, so often **only one**
+            // leg got an SL fill while the SL label summed every leg → e.g. ~$260 on the line vs ~$87 realized.
+            const splitUseMainChartBar = !!(position.isSplitEntry && position.splitGroupId && !tickerMismatch);
+            if ((tickerMismatch || fileMismatch) && !splitUseMainChartBar) {
                 const tMs = Number(currentCandle.t);
                 const pref = posFileId || null;
                 const bgBar = this._getBackgroundBarForTicker(posTicker || '', tMs, pref);
