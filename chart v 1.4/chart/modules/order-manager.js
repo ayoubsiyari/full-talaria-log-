@@ -1425,15 +1425,57 @@ class OrderManager {
     }
 
     /**
-     * Weighted-average OPEN fill price for split group (manager + orderService, deduped).
-     * Auto-BE in updatePositions runs on open legs only — pending siblings must not skew R from avg→SL.
+     * Pending split legs still waiting (same splitGroupId as open basket). Excludes ids already filled.
+     */
+    _getSplitGroupPendingLegsForOpenBasket(openPosition) {
+        if (!openPosition?.splitGroupId || !openPosition.isSplitEntry) return [];
+        const gid = openPosition.splitGroupId;
+        const openIds = new Set(this._getSplitGroupOpenPositions(openPosition).map((p) => p.id));
+        const raw = [];
+        const push = (arr) => {
+            (arr || []).forEach((p) => {
+                if (!p || p.splitGroupId !== gid || !p.isSplitEntry) return;
+                if (openIds.has(p.id)) return;
+                const st = (p.status || '').toString().toUpperCase();
+                if (st === 'OPEN') return;
+                raw.push(p);
+            });
+        };
+        push(this.pendingOrders);
+        push(this.orderService?.pendingOrders);
+        const seen = new Set();
+        const out = [];
+        for (const p of raw) {
+            if (seen.has(p.id)) continue;
+            seen.add(p.id);
+            out.push(p);
+        }
+        return out;
+    }
+
+    /**
+     * Weighted basket entry for split BE / R: filled legs @ openPrice + unfilled siblings @ entryPrice.
+     * Matches pending-plan BE until every leg is live (then pending list is empty → open-only avg).
      */
     _getSplitGroupAvgEntry(position) {
         if (!position.isSplitEntry || !position.splitGroupId) return position.openPrice;
-        const members = this._getSplitGroupOpenPositions(position);
-        const totalQty = members.reduce((s, p) => s + (Number(p.quantity) || 0), 0);
+        const openM = this._getSplitGroupOpenPositions(position);
+        const pendM = this._getSplitGroupPendingLegsForOpenBasket(position);
+        let totalQty = 0;
+        let weightedSum = 0;
+        for (const p of openM) {
+            const q = Number(p.quantity) || 0;
+            if (q <= 0) continue;
+            totalQty += q;
+            weightedSum += (Number(p.openPrice) || 0) * q;
+        }
+        for (const p of pendM) {
+            const q = Number(p.quantity) || 0;
+            if (q <= 0) continue;
+            totalQty += q;
+            weightedSum += (Number(p.entryPrice) || 0) * q;
+        }
         if (!(totalQty > 0)) return position.openPrice;
-        const weightedSum = members.reduce((s, p) => s + (Number(p.openPrice) || 0) * (Number(p.quantity) || 0), 0);
         return weightedSum / totalQty;
     }
 
@@ -1455,9 +1497,15 @@ class OrderManager {
         return order?.openPrice;
     }
 
-    /** Total lots for $-mode BE on chart (open split legs only). */
+    /** Total lots for $-mode BE on chart (open + still-pending split legs, same as basket avg). */
     _beChartBreakevenQtyOpen(order) {
-        if (order?.isSplitEntry && order.splitGroupId) return this._getSplitGroupTotalQty(order, 'open');
+        if (order?.isSplitEntry && order.splitGroupId) {
+            const oq = this._getSplitGroupOpenPositions(order).reduce((s, m) => s + (Number(m.quantity) || 0), 0);
+            const pq = this._getSplitGroupPendingLegsForOpenBasket(order).reduce((s, p) => s + (Number(p.quantity) || 0), 0);
+            const t = oq + pq;
+            if (t > 0) return t;
+            return this._getSplitGroupTotalQty(order, 'open');
+        }
         return Number(order?.quantity) || 0;
     }
 
