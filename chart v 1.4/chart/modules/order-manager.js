@@ -13718,12 +13718,11 @@ class OrderManager {
 
     /**
      * Trailing activation / step distances vs initial SL:
-     * - Single leg: that leg's open price.
-     * - Split / multi-entry: **first activated leg** (lowest splitIndex, then earliest openTime) — same anchor
-     *   as ladder placement (main entry vs SL), not basket avg (avg stays for BE / shared R labels elsewhere).
-     * Stored trailingActivateValue / trailingStepValue are re-applied from that first-fill entry.
-     * Legacy positions without those fields keep frozen activationThreshold / stepSize but use first-fill
-     * entry for step math so every leg matches the group's trail geometry.
+     * - Single leg: that leg's open price and quantity.
+     * - Split: **trailingRiskEntryPrice** + **trailingAmountQtyBasis** frozen at placement (main row entry,
+     *   total planned lots) so R / pips / $ match the order panel even when only some legs are filled or
+     *   a leg gaps vs its limit. Falls back to first open leg + current open qty for older trades.
+     * Legacy: frozen activationThreshold / stepSize; openPriceForCompute uses same entry as risk distance.
      */
     _getTrailingDynamicsForPosition(position) {
         const ts = position && position.trailingStop;
@@ -13732,33 +13731,39 @@ class OrderManager {
         if (!Number.isFinite(osl)) return null;
         const side = (position.type || 'BUY').toUpperCase();
         const isSplit = !!(position.isSplitEntry && position.splitGroupId);
-        const trailEntryAnchor = isSplit
+        const trailLegAnchor = isSplit
             ? this._getSplitGroupFirstActivatedEntryPrice(position)
             : Number(position.openPrice);
-        if (!Number.isFinite(trailEntryAnchor)) return null;
-        const qty = isSplit ? this._slChartLabelQtyForOpenOrder(position) : (Number(position.quantity) || 0);
-        if (!(qty > 0)) return null;
-        const riskDistance = side === 'BUY' ? trailEntryAnchor - osl : osl - trailEntryAnchor;
+        const storedRiskEntry = Number(ts.trailingRiskEntryPrice);
+        const useStoredSplitRisk = isSplit && Number.isFinite(storedRiskEntry) && storedRiskEntry > 0;
+        const entryForRisk = useStoredSplitRisk ? storedRiskEntry : trailLegAnchor;
+        if (!Number.isFinite(entryForRisk)) return null;
+        const storedAmtQty = Number(ts.trailingAmountQtyBasis);
+        const qtyForAmount = isSplit && Number.isFinite(storedAmtQty) && storedAmtQty > 0
+            ? storedAmtQty
+            : (isSplit ? this._slChartLabelQtyForOpenOrder(position) : (Number(position.quantity) || 0));
+        if (!(qtyForAmount > 0)) return null;
+        const riskDistance = side === 'BUY' ? entryForRisk - osl : osl - entryForRisk;
         if (!(riskDistance > 1e-12)) return null;
         const unitMode = ts.unitMode || 'rr';
         const vAct = ts.trailingActivateValue;
         const vStep = ts.trailingStepValue;
         if (Number.isFinite(Number(vAct)) && Number.isFinite(Number(vStep))) {
-            const ad = this._trailingValueToPriceDistance(Number(vAct), unitMode, riskDistance, qty);
-            const sd = this._trailingValueToPriceDistance(Number(vStep), unitMode, riskDistance, qty);
-            const activationThreshold = side === 'BUY' ? trailEntryAnchor + ad : trailEntryAnchor - ad;
+            const ad = this._trailingValueToPriceDistance(Number(vAct), unitMode, riskDistance, qtyForAmount);
+            const sd = this._trailingValueToPriceDistance(Number(vStep), unitMode, riskDistance, qtyForAmount);
+            const activationThreshold = side === 'BUY' ? entryForRisk + ad : entryForRisk - ad;
             return {
-                anchor: trailEntryAnchor,
+                anchor: entryForRisk,
                 activationThreshold,
                 stepSize: sd,
-                openPriceForCompute: trailEntryAnchor
+                openPriceForCompute: entryForRisk
             };
         }
         return {
-            anchor: trailEntryAnchor,
+            anchor: entryForRisk,
             activationThreshold: ts.activationThreshold,
             stepSize: ts.stepSize,
-            openPriceForCompute: trailEntryAnchor
+            openPriceForCompute: entryForRisk
         };
     }
 
@@ -17916,6 +17921,10 @@ class OrderManager {
                 stepPips: this.pipSize > 0 ? stepSize / this.pipSize : 0,
                 currentStep: 0,
                 originalSL: slPrice,
+                /** Main row entry used with SL for |entry−SL| at place time (split ladder / multi-entry). */
+                trailingRiskEntryPrice: entryPrice,
+                /** Total planned lots for $-mode distance (split); avoids partial-fill qty skew. */
+                trailingAmountQtyBasis: quantity,
                 limitUsd: limitUsd > 0 ? limitUsd : 0,
                 cumulativeTrailUsd: 0,
                 limitReached: false
