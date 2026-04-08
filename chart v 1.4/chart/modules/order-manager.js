@@ -6040,8 +6040,55 @@ class OrderManager {
         
         // Create the order panel
         this.createOrderPanel();
+
+        if (!this._panelSelectedOrderUiBound && typeof window !== 'undefined') {
+            this._panelSelectedOrderUiBound = true;
+            window.addEventListener('panelSelected', () => {
+                try {
+                    this._onPanelSelectedForOrderUI();
+                } catch (e) {
+                    console.warn('panelSelected order UI:', e);
+                }
+            });
+        }
         
         console.log('✅ Order buttons created');
+    }
+
+    /**
+     * When the user selects another panel while the order drawer is open, sync pip/symbol,
+     * refill entry/TP/SL from that chart's price, and redraw draft preview lines on the active chart
+     * (no need to close/reopen the panel).
+     */
+    _onPanelSelectedForOrderUI() {
+        const panelEl = document.getElementById('orderPanel');
+        if (!panelEl || !panelEl.classList.contains('visible')) return;
+        if (typeof this._isMultiPanelLayout !== 'function' || !this._isMultiPanelLayout()) return;
+        if (this._orderPlacedAwaitingReset) return;
+        if (this.editingPendingOrderId) return;
+
+        this._lastSyncedPipSymbol = null;
+        this.syncPipFromActiveSymbol();
+        this.updateOrderPanel();
+        this.updateOrderPanelPrice();
+        this.updatePlaceButtonText();
+        if (typeof this._updateBreakevenSummary === 'function') this._updateBreakevenSummary();
+        if (typeof this._updateTrailingSummary === 'function') this._updateTrailingSummary();
+        this._applyPrecisionToInputs();
+
+        requestAnimationFrame(() => {
+            this.removePreviewLines();
+            this.updatePreviewLines();
+            const charts = typeof this._collectLayoutCharts === 'function' ? this._collectLayoutCharts() : [];
+            charts.forEach((c) => {
+                if (c && typeof c.updateSVGPointerEvents === 'function') {
+                    try { c.updateSVGPointerEvents(); } catch (_e) { /* ignore */ }
+                }
+            });
+            if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
+                try { this.chart.updateSVGPointerEvents(); } catch (_e) { /* ignore */ }
+            }
+        });
     }
     
     /**
