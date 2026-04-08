@@ -3626,8 +3626,7 @@ class ReplaySystem {
                 const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
 
                 if (hasOwnData) {
-                    let idx = this._findLastRawIndexAtOrBefore(pc._panelFullRawData, replayTs);
-                    idx = Math.max(0, Math.min(idx, pc._panelFullRawData.length - 1));
+                    const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
                     const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
                     pc.rawData = panelSlice;
                     pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
@@ -4516,9 +4515,10 @@ class ReplaySystem {
     /**
      * Last raw bar index with t <= ts (sorted ascending by .t).
      * Used so every pair ends on the same wall-clock cut as main replayTimestamp.
+     * @returns {number} index, or -1 if every bar has t > ts (no wall-clock overlap with replay time).
      */
     _findLastRawIndexAtOrBefore(data, ts) {
-        if (!Array.isArray(data) || data.length === 0) return 0;
+        if (!Array.isArray(data) || data.length === 0) return -1;
         if (!Number.isFinite(ts)) return Math.max(0, data.length - 1);
         let lo = 0;
         let hi = data.length - 1;
@@ -4533,7 +4533,24 @@ class ReplaySystem {
                 hi = mid - 1;
             }
         }
-        return ans >= 0 ? ans : 0;
+        return ans;
+    }
+
+    /**
+     * End index (inclusive) for a panel's raw series during replay when it has its own `_panelFullRawData`.
+     * Prefers wall-clock alignment with main `replayTimestamp`; if the secondary CSV has no bars at/before
+     * that time (common when date ranges differ), falls back to the same playback progress as the main chart
+     * so the panel is not stuck showing a single candle.
+     */
+    _resolvePanelRawEndIndexForReplay(panelFullRawData, replayTs) {
+        if (!Array.isArray(panelFullRawData) || panelFullRawData.length === 0) return 0;
+        let idx = this._findLastRawIndexAtOrBefore(panelFullRawData, replayTs);
+        if (idx >= 0) return Math.min(idx, panelFullRawData.length - 1);
+        const mainData = this.fullRawData;
+        const mainLast = Array.isArray(mainData) && mainData.length > 1 ? mainData.length - 1 : 0;
+        const prog = mainLast > 0 ? (this.currentIndex / mainLast) : 0;
+        const panelLast = panelFullRawData.length - 1;
+        return Math.min(panelLast, Math.max(0, Math.round(prog * panelLast)));
     }
 
     syncPanelCharts() {
@@ -4558,8 +4575,7 @@ class ReplaySystem {
                 const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
 
                 if (hasOwnData) {
-                    let idx = this._findLastRawIndexAtOrBefore(pc._panelFullRawData, replayTs);
-                    idx = Math.max(0, Math.min(idx, pc._panelFullRawData.length - 1));
+                    const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
                     const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
                     pc.rawData = panelSlice;
                     pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);

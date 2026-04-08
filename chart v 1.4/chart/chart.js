@@ -1549,15 +1549,20 @@ class Chart {
             this._panelFullRawData = [...this.rawData];
 
             if (replay && replay.isActive && Number.isFinite(replayTs) && this._panelFullRawData.length > 0) {
-                let idx = -1;
-                if (typeof this.findGoToTargetIndex === 'function') {
-                    idx = this.findGoToTargetIndex(this._panelFullRawData, replayTs);
+                let idx;
+                if (replay && typeof replay._resolvePanelRawEndIndexForReplay === 'function') {
+                    idx = replay._resolvePanelRawEndIndexForReplay(this._panelFullRawData, replayTs);
+                } else {
+                    idx = -1;
+                    if (typeof this.findGoToTargetIndex === 'function') {
+                        idx = this.findGoToTargetIndex(this._panelFullRawData, replayTs);
+                    }
+                    if (idx < 0) {
+                        idx = this._panelFullRawData.findIndex(c => Number(c && c.t) >= replayTs);
+                    }
+                    if (idx < 0) idx = this._panelFullRawData.length - 1;
+                    idx = Math.max(0, Math.min(idx, this._panelFullRawData.length - 1));
                 }
-                if (idx < 0) {
-                    idx = this._panelFullRawData.findIndex(c => Number(c && c.t) >= replayTs);
-                }
-                if (idx < 0) idx = this._panelFullRawData.length - 1;
-                idx = Math.max(0, Math.min(idx, this._panelFullRawData.length - 1));
 
                 const sliced = this._panelFullRawData.slice(0, idx + 1);
                 this.rawData = sliced;
