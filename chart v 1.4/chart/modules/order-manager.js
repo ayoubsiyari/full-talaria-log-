@@ -29658,12 +29658,20 @@ class OrderManager {
         if (!ch?.svg || !ch?.scales?.yScale) return;
         ch.svg.selectAll('.exec-order-connector').remove();
         const yScale = ch.scales.yScale;
-        const yAxisWidth = ch.margin?.r || 70;
-        const connX = ch.w - yAxisWidth - 6;
+        const data = ch.data;
+        /** Same horizontal anchor as entry markers — fixed right-edge X stayed stuck when price scrolled. */
+        const anchorXForOpenTime = (openTime) => {
+            if (!data?.length) return null;
+            const idx = openTime != null ? this._findCandleIndexForTime(data, openTime) : -1;
+            if (idx === -1) return null;
+            return ch.dataIndexToPixel(idx);
+        };
 
         for (const pos of this.openPositions) {
             if (!this._positionTickerMatchesChartSymbol(pos, ch)) continue;
             if (pos.isSplitEntry) continue;
+            const connX = anchorXForOpenTime(pos.openTime);
+            if (connX == null || !Number.isFinite(connX)) continue;
             const hasMultiTP = pos.tpTargets && pos.tpTargets.length >= 1;
             const tpPx = pos.takeProfit || 0;
             const slPx = pos.stopLoss || 0;
@@ -29716,6 +29724,11 @@ class OrderManager {
 
         for (const po of this.pendingOrders) {
             if (!this._positionTickerMatchesChartSymbol(po, ch)) continue;
+            let connX = anchorXForOpenTime(po.placedTime);
+            if (connX == null && data?.length) {
+                connX = ch.dataIndexToPixel(data.length - 1);
+            }
+            if (connX == null || !Number.isFinite(connX)) continue;
             const hasMultiTP = po.tpTargets && po.tpTargets.length >= 1;
             const tpPx = po.takeProfit || 0;
             const slPx = po.stopLoss || 0;
