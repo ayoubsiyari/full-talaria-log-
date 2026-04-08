@@ -10652,6 +10652,9 @@ class Chart {
                 if (typeof this.orderManager.updatePreviewLinePositions === 'function') {
                     this.orderManager.updatePreviewLinePositions();
                 }
+                if (typeof this.orderManager._scheduleDraftPreviewRedrawIfNeeded === 'function') {
+                    this.orderManager._scheduleDraftPreviewRedrawIfNeeded(this);
+                }
                 if (typeof this.orderManager.updateMfeMaeMarkers === 'function') {
                     this.orderManager.updateMfeMaeMarkers();
                 }
@@ -10719,6 +10722,9 @@ class Chart {
             }
             if (typeof this.orderManager.updatePreviewLinePositions === 'function') {
                 this.orderManager.updatePreviewLinePositions();
+            }
+            if (typeof this.orderManager._scheduleDraftPreviewRedrawIfNeeded === 'function') {
+                this.orderManager._scheduleDraftPreviewRedrawIfNeeded(this);
             }
             if (typeof this.orderManager.updateMfeMaeMarkers === 'function') {
                 this.orderManager.updateMfeMaeMarkers();

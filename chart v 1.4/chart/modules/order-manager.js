@@ -320,8 +320,60 @@ class OrderManager {
      */
     _getPreviewChart() {
         const oc = this._getOrderContextChart();
-        if (oc && oc.svg && oc.scales) return oc;
+        if (oc && oc.svg) return oc;
         return this.chart;
+    }
+
+    /** Panel charts often need scales built before yScale(entry) is valid — same as main chart preview. */
+    _ensurePreviewChartScales(chart) {
+        const ch = chart;
+        if (!ch) return false;
+        if (ch.scales && typeof ch.scales.yScale === 'function') return true;
+        if (typeof ch.calculateScales === 'function') {
+            try {
+                ch.calculateScales();
+            } catch (_e) { /* ignore */ }
+        }
+        return !!(ch.scales && typeof ch.scales.yScale === 'function');
+    }
+
+    /**
+     * After chart.render(), scales may only become valid for the active panel after this frame.
+     * If the order drawer is open but the entry preview never attached (drawPreviewLine returned early),
+     * redraw once so TP/SL use entry-anchored layout like the main chart.
+     */
+    _scheduleDraftPreviewRedrawIfNeeded(surfaceChart) {
+        const panelEl = document.getElementById('orderPanel');
+        if (!panelEl?.classList.contains('visible')) return;
+        if (this._orderPlacedAwaitingReset || this.editingPendingOrderId) return;
+        let active = null;
+        try {
+            active = typeof window.getActiveChart === 'function' ? window.getActiveChart() : null;
+        } catch (_e) {
+            return;
+        }
+        if (!surfaceChart || !active || surfaceChart !== active) return;
+        const entryPx = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        if (!(entryPx > 0)) return;
+        if (this.previewLines?.entry?.labelGroup) return;
+        if (this._draftPreviewResyncScheduled) return;
+        this._draftPreviewResyncScheduled = true;
+        requestAnimationFrame(() => {
+            this._draftPreviewResyncScheduled = false;
+            try {
+                const p = document.getElementById('orderPanel');
+                if (!p?.classList.contains('visible')) return;
+                let a = null;
+                try {
+                    a = typeof window.getActiveChart === 'function' ? window.getActiveChart() : null;
+                } catch (_e) {
+                    return;
+                }
+                if (a !== surfaceChart) return;
+                if (this.previewLines?.entry?.labelGroup) return;
+                this.updatePreviewLines();
+            } catch (_e) { /* ignore */ }
+        });
     }
 
     /**
@@ -13929,7 +13981,10 @@ class OrderManager {
             return;
         }
         const pc = this._previewChartFromContext();
-        if (!pc || !pc.scales || !this.previewLines) {
+        if (!pc || !this.previewLines) {
+            return;
+        }
+        if (!this._ensurePreviewChartScales(pc)) {
             return;
         }
         if (this._orderPlacedAwaitingReset) return;
@@ -14164,7 +14219,10 @@ class OrderManager {
 
     updatePreviewLines() {
         const previewChart = this._getPreviewChart();
-        if (!previewChart?.svg || !previewChart?.scales) {
+        if (!previewChart?.svg) {
+            return;
+        }
+        if (!this._ensurePreviewChartScales(previewChart)) {
             return;
         }
 
@@ -14491,8 +14549,15 @@ class OrderManager {
 
     drawPreviewLine(price, color, label, direction = null, isDraggable = false, targetIndex = undefined, targetId = undefined, options = null) {
         const chart = this._previewTargetChart || this._getPreviewChart();
-        if (!chart?.svg || !chart?.scales) return null;
-        const y = chart.scales.yScale(price);
+        if (!chart?.svg) return null;
+        if (!this._ensurePreviewChartScales(chart)) return null;
+        let y = chart.scales.yScale(price);
+        if (!Number.isFinite(y) && typeof chart.calculateScales === 'function') {
+            try {
+                chart.calculateScales();
+                y = chart.scales.yScale(price);
+            } catch (_e) { /* ignore */ }
+        }
         if (!Number.isFinite(y)) return null;
         const hitStrokeWidth = 20;
         const dash = options?.strokeDasharray ?? null;
@@ -15526,9 +15591,17 @@ class OrderManager {
     }
 
     drawPreviewBadge(entryPrice, color, label, targetPrice) {
-        const ch = this._getPreviewChart();
-        if (!ch?.scales?.yScale || !ch?.svg) return null;
-        const y = ch.scales.yScale(entryPrice);
+        const ch = this._previewTargetChart || this._getPreviewChart();
+        if (!ch?.svg) return null;
+        if (!this._ensurePreviewChartScales(ch)) return null;
+        let y = ch.scales.yScale(entryPrice);
+        if (!Number.isFinite(y) && typeof ch.calculateScales === 'function') {
+            try {
+                ch.calculateScales();
+                y = ch.scales.yScale(entryPrice);
+            } catch (_e) { /* ignore */ }
+        }
+        if (!Number.isFinite(y)) return null;
         const self = this;
 
         // Create a small draggable badge (no line, just the label)
