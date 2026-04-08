@@ -1435,6 +1435,30 @@ class OrderManager {
         return weightedSum / totalQty;
     }
 
+    /** Weighted-average entry price for pending split legs (same idea as _getSplitGroupAvgEntry). */
+    _getSplitGroupAvgEntryPending(pendingOrder) {
+        if (!pendingOrder?.isSplitEntry || !pendingOrder.splitGroupId) {
+            return Number(pendingOrder?.entryPrice) || 0;
+        }
+        const members = this._getSplitGroupPendingOrders(pendingOrder);
+        const totalQty = members.reduce((s, m) => s + (Number(m.quantity) || 0), 0);
+        if (!(totalQty > 0)) return Number(pendingOrder.entryPrice) || 0;
+        const weightedSum = members.reduce((s, m) => s + (Number(m.entryPrice) || 0) * (Number(m.quantity) || 0), 0);
+        return weightedSum / totalQty;
+    }
+
+    /** Entry used for BE line / drag math — matches updatePositions (avg for split, else leg open). */
+    _beChartReferenceEntryOpen(order) {
+        if (order?.isSplitEntry && order.splitGroupId) return this._getSplitGroupAvgEntry(order);
+        return order?.openPrice;
+    }
+
+    /** Total lots for $-mode BE distance on chart when split. */
+    _beChartBreakevenQtyOpen(order) {
+        if (order?.isSplitEntry && order.splitGroupId) return this._getSplitGroupTotalQty(order, 'open');
+        return Number(order?.quantity) || 0;
+    }
+
     /**
      * First split leg: lowest splitIndex, then earliest openTime (first activated entry in the ladder).
      */
@@ -22246,24 +22270,27 @@ class OrderManager {
                 startPrice = order.takeProfit;
                 dragStartPrice = order.takeProfit;
             } else if (lineType === 'be') {
-                // For BE line, calculate current trigger price
+                // For BE line, calculate current trigger price (split: avg entry + group qty)
+                const beRef = self._beChartReferenceEntryOpen(order);
+                const beQ = self._beChartBreakevenQtyOpen(order);
                 if (order.breakevenSettings.mode === 'rr') {
-                    const riskDist = Math.abs(order.openPrice - order.stopLoss);
+                    const riskDist = Math.abs(beRef - order.stopLoss);
                     const profitDistance = order.breakevenSettings.value * riskDist;
                     startPrice = order.type === 'BUY'
-                        ? order.openPrice + profitDistance
-                        : order.openPrice - profitDistance;
+                        ? beRef + profitDistance
+                        : beRef - profitDistance;
                 } else if (order.breakevenSettings.mode === 'pips') {
                     const profitPrice = order.breakevenSettings.value * self.pipSize;
                     startPrice = order.type === 'BUY' 
-                        ? order.openPrice + profitPrice 
-                        : order.openPrice - profitPrice;
+                        ? beRef + profitPrice 
+                        : beRef - profitPrice;
                 } else {
-                    const profitPips = order.breakevenSettings.value / (order.quantity * self.pipValuePerLot);
+                    const denom = (beQ > 0 ? beQ : Number(order.quantity) || 1) * self.pipValuePerLot;
+                    const profitPips = order.breakevenSettings.value / denom;
                     const profitPrice = profitPips * self.pipSize;
                     startPrice = order.type === 'BUY' 
-                        ? order.openPrice + profitPrice 
-                        : order.openPrice - profitPrice;
+                        ? beRef + profitPrice 
+                        : beRef - profitPrice;
                 }
             }
             
@@ -22336,20 +22363,30 @@ class OrderManager {
                         }
                     }
                 } else if (lineType === 'be') {
-                    // Update breakevenSettings value based on new price
+                    // Update breakevenSettings value based on new price (split: vs weighted avg entry)
+                    const beRef = self._beChartReferenceEntryOpen(order);
+                    const beQ = self._beChartBreakevenQtyOpen(order);
                     const dist = order.type === 'BUY'
-                        ? newPrice - order.openPrice
-                        : order.openPrice - newPrice;
+                        ? newPrice - beRef
+                        : beRef - newPrice;
                     if (dist > 0) {
                         if (order.breakevenSettings.mode === 'rr') {
-                            const riskDist = Math.abs(order.openPrice - order.stopLoss);
+                            const riskDist = Math.abs(beRef - order.stopLoss);
                             if (riskDist > 0) order.breakevenSettings.value = parseFloat((dist / riskDist).toFixed(2));
                         } else if (order.breakevenSettings.mode === 'pips') {
                             order.breakevenSettings.value = parseFloat((dist / self.pipSize).toFixed(1));
                         } else {
                             const pips = dist / self.pipSize;
-                            order.breakevenSettings.value = parseFloat((pips * order.quantity * self.pipValuePerLot).toFixed(2));
+                            const qUse = beQ > 0 ? beQ : (Number(order.quantity) || 1);
+                            order.breakevenSettings.value = parseFloat((pips * qUse * self.pipValuePerLot).toFixed(2));
                         }
+                    }
+                    if (order.isSplitEntry && order.splitGroupId) {
+                        self._getSplitGroupOpenPositions(order).forEach((sib) => {
+                            if (!sib.breakevenSettings || sib.id === order.id) return;
+                            sib.breakevenSettings.mode = order.breakevenSettings.mode;
+                            sib.breakevenSettings.value = order.breakevenSettings.value;
+                        });
                     }
                     // Update stored trigger price
                     const beData = (self.beLines || []).find(b => b.orderId === order.id);
@@ -25588,7 +25625,11 @@ class OrderManager {
         
         // Add BE trigger line if breakeven is enabled
         if (pendingOrder.autoBreakeven && pendingOrder.breakevenSettings && pendingOrder.stopLoss) {
-            const entryPrice = pendingOrder.entryPrice;
+            const entryPrice = this._getSplitGroupAvgEntryPending(pendingOrder);
+            const membersBe = pendingOrder.isSplitEntry && pendingOrder.splitGroupId
+                ? this._getSplitGroupPendingOrders(pendingOrder)
+                : [pendingOrder];
+            const beQtyPend = membersBe.reduce((s, m) => s + (Number(m.quantity) || 0), 0) || (Number(pendingOrder.quantity) || 0);
             let beTriggerPrice = 0;
             
             if (pendingOrder.breakevenSettings.mode === 'rr') {
@@ -25603,7 +25644,8 @@ class OrderManager {
                     ? entryPrice + profitPrice 
                     : entryPrice - profitPrice;
             } else {
-                const profitPips = pendingOrder.breakevenSettings.value / (pendingOrder.quantity * this.pipValuePerLot);
+                const denom = (beQtyPend > 0 ? beQtyPend : Number(pendingOrder.quantity) || 1) * this.pipValuePerLot;
+                const profitPips = pendingOrder.breakevenSettings.value / denom;
                 const profitPrice = profitPips * this.pipSize;
                 beTriggerPrice = pendingOrder.direction === 'BUY' 
                     ? entryPrice + profitPrice 
@@ -28279,8 +28321,9 @@ class OrderManager {
         if (order.autoBreakeven && order.breakevenSettings && !order.breakevenSettings.triggered && order.stopLoss) {
             console.log(`  🛡️ Drawing BE trigger line for order #${order.id} (triggered=${order.breakevenSettings.triggered})`);
             
-            // Calculate BE trigger price
-            const entryPrice = order.openPrice;
+            // Calculate BE trigger price (split: weighted avg entry + group lots for $ mode — same as updatePositions)
+            const entryPrice = this._beChartReferenceEntryOpen(order);
+            const beQty = this._beChartBreakevenQtyOpen(order);
             let beTriggerPrice = 0;
             
             if (order.breakevenSettings.mode === 'rr') {
@@ -28295,7 +28338,8 @@ class OrderManager {
                     ? entryPrice + profitPrice 
                     : entryPrice - profitPrice;
             } else {
-                const profitPips = order.breakevenSettings.value / (order.quantity * this.pipValuePerLot);
+                const denom = (beQty > 0 ? beQty : Number(order.quantity) || 1) * this.pipValuePerLot;
+                const profitPips = order.breakevenSettings.value / denom;
                 const profitPrice = profitPips * this.pipSize;
                 beTriggerPrice = order.type === 'BUY' 
                     ? entryPrice + profitPrice 
