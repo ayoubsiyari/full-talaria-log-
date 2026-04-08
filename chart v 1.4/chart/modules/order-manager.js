@@ -8929,9 +8929,9 @@ class OrderManager {
                         </div>
                         <div class="order-adv-card__body" style="margin-top:10px; flex-wrap:wrap;">
                             <span>Limit</span>
-                            <input type="number" id="trailingLimitUsd" value="0" min="0" step="1" class="adv-inline-input" title="Stop trailing after this much locked-in improvement ($). 0 = no cap">
+                            <input type="number" id="trailingLimitUsd" value="0" min="0" step="1" class="adv-inline-input" title="Stop trailing when P&amp;L if filled at the SL reaches this $ profit (0 = no cap)">
                             <span class="adv-inline-unit">$</span>
-                            <span style="font-size:10px; color:#94a3b8; max-width:220px; line-height:1.35;">Cap: trail SL until cumulative locked-in $ reaches this, then freeze</span>
+                            <span style="font-size:10px; color:#94a3b8; max-width:220px; line-height:1.35;">Cap: freeze trailing once exit-at-SL P&amp;L reaches this profit $</span>
                         </div>
                         <div id="trailSummaryText" class="order-adv-card__summary"></div>
                     </div>
@@ -13344,17 +13344,14 @@ class OrderManager {
     }
 
     /**
-     * $ change in exit PnL at stop when SL moves from oldSL to newSL (full position size).
-     * Positive = improvement (better exit if stopped).
+     * Exit PnL at stop price (full position). Used for trailing $ limit: freeze when this >= limitUsd.
      */
-    _trailingLockedUsdDelta(position, oldSL, newSL) {
-        if (!position || oldSL == null || newSL == null) return 0;
+    _trailingPnlUsdAtStop(position, stopPrice) {
+        if (!position || stopPrice == null) return NaN;
         const sym = position.ticker || position.symbol || this._getSymbol();
         const t = position.type || 'BUY';
         const q = position.quantity || 0;
-        const pnlOld = this.estimatePnLForPriceLevel(t, position.openPrice, oldSL, q, sym);
-        const pnlNew = this.estimatePnLForPriceLevel(t, position.openPrice, newSL, q, sym);
-        return pnlNew - pnlOld;
+        return this.estimatePnLForPriceLevel(t, position.openPrice, stopPrice, q, sym);
     }
 
     _updateTrailingInlineUnits() {
@@ -13411,7 +13408,7 @@ class OrderManager {
 
         const u = this._trailingUnitLabel(unitMode);
         const lim = Math.max(0, parseFloat(document.getElementById('trailingLimitUsd')?.value || 0));
-        const limSuffix = lim > 0 ? ` · Limit $${lim.toFixed(0)} locked-in (cumul.) then freeze` : '';
+        const limSuffix = lim > 0 ? ` · Limit $${lim.toFixed(0)} profit at SL then freeze` : '';
         el.textContent = `Activate @ ${activatePrice.toFixed(precision)} · each step ≈ ${stepPts.toFixed(1)} pts (inputs in ${u})${limSuffix}`;
     }
 
@@ -20185,11 +20182,11 @@ class OrderManager {
                                 
                                 const limUsd = Number(position.trailingStop.limitUsd);
                                 if (limUsd > 0) {
-                                    const dUsd = this._trailingLockedUsdDelta(position, oldSL, newSL);
-                                    position.trailingStop.cumulativeTrailUsd = (position.trailingStop.cumulativeTrailUsd || 0) + Math.max(0, dUsd);
-                                    if (position.trailingStop.cumulativeTrailUsd >= limUsd) {
+                                    const pnlAtSl = this._trailingPnlUsdAtStop(position, newSL);
+                                    position.trailingStop.cumulativeTrailUsd = Number.isFinite(pnlAtSl) ? pnlAtSl : 0;
+                                    if (Number.isFinite(pnlAtSl) && pnlAtSl >= limUsd) {
                                         position.trailingStop.limitReached = true;
-                                        this.showNotification(`Trailing limit $${limUsd.toFixed(0)} reached — SL fixed | #${position.id}`, 'info');
+                                        this.showNotification(`Trailing limit $${limUsd.toFixed(0)} profit at SL — SL fixed | #${position.id}`, 'info');
                                     }
                                 }
                                 if (position.isSplitEntry && position.splitGroupId) {
@@ -20493,11 +20490,11 @@ class OrderManager {
                                 
                                 const limUsd = Number(position.trailingStop.limitUsd);
                                 if (limUsd > 0) {
-                                    const dUsd = this._trailingLockedUsdDelta(position, oldSL, newSL);
-                                    position.trailingStop.cumulativeTrailUsd = (position.trailingStop.cumulativeTrailUsd || 0) + Math.max(0, dUsd);
-                                    if (position.trailingStop.cumulativeTrailUsd >= limUsd) {
+                                    const pnlAtSl = this._trailingPnlUsdAtStop(position, newSL);
+                                    position.trailingStop.cumulativeTrailUsd = Number.isFinite(pnlAtSl) ? pnlAtSl : 0;
+                                    if (Number.isFinite(pnlAtSl) && pnlAtSl >= limUsd) {
                                         position.trailingStop.limitReached = true;
-                                        this.showNotification(`Trailing limit $${limUsd.toFixed(0)} reached — SL fixed | #${position.id}`, 'info');
+                                        this.showNotification(`Trailing limit $${limUsd.toFixed(0)} profit at SL — SL fixed | #${position.id}`, 'info');
                                     }
                                 }
                                 if (position.isSplitEntry && position.splitGroupId) {
@@ -31126,12 +31123,11 @@ class OrderManager {
                 if (limUsd > 0) {
                     const q = this._getTrailingFormQuantity();
                     const sym = this._getSymbol();
-                    const dUsd = this.estimatePnLForPriceLevel(orderSide, entryPrice, newSL, q, sym)
-                        - this.estimatePnLForPriceLevel(orderSide, entryPrice, prevSl, q, sym);
-                    ts.cumulativeTrailUsd = (ts.cumulativeTrailUsd || 0) + Math.max(0, dUsd);
-                    if (ts.cumulativeTrailUsd >= limUsd) {
+                    const pnlAtSl = this.estimatePnLForPriceLevel(orderSide, entryPrice, newSL, q, sym);
+                    ts.cumulativeTrailUsd = Number.isFinite(pnlAtSl) ? pnlAtSl : 0;
+                    if (Number.isFinite(pnlAtSl) && pnlAtSl >= limUsd) {
                         ts.limitReached = true;
-                        this.showNotification(`Trailing limit $${limUsd.toFixed(0)} reached — SL fixed (preview)`, 'info');
+                        this.showNotification(`Trailing limit $${limUsd.toFixed(0)} profit at SL — fixed (preview)`, 'info');
                     }
                 }
                 
@@ -31207,8 +31203,8 @@ class OrderManager {
         
         if (this.trailingState.limitReached) {
             const lim = Number(this.trailingState.limitUsd || 0);
-            const cum = Number(this.trailingState.cumulativeTrailUsd || 0);
-            statusDetails.textContent = `Limit hit — SL fixed (~$${cum.toFixed(0)} / $${lim.toFixed(0)} locked-in)`;
+            const atSl = Number(this.trailingState.cumulativeTrailUsd || 0);
+            statusDetails.textContent = `Limit hit — SL fixed (exit @ SL ~$${atSl.toFixed(0)}, cap $${lim.toFixed(0)} profit)`;
             return;
         }
         
