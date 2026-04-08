@@ -21013,6 +21013,41 @@ class OrderManager {
         const inferredOrig = rem + prior;
         return Math.min(rem, inferredOrig * f);
     }
+
+    /**
+     * Chart $ and slice lots for one multi-TP rung must match fills: each target's `percentage` is a share of
+     * **original** lots, not a renormalized share of remaining rungs.
+     * @param {number} [priceOverride] - e.g. drag preview price; defaults to target.price
+     */
+    _multiTpTargetChartMetrics(order, target, targetIndex, mode = 'open', priceOverride = null) {
+        let pnl = 0;
+        let lots = 0;
+        if (!order || !target || target.hit) return { pnl, lots };
+        const px = priceOverride != null && Number.isFinite(Number(priceOverride))
+            ? Number(priceOverride)
+            : Number(target.price);
+        const members =
+            order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1
+                ? mode === 'open'
+                    ? this._getSplitGroupOpenPositions(order)
+                    : this._getSplitGroupPendingOrders(order)
+                : [order];
+        for (const m of members) {
+            const legTgt =
+                target.id != null && m.tpTargets
+                    ? m.tpTargets.find((tt) => tt && (tt.id === target.id || String(tt.id) === String(target.id)))
+                    : null;
+            const lt = legTgt || (m.tpTargets && m.tpTargets[targetIndex]);
+            if (!lt || lt.hit) continue;
+            const frac = (Number(lt.percentage) || 0) / 100;
+            if (!(frac > 0)) continue;
+            const tq = this._multiTpPartialCloseQuantity(m, frac);
+            if (!(tq > 0)) continue;
+            lots += tq;
+            pnl += this.estimateOpenLegPnLSlice(m, px, tq);
+        }
+        return { pnl, lots };
+    }
     
     /**
      * Close position at specific price (for SL/TP hits)
@@ -23444,26 +23479,17 @@ class OrderManager {
             const newPrice = ctx.scales.yScale.invert(mouseY);
             const precision = self.getPricePrecision();
             const priceStr = newPrice.toFixed(precision);
-            const tIdx = (order.tpTargets || []).indexOf(target);
-            const nonHitTargets = (order.tpTargets || []).filter((t, i) => self._tpTargetStillActiveOnChart(order, t, i));
-            const totalPctRemaining = nonHitTargets.reduce((sum, t) => sum + (t.percentage || 0), 0);
-            const normalizedPct = totalPctRemaining > 0 ? (target.percentage / totalPctRemaining) * 100 : (target.percentage || 0);
-            let pnl = 0;
-            if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
-                const members = self._getSplitGroupOpenPositions(order);
-                for (const m of members) {
-                    const mq = Number(m.quantity) || 0;
-                    if (mq <= 0) continue;
-                    const legTgt = (target.id != null ? m.tpTargets?.find((tt) => tt.id === target.id) : null)
-                        || (tIdx >= 0 ? m.tpTargets?.[tIdx] : null);
-                    if (!legTgt || legTgt.hit) continue;
-                    const tq = mq * (normalizedPct / 100);
-                    pnl += self.estimateOpenLegPnLSlice(m, newPrice, tq);
-                }
-            } else {
-                const shareQty = (Number(order.quantity) || 0) * (normalizedPct / 100);
-                pnl = self.estimateOpenLegPnLSlice(order, newPrice, shareQty);
+            let tIdx = (order.tpTargets || []).indexOf(target);
+            if (tIdx < 0 && target?.id != null) {
+                tIdx = (order.tpTargets || []).findIndex((tt) => tt && (tt.id === target.id || String(tt.id) === String(target.id)));
             }
+            const { pnl } = self._multiTpTargetChartMetrics(
+                order,
+                target,
+                tIdx >= 0 ? tIdx : 0,
+                'open',
+                newPrice
+            );
             const pnlStr = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
 
             previewLine.attr('y1', mouseY).attr('y2', mouseY);
@@ -25228,33 +25254,17 @@ class OrderManager {
 
         // Check if we have multiple TP targets
         if (pendingOrder.tpTargets && pendingOrder.tpTargets.length > 0) {
-            // Calculate total percentage of non-hit targets for normalization
-            const nonHitTargets = pendingOrder.tpTargets.filter(t => t.price > 0 && t.percentage > 0 && !t.hit);
-            const totalPctRemaining = nonHitTargets.reduce((sum, t) => sum + (t.percentage || 0), 0);
-            
             pendingOrder.tpTargets.forEach((target, index) => {
                 if (target.hit) return;
                 
-                // Normalize percentage among remaining non-hit targets
-                const normalizedPct = totalPctRemaining > 0 ? (target.percentage / totalPctRemaining) * 100 : target.percentage;
-                const closeQty = quantity * (normalizedPct / 100);
-                let tpPnL = this.estimateOpenLegPnLSlice(pendingOrder, target.price, closeQty);
-                if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
-                    const members = this._getSplitGroupPendingOrders(pendingOrder);
-                    tpPnL = members.reduce((sum, m) => {
-                        const q = Number(m.quantity) || 0;
-                        if (q <= 0) return sum;
-                        const cq = q * (normalizedPct / 100);
-                        return sum + this.estimateOpenLegPnLSlice(m, target.price, cq);
-                    }, 0);
-                }
-                
-                let totalCloseQty = closeQty;
-                if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
-                    totalCloseQty = this._getSplitGroupPendingOrders(pendingOrder)
-                        .reduce((s, m) => s + m.quantity * (normalizedPct / 100), 0);
-                }
-                const labelText = `TP${index + 1} (${normalizedPct.toFixed(0)}%) ${totalCloseQty.toFixed(2)}`;
+                const { pnl: tpPnL, lots: totalCloseQty } = this._multiTpTargetChartMetrics(
+                    pendingOrder,
+                    target,
+                    index,
+                    'pending'
+                );
+                const ladderPct = Number(target.percentage) || 0;
+                const labelText = `TP${index + 1} (${ladderPct.toFixed(0)}%) ${totalCloseQty.toFixed(2)}`;
                 const pnlStr = `${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
                 const item = createLine(target.price, 'TP', labelText, tpPnL, target.id || index, target.percentage, index);
                 if (item) {
@@ -27677,27 +27687,11 @@ class OrderManager {
         // Draw Take Profit lines (check for multiple TPs first)
         if (order.tpTargets && Array.isArray(order.tpTargets) && order.tpTargets.length > 0) {
             const nonHitTargets = order.tpTargets.filter((t, i) => this._tpTargetStillActiveOnChart(order, t, i));
-            const totalPctRemaining = nonHitTargets.reduce((sum, t) => sum + (t.percentage || 0), 0);
             console.log(`  🎯 Drawing ${nonHitTargets.length} TP lines for order #${order.id} (${order.tpTargets.length - nonHitTargets.length} hit)`);
             
             order.tpTargets.forEach((target, index) => {
                 if (this._tpTargetStillActiveOnChart(order, target, index)) {
-                    // Normalize percentage among remaining non-hit targets for correct lot calculation
-                    const normalizedPct = totalPctRemaining > 0 ? (target.percentage / totalPctRemaining) * 100 : target.percentage;
-                    // Calculate PnL for this target (sum all legs for scale-in)
-                    const targetQuantity = (Number(order.quantity) || 0) * (normalizedPct / 100);
-                    let tpPnL = this.estimateOpenLegPnLSlice(order, target.price, targetQuantity);
-                    if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
-                        const members = this._getSplitGroupOpenPositions(order);
-                        tpPnL = members.reduce((sum, m) => {
-                            const mq = Number(m.quantity) || 0;
-                            if (mq <= 0) return sum;
-                            const legTgt = (target.id != null ? m.tpTargets?.find((tt) => tt.id === target.id) : null) || m.tpTargets?.[index];
-                            if (!legTgt || legTgt.hit) return sum;
-                            const tq = mq * (normalizedPct / 100);
-                            return sum + this.estimateOpenLegPnLSlice(m, target.price, tq);
-                        }, 0);
-                    }
+                    const { pnl: tpPnL } = this._multiTpTargetChartMetrics(order, target, index, 'open');
                     
                     const color = '#089981';
                     
@@ -28724,36 +28718,24 @@ class OrderManager {
                         : [pos];
                     const splitGroupTotalQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
 
-                    const nonHitTargets = pos.tpTargets.filter((t, i) => this._tpTargetStillActiveOnChart(pos, t, i));
-                    const totalPctRemaining = nonHitTargets.reduce((sum, t) => sum + (t.percentage || 0), 0);
-                    
                     pos.tpTargets.forEach((target, idx) => {
                         if (!this._tpTargetStillActiveOnChart(pos, target, idx)) return;
                         const priceKey = target.price.toFixed(5);
-                        const normalizedPct = totalPctRemaining > 0 ? (target.percentage / totalPctRemaining) * 100 : target.percentage;
-
-                        let rowPnL = 0;
-                        for (const m of members) {
-                            const q = Number(m.quantity) || 0;
-                            if (q <= 0) continue;
-                            const legTgt = (target.id != null ? m.tpTargets?.find((tt) => tt.id === target.id) : null) || m.tpTargets?.[idx];
-                            if (!legTgt || legTgt.hit) continue;
-                            const targetQuantity = q * (normalizedPct / 100);
-                            rowPnL += this.estimateOpenLegPnLSlice(m, target.price, targetQuantity);
-                        }
+                        const { pnl: rowPnL, lots: rowSliceLots } = this._multiTpTargetChartMetrics(pos, target, idx, 'open');
 
                         if (!tpPriceGroups[priceKey]) {
                             tpPriceGroups[priceKey] = {
-                                positions: [{ pos, target, pnl: rowPnL }],
+                                positions: [{ pos, target, pnl: rowPnL, sliceLots: rowSliceLots }],
                                 totalPnL: rowPnL,
+                                totalSliceLots: rowSliceLots,
                                 percentage: target.percentage,
-                                normalizedPct,
                                 targetIndex: idx,
                                 splitGroupTotalQty: pos.isSplitEntry && pos.splitGroupId ? splitGroupTotalQty : undefined
                             };
                         } else {
                             tpPriceGroups[priceKey].totalPnL += rowPnL;
-                            tpPriceGroups[priceKey].positions.push({ pos, target, pnl: rowPnL });
+                            tpPriceGroups[priceKey].totalSliceLots = (tpPriceGroups[priceKey].totalSliceLots || 0) + rowSliceLots;
+                            tpPriceGroups[priceKey].positions.push({ pos, target, pnl: rowPnL, sliceLots: rowSliceLots });
                             if (!tpPriceGroups[priceKey].splitGroupTotalQty && pos.isSplitEntry && pos.splitGroupId) {
                                 tpPriceGroups[priceKey].splitGroupTotalQty = splitGroupTotalQty;
                             }
@@ -28866,17 +28848,19 @@ class OrderManager {
                         } else if (tpMode === 'lots') {
                             valStr = `${tpOrigVal.toFixed(2)}L`;
                         } else {
-                            const dispPct = groupData?.normalizedPct != null ? groupData.normalizedPct : percentage;
-                            valStr = `${dispPct.toFixed(0)}%`;
+                            const dispPct = groupData?.percentage != null ? groupData.percentage : percentage;
+                            valStr = `${Number(dispPct).toFixed(0)}%`;
                         }
                         // Split-entry: one chart row uses full group lot size (aligned with SL / Avg Entry).
                         // Multiple unrelated positions at the same TP price still sum per-position qty.
                         const totalQty = (groupData && groupData.positions.length === 1 && groupData.splitGroupTotalQty != null)
                             ? groupData.splitGroupTotalQty
                             : (groupData ? groupData.positions.reduce((s, p) => s + (p.pos.quantity || 0), 0) : (position.quantity || 0));
-                        // Use normalized percentage for correct lot calculation after partial closes
-                        const normalizedPct = groupData?.normalizedPct ?? percentage;
-                        const targetLots = totalQty * (normalizedPct / 100);
+                        // Ladder slice lots (original-% shares), not renormalized among remaining rungs
+                        const ladderPctNum = Number(groupData?.percentage != null ? groupData.percentage : percentage) || 0;
+                        const targetLots = groupData?.totalSliceLots != null
+                            ? groupData.totalSliceLots
+                            : totalQty * (ladderPctNum / 100);
                         labelStr = numPositions > 1
                             ? `TP${targetIndex + 1} (${valStr}) ${targetLots.toFixed(2)} (${numPositions}×)`
                             : `TP${targetIndex + 1} (${valStr}) ${targetLots.toFixed(2)}`;
