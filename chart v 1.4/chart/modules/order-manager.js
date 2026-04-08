@@ -28403,9 +28403,14 @@ class OrderManager {
                 // Split group: all legs at this SL (any splitIndex). Net $ = gross − RT comm per leg (matches fill).
                 let positionsAtThisSL;
                 if (position.isSplitEntry && position.splitGroupId) {
-                    positionsAtThisSL = this._getSplitGroupOpenPositions(position).filter(
-                        (p) => p.stopLoss != null && Math.abs(Number(p.stopLoss) - slPx) < 1e-8
+                    const allLegs = this._getSplitGroupOpenPositions(position);
+                    const tol = Math.max(1e-6, Math.abs(slPx) * 1e-9);
+                    positionsAtThisSL = allLegs.filter(
+                        (p) => p.stopLoss != null && Math.abs(Number(p.stopLoss) - slPx) < tol
                     );
+                    if (positionsAtThisSL.length === 0) {
+                        positionsAtThisSL = allLegs.length ? allLegs : [position];
+                    }
                 } else {
                     positionsAtThisSL = [position];
                 }
@@ -31167,20 +31172,30 @@ class OrderManager {
         const ts = this.trailingState;
         const { entryPrice, originalSL, currentSL, activationThreshold, stepPips, currentStep, orderSide, activated } = ts;
         
-        // Pre-order preview only: trail off the running last price (close, or replay tick path) so the
-        // SL follows price as it moves. Open positions still use bar H/L in updatePositions().
-        let trailPrice = Number.parseFloat(lastCandle.c ?? lastCandle.close);
+        // Pre-order preview: use replay tick path only while a bar is actively tick-animating; otherwise
+        // use bar high (BUY) / low (SELL) so the preview can advance as OHLC updates. Using chart close
+        // alone when not animating leaves trailPrice flat intrabar — trailing looked "stuck".
         const rs = this.replaySystem;
-        if (rs && typeof rs.getCurrentAnimatedPrice === 'function') {
-            const ap = rs.getCurrentAnimatedPrice();
-            if (Number.isFinite(ap)) trailPrice = ap;
-        }
-        if (!Number.isFinite(trailPrice)) {
-            const hi = Number.parseFloat(lastCandle.h ?? lastCandle.high);
-            const lo = Number.parseFloat(lastCandle.l ?? lastCandle.low);
-            if (Number.isFinite(hi) && Number.isFinite(lo)) {
-                trailPrice = orderSide === 'BUY' ? hi : lo;
+        const hi = Number.parseFloat(lastCandle.h ?? lastCandle.high);
+        const lo = Number.parseFloat(lastCandle.l ?? lastCandle.low);
+        const cls = Number.parseFloat(lastCandle.c ?? lastCandle.close);
+        let trailPrice = cls;
+        let usedAnim = false;
+        if (rs && rs.animatingCandle && typeof rs.getCurrentAnimatedPrice === 'function' && !rs.fastMode) {
+            const ticksNeeded = Number(rs.currentTicksPerCandle || rs.ticksPerCandle || 72) || 72;
+            const tp = Number(rs.tickProgress) || 0;
+            if (tp > 0 && tp < ticksNeeded) {
+                const ap = rs.getCurrentAnimatedPrice();
+                if (Number.isFinite(ap)) {
+                    trailPrice = ap;
+                    usedAnim = true;
+                }
             }
+        }
+        if (!usedAnim) {
+            if (orderSide === 'BUY' && Number.isFinite(hi)) trailPrice = hi;
+            else if (orderSide === 'SELL' && Number.isFinite(lo)) trailPrice = lo;
+            else if (Number.isFinite(cls)) trailPrice = cls;
         }
         if (!Number.isFinite(trailPrice)) return;
         
