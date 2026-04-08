@@ -1509,6 +1509,21 @@ class OrderManager {
         return Number(order?.quantity) || 0;
     }
 
+    /**
+     * Auto-BE stop anchored at basket weighted avg entry (split) or leg entry (non-split).
+     * Per-leg commission offset preserved. Optional pipOffsetOverride matches sibling propagation from triggering leg.
+     */
+    _slStopAtBreakevenAvgEntry(leg, basketAvgEntry, markForFee, pipOffsetOverride = null) {
+        if (!leg) return basketAvgEntry;
+        const pipOff = pipOffsetOverride != null ? pipOffsetOverride : (leg.breakevenSettings?.pipOffset || 0);
+        const ps = this._getPositionPipSize(leg);
+        const pipOffsetPrice = pipOff * ps;
+        const netFee = this._getNetBreakevenCommissionPriceOffset(leg, markForFee);
+        const side = (leg.type || 'BUY').toUpperCase();
+        if (side === 'SELL') return basketAvgEntry - pipOffsetPrice - netFee;
+        return basketAvgEntry + pipOffsetPrice + netFee;
+    }
+
     /** Order panel preview: anchor entry for BE R/pips/$ (weighted avg when multi-entry split mode). */
     _previewBreakevenAnchorEntry() {
         let e = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
@@ -13766,16 +13781,16 @@ class OrderManager {
         return this.estimatePnLForPriceLevel(t, position.openPrice, stopPrice, q, sym);
     }
 
-    /** Trailing $ limit may freeze only after SL has trailed past the first activated entry (split / ladder). */
+    /** Trailing $ limit may freeze only after SL has trailed past basket avg entry (split / ladder). */
     _trailingLimitPastFirstEntry(position, stopPrice) {
         if (!position || stopPrice == null) return true;
         if (!position.isSplitEntry || !position.splitGroupId) return true;
-        const first = this._getSplitGroupFirstActivatedEntryPrice(position);
+        const anchor = this._getSplitGroupAvgEntry(position);
         const sp = Number(stopPrice);
-        if (!Number.isFinite(sp) || !Number.isFinite(first)) return true;
+        if (!Number.isFinite(sp) || !Number.isFinite(anchor)) return true;
         const side = (position.type || 'BUY').toUpperCase();
-        if (side === 'BUY') return sp >= first;
-        return sp <= first;
+        if (side === 'BUY') return sp >= anchor;
+        return sp <= anchor;
     }
 
     /** First multi-entry row price (order panel), else main entry field. */
@@ -20364,33 +20379,23 @@ class OrderManager {
             const siblings = this._getSplitGroupOpenPositions(order);
             const beTriggeredSibling = siblings.find(s => s.id !== order.id && s.breakevenSettings?.triggered);
             if (beTriggeredSibling) {
-                // Compute new weighted average entry across all filled siblings including this one
                 const allFilled = [...siblings, order];
-                const totalQty = allFilled.reduce((s, p) => s + (p.quantity || 0), 0);
-                const weightedAvg = totalQty > 0
-                    ? allFilled.reduce((s, p) => s + p.openPrice * (p.quantity || 0), 0) / totalQty
-                    : order.openPrice;
 
                 const ccRecalc = typeof this.getCurrentCandle === 'function' ? this.getCurrentCandle() : null;
                 const markRecalc = Number.isFinite(Number.parseFloat(ccRecalc?.c)) && Number.parseFloat(ccRecalc.c) > 0
                     ? Number.parseFloat(ccRecalc.c)
                     : order.openPrice;
 
-                // Re-anchor SL per leg so gross P&L at stop matches that leg's round-trip comm (avg is only for triggers).
+                // Re-anchor every leg's SL to basket avg entry (+ offset + per-leg comm), same as AUTO_BE.
                 allFilled.forEach(pos => {
                     if (!pos.breakevenSettings) return;
-                    const pipOffset = pos.breakevenSettings.pipOffset || 0;
-                    const pipSize = this._getPositionPipSize(pos);
-                    const pipOffsetPrice = pipOffset * pipSize;
-                    const netFee = this._getNetBreakevenCommissionPriceOffset(pos, markRecalc);
+                    const avgEntry = this._getSplitGroupAvgEntry(pos);
                     const oldSL = pos.stopLoss;
-                    const newSL = pos.type === 'BUY'
-                        ? pos.openPrice + pipOffsetPrice + netFee
-                        : pos.openPrice - pipOffsetPrice - netFee;
+                    const newSL = this._slStopAtBreakevenAvgEntry(pos, avgEntry, markRecalc);
                     pos.stopLoss = newSL;
                     pos.breakevenSettings.be_recalculated = true;
                     this._logSLTPModification(pos, 'SL', oldSL, newSL, 'AUTO_BE_RECALC');
-                    console.log(`   🔄 BE_RECALC for #${pos.id}: SL re-anchored ${oldSL?.toFixed(5)} → ${newSL.toFixed(5)} (leg ${pos.openPrice.toFixed(5)}, group avg ${weightedAvg.toFixed(5)})`);
+                    console.log(`   🔄 BE_RECALC for #${pos.id}: SL re-anchored ${oldSL?.toFixed(5)} → ${newSL.toFixed(5)} (leg ${pos.openPrice.toFixed(5)}, basket avg ${avgEntry.toFixed(5)})`);
                 });
             }
         }
@@ -20638,9 +20643,9 @@ class OrderManager {
                             ? Number.parseFloat(currentCandle.c)
                             : position.openPrice;
                         const netFeeOffset = this._getNetBreakevenCommissionPriceOffset(position, markBePip);
-                        console.log(`      LegEntry: ${position.openPrice.toFixed(5)}, AvgEntry (trigger): ${beEntryBuy.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}, netFeeOffset: ${netFeeOffset.toFixed(5)}`);
-                        position.stopLoss = position.openPrice + pipOffsetPrice + netFeeOffset;
-                        console.log(`      New SL = legEntry + pts + net(fees) → ${position.stopLoss.toFixed(5)} (gross P&L at SL ≈ round-trip commission for this leg)`);
+                        console.log(`      LegEntry: ${position.openPrice.toFixed(5)}, AvgEntry (BE anchor): ${beEntryBuy.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}, netFeeOffset: ${netFeeOffset.toFixed(5)}`);
+                        position.stopLoss = this._slStopAtBreakevenAvgEntry(position, beEntryBuy, markBePip);
+                        console.log(`      New SL = avgEntry + pts + net(fees) → ${position.stopLoss.toFixed(5)} (gross P&L at SL ≈ round-trip commission for this leg)`);
                         position.breakevenSettings.triggered = true;
                         
                         if (position.trailingStop && !position.trailingStop.activated) {
@@ -20667,8 +20672,7 @@ class OrderManager {
                             (this.openPositions || [])
                                 .filter(p => p.splitGroupId === position.splitGroupId && p.id !== position.id)
                                 .forEach(sib => {
-                                    const sibPip = this._getPositionPipSize(sib);
-                                    sib.stopLoss = sib.openPrice + pipOffset * sibPip + this._getNetBreakevenCommissionPriceOffset(sib, markBePip);
+                                    sib.stopLoss = this._slStopAtBreakevenAvgEntry(sib, beEntryBuy, markBePip, pipOffset);
                                     sib._slIsBreakevenPlacement = true;
                                     if (sib.breakevenSettings) sib.breakevenSettings.triggered = true;
                                     sib._beTriggeredBarT = currentCandle.t;
@@ -20726,12 +20730,10 @@ class OrderManager {
                             // not imply a BE floor — that blocked ratcheting so the line looked "stuck".
                             const useBeFloor = position.autoBreakeven && position.breakevenSettings?.triggered
                                 && position._slIsBreakevenPlacement;
-                            let breakevenSL = position.openPrice;
-                            if (useBeFloor) {
-                                const pipOffset = position.breakevenSettings.pipOffset || 0;
-                                const ps = this._getPositionPipSize(position);
-                                breakevenSL = position.openPrice + (pipOffset * ps) + this._getNetBreakevenCommissionPriceOffset(position, trailPrice);
-                            }
+                            const beAnchBuy = this._getSplitGroupAvgEntry(position);
+                            const breakevenSL = useBeFloor
+                                ? this._slStopAtBreakevenAvgEntry(position, beAnchBuy, trailPrice)
+                                : position.openPrice;
                             const minSL = useBeFloor
                                 ? Math.max(position.stopLoss, breakevenSL)
                                 : position.stopLoss;
@@ -20964,9 +20966,9 @@ class OrderManager {
                             ? Number.parseFloat(currentCandle.c)
                             : position.openPrice;
                         const netFeeOffset = this._getNetBreakevenCommissionPriceOffset(position, markBePipSell);
-                        console.log(`      LegEntry: ${position.openPrice.toFixed(5)}, AvgEntry (trigger): ${beEntrySell.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}, netFeeOffset: ${netFeeOffset.toFixed(5)}`);
-                        position.stopLoss = position.openPrice - pipOffsetPrice - netFeeOffset;
-                        console.log(`      New SL = legEntry − pts − net(fees) → ${position.stopLoss.toFixed(5)} (gross P&L at SL ≈ round-trip commission for this leg)`);
+                        console.log(`      LegEntry: ${position.openPrice.toFixed(5)}, AvgEntry (BE anchor): ${beEntrySell.toFixed(5)}, pipOffset: ${pipOffset}, posPipSize: ${posPipSize}, pipOffsetPrice: ${pipOffsetPrice.toFixed(5)}, netFeeOffset: ${netFeeOffset.toFixed(5)}`);
+                        position.stopLoss = this._slStopAtBreakevenAvgEntry(position, beEntrySell, markBePipSell);
+                        console.log(`      New SL = avgEntry − pts − net(fees) → ${position.stopLoss.toFixed(5)} (gross P&L at SL ≈ round-trip commission for this leg)`);
                         position.breakevenSettings.triggered = true;
                         
                         if (position.trailingStop && !position.trailingStop.activated) {
@@ -20993,8 +20995,7 @@ class OrderManager {
                             (this.openPositions || [])
                                 .filter(p => p.splitGroupId === position.splitGroupId && p.id !== position.id)
                                 .forEach(sib => {
-                                    const sibPip = this._getPositionPipSize(sib);
-                                    sib.stopLoss = sib.openPrice - pipOffset * sibPip - this._getNetBreakevenCommissionPriceOffset(sib, markBePipSell);
+                                    sib.stopLoss = this._slStopAtBreakevenAvgEntry(sib, beEntrySell, markBePipSell, pipOffset);
                                     sib._slIsBreakevenPlacement = true;
                                     sib._beTriggeredBarT = currentCandle.t;
                                     if (sib.breakevenSettings) sib.breakevenSettings.triggered = true;
@@ -21047,12 +21048,10 @@ class OrderManager {
                             const newSL = parseFloat(Number(comp.newSL).toFixed(prec));
                             const useBeCeil = position.autoBreakeven && position.breakevenSettings?.triggered
                                 && position._slIsBreakevenPlacement;
-                            let breakevenSL = position.openPrice;
-                            if (useBeCeil) {
-                                const pipOffset = position.breakevenSettings.pipOffset || 0;
-                                const ps = this._getPositionPipSize(position);
-                                breakevenSL = position.openPrice - (pipOffset * ps) - this._getNetBreakevenCommissionPriceOffset(position, trailPrice);
-                            }
+                            const beAnchSell = this._getSplitGroupAvgEntry(position);
+                            const breakevenSL = useBeCeil
+                                ? this._slStopAtBreakevenAvgEntry(position, beAnchSell, trailPrice)
+                                : position.openPrice;
                             const maxSL = useBeCeil
                                 ? Math.min(position.stopLoss, breakevenSL)
                                 : position.stopLoss;
