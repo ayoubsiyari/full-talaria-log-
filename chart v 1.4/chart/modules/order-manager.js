@@ -20918,7 +20918,7 @@ class OrderManager {
         
         // Calculate P&L using per-position instrument settings (safe across pair switches)
         const posSettings = position.instrument_settings || null;
-        const pnl = this._enginePnL(
+        const gross = this._enginePnL(
             position.type,
             position.openPrice,
             closePrice,
@@ -20927,7 +20927,15 @@ class OrderManager {
             posTicker || activeTicker,
             posSettings
         );
-        
+        // SL / BE / STOP_OUT: match chart SL box (`_slChartNetPnLAtStopForOpenOrder` = gross − round-trip comm).
+        // TP paths stay gross so they match TP labels (estimateOpenLegPnLSlice without comm).
+        const commRt =
+            this._getCommissionPerLotSideForPosition(position) * 2 * closeQuantity;
+        const stopLikeExit =
+            hitType === 'SL' || hitType === 'BE' || hitType === 'STOP_OUT';
+        const pnl =
+            stopLikeExit && Number.isFinite(commRt) ? gross - commRt : gross;
+
         // Update balance
         this.balance += pnl;
         this.equity = this.balance;
