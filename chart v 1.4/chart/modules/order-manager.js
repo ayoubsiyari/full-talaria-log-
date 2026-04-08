@@ -14577,7 +14577,7 @@ class OrderManager {
     }
 
     /**
-     * Keep TP on the profit side of entry and SL: BUY → above both; SELL → below both.
+     * TP vs SL while dragging: SELL → below entry and below SL; BUY → above SL only (TP may sit below entry).
      */
     _clampTpDragPrice(side, tpPrice, entryPrice, slPrice, pipSize) {
         let p = Number(tpPrice);
@@ -14596,9 +14596,6 @@ class OrderManager {
                 p = Math.min(p, sl - pad);
             }
             return p;
-        }
-        if (Number.isFinite(e) && e > 0) {
-            p = Math.max(p, e + pad);
         }
         if (Number.isFinite(sl) && sl > 0) {
             p = Math.max(p, sl + pad);
