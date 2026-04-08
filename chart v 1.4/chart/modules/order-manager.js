@@ -1371,23 +1371,14 @@ class OrderManager {
     }
 
     /**
-     * SL chart label: net $ at stop (gross price P&L minus round-trip comm per leg). Split groups sum every leg.
+     * SL chart label: net $ at stop for **this** open order only (gross − round-trip comm).
+     * Split / multi-entry: each leg is a separate position and closes with its own P&L — summing the
+     * group on every line showed ~full basket $ while a hit notification showed one leg (~+$34 vs ~+$98).
      */
     _slChartNetPnLAtStopForOpenOrder(order, stopPrice) {
         if (!order || stopPrice == null) return 0;
         const sp = Number(stopPrice);
         if (!Number.isFinite(sp)) return 0;
-        if (order.isSplitEntry && order.splitGroupId) {
-            let gross = 0;
-            let comm = 0;
-            for (const m of this._getSplitGroupOpenPositions(order)) {
-                const mq = Number(m.quantity) || 0;
-                if (mq <= 0) continue;
-                gross += this.estimateOpenLegPnLSlice(m, sp, mq);
-                comm += this._getRoundTripCommissionUsd(m);
-            }
-            return gross - comm;
-        }
         const q = Number(order.quantity) || 0;
         const g = this.estimateOpenLegPnLSlice(order, sp, q);
         return g - this._getRoundTripCommissionUsd(order);
@@ -27335,7 +27326,7 @@ class OrderManager {
         if (order.stopLoss) {
             console.log(`  🛑 Drawing SL line at ${order.stopLoss.toFixed(2)}`);
             
-            // Net $ at SL (gross − round-trip comm per leg). Split: every leg — not only splitIndex 1 (avoids +$34 vs +$4 mismatch).
+            // Net $ at SL for this leg only (split groups: one line per leg, matches that leg’s exit $).
             const slPnL = this._slChartNetPnLAtStopForOpenOrder(order, order.stopLoss);
             
             const slLine = chart.svg.append('line')
@@ -27355,10 +27346,7 @@ class OrderManager {
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
             
-            let slTotalQty = order.quantity || 0;
-            if (order.isSplitEntry && order.splitGroupId) {
-                slTotalQty = this._getSplitGroupOpenPositions(order).reduce((s, m) => s + (m.quantity || 0), 0);
-            }
+            const slTotalQty = order.quantity || 0;
             const slLabelText = chart.svg.append('text')
                 .attr('class', `sl-label-text sl-${order.id}`)
                 .attr('fill', '#ffffff')
@@ -28398,29 +28386,13 @@ class OrderManager {
                 }
                 
                 const priceKey = position.stopLoss.toFixed(5);
-                const slPx = Number(position.stopLoss);
-                // Split group: all legs at this SL (any splitIndex). Net $ = gross − RT comm per leg (matches fill).
-                let positionsAtThisSL;
-                if (position.isSplitEntry && position.splitGroupId) {
-                    const allLegs = this._getSplitGroupOpenPositions(position);
-                    const tol = Math.max(1e-6, Math.abs(slPx) * 1e-9);
-                    positionsAtThisSL = allLegs.filter(
-                        (p) => p.stopLoss != null && Math.abs(Number(p.stopLoss) - slPx) < tol
-                    );
-                    if (positionsAtThisSL.length === 0) {
-                        positionsAtThisSL = allLegs.length ? allLegs : [position];
-                    }
-                } else {
-                    positionsAtThisSL = [position];
-                }
-                
+                // Per-position row: this leg’s net $ at SL (split legs each have their own close P&L).
+                const _qSl = Number(position.quantity) || 0;
                 let totalSlPnL = 0;
-                positionsAtThisSL.forEach((pos) => {
-                    const q = Number(pos.quantity) || 0;
-                    if (q <= 0) return;
-                    const g = this.estimateOpenLegPnLSlice(pos, pos.stopLoss, q);
-                    totalSlPnL += g - this._getRoundTripCommissionUsd(pos);
-                });
+                if (_qSl > 0) {
+                    const g = this.estimateOpenLegPnLSlice(position, position.stopLoss, _qSl);
+                    totalSlPnL = g - this._getRoundTripCommissionUsd(position);
+                }
                 
                 if (updatedSLPrices.has(priceKey)) {
                     if (labelBox) labelBox.style('display', 'none');
@@ -28432,14 +28404,8 @@ class OrderManager {
                     if (closeBtn) closeBtn.style('display', 'none');
                 } else {
                     updatedSLPrices.add(priceKey);
-                    const numPositions = positionsAtThisSL.length;
-                    const totalSlQty = positionsAtThisSL.reduce((s, p) => s + (p.quantity || 0), 0);
-                    const allSameSplitGroup = numPositions > 1
-                        && positionsAtThisSL.every(p => p.isSplitEntry && p.splitGroupId)
-                        && positionsAtThisSL.every(p => p.splitGroupId === positionsAtThisSL[0].splitGroupId);
-                    const labelPrefix = numPositions > 1 && !allSameSplitGroup
-                        ? `SL (${numPositions}×) ${totalSlQty.toFixed(2)}`
-                        : `SL  ${totalSlQty.toFixed(2)}`;
+                    const legQty = Number(position.quantity) || 0;
+                    const labelPrefix = `SL  ${legQty.toFixed(2)}`;
                     if (labelText) labelText.text(labelPrefix);
                     if (pnlText) pnlText.text(`${totalSlPnL >= 0 ? '+' : ''}$${totalSlPnL.toFixed(2)}`);
                     if (labelBox) labelBox.style('display', null);
