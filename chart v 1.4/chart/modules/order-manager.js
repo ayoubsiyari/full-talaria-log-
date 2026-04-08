@@ -17820,9 +17820,34 @@ class OrderManager {
                 errors.push(`⚠️ Stop SELL must be BELOW current price (${this.formatPrice(currentPrice)})`);
             }
         }
-        
-        // SL/TP side validation removed — allow any SL/TP placement
-        
+
+        const e = Number(entryPrice);
+        const sl = Number(slPrice);
+        const tp = Number(tpPrice);
+        const hasSl = Number.isFinite(sl) && sl > 0;
+        const hasTp = Number.isFinite(tp) && tp > 0;
+        const side = String(orderSide || 'BUY').toUpperCase();
+        if (Number.isFinite(e) && e > 0) {
+            if (side === 'BUY') {
+                if (hasSl && !(sl < e)) {
+                    errors.push('⚠️ For a BUY, Stop Loss must be below entry');
+                }
+                if (hasSl && hasTp && !(tp > sl)) {
+                    errors.push('⚠️ For a BUY, Take Profit must be above Stop Loss');
+                }
+            } else {
+                if (hasSl && !(sl > e)) {
+                    errors.push('⚠️ For a SELL, Stop Loss must be above entry');
+                }
+                if (hasTp && !(tp < e)) {
+                    errors.push('⚠️ For a SELL, Take Profit must be below entry');
+                }
+                if (hasSl && hasTp && !(tp < sl)) {
+                    errors.push('⚠️ For a SELL, Take Profit must be below Stop Loss');
+                }
+            }
+        }
+
         return errors;
     }
     
