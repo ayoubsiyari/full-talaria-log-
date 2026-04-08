@@ -1239,9 +1239,11 @@ class OrderManager {
     }
 
     /**
-     * During tick animation on a guarded candle, check if the current tick
-     * price (close) has crossed a level. Uses close instead of cumulative
-     * high/low so old price action from earlier ticks doesn't false-trigger.
+     * During replay on a guarded candle, decide if price has touched `level` after the guard
+     * (same economics as unguarded OHLC: wicks / path, not “only if close is there now”).
+     * - Candle playback: bar high/low (must run even when guardTick is -1).
+     * - Tick animation: min/max of cached tick path from guardTick through current progress
+     *   so SL/TP still fire if price crossed the level mid-path and then bounced; close-only missed that.
      * @param {number} guardTick - tickProgress when the guard was set (-1 if not tick anim)
      * @param {object} candle    - current candle from getCurrentCandle()
      * @param {number} level     - the price level to test
@@ -1250,15 +1252,14 @@ class OrderManager {
      */
     _tickAnimOverridesGuard(guardTick, candle, level, dir) {
         const rs = this._playbackReplaySystem();
-        if (!rs || !(guardTick >= 0)) return false;
+        if (!rs) return false;
         const lv = Number(level);
         if (!Number.isFinite(lv)) return false;
 
         const mode = typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : (rs.playbackMode || 'tick');
         const candlePlayback = !!rs.isActive && mode === 'candle';
 
-        // Candle replay has no animatingCandle / tickProgress — old guard path always failed here, so TP/SL
-        // only appeared to fire at bar close. Use wicks like the unguarded OHLC path (same touch as tick mode).
+        // Candle replay: no animatingCandle / tickProgress — use full bar wicks (guardTick is often -1).
         if (candlePlayback) {
             const h = Number.parseFloat(candle.h);
             const l = Number.parseFloat(candle.l);
@@ -1266,8 +1267,35 @@ class OrderManager {
             return Number.isFinite(l) && l <= lv;
         }
 
+        if (!(guardTick >= 0)) return false;
         if (!rs.animatingCandle) return false;
-        if ((Number(rs.tickProgress) || 0) <= guardTick) return false;
+        const tickProgress = Number(rs.tickProgress) || 0;
+        if (tickProgress <= guardTick) return false;
+
+        const anim = rs.animatingCandle;
+        if (typeof rs.getTickPath === 'function' && !anim.cachedPath) {
+            anim.cachedPath = rs.getTickPath(anim.target || anim);
+        }
+        const path = anim.cachedPath;
+        if (Array.isArray(path) && path.length > 0) {
+            const g = Math.max(0, Math.min(Math.floor(Number(guardTick) || 0), path.length - 1));
+            const end = Math.min(tickProgress - 1, path.length - 1);
+            if (end >= g) {
+                let mn = Number(path[g]);
+                let mx = mn;
+                if (Number.isFinite(mn)) {
+                    for (let i = g + 1; i <= end; i++) {
+                        const p = Number(path[i]);
+                        if (!Number.isFinite(p)) continue;
+                        if (p < mn) mn = p;
+                        if (p > mx) mx = p;
+                    }
+                    if (dir === 'above') return mx >= lv;
+                    return mn <= lv;
+                }
+            }
+        }
+
         const close = Number(candle.c);
         if (!Number.isFinite(close)) return false;
         return dir === 'above' ? close >= lv : close <= lv;
@@ -1378,40 +1406,24 @@ class OrderManager {
      * SL chart label: net $ at stop (gross − round-trip comm per leg).
      * Split / multi-entry: **shared** SL — sum all open legs so the line matches total size and basket P&L at that stop.
      */
-    /**
-     * @param {number|null} [quoteMark] - Live quote for pip/FX conversion (entry line uses this); defaults to exit (= stop).
-     */
-    _slChartNetPnLAtStopForOpenOrder(order, stopPrice, quoteMark = null) {
+    _slChartNetPnLAtStopForOpenOrder(order, stopPrice) {
         if (!order || stopPrice == null) return 0;
         const sp = Number(stopPrice);
         if (!Number.isFinite(sp)) return 0;
-        const qm = Number(quoteMark);
-        const useMark = Number.isFinite(qm) && qm > 0 ? qm : null;
         if (order.isSplitEntry && order.splitGroupId) {
             let gross = 0;
             let comm = 0;
             for (const m of this._getSplitGroupOpenPositions(order)) {
                 const mq = Number(m.quantity) || 0;
                 if (mq <= 0) continue;
-                gross += this.estimateOpenLegPnLSlice(m, sp, mq, useMark);
+                gross += this.estimateOpenLegPnLSlice(m, sp, mq);
                 comm += this._getRoundTripCommissionUsd(m);
             }
             return gross - comm;
         }
         const q = Number(order.quantity) || 0;
-        const g = this.estimateOpenLegPnLSlice(order, sp, q, useMark);
+        const g = this.estimateOpenLegPnLSlice(order, sp, q);
         return g - this._getRoundTripCommissionUsd(order);
-    }
-
-    /** Same mark path as entry-line live P&L (tick animation, _resolveUnrealizedMarkPrice). */
-    _liveQuoteMarkForChartSlPnl(chart, position) {
-        if (!chart || !position) return null;
-        const cur = this._getCurrentCandleForChart(chart);
-        if (!cur) return null;
-        const m = this._resolveUnrealizedMarkPrice(position, cur);
-        if (Number.isFinite(m) && m > 0) return m;
-        const c = Number.parseFloat(cur.c);
-        return Number.isFinite(c) && c > 0 ? c : null;
     }
 
     /** Total open lots for split group (shared SL label), else this order’s qty. */
@@ -1530,7 +1542,7 @@ class OrderManager {
      * and per-leg pip snapshot (instrument_settings) in the legacy path — not chart-global pipSize.
      * Fixes multi-entry + multi-TP labels disagreeing with realized P&L at hit.
      */
-    estimateOpenLegPnLSlice(leg, levelPrice, sliceQty, quoteMark = null) {
+    estimateOpenLegPnLSlice(leg, levelPrice, sliceQty) {
         if (!leg) return 0;
         const side = (leg.type || leg.direction) === 'SELL' ? 'SELL' : 'BUY';
         const entry = Number(leg.openPrice ?? leg.entryPrice);
@@ -1538,8 +1550,7 @@ class OrderManager {
         const q = Number(sliceQty) || 0;
         if (!Number.isFinite(entry) || !Number.isFinite(exitPx) || q <= 0) return 0;
         const sym = leg.ticker || leg.symbol || this._getSymbol();
-        const qm = Number(quoteMark);
-        const mark = Number.isFinite(qm) && qm > 0 ? qm : (Number.isFinite(exitPx) ? exitPx : entry);
+        const mark = Number.isFinite(exitPx) ? exitPx : entry;
         if (window.marketCalcEngine && typeof window.marketCalcEngine.calcPnL === 'function') {
             return window.marketCalcEngine.calcPnL(side, entry, exitPx, q, sym, this.marketType, mark);
         }
@@ -22357,8 +22368,7 @@ class OrderManager {
                     if (extraElements.pnlText) {
                         let pnl = 0;
                         if (lineType === 'sl') {
-                            const slMark = self._liveQuoteMarkForChartSlPnl(ctx, order);
-                            pnl = self._slChartNetPnLAtStopForOpenOrder(order, newPrice, slMark);
+                            pnl = self._slChartNetPnLAtStopForOpenOrder(order, newPrice);
                         } else if (order.isSplitEntry && order.splitGroupId) {
                             const members = self._getSplitGroupOpenPositions(order);
                             pnl = members.reduce((sum, m) => {
@@ -25544,7 +25554,6 @@ class OrderManager {
         if (pendingOrder.stopLoss) {
             let slPnL;
             let totalSlQty = quantity;
-            const pendSlQm = this._liveQuoteMarkForChartSlPnl(chart, pendingOrder);
             if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
                 const members = this._getSplitGroupPendingOrders(pendingOrder);
                 let gross = 0;
@@ -25552,13 +25561,13 @@ class OrderManager {
                 members.forEach((m) => {
                     const q = Number(m.quantity) || 0;
                     if (q <= 0) return;
-                    gross += this.estimateOpenLegPnLSlice(m, pendingOrder.stopLoss, q, pendSlQm);
+                    gross += this.estimateOpenLegPnLSlice(m, pendingOrder.stopLoss, q);
                     comm += this._getRoundTripCommissionUsd(m);
                 });
                 slPnL = gross - comm;
                 totalSlQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
             } else {
-                slPnL = this.estimateOpenLegPnLSlice(pendingOrder, pendingOrder.stopLoss, quantity, pendSlQm)
+                slPnL = this.estimateOpenLegPnLSlice(pendingOrder, pendingOrder.stopLoss, quantity)
                     - this._getRoundTripCommissionUsd(pendingOrder);
             }
             const labelText = `SL  ${totalSlQty.toFixed(2)}`;
@@ -27830,8 +27839,7 @@ class OrderManager {
             console.log(`  🛑 Drawing SL line at ${order.stopLoss.toFixed(2)}`);
             
             // Net $ at SL: full split group at shared stop + total lots (matches Avg Entry basket).
-            const slQm = this._liveQuoteMarkForChartSlPnl(chart, order);
-            const slPnL = this._slChartNetPnLAtStopForOpenOrder(order, order.stopLoss, slQm);
+            const slPnL = this._slChartNetPnLAtStopForOpenOrder(order, order.stopLoss);
             
             const slLine = chart.svg.append('line')
                 .attr('class', `sl-line sl-${order.id}`)
@@ -28886,8 +28894,7 @@ class OrderManager {
                 }
                 
                 const priceKey = position.stopLoss.toFixed(5);
-                const slQmUpd = this._liveQuoteMarkForChartSlPnl(ch, position);
-                const totalSlPnL = this._slChartNetPnLAtStopForOpenOrder(position, position.stopLoss, slQmUpd);
+                const totalSlPnL = this._slChartNetPnLAtStopForOpenOrder(position, position.stopLoss);
                 const labelQty = this._slChartLabelQtyForOpenOrder(position);
                 
                 if (updatedSLPrices.has(priceKey)) {
