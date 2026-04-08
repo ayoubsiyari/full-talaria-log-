@@ -22110,17 +22110,21 @@ class OrderManager {
         let startY = 0;
         let startPrice = 0;
         let dragStartPrice = 0;
-        let frameId = null;
+        let dragVisualRaf = null;
+        let pendingDragVisualFn = null;
         let pipIndicator = null;
         let dollarIndicator = null;
         let rrIndicator = null;
         
-        // Throttle helper for calculations
-        const throttledUpdate = (fn) => {
-            if (frameId) return;
-            frameId = requestAnimationFrame(() => {
-                fn();
-                frameId = null;
+        /** Latest-wins rAF: old "if (frameId) return" dropped connector/refresh work during fast drags. */
+        const scheduleDragVisualRefresh = (fn) => {
+            pendingDragVisualFn = fn;
+            if (dragVisualRaf != null) return;
+            dragVisualRaf = requestAnimationFrame(() => {
+                dragVisualRaf = null;
+                const run = pendingDragVisualFn;
+                pendingDragVisualFn = null;
+                if (run) run();
             });
         };
         
@@ -22382,8 +22386,15 @@ class OrderManager {
                 
                 // SL/TP floating indicators (pips, dollar, R:R) removed — info already on labels
                 
-                // Throttled panel update and connector redraw (SL/TP also sync chart labels vs order state)
-                throttledUpdate(() => {
+                // Vertical TP/SL connector must move with the dragged line every frame (not only on click).
+                if (lineType === 'sl' || lineType === 'tp') {
+                    self._drawExecutedOrderConnectors(ctx);
+                    if (order.isSplitEntry && order.splitGroupId) {
+                        self._updateSplitGroupAvgLines(ctx);
+                    }
+                }
+                // Throttled full refresh across panels (latest callback wins — see scheduleDragVisualRefresh)
+                scheduleDragVisualRefresh(() => {
                     if (lineType === 'sl' || lineType === 'tp') {
                         self._refreshOrderLineVisualsAfterDrag(ctx);
                     } else {
@@ -22419,10 +22430,11 @@ class OrderManager {
                 rrIndicator.remove();
                 rrIndicator = null;
             }
-            if (frameId) {
-                cancelAnimationFrame(frameId);
-                frameId = null;
+            if (dragVisualRaf != null) {
+                cancelAnimationFrame(dragVisualRaf);
+                dragVisualRaf = null;
             }
+            pendingDragVisualFn = null;
             
             line.attr('stroke-width', 1).attr('opacity', 0.85);
             
@@ -22543,9 +22555,21 @@ class OrderManager {
         let isDragging = false;
         let startY = 0;
         let dragStartPrice = 0;
-        let frameId = null;
+        let multiTpDragRaf = null;
+        let pendingMultiTpRefreshFn = null;
         let pipIndicator = null;
         let dollarIndicator = null;
+
+        const scheduleMultiTpDragRefresh = (fn) => {
+            pendingMultiTpRefreshFn = fn;
+            if (multiTpDragRaf != null) return;
+            multiTpDragRaf = requestAnimationFrame(() => {
+                multiTpDragRaf = null;
+                const run = pendingMultiTpRefreshFn;
+                pendingMultiTpRefreshFn = null;
+                if (run) run();
+            });
+        };
         
         // Get native DOM elements
         const lineNode = line.node();
@@ -22617,13 +22641,8 @@ class OrderManager {
                 
                 // TP floating indicators removed — info already on labels
                 
-                // Update SL/TP lines + Avg TP line (throttled)
-                if (!frameId) {
-                    frameId = requestAnimationFrame(() => {
-                        self._refreshOrderLineVisualsAfterDrag(ctx);
-                        frameId = null;
-                    });
-                }
+                self._drawExecutedOrderConnectors(ctx);
+                scheduleMultiTpDragRefresh(() => self._refreshOrderLineVisualsAfterDrag(ctx));
             }
             
             startY = currentY;
@@ -22647,10 +22666,11 @@ class OrderManager {
                 dollarIndicator.remove();
                 dollarIndicator = null;
             }
-            if (frameId) {
-                cancelAnimationFrame(frameId);
-                frameId = null;
+            if (multiTpDragRaf != null) {
+                cancelAnimationFrame(multiTpDragRaf);
+                multiTpDragRaf = null;
             }
+            pendingMultiTpRefreshFn = null;
             
             line.attr('stroke-width', 1).attr('opacity', 0.85);
             
@@ -24842,7 +24862,7 @@ class OrderManager {
 
             this.drawYAxisPriceHighlight(avgPrice, '#ca8a04', 'entry', 0, ch);
 
-            // --- Draw connector on the right side (after close button, before Y-axis) ---
+            // --- Vertical connector at entry candle (same as exec-order-connector; was fixed right edge). ---
             if (g._connector) { try { g._connector.remove(); } catch (_) {} }
             const refOrder = openOrders.find(o => o.status === 'OPEN') || openOrders[0];
             const tpPx = refOrder?.takeProfit || 0;
@@ -24852,7 +24872,11 @@ class OrderManager {
                     .attr('class', `split-avg-connector split-avg-${g.splitGroupId}`)
                     .style('pointer-events', 'none');
                 g._connector = connGroup;
-                const connX = rightEdge + 4;
+                let connX = this._connectorAnchorXForChart(ch, refOrder?.openTime);
+                if (connX == null && ch.data?.length) {
+                    connX = ch.dataIndexToPixel(ch.data.length - 1);
+                }
+                if (connX == null || !Number.isFinite(connX)) connX = rightEdge + 4;
                 const tpY = tpPx > 0 ? yScale(tpPx) : null;
                 const slY = slPx > 0 ? yScale(slPx) : null;
                 if (Number.isFinite(tpY)) {
@@ -29654,23 +29678,28 @@ class OrderManager {
         });
     }
 
+    /**
+     * Horizontal X for the vertical entry–TP/SL connector (aligned with entry marker column).
+     */
+    _connectorAnchorXForChart(ch, openTimeMs) {
+        const data = ch?.data;
+        if (!data?.length) return null;
+        const idx = openTimeMs != null ? this._findCandleIndexForTime(data, openTimeMs) : -1;
+        if (idx === -1) return null;
+        const x = ch.dataIndexToPixel(idx);
+        return Number.isFinite(x) ? x : null;
+    }
+
     _drawExecutedOrderConnectors(ch) {
         if (!ch?.svg || !ch?.scales?.yScale) return;
         ch.svg.selectAll('.exec-order-connector').remove();
         const yScale = ch.scales.yScale;
         const data = ch.data;
-        /** Same horizontal anchor as entry markers — fixed right-edge X stayed stuck when price scrolled. */
-        const anchorXForOpenTime = (openTime) => {
-            if (!data?.length) return null;
-            const idx = openTime != null ? this._findCandleIndexForTime(data, openTime) : -1;
-            if (idx === -1) return null;
-            return ch.dataIndexToPixel(idx);
-        };
 
         for (const pos of this.openPositions) {
             if (!this._positionTickerMatchesChartSymbol(pos, ch)) continue;
             if (pos.isSplitEntry) continue;
-            const connX = anchorXForOpenTime(pos.openTime);
+            const connX = this._connectorAnchorXForChart(ch, pos.openTime);
             if (connX == null || !Number.isFinite(connX)) continue;
             const hasMultiTP = pos.tpTargets && pos.tpTargets.length >= 1;
             const tpPx = pos.takeProfit || 0;
@@ -29724,7 +29753,7 @@ class OrderManager {
 
         for (const po of this.pendingOrders) {
             if (!this._positionTickerMatchesChartSymbol(po, ch)) continue;
-            let connX = anchorXForOpenTime(po.placedTime);
+            let connX = this._connectorAnchorXForChart(ch, po.placedTime);
             if (connX == null && data?.length) {
                 connX = ch.dataIndexToPixel(data.length - 1);
             }
