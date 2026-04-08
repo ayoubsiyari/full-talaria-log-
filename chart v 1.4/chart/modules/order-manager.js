@@ -1249,12 +1249,28 @@ class OrderManager {
      *                                'below' if trigger is price <= level
      */
     _tickAnimOverridesGuard(guardTick, candle, level, dir) {
-        const rs = this.replaySystem;
-        if (!rs || !rs.animatingCandle || !(guardTick >= 0)) return false;
+        const rs = this._playbackReplaySystem();
+        if (!rs || !(guardTick >= 0)) return false;
+        const lv = Number(level);
+        if (!Number.isFinite(lv)) return false;
+
+        const mode = typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : (rs.playbackMode || 'tick');
+        const candlePlayback = !!rs.isActive && mode === 'candle';
+
+        // Candle replay has no animatingCandle / tickProgress — old guard path always failed here, so TP/SL
+        // only appeared to fire at bar close. Use wicks like the unguarded OHLC path (same touch as tick mode).
+        if (candlePlayback) {
+            const h = Number.parseFloat(candle.h);
+            const l = Number.parseFloat(candle.l);
+            if (dir === 'above') return Number.isFinite(h) && h >= lv;
+            return Number.isFinite(l) && l <= lv;
+        }
+
+        if (!rs.animatingCandle) return false;
         if ((Number(rs.tickProgress) || 0) <= guardTick) return false;
         const close = Number(candle.c);
-        if (!Number.isFinite(close) || !Number.isFinite(level)) return false;
-        return dir === 'above' ? close >= level : close <= level;
+        if (!Number.isFinite(close)) return false;
+        return dir === 'above' ? close >= lv : close <= lv;
     }
 
     /**
