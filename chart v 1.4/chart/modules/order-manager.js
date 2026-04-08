@@ -861,10 +861,10 @@ class OrderManager {
     }
 
     /**
-     * Executable stop-loss fill: gap-aware open, then worst price already traded in the bar.
-     * BUY: if low <= SL, fill at min(gapFill, low) so moving SL above current market
-     * closes at market depth, not at the dragged stop level.
-     * SELL: if high >= SL, fill at max(gapFill, high).
+     * Executable stop-loss fill: gap-aware open, then price at stop when touched.
+     * BUY: if low <= SL, fill at stop price (matches chart line); gap-through-open uses open.
+     * SELL: if high >= SL, fill at stop price; gap-through-open uses open.
+     * Non–tick-animation path still uses min(gapFill, low) / max(gapFill, high) for full-bar fills.
      * If SL was just released with stop on the wrong side of current price, _slDragReleaseFillPrice
      * (same bar only) fills at that market snapshot instead of the dragged stop.
      */
@@ -882,21 +882,18 @@ class OrderManager {
                 delete position._slDragReleaseAtBarT;
             }
         }
-        // Intra-bar replay: fill at animated market (matches gray price line), not bar low/high alone.
+        // Intra-bar replay: fill at the stop order price when level is traded through (same as SL line),
+        // not at current tick close — that caused exits at a different $ than the displayed stop.
         const rsIb = this.replaySystem;
         if (rsIb && rsIb.animatingCandle) {
-            const cur = this.getCurrentCandle();
-            const cc = Number(cur?.c);
             const openPx = Number.isFinite(candleOpen) ? candleOpen : NaN;
-            if (Number.isFinite(cc)) {
-                if (isBuy && Number.isFinite(low) && low <= sl) {
-                    if (Number.isFinite(openPx) && openPx < sl) return Math.min(openPx, cc);
-                    return cc;
-                }
-                if (!isBuy && Number.isFinite(high) && high >= sl) {
-                    if (Number.isFinite(openPx) && openPx > sl) return Math.max(openPx, cc);
-                    return cc;
-                }
+            if (isBuy && Number.isFinite(low) && low <= sl && Number.isFinite(sl)) {
+                if (Number.isFinite(openPx) && openPx < sl) return openPx;
+                return sl;
+            }
+            if (!isBuy && Number.isFinite(high) && high >= sl && Number.isFinite(sl)) {
+                if (Number.isFinite(openPx) && openPx > sl) return openPx;
+                return sl;
             }
         }
         if (!Number.isFinite(sl)) return sl;
@@ -20262,7 +20259,8 @@ class OrderManager {
                             justActivatedTrailing
                         );
                         if (comp && comp.stepsReached > position.trailingStop.currentStep && comp.stepsReached > 0) {
-                            const newSL = comp.newSL;
+                            const prec = this.getPricePrecision();
+                            const newSL = parseFloat(Number(comp.newSL).toFixed(prec));
                             // Only enforce a breakeven floor when SL was actually moved to BE. Setting
                             // breakevenSettings.triggered=true on trailing activation (to suppress BE) must
                             // not imply a BE floor — that blocked ratcheting so the line looked "stuck".
@@ -20574,7 +20572,8 @@ class OrderManager {
                             justActivatedTrailingSell
                         );
                         if (comp && comp.stepsReached > position.trailingStop.currentStep && comp.stepsReached > 0) {
-                            const newSL = comp.newSL;
+                            const prec = this.getPricePrecision();
+                            const newSL = parseFloat(Number(comp.newSL).toFixed(prec));
                             const useBeCeil = position.autoBreakeven && position.breakevenSettings?.triggered
                                 && position._slIsBreakevenPlacement;
                             let breakevenSL = position.openPrice;
@@ -31244,7 +31243,8 @@ class OrderManager {
             const profitFromActivationDisplay = comp ? comp.profitFromActivation : 0;
             
             if (comp && comp.stepsReached > ts.currentStep && comp.stepsReached > 0) {
-                const newSL = comp.newSL;
+                const prec = this.getPricePrecision();
+                const newSL = parseFloat(Number(comp.newSL).toFixed(prec));
                 const prevSl = ts.currentSL;
                 ts.currentSL = newSL;
                 ts.currentStep = comp.stepsReached;
@@ -31263,7 +31263,7 @@ class OrderManager {
                 
                 const slInput = document.getElementById('slPrice');
                 if (slInput) {
-                    slInput.value = newSL.toFixed(5);
+                    slInput.value = newSL.toFixed(prec);
                 }
                 
                 this.updatePreviewLines();
