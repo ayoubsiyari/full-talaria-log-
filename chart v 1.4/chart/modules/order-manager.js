@@ -13132,7 +13132,9 @@ class OrderManager {
         
         const priceInput = document.getElementById('orderEntryPrice');
         if (priceInput) {
-            priceInput.value = this.formatPrice(currentCandle.c);
+            const closePx = Number.parseFloat(currentCandle.c ?? currentCandle.close);
+            if (!Number.isFinite(closePx)) return;
+            priceInput.value = this.formatPrice(closePx);
         }
         
         // Set default TP and SL aligned with entry
@@ -14295,6 +14297,7 @@ class OrderManager {
         const chart = this._previewTargetChart || this._getPreviewChart();
         if (!chart?.svg || !chart?.scales) return null;
         const y = chart.scales.yScale(price);
+        if (!Number.isFinite(y)) return null;
         const hitStrokeWidth = 20;
         const dash = options?.strokeDasharray ?? null;
         const disabled = options?.disabled === true;
@@ -19667,42 +19670,74 @@ class OrderManager {
      */
     _getCurrentCandleForChart(chart) {
         const ch = chart;
-        if (!ch?.data || ch.data.length === 0) return null;
+        if (!ch) return null;
+
+        /** Ensure `.c` is numeric so order entry / preview always match chart price. */
+        const coerceBar = (bar) => {
+            if (!bar || typeof bar !== 'object') return null;
+            const c = Number.parseFloat(bar.c ?? bar.close);
+            if (!Number.isFinite(c)) return null;
+            return Object.assign({}, bar, { c });
+        };
 
         const rs = (ch && ch.replaySystem) || this.replaySystem;
 
         if (rs && rs.isActive) {
             if (rs.animatingCandle) {
                 const anim = rs.animatingCandle;
-                let c = Number.parseFloat(anim.close);
+                let c = Number.parseFloat(anim.close ?? anim.c);
                 const tickProg = Number(rs.tickProgress) || 0;
                 if (tickProg > 0 && typeof rs.getCurrentAnimatedPrice === 'function') {
                     const px = rs.getCurrentAnimatedPrice();
                     if (Number.isFinite(px)) c = px;
                 }
-                const high = Math.max(Number.parseFloat(anim.high) || c, c);
-                const low = Math.min(Number.parseFloat(anim.low) || c, c);
+                const high = Math.max(Number.parseFloat(anim.high ?? anim.h) || c, c);
+                const low = Math.min(Number.parseFloat(anim.low ?? anim.l) || c, c);
                 return {
                     t: anim.t,
-                    o: anim.open,
+                    o: anim.open ?? anim.o,
                     h: high,
                     l: low,
                     c,
-                    v: anim.volume
+                    v: anim.volume ?? anim.v
                 };
             }
 
-            const last = ch.data[ch.data.length - 1];
-            if (last && Number.isFinite(Number.parseFloat(last.c))) {
-                return last;
+            if (Array.isArray(ch.data) && ch.data.length > 0) {
+                const last = ch.data[ch.data.length - 1];
+                const coerced = coerceBar(last);
+                if (coerced) return coerced;
             }
 
-            const index = rs.currentIndex;
-            const rawData = rs.fullRawData || ch.rawData;
-            return rawData[index];
+            const rawData = (rs.fullRawData && rs.fullRawData.length)
+                ? rs.fullRawData
+                : (ch.rawData || []);
+            if (rawData.length > 0) {
+                const index = rs.currentIndex;
+                let bar = Number.isFinite(index) && index >= 0 && index < rawData.length
+                    ? rawData[index]
+                    : null;
+                let coerced = coerceBar(bar);
+                if (!coerced) {
+                    coerced = coerceBar(rawData[rawData.length - 1]);
+                }
+                if (coerced) return coerced;
+            }
+
+            return null;
         }
 
-        return ch.data[ch.data.length - 1];
+        if (Array.isArray(ch.data) && ch.data.length > 0) {
+            return coerceBar(ch.data[ch.data.length - 1]) || ch.data[ch.data.length - 1];
+        }
+
+        const rawFallback = ch.rawData;
+        if (rawFallback && rawFallback.length > 0) {
+            const coerced = coerceBar(rawFallback[rawFallback.length - 1]);
+            if (coerced) return coerced;
+        }
+
+        return null;
     }
 
     /**
