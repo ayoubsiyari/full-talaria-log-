@@ -1987,6 +1987,18 @@ class PanelManager {
                     isMainChart: panel.isMainChart
                 }
             }));
+
+            // Order draft preview (TP/SL/entry) must move to the selected chart; otherwise lines stay on the previous panel's SVG.
+            try {
+                const om = typeof window !== 'undefined' ? window.orderManager : null;
+                if (om && typeof om.refreshDraftPreviewForActivePanel === 'function') {
+                    requestAnimationFrame(() => {
+                        try {
+                            om.refreshDraftPreviewForActivePanel();
+                        } catch (_e) { /* ignore */ }
+                    });
+                }
+            } catch (_e) { /* ignore */ }
         }
     }
     

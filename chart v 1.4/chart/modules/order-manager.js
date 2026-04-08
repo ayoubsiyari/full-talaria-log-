@@ -342,6 +342,26 @@ class OrderManager {
      * If the order drawer is open but the entry preview never attached (drawPreviewLine returned early),
      * redraw once so TP/SL use entry-anchored layout like the main chart.
      */
+    /**
+     * After switching the active panel, draft preview SVG may still live on the previous chart.
+     * Strip and redraw on getActiveChart() so TP/SL/entry levels track the selected surface immediately.
+     */
+    refreshDraftPreviewForActivePanel() {
+        const panelEl = document.getElementById('orderPanel');
+        if (!panelEl?.classList.contains('visible')) return;
+        if (this._orderPlacedAwaitingReset || this.editingPendingOrderId) return;
+        if (this.isDraggingPreviewLine) return;
+        if (!this._isMultiPanelLayout()) return;
+        this.removePreviewLines();
+        requestAnimationFrame(() => {
+            const p = document.getElementById('orderPanel');
+            if (!p?.classList.contains('visible')) return;
+            if (this._orderPlacedAwaitingReset || this.editingPendingOrderId) return;
+            if (this.isDraggingPreviewLine) return;
+            this.updatePreviewLines();
+        });
+    }
+
     _scheduleDraftPreviewRedrawIfNeeded(surfaceChart) {
         const panelEl = document.getElementById('orderPanel');
         if (!panelEl?.classList.contains('visible')) return;
@@ -10487,7 +10507,18 @@ class OrderManager {
         const isVisible = panel.classList.contains('visible');
 
         const chartWrapper = document.getElementById('chartWrapper');
-        const _c = window.chart || window.mainChart;
+        const _resizeChartsAfterDrawer = () => {
+            const charts = typeof this._collectLayoutCharts === 'function' ? this._collectLayoutCharts() : [];
+            charts.forEach((c) => {
+                if (!c || typeof c.resize !== 'function') return;
+                if (c._lastResizeDpr !== undefined) c._lastResizeDpr = 0;
+                try {
+                    c.resize();
+                } catch (_e) { /* ignore */ }
+                if (typeof c.scheduleRender === 'function') c.scheduleRender();
+                else if (typeof c.render === 'function') c.render();
+            });
+        };
 
         if (isVisible) {
             // Close panel
@@ -10495,7 +10526,7 @@ class OrderManager {
             if (backdrop) backdrop.classList.remove('visible');
             if (chartWrapper) { chartWrapper.classList.remove('order-panel-open'); chartWrapper.classList.remove('settings-open'); }
             document.body.classList.remove('settings-open');
-            if (_c && _c.resize) setTimeout(() => { _c.resize(); if (_c.scheduleRender) _c.scheduleRender(); }, 290);
+            setTimeout(_resizeChartsAfterDrawer, 290);
 
             // Remove preview lines when panel closes
             this.removePreviewLines();
@@ -10525,7 +10556,7 @@ class OrderManager {
         if (backdrop) backdrop.classList.add('visible');
         if (chartWrapper) { chartWrapper.classList.add('order-panel-open'); chartWrapper.classList.add('settings-open'); }
         document.body.classList.add('settings-open');
-        if (_c && _c.resize) setTimeout(() => { _c.resize(); if (_c.scheduleRender) _c.scheduleRender(); }, 290);
+        setTimeout(_resizeChartsAfterDrawer, 290);
 
         // New order draft: drop multi-entry rows from the last session (preview was cleared on close).
         if (!this.editingPendingOrderId) {
