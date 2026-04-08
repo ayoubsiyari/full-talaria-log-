@@ -20435,7 +20435,6 @@ class OrderManager {
             const oc = this._getOrderContextChart() || this.chart;
             return oc?.currentFileId != null ? String(oc.currentFileId) : '';
         })();
-        const replayCandlePb = this._replayCandlePlaybackActive();
 
         this.openPositions.forEach(position => {
             const posTicker = this._positionTicker(position);
@@ -20759,9 +20758,7 @@ class OrderManager {
                         position._slNoTriggerBeforeTime = null;
                         position._slNoTriggerBeforeTick = undefined;
                     }
-                    // Trailing SL touch: candle replay uses bar low like static SL; tick replay uses path min since last trail step.
-                    const effLowForSl = (position.trailingStop && position.trailingStop.activated && !replayCandlePb
-                        && position._trailSlAccLow != null && Number.isFinite(position._trailSlAccLow))
+                    const effLowForSl = (position._trailSlAccLow != null && Number.isFinite(position._trailSlAccLow))
                         ? position._trailSlAccLow
                         : low;
                     if (!position.tpTargets || position.tpTargets.length === 0) {
@@ -20777,7 +20774,8 @@ class OrderManager {
                         if (slHit) {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
-                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, effLowForSl, true, position, currentCandle.t);
+                            const lowFill = position._trailSlAccLow != null ? position._trailSlAccLow : low;
+                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, lowFill, true, position, currentCandle.t);
                             const _slBuy = this._slCloseHitType(position);
                             console.log(`   ${_slBuy === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
                             this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
@@ -20796,7 +20794,8 @@ class OrderManager {
                         if (multiSlHit) {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
-                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, effLowForSl, true, position, currentCandle.t);
+                            const lowFillM = position._trailSlAccLow != null ? position._trailSlAccLow : low;
+                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, lowFillM, true, position, currentCandle.t);
                             const _slT = this._slCloseHitType(position);
                             console.log(`   ${_slT === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing remaining position BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
                             this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
@@ -21080,8 +21079,7 @@ class OrderManager {
                         position._slNoTriggerBeforeTime = null;
                         position._slNoTriggerBeforeTick = undefined;
                     }
-                    const effHighForSl = (position.trailingStop && position.trailingStop.activated && !replayCandlePb
-                        && position._trailSlAccHigh != null && Number.isFinite(position._trailSlAccHigh))
+                    const effHighForSl = (position._trailSlAccHigh != null && Number.isFinite(position._trailSlAccHigh))
                         ? position._trailSlAccHigh
                         : high;
                     if (!position.tpTargets || position.tpTargets.length === 0) {
@@ -21097,7 +21095,8 @@ class OrderManager {
                         if (slHitSell) {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
-                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, effHighForSl, low, false, position, currentCandle.t);
+                            const highFill = position._trailSlAccHigh != null ? position._trailSlAccHigh : high;
+                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, highFill, low, false, position, currentCandle.t);
                             const _slSell = this._slCloseHitType(position);
                             console.log(`   ${_slSell === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
                             this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
@@ -21116,7 +21115,8 @@ class OrderManager {
                         if (multiSlHitSell) {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
-                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, effHighForSl, low, false, position, currentCandle.t);
+                            const highFillM = position._trailSlAccHigh != null ? position._trailSlAccHigh : high;
+                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, highFillM, low, false, position, currentCandle.t);
                             const _slSellM = this._slCloseHitType(position);
                             console.log(`   ${_slSellM === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing remaining position SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
                             this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
