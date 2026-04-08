@@ -276,6 +276,14 @@ class OrderManager {
     }
 
     /**
+     * Replay driver for the chart that owns the dataset (must match getCurrentCandle / tick animation).
+     */
+    _playbackReplaySystem() {
+        const ch = this._getOrderContextChart() || this.chart;
+        return (ch && ch.replaySystem) || this.replaySystem;
+    }
+
+    /**
      * Get the current symbol from the chart (normalised, no slashes).
      * @returns {string}
      */
@@ -846,7 +854,7 @@ class OrderManager {
      * fill at the open (slippage) instead of the exact SL/TP price.
      */
     _gapFill(level, candleOpen, isBuy, isTP) {
-        const rs = this.replaySystem;
+        const rs = this._playbackReplaySystem();
         if (rs && rs.animatingCandle && (Number(rs.tickProgress) || 0) > 0) {
             return level;
         }
@@ -882,17 +890,21 @@ class OrderManager {
                 delete position._slDragReleaseAtBarT;
             }
         }
-        // Intra-bar replay: fill at the stop order price when level is traded through (same as SL line),
-        // not at current tick close — that caused exits at a different $ than the displayed stop.
-        const rsIb = this.replaySystem;
+        // Intra-bar replay: fill at the stop price when touched (same as SL line). Gap-at-open only on
+        // the first tick(s): after that, open can still be < SL (BUY) while price traded above — do not
+        // fill at candle open or PnL will not match the trailed stop.
+        const rsIb = this._playbackReplaySystem();
         if (rsIb && rsIb.animatingCandle) {
             const openPx = Number.isFinite(candleOpen) ? candleOpen : NaN;
+            const tp = Number(rsIb.tickProgress) || 0;
             if (isBuy && Number.isFinite(low) && low <= sl && Number.isFinite(sl)) {
-                if (Number.isFinite(openPx) && openPx < sl) return openPx;
+                const gapOpenThroughStop = Number.isFinite(openPx) && openPx < sl && tp <= 1;
+                if (gapOpenThroughStop) return openPx;
                 return sl;
             }
             if (!isBuy && Number.isFinite(high) && high >= sl && Number.isFinite(sl)) {
-                if (Number.isFinite(openPx) && openPx > sl) return openPx;
+                const gapOpenThroughStop = Number.isFinite(openPx) && openPx > sl && tp <= 1;
+                if (gapOpenThroughStop) return openPx;
                 return sl;
             }
         }
