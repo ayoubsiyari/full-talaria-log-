@@ -21259,9 +21259,11 @@ class OrderManager {
         const isBackgroundClose = !!(posTicker && activeTicker && posTicker !== activeTicker);
         
         // Determine if this is a partial close
-        // If hitType is 'TP-PARTIAL' and percentage is provided and < 1, it's partial
-        // If hitType is 'TP' (final target) or percentage is null, it's a full close
-        const isPartialClose = hitType === 'TP-PARTIAL' && percentage && percentage < 1;
+        // TP-PARTIAL + slice in (0,1) of original lots. Use numeric check — `percentage && percentage < 1`
+        // wrongly treats 0 as non-partial and skips valid small fractions; id `0` targets are unrelated here.
+        const pctNum = percentage == null ? NaN : Number(percentage);
+        const isPartialClose =
+            hitType === 'TP-PARTIAL' && Number.isFinite(pctNum) && pctNum > 0 && pctNum < 1;
         const closeQuantity = isPartialClose
             ? this._multiTpPartialCloseQuantity(position, percentage)
             : position.quantity;
@@ -25531,7 +25533,7 @@ class OrderManager {
                 const ladderPct = Number(target.percentage) || 0;
                 const labelText = `TP${index + 1} (${ladderPct.toFixed(0)}%) ${totalCloseQty.toFixed(2)}`;
                 const pnlStr = `${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`;
-                const item = createLine(target.price, 'TP', labelText, tpPnL, target.id || index, target.percentage, index);
+                const item = createLine(target.price, 'TP', labelText, tpPnL, this._tpCanonicalTargetId(target, index), target.percentage, index);
                 if (item) {
                     item.tpTargetIndex = index;
                     item.isPendingMultiTP = true;
@@ -27796,6 +27798,15 @@ class OrderManager {
     }
 
     /**
+     * Stable id for multi-TP DOM / tpLines matching `closePositionAtPrice(..., targetId)`.
+     * Do not use `target.id || index` — numeric id `0` is valid and would wrongly fall back to index.
+     */
+    _tpCanonicalTargetId(target, arrayIndex) {
+        if (target && target.id !== undefined && target.id !== null) return target.id;
+        return arrayIndex;
+    }
+
+    /**
      * Draw SL and TP lines on chart
      */
     drawSLTPLines(order, targetChart = null) {
@@ -27965,11 +27976,12 @@ class OrderManager {
             order.tpTargets.forEach((target, index) => {
                 if (this._tpTargetStillActiveOnChart(order, target, index)) {
                     const { pnl: tpPnL } = this._multiTpTargetChartMetrics(order, target, index, 'open');
+                    const tpKey = this._tpCanonicalTargetId(target, index);
                     
                     const color = '#089981';
                     
                     const tpLine = chart.svg.append('line')
-                        .attr('class', `tp-line tp-${order.id} tp-target-${target.id || index}`)
+                        .attr('class', `tp-line tp-${order.id} tp-target-${tpKey}`)
                         .attr('stroke', color)
                         .attr('stroke-width', 1)
                         .attr('opacity', 0.85)
@@ -27977,7 +27989,7 @@ class OrderManager {
                         .style('cursor', 'ns-resize');
                     
                     const tpLabelBox = chart.svg.append('rect')
-                        .attr('class', `tp-label-box tp-${order.id} tp-target-${target.id || index}`)
+                        .attr('class', `tp-label-box tp-${order.id} tp-target-${tpKey}`)
                         .attr('fill', color)
                         .attr('stroke', color)
                         .attr('stroke-width', 1)
@@ -27987,7 +27999,7 @@ class OrderManager {
                     
                     const tpLabelStr = `TP${index + 1}`;
                     const tpLabelText = chart.svg.append('text')
-                        .attr('class', `tp-label-text tp-${order.id} tp-target-${target.id || index}`)
+                        .attr('class', `tp-label-text tp-${order.id} tp-target-${tpKey}`)
                         .attr('fill', '#ffffff')
                         .attr('font-size', '11px')
                         .attr('font-weight', '700')
@@ -27997,7 +28009,7 @@ class OrderManager {
                         .text(tpLabelStr);
 
                     const tpPnlBox = chart.svg.append('rect')
-                        .attr('class', `tp-pnl-box tp-${order.id} tp-target-${target.id || index}`)
+                        .attr('class', `tp-pnl-box tp-${order.id} tp-target-${tpKey}`)
                         .attr('fill', 'rgba(8,153,129,0.15)')
                         .attr('stroke', '#089981')
                         .attr('stroke-width', 1)
@@ -28006,7 +28018,7 @@ class OrderManager {
                         .style('cursor', 'ns-resize');
 
                     const tpPnlText = chart.svg.append('text')
-                        .attr('class', `tp-pnl-text tp-${order.id} tp-target-${target.id || index}`)
+                        .attr('class', `tp-pnl-text tp-${order.id} tp-target-${tpKey}`)
                         .attr('fill', '#089981')
                         .attr('font-size', '11px')
                         .attr('font-weight', '600')
@@ -28016,14 +28028,14 @@ class OrderManager {
                         .text(`${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
                     
                     const tpPriceBox = chart.svg.append('rect')
-                        .attr('class', `tp-price-box tp-${order.id} tp-target-${target.id || index}`)
+                        .attr('class', `tp-price-box tp-${order.id} tp-target-${tpKey}`)
                         .attr('fill', color)
                         .attr('rx', 2)
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize');
                     
                     const tpPriceText = chart.svg.append('text')
-                        .attr('class', `tp-price-text tp-${order.id} tp-target-${target.id || index}`)
+                        .attr('class', `tp-price-text tp-${order.id} tp-target-${tpKey}`)
                         .attr('fill', '#ffffff')
                         .attr('font-size', '12px')
                         .attr('font-weight', '600')
@@ -28044,7 +28056,7 @@ class OrderManager {
                         const tIdx = index;
                         const self = this;
                         tpPctDecBtn = chart.svg.append('g')
-                            .attr('class', `open-tp-pct-control open-tp-pct-dec tp-${oid} tp-target-${target.id || index}`)
+                            .attr('class', `open-tp-pct-control open-tp-pct-dec tp-${oid} tp-target-${tpKey}`)
                             .attr('pointer-events', 'all')
                             .style('cursor', 'pointer');
                         tpPctDecBtn.append('rect').attr('width', tpPctArrowSize).attr('height', tpPctArrowSize).attr('rx', 4)
@@ -28058,7 +28070,7 @@ class OrderManager {
                                 self.adjustOpenPositionTPPercentage(oid, tIdx, -5);
                             });
                         tpPctIncBtn = chart.svg.append('g')
-                            .attr('class', `open-tp-pct-control open-tp-pct-inc tp-${oid} tp-target-${target.id || index}`)
+                            .attr('class', `open-tp-pct-control open-tp-pct-inc tp-${oid} tp-target-${tpKey}`)
                             .attr('pointer-events', 'all')
                             .style('cursor', 'pointer');
                         tpPctIncBtn.append('rect').attr('width', tpPctArrowSize).attr('height', tpPctArrowSize).attr('rx', 4)
@@ -28078,7 +28090,7 @@ class OrderManager {
                     
                     // X button to delete this TP target
                     const tpDeleteBtn = chart.svg.append('g')
-                        .attr('class', `tp-delete-btn tp-${order.id} tp-target-${target.id || index}`)
+                        .attr('class', `tp-delete-btn tp-${order.id} tp-target-${tpKey}`)
                         .attr('pointer-events', 'all')
                         .style('cursor', 'pointer');
                     tpDeleteBtn.append('circle')
@@ -28097,7 +28109,7 @@ class OrderManager {
                     // TP+ split button for multi-TP (adds another target)
                     const tpMultiSplitBtn = this._createSplitPlusButton(
                         chart.svg,
-                        `tp-split-btn tp-${order.id} tp-target-${target.id || index}`,
+                        `tp-split-btn tp-${order.id} tp-target-${tpKey}`,
                         '#22c55e',
                         () => {
                             const entry = order.openPrice;
@@ -28112,7 +28124,7 @@ class OrderManager {
 
                     tpLines.push({ 
                         orderId: order.id,
-                        targetId: target.id || index,
+                        targetId: tpKey,
                         line: tpLine, 
                         labelBox: tpLabelBox, 
                         labelText: tpLabelText,
