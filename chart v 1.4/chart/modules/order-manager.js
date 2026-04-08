@@ -19479,16 +19479,19 @@ class OrderManager {
         const ch = this._getOrderContextChart() || this.chart;
         if (!ch?.data || ch.data.length === 0) return null;
         
+        // Replay state must match the chart that owns the dataset (active panel can differ from this.chart).
+        const rs = (ch && ch.replaySystem) || this.replaySystem;
+        
         // Get the last visible candle in replay mode
-        if (this.replaySystem && this.replaySystem.isActive) {
+        if (rs && rs.isActive) {
             // Intra-candle tick animation: use animated OHLC (same source as the canvas).
-            if (this.replaySystem.animatingCandle) {
-                const anim = this.replaySystem.animatingCandle;
+            if (rs.animatingCandle) {
+                const anim = rs.animatingCandle;
                 let c = Number.parseFloat(anim.close);
                 // tickProgress === 0: anim.close is the new bar open — do not fall back to prior raw index.
-                const tickProg = Number(this.replaySystem.tickProgress) || 0;
-                if (tickProg > 0 && typeof this.replaySystem.getCurrentAnimatedPrice === 'function') {
-                    const px = this.replaySystem.getCurrentAnimatedPrice();
+                const tickProg = Number(rs.tickProgress) || 0;
+                if (tickProg > 0 && typeof rs.getCurrentAnimatedPrice === 'function') {
+                    const px = rs.getCurrentAnimatedPrice();
                     if (Number.isFinite(px)) c = px;
                 }
                 const high = Math.max(Number.parseFloat(anim.high) || c, c);
@@ -19509,8 +19512,8 @@ class OrderManager {
                 return last;
             }
 
-            const index = this.replaySystem.currentIndex;
-            const rawData = this.replaySystem.fullRawData || ch.rawData;
+            const index = rs.currentIndex;
+            const rawData = rs.fullRawData || ch.rawData;
             return rawData[index];
         }
         
@@ -20135,6 +20138,8 @@ class OrderManager {
             }
             if (position._trailSlBarT != null && Number(position._trailSlBarT) !== Number(currentCandle.t)) {
                 delete position._trailSlBarT;
+                delete position._trailSlAccLow;
+                delete position._trailSlAccHigh;
             }
 
             // Entry bar excluded: skip excursion snapshot on the fill candle itself
@@ -20143,6 +20148,12 @@ class OrderManager {
             }
             const markForUnrealized = this._resolveUnrealizedMarkPrice(position, currentCandle);
             const markPx = Number.isFinite(markForUnrealized) ? markForUnrealized : Number.parseFloat(currentPrice);
+            if (position._trailSlAccLow != null && Number.isFinite(markPx)) {
+                position._trailSlAccLow = Math.min(position._trailSlAccLow, markPx);
+            }
+            if (position._trailSlAccHigh != null && Number.isFinite(markPx)) {
+                position._trailSlAccHigh = Math.max(position._trailSlAccHigh, markPx);
+            }
             if (position.type === 'BUY') {
                 const priceDiff = markPx - position.openPrice;
                 position.unrealizedPnL = this._calculatePositionPnL(position, markPx);
@@ -20295,8 +20306,12 @@ class OrderManager {
                                 }
                                 const _trailBarT = Number(currentCandle.t);
                                 position._trailSlBarT = _trailBarT;
+                                position._trailSlAccLow = markPx;
                                 if (position.isSplitEntry && position.splitGroupId) {
-                                    this._getSplitGroupOpenPositions(position).forEach((o) => { o._trailSlBarT = _trailBarT; });
+                                    this._getSplitGroupOpenPositions(position).forEach((o) => {
+                                        o._trailSlBarT = _trailBarT;
+                                        o._trailSlAccLow = markPx;
+                                    });
                                 }
                                 this._logSLTPModification(position, 'SL', oldSL, newSL, 'TRAIL');
                                 
@@ -20407,11 +20422,13 @@ class OrderManager {
                         position._slNoTriggerBeforeTime = null;
                         position._slNoTriggerBeforeTick = undefined;
                     }
-                    const deferSlTrailBuy = position._trailSlBarT != null && Number(position._trailSlBarT) === Number(currentCandle.t);
+                    const effLowForSl = (position._trailSlAccLow != null && Number.isFinite(position._trailSlAccLow))
+                        ? position._trailSlAccLow
+                        : low;
                     if (!position.tpTargets || position.tpTargets.length === 0) {
-                        const slHit = !deferSlTrailBuy && (buySLGuarded
+                        const slHit = buySLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'below'))
-                            : (position.stopLoss && low <= position.stopLoss));
+                            : (position.stopLoss && effLowForSl <= position.stopLoss);
                         const _slBuy1 = Number(position.stopLoss);
                         const _tpBuy1 = Number(position.takeProfit);
                         const tpOkBuy = Number.isFinite(_tpBuy1) && _tpBuy1 > 0 && (!Number.isFinite(_slBuy1) || _tpBuy1 > _slBuy1);
@@ -20421,7 +20438,8 @@ class OrderManager {
                         if (slHit) {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
-                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, low, true, position, currentCandle.t);
+                            const lowFill = position._trailSlAccLow != null ? position._trailSlAccLow : low;
+                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, lowFill, true, position, currentCandle.t);
                             const _slBuy = this._slCloseHitType(position);
                             console.log(`   ${_slBuy === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: _slBuy });
@@ -20434,13 +20452,14 @@ class OrderManager {
                         }
                     } else {
                         // For multiple TPs, still check SL
-                        const multiSlHit = !deferSlTrailBuy && (buySLGuarded
+                        const multiSlHit = buySLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'below'))
-                            : (position.stopLoss && low <= position.stopLoss));
+                            : (position.stopLoss && effLowForSl <= position.stopLoss);
                         if (multiSlHit) {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
-                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, low, true, position, currentCandle.t);
+                            const lowFillM = position._trailSlAccLow != null ? position._trailSlAccLow : low;
+                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, lowFillM, true, position, currentCandle.t);
                             const _slT = this._slCloseHitType(position);
                             console.log(`   ${_slT === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing remaining position BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: _slT });
@@ -20605,8 +20624,12 @@ class OrderManager {
                                 }
                                 const _trailBarTSell = Number(currentCandle.t);
                                 position._trailSlBarT = _trailBarTSell;
+                                position._trailSlAccHigh = markPx;
                                 if (position.isSplitEntry && position.splitGroupId) {
-                                    this._getSplitGroupOpenPositions(position).forEach((o) => { o._trailSlBarT = _trailBarTSell; });
+                                    this._getSplitGroupOpenPositions(position).forEach((o) => {
+                                        o._trailSlBarT = _trailBarTSell;
+                                        o._trailSlAccHigh = markPx;
+                                    });
                                 }
                                 this._logSLTPModification(position, 'SL', oldSL, newSL, 'TRAIL');
                                 
@@ -20717,11 +20740,13 @@ class OrderManager {
                         position._slNoTriggerBeforeTime = null;
                         position._slNoTriggerBeforeTick = undefined;
                     }
-                    const deferSlTrailSell = position._trailSlBarT != null && Number(position._trailSlBarT) === Number(currentCandle.t);
+                    const effHighForSl = (position._trailSlAccHigh != null && Number.isFinite(position._trailSlAccHigh))
+                        ? position._trailSlAccHigh
+                        : high;
                     if (!position.tpTargets || position.tpTargets.length === 0) {
-                        const slHitSell = !deferSlTrailSell && (sellSLGuarded
+                        const slHitSell = sellSLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'above'))
-                            : (position.stopLoss && high >= position.stopLoss));
+                            : (position.stopLoss && effHighForSl >= position.stopLoss);
                         const _slSell1 = Number(position.stopLoss);
                         const _tpSell1 = Number(position.takeProfit);
                         const tpOkSell = Number.isFinite(_tpSell1) && _tpSell1 > 0 && (!Number.isFinite(_slSell1) || _tpSell1 < _slSell1);
@@ -20731,7 +20756,8 @@ class OrderManager {
                         if (slHitSell) {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
-                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, low, false, position, currentCandle.t);
+                            const highFill = position._trailSlAccHigh != null ? position._trailSlAccHigh : high;
+                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, highFill, low, false, position, currentCandle.t);
                             const _slSell = this._slCloseHitType(position);
                             console.log(`   ${_slSell === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: _slSell });
@@ -20744,13 +20770,14 @@ class OrderManager {
                         }
                     } else {
                         // For multiple TPs, still check SL
-                        const multiSlHitSell = !deferSlTrailSell && (sellSLGuarded
+                        const multiSlHitSell = sellSLGuarded
                             ? (position.stopLoss && this._tickAnimOverridesGuard(position._slNoTriggerBeforeTick, currentCandle, position.stopLoss, 'above'))
-                            : (position.stopLoss && high >= position.stopLoss));
+                            : (position.stopLoss && effHighForSl >= position.stopLoss);
                         if (multiSlHitSell) {
                             position._slNoTriggerBeforeTime = null;
                             position._slNoTriggerBeforeTick = undefined;
-                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, low, false, position, currentCandle.t);
+                            const highFillM = position._trailSlAccHigh != null ? position._trailSlAccHigh : high;
+                            const fillPx = this._stopLossFillPrice(position.stopLoss, open, highFillM, low, false, position, currentCandle.t);
                             const _slSellM = this._slCloseHitType(position);
                             console.log(`   ${_slSellM === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing remaining position SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: _slSellM });
