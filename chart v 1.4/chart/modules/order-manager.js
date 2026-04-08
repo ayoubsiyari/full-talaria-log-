@@ -1450,6 +1450,36 @@ class OrderManager {
     }
 
     /**
+     * $-mode auto-BE during candle replay: unrealized at bar extreme (BUY=favorable high, SELL=favorable low).
+     * Otherwise mark follows close only at bar end — BE would lag like guarded TP did.
+     */
+    _getSplitGroupUnrealizedPnLAtBarExtreme(position, candle) {
+        if (!position || !candle) return 0;
+        const isBuy = (position.type || position.direction) !== 'SELL';
+        const h = Number.parseFloat(candle.h);
+        const l = Number.parseFloat(candle.l);
+        const c = Number.parseFloat(candle.c);
+        const mark = isBuy
+            ? (Number.isFinite(h) ? h : c)
+            : (Number.isFinite(l) ? l : c);
+        if (!Number.isFinite(mark)) return this._getSplitGroupTotalUnrealizedPnL(position);
+        if (!position.isSplitEntry || !position.splitGroupId) {
+            return this._calculatePositionPnL(position, mark);
+        }
+        return (this.openPositions || [])
+            .filter(p => p.splitGroupId === position.splitGroupId)
+            .reduce((s, p) => s + this._calculatePositionPnL(p, mark), 0);
+    }
+
+    /** Active replay in candle mode (no per-tick mark). */
+    _replayCandlePlaybackActive() {
+        const rs = this._playbackReplaySystem();
+        if (!rs || !rs.isActive) return false;
+        const mode = typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : (rs.playbackMode || 'tick');
+        return mode === 'candle';
+    }
+
+    /**
      * Extra distance in **price** (not pips) past gross entry so gross P&L at SL ≈ round-trip fees (matches `_enginePnL` pip value when mark is set).
      * BUY: add to entry; SELL: subtract from entry (profitable side for each).
      * @param {number} [markPriceForPip] - quote for pip-value conversion (e.g. candle close); defaults to leg open price.
@@ -20459,7 +20489,9 @@ class OrderManager {
                         const currentPipsProfit = (high - beEntryBuy) / posPipSize;
                         shouldTrigger = currentPipsProfit >= position.breakevenSettings.value;
                     } else {
-                        shouldTrigger = this._getSplitGroupTotalUnrealizedPnL(position) >= position.breakevenSettings.value;
+                        shouldTrigger = this._replayCandlePlaybackActive()
+                            ? this._getSplitGroupUnrealizedPnLAtBarExtreme(position, currentCandle) >= position.breakevenSettings.value
+                            : this._getSplitGroupTotalUnrealizedPnL(position) >= position.breakevenSettings.value;
                     }
                     
                     if (shouldTrigger) {
@@ -20783,7 +20815,9 @@ class OrderManager {
                         const currentPipsProfit = (beEntrySell - low) / posPipSize;
                         shouldTrigger = currentPipsProfit >= position.breakevenSettings.value;
                     } else {
-                        shouldTrigger = this._getSplitGroupTotalUnrealizedPnL(position) >= position.breakevenSettings.value;
+                        shouldTrigger = this._replayCandlePlaybackActive()
+                            ? this._getSplitGroupUnrealizedPnLAtBarExtreme(position, currentCandle) >= position.breakevenSettings.value
+                            : this._getSplitGroupTotalUnrealizedPnL(position) >= position.breakevenSettings.value;
                     }
                     
                     if (shouldTrigger) {
