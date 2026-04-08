@@ -137,6 +137,8 @@ class OrderManager {
         this._draggingPendingOrderIds = new Set();
         /** True while dragging a pending order's TP/SL/BE target line — avoids align pass + full reposition fighting the drag handler. */
         this._isDraggingPendingTarget = false;
+        /** makeLineDraggable only: which open-position line is dragging — used so updateBELines does not snap BE back each frame. */
+        this._draggingManagedOpenLineKind = null;
         
         // SPLIT ENTRY SYSTEM - Multiple entry levels for pending orders
         this.splitEntries = []; // Array of { id, price, percentage, lineData }
@@ -1423,48 +1425,15 @@ class OrderManager {
     }
 
     /**
-     * All split legs for basket math: filled + pending, manager + orderService, deduped by id.
-     * Matches `_updateSplitGroupAvgLines` (Avg Entry line) so BE / R use SL → Avg → trigger, not a single leg.
-     */
-    _getSplitGroupAllLegsBasket(position) {
-        if (!position?.splitGroupId || !position.isSplitEntry) return position ? [position] : [];
-        const gid = position.splitGroupId;
-        const raw = [];
-        const pushMatch = (arr) => {
-            (arr || []).forEach((o) => {
-                if (o && o.splitGroupId === gid && o.isSplitEntry) raw.push(o);
-            });
-        };
-        pushMatch(this.openPositions);
-        pushMatch(this.orderService?.openPositions);
-        pushMatch(this.pendingOrders);
-        pushMatch(this.orderService?.pendingOrders);
-        const seen = new Set();
-        const out = [];
-        for (const o of raw) {
-            if (seen.has(o.id)) continue;
-            seen.add(o.id);
-            out.push(o);
-        }
-        return out;
-    }
-
-    /**
-     * Weighted-average entry for split basket (same as yellow Avg Entry line):
-     * OPEN legs use openPrice, PENDING use entryPrice. Single leg → that openPrice.
-     * Used for auto-BE: 1R = |this avg − shared SL|, BE level = avg ± value×R.
+     * Weighted-average OPEN fill price for split group (manager + orderService, deduped).
+     * Auto-BE in updatePositions runs on open legs only — pending siblings must not skew R from avg→SL.
      */
     _getSplitGroupAvgEntry(position) {
         if (!position.isSplitEntry || !position.splitGroupId) return position.openPrice;
-        const members = this._getSplitGroupAllLegsBasket(position);
+        const members = this._getSplitGroupOpenPositions(position);
         const totalQty = members.reduce((s, p) => s + (Number(p.quantity) || 0), 0);
         if (!(totalQty > 0)) return position.openPrice;
-        const weightedSum = members.reduce((s, o) => {
-            const px = o.status === 'PENDING'
-                ? (Number(o.entryPrice) || 0)
-                : (Number(o.openPrice) || 0);
-            return s + px * (Number(o.quantity) || 0);
-        }, 0);
+        const weightedSum = members.reduce((s, p) => s + (Number(p.openPrice) || 0) * (Number(p.quantity) || 0), 0);
         return weightedSum / totalQty;
     }
 
@@ -1486,12 +1455,30 @@ class OrderManager {
         return order?.openPrice;
     }
 
-    /** Total lots for $-mode BE on chart — same basket as Avg Entry (filled + pending). */
+    /** Total lots for $-mode BE on chart (open split legs only). */
     _beChartBreakevenQtyOpen(order) {
-        if (order?.isSplitEntry && order.splitGroupId) {
-            return this._getSplitGroupAllLegsBasket(order).reduce((s, m) => s + (Number(m.quantity) || 0), 0);
-        }
+        if (order?.isSplitEntry && order.splitGroupId) return this._getSplitGroupTotalQty(order, 'open');
         return Number(order?.quantity) || 0;
+    }
+
+    /** Order panel preview: anchor entry for BE R/pips/$ (weighted avg when multi-entry split mode). */
+    _previewBreakevenAnchorEntry() {
+        let e = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        if (this.isMultiEntryMode && this.splitEntriesEnabled && this.multiEntryLevels?.length) {
+            const avg = this._calcMultiEntryAvgPrice();
+            if (avg > 0) e = avg;
+        }
+        return e;
+    }
+
+    /** Order panel preview: total lots for BE $-mode (implied multi-entry sum when applicable). */
+    _previewBreakevenAnchorLots() {
+        const q = parseFloat(document.getElementById('orderQuantity')?.value || 1);
+        if (this.isMultiEntryMode && this.splitEntriesEnabled) {
+            const t = this._getMultiEntryImpliedTotalLots();
+            if (t > 0) return t;
+        }
+        return q;
     }
 
     /**
@@ -14346,7 +14333,7 @@ class OrderManager {
             }
         }
         
-        // Draw Breakeven trigger line if enabled
+        // Draw Breakeven trigger line if enabled (multi-entry: R from weighted Avg Entry → SL, same idea as pending split)
         const beEnabled = document.getElementById('autoBreakevenToggle')?.checked;
         if (beEnabled && slEnabled && slPrice > 0) {
             const beMode = this.breakevenMode || 'rr';
@@ -14359,15 +14346,17 @@ class OrderManager {
                 beValue = parseFloat(document.getElementById('breakevenAmount')?.value || 50);
             }
             
+            const beAnchor = this._previewBreakevenAnchorEntry();
+            const beLots = this._previewBreakevenAnchorLots();
             let beTriggerPrice = 0;
-            const riskDistance = Math.abs(entryPrice - slPrice);
+            const riskDistance = Math.abs(beAnchor - slPrice);
             
             if (!this.beManuallyPositioned && tpEnabled && tpPrice > 0) {
-                const tpDistance = Math.abs(tpPrice - entryPrice);
+                const tpDistance = Math.abs(tpPrice - beAnchor);
                 const beDistance = tpDistance * 0.5;
                 beTriggerPrice = this.orderSide === 'BUY' 
-                    ? entryPrice + beDistance 
-                    : entryPrice - beDistance;
+                    ? beAnchor + beDistance 
+                    : beAnchor - beDistance;
                 
                 if (beMode === 'rr' && riskDistance > 0) {
                     const rVal = beDistance / riskDistance;
@@ -14379,7 +14368,7 @@ class OrderManager {
                     if (pipsInput) { pipsInput.value = bePips; beValue = bePips; }
                 } else if (beMode === 'amount') {
                     const bePips = Math.round(beDistance / this.pipSize);
-                    const beAmount = bePips * quantity * this.pipValuePerLot;
+                    const beAmount = bePips * beLots * this.pipValuePerLot;
                     const amountInput = document.getElementById('breakevenAmount');
                     if (amountInput) { amountInput.value = Math.round(beAmount); beValue = Math.round(beAmount); }
                 }
@@ -14387,19 +14376,20 @@ class OrderManager {
             } else if (beMode === 'rr') {
                 const profitDistance = beValue * riskDistance;
                 beTriggerPrice = this.orderSide === 'BUY' 
-                    ? entryPrice + profitDistance 
-                    : entryPrice - profitDistance;
+                    ? beAnchor + profitDistance 
+                    : beAnchor - profitDistance;
             } else if (beMode === 'pips') {
                 const profitPrice = beValue * this.pipSize;
                 beTriggerPrice = this.orderSide === 'BUY' 
-                    ? entryPrice + profitPrice 
-                    : entryPrice - profitPrice;
+                    ? beAnchor + profitPrice 
+                    : beAnchor - profitPrice;
             } else {
-                const profitPips = beValue / (quantity * this.pipValuePerLot);
+                const denom = (beLots > 0 ? beLots : quantity) * this.pipValuePerLot;
+                const profitPips = beValue / denom;
                 const profitPrice = profitPips * this.pipSize;
                 beTriggerPrice = this.orderSide === 'BUY' 
-                    ? entryPrice + profitPrice 
-                    : entryPrice - profitPrice;
+                    ? beAnchor + profitPrice 
+                    : beAnchor - profitPrice;
             }
             
             const pipOffset = parseFloat(document.getElementById('breakevenPipOffset')?.value || 0);
@@ -14925,17 +14915,17 @@ class OrderManager {
                     // Mark BE as manually positioned
                     self.beManuallyPositioned = true;
                     
-                    // BE line drag: update panel inputs (R / pips / $) from Y position
-                    const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+                    // BE line drag: R / pips / $ vs weighted Avg Entry anchor (multi-entry), not Entry#1 only
+                    const beAnchor = self._previewBreakevenAnchorEntry();
                     const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
-                    const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
+                    const beLots = self._previewBreakevenAnchorLots();
                     const beMode = self.breakevenMode || 'rr';
                     
-                    if (entryPrice) {
-                        const profit = Math.abs(newPrice - entryPrice);
+                    if (beAnchor) {
+                        const profit = Math.abs(newPrice - beAnchor);
                         
                         if (beMode === 'rr' && slPrice > 0) {
-                            const riskDistance = Math.abs(entryPrice - slPrice);
+                            const riskDistance = Math.abs(beAnchor - slPrice);
                             if (riskDistance > 0) {
                                 const rVal = profit / riskDistance;
                                 const rInput = document.getElementById('breakevenPips');
@@ -14949,7 +14939,8 @@ class OrderManager {
                             lineData.label = this._formatBreakevenLabelText('pips', Math.round(newPips));
                         } else {
                             const profitPips = profit / self.pipSize;
-                            const newAmount = profitPips * quantity * self.pipValuePerLot;
+                            const qUse = beLots > 0 ? beLots : 1;
+                            const newAmount = profitPips * qUse * self.pipValuePerLot;
                             const amountInput = document.getElementById('breakevenAmount');
                             if (amountInput) amountInput.value = Math.round(newAmount);
                             const visibleInput = document.getElementById('breakevenPips');
@@ -15224,34 +15215,35 @@ class OrderManager {
                     
                     // Update BE line position when Entry or SL changes
                     if (self.previewLines.be && document.getElementById('autoBreakevenToggle')?.checked) {
-                        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+                        const beAnchor = self._previewBreakevenAnchorEntry();
                         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
                         const beMode = self.breakevenMode || 'rr';
-                        const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
+                        const beLots = self._previewBreakevenAnchorLots();
                         
-                        if (entryPrice) {
+                        if (beAnchor) {
                             let newBEPrice = 0;
                             
                             if (beMode === 'rr' && slPrice > 0) {
                                 const beVal = parseFloat(document.getElementById('breakevenPips')?.value || 0.5);
-                                const riskDist = Math.abs(entryPrice - slPrice);
+                                const riskDist = Math.abs(beAnchor - slPrice);
                                 const profitDistance = beVal * riskDist;
                                 newBEPrice = self.orderSide === 'BUY'
-                                    ? entryPrice + profitDistance
-                                    : entryPrice - profitDistance;
+                                    ? beAnchor + profitDistance
+                                    : beAnchor - profitDistance;
                             } else if (beMode === 'pips') {
                                 const bePips = parseFloat(document.getElementById('breakevenPips')?.value || 10);
                                 const profitPrice = bePips * self.pipSize;
                                 newBEPrice = self.orderSide === 'BUY' 
-                                    ? entryPrice + profitPrice 
-                                    : entryPrice - profitPrice;
+                                    ? beAnchor + profitPrice 
+                                    : beAnchor - profitPrice;
                             } else {
                                 const beAmount = parseFloat(document.getElementById('breakevenAmount')?.value || 50);
-                                const profitPips = beAmount / (quantity * self.pipValuePerLot);
+                                const denom = (beLots > 0 ? beLots : 1) * self.pipValuePerLot;
+                                const profitPips = beAmount / denom;
                                 const profitPrice = profitPips * self.pipSize;
                                 newBEPrice = self.orderSide === 'BUY' 
-                                    ? entryPrice + profitPrice 
-                                    : entryPrice - profitPrice;
+                                    ? beAnchor + profitPrice 
+                                    : beAnchor - profitPrice;
                             }
                             
                             // Update BE line position
@@ -22292,6 +22284,7 @@ class OrderManager {
             
             isDragging = true;
             self._isDraggingOrderLine = true;
+            self._draggingManagedOpenLineKind = lineType;
             startY = e.clientY;
             
             // Store starting price and drag start price
@@ -22561,6 +22554,7 @@ class OrderManager {
             
             isDragging = false;
             self._isDraggingOrderLine = false;
+            self._draggingManagedOpenLineKind = null;
             
             // Remove document listeners
             document.removeEventListener('mousemove', onMouseMove);
@@ -29367,6 +29361,10 @@ class OrderManager {
         }
         const ch = sourceChart || this.chart;
         if (!ch?.scales) {
+            return;
+        }
+
+        if (this._isDraggingOrderLine && this._draggingManagedOpenLineKind === 'be') {
             return;
         }
         
