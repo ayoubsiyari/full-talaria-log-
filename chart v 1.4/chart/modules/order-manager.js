@@ -1374,6 +1374,29 @@ class OrderManager {
     }
 
     /**
+     * SL chart label: net $ at stop (gross price P&L minus round-trip comm per leg). Split groups sum every leg.
+     */
+    _slChartNetPnLAtStopForOpenOrder(order, stopPrice) {
+        if (!order || stopPrice == null) return 0;
+        const sp = Number(stopPrice);
+        if (!Number.isFinite(sp)) return 0;
+        if (order.isSplitEntry && order.splitGroupId) {
+            let gross = 0;
+            let comm = 0;
+            for (const m of this._getSplitGroupOpenPositions(order)) {
+                const mq = Number(m.quantity) || 0;
+                if (mq <= 0) continue;
+                gross += this.estimateOpenLegPnLSlice(m, sp, mq);
+                comm += this._getRoundTripCommissionUsd(m);
+            }
+            return gross - comm;
+        }
+        const q = Number(order.quantity) || 0;
+        const g = this.estimateOpenLegPnLSlice(order, sp, q);
+        return g - this._getRoundTripCommissionUsd(order);
+    }
+
+    /**
      * Weighted-average open price for all legs in a split group.
      * Falls back to position.openPrice when the position is standalone.
      */
@@ -21955,7 +21978,9 @@ class OrderManager {
                 if (lineType === 'sl' || lineType === 'tp' || lineType === 'be') {
                     if (extraElements.pnlText) {
                         let pnl = 0;
-                        if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
+                        if (lineType === 'sl') {
+                            pnl = self._slChartNetPnLAtStopForOpenOrder(order, newPrice);
+                        } else if (order.isSplitEntry && order.splitGroupId) {
                             const members = self._getSplitGroupOpenPositions(order);
                             pnl = members.reduce((sum, m) => {
                                 const mq = Number(m.quantity) || 0;
@@ -25090,16 +25115,23 @@ class OrderManager {
         
         // Draw SL with P&L (sum all legs for scale-in)
         if (pendingOrder.stopLoss) {
-            let slPnL = this.estimateOpenLegPnLSlice(pendingOrder, pendingOrder.stopLoss, quantity);
+            let slPnL;
             let totalSlQty = quantity;
-            if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
+            if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
                 const members = this._getSplitGroupPendingOrders(pendingOrder);
-                slPnL = members.reduce((sum, m) => {
+                let gross = 0;
+                let comm = 0;
+                members.forEach((m) => {
                     const q = Number(m.quantity) || 0;
-                    if (q <= 0) return sum;
-                    return sum + this.estimateOpenLegPnLSlice(m, pendingOrder.stopLoss, q);
-                }, 0);
+                    if (q <= 0) return;
+                    gross += this.estimateOpenLegPnLSlice(m, pendingOrder.stopLoss, q);
+                    comm += this._getRoundTripCommissionUsd(m);
+                });
+                slPnL = gross - comm;
                 totalSlQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
+            } else {
+                slPnL = this.estimateOpenLegPnLSlice(pendingOrder, pendingOrder.stopLoss, quantity)
+                    - this._getRoundTripCommissionUsd(pendingOrder);
             }
             const labelText = `SL  ${totalSlQty.toFixed(2)}`;
             const pnlStr = `${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`;
@@ -27304,16 +27336,8 @@ class OrderManager {
         if (order.stopLoss) {
             console.log(`  🛑 Drawing SL line at ${order.stopLoss.toFixed(2)}`);
             
-            // Calculate potential loss at SL — sum all legs for scale-in / split groups (per-leg pip snapshot + engine)
-            let slPnL = this.estimateOpenLegPnLSlice(order, order.stopLoss, Number(order.quantity) || 0);
-            if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
-                const members = this._getSplitGroupOpenPositions(order);
-                slPnL = members.reduce((sum, m) => {
-                    const mq = Number(m.quantity) || 0;
-                    if (mq <= 0) return sum;
-                    return sum + this.estimateOpenLegPnLSlice(m, order.stopLoss, mq);
-                }, 0);
-            }
+            // Net $ at SL (gross − round-trip comm per leg). Split: every leg — not only splitIndex 1 (avoids +$34 vs +$4 mismatch).
+            const slPnL = this._slChartNetPnLAtStopForOpenOrder(order, order.stopLoss);
             
             const slLine = chart.svg.append('line')
                 .attr('class', `sl-line sl-${order.id}`)
@@ -27333,7 +27357,7 @@ class OrderManager {
                 .style('cursor', 'ns-resize');
             
             let slTotalQty = order.quantity || 0;
-            if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
+            if (order.isSplitEntry && order.splitGroupId) {
                 slTotalQty = this._getSplitGroupOpenPositions(order).reduce((s, m) => s + (m.quantity || 0), 0);
             }
             const slLabelText = chart.svg.append('text')
@@ -28376,9 +28400,9 @@ class OrderManager {
                 
                 const priceKey = position.stopLoss.toFixed(5);
                 const slPx = Number(position.stopLoss);
-                // Multi-entry: only sum this split group's legs (same as drawSLTPLines). Otherwise one row = one position.
+                // Split group: all legs at this SL (any splitIndex). Net $ = gross − RT comm per leg (matches fill).
                 let positionsAtThisSL;
-                if (position.isSplitEntry && position.splitGroupId && Number(position.splitIndex) === 1) {
+                if (position.isSplitEntry && position.splitGroupId) {
                     positionsAtThisSL = this._getSplitGroupOpenPositions(position).filter(
                         (p) => p.stopLoss != null && Math.abs(Number(p.stopLoss) - slPx) < 1e-8
                     );
@@ -28390,7 +28414,8 @@ class OrderManager {
                 positionsAtThisSL.forEach((pos) => {
                     const q = Number(pos.quantity) || 0;
                     if (q <= 0) return;
-                    totalSlPnL += this.estimateOpenLegPnLSlice(pos, pos.stopLoss, q);
+                    const g = this.estimateOpenLegPnLSlice(pos, pos.stopLoss, q);
+                    totalSlPnL += g - this._getRoundTripCommissionUsd(pos);
                 });
                 
                 if (updatedSLPrices.has(priceKey)) {
