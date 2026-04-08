@@ -4538,19 +4538,15 @@ class ReplaySystem {
 
     /**
      * End index (inclusive) for a panel's raw series during replay when it has its own `_panelFullRawData`.
-     * Prefers wall-clock alignment with main `replayTimestamp`; if the secondary CSV has no bars at/before
-     * that time (common when date ranges differ), falls back to the same playback progress as the main chart
-     * so the panel is not stuck showing a single candle.
+     * Always uses the same wall-clock cut as the main chart (`replayTimestamp`): last bar with t <= replayTs.
+     * Progress-based fallbacks were removed — they desynced calendar dates across pairs. If no bar exists at/before
+     * replay time (idx < 0), clamp to 0 so at least the series start shows; use overlapping session data for full sync.
      */
     _resolvePanelRawEndIndexForReplay(panelFullRawData, replayTs) {
         if (!Array.isArray(panelFullRawData) || panelFullRawData.length === 0) return 0;
-        let idx = this._findLastRawIndexAtOrBefore(panelFullRawData, replayTs);
-        if (idx >= 0) return Math.min(idx, panelFullRawData.length - 1);
-        const mainData = this.fullRawData;
-        const mainLast = Array.isArray(mainData) && mainData.length > 1 ? mainData.length - 1 : 0;
-        const prog = mainLast > 0 ? (this.currentIndex / mainLast) : 0;
-        const panelLast = panelFullRawData.length - 1;
-        return Math.min(panelLast, Math.max(0, Math.round(prog * panelLast)));
+        const idx = this._findLastRawIndexAtOrBefore(panelFullRawData, replayTs);
+        if (idx < 0) return 0;
+        return Math.min(idx, panelFullRawData.length - 1);
     }
 
     syncPanelCharts() {

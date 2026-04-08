@@ -17670,7 +17670,16 @@ class Chart {
                 const tfMap = { '1m': 60000, '2m': 120000, '3m': 180000, '4m': 240000, '5m': 300000, '10m': 600000, '15m': 900000, '30m': 1800000, '45m': 2700000, '1h': 3600000, '2h': 7200000, '4h': 14400000, '6h': 21600000, '12h': 43200000, '1d': 86400000, '1w': 604800000, '1mo': 2592000000 };
                 timeframeMs = tfMap[this.currentTimeframe || '1m'] || 60000;
             }
-            const labelTimestamp = (candle && Number.isFinite(candle.t)) ? candle.t : timestamp;
+            // Synced crosshair: use the broadcast wall-clock moment so every panel shows the same date/time
+            // even when timeframes differ (local candle.t is the resampled bucket open).
+            let labelTimestamp = timestamp;
+            if (this.normalizeTimestampMs) {
+                const nt = this.normalizeTimestampMs(timestamp);
+                if (Number.isFinite(nt) && nt > 0) labelTimestamp = nt;
+            }
+            if (!Number.isFinite(labelTimestamp) || labelTimestamp <= 0) {
+                labelTimestamp = (candle && Number.isFinite(candle.t)) ? candle.t : timestamp;
+            }
             const tzDate = this.convertToTimezone(labelTimestamp);
             const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             const month = months[tzDate.getMonth()];
