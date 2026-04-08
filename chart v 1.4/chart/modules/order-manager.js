@@ -29074,8 +29074,9 @@ class OrderManager {
                 }
             });
             
-            // Track which TP prices have been updated
-            const updatedTPPrices = new Set();
+            // One label stack per chart line (order + TP rung), not per rounded price — otherwise
+            // two ladder rungs that map to the same toFixed(5) price would hide the second (e.g. TP1 when TP2 updates).
+            const updatedTPLineKeys = new Set();
             
             tpForChart.forEach(({ orderId, targetId, line, labelBox, labelText, pnlBox, pnlText, closeBtn, splitBtn, priceBox, priceText, deleteBtn, pctDecBtn, pctIncBtn, pctArrowsWidth }) => {
                 const position = this._findOpenPositionById(orderId);
@@ -29105,8 +29106,9 @@ class OrderManager {
                 
                 const priceKey = tpPrice.toFixed(5);
                 const groupData = tpPriceGroups[priceKey];
+                const lineDedupeKey = `${orderId}|${(targetId !== undefined && targetId !== null) ? String(targetId) : 'st'}`;
                 
-                if (updatedTPPrices.has(priceKey)) {
+                if (updatedTPLineKeys.has(lineDedupeKey)) {
                     if (labelBox) labelBox.style('display', 'none');
                     if (labelText) labelText.style('display', 'none');
                     if (pnlBox) pnlBox.style('display', 'none');
@@ -29119,7 +29121,7 @@ class OrderManager {
                     if (pctDecBtn) pctDecBtn.style('display', 'none');
                     if (pctIncBtn) pctIncBtn.style('display', 'none');
                 } else {
-                    updatedTPPrices.add(priceKey);
+                    updatedTPLineKeys.add(lineDedupeKey);
                     const numPositions = groupData ? groupData.positions.length : 1;
                     const totalPnL = groupData ? groupData.totalPnL : 0;
                     
