@@ -923,7 +923,7 @@ class OrderManager {
      * SL/TP vs that instrument's bar high/low while the main chart is on another pair (milestone 8.2).
      * Respects _beTriggeredBarT (same as main path) so BE does not immediately stop out on extra ticks.
      */
-    _collectBackgroundSLTPTouches(position, bar, positionsToClose) {
+    _collectBackgroundSLTPTouches(position, bar, positionsToClose, queuedSplitSlGroupIds) {
         if (!position || !bar) return;
         const bgOpen = Number.parseFloat(bar.o);
         const high = Number.parseFloat(bar.h);
@@ -968,7 +968,7 @@ class OrderManager {
                     const fillPx = hasOpen
                         ? this._stopLossFillPrice(sl, bgOpen, high, low, true)
                         : (Number.isFinite(low) ? Math.min(sl, low) : sl);
-                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: this._slCloseHitType(position), bgCloseTime: barTime });
+                    this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds, barTime);
                 }
             } else {
                 const sl = Number.parseFloat(position.stopLoss);
@@ -976,7 +976,7 @@ class OrderManager {
                     const fillPx = hasOpen
                         ? this._stopLossFillPrice(sl, bgOpen, high, low, true)
                         : (Number.isFinite(low) ? Math.min(sl, low) : sl);
-                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: this._slCloseHitType(position), bgCloseTime: barTime });
+                    this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds, barTime);
                 } else {
                     const tp = Number.parseFloat(position.takeProfit);
                     const slBgBuy1 = Number.parseFloat(position.stopLoss);
@@ -1016,7 +1016,7 @@ class OrderManager {
                     const fillPx = hasOpen
                         ? this._stopLossFillPrice(sl, bgOpen, high, low, false)
                         : (Number.isFinite(high) ? Math.max(sl, high) : sl);
-                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: this._slCloseHitType(position), bgCloseTime: barTime });
+                    this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds, barTime);
                 }
             } else {
                 const sl = Number.parseFloat(position.stopLoss);
@@ -1024,7 +1024,7 @@ class OrderManager {
                     const fillPx = hasOpen
                         ? this._stopLossFillPrice(sl, bgOpen, high, low, false)
                         : (Number.isFinite(high) ? Math.max(sl, high) : sl);
-                    positionsToClose.push({ id: position.id, closePrice: fillPx, type: this._slCloseHitType(position), bgCloseTime: barTime });
+                    this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds, barTime);
                 } else {
                     const tp = Number.parseFloat(position.takeProfit);
                     const slBgSell1 = Number.parseFloat(position.stopLoss);
@@ -1592,6 +1592,34 @@ class OrderManager {
     /** SL fill → journal / exports use BE when stop was last set by auto-BE (not trail/manual). */
     _slCloseHitType(position) {
         return position && position._slIsBreakevenPlacement ? 'BE' : 'SL';
+    }
+
+    /**
+     * One shared SL row on the chart, but split entry is stored as multiple open positions (one per leg).
+     * When price touches the stop, enqueue **every** leg once — same fill price, per-leg BE vs SL type.
+     * Second+ legs in the same group skip (Set) so we do not duplicate closes. Matches SL $ label basket.
+     */
+    _pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds, bgCloseTime) {
+        const pushRow = (id, hitType) => {
+            const row = { id, closePrice: fillPx, type: hitType };
+            if (bgCloseTime != null) row.bgCloseTime = bgCloseTime;
+            positionsToClose.push(row);
+        };
+        if (!queuedSplitSlGroupIds) {
+            pushRow(position.id, this._slCloseHitType(position));
+            return;
+        }
+        if (!position.isSplitEntry || !position.splitGroupId) {
+            pushRow(position.id, this._slCloseHitType(position));
+            return;
+        }
+        const gid = String(position.splitGroupId);
+        if (queuedSplitSlGroupIds.has(gid)) return;
+        queuedSplitSlGroupIds.add(gid);
+        for (const m of this._getSplitGroupOpenPositions(position)) {
+            if ((Number(m.quantity) || 0) <= 0) continue;
+            pushRow(m.id, this._slCloseHitType(m));
+        }
     }
 
     /** Human-readable closeType for journal / CSV (partial TP + final leg). */
@@ -20159,6 +20187,8 @@ class OrderManager {
         
         // Check each position for SL/TP hits
         const positionsToClose = [];
+        /** One enqueue per splitGroupId when shared SL/BE fires (all legs close at same stop). */
+        const queuedSplitSlGroupIds = new Set();
         const chartTickerForBar = this._getActiveTicker();
         const chartFileId = (() => {
             const oc = this._getOrderContextChart() || this.chart;
@@ -20188,7 +20218,7 @@ class OrderManager {
                     const bh = Number.parseFloat(bgBar.h);
                     const bl = Number.parseFloat(bgBar.l);
                     if (Number.isFinite(bh) && Number.isFinite(bl) && !this._shouldDeferBackgroundSLTPTouches(bgBar)) {
-                        this._collectBackgroundSLTPTouches(position, bgBar, positionsToClose);
+                        this._collectBackgroundSLTPTouches(position, bgBar, positionsToClose, queuedSplitSlGroupIds);
                     }
                 }
                 totalPnL += Number.parseFloat(position.unrealizedPnL) || 0;
@@ -20509,7 +20539,7 @@ class OrderManager {
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, lowFill, true, position, currentCandle.t);
                             const _slBuy = this._slCloseHitType(position);
                             console.log(`   ${_slBuy === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
-                            positionsToClose.push({ id: position.id, closePrice: fillPx, type: _slBuy });
+                            this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
                         } else if (tpHit) {
                             position._tpNoTriggerBeforeTime = null;
                             position._tpNoTriggerBeforeTick = undefined;
@@ -20529,7 +20559,7 @@ class OrderManager {
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, high, lowFillM, true, position, currentCandle.t);
                             const _slT = this._slCloseHitType(position);
                             console.log(`   ${_slT === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing remaining position BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
-                            positionsToClose.push({ id: position.id, closePrice: fillPx, type: _slT });
+                            this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
                         }
                     }
                 } else {
@@ -20832,7 +20862,7 @@ class OrderManager {
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, highFill, low, false, position, currentCandle.t);
                             const _slSell = this._slCloseHitType(position);
                             console.log(`   ${_slSell === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
-                            positionsToClose.push({ id: position.id, closePrice: fillPx, type: _slSell });
+                            this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
                         } else if (tpHitSell) {
                             position._tpNoTriggerBeforeTime = null;
                             position._tpNoTriggerBeforeTick = undefined;
@@ -20852,7 +20882,7 @@ class OrderManager {
                             const fillPx = this._stopLossFillPrice(position.stopLoss, open, highFillM, low, false, position, currentCandle.t);
                             const _slSellM = this._slCloseHitType(position);
                             console.log(`   ${_slSellM === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing remaining position SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill)' : ''}`);
-                            positionsToClose.push({ id: position.id, closePrice: fillPx, type: _slSellM });
+                            this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
                         }
                     }
                 } else {
