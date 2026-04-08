@@ -1476,13 +1476,14 @@ class OrderManager {
     }
 
     _calculatePositionPnL(position, markPrice) {
-        const pipSize = this._getPositionPipSize(position);
-        const pipValue = this._getPositionPipValue(position);
-        const priceDiff = position.type === 'BUY'
-            ? (markPrice - position.openPrice)
-            : (position.openPrice - markPrice);
-        const pipsMove = priceDiff / pipSize;
-        return pipsMove * (position.quantity || 0) * pipValue;
+        if (!position || markPrice == null) return 0;
+        const m = Number(markPrice);
+        if (!Number.isFinite(m)) return 0;
+        const q = Number(position.quantity) || 0;
+        if (q <= 0) return 0;
+        // Must match estimateOpenLegPnLSlice / chart SL $ / close — legacy pip×pipValue was wrong on
+        // JPY crosses (e.g. EURJPY) vs MarketCalculationEngine quote→USD conversion.
+        return this.estimateOpenLegPnLSlice(position, m, q);
     }
 
     /**
