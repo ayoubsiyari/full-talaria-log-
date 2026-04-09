@@ -983,6 +983,17 @@ class BaseRiskRewardTool extends BaseDrawing {
         return inc;
     }
 
+    /** DrawingToolsManager instance — drawings only get `chart` set, not `manager`. */
+    _drawingManager() {
+        if (this.manager) return this.manager;
+        const fromChart = this.chart && this.chart.drawingManager;
+        if (fromChart) return fromChart;
+        if (typeof window !== 'undefined' && window.chart && window.chart.drawingManager) {
+            return window.chart.drawingManager;
+        }
+        return null;
+    }
+
     /** Shift all extra level prices by dy (data space); used when the whole tool moves vertically. */
     afterPointsMoveDelta(dx, dy) {
         const ddx = Number.isFinite(dx) ? dx : 0;
@@ -1071,8 +1082,11 @@ class BaseRiskRewardTool extends BaseDrawing {
             this.meta.extraTargets.push({ id: this._nextExtraLevelId(), y: this.sanitizeTargetPrice(y) });
             this.ensureRiskSettings();
         }
-        if (this.manager) this.manager.renderDrawing(this);
-        if (this.manager) this.manager.saveDrawings();
+        const dm = this._drawingManager();
+        if (dm) {
+            dm.renderDrawing(this);
+            dm.saveDrawings();
+        }
     }
 
     addExtraStop() {
@@ -1084,8 +1098,11 @@ class BaseRiskRewardTool extends BaseDrawing {
         const y = this.isLong ? ref - step : ref + step;
         this.meta.extraStops.push({ id: this._nextExtraLevelId(), y: this.sanitizeStopPrice(y) });
         this.ensureRiskSettings();
-        if (this.manager) this.manager.renderDrawing(this);
-        if (this.manager) this.manager.saveDrawings();
+        const dmStop = this._drawingManager();
+        if (dmStop) {
+            dmStop.renderDrawing(this);
+            dmStop.saveDrawings();
+        }
     }
 
     addExtraEntry() {
@@ -1102,8 +1119,11 @@ class BaseRiskRewardTool extends BaseDrawing {
             this.meta.extraEntries.push({ id: this._nextExtraLevelId(), y: this.sanitizeExtraEntryPrice(y) });
             this.ensureRiskSettings();
         }
-        if (this.manager) this.manager.renderDrawing(this);
-        if (this.manager) this.manager.saveDrawings();
+        const dmEntry = this._drawingManager();
+        if (dmEntry) {
+            dmEntry.renderDrawing(this);
+            dmEntry.saveDrawings();
+        }
     }
 
     /**
@@ -1531,8 +1551,9 @@ class BaseRiskRewardTool extends BaseDrawing {
         
         // Mark as executed for visual feedback
         this.meta.executed = true;
-        if (this.manager) {
-            this.manager.renderDrawing(this);
+        const dmExec = this._drawingManager();
+        if (dmExec) {
+            dmExec.renderDrawing(this);
         }
     }
 
