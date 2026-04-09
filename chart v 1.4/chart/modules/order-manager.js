@@ -23735,9 +23735,24 @@ class OrderManager {
             });
         }
 
-        // Redraw (this order only)
+        // Redraw (this order only). Pending must use drawPendingOrderTargets — drawSLTPLines is for open positions only.
         if (isPending) {
             this.removePendingSLTPLines(source.id);
+            this.removeMultiTPAvgLine(source.id);
+            if (source.isSplitEntry && source.splitGroupId) {
+                this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
+            }
+            this.drawPendingOrderTargets(source);
+            if (source.tpTargets && source.tpTargets.length >= 1) {
+                this.drawMultiTPAvgLine(source, 'pending');
+            }
+            this.positionPendingOrderTargets();
+        } else {
+            this.removeSLTPLines(source.id);
+            this.removeMultiTPAvgLine(source.id);
+            if (source.isSplitEntry && source.splitGroupId) {
+                this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
+            }
             this.drawSLTPLines(source);
             if (source.tpTargets && source.tpTargets.length >= 1) {
                 this.drawMultiTPAvgLine(source);
