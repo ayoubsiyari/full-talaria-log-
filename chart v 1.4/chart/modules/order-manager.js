@@ -17471,6 +17471,19 @@ class OrderManager {
             if (multipleTPToggle) multipleTPToggle.checked = false;
             if (multipleTPSettings) multipleTPSettings.classList.add('is-hidden');
             this._syncMultiTPButtonState();
+        } else if (this.tpTargets.length === 1) {
+            // One TP left: leave multi-TP mode so preview uses "TP" + tpPrice (not "TP1" / Avg TP line).
+            const one = this.tpTargets[0];
+            const p = (one && one.price > 0) ? one.price : parseFloat(document.getElementById('tpPrice')?.value || 0);
+            const tpIn = document.getElementById('tpPrice');
+            if (tpIn && p > 0) tpIn.value = this.formatPrice(p);
+            this.tpTargets = [];
+            const multipleTPToggle = document.getElementById('multipleTPToggle');
+            const multipleTPSettings = document.getElementById('multipleTPSettings');
+            if (multipleTPToggle) multipleTPToggle.checked = false;
+            if (multipleTPSettings) multipleTPSettings.classList.add('is-hidden');
+            this._syncMultiTPButtonState();
+            this.tpManuallyPositioned = true;
         } else {
             // Redistribute proportionally: normalize remaining targets to sum to 100
             // preserving their relative weights rather than resetting to equal split
@@ -23737,6 +23750,24 @@ class OrderManager {
         if (!isPending && source.isSplitEntry && source.splitGroupId) {
             const siblings = [...(this.openPositions || []), ...(this.orderService?.openPositions || [])]
                 .filter(p => p && p.splitGroupId === source.splitGroupId && p.id !== source.id && p.isSplitEntry);
+            siblings.forEach(sib => {
+                if (source.tpTargets.length === 0) {
+                    sib.tpTargets = [];
+                    sib.takeProfit = source.takeProfit;
+                } else {
+                    sib.tpTargets = source.tpTargets.map(t => {
+                        const existing = (sib.tpTargets || []).find(e => e.id === t.id);
+                        return { ...t, hit: existing ? !!existing.hit : false };
+                    });
+                }
+            });
+        }
+
+        // Same for pending split legs — otherwise drawPendingOrderTargets → _syncTpTargetsAcrossSplitGroup
+        // copies the old multi-TP ladder from a sibling onto the leg that collapsed to single TP.
+        if (isPending && source.isSplitEntry && source.splitGroupId) {
+            const siblings = this._getSplitGroupPendingOrders(source)
+                .filter(p => p && p.id !== source.id);
             siblings.forEach(sib => {
                 if (source.tpTargets.length === 0) {
                     sib.tpTargets = [];
