@@ -1299,6 +1299,24 @@ class BaseRiskRewardTool extends BaseDrawing {
         this.recalculateLotSizeFromRisk(); // Recalculate to maintain constant risk
     }
 
+    /**
+     * Clamp primary entry between stop and target so dragging the entry line resizes risk/reward zones,
+     * not the whole tool (SL/TP prices stay fixed).
+     */
+    clampPrimaryEntryPrice(newY) {
+        if (!Array.isArray(this.points) || this.points.length < 3) return newY;
+        const sl = this.points[1].y;
+        const tp = this.points[2].y;
+        if (!Number.isFinite(newY) || !Number.isFinite(sl) || !Number.isFinite(tp)) return newY;
+        const lo = Math.min(sl, tp);
+        const hi = Math.max(sl, tp);
+        const step = this.getPriceStep();
+        const span = hi - lo;
+        const eps = Math.max(step * 0.5, span * 1e-9, 1e-12);
+        if (span <= eps * 2) return this.points[0].y;
+        return Math.min(hi - eps, Math.max(lo + eps, newY));
+    }
+
     setStopPrice(price) {
         if (!Array.isArray(this.points) || this.points.length < 2) return;
         const entry = this.points[0];
@@ -2327,11 +2345,11 @@ class BaseRiskRewardTool extends BaseDrawing {
             this._afterRiskRewardOrderManagerSync();
             return true;
         }
-        const deltaY = newY - this.points[0].y;
-        if (!Number.isFinite(deltaY)) return false;
-        this.points = this.points.map((p) => ({ ...p, y: p.y + deltaY }));
-        this.afterPointsMoveDelta(0, deltaY);
+        const clamped = this.clampPrimaryEntryPrice(newY);
+        if (!Number.isFinite(clamped) || Math.abs(clamped - this.points[0].y) < 1e-12) return true;
+        this.points[0] = { ...this.points[0], y: clamped };
         this.ensureRiskSettings();
+        this.recalculateLotSizeFromRisk();
         return true;
     }
 

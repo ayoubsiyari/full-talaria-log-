@@ -17709,27 +17709,23 @@ class OrderManager {
     }
 
     /**
-     * Primary entry handle — moves the whole ladder vertically; keeps order panel + multiEntryLevels in sync.
-     * Without push/pull, pullRiskRewardToolFromManager can later overwrite the tool from stale OM (TP drag already syncs).
-     */
-    /**
-     * Primary entry line — same sync rhythm as riskRewardSyncPrimaryTpDragFromTool (push → edit → push → pull).
+     * Primary entry line drag: move only entry price between SL and TP (zones resize). Stop/target stay fixed.
+     * Same sync rhythm as riskRewardSyncPrimaryTpDragFromTool (push → edit → push → pull).
      */
     riskRewardSyncPrimaryEntryDragFromTool(drawing, newY) {
         if (!drawing || !drawing.points || drawing.points.length < 3) return;
         this.pushRiskRewardToolToManager(drawing);
         const prec = this.getPricePrecision();
-        const target = parseFloat(parseFloat(newY).toFixed(prec));
-        const deltaY = target - drawing.points[0].y;
-        if (!Number.isFinite(deltaY) || Math.abs(deltaY) < 1e-12) {
+        const raw = parseFloat(parseFloat(newY).toFixed(prec));
+        const clamped = typeof drawing.clampPrimaryEntryPrice === 'function'
+            ? drawing.clampPrimaryEntryPrice(raw)
+            : raw;
+        if (!Number.isFinite(clamped) || Math.abs(clamped - drawing.points[0].y) < 1e-12) {
             this.pullRiskRewardToolFromManager(drawing);
             return;
         }
 
-        drawing.points = drawing.points.map((p) => ({ ...p, y: p.y + deltaY }));
-        if (typeof drawing.afterPointsMoveDelta === 'function') {
-            drawing.afterPointsMoveDelta(0, deltaY);
-        }
+        drawing.points[0] = { ...drawing.points[0], y: clamped };
         if (typeof drawing.ensureRiskSettings === 'function') {
             drawing.ensureRiskSettings();
         }
