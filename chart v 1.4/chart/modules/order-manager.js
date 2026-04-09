@@ -17759,14 +17759,23 @@ class OrderManager {
             ? drawing.sanitizeExtraEntryPrice(pRaw)
             : pRaw;
         const ex = (drawing.meta.extraEntries || [])[extraIndex];
+        let updated = false;
         if (ex && this.multiEntryLevels) {
             const lv = this.multiEntryLevels.find((l) => l.id === ex.id);
-            if (lv) lv.price = p;
-        } else if (this.multiEntryLevels && this.multiEntryLevels[extraIndex + 1]) {
-            this.multiEntryLevels[extraIndex + 1].price = p;
+            if (lv) {
+                lv.price = p;
+                updated = true;
+            }
+        }
+        // pushRiskRewardToolToManager rebuilds multiEntryLevels with new ids — stale ex.id misses find() above.
+        if (!updated && this.multiEntryLevels && this.multiEntryLevels.length > extraIndex + 1) {
+            const row = this.multiEntryLevels[extraIndex + 1];
+            if (row) row.price = p;
         }
         if (typeof this.updateMultiEntrySummary === 'function') this.updateMultiEntrySummary();
         if (typeof this._syncAvgEntryPreviewLineFromLevels === 'function') this._syncAvgEntryPreviewLineFromLevels();
+        this.updatePreviewLines();
+        this.calculateAdvancedRiskReward();
         this.pullRiskRewardToolFromManager(drawing);
     }
     
