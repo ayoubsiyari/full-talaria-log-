@@ -25172,6 +25172,41 @@ class OrderManager {
     }
 
     /**
+     * Furthest TP in the profit direction across all split legs (OPEN + PENDING), so the Avg Entry
+     * vertical connector reaches pending multi-TP rungs as well as the primary filled ladder.
+     */
+    _splitGroupConnectorTpExtremeAcrossMembers(orders) {
+        if (!orders?.length) return 0;
+        const ref = orders.find((o) => o?.type || o?.direction) || orders[0];
+        const side = String(ref?.type || ref?.direction || 'BUY').toUpperCase();
+        const isSell = side === 'SELL';
+        let extreme = 0;
+        for (const o of orders) {
+            const px = this._splitGroupConnectorTpPrice(o);
+            if (!(px > 0)) continue;
+            extreme = extreme === 0 ? px : (isSell ? Math.min(extreme, px) : Math.max(extreme, px));
+        }
+        return extreme;
+    }
+
+    /**
+     * Single SL price for split connector when legs disagree (BUY → lowest SL; SELL → highest).
+     */
+    _splitGroupConnectorSlAcrossMembers(orders) {
+        if (!orders?.length) return 0;
+        const ref = orders.find((o) => o?.type || o?.direction) || orders[0];
+        const side = String(ref?.type || ref?.direction || 'BUY').toUpperCase();
+        const isSell = side === 'SELL';
+        let sl = 0;
+        for (const o of orders) {
+            const v = Number(o?.stopLoss);
+            if (!Number.isFinite(v) || v <= 0) continue;
+            sl = sl === 0 ? v : (isSell ? Math.max(sl, v) : Math.min(sl, v));
+        }
+        return sl;
+    }
+
+    /**
      * Position and update live P&L for all split-group avg lines,
      * and align the individual order lines in each group to the same left edge.
      */
@@ -25313,9 +25348,8 @@ class OrderManager {
 
             // --- Draw connector on the right side (after close button, before Y-axis) ---
             if (g._connector) { try { g._connector.remove(); } catch (_) {} }
-            const refOrder = openOrders.find(o => o.status === 'OPEN') || openOrders[0];
-            const tpPx = this._splitGroupConnectorTpPrice(refOrder);
-            const slPx = refOrder?.stopLoss || 0;
+            const tpPx = this._splitGroupConnectorTpExtremeAcrossMembers(openOrders);
+            const slPx = this._splitGroupConnectorSlAcrossMembers(openOrders);
             if (tpPx > 0 || slPx > 0) {
                 const connGroup = ch.svg.append('g')
                     .attr('class', `split-avg-connector split-avg-${g.splitGroupId}`)
