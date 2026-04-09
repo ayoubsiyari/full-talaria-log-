@@ -1993,7 +1993,8 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('stroke-width', 1)
                 .attr('stroke-dasharray', dashExtra)
                 .style('pointer-events', 'none');
-            appendExtraDragHit(yy, `rr-extra-stop-${idx}`);
+            // Drag hit lines for extra stops/targets are painted after the primary entry rect (see end of render)
+            // so E2 / TP2 strips stay above the wide middle hit rect and receive clicks.
         });
         (this.meta.extraTargets || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
@@ -2008,7 +2009,6 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('stroke-width', 1)
                 .attr('stroke-dasharray', dashExtra)
                 .style('pointer-events', 'none');
-            appendExtraDragHit(yy, `rr-extra-target-${idx}`);
         });
         (this.meta.extraEntries || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
@@ -2306,18 +2306,14 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         this.createCornerHandles(scales, zoneX1, zoneX2, upperY, lowerY);
 
-        (this.meta.extraEntries || []).forEach((row, idx) => {
-            if (!row || !Number.isFinite(row.y)) return;
-            const yy = scales.yScale(row.y);
-            appendExtraEntryDragHit(yy, `rr-extra-entry-${idx}`);
-        });
-
-        // Primary entry: TP2-style custom-handle + dedicated drag API (applyPrimaryEntryLineDragY).
-        // Use a filled rect (not a transparent stroke line) so hit-testing matches TP reliably; paint
-        // after E2 so the main entry strip wins stacking.
+        // Primary entry hit rect first (below); extra TP/SL/E drag lines after (on top) so E2 is draggable
+        // and does not lose events to this wide strip.
         if (this.selected) {
             const entryDragX2 = zoneX2 - 28;
-            const hitH = Math.max(48, primaryEntryHitHeight);
+            const hasExtraEntries = (this.meta.extraEntries || []).length > 0;
+            const hitH = hasExtraEntries
+                ? Math.min(Math.max(40, primaryEntryHitHeight), 52)
+                : Math.max(48, primaryEntryHitHeight);
             const hitW = Math.max(1, entryDragX2 - zoneX1);
             this.group.append('rect')
                 .attr('class', 'custom-handle rr-primary-entry-drag-hit')
@@ -2331,6 +2327,22 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
         }
+
+        (this.meta.extraStops || []).forEach((row, idx) => {
+            if (!row || !Number.isFinite(row.y)) return;
+            const yy = scales.yScale(row.y);
+            appendExtraDragHit(yy, `rr-extra-stop-${idx}`);
+        });
+        (this.meta.extraTargets || []).forEach((row, idx) => {
+            if (!row || !Number.isFinite(row.y)) return;
+            const yy = scales.yScale(row.y);
+            appendExtraDragHit(yy, `rr-extra-target-${idx}`);
+        });
+        (this.meta.extraEntries || []).forEach((row, idx) => {
+            if (!row || !Number.isFinite(row.y)) return;
+            const yy = scales.yScale(row.y);
+            appendExtraEntryDragHit(yy, `rr-extra-entry-${idx}`);
+        });
 
         return this.group;
     }
