@@ -25246,7 +25246,8 @@ class OrderManager {
                 if (!isPending && ml.pnlText?.node()) {
                     pbw = ml.pnlText.node().getBBox().width + pad * 2;
                 }
-                const rowW = lbw + (pbw > 0 ? gap + pbw : 0) + closeBtnGap + closeBtnR * 2;
+                const pendingGhostPad = isPending ? 62 : 0;
+                const rowW = lbw + (pbw > 0 ? gap + pbw : 0) + closeBtnGap + closeBtnR * 2 + pendingGhostPad;
                 memberWidths.push({ ml, lbw, pbw, rowW, isPending, od });
                 if (rowW > maxRowW) maxRowW = rowW;
             }
@@ -25378,12 +25379,12 @@ class OrderManager {
                 }
 
                 // SL/TP re-add badges (after PnL) for split-group members
+                const bH = 16, bGap2 = 3, bW = 24;
                 if (!isPending) {
                     const hasSL = od.stopLoss && od.stopLoss > 0;
                     const hasMultiTP = od.tpTargets && od.tpTargets.length > 0;
                     const hasSingleTP = !hasMultiTP && od.takeProfit && od.takeProfit > 0;
                     const allTPsSet = hasMultiTP && od.tpTargets.every(t => (t.price > 0) || t.hit);
-                    const bH = 16, bGap2 = 3, bW = 24;
 
                     if (ml.slBadge) {
                         if (hasSL) {
@@ -25430,6 +25431,35 @@ class OrderManager {
                     if (ml.entryPlusBadge) ml.entryPlusBadge.style('display', 'none');
 
                     // TP+ is now on the TP target lines themselves (not on entry)
+                } else {
+                    // Pending split legs: updateOrderLines skips these rows — mirror pending badge rules here.
+                    const hasSL = od.stopLoss && od.stopLoss > 0;
+                    const hasMultiTP = od.tpTargets && od.tpTargets.length > 0;
+                    const hasSingleTP = !hasMultiTP && od.takeProfit && od.takeProfit > 0;
+
+                    if (ml.slBadge) {
+                        if (hasSL) ml.slBadge.style('display', 'none');
+                        else {
+                            ml.slBadge.style('display', null)
+                                .attr('transform', `translate(${memberCx}, ${oy - bH / 2})`);
+                            ml.slBadge.select('rect').attr('width', bW);
+                            ml.slBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
+                            memberCx += bW + bGap2;
+                        }
+                    }
+                    if (ml.tpBadgesContainer) ml.tpBadgesContainer.style('display', 'none');
+                    if (ml.tpBadge) {
+                        if (hasMultiTP || !hasSingleTP) {
+                            ml.tpBadge.style('display', null)
+                                .attr('transform', `translate(${memberCx}, ${oy - bH / 2})`);
+                            ml.tpBadge.select('rect').attr('width', bW);
+                            ml.tpBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
+                            memberCx += bW + bGap2;
+                        } else {
+                            ml.tpBadge.style('display', 'none');
+                        }
+                    }
+                    if (ml.entryPlusBadge) ml.entryPlusBadge.style('display', 'none');
                 }
 
                 ml._handledBySplitGroup = true;
@@ -30004,11 +30034,17 @@ class OrderManager {
                     let slBadgeW = (!hasSL && slBadge) ? bW + bGap2 : 0;
                     // TP badge: show for both open and pending when single TP is not set
                     let singleTPBadgeW = (!hasMultiTP && !hasSingleTP && tpBadge) ? bW + bGap2 : 0;
+                    // Pending + multi-TP ladder: reserve space and show entry TP ghost (same affordance as single-leg pending).
+                    let pendingMultiTpGhostW = (hasMultiTP && isPending && tpBadge) ? (bW + bGap2) : 0;
                     // Entry+ badge hidden on pending — multi-entry is activated via order panel
                     const showEntryPlus = false;
                     let entryPlusBadgeW = showEntryPlus ? plusBW + bGap2 : 0;
-                    let totalBadgesW = slBadgeW + (hasMultiTP ? multiTPBadgesW : singleTPBadgeW)
-                        + entryPlusBadgeW;
+                    let tpSlotW = pendingMultiTpGhostW;
+                    if (!tpSlotW) {
+                        if (hasMultiTP && !isPending) tpSlotW = multiTPBadgesW;
+                        else if (!hasMultiTP) tpSlotW = singleTPBadgeW;
+                    }
+                    let totalBadgesW = slBadgeW + tpSlotW + entryPlusBadgeW;
 
                     const rightEdge = ch.w - yAxisWidth - 10;
                     const closeBtnX = rightEdge - closeBtnR;
@@ -30056,8 +30092,14 @@ class OrderManager {
                             }
                         }
                     } else if (hasMultiTP && isPending) {
-                        if (tpBadge) tpBadge.style('display', 'none');
                         if (olEntry.tpBadgesContainer) olEntry.tpBadgesContainer.style('display', 'none');
+                        if (tpBadge) {
+                            tpBadge.style('display', null)
+                                .attr('transform', `translate(${cx}, ${y - bH / 2})`);
+                            tpBadge.select('rect').attr('width', bW);
+                            tpBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
+                            cx += bW + bGap2;
+                        }
                     } else {
                         if (olEntry.tpBadgesContainer) olEntry.tpBadgesContainer.style('display', 'none');
                         if (tpBadge) {
