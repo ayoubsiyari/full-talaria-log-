@@ -1677,7 +1677,7 @@ class DrawingToolsManager {
                     && best
                     && this.isVolumeProfileToolType(best.type);
                 const deferRRBest = best && (best.type === 'long-position' || best.type === 'short-position')
-                    && this._isMouseOnRiskRewardPrimaryEntryStrip(best, mouseX, mouseY);
+                    && this._findRiskRewardInteractiveHandleRole(best, mouseX, mouseY);
                 if (best && !best.locked && !shouldBlockVolumeProfileTextDirectMove && !deferRRBest) {
                     event.preventDefault();
                     event.stopPropagation();
@@ -1697,7 +1697,7 @@ class DrawingToolsManager {
                     && hasSelectedVolumeProfileAtPoint;
                 const deferRRSelected = selectedAtPoint.some((d) =>
                     (d.type === 'long-position' || d.type === 'short-position')
-                    && this._isMouseOnRiskRewardPrimaryEntryStrip(d, mouseX, mouseY)
+                    && this._findRiskRewardInteractiveHandleRole(d, mouseX, mouseY)
                 );
                 if (selectedAtPoint.length > 0 && !event.shiftKey && !shouldBlockSelectedVolumeProfileTextDirectMove && !deferRRSelected) {
                     event.preventDefault();
@@ -1814,7 +1814,7 @@ class DrawingToolsManager {
                     this._directResizeUpHandler = null;
                 };
 
-                let rrPrimaryStripDrawing = null;
+                let rrSyntheticHandle = null;
                 if (!resizeHandleNode && !customHandleNode) {
                     const candidates = [];
                     if (drawing.type === 'long-position' || drawing.type === 'short-position') candidates.push(drawing);
@@ -1826,25 +1826,28 @@ class DrawingToolsManager {
                     for (let i = 0; i < candidates.length; i++) {
                         const d = candidates[i];
                         if (!d || !drawingsAtPoint.includes(d)) continue;
-                        if (this._isMouseOnRiskRewardPrimaryEntryStrip(d, mouseX, mouseY)) {
-                            rrPrimaryStripDrawing = d;
+                        const role = this._findRiskRewardInteractiveHandleRole(d, mouseX, mouseY);
+                        if (role) {
+                            rrSyntheticHandle = { drawing: d, role };
                             break;
                         }
                     }
                 }
 
-                if (rrPrimaryStripDrawing) {
+                if (rrSyntheticHandle) {
+                    const rrD = rrSyntheticHandle.drawing;
+                    const rrRole = rrSyntheticHandle.role;
                     event.preventDefault();
                     event.stopPropagation();
-                    if (!rrPrimaryStripDrawing.selected
-                        || (this.selectedDrawings.length !== 1 || this.selectedDrawings[0] !== rrPrimaryStripDrawing)) {
+                    if (!rrD.selected
+                        || (this.selectedDrawings.length !== 1 || this.selectedDrawings[0] !== rrD)) {
                         this.deselectAll();
-                        rrPrimaryStripDrawing.select();
-                        this.selectedDrawing = rrPrimaryStripDrawing;
-                        this.selectedDrawings = [rrPrimaryStripDrawing];
+                        rrD.select();
+                        this.selectedDrawing = rrD;
+                        this.selectedDrawings = [rrD];
                     }
                     stopDirectResizeListeners();
-                    this.startCustomHandleDrag(rrPrimaryStripDrawing, 'rr-primary-entry', { sourceEvent: event });
+                    this.startCustomHandleDrag(rrD, rrRole, { sourceEvent: event });
                     this._directResizeMoveHandler = (e) => {
                         if (this.chart && typeof this.chart.updateCrosshair === 'function') this.chart.updateCrosshair(e);
                         this.handleCustomHandleDrag({ sourceEvent: e });
@@ -4464,26 +4467,52 @@ class DrawingToolsManager {
     }
 
     /**
-     * True when (mx, my) lies in the primary entry drag band (matches .rr-primary-entry-drag-hit in BaseRiskRewardTool).
-     * Used because zone fills use pointer-events: none when selected — the event target can be the chart/candles
-     * instead of the invisible hit rect, so we must not start whole-tool direct-move on that click.
+     * When the DOM target misses R/R handles (transparent strokes / zones pass-through), map (mx,my) to the
+     * same handle roles as {@link BaseRiskRewardTool} (.rr-primary-entry-drag-hit, .rr-extra-drag-hit).
+     * Includes primary entry, extra TP/SL/entry lines (E2, TP2, …) so they drag like multi-TP.
      */
-    _isMouseOnRiskRewardPrimaryEntryStrip(drawing, mouseX, mouseY) {
-        if (!drawing || (drawing.type !== 'long-position' && drawing.type !== 'short-position')) return false;
-        if (!drawing.selected) return false;
-        const p0 = drawing.points && drawing.points[0];
-        if (!p0 || !Number.isFinite(p0.y)) return false;
+    _findRiskRewardInteractiveHandleRole(drawing, mouseX, mouseY) {
+        if (!drawing || (drawing.type !== 'long-position' && drawing.type !== 'short-position')) return null;
+        if (!drawing.selected) return null;
         const meta = drawing.lastRenderMeta;
-        if (!meta || !Number.isFinite(meta.zoneX1) || !Number.isFinite(meta.zoneX2)) return false;
         const chart = this.chart;
-        if (!chart || typeof chart.yScale !== 'function') return false;
-        const py = chart.yScale(p0.y);
-        const halfH = 36;
-        if (Math.abs(mouseY - py) > halfH) return false;
+        if (!meta || !Number.isFinite(meta.zoneX1) || !Number.isFinite(meta.zoneX2) || !chart || typeof chart.yScale !== 'function') {
+            return null;
+        }
         const x1 = meta.zoneX1;
-        const x2 = meta.zoneX2 - 28;
-        if (!(x2 > x1)) return false;
-        return mouseX >= x1 && mouseX <= x2;
+        const x2Full = meta.zoneX2;
+        const x2NoPlus = meta.zoneX2 - 28;
+        if (!(x2Full > x1)) return null;
+
+        const hits = [];
+        const pushHit = (role, py, halfH, xMax) => {
+            if (Math.abs(mouseY - py) > halfH) return;
+            if (mouseX < x1 || mouseX > xMax) return;
+            hits.push({ role, dist: Math.abs(mouseY - py) });
+        };
+
+        const p0 = drawing.points && drawing.points[0];
+        if (p0 && Number.isFinite(p0.y)) {
+            pushHit('rr-primary-entry', chart.yScale(p0.y), 36, x2NoPlus);
+        }
+
+        const halfExtra = 30;
+        (drawing.meta?.extraTargets || []).forEach((row, idx) => {
+            if (!row || !Number.isFinite(row.y)) return;
+            pushHit(`rr-extra-target-${idx}`, chart.yScale(row.y), halfExtra, x2Full);
+        });
+        (drawing.meta?.extraEntries || []).forEach((row, idx) => {
+            if (!row || !Number.isFinite(row.y)) return;
+            pushHit(`rr-extra-entry-${idx}`, chart.yScale(row.y), halfExtra, x2Full);
+        });
+        (drawing.meta?.extraStops || []).forEach((row, idx) => {
+            if (!row || !Number.isFinite(row.y)) return;
+            pushHit(`rr-extra-stop-${idx}`, chart.yScale(row.y), halfExtra, x2Full);
+        });
+
+        if (!hits.length) return null;
+        hits.sort((a, b) => a.dist - b.dist);
+        return hits[0].role;
     }
 
     /**
