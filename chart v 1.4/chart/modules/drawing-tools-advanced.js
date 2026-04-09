@@ -1958,9 +1958,8 @@ class BaseRiskRewardTool extends BaseDrawing {
             .style('pointer-events', 'none');
 
         const dashExtra = '6 4';
+        /** Same wide transparent stroke for every extra level (TP2, SL2, E2) — one code path as TP. */
         const extraDragHitW = 24;
-        /** Extra entry lines sit near the main entry and center UI — use a wider grab strip. */
-        const extraDragHitEntryW = 46;
         const appendExtraDragHit = (yy, role, hitW = extraDragHitW) => {
             this.group.append('line')
                 .attr('class', 'custom-handle rr-extra-drag-hit')
@@ -1971,26 +1970,8 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('y2', yy)
                 .attr('stroke', 'transparent')
                 .attr('stroke-width', hitW)
-                .style('pointer-events', this.selected ? 'stroke' : 'none')
-                .style('cursor', 'ns-resize');
-        };
-        /**
-         * E2+ : filled rect like primary entry — transparent stroke lines often miss pointer events in SVG;
-         * whole-tool drag also bound those lines — excluded in drawing-tools-manager setupDrawingDrag.
-         */
-        const appendExtraEntryDragHit = (yy, role) => {
-            const hitH = Math.max(44, extraDragHitEntryW);
-            const w = Math.max(1, zoneX2 - zoneX1);
-            this.group.append('rect')
-                .attr('class', 'custom-handle rr-extra-drag-hit rr-extra-entry-drag-hit')
-                .attr('data-handle-role', role)
-                .attr('x', zoneX1)
-                .attr('y', yy - hitH / 2)
-                .attr('width', w)
-                .attr('height', hitH)
-                .attr('fill', 'rgba(0, 0, 0, 0.03)')
-                .attr('stroke', 'none')
-                .style('pointer-events', 'all')
+                // `all`: same reliable hits as primary entry rect; `stroke` alone misses on some browsers.
+                .style('pointer-events', this.selected ? 'all' : 'none')
                 .style('cursor', 'ns-resize');
         };
         (this.meta.extraStops || []).forEach((row, idx) => {
@@ -2354,7 +2335,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         (this.meta.extraEntries || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
             const yy = scales.yScale(row.y);
-            appendExtraEntryDragHit(yy, `rr-extra-entry-${idx}`);
+            appendExtraDragHit(yy, `rr-extra-entry-${idx}`);
         });
 
         return this.group;

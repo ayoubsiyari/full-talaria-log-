@@ -4074,7 +4074,7 @@ class DrawingToolsManager {
             ? '.anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .resize-handle-hit, .resize-handle-group'
             : isVolumeProfileType
                 ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group'
-                : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit):not(.rr-extra-entry-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
+                : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
         const dragElements = drawing.group.selectAll(dragSelector);
         const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : 4;
         
