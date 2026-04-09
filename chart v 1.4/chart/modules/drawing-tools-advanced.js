@@ -1974,9 +1974,24 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .style('pointer-events', this.selected ? 'stroke' : 'none')
                 .style('cursor', 'ns-resize');
         };
-        /** Same wide strip as TP2 — primary entry hit is painted underneath E2, so we do not shrink (20px was unusable). */
+        /**
+         * E2+ : filled rect like primary entry — transparent stroke lines often miss pointer events in SVG;
+         * whole-tool drag also bound those lines — excluded in drawing-tools-manager setupDrawingDrag.
+         */
         const appendExtraEntryDragHit = (yy, role) => {
-            appendExtraDragHit(yy, role, extraDragHitEntryW);
+            const hitH = Math.max(44, extraDragHitEntryW);
+            const w = Math.max(1, zoneX2 - zoneX1);
+            this.group.append('rect')
+                .attr('class', 'custom-handle rr-extra-drag-hit rr-extra-entry-drag-hit')
+                .attr('data-handle-role', role)
+                .attr('x', zoneX1)
+                .attr('y', yy - hitH / 2)
+                .attr('width', w)
+                .attr('height', hitH)
+                .attr('fill', 'rgba(0, 0, 0, 0.03)')
+                .attr('stroke', 'none')
+                .style('pointer-events', 'all')
+                .style('cursor', 'ns-resize');
         };
         (this.meta.extraStops || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
