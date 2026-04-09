@@ -1974,11 +1974,9 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .style('pointer-events', this.selected ? 'stroke' : 'none')
                 .style('cursor', 'ns-resize');
         };
-        /** Narrow grab strip when an extra entry is very close to primary (reduces overlap with entry drag). */
+        /** Same wide strip as TP2 — primary entry hit is painted underneath E2, so we do not shrink (20px was unusable). */
         const appendExtraEntryDragHit = (yy, role) => {
-            const pxSep = Math.abs(yy - entryY);
-            const w = pxSep < 42 ? 20 : extraDragHitEntryW;
-            appendExtraDragHit(yy, role, w);
+            appendExtraDragHit(yy, role, extraDragHitEntryW);
         };
         (this.meta.extraStops || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
