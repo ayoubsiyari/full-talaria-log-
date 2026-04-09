@@ -393,7 +393,16 @@ class BaseDrawing {
         
         // Calculate price axis zone (Y-axis)
         if (this.points.length >= 2) {
-            const prices = this.points.map(p => p.y);
+            let prices = this.points.map(p => p.y);
+            if ((this.type === 'long-position' || this.type === 'short-position') && this.meta) {
+                ['extraTargets', 'extraEntries', 'extraStops'].forEach((key) => {
+                    const arr = this.meta[key];
+                    if (!Array.isArray(arr)) return;
+                    arr.forEach((row) => {
+                        if (row && Number.isFinite(row.y)) prices.push(row.y);
+                    });
+                });
+            }
             const minPrice = Math.min(...prices);
             const maxPrice = Math.max(...prices);
             const minY = yScale(maxPrice); // Note: Y is inverted
@@ -576,6 +585,21 @@ class BaseDrawing {
         // For brush/highlighter, only show high and low price labels
         const isBrushType = this.type === 'brush' || this.type === 'highlighter';
         let pointsToLabel = this.points;
+
+        if ((this.type === 'long-position' || this.type === 'short-position') && this.meta) {
+            const x0 = Number.isFinite(this.points[0]?.x) ? this.points[0].x : 0;
+            const extraPts = [];
+            ['extraTargets', 'extraEntries', 'extraStops'].forEach((key) => {
+                const arr = this.meta[key];
+                if (!Array.isArray(arr)) return;
+                arr.forEach((row) => {
+                    if (row && Number.isFinite(row.y)) {
+                        extraPts.push({ x: x0, y: row.y, _rrExtra: key });
+                    }
+                });
+            });
+            pointsToLabel = pointsToLabel.concat(extraPts);
+        }
         
         if (isBrushType && this.points.length > 2) {
             // Find highest and lowest points
@@ -596,7 +620,10 @@ class BaseDrawing {
             // Determine color based on point type for position tools
             let priceColor = this.style?.color || this.style?.lineColor || this.style?.stroke || '#2962ff';
             if (this.type === 'long-position' || this.type === 'short-position') {
-                if (idx === 0) priceColor = '#2196f3'; // Entry - blue
+                if (point._rrExtra === 'extraEntries') priceColor = '#2196f3';
+                else if (point._rrExtra === 'extraStops') priceColor = '#f44336';
+                else if (point._rrExtra === 'extraTargets') priceColor = '#4caf50';
+                else if (idx === 0) priceColor = '#2196f3'; // Entry - blue
                 else if (idx === 1) priceColor = '#f44336'; // Stop - red
                 else if (idx === 2) priceColor = '#4caf50'; // Target - green
             }

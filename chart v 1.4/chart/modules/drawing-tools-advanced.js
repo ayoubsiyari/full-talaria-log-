@@ -955,11 +955,146 @@ class BaseRiskRewardTool extends BaseDrawing {
             this.meta.zoneWidthRatio = null;
         }
         this.lastRenderMeta = null;
+        this._ensureExtraLevelMeta();
         this.ensureRiskSettings();
     }
 
     get isLong() {
         return this.meta.orientation === 'long';
+    }
+
+    /** Extra TP/entry/SL levels (prices only); primary triple stays in points[0..2]. */
+    _ensureExtraLevelMeta() {
+        if (!Array.isArray(this.meta.extraTargets)) this.meta.extraTargets = [];
+        if (!Array.isArray(this.meta.extraEntries)) this.meta.extraEntries = [];
+        if (!Array.isArray(this.meta.extraStops)) this.meta.extraStops = [];
+        if (!Number.isFinite(this.meta.extraLevelIdCounter)) this.meta.extraLevelIdCounter = 1;
+    }
+
+    _nextExtraLevelId() {
+        this._ensureExtraLevelMeta();
+        return this.meta.extraLevelIdCounter++;
+    }
+
+    getPriceStep() {
+        const inc = this.chart && Number.isFinite(this.chart.priceIncrement) && this.chart.priceIncrement > 0
+            ? this.chart.priceIncrement
+            : 0.0001;
+        return inc;
+    }
+
+    /** Shift all extra level prices by dy (data space); used when the whole tool moves vertically. */
+    afterPointsMoveDelta(dx, dy) {
+        if (!Number.isFinite(dy) || dy === 0) return;
+        this._ensureExtraLevelMeta();
+        ['extraTargets', 'extraEntries', 'extraStops'].forEach((key) => {
+            const arr = this.meta[key];
+            arr.forEach((row) => {
+                if (row && Number.isFinite(row.y)) row.y += dy;
+            });
+        });
+        this.meta.updatedAt = Date.now();
+    }
+
+    _allStopPrices() {
+        const p = this.points[1] ? this.points[1].y : null;
+        const ex = (this.meta.extraStops || []).map((r) => r.y).filter(Number.isFinite);
+        return Number.isFinite(p) ? [p, ...ex] : ex.slice();
+    }
+
+    _allTargetPrices() {
+        const p = this.points[2] ? this.points[2].y : null;
+        const ex = (this.meta.extraTargets || []).map((r) => r.y).filter(Number.isFinite);
+        return Number.isFinite(p) ? [p, ...ex] : ex.slice();
+    }
+
+    _allEntryPrices() {
+        const p = this.points[0] ? this.points[0].y : null;
+        const ex = (this.meta.extraEntries || []).map((r) => r.y).filter(Number.isFinite);
+        return Number.isFinite(p) ? [p, ...ex] : ex.slice();
+    }
+
+    /** Worst-case stop price for zone shading (furthest into loss). */
+    getAggregatedStopPrice() {
+        const s = this._allStopPrices();
+        if (!s.length) return this.points[1]?.y;
+        return this.isLong ? Math.min(...s) : Math.max(...s);
+    }
+
+    /** Farthest target price for zone shading. */
+    getAggregatedTargetPrice() {
+        const t = this._allTargetPrices();
+        if (!t.length) return this.points[2]?.y;
+        return this.isLong ? Math.max(...t) : Math.min(...t);
+    }
+
+    sanitizeExtraEntryPrice(price) {
+        if (!Array.isArray(this.points) || this.points.length < 3) return price;
+        const eps = this.getPriceStep() * 0.5 || 0.00001;
+        const stops = this._allStopPrices();
+        const tgts = this._allTargetPrices();
+        if (!stops.length || !tgts.length) return price;
+        if (this.isLong) {
+            const lo = Math.max(...stops) + eps;
+            const hi = Math.min(...tgts) - eps;
+            if (hi <= lo) return price;
+            return Math.min(Math.max(price, lo), hi);
+        }
+        const lo = Math.max(...tgts) + eps;
+        const hi = Math.min(...stops) - eps;
+        if (hi <= lo) return price;
+        return Math.min(Math.max(price, lo), hi);
+    }
+
+    addExtraTarget() {
+        if (!Array.isArray(this.points) || this.points.length < 3) return;
+        this._ensureExtraLevelMeta();
+        const step = this.getPriceStep();
+        const all = this._allTargetPrices();
+        const ref = Math.min(...all);
+        const y = ref - step;
+        this.meta.extraTargets.push({ id: this._nextExtraLevelId(), y: this.sanitizeTargetPrice(y) });
+        this.ensureRiskSettings();
+        if (this.manager) this.manager.renderDrawing(this);
+        if (this.manager) this.manager.saveDrawings();
+    }
+
+    addExtraStop() {
+        if (!Array.isArray(this.points) || this.points.length < 3) return;
+        this._ensureExtraLevelMeta();
+        const step = this.getPriceStep();
+        const all = this._allStopPrices();
+        const ref = this.isLong ? Math.min(...all) : Math.max(...all);
+        const y = this.isLong ? ref - step : ref + step;
+        this.meta.extraStops.push({ id: this._nextExtraLevelId(), y: this.sanitizeStopPrice(y) });
+        this.ensureRiskSettings();
+        if (this.manager) this.manager.renderDrawing(this);
+        if (this.manager) this.manager.saveDrawings();
+    }
+
+    addExtraEntry() {
+        if (!Array.isArray(this.points) || this.points.length < 3) return;
+        this._ensureExtraLevelMeta();
+        const step = this.getPriceStep();
+        const e = this.points[0].y;
+        const y = this.isLong ? e - step : e + step;
+        this.meta.extraEntries.push({ id: this._nextExtraLevelId(), y: this.sanitizeExtraEntryPrice(y) });
+        this.ensureRiskSettings();
+        if (this.manager) this.manager.renderDrawing(this);
+        if (this.manager) this.manager.saveDrawings();
+    }
+
+    _setExtraLevelY(kind, index, y) {
+        this._ensureExtraLevelMeta();
+        const key = kind === 'target' ? 'extraTargets' : kind === 'stop' ? 'extraStops' : 'extraEntries';
+        const arr = this.meta[key];
+        if (!arr || index < 0 || index >= arr.length) return;
+        let next = y;
+        if (kind === 'target') next = this.sanitizeTargetPrice(y);
+        else if (kind === 'stop') next = this.sanitizeStopPrice(y);
+        else next = this.sanitizeExtraEntryPrice(y);
+        arr[index] = { ...arr[index], y: next };
+        this.ensureRiskSettings();
     }
 
     ensureRiskSettings() {
@@ -1039,6 +1174,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (!Array.isArray(this.points) || this.points.length === 0) return;
         const delta = price - this.points[0].y;
         this.points = this.points.map(point => ({ ...point, y: point.y + delta }));
+        this.afterPointsMoveDelta(0, delta);
         this.ensureRiskSettings();
         this.recalculateLotSizeFromRisk(); // Recalculate to maintain constant risk
     }
@@ -1309,6 +1445,21 @@ class BaseRiskRewardTool extends BaseDrawing {
     }
 
     prefillOrderPanel(orderManager, direction, entryPrice, slPrice, tpPrice, quantity, riskAmount) {
+        this.ensureRiskSettings();
+        const entryList = this._allEntryPrices();
+        const avgEntry = entryList.length
+            ? entryList.reduce((a, b) => a + b, 0) / entryList.length
+            : entryPrice;
+        const stops = this._allStopPrices();
+        const tgs = this._allTargetPrices();
+        entryPrice = avgEntry;
+        if (stops.length) {
+            slPrice = this.isLong ? Math.min(...stops) : Math.max(...stops);
+        }
+        if (tgs.length) {
+            tpPrice = this.isLong ? Math.max(...tgs) : Math.min(...tgs);
+        }
+
         console.log(`📋 Prefilling order panel:`);
         console.log(`   Direction: ${direction}`);
         console.log(`   Entry: ${entryPrice}`);
@@ -1425,6 +1576,56 @@ class BaseRiskRewardTool extends BaseDrawing {
             console.log(`   SL input set to: ${slInput.value}`);
         }
 
+        // Multiple take profits (order panel multi-TP UI)
+        if (tgs.length > 1 && typeof orderManager.renderTPTargets === 'function') {
+            const prec = typeof orderManager.getPricePrecision === 'function' ? orderManager.getPricePrecision() : 5;
+            const sortedTp = [...tgs].sort((a, b) => (this.isLong ? a - b : b - a));
+            const share = parseFloat((100 / sortedTp.length).toFixed(1));
+            orderManager.tpTargets = sortedTp.map((price, i) => ({
+                id: i + 1,
+                price: parseFloat(price.toFixed(prec)),
+                percentage: i === sortedTp.length - 1
+                    ? parseFloat((100 - share * (sortedTp.length - 1)).toFixed(1))
+                    : share
+            }));
+            const multipleTPToggle = document.getElementById('multipleTPToggle');
+            const multipleTPSettings = document.getElementById('multipleTPSettings');
+            const multiTPBtn = document.getElementById('multiTPBtn');
+            const tpSingleView = document.querySelector('.order-tp-single');
+            if (multipleTPToggle) multipleTPToggle.checked = true;
+            if (multipleTPSettings) multipleTPSettings.classList.remove('is-hidden');
+            if (tpSingleView) tpSingleView.classList.add('is-hidden');
+            if (multiTPBtn) {
+                multiTPBtn.textContent = 'Single';
+                multiTPBtn.classList.add('active');
+            }
+            const numTPInput = document.getElementById('numTPTargets');
+            if (numTPInput) numTPInput.value = String(sortedTp.length);
+            orderManager.renderTPTargets();
+            if (typeof orderManager.updatePreviewLines === 'function') {
+                orderManager.updatePreviewLines();
+            }
+        }
+
+        // Multiple entries (ladder)
+        if (entryList.length > 1 && typeof orderManager.setEntryMode === 'function') {
+            if (!Number.isFinite(orderManager.multiEntryIdCounter)) orderManager.multiEntryIdCounter = 1;
+            const prec = typeof orderManager.getPricePrecision === 'function' ? orderManager.getPricePrecision() : 5;
+            const sortedEnt = [...entryList].sort((a, b) => (this.isLong ? a - b : b - a));
+            const riskUsd = this.meta.risk?.riskAmountUSD
+                ?? this.meta.risk?.riskAmount
+                ?? riskAmount
+                ?? 100;
+            const n = sortedEnt.length;
+            const amt = Math.max(1, Math.round(riskUsd / n));
+            orderManager.multiEntryLevels = sortedEnt.map((price) => ({
+                id: orderManager.multiEntryIdCounter++,
+                price: parseFloat(price.toFixed(prec)),
+                amount: amt
+            }));
+            orderManager.setEntryMode(true);
+        }
+
         if (typeof orderManager.calculatePositionFromRisk === 'function') {
             orderManager.calculatePositionFromRisk();
         }
@@ -1521,8 +1722,17 @@ class BaseRiskRewardTool extends BaseDrawing {
         const stopY = scales.yScale(stop.y);
         const targetY = scales.yScale(target.y);
 
-        const riskHeight = Math.abs(stopY - entryY);
-        const rewardHeight = Math.abs(targetY - entryY);
+        const worstStopPx = scales.yScale(this.getAggregatedStopPrice());
+        const bestTargetPx = scales.yScale(this.getAggregatedTargetPrice());
+
+        const riskTop = Math.min(entryY, worstStopPx);
+        const riskBot = Math.max(entryY, worstStopPx);
+        const riskHeight = riskBot - riskTop;
+
+        const rewTop = Math.min(entryY, bestTargetPx);
+        const rewBot = Math.max(entryY, bestTargetPx);
+        const rewardHeight = rewBot - rewTop;
+
         const risk = Math.max(Math.abs(entry.y - stop.y), 0.0000001);
         const reward = Math.abs(target.y - entry.y);
         const rrRatio = (reward / risk).toFixed(2);
@@ -1530,7 +1740,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         this.group.insert('rect', ':first-child')
             .attr('class', 'position-zone')
             .attr('x', zoneX1)
-            .attr('y', Math.min(entryY, stopY))
+            .attr('y', riskTop)
             .attr('width', zoneWidth)
             .attr('height', riskHeight)
             .attr('fill', this.style.riskColor)
@@ -1541,7 +1751,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         this.group.insert('rect', ':first-child')
             .attr('class', 'position-zone')
             .attr('x', zoneX1)
-            .attr('y', Math.min(entryY, targetY))
+            .attr('y', rewTop)
             .attr('width', zoneWidth)
             .attr('height', rewardHeight)
             .attr('fill', this.style.rewardColor)
@@ -1572,6 +1782,50 @@ class BaseRiskRewardTool extends BaseDrawing {
             .attr('x2', zoneX2)
             .attr('y2', targetY)
             .style('pointer-events', 'none');
+
+        const dashExtra = '6 4';
+        (this.meta.extraStops || []).forEach((row) => {
+            if (!row || !Number.isFinite(row.y)) return;
+            const yy = scales.yScale(row.y);
+            this.group.append('line')
+                .attr('class', 'rr-extra-line rr-extra-stop')
+                .attr('x1', zoneX1)
+                .attr('y1', yy)
+                .attr('x2', zoneX2)
+                .attr('y2', yy)
+                .attr('stroke', '#ef4444')
+                .attr('stroke-width', 1)
+                .attr('stroke-dasharray', dashExtra)
+                .style('pointer-events', 'none');
+        });
+        (this.meta.extraTargets || []).forEach((row) => {
+            if (!row || !Number.isFinite(row.y)) return;
+            const yy = scales.yScale(row.y);
+            this.group.append('line')
+                .attr('class', 'rr-extra-line rr-extra-target')
+                .attr('x1', zoneX1)
+                .attr('y1', yy)
+                .attr('x2', zoneX2)
+                .attr('y2', yy)
+                .attr('stroke', '#22c55e')
+                .attr('stroke-width', 1)
+                .attr('stroke-dasharray', dashExtra)
+                .style('pointer-events', 'none');
+        });
+        (this.meta.extraEntries || []).forEach((row) => {
+            if (!row || !Number.isFinite(row.y)) return;
+            const yy = scales.yScale(row.y);
+            this.group.append('line')
+                .attr('class', 'rr-extra-line rr-extra-entry')
+                .attr('x1', zoneX1)
+                .attr('y1', yy)
+                .attr('x2', zoneX2)
+                .attr('y2', yy)
+                .attr('stroke', this.style.entryColor || '#2962FF')
+                .attr('stroke-width', 1)
+                .attr('stroke-dasharray', dashExtra)
+                .style('pointer-events', 'none');
+        });
 
         // Recalculate lot size from risk before rendering labels
         this.recalculateLotSizeFromRisk();
@@ -1752,6 +2006,77 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('x', centerTextX)
                 .attr('y', centerTextY + centerLineHeight);
 
+            const plusR = 9;
+            const plusX = zoneX2 - 12;
+            const mkPlus = (lineY, fill, handler) => {
+                const g = this.group.append('g').attr('class', 'rr-plus-btn');
+                g.append('circle')
+                    .attr('cx', plusX)
+                    .attr('cy', lineY)
+                    .attr('r', plusR)
+                    .attr('fill', fill)
+                    .attr('stroke', 'rgba(255,255,255,0.85)')
+                    .attr('stroke-width', 1)
+                    .style('pointer-events', 'all')
+                    .style('cursor', 'pointer');
+                g.append('text')
+                    .attr('x', plusX)
+                    .attr('y', lineY + 4)
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', '#ffffff')
+                    .attr('font-size', '12px')
+                    .attr('font-weight', '700')
+                    .style('pointer-events', 'none')
+                    .text('+');
+                g.on('click', (e) => {
+                    e.stopPropagation();
+                    handler();
+                });
+            };
+            mkPlus(targetY, '#16a34a', () => this.addExtraTarget());
+            mkPlus(entryY, '#2962FF', () => this.addExtraEntry());
+            mkPlus(stopY, '#ef4444', () => this.addExtraStop());
+
+            (this.meta.extraTargets || []).forEach((row, i) => {
+                if (!row || !Number.isFinite(row.y)) return;
+                const yy = scales.yScale(row.y);
+                this.group.append('text')
+                    .attr('class', 'rr-extra-tag')
+                    .attr('x', zoneX1 + 4)
+                    .attr('y', yy + 4)
+                    .attr('fill', '#86efac')
+                    .attr('font-size', '10px')
+                    .attr('font-weight', '600')
+                    .style('pointer-events', 'none')
+                    .text(`TP${i + 2}`);
+            });
+            (this.meta.extraEntries || []).forEach((row, i) => {
+                if (!row || !Number.isFinite(row.y)) return;
+                const yy = scales.yScale(row.y);
+                this.group.append('text')
+                    .attr('class', 'rr-extra-tag')
+                    .attr('x', zoneX1 + 4)
+                    .attr('y', yy + 4)
+                    .attr('fill', '#93c5fd')
+                    .attr('font-size', '10px')
+                    .attr('font-weight', '600')
+                    .style('pointer-events', 'none')
+                    .text(`E${i + 2}`);
+            });
+            (this.meta.extraStops || []).forEach((row, i) => {
+                if (!row || !Number.isFinite(row.y)) return;
+                const yy = scales.yScale(row.y);
+                this.group.append('text')
+                    .attr('class', 'rr-extra-tag')
+                    .attr('x', zoneX1 + 4)
+                    .attr('y', yy + 4)
+                    .attr('fill', '#fca5a5')
+                    .attr('font-size', '10px')
+                    .attr('font-weight', '600')
+                    .style('pointer-events', 'none')
+                    .text(`SL${i + 2}`);
+            });
+
             // Execute button moved to floating toolbar
         }
 
@@ -1781,6 +2106,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (index === 0) {
             const deltaY = point.y - this.points[0].y;
             this.points = this.points.map(p => ({ ...p, y: p.y + deltaY }));
+            this.afterPointsMoveDelta(0, deltaY);
             this.ensureRiskSettings();
             return true;
         }
@@ -1808,6 +2134,17 @@ class BaseRiskRewardTool extends BaseDrawing {
     }
 
     handleCustomHandleDrag(handleRole, context = {}) {
+        if (typeof handleRole === 'string' && handleRole.startsWith('rr-extra-')) {
+            const m = handleRole.match(/^rr-extra-(target|entry|stop)-(\d+)$/);
+            const py = context.point?.y ?? context.dataPoint?.y;
+            if (m && Number.isFinite(py)) {
+                this._setExtraLevelY(m[1], parseInt(m[2], 10), py);
+                this.recalculateLotSizeFromRisk();
+                return true;
+            }
+            return false;
+        }
+
         if (!handleRole || !this.lastRenderMeta || !context) {
             return false;
         }
@@ -1966,6 +2303,53 @@ class BaseRiskRewardTool extends BaseDrawing {
             
             this.handles.push(handleGroup);
         });
+
+        group.selectAll('.rr-extra-handle-group').remove();
+        const appendExtraHandle = (yy, role) => {
+            const g = group.append('g')
+                .attr('class', 'rr-extra-handle-group')
+                .attr('data-handle-role', role);
+            g.append('circle')
+                .attr('class', 'custom-handle')
+                .attr('data-handle-role', role)
+                .attr('cx', entryX)
+                .attr('cy', yy)
+                .attr('r', handleRadius)
+                .attr('fill', 'transparent')
+                .attr('stroke', handleStroke)
+                .attr('stroke-width', handleStrokeWidth)
+                .style('pointer-events', 'all')
+                .style('cursor', 'ns-resize')
+                .style('opacity', this.selected ? 1 : 0);
+            g.select('.custom-handle')
+                .on('mouseenter', function() {
+                    d3.select(this)
+                        .transition()
+                        .duration(150)
+                        .attr('r', handleRadius + 1)
+                        .attr('stroke-width', handleStrokeWidth + 0.5);
+                })
+                .on('mouseleave', function() {
+                    d3.select(this)
+                        .transition()
+                        .duration(150)
+                        .attr('r', handleRadius)
+                        .attr('stroke-width', handleStrokeWidth);
+                });
+            this.handles.push(g);
+        };
+        (this.meta.extraTargets || []).forEach((row, idx) => {
+            if (!row || !Number.isFinite(row.y)) return;
+            appendExtraHandle(scales.yScale(row.y), `rr-extra-target-${idx}`);
+        });
+        (this.meta.extraEntries || []).forEach((row, idx) => {
+            if (!row || !Number.isFinite(row.y)) return;
+            appendExtraHandle(scales.yScale(row.y), `rr-extra-entry-${idx}`);
+        });
+        (this.meta.extraStops || []).forEach((row, idx) => {
+            if (!row || !Number.isFinite(row.y)) return;
+            appendExtraHandle(scales.yScale(row.y), `rr-extra-stop-${idx}`);
+        });
     }
 
     createCornerHandles(scales, zoneX1, zoneX2, upperY, lowerY) {
@@ -2036,13 +2420,14 @@ class BaseRiskRewardTool extends BaseDrawing {
         const instance = new Subclass(data.points, data.style);
         instance.id = data.id;
         instance.visible = data.visible;
-        instance.meta = data.meta || instance.meta;
+        instance.meta = { ...(instance.meta || {}), ...(data.meta || {}) };
         instance.meta.orientation = data.orientation || instance.meta.orientation;
         instance.meta.risk = {
             ...(instance.meta.risk || {}),
             ...(data.risk || {})
         };
         instance.chart = chart; // Set chart reference for multi-timeframe support
+        instance._ensureExtraLevelMeta();
         instance.ensureRiskSettings();
         return instance;
     }

@@ -4302,6 +4302,9 @@ class DrawingToolsManager {
                     x: pt.x + constrainedDx,
                     y: pt.y + constrainedDy
                 }));
+                if (typeof item.drawing.afterPointsMoveDelta === 'function') {
+                    item.drawing.afterPointsMoveDelta(constrainedDx, constrainedDy);
+                }
                 this.clampDrawingPointsToCandleRange(item.drawing);
 
                 this.renderDrawing(item.drawing);
@@ -4851,6 +4854,9 @@ class DrawingToolsManager {
                         const dy = dataY2 - dataY1;
                         
                         drawing.points = points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+                        if (typeof drawing.afterPointsMoveDelta === 'function') {
+                            drawing.afterPointsMoveDelta(dx, dy);
+                        }
                         drawing.meta.updatedAt = Date.now();
                     }
                 }
@@ -4887,6 +4893,9 @@ class DrawingToolsManager {
                     const dy = dataY2 - dataY1;
                     
                     this.draggingDrawing.points = this.draggingDrawing.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+                    if (typeof this.draggingDrawing.afterPointsMoveDelta === 'function') {
+                        this.draggingDrawing.afterPointsMoveDelta(dx, dy);
+                    }
                     this.draggingDrawing.meta.updatedAt = Date.now();
                 }
             }
