@@ -1757,6 +1757,9 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         if (this.points.length < 3) return;
 
+        /** Vertical hit for primary entry drag — widened to cover .center-info pill when selected. */
+        let primaryEntryHitHeight = 48;
+
         this.group = container.append('g')
             .attr('class', `drawing risk-reward ${this.meta.orientation}`)
             .attr('data-id', this.id)
@@ -1916,6 +1919,12 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .style('pointer-events', this.selected ? 'stroke' : 'none')
                 .style('cursor', 'ns-resize');
         };
+        /** Narrow grab strip when an extra entry is very close to primary (reduces overlap with entry drag). */
+        const appendExtraEntryDragHit = (yy, role) => {
+            const pxSep = Math.abs(yy - entryY);
+            const w = pxSep < 42 ? 20 : extraDragHitEntryW;
+            appendExtraDragHit(yy, role, w);
+        };
         (this.meta.extraStops || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
             const yy = scales.yScale(row.y);
@@ -1959,7 +1968,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('stroke-width', 1)
                 .attr('stroke-dasharray', dashExtra)
                 .style('pointer-events', 'none');
-            appendExtraDragHit(yy, `rr-extra-entry-${idx}`, extraDragHitEntryW);
+            appendExtraEntryDragHit(yy, `rr-extra-entry-${idx}`);
         });
 
         // Recalculate lot size from risk before rendering labels
@@ -2081,7 +2090,9 @@ class BaseRiskRewardTool extends BaseDrawing {
             const pnl = 0; // Will be calculated when order is active
             const centerInfoLine1 = `Open P&L: ${pnl.toFixed(0)}, Qty: ${quantity.toFixed(2)}`;
             const centerInfoLine2 = `Risk/Reward Ratio: ${rrRatio}`;
-            const centerInfo = this.group.append('g').attr('class', 'center-info');
+            const centerInfo = this.group.append('g')
+                .attr('class', 'center-info')
+                .style('pointer-events', 'none');
 
             // Calculate center X position of the zone
             const zoneCenterX = zoneX1 + (zoneWidth / 2);
@@ -2113,6 +2124,8 @@ class BaseRiskRewardTool extends BaseDrawing {
             const centerPaddingY = 6;
             const centerWidth = centerTextBBox.width + (centerPaddingX * 2);
             const centerHeight = centerTextBBox.height + (centerPaddingY * 2);
+
+            primaryEntryHitHeight = Math.max(56, centerHeight + 20);
 
             const centerRectX = zoneCenterX - (centerWidth / 2);
 
@@ -2231,14 +2244,14 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         this.createHandles(this.group, scales);
 
-        // Full-width entry drag strip MUST come after createHandles — it clears all .resize-handle-hit
-        // before recreating the left dot hits. Otherwise this line is removed every render and entry
-        // cannot be dragged from the center (unlike TP, whose handle is recreated by createHandles).
-        // Use a transparent rect (not a line with stroke:transparent): many browsers do not hit-test
-        // invisible strokes, so entry drag appeared completely dead.
+        this.createCornerHandles(scales, zoneX1, zoneX2, upperY, lowerY);
+
+        // Primary entry drag layer MUST be last in the group so it wins hit-testing over position
+        // zones, E2+ strips, labels, and corner handles. Tall enough to cover the center P&L pill.
+        // Use a barely visible fill — some engines skip pointer events on fill-opacity:0 rects.
         if (this.selected) {
             const entryDragX2 = zoneX2 - 28;
-            const hitH = 28;
+            const hitH = primaryEntryHitHeight;
             const hitW = Math.max(1, entryDragX2 - zoneX1);
             this.group.append('rect')
                 .attr('class', 'resize-handle-hit rr-entry-line-drag-hit')
@@ -2247,13 +2260,10 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('y', entryY - hitH / 2)
                 .attr('width', hitW)
                 .attr('height', hitH)
-                .attr('fill', '#000000')
-                .attr('fill-opacity', 0)
+                .attr('fill', 'rgba(0, 0, 0, 0.02)')
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
         }
-
-        this.createCornerHandles(scales, zoneX1, zoneX2, upperY, lowerY);
 
         return this.group;
     }
