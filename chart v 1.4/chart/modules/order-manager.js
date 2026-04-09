@@ -17654,12 +17654,12 @@ class OrderManager {
                 price: secondPrice,
                 amount: amt2
             });
-            this.isMultiEntryMode = true;
-            this._rebalanceLevelAmountsToTarget();
-            this.renderMultiEntryRows();
-            this.syncMultiEntryToSplitEntries();
+            // Same as panel "Multi": show multi-entry UI, preview lines, risk summary — not only isMultiEntryMode + rows.
+            this.setEntryMode(true);
         } else {
             this.addMultiEntryLevel();
+            this.updatePreviewLines();
+            this.calculateAdvancedRiskReward();
         }
         this.pullRiskRewardToolFromManager(drawing);
     }
@@ -17740,7 +17740,10 @@ class OrderManager {
     riskRewardSyncEntryDragFromTool(drawing, extraIndex, newY) {
         this.pushRiskRewardToolToManager(drawing);
         const prec = this.getPricePrecision();
-        const p = parseFloat(parseFloat(newY).toFixed(prec));
+        const pRaw = parseFloat(parseFloat(newY).toFixed(prec));
+        const p = typeof drawing.sanitizeExtraEntryPrice === 'function'
+            ? drawing.sanitizeExtraEntryPrice(pRaw)
+            : pRaw;
         const ex = (drawing.meta.extraEntries || [])[extraIndex];
         if (ex && this.multiEntryLevels) {
             const lv = this.multiEntryLevels.find((l) => l.id === ex.id);
