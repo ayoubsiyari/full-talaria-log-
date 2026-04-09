@@ -3568,14 +3568,16 @@ class DrawingToolsManager {
         
         // Enable pointer events on STROKE elements only (not fills)
         // For lines and text, use 'all'; for shape borders, use 'stroke' to ONLY detect stroke clicks
-        drawing.group.selectAll('line:not(.shape-border-hit), polyline, text, circle:not(.pin-center-hole), ellipse, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle, .image-content, .image-placeholder')
+        drawing.group.selectAll('line:not(.shape-border-hit):not(.rr-entry-stroke), polyline, text, circle:not(.pin-center-hole), ellipse, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle, .image-content, .image-placeholder')
             .style('pointer-events', 'all');
         drawing.group.selectAll('.rr-plus-btn circle')
             .style('pointer-events', 'all')
             .style('cursor', 'pointer');
         
         // Shape borders use 'stroke' - ONLY responds to clicks on the actual stroke path
-        drawing.group.selectAll('.shape-border:not(.shape-border-hit)')
+        // Risk/reward main entry line is .rr-entry-stroke: must stay non-interactive so hits reach
+        // .rr-entry-line-drag-hit + handles (same idea as TP dashed lines using pointer-events: none).
+        drawing.group.selectAll('.shape-border:not(.shape-border-hit):not(.rr-entry-stroke)')
             .style('pointer-events', 'stroke');
         
         // Hit areas also use stroke

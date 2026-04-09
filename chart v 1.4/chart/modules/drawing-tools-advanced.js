@@ -1871,16 +1871,19 @@ class BaseRiskRewardTool extends BaseDrawing {
             .style('pointer-events', 'all')
             .style('cursor', 'move');
 
+        // Same as TP/stop visible lines: do not capture pointer-events on the stroke. Otherwise this
+        // line competes with whole-tool drag and blocks the entry hit rect / left handles (TP feels
+        // fine because its dashed line uses pointer-events: none).
         this.group.append('line')
-            .attr('class', 'shape-border')
+            .attr('class', 'shape-border rr-entry-stroke')
             .attr('x1', zoneX1)
             .attr('y1', entryY)
             .attr('x2', zoneX2)
             .attr('y2', entryY)
             .attr('stroke', this.style.entryColor || '#565656ff')
             .attr('stroke-width', 1.5)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
+            .style('pointer-events', 'none')
+            .style('cursor', 'inherit');
 
         this.group.append('line')
             .attr('x1', zoneX1)
