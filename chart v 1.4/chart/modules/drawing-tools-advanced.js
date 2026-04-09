@@ -2361,6 +2361,7 @@ class BaseRiskRewardTool extends BaseDrawing {
     createHandles(group, scales) {
         const handleRadius = 3;
         const hitRadius = 12;
+        const entryLineHitRadius = 22;
         const handleStroke = '#2962FF';
         const handleStrokeWidth = 2;
         
@@ -2394,7 +2395,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('class', 'resize-handle-hit')
                 .attr('cx', entryX)
                 .attr('cy', y)
-                .attr('r', hitRadius)
+                .attr('r', index === 0 ? entryLineHitRadius : hitRadius)
                 .attr('fill', 'transparent')
                 .attr('stroke', 'none')
                 .style('cursor', 'ns-resize')
