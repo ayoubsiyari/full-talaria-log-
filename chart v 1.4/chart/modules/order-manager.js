@@ -24694,8 +24694,17 @@ class OrderManager {
      * @returns {{ avgTP: number, totalQty: number }|null}
      */
     _computeSplitGroupCombinedAvgTP(splitGroupId, mode) {
-        const legs = this._getSplitGroupLegsForMultiTP(splitGroupId);
+        let legs = this._getSplitGroupLegsForMultiTP(splitGroupId);
         if (legs.length === 0) return null;
+        // Chart TP / multi-TP lines are drawn from OPEN (filled) split legs only (drawSLTPLines skips
+        // splitIndex > 1, and pending legs are separate rows). Blending PENDING legs into Avg TP used their
+        // tpTargets (often stale vs the live ladder or different entry context), producing impossible
+        // averages (e.g. below every visible TP) and "0.78 lots" while TP badges only reflect filled size.
+        const hasOpenLeg = legs.some((o) => o.status === 'OPEN');
+        if (hasOpenLeg) {
+            const openLegs = legs.filter((o) => o.status === 'OPEN');
+            if (openLegs.length > 0) legs = openLegs;
+        }
         // Ladders are copied to every split leg (_syncTpTargetsAcrossSplitGroup). Counting priced rows
         // across all legs double-counts the same rung and wrongly shows "Avg TP" for total lots when only
         // one TP level exists (chart lines are drawn on primary leg only — splitIndex 1).
@@ -25143,6 +25152,26 @@ class OrderManager {
     }
 
     /**
+     * Outermost TP price for the split-group Avg Entry vertical connector (legacy takeProfit + tpTargets).
+     * BUY → highest active TP; SELL → lowest. Matches idea of spanning to the farthest profit target.
+     */
+    _splitGroupConnectorTpPrice(order) {
+        if (!order) return 0;
+        const side = String(order.type || order.direction || 'BUY').toUpperCase();
+        const isSell = side === 'SELL';
+        const cands = [];
+        const tp = Number(order.takeProfit);
+        if (Number.isFinite(tp) && tp > 0) cands.push(tp);
+        for (const t of order.tpTargets || []) {
+            if (!t || t.hit || !(t.price > 0)) continue;
+            const p = Number(t.price);
+            if (Number.isFinite(p) && p > 0) cands.push(p);
+        }
+        if (cands.length === 0) return 0;
+        return isSell ? Math.min(...cands) : Math.max(...cands);
+    }
+
+    /**
      * Position and update live P&L for all split-group avg lines,
      * and align the individual order lines in each group to the same left edge.
      */
@@ -25285,7 +25314,7 @@ class OrderManager {
             // --- Draw connector on the right side (after close button, before Y-axis) ---
             if (g._connector) { try { g._connector.remove(); } catch (_) {} }
             const refOrder = openOrders.find(o => o.status === 'OPEN') || openOrders[0];
-            const tpPx = refOrder?.takeProfit || 0;
+            const tpPx = this._splitGroupConnectorTpPrice(refOrder);
             const slPx = refOrder?.stopLoss || 0;
             if (tpPx > 0 || slPx > 0) {
                 const connGroup = ch.svg.append('g')
