@@ -985,15 +985,25 @@ class BaseRiskRewardTool extends BaseDrawing {
 
     /** Shift all extra level prices by dy (data space); used when the whole tool moves vertically. */
     afterPointsMoveDelta(dx, dy) {
-        if (!Number.isFinite(dy) || dy === 0) return;
-        this._ensureExtraLevelMeta();
-        ['extraTargets', 'extraEntries', 'extraStops'].forEach((key) => {
-            const arr = this.meta[key];
-            arr.forEach((row) => {
-                if (row && Number.isFinite(row.y)) row.y += dy;
+        const ddx = Number.isFinite(dx) ? dx : 0;
+        const ddy = Number.isFinite(dy) ? dy : 0;
+        if (ddx === 0 && ddy === 0) return;
+        if (ddy !== 0) {
+            this._ensureExtraLevelMeta();
+            ['extraTargets', 'extraEntries', 'extraStops'].forEach((key) => {
+                const arr = this.meta[key];
+                arr.forEach((row) => {
+                    if (row && Number.isFinite(row.y)) row.y += ddy;
+                });
             });
-        });
+            if (typeof this.normalizeRiskRewardTargetLevels === 'function') {
+                this.normalizeRiskRewardTargetLevels();
+            }
+        }
         this.meta.updatedAt = Date.now();
+        if (typeof this.ensureRiskSettings === 'function') {
+            this.ensureRiskSettings();
+        }
     }
 
     _allStopPrices() {
@@ -1866,7 +1876,21 @@ class BaseRiskRewardTool extends BaseDrawing {
             .style('pointer-events', 'none');
 
         const dashExtra = '6 4';
-        (this.meta.extraStops || []).forEach((row) => {
+        const extraDragHitW = 24;
+        const appendExtraDragHit = (yy, role) => {
+            this.group.append('line')
+                .attr('class', 'custom-handle rr-extra-drag-hit')
+                .attr('data-handle-role', role)
+                .attr('x1', zoneX1)
+                .attr('y1', yy)
+                .attr('x2', zoneX2)
+                .attr('y2', yy)
+                .attr('stroke', 'transparent')
+                .attr('stroke-width', extraDragHitW)
+                .style('pointer-events', this.selected ? 'stroke' : 'none')
+                .style('cursor', 'ns-resize');
+        };
+        (this.meta.extraStops || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
             const yy = scales.yScale(row.y);
             this.group.append('line')
@@ -1879,8 +1903,9 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('stroke-width', 1)
                 .attr('stroke-dasharray', dashExtra)
                 .style('pointer-events', 'none');
+            appendExtraDragHit(yy, `rr-extra-stop-${idx}`);
         });
-        (this.meta.extraTargets || []).forEach((row) => {
+        (this.meta.extraTargets || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
             const yy = scales.yScale(row.y);
             this.group.append('line')
@@ -1893,8 +1918,9 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('stroke-width', 1)
                 .attr('stroke-dasharray', dashExtra)
                 .style('pointer-events', 'none');
+            appendExtraDragHit(yy, `rr-extra-target-${idx}`);
         });
-        (this.meta.extraEntries || []).forEach((row) => {
+        (this.meta.extraEntries || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
             const yy = scales.yScale(row.y);
             this.group.append('line')
@@ -1907,6 +1933,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('stroke-width', 1)
                 .attr('stroke-dasharray', dashExtra)
                 .style('pointer-events', 'none');
+            appendExtraDragHit(yy, `rr-extra-entry-${idx}`);
         });
 
         // Recalculate lot size from risk before rendering labels
@@ -2405,22 +2432,10 @@ class BaseRiskRewardTool extends BaseDrawing {
         });
 
         group.selectAll('.rr-extra-handle-group').remove();
-        const extraHitR = 12;
         const appendExtraHandle = (yy, role) => {
             const g = group.append('g')
                 .attr('class', 'rr-extra-handle-group')
                 .attr('data-handle-role', role);
-            g.append('circle')
-                .attr('class', 'custom-handle rr-extra-handle-hit')
-                .attr('data-handle-role', role)
-                .attr('cx', entryX)
-                .attr('cy', yy)
-                .attr('r', extraHitR)
-                .attr('fill', 'transparent')
-                .attr('stroke', 'none')
-                .style('pointer-events', 'all')
-                .style('cursor', 'ns-resize')
-                .style('opacity', this.selected ? 1 : 0);
             g.append('circle')
                 .attr('class', 'rr-extra-handle-ring')
                 .attr('cx', entryX)
@@ -2431,21 +2446,6 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('stroke-width', handleStrokeWidth)
                 .style('pointer-events', 'none')
                 .style('opacity', this.selected ? 1 : 0);
-            g.select('.rr-extra-handle-hit')
-                .on('mouseenter', function() {
-                    d3.select(this.parentNode).select('.rr-extra-handle-ring')
-                        .transition()
-                        .duration(150)
-                        .attr('r', handleRadius + 1)
-                        .attr('stroke-width', handleStrokeWidth + 0.5);
-                })
-                .on('mouseleave', function() {
-                    d3.select(this.parentNode).select('.rr-extra-handle-ring')
-                        .transition()
-                        .duration(150)
-                        .attr('r', handleRadius)
-                        .attr('stroke-width', handleStrokeWidth);
-                });
             this.handles.push(g);
         };
         (this.meta.extraTargets || []).forEach((row, idx) => {
