@@ -2289,26 +2289,45 @@ class BaseRiskRewardTool extends BaseDrawing {
             appendExtraEntryDragHit(yy, `rr-extra-entry-${idx}`);
         });
 
-        // Primary entry: same as TP2 — transparent stroked line + .custom-handle (not resize-handle-hit
-        // rect). Must be painted after E2 hits so the main entry row stays draggable; E2 uses the
-        // same custom-handle pattern and would otherwise sit on top of a rect and block entry.
+        // Primary entry: TP2-style custom-handle + dedicated drag API (applyPrimaryEntryLineDragY).
+        // Use a filled rect (not a transparent stroke line) so hit-testing matches TP reliably; paint
+        // after E2 so the main entry strip wins stacking.
         if (this.selected) {
             const entryDragX2 = zoneX2 - 28;
-            const hitStroke = Math.max(48, primaryEntryHitHeight);
-            this.group.append('line')
+            const hitH = Math.max(48, primaryEntryHitHeight);
+            const hitW = Math.max(1, entryDragX2 - zoneX1);
+            this.group.append('rect')
                 .attr('class', 'custom-handle rr-primary-entry-drag-hit')
                 .attr('data-handle-role', 'rr-primary-entry')
-                .attr('x1', zoneX1)
-                .attr('y1', entryY)
-                .attr('x2', entryDragX2)
-                .attr('y2', entryY)
-                .attr('stroke', 'transparent')
-                .attr('stroke-width', hitStroke)
-                .style('pointer-events', 'stroke')
+                .attr('x', zoneX1)
+                .attr('y', entryY - hitH / 2)
+                .attr('width', hitW)
+                .attr('height', hitH)
+                .attr('fill', 'rgba(0, 0, 0, 0.02)')
+                .attr('stroke', 'none')
+                .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
         }
 
         return this.group;
+    }
+
+    /**
+     * Primary entry line drag — parallel to how TP uses riskRewardSyncPrimaryTpDragFromTool + OM pull.
+     */
+    applyPrimaryEntryLineDragY(newY, context = {}) {
+        const om = window.chart?.orderManager;
+        if (om && typeof om.riskRewardSyncPrimaryEntryDragFromTool === 'function') {
+            om.riskRewardSyncPrimaryEntryDragFromTool(this, newY);
+            this._afterRiskRewardOrderManagerSync();
+            return true;
+        }
+        const deltaY = newY - this.points[0].y;
+        if (!Number.isFinite(deltaY)) return false;
+        this.points = this.points.map((p) => ({ ...p, y: p.y + deltaY }));
+        this.afterPointsMoveDelta(0, deltaY);
+        this.ensureRiskSettings();
+        return true;
     }
 
     onPointHandleDrag(index, context = {}) {
@@ -2316,17 +2335,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (!point) return false;
 
         if (index === 0) {
-            const om = window.chart?.orderManager;
-            if (om && typeof om.riskRewardSyncPrimaryEntryDragFromTool === 'function') {
-                om.riskRewardSyncPrimaryEntryDragFromTool(this, point.y);
-                this._afterRiskRewardOrderManagerSync();
-            } else {
-                const deltaY = point.y - this.points[0].y;
-                this.points = this.points.map(p => ({ ...p, y: p.y + deltaY }));
-                this.afterPointsMoveDelta(0, deltaY);
-                this.ensureRiskSettings();
-            }
-            return true;
+            return this.applyPrimaryEntryLineDragY(point.y, context);
         }
 
         if (index === 1) {
@@ -2361,8 +2370,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (handleRole === 'rr-primary-entry') {
             const py = context.point?.y ?? context.dataPoint?.y;
             if (Number.isFinite(py)) {
-                this.onPointHandleDrag(0, context);
-                return true;
+                return this.applyPrimaryEntryLineDragY(py, context);
             }
             return false;
         }

@@ -17643,12 +17643,19 @@ class OrderManager {
      * Primary entry handle — moves the whole ladder vertically; keeps order panel + multiEntryLevels in sync.
      * Without push/pull, pullRiskRewardToolFromManager can later overwrite the tool from stale OM (TP drag already syncs).
      */
+    /**
+     * Primary entry line — same sync rhythm as riskRewardSyncPrimaryTpDragFromTool (push → edit → push → pull).
+     */
     riskRewardSyncPrimaryEntryDragFromTool(drawing, newY) {
         if (!drawing || !drawing.points || drawing.points.length < 3) return;
+        this.pushRiskRewardToolToManager(drawing);
         const prec = this.getPricePrecision();
         const target = parseFloat(parseFloat(newY).toFixed(prec));
         const deltaY = target - drawing.points[0].y;
-        if (!Number.isFinite(deltaY) || Math.abs(deltaY) < 1e-12) return;
+        if (!Number.isFinite(deltaY) || Math.abs(deltaY) < 1e-12) {
+            this.pullRiskRewardToolFromManager(drawing);
+            return;
+        }
 
         drawing.points = drawing.points.map((p) => ({ ...p, y: p.y + deltaY }));
         if (typeof drawing.afterPointsMoveDelta === 'function') {
