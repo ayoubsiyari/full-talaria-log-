@@ -20999,7 +20999,10 @@ class OrderManager {
                             tpTgtHit = high >= target.price;
                         }
                         if (tpTgtHit) {
-                            const fillPx = this._gapFill(target.price, open, true, true);
+                            const markPx = Number(currentPrice);
+                            const fillPx = tpTgtGuarded && Number.isFinite(markPx)
+                                ? markPx
+                                : this._gapFill(target.price, open, true, true);
                             const resolvedTpId = target.id != null ? target.id : index;
                             const _pctPrev = Number(target.percentage) / 100;
                             console.log(
@@ -21065,7 +21068,10 @@ class OrderManager {
                         } else if (tpHit) {
                             position._tpNoTriggerBeforeTime = null;
                             position._tpNoTriggerBeforeTick = undefined;
-                            const fillPx = this._gapFill(position.takeProfit, open, true, true);
+                            const markPx = Number(currentPrice);
+                            const fillPx = buyTPGuarded && Number.isFinite(markPx)
+                                ? markPx
+                                : this._gapFill(position.takeProfit, open, true, true);
                             console.log(`   🎯 TAKE PROFIT HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.takeProfit ? ' (gap fill, TP was ' + position.takeProfit.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP' });
                         }
@@ -21317,7 +21323,10 @@ class OrderManager {
                             sellTpTgtHit = low <= target.price;
                         }
                         if (sellTpTgtHit) {
-                            const fillPx = this._gapFill(target.price, open, false, true);
+                            const markPx = Number(currentPrice);
+                            const fillPx = sellTpTgtGuarded && Number.isFinite(markPx)
+                                ? markPx
+                                : this._gapFill(target.price, open, false, true);
                             const resolvedTpId = target.id != null ? target.id : index;
                             const _pctPrevS = Number(target.percentage) / 100;
                             console.log(
@@ -21383,7 +21392,10 @@ class OrderManager {
                         } else if (tpHitSell) {
                             position._tpNoTriggerBeforeTime = null;
                             position._tpNoTriggerBeforeTick = undefined;
-                            const fillPx = this._gapFill(position.takeProfit, open, false, true);
+                            const markPx = Number(currentPrice);
+                            const fillPx = sellTPGuarded && Number.isFinite(markPx)
+                                ? markPx
+                                : this._gapFill(position.takeProfit, open, false, true);
                             console.log(`   🎯 TAKE PROFIT HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.takeProfit ? ' (gap fill, TP was ' + position.takeProfit.toFixed(5) + ')' : ''}`);
                             positionsToClose.push({ id: position.id, closePrice: fillPx, type: 'TP' });
                         }
