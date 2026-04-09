@@ -1676,7 +1676,9 @@ class DrawingToolsManager {
                 const shouldBlockVolumeProfileTextDirectMove = (isVolumeProfileLevelLineTarget || isVolumeProfileValuesLabelTarget)
                     && best
                     && this.isVolumeProfileToolType(best.type);
-                if (best && !best.locked && !shouldBlockVolumeProfileTextDirectMove) {
+                const deferRRBest = best && (best.type === 'long-position' || best.type === 'short-position')
+                    && this._isMouseOnRiskRewardPrimaryEntryStrip(best, mouseX, mouseY);
+                if (best && !best.locked && !shouldBlockVolumeProfileTextDirectMove && !deferRRBest) {
                     event.preventDefault();
                     event.stopPropagation();
                     this.selectDrawing(best, false);
@@ -1693,7 +1695,11 @@ class DrawingToolsManager {
                 const hasSelectedVolumeProfileAtPoint = selectedAtPoint.some(d => this.isVolumeProfileToolType(d.type));
                 const shouldBlockSelectedVolumeProfileTextDirectMove = (isVolumeProfileLevelLineTarget || isVolumeProfileValuesLabelTarget)
                     && hasSelectedVolumeProfileAtPoint;
-                if (selectedAtPoint.length > 0 && !event.shiftKey && !shouldBlockSelectedVolumeProfileTextDirectMove) {
+                const deferRRSelected = selectedAtPoint.some((d) =>
+                    (d.type === 'long-position' || d.type === 'short-position')
+                    && this._isMouseOnRiskRewardPrimaryEntryStrip(d, mouseX, mouseY)
+                );
+                if (selectedAtPoint.length > 0 && !event.shiftKey && !shouldBlockSelectedVolumeProfileTextDirectMove && !deferRRSelected) {
                     event.preventDefault();
                     event.stopPropagation();
                     this._startDirectMoveDrag(selectedAtPoint, event);
@@ -1797,20 +1803,64 @@ class DrawingToolsManager {
 
             if (drawing) {
 
+                const stopDirectResizeListeners = () => {
+                    if (this._directResizeMoveHandler) {
+                        document.removeEventListener('mousemove', this._directResizeMoveHandler, true);
+                    }
+                    if (this._directResizeUpHandler) {
+                        document.removeEventListener('mouseup', this._directResizeUpHandler, true);
+                    }
+                    this._directResizeMoveHandler = null;
+                    this._directResizeUpHandler = null;
+                };
+
+                let rrPrimaryStripDrawing = null;
+                if (!resizeHandleNode && !customHandleNode) {
+                    const candidates = [];
+                    if (drawing.type === 'long-position' || drawing.type === 'short-position') candidates.push(drawing);
+                    if (Array.isArray(this.selectedDrawings)) {
+                        this.selectedDrawings.forEach((d) => {
+                            if (d && (d.type === 'long-position' || d.type === 'short-position')) candidates.push(d);
+                        });
+                    }
+                    for (let i = 0; i < candidates.length; i++) {
+                        const d = candidates[i];
+                        if (!d || !drawingsAtPoint.includes(d)) continue;
+                        if (this._isMouseOnRiskRewardPrimaryEntryStrip(d, mouseX, mouseY)) {
+                            rrPrimaryStripDrawing = d;
+                            break;
+                        }
+                    }
+                }
+
+                if (rrPrimaryStripDrawing) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (!rrPrimaryStripDrawing.selected
+                        || (this.selectedDrawings.length !== 1 || this.selectedDrawings[0] !== rrPrimaryStripDrawing)) {
+                        this.deselectAll();
+                        rrPrimaryStripDrawing.select();
+                        this.selectedDrawing = rrPrimaryStripDrawing;
+                        this.selectedDrawings = [rrPrimaryStripDrawing];
+                    }
+                    stopDirectResizeListeners();
+                    this.startCustomHandleDrag(rrPrimaryStripDrawing, 'rr-primary-entry', { sourceEvent: event });
+                    this._directResizeMoveHandler = (e) => {
+                        if (this.chart && typeof this.chart.updateCrosshair === 'function') this.chart.updateCrosshair(e);
+                        this.handleCustomHandleDrag({ sourceEvent: e });
+                    };
+                    this._directResizeUpHandler = (e) => {
+                        stopDirectResizeListeners();
+                        this.endCustomHandleDrag({ sourceEvent: e });
+                    };
+                    document.addEventListener('mousemove', this._directResizeMoveHandler, true);
+                    document.addEventListener('mouseup', this._directResizeUpHandler, true);
+                    return;
+                }
+
                 if (resizeHandleNode || customHandleNode) {
                     event.preventDefault();
                     event.stopPropagation();
-
-                    const stopDirectResizeListeners = () => {
-                        if (this._directResizeMoveHandler) {
-                            document.removeEventListener('mousemove', this._directResizeMoveHandler, true);
-                        }
-                        if (this._directResizeUpHandler) {
-                            document.removeEventListener('mouseup', this._directResizeUpHandler, true);
-                        }
-                        this._directResizeMoveHandler = null;
-                        this._directResizeUpHandler = null;
-                    };
 
                     if (!drawing.selected || (this.selectedDrawings.length !== 1 || this.selectedDrawings[0] !== drawing)) {
                         this.deselectAll();
@@ -4405,6 +4455,29 @@ class DrawingToolsManager {
 
         document.addEventListener('mousemove', this._directMoveMoveHandler, true);
         document.addEventListener('mouseup', this._directMoveUpHandler, true);
+    }
+
+    /**
+     * True when (mx, my) lies in the primary entry drag band (matches .rr-primary-entry-drag-hit in BaseRiskRewardTool).
+     * Used because zone fills use pointer-events: none when selected — the event target can be the chart/candles
+     * instead of the invisible hit rect, so we must not start whole-tool direct-move on that click.
+     */
+    _isMouseOnRiskRewardPrimaryEntryStrip(drawing, mouseX, mouseY) {
+        if (!drawing || (drawing.type !== 'long-position' && drawing.type !== 'short-position')) return false;
+        if (!drawing.selected) return false;
+        const p0 = drawing.points && drawing.points[0];
+        if (!p0 || !Number.isFinite(p0.y)) return false;
+        const meta = drawing.lastRenderMeta;
+        if (!meta || !Number.isFinite(meta.zoneX1) || !Number.isFinite(meta.zoneX2)) return false;
+        const chart = this.chart;
+        if (!chart || typeof chart.yScale !== 'function') return false;
+        const py = chart.yScale(p0.y);
+        const halfH = 36;
+        if (Math.abs(mouseY - py) > halfH) return false;
+        const x1 = meta.zoneX1;
+        const x2 = meta.zoneX2 - 28;
+        if (!(x2 > x1)) return false;
+        return mouseX >= x1 && mouseX <= x2;
     }
 
     /**
