@@ -17618,46 +17618,58 @@ class OrderManager {
     }
 
     /**
-     * Risk/reward +: same path as multi-entry "Add" (addMultiEntryLevel).
+     * Replace multi-entry ladder with Entry1 + one default E2 (same math as first-time R/R entry +).
+     * @param {number} currentPrice - primary entry price (Entry1)
+     */
+    _buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice) {
+        if (!Number.isFinite(this.multiEntryIdCounter)) this.multiEntryIdCounter = 1;
+        const psMode = this.positionSizeMode || 'risk-usd';
+        let amt1; let amt2;
+        if (psMode === 'risk-percent') {
+            amt1 = 50;
+            amt2 = 50;
+        } else if (psMode === 'lot-size') {
+            const tl = parseFloat(document.getElementById('lotSizeAmount')?.value || 1);
+            amt1 = parseFloat((tl / 2).toFixed(2));
+            amt2 = parseFloat((tl / 2).toFixed(2));
+        } else {
+            const riskAmount = parseFloat(document.getElementById('riskAmountUSD')?.value || 100);
+            amt1 = riskAmount > 0 ? Math.round(riskAmount / 2) : 40;
+            amt2 = riskAmount > 0 ? Math.round(riskAmount / 2) : 40;
+        }
+        this.multiEntryLevels = [
+            { id: this.multiEntryIdCounter++, price: currentPrice, amount: amt1 }
+        ];
+        const offsetDir = (this.orderSide === 'SELL') ? 1 : -1;
+        // ~0.45% from primary — wider default than 0.1% so E2 is not visually on the entry line
+        const rawSecond = currentPrice > 0 ? currentPrice * (1 + offsetDir * 0.0045) : 0;
+        const secondPrice = currentPrice > 0
+            ? this._clampMultiEntryPriceForStop(rawSecond, [currentPrice])
+            : 0;
+        this.multiEntryLevels.push({
+            id: this.multiEntryIdCounter++,
+            price: secondPrice,
+            amount: amt2
+        });
+    }
+
+    /**
+     * Risk/reward +: first click enables multi-entry with two levels; further clicks reset to a fresh E2
+     * (same as first-time ladder) instead of appending E3+.
      */
     riskRewardAddEntryFromTool(drawing) {
         this.pushRiskRewardToolToManager(drawing);
         const allE = typeof drawing._allEntryPrices === 'function' ? drawing._allEntryPrices() : [drawing.points[0].y];
+        const currentPrice = drawing.points[0].y;
         if (!this.isMultiEntryMode || !this.multiEntryLevels?.length || allE.length <= 1) {
-            const currentPrice = drawing.points[0].y;
-            if (!Number.isFinite(this.multiEntryIdCounter)) this.multiEntryIdCounter = 1;
-            const psMode = this.positionSizeMode || 'risk-usd';
-            let amt1; let amt2;
-            if (psMode === 'risk-percent') {
-                amt1 = 50;
-                amt2 = 50;
-            } else if (psMode === 'lot-size') {
-                const tl = parseFloat(document.getElementById('lotSizeAmount')?.value || 1);
-                amt1 = parseFloat((tl / 2).toFixed(2));
-                amt2 = parseFloat((tl / 2).toFixed(2));
-            } else {
-                const riskAmount = parseFloat(document.getElementById('riskAmountUSD')?.value || 100);
-                amt1 = riskAmount > 0 ? Math.round(riskAmount / 2) : 40;
-                amt2 = riskAmount > 0 ? Math.round(riskAmount / 2) : 40;
-            }
-            this.multiEntryLevels = [
-                { id: this.multiEntryIdCounter++, price: currentPrice, amount: amt1 }
-            ];
-            const offsetDir = (this.orderSide === 'SELL') ? 1 : -1;
-            // ~0.45% from primary — wider default than 0.1% so E2 is not visually on the entry line
-            const rawSecond = currentPrice > 0 ? currentPrice * (1 + offsetDir * 0.0045) : 0;
-            const secondPrice = currentPrice > 0
-                ? this._clampMultiEntryPriceForStop(rawSecond, [currentPrice])
-                : 0;
-            this.multiEntryLevels.push({
-                id: this.multiEntryIdCounter++,
-                price: secondPrice,
-                amount: amt2
-            });
+            this._buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice);
             // Same as panel "Multi": show multi-entry UI, preview lines, risk summary — not only isMultiEntryMode + rows.
             this.setEntryMode(true);
         } else {
-            this.addMultiEntryLevel();
+            this._buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice);
+            this._rebalanceLevelAmountsToTarget();
+            this.renderMultiEntryRows();
+            this.syncMultiEntryToSplitEntries();
             this.updatePreviewLines();
             this.calculateAdvancedRiskReward();
         }
