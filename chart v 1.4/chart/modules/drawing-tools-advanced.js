@@ -1096,11 +1096,66 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (this.manager) this.manager.saveDrawings();
     }
 
+    /**
+     * Merge primary + extra TP prices, drop invalid (wrong side of entry), assign farthest TP to points[2]
+     * and intermediates to extraTargets — keeps multi-TP lines inside the profit zone.
+     */
+    normalizeRiskRewardTargetLevels() {
+        if (!Array.isArray(this.points) || this.points.length < 3) return;
+        this._ensureExtraLevelMeta();
+        const entry = this.points[0].y;
+        if (!Number.isFinite(entry)) return;
+
+        const step = (typeof this.getPriceStep === 'function' ? this.getPriceStep() : 0.0001);
+        const eps = Math.max(Math.abs(entry) * 1e-8, step * 0.5 || 0.00001);
+
+        const raw = [];
+        if (Number.isFinite(this.points[2]?.y)) raw.push(this.points[2].y);
+        (this.meta.extraTargets || []).forEach((r) => {
+            if (r && Number.isFinite(r.y)) raw.push(r.y);
+        });
+        if (raw.length === 0) return;
+
+        const oldExtras = (this.meta.extraTargets || []).filter((r) => r && Number.isFinite(r.y));
+
+        const clampSide = (p) => (this.isLong ? Math.max(p, entry + eps) : Math.min(p, entry - eps));
+
+        if (raw.length === 1) {
+            const p = this.sanitizeTargetPrice(clampSide(raw[0]));
+            this.points[2] = { ...this.points[2], y: p };
+            this.meta.extraTargets = [];
+            return;
+        }
+
+        const cleaned = raw.map(clampSide);
+        const uniqueSorted = this.isLong
+            ? [...new Set(cleaned)].sort((a, b) => a - b)
+            : [...new Set(cleaned)].sort((a, b) => b - a);
+
+        if (uniqueSorted.length === 1) {
+            const p = this.sanitizeTargetPrice(uniqueSorted[0]);
+            this.points[2] = { ...this.points[2], y: p };
+            this.meta.extraTargets = [];
+            return;
+        }
+
+        const primary = uniqueSorted[uniqueSorted.length - 1];
+        const extraPrices = uniqueSorted.slice(0, -1);
+
+        const oldSorted = this.isLong
+            ? [...oldExtras].sort((a, b) => a.y - b.y)
+            : [...oldExtras].sort((a, b) => b.y - a.y);
+
+        this.meta.extraTargets = extraPrices.map((price, i) => ({
+            id: oldSorted[i]?.id ?? this._nextExtraLevelId(),
+            y: this.sanitizeTargetPrice(price)
+        }));
+        this.points[2] = { ...this.points[2], y: this.sanitizeTargetPrice(primary) };
+    }
+
     /** Re-apply chart clamps after order-manager push/pull so drawing stays consistent with panel math. */
     _afterRiskRewardOrderManagerSync() {
-        (this.meta.extraTargets || []).forEach((row) => {
-            if (row && Number.isFinite(row.y)) row.y = this.sanitizeTargetPrice(row.y);
-        });
+        this.normalizeRiskRewardTargetLevels();
         (this.meta.extraEntries || []).forEach((row) => {
             if (row && Number.isFinite(row.y)) row.y = this.sanitizeExtraEntryPrice(row.y);
         });
@@ -2107,8 +2162,9 @@ class BaseRiskRewardTool extends BaseDrawing {
             // Execute button moved to floating toolbar
         }
 
-        const upperY = Math.min(stopY, targetY);
-        const lowerY = Math.max(stopY, targetY);
+        // Include all extra stops/targets so corner metadata spans the full vertical extent (fixes TP2 "outside" box).
+        const upperY = Math.min(entryY, bestTargetPx, worstStopPx);
+        const lowerY = Math.max(entryY, bestTargetPx, worstStopPx);
 
         this.lastRenderMeta = {
             entryX,
@@ -2349,32 +2405,42 @@ class BaseRiskRewardTool extends BaseDrawing {
         });
 
         group.selectAll('.rr-extra-handle-group').remove();
+        const extraHitR = 12;
         const appendExtraHandle = (yy, role) => {
             const g = group.append('g')
                 .attr('class', 'rr-extra-handle-group')
                 .attr('data-handle-role', role);
             g.append('circle')
-                .attr('class', 'custom-handle')
+                .attr('class', 'custom-handle rr-extra-handle-hit')
                 .attr('data-handle-role', role)
+                .attr('cx', entryX)
+                .attr('cy', yy)
+                .attr('r', extraHitR)
+                .attr('fill', 'transparent')
+                .attr('stroke', 'none')
+                .style('pointer-events', 'all')
+                .style('cursor', 'ns-resize')
+                .style('opacity', this.selected ? 1 : 0);
+            g.append('circle')
+                .attr('class', 'rr-extra-handle-ring')
                 .attr('cx', entryX)
                 .attr('cy', yy)
                 .attr('r', handleRadius)
                 .attr('fill', 'transparent')
                 .attr('stroke', handleStroke)
                 .attr('stroke-width', handleStrokeWidth)
-                .style('pointer-events', 'all')
-                .style('cursor', 'ns-resize')
+                .style('pointer-events', 'none')
                 .style('opacity', this.selected ? 1 : 0);
-            g.select('.custom-handle')
+            g.select('.rr-extra-handle-hit')
                 .on('mouseenter', function() {
-                    d3.select(this)
+                    d3.select(this.parentNode).select('.rr-extra-handle-ring')
                         .transition()
                         .duration(150)
                         .attr('r', handleRadius + 1)
                         .attr('stroke-width', handleStrokeWidth + 0.5);
                 })
                 .on('mouseleave', function() {
-                    d3.select(this)
+                    d3.select(this.parentNode).select('.rr-extra-handle-ring')
                         .transition()
                         .duration(150)
                         .attr('r', handleRadius)
@@ -2473,6 +2539,10 @@ class BaseRiskRewardTool extends BaseDrawing {
         instance.chart = chart; // Set chart reference for multi-timeframe support
         instance._ensureExtraLevelMeta();
         instance.ensureRiskSettings();
+        if (typeof instance.normalizeRiskRewardTargetLevels === 'function') {
+            instance.normalizeRiskRewardTargetLevels();
+            instance.ensureRiskSettings();
+        }
         return instance;
     }
 }

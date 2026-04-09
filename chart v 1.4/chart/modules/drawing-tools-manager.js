@@ -4367,9 +4367,13 @@ class DrawingToolsManager {
 
         const allowResizeHandleDragWhenToolActive = function (event) {
             if (!self.currentTool) return true;
-            if (self.currentTool !== 'brush' && self.currentTool !== 'highlighter') return false;
             const src = (event && event.sourceEvent) ? event.sourceEvent : event;
             const t = src && src.target;
+            const onDrawingHandle = !!(t && t.closest && t.closest(
+                '.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle, .rr-plus-btn'
+            ));
+            if (onDrawingHandle) return true;
+            if (self.currentTool !== 'brush' && self.currentTool !== 'highlighter') return false;
             return !!(t && t.closest && t.closest('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'));
         };
         
