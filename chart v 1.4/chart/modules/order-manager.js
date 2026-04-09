@@ -2591,6 +2591,150 @@ class OrderManager {
     }
 
     /**
+     * Panel-aligned risk/reward preview for Risk/Reward drawing tool settings (no DOM dependency).
+     * Uses pipSize, pipValuePerLot, _enginePositionSize, estimatePnLForPriceLevel, _computeEffectiveTPPercentages.
+     *
+     * @param {{
+     *   orderSide?: string,
+     *   entryPrice: number,
+     *   slPrice: number,
+     *   tpPrice: number,
+     *   riskMode?: string,
+     *   riskAmountUSD?: number,
+     *   riskPercent?: number,
+     *   accountSize?: number,
+     *   multiTP?: boolean,
+     *   numTpTargets?: number,
+     *   tpTargets?: Array<{ price: number, percentage?: number }>,
+     *   splitEntry?: boolean,
+     *   splitEntryPrice?: number|null
+     * }} payload
+     * @returns {{ quantity: number, riskUsd: number, rewardUsd: number, rr: number, effectiveEntry: number }}
+     */
+    computeOrderStyleRiskPreview(payload) {
+        if (typeof this._syncPipFromActiveSymbolIfNeeded === 'function') {
+            this._syncPipFromActiveSymbolIfNeeded();
+        }
+        const orderSide = (payload.orderSide || 'BUY').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
+        const entryPrice = Number(payload.entryPrice) || 0;
+        const slPrice = Number(payload.slPrice) || 0;
+        const tpPrice = Number(payload.tpPrice) || 0;
+        const riskMode = payload.riskMode || 'risk-usd';
+        const riskAmountUSD = Number(payload.riskAmountUSD) || 100;
+        const riskPercent = Number(payload.riskPercent) || 1;
+        const accountSize = Number(payload.accountSize) > 0
+            ? Number(payload.accountSize)
+            : (this.balance || 10000);
+        const multiTP = !!payload.multiTP;
+        const numTpTargets = Math.min(10, Math.max(2, parseInt(String(payload.numTpTargets || 2), 10) || 2));
+        const splitEntry = !!payload.splitEntry;
+        let splitEntryPrice = payload.splitEntryPrice != null ? Number(payload.splitEntryPrice) : null;
+
+        let riskUSD = 0;
+        if (riskMode === 'risk-usd') {
+            riskUSD = riskAmountUSD;
+        } else {
+            riskUSD = (accountSize * riskPercent) / 100;
+        }
+
+        const slDist = Math.abs(entryPrice - slPrice);
+        if (!entryPrice || !slPrice || slDist < 1e-12) {
+            return {
+                quantity: 0,
+                riskUsd: riskUSD,
+                rewardUsd: 0,
+                rr: 0,
+                effectiveEntry: entryPrice
+            };
+        }
+
+        const quantity = this._enginePositionSize(riskUSD, entryPrice, slPrice, entryPrice);
+
+        let effectiveEntry = entryPrice;
+        if (splitEntry && splitEntryPrice != null && Number.isFinite(splitEntryPrice)
+            && Math.abs(splitEntryPrice - entryPrice) > 1e-12) {
+            effectiveEntry = (entryPrice + splitEntryPrice) / 2;
+        }
+
+        let targets = Array.isArray(payload.tpTargets) ? payload.tpTargets.filter(t => t && (Number(t.price) > 0)) : [];
+        if (multiTP && targets.length === 0 && tpPrice > 0 && entryPrice > 0) {
+            targets = this._buildSyntheticTpTargetsForRiskPreview(entryPrice, tpPrice, numTpTargets, orderSide);
+        }
+
+        let reward = 0;
+        const savedTT = this.tpTargets;
+        const savedDM = this.tpDistributionMode;
+        try {
+            if (multiTP && targets.length > 0) {
+                this.tpTargets = targets.map((t, i) => ({
+                    id: i + 1,
+                    price: Number(t.price),
+                    percentage: Number(t.percentage) > 0 ? Number(t.percentage) : (100 / targets.length)
+                }));
+                this.tpDistributionMode = 'percent';
+                const ePcts = this._computeEffectiveTPPercentages(effectiveEntry, quantity, orderSide);
+                targets.forEach((target, index) => {
+                    const ePct = ePcts[index] || 0;
+                    const tpPx = Number(target.price);
+                    if (tpPx > 0 && ePct > 0) {
+                        const partialQty = quantity * (ePct / 100);
+                        let priceDiff = orderSide === 'BUY' ? tpPx - effectiveEntry : effectiveEntry - tpPx;
+                        if (priceDiff > 0) {
+                            reward += Math.max(0, this.estimatePnLForPriceLevel(orderSide, effectiveEntry, tpPx, partialQty));
+                        }
+                    }
+                });
+            } else if (tpPrice > 0) {
+                const priceDiff = orderSide === 'BUY' ? tpPrice - effectiveEntry : effectiveEntry - tpPrice;
+                if (priceDiff > 0) {
+                    reward = Math.max(0, this.estimatePnLForPriceLevel(orderSide, effectiveEntry, tpPrice, quantity));
+                }
+            }
+        } finally {
+            this.tpTargets = savedTT;
+            this.tpDistributionMode = savedDM;
+        }
+
+        const rr = riskUSD > 0 ? reward / riskUSD : 0;
+        return {
+            quantity,
+            riskUsd: riskUSD,
+            rewardUsd: reward,
+            rr,
+            effectiveEntry
+        };
+    }
+
+    /**
+     * Equal ladder of TP prices from entry to tp (same geometry as calculateTPTargetsFromNumber, percent mode).
+     */
+    _buildSyntheticTpTargetsForRiskPreview(entryPrice, farTpPrice, numTargets, orderSide) {
+        const prec = this.getPricePrecision ? this.getPricePrecision() : 5;
+        const distance = Math.abs(farTpPrice - entryPrice);
+        if (!(distance > 0) || numTargets < 1) return [];
+        const pct = 100 / numTargets;
+        const out = [];
+        for (let i = 1; i <= numTargets; i++) {
+            const ratio = i / numTargets;
+            let price;
+            if (orderSide === 'BUY') {
+                price = entryPrice + distance * ratio;
+            } else {
+                price = entryPrice - distance * ratio;
+            }
+            out.push({
+                price: parseFloat(price.toFixed(prec)),
+                percentage: parseFloat(pct.toFixed(1))
+            });
+        }
+        const sumP = out.reduce((s, t) => s + t.percentage, 0);
+        if (Math.abs(sumP - 100) > 0.02 && out.length) {
+            out[out.length - 1].percentage = parseFloat((100 - sumP + out[out.length - 1].percentage).toFixed(1));
+        }
+        return out;
+    }
+
+    /**
      * Position size (lots / contracts / units) from a fixed dollar risk.
      * @param {number} riskUSD
      * @param {number} entry

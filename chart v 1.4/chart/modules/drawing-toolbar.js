@@ -254,12 +254,6 @@ class DrawingToolbar {
         
         // Risk/Reward tools
         const isRiskReward = drawing.type === 'long-position' || drawing.type === 'short-position';
-        const rrSync = drawing.meta?.orderPanelSync || {
-            multiTP: false,
-            splitEntry: false,
-            breakeven: false,
-            trailing: false
-        };
         
         // All drawing tools now support template system
         const lineTools = ['trendline', 'horizontal', 'vertical', 'ray', 'horizontal-ray', 'extended-line', 'cross-line', 'path', 'curve', 'double-curve', 'parallel-channel', 'regression-trend', 'flat-top-bottom', 'disjoint-channel'];
@@ -1025,12 +1019,6 @@ class DrawingToolbar {
                     </svg>
                 </button>
             </div>
-            <div class="toolbar-item toolbar-rr-sync" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;max-width:220px;">
-                <button type="button" class="toolbar-btn ${rrSync.multiTP ? 'active' : ''}" id="tb-rr-mtp" title="Multi TP (sync with order panel)">MTP</button>
-                <button type="button" class="toolbar-btn ${rrSync.splitEntry ? 'active' : ''}" id="tb-rr-split" title="Split entry">Split</button>
-                <button type="button" class="toolbar-btn ${rrSync.breakeven ? 'active' : ''}" id="tb-rr-be" title="Breakeven (exclusive with Trail)">BE</button>
-                <button type="button" class="toolbar-btn ${rrSync.trailing ? 'active' : ''}" id="tb-rr-trail" title="Trailing SL (exclusive with BE)">Trail</button>
-            </div>
             ` : ''}
             
             <!-- Settings -->
@@ -1764,81 +1752,6 @@ class DrawingToolbar {
                     </svg>
                 `;
                 
-                if (this.onUpdate) this.onUpdate(drawing);
-            });
-        }
-
-        // Risk/Reward: order panel sync toggles (persist on drawing.meta.orderPanelSync)
-        const ensureRRSync = () => {
-            if (!drawing.meta) drawing.meta = {};
-            if (!drawing.meta.orderPanelSync) {
-                drawing.meta.orderPanelSync = {
-                    multiTP: false,
-                    splitEntry: false,
-                    breakeven: false,
-                    trailing: false
-                };
-            }
-            return drawing.meta.orderPanelSync;
-        };
-        const refreshRRToggleButtons = () => {
-            const s = ensureRRSync();
-            const mtp = this.toolbar.querySelector('#tb-rr-mtp');
-            const spl = this.toolbar.querySelector('#tb-rr-split');
-            const be = this.toolbar.querySelector('#tb-rr-be');
-            const tr = this.toolbar.querySelector('#tb-rr-trail');
-            if (mtp) mtp.classList.toggle('active', !!s.multiTP);
-            if (spl) spl.classList.toggle('active', !!s.splitEntry);
-            if (be) be.classList.toggle('active', !!s.breakeven);
-            if (tr) tr.classList.toggle('active', !!s.trailing);
-        };
-        const tbMtp = this.toolbar.querySelector('#tb-rr-mtp');
-        if (tbMtp) {
-            tbMtp.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const s = ensureRRSync();
-                s.multiTP = !s.multiTP;
-                refreshRRToggleButtons();
-                if (this.onUpdate) this.onUpdate(drawing);
-            });
-        }
-        const tbSplit = this.toolbar.querySelector('#tb-rr-split');
-        if (tbSplit) {
-            tbSplit.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const s = ensureRRSync();
-                s.splitEntry = !s.splitEntry;
-                refreshRRToggleButtons();
-                if (this.onUpdate) this.onUpdate(drawing);
-            });
-        }
-        const tbBe = this.toolbar.querySelector('#tb-rr-be');
-        if (tbBe) {
-            tbBe.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const s = ensureRRSync();
-                if (s.breakeven) {
-                    s.breakeven = false;
-                } else {
-                    s.breakeven = true;
-                    s.trailing = false;
-                }
-                refreshRRToggleButtons();
-                if (this.onUpdate) this.onUpdate(drawing);
-            });
-        }
-        const tbTrail = this.toolbar.querySelector('#tb-rr-trail');
-        if (tbTrail) {
-            tbTrail.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const s = ensureRRSync();
-                if (s.trailing) {
-                    s.trailing = false;
-                } else {
-                    s.trailing = true;
-                    s.breakeven = false;
-                }
-                refreshRRToggleButtons();
                 if (this.onUpdate) this.onUpdate(drawing);
             });
         }

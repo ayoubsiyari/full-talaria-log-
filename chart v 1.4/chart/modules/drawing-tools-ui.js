@@ -29614,13 +29614,31 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
         if (!risk.riskPercent) risk.riskPercent = 1; // Default 1% risk
 
+        if (risk.numTpTargets == null || risk.numTpTargets === undefined) risk.numTpTargets = 2;
+
+        if (risk.splitEntryPrice === undefined) risk.splitEntryPrice = null;
+
         
 
         // Save initialized values back to drawing
 
-        if (drawing.meta) {
+        if (!drawing.meta) drawing.meta = {};
 
-            drawing.meta.risk = risk;
+        drawing.meta.risk = risk;
+
+        if (!drawing.meta.orderPanelSync) {
+
+            drawing.meta.orderPanelSync = {
+
+                multiTP: false,
+
+                splitEntry: false,
+
+                breakeven: false,
+
+                trailing: false
+
+            };
 
         }
 
@@ -30164,6 +30182,236 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
 
+        const featuresWrap = section.append('div')
+
+            .style('display', 'flex')
+
+            .style('flex-direction', 'column')
+
+            .style('gap', '8px')
+
+            .style('margin-bottom', '10px')
+
+            .style('padding-bottom', '10px')
+
+            .style('border-bottom', '1px solid #363a45');
+
+
+
+        featuresWrap.append('div')
+
+            .text('Order panel features')
+
+            .style('color', '#787b86')
+
+            .style('font-size', '11px')
+
+            .style('font-weight', '600')
+
+            .style('letter-spacing', '0.08em')
+
+            .style('text-transform', 'uppercase');
+
+
+
+        const syncRow = featuresWrap.append('div')
+
+            .style('display', 'flex')
+
+            .style('flex-wrap', 'wrap')
+
+            .style('gap', '6px')
+
+            .style('align-items', 'center');
+
+
+
+        const sync = drawing.meta.orderPanelSync;
+
+        const mkSyncBtn = (key, label) => {
+
+            const b = syncRow.append('button')
+
+                .attr('type', 'button')
+
+                .attr('data-rr-sync', key)
+
+                .text(label)
+
+                .style('padding', '4px 10px')
+
+                .style('font-size', '10px')
+
+                .style('font-weight', '600')
+
+                .style('border-radius', '4px')
+
+                .style('border', '1px solid #334155')
+
+                .style('cursor', 'pointer')
+
+                .style('background', sync[key] ? '#334155' : 'transparent')
+
+                .style('color', '#e2e8f0');
+
+            b.on('click', () => {
+
+                if (!drawing.meta.orderPanelSync) {
+
+                    drawing.meta.orderPanelSync = { multiTP: false, splitEntry: false, breakeven: false, trailing: false };
+
+                }
+
+                const s = drawing.meta.orderPanelSync;
+
+                if (key === 'breakeven') {
+
+                    if (s.breakeven) s.breakeven = false;
+
+                    else { s.breakeven = true; s.trailing = false; }
+
+                } else if (key === 'trailing') {
+
+                    if (s.trailing) s.trailing = false;
+
+                    else { s.trailing = true; s.breakeven = false; }
+
+                } else {
+
+                    s[key] = !s[key];
+
+                }
+
+                syncRow.selectAll('button').each(function() {
+
+                    const k = d3.select(this).attr('data-rr-sync');
+
+                    const on = !!drawing.meta.orderPanelSync[k];
+
+                    d3.select(this)
+
+                        .style('background', on ? '#334155' : 'transparent');
+
+                });
+
+                numTpRow.style('display', drawing.meta.orderPanelSync.multiTP ? 'flex' : 'none');
+
+                splitPxRow.style('display', drawing.meta.orderPanelSync.splitEntry ? 'flex' : 'none');
+
+                refreshRisk(true);
+
+            });
+
+            return b;
+
+        };
+
+
+
+        mkSyncBtn('multiTP', 'Multi TP');
+
+        mkSyncBtn('splitEntry', 'Split entry');
+
+        mkSyncBtn('breakeven', 'BE');
+
+        mkSyncBtn('trailing', 'Trail');
+
+
+
+        const numTpRow = featuresWrap.append('div')
+
+            .style('display', sync.multiTP ? 'flex' : 'none')
+
+            .style('align-items', 'center')
+
+            .style('gap', '8px');
+
+
+
+        numTpRow.append('span').text('# TP levels').style('font-size', '11px').style('color', '#9aa1b7');
+
+        const numTpInput = numTpRow.append('input')
+
+            .attr('type', 'number')
+
+            .attr('min', 2)
+
+            .attr('max', 10)
+
+            .attr('step', 1)
+
+            .attr('class', 'tv-input')
+
+            .style('width', '72px')
+
+            .style('height', '24px')
+
+            .property('value', risk.numTpTargets || 2);
+
+
+
+        numTpInput.on('change', function() {
+
+            let v = parseInt(this.value, 10);
+
+            if (!Number.isFinite(v)) v = 2;
+
+            v = Math.min(10, Math.max(2, v));
+
+            this.value = String(v);
+
+            risk.numTpTargets = v;
+
+            refreshRisk(true);
+
+        });
+
+
+
+        const splitPxRow = featuresWrap.append('div')
+
+            .style('display', sync.splitEntry ? 'flex' : 'none')
+
+            .style('align-items', 'center')
+
+            .style('gap', '8px');
+
+
+
+        splitPxRow.append('span').text('Split entry price').style('font-size', '11px').style('color', '#9aa1b7');
+
+        const splitPxInput = splitPxRow.append('input')
+
+            .attr('type', 'number')
+
+            .attr('class', 'tv-input')
+
+            .attr('step', '0.00001')
+
+            .style('width', '112px')
+
+            .style('height', '24px')
+
+            .property('value', risk.splitEntryPrice != null && Number.isFinite(risk.splitEntryPrice)
+
+                ? risk.splitEntryPrice
+
+                : '');
+
+
+
+        splitPxInput.on('change', function() {
+
+            const v = parseFloat(this.value);
+
+            risk.splitEntryPrice = Number.isFinite(v) ? v : null;
+
+            refreshRisk(true);
+
+        });
+
+
+
         const infoSection = section.append('div')
 
             .attr('class', 'risk-position-info')
@@ -30290,13 +30538,27 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
             
 
-            // Update lot size display
+            const entry = toFiniteNumber(state.entryPrice, drawing.points?.[0]?.y || 0);
 
-            calculateLotSizeFromRisk();
+            const stop = toFiniteNumber(state.stopPrice, drawing.points?.[1]?.y || entry);
 
-            
+            const target = toFiniteNumber(state.targetPrice, drawing.points?.[2]?.y || entry);
 
-            // Calculate actual risk amount in USD
+            const om = (typeof window !== 'undefined' && window.chart && window.chart.orderManager)
+
+                ? window.chart.orderManager
+
+                : null;
+
+            const pip = (om && Number(om.pipSize) > 0) ? om.pipSize : 0.0001;
+
+            const stopPips = Math.abs(entry - stop) / pip;
+
+            const targetPips = Math.abs(target - entry) / pip;
+
+            const stopPercent = entry !== 0 ? (Math.abs(stop - entry) / Math.abs(entry)) * 100 : 0;
+
+            const targetPercent = entry !== 0 ? (Math.abs(target - entry) / Math.abs(entry)) * 100 : 0;
 
             let riskUSD = 0;
 
@@ -30310,35 +30572,87 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
             }
 
+            let qty = toFiniteNumber(state.lotSize, 0.01);
 
+            let rrRatio = 0;
 
-            const entry = toFiniteNumber(state.entryPrice, drawing.points?.[0]?.y || 0);
+            let targetAmount = 0;
 
-            const stop = toFiniteNumber(state.stopPrice, drawing.points?.[1]?.y || entry);
+            if (om && typeof om.computeOrderStyleRiskPreview === 'function') {
 
-            const target = toFiniteNumber(state.targetPrice, drawing.points?.[2]?.y || entry);
+                const syncFlags = drawing.meta.orderPanelSync || {};
 
+                let splitPx = state.splitEntryPrice;
 
+                if (syncFlags.splitEntry && (splitPx == null || !Number.isFinite(splitPx))) {
 
-            const stopPips = Math.abs(entry - stop) / 0.0001;
+                    splitPx = (entry + stop) / 2;
 
-            const targetPips = Math.abs(target - entry) / 0.0001;
+                }
 
-            const stopPercent = entry !== 0 ? (Math.abs(stop - entry) / Math.abs(entry)) * 100 : 0;
+                const preview = om.computeOrderStyleRiskPreview({
 
-            const targetPercent = entry !== 0 ? (Math.abs(target - entry) / Math.abs(entry)) * 100 : 0;
+                    orderSide: drawing.type === 'short-position' ? 'SELL' : 'BUY',
 
-            const rrRatio = stopPips > 0 ? (targetPips / stopPips) : 0;
+                    entryPrice: entry,
 
+                    slPrice: stop,
 
+                    tpPrice: target,
 
-            const qty = toFiniteNumber(state.lotSize, 0.01);
+                    riskMode: state.riskMode,
+
+                    riskAmountUSD: state.riskAmountUSD,
+
+                    riskPercent: state.riskPercent,
+
+                    accountSize: state.accountSize,
+
+                    multiTP: !!syncFlags.multiTP,
+
+                    numTpTargets: state.numTpTargets || 2,
+
+                    splitEntry: !!syncFlags.splitEntry,
+
+                    splitEntryPrice: syncFlags.splitEntry ? splitPx : null
+
+                });
+
+                qty = preview.quantity;
+
+                state.lotSize = qty;
+
+                lotSizeValue.text(`${qty.toFixed(2)} Lots`);
+
+                riskUSD = preview.riskUsd;
+
+                rrRatio = preview.rr;
+
+                targetAmount = Math.round(preview.rewardUsd);
+
+            } else {
+
+                calculateLotSizeFromRisk();
+
+                qty = toFiniteNumber(state.lotSize, 0.01);
+
+                if (state.riskMode === 'risk-usd') {
+
+                    riskUSD = state.riskAmountUSD || 100;
+
+                } else {
+
+                    riskUSD = ((state.accountSize || 10000) * (state.riskPercent || 1)) / 100;
+
+                }
+
+                rrRatio = stopPips > 0 ? (targetPips / stopPips) : 0;
+
+                targetAmount = Math.round(riskUSD * rrRatio);
+
+            }
 
             const stopAmount = Math.round(riskUSD);
-
-            const targetAmount = Math.round(riskUSD * rrRatio);
-
-
 
             riskAmountText.text(`$${this.formatNumericValue(riskUSD, 2)}`);
 
