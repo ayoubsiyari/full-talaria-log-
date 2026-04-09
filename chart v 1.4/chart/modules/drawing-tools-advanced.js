@@ -2260,10 +2260,16 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (!point) return false;
 
         if (index === 0) {
-            const deltaY = point.y - this.points[0].y;
-            this.points = this.points.map(p => ({ ...p, y: p.y + deltaY }));
-            this.afterPointsMoveDelta(0, deltaY);
-            this.ensureRiskSettings();
+            const om = window.chart?.orderManager;
+            if (om && typeof om.riskRewardSyncPrimaryEntryDragFromTool === 'function') {
+                om.riskRewardSyncPrimaryEntryDragFromTool(this, point.y);
+                this._afterRiskRewardOrderManagerSync();
+            } else {
+                const deltaY = point.y - this.points[0].y;
+                this.points = this.points.map(p => ({ ...p, y: p.y + deltaY }));
+                this.afterPointsMoveDelta(0, deltaY);
+                this.ensureRiskSettings();
+            }
             return true;
         }
 
