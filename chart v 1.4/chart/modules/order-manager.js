@@ -24696,12 +24696,14 @@ class OrderManager {
     _computeSplitGroupCombinedAvgTP(splitGroupId, mode) {
         const legs = this._getSplitGroupLegsForMultiTP(splitGroupId);
         if (legs.length === 0) return null;
-        let totalPriced = 0;
-        for (const leg of legs) {
-            totalPriced += (leg.tpTargets || []).filter(t => t.price > 0 && !t.hit).length;
-        }
-        const minAgg = mode === 'preview' ? 1 : 2;
-        if (totalPriced < minAgg) return null;
+        // Ladders are copied to every split leg (_syncTpTargetsAcrossSplitGroup). Counting priced rows
+        // across all legs double-counts the same rung and wrongly shows "Avg TP" for total lots when only
+        // one TP level exists (chart lines are drawn on primary leg only — splitIndex 1).
+        const donor = legs.find((m) => Number(m.splitIndex) === 1 && m.tpTargets?.length)
+            || legs.find((m) => m.tpTargets?.length);
+        const donorPriced = (donor?.tpTargets || []).filter((t) => t.price > 0 && !t.hit);
+        const minDonorRungs = mode === 'preview' ? 1 : 2;
+        if (donorPriced.length < minDonorRungs) return null;
 
         let blendSum = 0, qSum = 0;
         for (const leg of legs) {
