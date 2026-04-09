@@ -25246,7 +25246,10 @@ class OrderManager {
                 if (!isPending && ml.pnlText?.node()) {
                     pbw = ml.pnlText.node().getBBox().width + pad * 2;
                 }
-                const pendingGhostPad = isPending ? 62 : 0;
+                const hasMtp = od.tpTargets && od.tpTargets.length > 0;
+                const hasStp = !hasMtp && od.takeProfit && od.takeProfit > 0;
+                const showPendGhostRow = isPending && this._shouldShowPendingEntryTpGhost(od, hasMtp, hasStp);
+                const pendingGhostPad = showPendGhostRow ? 62 : 0;
                 const rowW = lbw + (pbw > 0 ? gap + pbw : 0) + closeBtnGap + closeBtnR * 2 + pendingGhostPad;
                 memberWidths.push({ ml, lbw, pbw, rowW, isPending, od });
                 if (rowW > maxRowW) maxRowW = rowW;
@@ -25432,10 +25435,11 @@ class OrderManager {
 
                     // TP+ is now on the TP target lines themselves (not on entry)
                 } else {
-                    // Pending split legs: updateOrderLines skips these rows — mirror pending badge rules here.
+                    // Pending split legs: updateOrderLines skips these rows — same TP ghost rules as standalone pending.
                     const hasSL = od.stopLoss && od.stopLoss > 0;
                     const hasMultiTP = od.tpTargets && od.tpTargets.length > 0;
                     const hasSingleTP = !hasMultiTP && od.takeProfit && od.takeProfit > 0;
+                    const showPendTpGhost = this._shouldShowPendingEntryTpGhost(od, hasMultiTP, hasSingleTP);
 
                     if (ml.slBadge) {
                         if (hasSL) ml.slBadge.style('display', 'none');
@@ -25449,7 +25453,7 @@ class OrderManager {
                     }
                     if (ml.tpBadgesContainer) ml.tpBadgesContainer.style('display', 'none');
                     if (ml.tpBadge) {
-                        if (hasMultiTP || !hasSingleTP) {
+                        if (showPendTpGhost) {
                             ml.tpBadge.style('display', null)
                                 .attr('transform', `translate(${memberCx}, ${oy - bH / 2})`);
                             ml.tpBadge.select('rect').attr('width', bW);
@@ -28152,6 +28156,55 @@ class OrderManager {
         return out;
     }
 
+    /** True if any open split leg shares this splitGroupId (basket has at least one fill). */
+    _splitGroupHasOpenLeg(splitGroupId) {
+        if (splitGroupId == null || splitGroupId === undefined) return false;
+        const gid = splitGroupId;
+        const all = [...(this.openPositions || []), ...(this.orderService?.openPositions || [])];
+        return all.some((p) => p && p.splitGroupId === gid && p.isSplitEntry);
+    }
+
+    /** Shared TP exists on any open or pending leg in this split basket (targets drawn on chart). */
+    _splitBasketHasTpOnChart(splitGroupId) {
+        if (splitGroupId == null || splitGroupId === undefined) return false;
+        const gid = splitGroupId;
+        const hasTpOnOrder = (o) => {
+            if (!o) return false;
+            const tp = Number(o.takeProfit) || 0;
+            if (tp > 0) return true;
+            const tt = o.tpTargets;
+            if (Array.isArray(tt) && tt.length > 0) {
+                return tt.some((t) => t && !t.hit && (Number(t.price) > 0));
+            }
+            return false;
+        };
+        const opens = [...(this.openPositions || []), ...(this.orderService?.openPositions || [])];
+        const pends = [...(this.pendingOrders || []), ...(this.orderService?.pendingOrders || [])];
+        if (opens.some((p) => p && p.splitGroupId === gid && p.isSplitEntry && hasTpOnOrder(p))) return true;
+        if (pends.some((p) => p && p.splitGroupId === gid && p.isSplitEntry && hasTpOnOrder(p))) return true;
+        return false;
+    }
+
+    /**
+     * Dashed TP ghost on pending entry: not on extra split legs once the basket is live (open leg owns TP UI);
+     * pre-fill, only primary leg (splitIndex 1) and only while basket has no TP anywhere.
+     */
+    _shouldShowPendingEntryTpGhost(po, hasMultiTP, hasSingleTP) {
+        if (!po) return false;
+        if (!po.isSplitEntry || !po.splitGroupId) {
+            if (hasMultiTP) return true;
+            if (hasSingleTP) return false;
+            return true;
+        }
+        const gid = po.splitGroupId;
+        if (this._splitGroupHasOpenLeg(gid)) return false;
+        if (Number(po.splitIndex) > 1) return false;
+        if (this._splitBasketHasTpOnChart(gid)) return false;
+        if (hasMultiTP) return true;
+        if (hasSingleTP) return false;
+        return true;
+    }
+
     /**
      * After a split leg closes, promoting remaining siblings (strip splitGroupId, redraw SL) must run **after**
      * all `closePositionAtPrice` calls in the same tick — otherwise mid-batch redraw can leave the next leg
@@ -30032,18 +30085,15 @@ class OrderManager {
 
                     // SL badge: show for both open and pending when SL is not set
                     let slBadgeW = (!hasSL && slBadge) ? bW + bGap2 : 0;
-                    // TP badge: show for both open and pending when single TP is not set
-                    let singleTPBadgeW = (!hasMultiTP && !hasSingleTP && tpBadge) ? bW + bGap2 : 0;
-                    // Pending + multi-TP ladder: reserve space and show entry TP ghost (same affordance as single-leg pending).
-                    let pendingMultiTpGhostW = (hasMultiTP && isPending && tpBadge) ? (bW + bGap2) : 0;
+                    const showPendTpGhost = isPending && this._shouldShowPendingEntryTpGhost(orderData, hasMultiTP, hasSingleTP);
+                    let singleTPBadgeW = (!isPending && !hasMultiTP && !hasSingleTP && tpBadge) ? bW + bGap2 : 0;
+                    let pendingTpGhostW = (showPendTpGhost && tpBadge) ? (bW + bGap2) : 0;
                     // Entry+ badge hidden on pending — multi-entry is activated via order panel
                     const showEntryPlus = false;
                     let entryPlusBadgeW = showEntryPlus ? plusBW + bGap2 : 0;
-                    let tpSlotW = pendingMultiTpGhostW;
-                    if (!tpSlotW) {
-                        if (hasMultiTP && !isPending) tpSlotW = multiTPBadgesW;
-                        else if (!hasMultiTP) tpSlotW = singleTPBadgeW;
-                    }
+                    let tpSlotW = pendingTpGhostW;
+                    if (!tpSlotW && !isPending && hasMultiTP) tpSlotW = multiTPBadgesW;
+                    if (!tpSlotW && !isPending && !hasMultiTP) tpSlotW = singleTPBadgeW;
                     let totalBadgesW = slBadgeW + tpSlotW + entryPlusBadgeW;
 
                     const rightEdge = ch.w - yAxisWidth - 10;
@@ -30076,7 +30126,20 @@ class OrderManager {
                     }
 
                     // --- TP badges (both open and pending) ---
-                    if (hasMultiTP && !isPending) {
+                    if (isPending) {
+                        if (olEntry.tpBadgesContainer) olEntry.tpBadgesContainer.style('display', 'none');
+                        if (tpBadge) {
+                            if (showPendTpGhost) {
+                                tpBadge.style('display', null)
+                                    .attr('transform', `translate(${cx}, ${y - bH / 2})`);
+                                tpBadge.select('rect').attr('width', bW);
+                                tpBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
+                                cx += bW + bGap2;
+                            } else {
+                                tpBadge.style('display', 'none');
+                            }
+                        }
+                    } else if (hasMultiTP) {
                         if (tpBadge) tpBadge.style('display', 'none');
                         if (olEntry.tpBadgesContainer) {
                             if (allTPsSet) {
@@ -30090,15 +30153,6 @@ class OrderManager {
                                     .attr('transform', `translate(${cx}, ${y - bH / 2})`);
                                 cx += renderedW + bGap2;
                             }
-                        }
-                    } else if (hasMultiTP && isPending) {
-                        if (olEntry.tpBadgesContainer) olEntry.tpBadgesContainer.style('display', 'none');
-                        if (tpBadge) {
-                            tpBadge.style('display', null)
-                                .attr('transform', `translate(${cx}, ${y - bH / 2})`);
-                            tpBadge.select('rect').attr('width', bW);
-                            tpBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
-                            cx += bW + bGap2;
                         }
                     } else {
                         if (olEntry.tpBadgesContainer) olEntry.tpBadgesContainer.style('display', 'none');
