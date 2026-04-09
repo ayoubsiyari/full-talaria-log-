@@ -23525,12 +23525,14 @@ class OrderManager {
             .style('cursor', 'grab')
             .style('display', 'none');
         g.append('rect')
+            .attr('class', 'order-overlay-sublayer')
             .attr('height', bH).attr('rx', bR)
             .attr('fill', this._plusBadgeFill(color, 0.12))
             .attr('stroke', color).attr('stroke-width', 1)
             .attr('stroke-dasharray', '3 2')
             .style('pointer-events', 'all');
         g.append('text')
+            .attr('class', 'order-overlay-sublayer')
             .attr('fill', color)
             .attr('font-size', '9px').attr('font-weight', '700')
             .attr('dy', '0.35em').attr('text-anchor', 'middle')
@@ -23671,8 +23673,6 @@ class OrderManager {
             if (source.isSplitEntry && source.splitGroupId) {
                 this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
             }
-            this.removePendingOrderLine(source.id);
-            this.drawPendingOrderLine(source);
             this.drawPendingOrderTargets(source);
             if (source.tpTargets.length >= 1) {
                 this.drawMultiTPAvgLine(source, 'pending');
@@ -23744,24 +23744,11 @@ class OrderManager {
             if (source.isSplitEntry && source.splitGroupId) {
                 this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
             }
-            // Rebuild entry row so SL/TP badges and layout match new tpTargets (same as pending target drag end).
-            this.removePendingOrderLine(source.id);
-            this.drawPendingOrderLine(source);
             this.drawPendingOrderTargets(source);
             if (source.tpTargets && source.tpTargets.length >= 1) {
                 this.drawMultiTPAvgLine(source, 'pending');
             }
             this.positionPendingOrderTargets();
-        } else {
-            this.removeSLTPLines(source.id);
-            this.removeMultiTPAvgLine(source.id);
-            if (source.isSplitEntry && source.splitGroupId) {
-                this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
-            }
-            this.drawSLTPLines(source);
-            if (source.tpTargets && source.tpTargets.length >= 1) {
-                this.drawMultiTPAvgLine(source);
-            }
         }
         this.updateOrderLines();
         this.showNotification(`TP target @ ${this.formatPrice(removedPrice)} removed`, 'info');
@@ -25712,12 +25699,14 @@ class OrderManager {
             .style('cursor', 'ns-resize')
             .style('display', 'none');
         slBadgeGroup.append('rect')
+            .attr('class', 'order-overlay-sublayer')
             .attr('height', badgeH).attr('rx', badgeR)
             .attr('fill', 'rgba(242,54,69,0.12)')
             .attr('stroke', '#f23645').attr('stroke-width', 1)
             .attr('stroke-dasharray', '3 2')
             .style('pointer-events', 'all');
         slBadgeGroup.append('text')
+            .attr('class', 'order-overlay-sublayer')
             .attr('fill', '#f23645')
             .attr('font-size', badgeFontSize).attr('font-weight', '700')
             .attr('dy', '0.35em').attr('text-anchor', 'middle')
@@ -25740,12 +25729,14 @@ class OrderManager {
             .style('cursor', 'ns-resize')
             .style('display', 'none');
         tpBadgeGroup.append('rect')
+            .attr('class', 'order-overlay-sublayer')
             .attr('height', badgeH).attr('rx', badgeR)
             .attr('fill', 'rgba(8,153,129,0.12)')
             .attr('stroke', '#089981').attr('stroke-width', 1)
             .attr('stroke-dasharray', '3 2')
             .style('pointer-events', 'all');
         tpBadgeGroup.append('text')
+            .attr('class', 'order-overlay-sublayer')
             .attr('fill', '#089981')
             .attr('font-size', badgeFontSize).attr('font-weight', '700')
             .attr('dy', '0.35em').attr('text-anchor', 'middle')
@@ -26020,6 +26011,7 @@ class OrderManager {
                     : '#f59e0b';
 
                 const labelRect = labelGroup.append('rect')
+                    .attr('class', 'order-overlay-sublayer')
                     .attr('rx', 3)
                     .attr('fill', bgColor)
                     .attr('stroke', bgColor)
@@ -26035,6 +26027,7 @@ class OrderManager {
                 }
 
                 const text = labelGroup.append('text')
+                    .attr('class', 'order-overlay-sublayer')
                     .attr('fill', '#ffffff')
                     .attr('font-size', '11px')
                     .attr('font-weight', '600')
@@ -26064,6 +26057,7 @@ class OrderManager {
                 const hasPnl = target.pnlStr && (target.type === 'TP' || target.type === 'SL');
                 if (hasPnl) {
                     const pnlText = labelGroup.append('text')
+                        .attr('class', 'order-overlay-sublayer')
                         .attr('fill', pnlAccent)
                         .attr('font-size', '11px')
                         .attr('font-weight', '600')
@@ -26074,6 +26068,7 @@ class OrderManager {
                     pnlBoxW = pnlBbox.width + 16;
                     const pnlBoxX = labelWidth + 2;
                     labelGroup.insert('rect', 'text:last-of-type')
+                        .attr('class', 'order-overlay-sublayer')
                         .attr('rx', 3)
                         .attr('fill', pnlBgFill)
                         .attr('stroke', pnlAccent)
@@ -26125,9 +26120,9 @@ class OrderManager {
                             .attr('class', `pending-tp-pct-control pending-tp-pct-dec pending-tp-${poId}`)
                             .attr('pointer-events', 'all')
                             .style('cursor', 'pointer');
-                        decG.append('rect').attr('width', arrowSize).attr('height', arrowSize).attr('rx', 4)
+                        decG.append('rect').attr('class', 'order-overlay-sublayer').attr('width', arrowSize).attr('height', arrowSize).attr('rx', 4)
                             .attr('fill', 'rgba(239, 68, 68, 0.2)').attr('stroke', '#ef4444').attr('stroke-width', 1);
-                        decG.append('text').attr('x', arrowSize / 2).attr('y', arrowSize / 2).attr('dy', '0.35em')
+                        decG.append('text').attr('class', 'order-overlay-sublayer').attr('x', arrowSize / 2).attr('y', arrowSize / 2).attr('dy', '0.35em')
                             .attr('text-anchor', 'middle').attr('fill', '#ef4444').attr('font-size', '14px').attr('font-weight', '700').text('−');
                         decG.on('mousedown', (e) => e.stopPropagation())
                             .on('click', (e) => {
@@ -26139,9 +26134,9 @@ class OrderManager {
                             .attr('class', `pending-tp-pct-control pending-tp-pct-inc pending-tp-${poId}`)
                             .attr('pointer-events', 'all')
                             .style('cursor', 'pointer');
-                        incG.append('rect').attr('width', arrowSize).attr('height', arrowSize).attr('rx', 4)
+                        incG.append('rect').attr('class', 'order-overlay-sublayer').attr('width', arrowSize).attr('height', arrowSize).attr('rx', 4)
                             .attr('fill', 'rgba(8, 153, 129, 0.2)').attr('stroke', '#089981').attr('stroke-width', 1);
-                        incG.append('text').attr('x', arrowSize / 2).attr('y', arrowSize / 2).attr('dy', '0.35em')
+                        incG.append('text').attr('class', 'order-overlay-sublayer').attr('x', arrowSize / 2).attr('y', arrowSize / 2).attr('dy', '0.35em')
                             .attr('text-anchor', 'middle').attr('fill', '#089981').attr('font-size', '14px').attr('font-weight', '700').text('+');
                         incG.on('mousedown', (e) => e.stopPropagation())
                             .on('click', (e) => {
@@ -26170,9 +26165,9 @@ class OrderManager {
                             .attr('class', `pending-tp-delete pending-tp-${entry.pendingOrder.id}`)
                             .attr('pointer-events', 'all')
                             .style('cursor', 'pointer');
-                        dbg.append('circle').attr('r', closeBtnR)
+                        dbg.append('circle').attr('class', 'order-overlay-sublayer').attr('r', closeBtnR)
                             .attr('fill', '#0f172a').attr('stroke', '#e2e8f0').attr('stroke-width', 1.2);
-                        dbg.append('text').attr('fill', '#e2e8f0').attr('font-size', '14px')
+                        dbg.append('text').attr('class', 'order-overlay-sublayer').attr('fill', '#e2e8f0').attr('font-size', '14px')
                             .attr('font-weight', '700').attr('text-anchor', 'middle').attr('dy', '0.35em')
                             .style('pointer-events', 'none').text('×');
                         dbg.on('click', (event) => {
@@ -26207,9 +26202,9 @@ class OrderManager {
                             .attr('class', `pending-tp-split pending-tp-${entry.pendingOrder.id}`)
                             .attr('pointer-events', 'all')
                             .style('cursor', 'pointer');
-                        sbg.append('circle').attr('r', splitBtnR)
+                        sbg.append('circle').attr('class', 'order-overlay-sublayer').attr('r', splitBtnR)
                             .attr('fill', '#0f172a').attr('stroke', '#089981').attr('stroke-width', 1.2);
-                        sbg.append('text').attr('fill', '#089981').attr('font-size', '14px')
+                        sbg.append('text').attr('class', 'order-overlay-sublayer').attr('fill', '#089981').attr('font-size', '14px')
                             .attr('font-weight', '700').attr('text-anchor', 'middle').attr('dy', '0.35em')
                             .style('pointer-events', 'none').text('+');
                         sbg.on('click', (event) => {
@@ -32737,6 +32732,7 @@ class OrderManager {
             .attr('pointer-events', 'all')
             .style('cursor', 'pointer');
         const bg = btn.append('circle')
+            .attr('class', 'order-overlay-sublayer')
             .attr('r', 9)
             .attr('fill', 'transparent')
             .attr('stroke', '#787b86')
@@ -32744,6 +32740,7 @@ class OrderManager {
             .style('pointer-events', 'all')
             .style('cursor', 'pointer');
         const txt = btn.append('text')
+            .attr('class', 'order-overlay-sublayer')
             .attr('fill', '#787b86')
             .attr('font-size', '12px')
             .attr('font-weight', '700')
