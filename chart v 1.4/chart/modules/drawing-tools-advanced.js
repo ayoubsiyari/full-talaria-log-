@@ -1877,7 +1877,9 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         const dashExtra = '6 4';
         const extraDragHitW = 24;
-        const appendExtraDragHit = (yy, role) => {
+        /** Extra entry lines sit near the main entry and center UI — use a wider grab strip. */
+        const extraDragHitEntryW = 46;
+        const appendExtraDragHit = (yy, role, hitW = extraDragHitW) => {
             this.group.append('line')
                 .attr('class', 'custom-handle rr-extra-drag-hit')
                 .attr('data-handle-role', role)
@@ -1886,7 +1888,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('x2', zoneX2)
                 .attr('y2', yy)
                 .attr('stroke', 'transparent')
-                .attr('stroke-width', extraDragHitW)
+                .attr('stroke-width', hitW)
                 .style('pointer-events', this.selected ? 'stroke' : 'none')
                 .style('cursor', 'ns-resize');
         };
@@ -1933,7 +1935,6 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('stroke-width', 1)
                 .attr('stroke-dasharray', dashExtra)
                 .style('pointer-events', 'none');
-            appendExtraDragHit(yy, `rr-extra-entry-${idx}`);
         });
 
         // Recalculate lot size from risk before rendering labels
@@ -1989,7 +1990,9 @@ class BaseRiskRewardTool extends BaseDrawing {
             const wideSnapThreshold = 260;
 
             const createEdgeLabel = ({ className, text, lineY, fill, side }) => {
-                const labelGroup = this.group.append('g').attr('class', className);
+                const labelGroup = this.group.append('g')
+                    .attr('class', className)
+                    .style('pointer-events', 'none');
 
                 const textNode = labelGroup.append('text')
                     .attr('x', 0)
@@ -2055,7 +2058,9 @@ class BaseRiskRewardTool extends BaseDrawing {
             const pnl = 0; // Will be calculated when order is active
             const centerInfoLine1 = `Open P&L: ${pnl.toFixed(0)}, Qty: ${quantity.toFixed(2)}`;
             const centerInfoLine2 = `Risk/Reward Ratio: ${rrRatio}`;
-            const centerInfo = this.group.append('g').attr('class', 'center-info');
+            const centerInfo = this.group.append('g')
+                .attr('class', 'center-info')
+                .style('pointer-events', 'none');
 
             // Calculate center X position of the zone
             const zoneCenterX = zoneX1 + (zoneWidth / 2);
@@ -2116,8 +2121,10 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('y', centerTextY + centerLineHeight);
 
             const plusR = 9;
-            const plusX = zoneX2 - 12;
-            const mkPlus = (lineY, fill, handler) => {
+            const plusInsetDefault = 12;
+            const plusInsetEntry = 28;
+            const mkPlus = (lineY, fill, handler, inset = plusInsetDefault) => {
+                const plusX = zoneX2 - inset;
                 const g = this.group.append('g').attr('class', 'rr-plus-btn');
                 g.append('circle')
                     .attr('cx', plusX)
@@ -2142,9 +2149,15 @@ class BaseRiskRewardTool extends BaseDrawing {
                     handler();
                 });
             };
-            mkPlus(targetY, '#16a34a', () => this.addExtraTarget());
-            mkPlus(entryY, '#2962FF', () => this.addExtraEntry());
-            mkPlus(stopY, '#ef4444', () => this.addExtraStop());
+            mkPlus(targetY, '#16a34a', () => this.addExtraTarget(), plusInsetDefault);
+            mkPlus(entryY, '#2962FF', () => this.addExtraEntry(), plusInsetEntry);
+            mkPlus(stopY, '#ef4444', () => this.addExtraStop(), plusInsetDefault);
+
+            (this.meta.extraEntries || []).forEach((row, idx) => {
+                if (!row || !Number.isFinite(row.y)) return;
+                const yy = scales.yScale(row.y);
+                appendExtraDragHit(yy, `rr-extra-entry-${idx}`, extraDragHitEntryW);
+            });
 
             (this.meta.extraTargets || []).forEach((row, i) => {
                 if (!row || !Number.isFinite(row.y)) return;
@@ -2359,6 +2372,7 @@ class BaseRiskRewardTool extends BaseDrawing {
     createHandles(group, scales) {
         const handleRadius = 3;
         const hitRadius = 12;
+        const entryHitRadius = 22;
         const handleStroke = '#2962FF';
         const handleStrokeWidth = 2;
         
@@ -2388,11 +2402,13 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('class', 'resize-handle-group')
                 .attr('data-point-index', index);
 
+            const hitR = index === 0 ? entryHitRadius : hitRadius;
+
             handleGroup.append('circle')
                 .attr('class', 'resize-handle-hit')
                 .attr('cx', entryX)
                 .attr('cy', y)
-                .attr('r', hitRadius)
+                .attr('r', hitR)
                 .attr('fill', 'transparent')
                 .attr('stroke', 'none')
                 .style('cursor', 'ns-resize')
