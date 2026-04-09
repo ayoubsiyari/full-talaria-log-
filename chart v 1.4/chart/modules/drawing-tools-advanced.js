@@ -2210,18 +2210,22 @@ class BaseRiskRewardTool extends BaseDrawing {
         // Full-width entry drag strip MUST come after createHandles — it clears all .resize-handle-hit
         // before recreating the left dot hits. Otherwise this line is removed every render and entry
         // cannot be dragged from the center (unlike TP, whose handle is recreated by createHandles).
+        // Use a transparent rect (not a line with stroke:transparent): many browsers do not hit-test
+        // invisible strokes, so entry drag appeared completely dead.
         if (this.selected) {
             const entryDragX2 = zoneX2 - 28;
-            this.group.append('line')
+            const hitH = 28;
+            const hitW = Math.max(1, entryDragX2 - zoneX1);
+            this.group.append('rect')
                 .attr('class', 'resize-handle-hit rr-entry-line-drag-hit')
                 .attr('data-point-index', 0)
-                .attr('x1', zoneX1)
-                .attr('y1', entryY)
-                .attr('x2', entryDragX2)
-                .attr('y2', entryY)
-                .attr('stroke', 'transparent')
-                .attr('stroke-width', 24)
-                .style('pointer-events', 'stroke')
+                .attr('x', zoneX1)
+                .attr('y', entryY - hitH / 2)
+                .attr('width', hitW)
+                .attr('height', hitH)
+                .attr('fill', '#000000')
+                .attr('fill-opacity', 0)
+                .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
         }
 
