@@ -17417,6 +17417,245 @@ class OrderManager {
         this.updatePreviewLines();
         this.calculateAdvancedRiskReward();
     }
+
+    /**
+     * Push long/short position tool geometry into the same inputs + tpTargets / multiEntryLevels
+     * structures used by the order panel (for shared + / drag math).
+     */
+    pushRiskRewardToolToManager(drawing) {
+        if (!drawing || !drawing.points || drawing.points.length < 3) return;
+        const isLong = drawing.meta?.orientation === 'long' || drawing.type === 'long-position';
+        this.orderSide = isLong ? 'BUY' : 'SELL';
+        const entry = drawing.points[0].y;
+        const sl = drawing.points[1].y;
+        const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision() : 5;
+        const ep = document.getElementById('orderEntryPrice');
+        if (ep) ep.value = entry.toFixed(prec);
+        const slp = document.getElementById('slPrice');
+        if (slp) slp.value = sl.toFixed(prec);
+        const allT = typeof drawing._allTargetPrices === 'function' ? drawing._allTargetPrices() : [drawing.points[2].y];
+        const far = isLong ? Math.max(...allT) : Math.min(...allT);
+        const tpp = document.getElementById('tpPrice');
+        if (tpp) tpp.value = far.toFixed(prec);
+        const riskUsd = drawing.meta?.risk?.riskAmountUSD ?? drawing.meta?.risk?.riskAmount;
+        const ra = document.getElementById('riskAmountUSD');
+        if (ra && Number.isFinite(riskUsd)) ra.value = String(Math.round(riskUsd));
+
+        const uniqTp = [...new Set((allT || []).filter(Number.isFinite))];
+        if (uniqTp.length <= 1) {
+            this.tpTargets = [];
+            const mt = document.getElementById('multipleTPToggle');
+            if (mt) mt.checked = false;
+            const mset = document.getElementById('multipleTPSettings');
+            if (mset) mset.classList.add('is-hidden');
+            const multiTPBtn = document.getElementById('multiTPBtn');
+            if (multiTPBtn) {
+                multiTPBtn.textContent = 'Multi';
+                multiTPBtn.classList.remove('active');
+            }
+            const tpSingleView = document.querySelector('.order-tp-single');
+            if (tpSingleView) tpSingleView.classList.remove('is-hidden');
+        } else {
+            const mt = document.getElementById('multipleTPToggle');
+            const mset = document.getElementById('multipleTPSettings');
+            if (mt) mt.checked = true;
+            if (mset) mset.classList.remove('is-hidden');
+            const multiTPBtn = document.getElementById('multiTPBtn');
+            if (multiTPBtn) {
+                multiTPBtn.textContent = 'Single';
+                multiTPBtn.classList.add('active');
+            }
+            const tpSingleView = document.querySelector('.order-tp-single');
+            if (tpSingleView) tpSingleView.classList.add('is-hidden');
+            const sorted = [...uniqTp].sort((a, b) => (isLong ? a - b : b - a));
+            const n = sorted.length;
+            const share = parseFloat((100 / n).toFixed(1));
+            this.tpTargets = sorted.map((price, i) => ({
+                id: Date.now() + i,
+                price: parseFloat(price.toFixed(prec)),
+                percentage: i === n - 1 ? parseFloat((100 - share * (n - 1)).toFixed(1)) : share
+            }));
+            const numTPInput = document.getElementById('numTPTargets');
+            if (numTPInput) numTPInput.value = String(n);
+        }
+
+        const allE = typeof drawing._allEntryPrices === 'function' ? drawing._allEntryPrices() : [entry];
+        const uniqE = [...new Set((allE || []).filter(Number.isFinite))].sort((a, b) => (isLong ? a - b : b - a));
+        if (uniqE.length <= 1) {
+            this.isMultiEntryMode = false;
+            this.multiEntryLevels = [];
+        } else {
+            this.isMultiEntryMode = true;
+            const nE = uniqE.length;
+            const amtEach = Number.isFinite(riskUsd) && riskUsd > 0 ? Math.max(1, Math.round(riskUsd / nE)) : 40;
+            if (!Number.isFinite(this.multiEntryIdCounter)) this.multiEntryIdCounter = 1;
+            this.multiEntryLevels = uniqE.map((price) => ({
+                id: this.multiEntryIdCounter++,
+                price: parseFloat(price.toFixed(prec)),
+                amount: amtEach
+            }));
+        }
+    }
+
+    /**
+     * Apply risk/reward tool state from order manager (same as panel lists / inputs).
+     */
+    pullRiskRewardToolFromManager(drawing) {
+        if (!drawing || !drawing.points || drawing.points.length < 3) return;
+        const isLong = drawing.meta?.orientation === 'long' || drawing.type === 'long-position';
+        const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision() : 5;
+        const slPx = parseFloat(document.getElementById('slPrice')?.value || '');
+        if (Number.isFinite(slPx)) drawing.points[1] = { ...drawing.points[1], y: slPx };
+
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 1) {
+            const lv = [...this.multiEntryLevels].filter((l) => l.price > 0)
+                .sort((a, b) => (isLong ? a.price - b.price : b.price - a.price));
+            if (lv.length) {
+                drawing.points[0] = { ...drawing.points[0], y: lv[0].price };
+                if (!drawing.meta.extraEntries) drawing.meta.extraEntries = [];
+                drawing.meta.extraEntries = lv.slice(1).map((l) => ({ id: l.id, y: l.price }));
+            }
+        } else {
+            const e = parseFloat(document.getElementById('orderEntryPrice')?.value || '');
+            if (Number.isFinite(e)) drawing.points[0] = { ...drawing.points[0], y: e };
+            drawing.meta.extraEntries = [];
+        }
+
+        const mtOn = document.getElementById('multipleTPToggle')?.checked;
+        if (mtOn && this.tpTargets && this.tpTargets.length > 1) {
+            const sorted = [...this.tpTargets].sort((a, b) => (isLong ? a.price - b.price : b.price - a.price));
+            const last = sorted[sorted.length - 1];
+            drawing.points[2] = { ...drawing.points[2], y: last.price };
+            if (!drawing.meta.extraTargets) drawing.meta.extraTargets = [];
+            drawing.meta.extraTargets = sorted.slice(0, -1).map((t) => ({ id: t.id, y: t.price }));
+        } else {
+            const tpPx = parseFloat(document.getElementById('tpPrice')?.value || '');
+            if (Number.isFinite(tpPx)) drawing.points[2] = { ...drawing.points[2], y: tpPx };
+            drawing.meta.extraTargets = [];
+        }
+
+        if (typeof drawing.ensureRiskSettings === 'function') drawing.ensureRiskSettings();
+        drawing.meta.updatedAt = Date.now();
+    }
+
+    /**
+     * Risk/reward +: same as preview TP line + ( _splitPreviewTPFromLine → addTPFromSplit ).
+     */
+    riskRewardAddTPFromTool(drawing) {
+        this.pushRiskRewardToolToManager(drawing);
+        const linePrice = drawing.points[2].y;
+        this._splitPreviewTPFromLine(linePrice);
+        this.pullRiskRewardToolFromManager(drawing);
+    }
+
+    /**
+     * Risk/reward +: same path as multi-entry "Add" (addMultiEntryLevel).
+     */
+    riskRewardAddEntryFromTool(drawing) {
+        this.pushRiskRewardToolToManager(drawing);
+        const allE = typeof drawing._allEntryPrices === 'function' ? drawing._allEntryPrices() : [drawing.points[0].y];
+        if (!this.isMultiEntryMode || !this.multiEntryLevels?.length || allE.length <= 1) {
+            const currentPrice = drawing.points[0].y;
+            if (!Number.isFinite(this.multiEntryIdCounter)) this.multiEntryIdCounter = 1;
+            const psMode = this.positionSizeMode || 'risk-usd';
+            let amt1; let amt2;
+            if (psMode === 'risk-percent') {
+                amt1 = 50;
+                amt2 = 50;
+            } else if (psMode === 'lot-size') {
+                const tl = parseFloat(document.getElementById('lotSizeAmount')?.value || 1);
+                amt1 = parseFloat((tl / 2).toFixed(2));
+                amt2 = parseFloat((tl / 2).toFixed(2));
+            } else {
+                const riskAmount = parseFloat(document.getElementById('riskAmountUSD')?.value || 100);
+                amt1 = riskAmount > 0 ? Math.round(riskAmount / 2) : 40;
+                amt2 = riskAmount > 0 ? Math.round(riskAmount / 2) : 40;
+            }
+            this.multiEntryLevels = [
+                { id: this.multiEntryIdCounter++, price: currentPrice, amount: amt1 }
+            ];
+            const offsetDir = (this.orderSide === 'SELL') ? 1 : -1;
+            const rawSecond = currentPrice > 0 ? currentPrice * (1 + offsetDir * 0.001) : 0;
+            const secondPrice = currentPrice > 0
+                ? this._clampMultiEntryPriceForStop(rawSecond, [currentPrice])
+                : 0;
+            this.multiEntryLevels.push({
+                id: this.multiEntryIdCounter++,
+                price: secondPrice,
+                amount: amt2
+            });
+            this.isMultiEntryMode = true;
+            this._rebalanceLevelAmountsToTarget();
+            this.renderMultiEntryRows();
+            this.syncMultiEntryToSplitEntries();
+        } else {
+            this.addMultiEntryLevel();
+        }
+        this.pullRiskRewardToolFromManager(drawing);
+    }
+
+    /**
+     * Keep tpTargets[i] in sync when dragging an extra TP handle on the risk/reward tool (preview uses same rule).
+     */
+    riskRewardSyncTpDragFromTool(drawing, sortedTargetIndex, newY) {
+        this.pushRiskRewardToolToManager(drawing);
+        if (!document.getElementById('multipleTPToggle')?.checked || !this.tpTargets?.length) {
+            const tpp = document.getElementById('tpPrice');
+            if (tpp) tpp.value = this.formatPrice(newY);
+            this.pullRiskRewardToolFromManager(drawing);
+            return;
+        }
+        const prec = this.getPricePrecision();
+        const p = parseFloat(parseFloat(newY).toFixed(prec));
+        const isLong = drawing.meta?.orientation === 'long' || drawing.type === 'long-position';
+        const sorted = [...this.tpTargets].sort((a, b) => (isLong ? a.price - b.price : b.price - a.price));
+        if (sortedTargetIndex >= 0 && sortedTargetIndex < sorted.length) {
+            sorted[sortedTargetIndex].price = p;
+        }
+        this.tpTargets = sorted;
+        if (isLong) this.tpTargets.sort((a, b) => a.price - b.price);
+        else this.tpTargets.sort((a, b) => b.price - a.price);
+        this.renderTPTargets();
+        this.updatePreviewLines();
+        this.calculateAdvancedRiskReward();
+        this.pullRiskRewardToolFromManager(drawing);
+    }
+
+    /**
+     * Primary TP handle (farthest line) — last index in sorted tpTargets.
+     */
+    riskRewardSyncPrimaryTpDragFromTool(drawing, newY) {
+        this.pushRiskRewardToolToManager(drawing);
+        if (!document.getElementById('multipleTPToggle')?.checked || !this.tpTargets?.length) {
+            const tpp = document.getElementById('tpPrice');
+            if (tpp) tpp.value = this.formatPrice(newY);
+            this.pullRiskRewardToolFromManager(drawing);
+            return;
+        }
+        const isLong = drawing.meta?.orientation === 'long' || drawing.type === 'long-position';
+        const sorted = [...this.tpTargets].sort((a, b) => (isLong ? a.price - b.price : b.price - a.price));
+        const lastIdx = sorted.length - 1;
+        this.riskRewardSyncTpDragFromTool(drawing, lastIdx, newY);
+    }
+
+    /**
+     * Extra entry leg drag — same as preview Entry# line drag (multiEntryLevels price).
+     */
+    riskRewardSyncEntryDragFromTool(drawing, extraIndex, newY) {
+        this.pushRiskRewardToolToManager(drawing);
+        const prec = this.getPricePrecision();
+        const p = parseFloat(parseFloat(newY).toFixed(prec));
+        const ex = (drawing.meta.extraEntries || [])[extraIndex];
+        if (ex && this.multiEntryLevels) {
+            const lv = this.multiEntryLevels.find((l) => l.id === ex.id);
+            if (lv) lv.price = p;
+        } else if (this.multiEntryLevels && this.multiEntryLevels[extraIndex + 1]) {
+            this.multiEntryLevels[extraIndex + 1].price = p;
+        }
+        if (typeof this.updateMultiEntrySummary === 'function') this.updateMultiEntrySummary();
+        if (typeof this._syncAvgEntryPreviewLineFromLevels === 'function') this._syncAvgEntryPreviewLineFromLevels();
+        this.pullRiskRewardToolFromManager(drawing);
+    }
     
     /**
      * Collapse single-TP preview back to the entry-line badge (initial state): keep TP enabled,

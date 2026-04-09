@@ -1048,13 +1048,19 @@ class BaseRiskRewardTool extends BaseDrawing {
 
     addExtraTarget() {
         if (!Array.isArray(this.points) || this.points.length < 3) return;
-        this._ensureExtraLevelMeta();
-        const step = this.getPriceStep();
-        const all = this._allTargetPrices();
-        const ref = Math.min(...all);
-        const y = ref - step;
-        this.meta.extraTargets.push({ id: this._nextExtraLevelId(), y: this.sanitizeTargetPrice(y) });
-        this.ensureRiskSettings();
+        const om = window.chart?.orderManager;
+        if (om && typeof om.riskRewardAddTPFromTool === 'function') {
+            om.riskRewardAddTPFromTool(this);
+            this._afterRiskRewardOrderManagerSync();
+        } else {
+            this._ensureExtraLevelMeta();
+            const step = this.getPriceStep();
+            const all = this._allTargetPrices();
+            const ref = Math.min(...all);
+            const y = ref - step;
+            this.meta.extraTargets.push({ id: this._nextExtraLevelId(), y: this.sanitizeTargetPrice(y) });
+            this.ensureRiskSettings();
+        }
         if (this.manager) this.manager.renderDrawing(this);
         if (this.manager) this.manager.saveDrawings();
     }
@@ -1074,14 +1080,35 @@ class BaseRiskRewardTool extends BaseDrawing {
 
     addExtraEntry() {
         if (!Array.isArray(this.points) || this.points.length < 3) return;
-        this._ensureExtraLevelMeta();
-        const step = this.getPriceStep();
-        const e = this.points[0].y;
-        const y = this.isLong ? e - step : e + step;
-        this.meta.extraEntries.push({ id: this._nextExtraLevelId(), y: this.sanitizeExtraEntryPrice(y) });
-        this.ensureRiskSettings();
+        const om = window.chart?.orderManager;
+        if (om && typeof om.riskRewardAddEntryFromTool === 'function') {
+            om.riskRewardAddEntryFromTool(this);
+            this._afterRiskRewardOrderManagerSync();
+        } else {
+            this._ensureExtraLevelMeta();
+            const step = this.getPriceStep();
+            const e = this.points[0].y;
+            const y = this.isLong ? e - step : e + step;
+            this.meta.extraEntries.push({ id: this._nextExtraLevelId(), y: this.sanitizeExtraEntryPrice(y) });
+            this.ensureRiskSettings();
+        }
         if (this.manager) this.manager.renderDrawing(this);
         if (this.manager) this.manager.saveDrawings();
+    }
+
+    /** Re-apply chart clamps after order-manager push/pull so drawing stays consistent with panel math. */
+    _afterRiskRewardOrderManagerSync() {
+        (this.meta.extraTargets || []).forEach((row) => {
+            if (row && Number.isFinite(row.y)) row.y = this.sanitizeTargetPrice(row.y);
+        });
+        (this.meta.extraEntries || []).forEach((row) => {
+            if (row && Number.isFinite(row.y)) row.y = this.sanitizeExtraEntryPrice(row.y);
+        });
+        if (this.points[2] && Number.isFinite(this.points[2].y)) {
+            this.setTargetPrice(this.points[2].y);
+        }
+        this.ensureRiskSettings();
+        this.recalculateLotSizeFromRisk();
     }
 
     _setExtraLevelY(kind, index, y) {
@@ -2117,7 +2144,13 @@ class BaseRiskRewardTool extends BaseDrawing {
         }
 
         if (index === 2) {
-            this.setTargetPrice(point.y);
+            const om = window.chart?.orderManager;
+            if (om && typeof om.riskRewardSyncPrimaryTpDragFromTool === 'function') {
+                om.riskRewardSyncPrimaryTpDragFromTool(this, point.y);
+                this._afterRiskRewardOrderManagerSync();
+            } else {
+                this.setTargetPrice(point.y);
+            }
             return true;
         }
 
@@ -2138,8 +2171,19 @@ class BaseRiskRewardTool extends BaseDrawing {
             const m = handleRole.match(/^rr-extra-(target|entry|stop)-(\d+)$/);
             const py = context.point?.y ?? context.dataPoint?.y;
             if (m && Number.isFinite(py)) {
-                this._setExtraLevelY(m[1], parseInt(m[2], 10), py);
-                this.recalculateLotSizeFromRisk();
+                const kind = m[1];
+                const idx = parseInt(m[2], 10);
+                const om = window.chart?.orderManager;
+                if (kind === 'target' && om && typeof om.riskRewardSyncTpDragFromTool === 'function') {
+                    om.riskRewardSyncTpDragFromTool(this, idx, py);
+                    this._afterRiskRewardOrderManagerSync();
+                } else if (kind === 'entry' && om && typeof om.riskRewardSyncEntryDragFromTool === 'function') {
+                    om.riskRewardSyncEntryDragFromTool(this, idx, py);
+                    this._afterRiskRewardOrderManagerSync();
+                } else {
+                    this._setExtraLevelY(kind, idx, py);
+                    this.recalculateLotSizeFromRisk();
+                }
                 return true;
             }
             return false;
