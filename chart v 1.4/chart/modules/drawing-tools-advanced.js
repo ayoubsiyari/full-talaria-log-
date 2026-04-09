@@ -2005,8 +2005,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('stroke-width', 1)
                 .attr('stroke-dasharray', dashExtra)
                 .style('pointer-events', 'none');
-            // Drag hit for E2+ is appended after .rr-entry-line-drag-hit (see below) so the wide
-            // primary entry strip does not sit on top and block E2 when it is close to entry.
+            // E2+ drag hits appended after primary entry strip (see end of render).
         });
 
         // Recalculate lot size from risk before rendering labels
@@ -2284,30 +2283,30 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         this.createCornerHandles(scales, zoneX1, zoneX2, upperY, lowerY);
 
-        // Primary entry drag layer MUST be last in the group so it wins hit-testing over position
-        // zones, E2+ strips, labels, and corner handles. Tall enough to cover the center P&L pill.
-        // Use a barely visible fill — some engines skip pointer events on fill-opacity:0 rects.
-        if (this.selected) {
-            const entryDragX2 = zoneX2 - 28;
-            const hitH = primaryEntryHitHeight;
-            const hitW = Math.max(1, entryDragX2 - zoneX1);
-            this.group.append('rect')
-                .attr('class', 'resize-handle-hit rr-entry-line-drag-hit')
-                .attr('data-point-index', 0)
-                .attr('x', zoneX1)
-                .attr('y', entryY - hitH / 2)
-                .attr('width', hitW)
-                .attr('height', hitH)
-                .attr('fill', 'rgba(0, 0, 0, 0.02)')
-                .style('pointer-events', 'all')
-                .style('cursor', 'ns-resize');
-        }
-
         (this.meta.extraEntries || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
             const yy = scales.yScale(row.y);
             appendExtraEntryDragHit(yy, `rr-extra-entry-${idx}`);
         });
+
+        // Primary entry: same as TP2 — transparent stroked line + .custom-handle (not resize-handle-hit
+        // rect). Must be painted after E2 hits so the main entry row stays draggable; E2 uses the
+        // same custom-handle pattern and would otherwise sit on top of a rect and block entry.
+        if (this.selected) {
+            const entryDragX2 = zoneX2 - 28;
+            const hitStroke = Math.max(48, primaryEntryHitHeight);
+            this.group.append('line')
+                .attr('class', 'custom-handle rr-primary-entry-drag-hit')
+                .attr('data-handle-role', 'rr-primary-entry')
+                .attr('x1', zoneX1)
+                .attr('y1', entryY)
+                .attr('x2', entryDragX2)
+                .attr('y2', entryY)
+                .attr('stroke', 'transparent')
+                .attr('stroke-width', hitStroke)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'ns-resize');
+        }
 
         return this.group;
     }
@@ -2359,6 +2358,15 @@ class BaseRiskRewardTool extends BaseDrawing {
     }
 
     handleCustomHandleDrag(handleRole, context = {}) {
+        if (handleRole === 'rr-primary-entry') {
+            const py = context.point?.y ?? context.dataPoint?.y;
+            if (Number.isFinite(py)) {
+                this.onPointHandleDrag(0, context);
+                return true;
+            }
+            return false;
+        }
+
         if (typeof handleRole === 'string' && handleRole.startsWith('rr-extra-')) {
             const m = handleRole.match(/^rr-extra-(target|entry|stop)-(\d+)$/);
             const py = context.point?.y ?? context.dataPoint?.y;

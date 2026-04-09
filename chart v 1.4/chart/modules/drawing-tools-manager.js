@@ -3575,8 +3575,8 @@ class DrawingToolsManager {
             .style('cursor', 'pointer');
         
         // Shape borders use 'stroke' - ONLY responds to clicks on the actual stroke path
-        // Risk/reward main entry line is .rr-entry-stroke: must stay non-interactive so hits reach
-        // .rr-entry-line-drag-hit + handles (same idea as TP dashed lines using pointer-events: none).
+        // Risk/reward main entry line is .rr-entry-stroke: non-interactive; entry drag is
+        // .rr-primary-entry-drag-hit (custom-handle line), same idea as TP dashed lines.
         drawing.group.selectAll('.shape-border:not(.shape-border-hit):not(.rr-entry-stroke)')
             .style('pointer-events', 'stroke');
         
@@ -3991,7 +3991,7 @@ class DrawingToolsManager {
             ? '.anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .resize-handle-hit, .resize-handle-group'
             : isVolumeProfileType
                 ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group'
-                : '.shape-border, line, path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-entry-line-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
+                : '.shape-border, line:not(.rr-primary-entry-drag-hit), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
         const dragElements = drawing.group.selectAll(dragSelector);
         const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : 4;
         
