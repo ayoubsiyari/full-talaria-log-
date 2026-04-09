@@ -13835,6 +13835,31 @@ class OrderManager {
     }
 
     /**
+     * Trailing step (price distance) must not exceed initial risk width |entry−SL| — otherwise
+     * step-based math can move the stop to the wrong side of price (e.g. BUY stop above market).
+     * @returns {string|null} Error message or null if OK / not applicable.
+     */
+    _getTrailingStepRiskError(entryPrice, slPrice, slEnabled) {
+        if (!document.getElementById('trailingSLToggle')?.checked) return null;
+        if (!slEnabled || slPrice == null || !(Number(slPrice) > 0)) return null;
+        const e = Number(entryPrice);
+        const sl = Number(slPrice);
+        if (!Number.isFinite(e) || !Number.isFinite(sl)) return null;
+        const riskDistance = Math.abs(e - sl);
+        if (riskDistance < 1e-10) return null;
+        const unitMode = this.trailingUnitMode || 'rr';
+        const qtyPl = this._getTrailingFormQuantity();
+        const vStep = parseFloat(document.getElementById('trailingStepSize')?.value || 0.5);
+        if (!Number.isFinite(vStep) || vStep <= 0) return null;
+        const stepDist = this._trailingValueToPriceDistance(vStep, unitMode, riskDistance, qtyPl);
+        if (!Number.isFinite(stepDist) || stepDist <= 0) return null;
+        if (stepDist > riskDistance * (1 + 1e-9)) {
+            return '⚠️ Trailing step cannot exceed initial risk (|entry − SL|). Lower the step or widen the stop.';
+        }
+        return null;
+    }
+
+    /**
      * Trailing activation / step distances vs initial SL:
      * - Single leg: that leg's open price and quantity.
      * - Split: **trailingRiskEntryPrice** + **trailingAmountQtyBasis** frozen at placement (main row entry,
@@ -14022,6 +14047,13 @@ class OrderManager {
         const u = this._trailingUnitLabel(unitMode);
         const lim = Math.max(0, parseFloat(document.getElementById('trailingLimitUsd')?.value || 0));
         const limSuffix = lim > 0 ? ` · Limit $${lim.toFixed(0)} profit at SL then freeze` : '';
+        const stepTooBig = stepDist > riskDist * (1 + 1e-9);
+        if (stepTooBig) {
+            el.style.color = '#f87171';
+            el.textContent = `Step exceeds initial risk (|entry − SL|) — lower trail or widen stop · (${u})${limSuffix}`;
+            return;
+        }
+        el.style.color = '';
         el.textContent = `Activate @ ${activatePrice.toFixed(precision)} · each step ≈ ${stepPts.toFixed(1)} pts (inputs in ${u})${limSuffix}`;
     }
 
@@ -18378,6 +18410,23 @@ class OrderManager {
                 limitReached: false
             };
         }
+
+        if (trailingEnabled) {
+            const trStepErr = this._getTrailingStepRiskError(entryPrice, slPrice, slEnabled);
+            if (trStepErr) {
+                const orderValidationBox = document.getElementById('orderValidation');
+                if (orderValidationBox) {
+                    orderValidationBox.className = 'order-validation order-validation--error';
+                    orderValidationBox.innerHTML = `
+                        <div class="order-validation__item">
+                            <span class="order-validation__icon">⚠️</span>
+                            <span>${trStepErr}</span>
+                        </div>`;
+                }
+                this.showNotification('Trailing step must be ≤ initial risk (|entry − SL|)', 'error');
+                return;
+            }
+        }
         
         // Get multiple TP targets
         const multipleTPEnabled = document.getElementById('multipleTPToggle')?.checked || false;
@@ -18820,6 +18869,8 @@ class OrderManager {
         // VALIDATION: Check for order logic errors
         const orderValidationBox = document.getElementById('orderValidation');
         const validationErrors = this.validateOrder(this.orderType, this.orderSide, entryPrice, currentPrice, slPrice, tpPrice, quantity, this.positionSizeMode, slEnabled);
+        const trStepErr = this._getTrailingStepRiskError(entryPrice, slPrice, slEnabled);
+        if (trStepErr) validationErrors.push(trStepErr);
         const allValidationErrors = validationErrors.concat(sessionValidationErrors);
         if (orderValidationBox) {
             if (allValidationErrors.length > 0) {
@@ -19392,6 +19443,8 @@ class OrderManager {
         // Validate the order with detected type
         const orderValidationBox = document.getElementById('orderValidation');
         const validationErrors = this.validateOrder(orderType, this.orderSide, entryPrice, currentPrice, slPrice, tpPrice);
+        const trStepErrDraw = this._getTrailingStepRiskError(entryPrice, slPrice, slPrice > 0);
+        if (trStepErrDraw) validationErrors.push(trStepErrDraw);
         if (orderValidationBox) {
             if (validationErrors.length > 0) {
                 orderValidationBox.className = 'order-validation order-validation--error';
@@ -32502,6 +32555,12 @@ class OrderManager {
         const riskDistance = Math.abs(entryPrice - slPrice);
         if (riskDistance < 1e-10 && unitMode === 'rr') {
             console.warn('⚠️ Entry and SL must differ to compute R-based trailing');
+            return;
+        }
+        const trErr = this._getTrailingStepRiskError(entryPrice, slPrice, true);
+        if (trErr) {
+            console.warn(trErr);
+            this.showNotification('Trailing step must be ≤ initial risk (|entry − SL|)', 'warning');
             return;
         }
         const qty = this._getTrailingFormQuantity();
