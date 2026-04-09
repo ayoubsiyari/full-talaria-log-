@@ -14435,28 +14435,9 @@ class Chart {
         // Fallback to legacy drawing system
         // Store current drawings state before clearing
         const currentDrawings = [...this.drawings];
-
-        // Remove all SVG elements EXCEPT order / SL / TP / BE overlays (open + pending) and related UI.
-        // Pending uses separate class names; without these, chart.render() → redrawDrawings() strips TP/SL
-        // labels and leaves broken lines after e.g. deleting a pending multi-TP leg.
-        const _preserveOrderOverlay = [
-            'order-line', 'order-label', 'sl-line', 'sl-label', 'sl-label-box', 'sl-label-text', 'sl-close-btn', 'sl-price-box', 'sl-price-text',
-            'tp-line', 'tp-label', 'tp-label-box', 'tp-label-text', 'tp-close-btn', 'tp-price-box', 'tp-price-text',
-            'be-line', 'be-label-box', 'be-label-text', 'be-price-box', 'be-price-text',
-            'pending-order-line', 'pending-order-hit-line', 'pending-order-label-box', 'pending-order-label-text',
-            'pending-order-price-box', 'pending-order-price-text', 'pending-order-close-btn',
-            'pending-sl-badge', 'pending-tp-badge', 'pending-entry-plus-badge',
-            'pending-sl-line', 'pending-tp-line', 'pending-be-line',
-            'pending-sl-label', 'pending-tp-label', 'pending-be-label',
-            'pending-sl-hit-line', 'pending-tp-hit-line', 'pending-be-hit-line',
-            'pending-tp-pct-control', 'pending-tp-delete', 'pending-tp-split',
-            'exec-order-connector',
-            'split-avg-line', 'split-avg-label', 'split-avg-connector',
-            'multi-tp-avg-line', 'multi-tp-avg-label',
-            'order-overlay-sublayer'
-        ];
-        const _notOverlay = _preserveOrderOverlay.map((c) => `.${c}`).join('):not(');
-        this.svg.selectAll(`*:not(${_notOverlay})`).remove();
+        
+        // Remove all SVG elements EXCEPT order lines, SL, TP, and breakeven lines
+        this.svg.selectAll('*:not(.order-line):not(.order-label):not(.sl-line):not(.sl-label):not(.sl-label-box):not(.sl-label-text):not(.sl-close-btn):not(.sl-price-box):not(.sl-price-text):not(.tp-line):not(.tp-label):not(.tp-label-box):not(.tp-label-text):not(.tp-close-btn):not(.tp-price-box):not(.tp-price-text):not(.be-line):not(.be-label-box):not(.be-label-text):not(.be-price-box):not(.be-price-text)').remove();
         
         // SVG pointer-events strategy:
         // - SVG layer should always be able to receive events when there are drawings

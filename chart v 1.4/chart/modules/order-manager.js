@@ -23525,14 +23525,12 @@ class OrderManager {
             .style('cursor', 'grab')
             .style('display', 'none');
         g.append('rect')
-            .attr('class', 'order-overlay-sublayer')
             .attr('height', bH).attr('rx', bR)
             .attr('fill', this._plusBadgeFill(color, 0.12))
             .attr('stroke', color).attr('stroke-width', 1)
             .attr('stroke-dasharray', '3 2')
             .style('pointer-events', 'all');
         g.append('text')
-            .attr('class', 'order-overlay-sublayer')
             .attr('fill', color)
             .attr('font-size', '9px').attr('font-weight', '700')
             .attr('dy', '0.35em').attr('text-anchor', 'middle')
@@ -23697,35 +23695,22 @@ class OrderManager {
      * Delete a specific TP target from an order.
      * If only 2 targets remain and one is deleted, revert to single TP.
      */
-    /**
-     * @param {number|null|undefined} [canonicalTargetId] — stable TP row id from _tpCanonicalTargetId (fixes stale index after add/remove).
-     */
-    _deleteTPTarget(orderId, targetIndex, isPending, canonicalTargetId = null) {
+    _deleteTPTarget(orderId, targetIndex, isPending) {
         const source = isPending
             ? this.pendingOrders.find(p => p.id === orderId)
             : this.openPositions.find(p => p.id === orderId);
-        if (!source || !source.tpTargets?.length) return;
+        if (!source || !source.tpTargets || targetIndex < 0 || targetIndex >= source.tpTargets.length) return;
 
-        let ix = targetIndex;
-        if (canonicalTargetId != null && canonicalTargetId !== undefined) {
-            const j = source.tpTargets.findIndex((t, ti) => {
-                const cid = this._tpCanonicalTargetId(t, ti);
-                return cid === canonicalTargetId || String(cid) === String(canonicalTargetId);
-            });
-            if (j >= 0) ix = j;
-        }
-        if (ix < 0 || ix >= source.tpTargets.length) return;
-
-        const removedPrice = source.tpTargets[ix].price;
+        const removedPrice = source.tpTargets[targetIndex].price;
 
         if (source.tpTargets.length <= 2) {
             // Going from 2 → 1: revert to single TP
-            const remaining = source.tpTargets.filter((_, i) => i !== ix);
+            const remaining = source.tpTargets.filter((_, i) => i !== targetIndex);
             source.takeProfit = remaining.length > 0 ? remaining[0].price : 0;
             source.tpTargets = [];
         } else {
             // Remove target and redistribute percentages
-            source.tpTargets.splice(ix, 1);
+            source.tpTargets.splice(targetIndex, 1);
             const n = source.tpTargets.length;
             const equalPct = Math.round(100 / n);
             source.tpTargets.forEach((t, i) => {
@@ -23750,24 +23735,9 @@ class OrderManager {
             });
         }
 
-        // Redraw (this order only). Pending must use drawPendingOrderTargets — drawSLTPLines is for open positions only.
+        // Redraw (this order only)
         if (isPending) {
             this.removePendingSLTPLines(source.id);
-            this.removeMultiTPAvgLine(source.id);
-            if (source.isSplitEntry && source.splitGroupId) {
-                this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
-            }
-            this.drawPendingOrderTargets(source);
-            if (source.tpTargets && source.tpTargets.length >= 1) {
-                this.drawMultiTPAvgLine(source, 'pending');
-            }
-            this.positionPendingOrderTargets();
-        } else {
-            this.removeSLTPLines(source.id);
-            this.removeMultiTPAvgLine(source.id);
-            if (source.isSplitEntry && source.splitGroupId) {
-                this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
-            }
             this.drawSLTPLines(source);
             if (source.tpTargets && source.tpTargets.length >= 1) {
                 this.drawMultiTPAvgLine(source);
@@ -24691,29 +24661,17 @@ class OrderManager {
 
     /**
      * One Avg TP for the whole split group: lot-weighted mean of each leg's weighted TP level.
-     * @param {{ openLegsOnly?: boolean }} [opts] — If true and the group has OPEN legs, average only those
-     *   (matches chart TPs drawn from fills). If false, include pending legs (required for pending delete/redraw
-     *   and pending-only split groups). Mixed basket live updates pass openLegsOnly from the caller.
      * @returns {{ avgTP: number, totalQty: number }|null}
      */
-    _computeSplitGroupCombinedAvgTP(splitGroupId, mode, opts = {}) {
-        let legs = this._getSplitGroupLegsForMultiTP(splitGroupId);
+    _computeSplitGroupCombinedAvgTP(splitGroupId, mode) {
+        const legs = this._getSplitGroupLegsForMultiTP(splitGroupId);
         if (legs.length === 0) return null;
-        // Chart TP lines for fills use OPEN legs only; pending ladders are edited separately. Using OPEN-only
-        // when explicitly requested avoids stale pending data in the average — but must not run for
-        // drawMultiTPAvgLine(..., 'pending') or pending-only deletes will see null and skip redraw.
-        if (opts.openLegsOnly === true) {
-            const openLegs = legs.filter((o) => o.status === 'OPEN');
-            if (openLegs.length > 0) legs = openLegs;
+        let totalPriced = 0;
+        for (const leg of legs) {
+            totalPriced += (leg.tpTargets || []).filter(t => t.price > 0 && !t.hit).length;
         }
-        // Ladders are copied to every split leg (_syncTpTargetsAcrossSplitGroup). Counting priced rows
-        // across all legs double-counts the same rung and wrongly shows "Avg TP" for total lots when only
-        // one TP level exists (chart lines are drawn on primary leg only — splitIndex 1).
-        const donor = legs.find((m) => Number(m.splitIndex) === 1 && m.tpTargets?.length)
-            || legs.find((m) => m.tpTargets?.length);
-        const donorPriced = (donor?.tpTargets || []).filter((t) => t.price > 0 && !t.hit);
-        const minDonorRungs = mode === 'preview' ? 1 : 2;
-        if (donorPriced.length < minDonorRungs) return null;
+        const minAgg = mode === 'preview' ? 1 : 2;
+        if (totalPriced < minAgg) return null;
 
         let blendSum = 0, qSum = 0;
         for (const leg of legs) {
@@ -24777,9 +24735,7 @@ class OrderManager {
                 if (ix === -1) break;
                 this._destroyMultiTPAvgEntry(ix);
             }
-            const comb = this._computeSplitGroupCombinedAvgTP(order.splitGroupId, mode, {
-                openLegsOnly: mode === 'open',
-            });
+            const comb = this._computeSplitGroupCombinedAvgTP(order.splitGroupId, mode);
             if (!comb) return;
             avgTP = comb.avgTP;
             qty = comb.totalQty;
@@ -24979,7 +24935,6 @@ class OrderManager {
             let side = 'BUY';
             let sym = this._getSymbol();
             let combinedSplitGrpId = null;
-            let splitGrpAvgOpenLegsOnly = false;
 
             if (g.mode === 'open') {
                 const isSplitGrp = typeof g.orderId === 'string' && g.orderId.startsWith('splitgrp_');
@@ -24988,7 +24943,6 @@ class OrderManager {
                     combinedSplitGrpId = grpId;
                     const openLegs = (this.openPositions || []).filter(p => p.splitGroupId == grpId);
                     const pendingLegs = (this.pendingOrders || []).filter(p => p.splitGroupId == grpId);
-                    splitGrpAvgOpenLegsOnly = openLegs.length > 0;
                     const allLegs = [...openLegs, ...pendingLegs];
                     const refLeg = openLegs[0] || pendingLegs[0];
                     if (!refLeg || !refLeg.tpTargets || refLeg.tpTargets.length < 1) {
@@ -25020,7 +24974,6 @@ class OrderManager {
                     combinedSplitGrpId = grpId;
                     const pendingLegs = (this.pendingOrders || []).filter(p => p.splitGroupId == grpId);
                     const openLegs = (this.openPositions || []).filter(p => p.splitGroupId == grpId);
-                    splitGrpAvgOpenLegsOnly = pendingLegs.length > 0 && openLegs.length > 0;
                     const allLegs = [...pendingLegs, ...openLegs];
                     const refLeg = pendingLegs[0] || openLegs[0];
                     if (!refLeg || !refLeg.tpTargets || refLeg.tpTargets.length < 1) {
@@ -25062,9 +25015,7 @@ class OrderManager {
 
             let avgTP;
             if (combinedSplitGrpId != null) {
-                const comb = this._computeSplitGroupCombinedAvgTP(combinedSplitGrpId, g.mode, {
-                    openLegsOnly: splitGrpAvgOpenLegsOnly,
-                });
+                const comb = this._computeSplitGroupCombinedAvgTP(combinedSplitGrpId, g.mode);
                 if (!comb) {
                     toRemove.push(g.orderId);
                     continue;
@@ -25157,61 +25108,6 @@ class OrderManager {
         }
 
         for (const id of toRemove) this.removeMultiTPAvgLine(id);
-    }
-
-    /**
-     * Outermost TP price for the split-group Avg Entry vertical connector (legacy takeProfit + tpTargets).
-     * BUY → highest active TP; SELL → lowest. Matches idea of spanning to the farthest profit target.
-     */
-    _splitGroupConnectorTpPrice(order) {
-        if (!order) return 0;
-        const side = String(order.type || order.direction || 'BUY').toUpperCase();
-        const isSell = side === 'SELL';
-        const cands = [];
-        const tp = Number(order.takeProfit);
-        if (Number.isFinite(tp) && tp > 0) cands.push(tp);
-        for (const t of order.tpTargets || []) {
-            if (!t || t.hit || !(t.price > 0)) continue;
-            const p = Number(t.price);
-            if (Number.isFinite(p) && p > 0) cands.push(p);
-        }
-        if (cands.length === 0) return 0;
-        return isSell ? Math.min(...cands) : Math.max(...cands);
-    }
-
-    /**
-     * Furthest TP in the profit direction across all split legs (OPEN + PENDING), so the Avg Entry
-     * vertical connector reaches pending multi-TP rungs as well as the primary filled ladder.
-     */
-    _splitGroupConnectorTpExtremeAcrossMembers(orders) {
-        if (!orders?.length) return 0;
-        const ref = orders.find((o) => o?.type || o?.direction) || orders[0];
-        const side = String(ref?.type || ref?.direction || 'BUY').toUpperCase();
-        const isSell = side === 'SELL';
-        let extreme = 0;
-        for (const o of orders) {
-            const px = this._splitGroupConnectorTpPrice(o);
-            if (!(px > 0)) continue;
-            extreme = extreme === 0 ? px : (isSell ? Math.min(extreme, px) : Math.max(extreme, px));
-        }
-        return extreme;
-    }
-
-    /**
-     * Single SL price for split connector when legs disagree (BUY → lowest SL; SELL → highest).
-     */
-    _splitGroupConnectorSlAcrossMembers(orders) {
-        if (!orders?.length) return 0;
-        const ref = orders.find((o) => o?.type || o?.direction) || orders[0];
-        const side = String(ref?.type || ref?.direction || 'BUY').toUpperCase();
-        const isSell = side === 'SELL';
-        let sl = 0;
-        for (const o of orders) {
-            const v = Number(o?.stopLoss);
-            if (!Number.isFinite(v) || v <= 0) continue;
-            sl = sl === 0 ? v : (isSell ? Math.max(sl, v) : Math.min(sl, v));
-        }
-        return sl;
     }
 
     /**
@@ -25320,11 +25216,7 @@ class OrderManager {
                 if (!isPending && ml.pnlText?.node()) {
                     pbw = ml.pnlText.node().getBBox().width + pad * 2;
                 }
-                const hasMtp = od.tpTargets && od.tpTargets.length > 0;
-                const hasStp = !hasMtp && od.takeProfit && od.takeProfit > 0;
-                const showPendGhostRow = isPending && this._shouldShowPendingEntryTpGhost(od, hasMtp, hasStp);
-                const pendingGhostPad = showPendGhostRow ? 62 : 0;
-                const rowW = lbw + (pbw > 0 ? gap + pbw : 0) + closeBtnGap + closeBtnR * 2 + pendingGhostPad;
+                const rowW = lbw + (pbw > 0 ? gap + pbw : 0) + closeBtnGap + closeBtnR * 2;
                 memberWidths.push({ ml, lbw, pbw, rowW, isPending, od });
                 if (rowW > maxRowW) maxRowW = rowW;
             }
@@ -25356,8 +25248,9 @@ class OrderManager {
 
             // --- Draw connector on the right side (after close button, before Y-axis) ---
             if (g._connector) { try { g._connector.remove(); } catch (_) {} }
-            const tpPx = this._splitGroupConnectorTpExtremeAcrossMembers(openOrders);
-            const slPx = this._splitGroupConnectorSlAcrossMembers(openOrders);
+            const refOrder = openOrders.find(o => o.status === 'OPEN') || openOrders[0];
+            const tpPx = refOrder?.takeProfit || 0;
+            const slPx = refOrder?.stopLoss || 0;
             if (tpPx > 0 || slPx > 0) {
                 const connGroup = ch.svg.append('g')
                     .attr('class', `split-avg-connector split-avg-${g.splitGroupId}`)
@@ -25455,12 +25348,12 @@ class OrderManager {
                 }
 
                 // SL/TP re-add badges (after PnL) for split-group members
-                const bH = 16, bGap2 = 3, bW = 24;
                 if (!isPending) {
                     const hasSL = od.stopLoss && od.stopLoss > 0;
                     const hasMultiTP = od.tpTargets && od.tpTargets.length > 0;
                     const hasSingleTP = !hasMultiTP && od.takeProfit && od.takeProfit > 0;
                     const allTPsSet = hasMultiTP && od.tpTargets.every(t => (t.price > 0) || t.hit);
+                    const bH = 16, bGap2 = 3, bW = 24;
 
                     if (ml.slBadge) {
                         if (hasSL) {
@@ -25507,36 +25400,6 @@ class OrderManager {
                     if (ml.entryPlusBadge) ml.entryPlusBadge.style('display', 'none');
 
                     // TP+ is now on the TP target lines themselves (not on entry)
-                } else {
-                    // Pending split legs: updateOrderLines skips these rows — same TP ghost rules as standalone pending.
-                    const hasSL = od.stopLoss && od.stopLoss > 0;
-                    const hasMultiTP = od.tpTargets && od.tpTargets.length > 0;
-                    const hasSingleTP = !hasMultiTP && od.takeProfit && od.takeProfit > 0;
-                    const showPendTpGhost = this._shouldShowPendingEntryTpGhost(od, hasMultiTP, hasSingleTP);
-
-                    if (ml.slBadge) {
-                        if (hasSL) ml.slBadge.style('display', 'none');
-                        else {
-                            ml.slBadge.style('display', null)
-                                .attr('transform', `translate(${memberCx}, ${oy - bH / 2})`);
-                            ml.slBadge.select('rect').attr('width', bW);
-                            ml.slBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
-                            memberCx += bW + bGap2;
-                        }
-                    }
-                    if (ml.tpBadgesContainer) ml.tpBadgesContainer.style('display', 'none');
-                    if (ml.tpBadge) {
-                        if (showPendTpGhost) {
-                            ml.tpBadge.style('display', null)
-                                .attr('transform', `translate(${memberCx}, ${oy - bH / 2})`);
-                            ml.tpBadge.select('rect').attr('width', bW);
-                            ml.tpBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
-                            memberCx += bW + bGap2;
-                        } else {
-                            ml.tpBadge.style('display', 'none');
-                        }
-                    }
-                    if (ml.entryPlusBadge) ml.entryPlusBadge.style('display', 'none');
                 }
 
                 ml._handledBySplitGroup = true;
@@ -25829,14 +25692,12 @@ class OrderManager {
             .style('cursor', 'ns-resize')
             .style('display', 'none');
         slBadgeGroup.append('rect')
-            .attr('class', 'order-overlay-sublayer')
             .attr('height', badgeH).attr('rx', badgeR)
             .attr('fill', 'rgba(242,54,69,0.12)')
             .attr('stroke', '#f23645').attr('stroke-width', 1)
             .attr('stroke-dasharray', '3 2')
             .style('pointer-events', 'all');
         slBadgeGroup.append('text')
-            .attr('class', 'order-overlay-sublayer')
             .attr('fill', '#f23645')
             .attr('font-size', badgeFontSize).attr('font-weight', '700')
             .attr('dy', '0.35em').attr('text-anchor', 'middle')
@@ -25859,14 +25720,12 @@ class OrderManager {
             .style('cursor', 'ns-resize')
             .style('display', 'none');
         tpBadgeGroup.append('rect')
-            .attr('class', 'order-overlay-sublayer')
             .attr('height', badgeH).attr('rx', badgeR)
             .attr('fill', 'rgba(8,153,129,0.12)')
             .attr('stroke', '#089981').attr('stroke-width', 1)
             .attr('stroke-dasharray', '3 2')
             .style('pointer-events', 'all');
         tpBadgeGroup.append('text')
-            .attr('class', 'order-overlay-sublayer')
             .attr('fill', '#089981')
             .attr('font-size', badgeFontSize).attr('font-weight', '700')
             .attr('dy', '0.35em').attr('text-anchor', 'middle')
@@ -25919,7 +25778,10 @@ class OrderManager {
             const charts = this._collectLayoutCharts();
             for (const ch of charts) {
                 if (!this._positionTickerMatchesChartSymbol(pendingOrder, ch)) continue;
-                this.drawPendingOrderTargets(pendingOrder, ch);
+                const hasTargets = (this.pendingTargetLines || []).some(
+                    (e) => e.orderId === pendingOrder.id && e.chart === ch
+                );
+                if (!hasTargets) this.drawPendingOrderTargets(pendingOrder, ch);
             }
             return;
         }
@@ -25936,8 +25798,6 @@ class OrderManager {
         if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) > 1) {
             return;
         }
-
-        this._clearPendingTargetsOnChart(pendingOrder.id, chart);
 
         const entries = [];
         const quantity = pendingOrder.quantity;
@@ -26140,7 +26000,6 @@ class OrderManager {
                     : '#f59e0b';
 
                 const labelRect = labelGroup.append('rect')
-                    .attr('class', 'order-overlay-sublayer')
                     .attr('rx', 3)
                     .attr('fill', bgColor)
                     .attr('stroke', bgColor)
@@ -26156,7 +26015,6 @@ class OrderManager {
                 }
 
                 const text = labelGroup.append('text')
-                    .attr('class', 'order-overlay-sublayer')
                     .attr('fill', '#ffffff')
                     .attr('font-size', '11px')
                     .attr('font-weight', '600')
@@ -26186,7 +26044,6 @@ class OrderManager {
                 const hasPnl = target.pnlStr && (target.type === 'TP' || target.type === 'SL');
                 if (hasPnl) {
                     const pnlText = labelGroup.append('text')
-                        .attr('class', 'order-overlay-sublayer')
                         .attr('fill', pnlAccent)
                         .attr('font-size', '11px')
                         .attr('font-weight', '600')
@@ -26197,7 +26054,6 @@ class OrderManager {
                     pnlBoxW = pnlBbox.width + 16;
                     const pnlBoxX = labelWidth + 2;
                     labelGroup.insert('rect', 'text:last-of-type')
-                        .attr('class', 'order-overlay-sublayer')
                         .attr('rx', 3)
                         .attr('fill', pnlBgFill)
                         .attr('stroke', pnlAccent)
@@ -26249,9 +26105,9 @@ class OrderManager {
                             .attr('class', `pending-tp-pct-control pending-tp-pct-dec pending-tp-${poId}`)
                             .attr('pointer-events', 'all')
                             .style('cursor', 'pointer');
-                        decG.append('rect').attr('class', 'order-overlay-sublayer').attr('width', arrowSize).attr('height', arrowSize).attr('rx', 4)
+                        decG.append('rect').attr('width', arrowSize).attr('height', arrowSize).attr('rx', 4)
                             .attr('fill', 'rgba(239, 68, 68, 0.2)').attr('stroke', '#ef4444').attr('stroke-width', 1);
-                        decG.append('text').attr('class', 'order-overlay-sublayer').attr('x', arrowSize / 2).attr('y', arrowSize / 2).attr('dy', '0.35em')
+                        decG.append('text').attr('x', arrowSize / 2).attr('y', arrowSize / 2).attr('dy', '0.35em')
                             .attr('text-anchor', 'middle').attr('fill', '#ef4444').attr('font-size', '14px').attr('font-weight', '700').text('−');
                         decG.on('mousedown', (e) => e.stopPropagation())
                             .on('click', (e) => {
@@ -26263,9 +26119,9 @@ class OrderManager {
                             .attr('class', `pending-tp-pct-control pending-tp-pct-inc pending-tp-${poId}`)
                             .attr('pointer-events', 'all')
                             .style('cursor', 'pointer');
-                        incG.append('rect').attr('class', 'order-overlay-sublayer').attr('width', arrowSize).attr('height', arrowSize).attr('rx', 4)
+                        incG.append('rect').attr('width', arrowSize).attr('height', arrowSize).attr('rx', 4)
                             .attr('fill', 'rgba(8, 153, 129, 0.2)').attr('stroke', '#089981').attr('stroke-width', 1);
-                        incG.append('text').attr('class', 'order-overlay-sublayer').attr('x', arrowSize / 2).attr('y', arrowSize / 2).attr('dy', '0.35em')
+                        incG.append('text').attr('x', arrowSize / 2).attr('y', arrowSize / 2).attr('dy', '0.35em')
                             .attr('text-anchor', 'middle').attr('fill', '#089981').attr('font-size', '14px').attr('font-weight', '700').text('+');
                         incG.on('mousedown', (e) => e.stopPropagation())
                             .on('click', (e) => {
@@ -26277,14 +26133,8 @@ class OrderManager {
                         target._pctIncBtn = incG;
                     }
                     target._pctDecBtn.attr('transform', `translate(${xAfterLabel}, ${y - arrowSize / 2})`);
-                    try {
-                        if (typeof target._pctDecBtn.raise === 'function') target._pctDecBtn.raise();
-                    } catch (_) {}
                     xAfterLabel += arrowSize + arrowGap;
                     target._pctIncBtn.attr('transform', `translate(${xAfterLabel}, ${y - arrowSize / 2})`);
-                    try {
-                        if (typeof target._pctIncBtn.raise === 'function') target._pctIncBtn.raise();
-                    } catch (_) {}
                     xAfterLabel += arrowSize + arrowGap;
                 } else {
                     if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} target._pctDecBtn = null; }
@@ -26300,21 +26150,15 @@ class OrderManager {
                             .attr('class', `pending-tp-delete pending-tp-${entry.pendingOrder.id}`)
                             .attr('pointer-events', 'all')
                             .style('cursor', 'pointer');
-                        dbg.append('circle').attr('class', 'order-overlay-sublayer').attr('r', closeBtnR)
+                        dbg.append('circle').attr('r', closeBtnR)
                             .attr('fill', '#0f172a').attr('stroke', '#e2e8f0').attr('stroke-width', 1.2);
-                        dbg.append('text').attr('class', 'order-overlay-sublayer').attr('fill', '#e2e8f0').attr('font-size', '14px')
+                        dbg.append('text').attr('fill', '#e2e8f0').attr('font-size', '14px')
                             .attr('font-weight', '700').attr('text-anchor', 'middle').attr('dy', '0.35em')
                             .style('pointer-events', 'none').text('×');
-                        dbg.on('mousedown', (e) => e.stopPropagation());
                         dbg.on('click', (event) => {
                             event.stopPropagation();
                             if (isMultiTP) {
-                                this._deleteTPTarget(
-                                    entry.pendingOrder.id,
-                                    target.tpTargetIndex,
-                                    true,
-                                    target.targetId
-                                );
+                                this._deleteTPTarget(entry.pendingOrder.id, target.tpTargetIndex, true);
                             } else if (target.type === 'SL') {
                                 this.removePendingStopLoss(entry.pendingOrder.id);
                             } else if (target.type === 'TP') {
@@ -26331,9 +26175,6 @@ class OrderManager {
                         target._deleteBtn = dbg;
                     }
                     target._deleteBtn.attr('transform', `translate(${closeBtnX}, ${y})`);
-                    try {
-                        if (typeof target._deleteBtn.raise === 'function') target._deleteBtn.raise();
-                    } catch (_) {}
                     xAfterLabel = closeBtnX + closeBtnR + closeBtnGap;
                 }
 
@@ -26346,12 +26187,11 @@ class OrderManager {
                             .attr('class', `pending-tp-split pending-tp-${entry.pendingOrder.id}`)
                             .attr('pointer-events', 'all')
                             .style('cursor', 'pointer');
-                        sbg.append('circle').attr('class', 'order-overlay-sublayer').attr('r', splitBtnR)
+                        sbg.append('circle').attr('r', splitBtnR)
                             .attr('fill', '#0f172a').attr('stroke', '#089981').attr('stroke-width', 1.2);
-                        sbg.append('text').attr('class', 'order-overlay-sublayer').attr('fill', '#089981').attr('font-size', '14px')
+                        sbg.append('text').attr('fill', '#089981').attr('font-size', '14px')
                             .attr('font-weight', '700').attr('text-anchor', 'middle').attr('dy', '0.35em')
                             .style('pointer-events', 'none').text('+');
-                        sbg.on('mousedown', (e) => e.stopPropagation());
                         sbg.on('click', (event) => {
                             event.stopPropagation();
                             event.preventDefault();
@@ -26372,9 +26212,6 @@ class OrderManager {
                         target._splitBtn = sbg;
                     }
                     target._splitBtn.attr('transform', `translate(${splitX}, ${y})`);
-                    try {
-                        if (typeof target._splitBtn.raise === 'function') target._splitBtn.raise();
-                    } catch (_) {}
                 }
 
                 if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} target._tpPlusBadge = null; }
@@ -26647,36 +26484,6 @@ class OrderManager {
         target.line.call(drag);
         if (target.hitLine) target.hitLine.call(drag);
         target.labelGroup.call(drag);
-    }
-
-    /**
-     * Remove pending target DOM + in-memory row for one order on one chart only.
-     * Prevents duplicate pendingTargetLines entries (stuck/wrong TP delete) when redraw runs without removePendingSLTPLines.
-     */
-    _clearPendingTargetsOnChart(orderId, chart) {
-        if (!this.pendingTargetLines?.length || !chart) return;
-        const stale = this.pendingTargetLines.filter(
-            (e) => e.orderId === orderId && e.chart === chart
-        );
-        for (const record of stale) {
-            record.targets.forEach((target) => {
-                try {
-                    target.line?.remove();
-                    target.hitLine?.remove();
-                    target.labelGroup?.remove();
-                    target.priceHighlight?.remove();
-                    if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} }
-                    if (target._pctIncBtn) { try { target._pctIncBtn.remove(); } catch (_) {} }
-                    if (target._deleteBtn) { try { target._deleteBtn.remove(); } catch (_) {} }
-                    if (target._splitBtn) { try { target._splitBtn.remove(); } catch (_) {} }
-                    if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} }
-                } catch (_) {}
-                target.dragApplied = false;
-            });
-        }
-        this.pendingTargetLines = this.pendingTargetLines.filter(
-            (e) => !(e.orderId === orderId && e.chart === chart)
-        );
     }
 
     removePendingSLTPLines(orderId) {
@@ -28229,55 +28036,6 @@ class OrderManager {
         return out;
     }
 
-    /** True if any open split leg shares this splitGroupId (basket has at least one fill). */
-    _splitGroupHasOpenLeg(splitGroupId) {
-        if (splitGroupId == null || splitGroupId === undefined) return false;
-        const gid = splitGroupId;
-        const all = [...(this.openPositions || []), ...(this.orderService?.openPositions || [])];
-        return all.some((p) => p && p.splitGroupId === gid && p.isSplitEntry);
-    }
-
-    /** Shared TP exists on any open or pending leg in this split basket (targets drawn on chart). */
-    _splitBasketHasTpOnChart(splitGroupId) {
-        if (splitGroupId == null || splitGroupId === undefined) return false;
-        const gid = splitGroupId;
-        const hasTpOnOrder = (o) => {
-            if (!o) return false;
-            const tp = Number(o.takeProfit) || 0;
-            if (tp > 0) return true;
-            const tt = o.tpTargets;
-            if (Array.isArray(tt) && tt.length > 0) {
-                return tt.some((t) => t && !t.hit && (Number(t.price) > 0));
-            }
-            return false;
-        };
-        const opens = [...(this.openPositions || []), ...(this.orderService?.openPositions || [])];
-        const pends = [...(this.pendingOrders || []), ...(this.orderService?.pendingOrders || [])];
-        if (opens.some((p) => p && p.splitGroupId === gid && p.isSplitEntry && hasTpOnOrder(p))) return true;
-        if (pends.some((p) => p && p.splitGroupId === gid && p.isSplitEntry && hasTpOnOrder(p))) return true;
-        return false;
-    }
-
-    /**
-     * Dashed TP ghost on pending entry: not on extra split legs once the basket is live (open leg owns TP UI);
-     * pre-fill, only primary leg (splitIndex 1) and only while basket has no TP anywhere.
-     */
-    _shouldShowPendingEntryTpGhost(po, hasMultiTP, hasSingleTP) {
-        if (!po) return false;
-        if (!po.isSplitEntry || !po.splitGroupId) {
-            if (hasMultiTP) return true;
-            if (hasSingleTP) return false;
-            return true;
-        }
-        const gid = po.splitGroupId;
-        if (this._splitGroupHasOpenLeg(gid)) return false;
-        if (Number(po.splitIndex) > 1) return false;
-        if (this._splitBasketHasTpOnChart(gid)) return false;
-        if (hasMultiTP) return true;
-        if (hasSingleTP) return false;
-        return true;
-    }
-
     /**
      * After a split leg closes, promoting remaining siblings (strip splitGroupId, redraw SL) must run **after**
      * all `closePositionAtPrice` calls in the same tick — otherwise mid-batch redraw can leave the next leg
@@ -28744,10 +28502,9 @@ class OrderManager {
                         .attr('fill', '#e2e8f0').attr('font-size', '12px').attr('font-weight', '700')
                         .attr('text-anchor', 'middle').attr('dy', '0.35em')
                         .style('pointer-events', 'none').text('×');
-                    tpDeleteBtn.on('mousedown', (e) => e.stopPropagation());
                     tpDeleteBtn.on('click', (event) => {
                         event.stopPropagation();
-                        this._deleteTPTarget(order.id, index, false, tpKey);
+                        this._deleteTPTarget(order.id, index, false);
                     });
 
                     // TP+ split button for multi-TP (adds another target)
@@ -30158,16 +29915,13 @@ class OrderManager {
 
                     // SL badge: show for both open and pending when SL is not set
                     let slBadgeW = (!hasSL && slBadge) ? bW + bGap2 : 0;
-                    const showPendTpGhost = isPending && this._shouldShowPendingEntryTpGhost(orderData, hasMultiTP, hasSingleTP);
-                    let singleTPBadgeW = (!isPending && !hasMultiTP && !hasSingleTP && tpBadge) ? bW + bGap2 : 0;
-                    let pendingTpGhostW = (showPendTpGhost && tpBadge) ? (bW + bGap2) : 0;
+                    // TP badge: show for both open and pending when single TP is not set
+                    let singleTPBadgeW = (!hasMultiTP && !hasSingleTP && tpBadge) ? bW + bGap2 : 0;
                     // Entry+ badge hidden on pending — multi-entry is activated via order panel
                     const showEntryPlus = false;
                     let entryPlusBadgeW = showEntryPlus ? plusBW + bGap2 : 0;
-                    let tpSlotW = pendingTpGhostW;
-                    if (!tpSlotW && !isPending && hasMultiTP) tpSlotW = multiTPBadgesW;
-                    if (!tpSlotW && !isPending && !hasMultiTP) tpSlotW = singleTPBadgeW;
-                    let totalBadgesW = slBadgeW + tpSlotW + entryPlusBadgeW;
+                    let totalBadgesW = slBadgeW + (hasMultiTP ? multiTPBadgesW : singleTPBadgeW)
+                        + entryPlusBadgeW;
 
                     const rightEdge = ch.w - yAxisWidth - 10;
                     const closeBtnX = rightEdge - closeBtnR;
@@ -30199,20 +29953,7 @@ class OrderManager {
                     }
 
                     // --- TP badges (both open and pending) ---
-                    if (isPending) {
-                        if (olEntry.tpBadgesContainer) olEntry.tpBadgesContainer.style('display', 'none');
-                        if (tpBadge) {
-                            if (showPendTpGhost) {
-                                tpBadge.style('display', null)
-                                    .attr('transform', `translate(${cx}, ${y - bH / 2})`);
-                                tpBadge.select('rect').attr('width', bW);
-                                tpBadge.select('text').attr('x', bW / 2).attr('y', bH / 2);
-                                cx += bW + bGap2;
-                            } else {
-                                tpBadge.style('display', 'none');
-                            }
-                        }
-                    } else if (hasMultiTP) {
+                    if (hasMultiTP && !isPending) {
                         if (tpBadge) tpBadge.style('display', 'none');
                         if (olEntry.tpBadgesContainer) {
                             if (allTPsSet) {
@@ -30227,6 +29968,9 @@ class OrderManager {
                                 cx += renderedW + bGap2;
                             }
                         }
+                    } else if (hasMultiTP && isPending) {
+                        if (tpBadge) tpBadge.style('display', 'none');
+                        if (olEntry.tpBadgesContainer) olEntry.tpBadgesContainer.style('display', 'none');
                     } else {
                         if (olEntry.tpBadgesContainer) olEntry.tpBadgesContainer.style('display', 'none');
                         if (tpBadge) {
@@ -30272,8 +30016,6 @@ class OrderManager {
         this._updateMultiTPAvgLines(ch);
         this.updateSLTPLines(ch);
         this.updateBELines(ch);
-        // Before pending TP controls: if drawn after, SVG hit-testing can leave vertical lines above ×/+
-        // even with group pointer-events:none on some engines — pending multi-TP delete then fails.
         this._drawExecutedOrderConnectors(ch);
 
         if (ch === this.chart) {
@@ -30457,54 +30199,45 @@ class OrderManager {
             if (!Number.isFinite(entryY)) continue;
             const cg = ch.svg.append('g').attr('class', 'exec-order-connector').style('pointer-events', 'none');
             if (hasMultiTP) {
-                pos.tpTargets.forEach((t, ti) => {
-                    if (!this._tpTargetStillActiveOnChart(pos, t, ti)) return;
+                for (const t of pos.tpTargets) {
+                    if (t.hit || !(t.price > 0)) continue;
                     const tpY = yScale(t.price);
                     if (Number.isFinite(tpY)) {
                         cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
-                            .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7)
-                            .style('pointer-events', 'none');
+                            .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
                         cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
-                            .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1)
-                            .style('pointer-events', 'none');
+                            .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
                     }
-                });
-                const activeRungs = pos.tpTargets.filter((t, i) => this._tpTargetStillActiveOnChart(pos, t, i)).length;
+                }
                 const avgG = this.multiTPAvgLines.find((g) => g.orderId === pos.id && g.chart === ch);
-                if (activeRungs >= 2 && avgG && Number.isFinite(avgG.avgTP) && avgG.line?.node()?.isConnected) {
+                if (avgG && Number.isFinite(avgG.avgTP)) {
                     const avgY = yScale(avgG.avgTP);
                     if (Number.isFinite(avgY)) {
                         cg.append('circle').attr('cx', connX).attr('cy', avgY).attr('r', 2.5)
-                            .attr('fill', '#eab308').attr('stroke', '#0f172a').attr('stroke-width', 1)
-                            .style('pointer-events', 'none');
+                            .attr('fill', '#eab308').attr('stroke', '#0f172a').attr('stroke-width', 1);
                     }
                 }
             } else if (tpPx > 0) {
                 const tpY = yScale(tpPx);
                 if (Number.isFinite(tpY)) {
                     cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
-                        .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7)
-                        .style('pointer-events', 'none');
+                        .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
                     cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
-                        .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1)
-                        .style('pointer-events', 'none');
+                        .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
                 }
             }
             if (slPx > 0) {
                 const slY = yScale(slPx);
                 if (Number.isFinite(slY)) {
                     cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', slY)
-                        .attr('stroke', '#f23645').attr('stroke-width', 1).attr('opacity', 0.7)
-                        .style('pointer-events', 'none');
+                        .attr('stroke', '#f23645').attr('stroke-width', 1).attr('opacity', 0.7);
                     cg.append('circle').attr('cx', connX).attr('cy', slY).attr('r', 2.5)
-                        .attr('fill', '#f23645').attr('stroke', '#0f172a').attr('stroke-width', 1)
-                        .style('pointer-events', 'none');
+                        .attr('fill', '#f23645').attr('stroke', '#0f172a').attr('stroke-width', 1);
                 }
             }
             const eColor = pos.type === 'BUY' ? '#2962ff' : '#f23645';
             cg.append('circle').attr('cx', connX).attr('cy', entryY).attr('r', 2.5)
-                .attr('fill', eColor).attr('stroke', '#0f172a').attr('stroke-width', 1)
-                .style('pointer-events', 'none');
+                .attr('fill', eColor).attr('stroke', '#0f172a').attr('stroke-width', 1);
             try { cg.lower(); } catch (_) {}
         }
 
@@ -30518,54 +30251,45 @@ class OrderManager {
             if (!Number.isFinite(entryY)) continue;
             const cg = ch.svg.append('g').attr('class', 'exec-order-connector').style('pointer-events', 'none');
             if (hasMultiTP) {
-                po.tpTargets.forEach((t, ti) => {
-                    if (t.hit || !(t.price > 0) || !((t.percentage || 0) > 0)) return;
+                for (const t of po.tpTargets) {
+                    if (t.hit || !(t.price > 0)) continue;
                     const tpY = yScale(t.price);
                     if (Number.isFinite(tpY)) {
                         cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
-                            .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7)
-                            .style('pointer-events', 'none');
+                            .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
                         cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
-                            .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1)
-                            .style('pointer-events', 'none');
+                            .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
                     }
-                });
-                const activeRungs = (po.tpTargets || []).filter((t) => !t.hit && t.price > 0 && (t.percentage || 0) > 0).length;
+                }
                 const avgG = this.multiTPAvgLines.find((g) => g.orderId === po.id && g.chart === ch);
-                if (activeRungs >= 2 && avgG && Number.isFinite(avgG.avgTP) && avgG.line?.node()?.isConnected) {
+                if (avgG && Number.isFinite(avgG.avgTP)) {
                     const avgY = yScale(avgG.avgTP);
                     if (Number.isFinite(avgY)) {
                         cg.append('circle').attr('cx', connX).attr('cy', avgY).attr('r', 2.5)
-                            .attr('fill', '#eab308').attr('stroke', '#0f172a').attr('stroke-width', 1)
-                            .style('pointer-events', 'none');
+                            .attr('fill', '#eab308').attr('stroke', '#0f172a').attr('stroke-width', 1);
                     }
                 }
             } else if (tpPx > 0) {
                 const tpY = yScale(tpPx);
                 if (Number.isFinite(tpY)) {
                     cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
-                        .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7)
-                        .style('pointer-events', 'none');
+                        .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
                     cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
-                        .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1)
-                        .style('pointer-events', 'none');
+                        .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
                 }
             }
             if (slPx > 0) {
                 const slY = yScale(slPx);
                 if (Number.isFinite(slY)) {
                     cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', slY)
-                        .attr('stroke', '#f23645').attr('stroke-width', 1).attr('opacity', 0.7)
-                        .style('pointer-events', 'none');
+                        .attr('stroke', '#f23645').attr('stroke-width', 1).attr('opacity', 0.7);
                     cg.append('circle').attr('cx', connX).attr('cy', slY).attr('r', 2.5)
-                        .attr('fill', '#f23645').attr('stroke', '#0f172a').attr('stroke-width', 1)
-                        .style('pointer-events', 'none');
+                        .attr('fill', '#f23645').attr('stroke', '#0f172a').attr('stroke-width', 1);
                 }
             }
             const eColor = po.direction === 'BUY' ? '#2962ff' : '#f23645';
             cg.append('circle').attr('cx', connX).attr('cy', entryY).attr('r', 2.5)
-                .attr('fill', eColor).attr('stroke', '#0f172a').attr('stroke-width', 1)
-                .style('pointer-events', 'none');
+                .attr('fill', eColor).attr('stroke', '#0f172a').attr('stroke-width', 1);
             try { cg.lower(); } catch (_) {}
         }
     }
@@ -32993,7 +32717,6 @@ class OrderManager {
             .attr('pointer-events', 'all')
             .style('cursor', 'pointer');
         const bg = btn.append('circle')
-            .attr('class', 'order-overlay-sublayer')
             .attr('r', 9)
             .attr('fill', 'transparent')
             .attr('stroke', '#787b86')
@@ -33001,7 +32724,6 @@ class OrderManager {
             .style('pointer-events', 'all')
             .style('cursor', 'pointer');
         const txt = btn.append('text')
-            .attr('class', 'order-overlay-sublayer')
             .attr('fill', '#787b86')
             .attr('font-size', '12px')
             .attr('font-weight', '700')
