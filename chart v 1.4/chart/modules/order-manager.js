@@ -304,6 +304,17 @@ class OrderManager {
         return String(t || '').replace(/[/\s]/g, '').toUpperCase();
     }
 
+    /** True when two chart instances show the same instrument (for safe OHLC fallback). */
+    _sameChartInstrument(a, b) {
+        if (!a || !b) return false;
+        const ida = a.currentFileId != null ? String(a.currentFileId) : '';
+        const idb = b.currentFileId != null ? String(b.currentFileId) : '';
+        if (ida && idb && ida === idb) return true;
+        const ta = this._normalizeTicker(a.currentSymbol || '');
+        const tb = this._normalizeTicker(b.currentSymbol || '');
+        return !!(ta && tb && ta === tb);
+    }
+
     _positionTicker(position) {
         return this._normalizeTicker(position && (position.ticker || position.symbol));
     }
@@ -337,11 +348,6 @@ class OrderManager {
         return !!(ch.scales && typeof ch.scales.yScale === 'function');
     }
 
-    /**
-     * After chart.render(), scales may only become valid for the active panel after this frame.
-     * If the order drawer is open but the entry preview never attached (drawPreviewLine returned early),
-     * redraw once so TP/SL use entry-anchored layout like the main chart.
-     */
     /**
      * After switching the active panel, draft preview SVG may still live on the previous chart.
      * Strip and redraw on getActiveChart() so TP/SL/entry levels track the selected surface immediately.
@@ -453,6 +459,21 @@ class OrderManager {
     }
 
     /**
+     * Full render on main + each panel chart so SVG order layers get scales and updateOrderLines.
+     * Placement flows set _suppressChartRender so draw* skips per-chart render; call this after clearing it.
+     */
+    _renderAllLayoutCharts() {
+        if (this._suppressChartRender) return;
+        (this._collectLayoutCharts() || []).forEach((c) => {
+            if (!c || typeof c.render !== 'function') return;
+            c.renderPending = true;
+            try {
+                c.render();
+            } catch (_e) { /* ignore */ }
+        });
+    }
+
+    /**
      * Charts that may host draft preview SVG (layout panels + whichever surface getActiveChart() uses).
      * Used when scrubbing preview on panel close so lines cannot linger on a non-listed instance.
      */
@@ -519,6 +540,11 @@ class OrderManager {
 
     _positionTickerMatchesChartSymbol(position, chart) {
         if (!chart) return false;
+        const posFile = position && position.sourceFileId != null ? String(position.sourceFileId) : '';
+        const chartFile = chart.currentFileId != null ? String(chart.currentFileId) : '';
+        if (posFile && chartFile) {
+            return posFile === chartFile;
+        }
         const pt = this._positionTicker(position);
         if (!pt) return chart === this.chart;
         const cs = chart.currentSymbol ? this._normalizeTicker(chart.currentSymbol) : '';
@@ -18422,7 +18448,7 @@ class OrderManager {
             this.updatePositionsPanel();
             this.showPositionsPanel();
             this._suppressChartRender = false;
-            if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
+            this._renderAllLayoutCharts();
             this._finalizeOrderPanelAfterPlace({ keepPanelOpen });
             this.clearSplitEntries();
             this._resetMultiEntryStateForNewOrder();
@@ -18556,7 +18582,7 @@ class OrderManager {
             }
 
             this._suppressChartRender = false;
-            if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
+            this._renderAllLayoutCharts();
             this._finalizeOrderPanelAfterPlace({ keepPanelOpen });
             return;
         }
@@ -18679,13 +18705,13 @@ class OrderManager {
                 // Show positions panel and close order panel
                 this.showPositionsPanel();
                 this._suppressChartRender = false;
-                if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
+                this._renderAllLayoutCharts();
                 this._finalizeOrderPanelAfterPlace({ keepPanelOpen });
             } else {
                 // No splits - place single order as normal
                 this.placePendingOrder(entryPrice, quantity, tpPrice, slPrice, actualRisk, autoBreakeven, breakevenSettings, trailingStop, tpTargets, currentCandle.t);
                 this._suppressChartRender = false;
-                if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
+                this._renderAllLayoutCharts();
                 this._finalizeOrderPanelAfterPlace({ keepPanelOpen });
             }
             return;
@@ -18844,8 +18870,8 @@ class OrderManager {
 
         // Single render after all drawing is done (intermediate renders were suppressed)
         this._suppressChartRender = false;
-        if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
-        
+        this._renderAllLayoutCharts();
+
         this._finalizeOrderPanelAfterPlace({ keepPanelOpen });
         
         // Show trade journal modal for entry notes
@@ -19990,7 +20016,15 @@ class OrderManager {
      * Get current candle from replay (uses selected panel / getActiveChart).
      */
     getCurrentCandle() {
-        return this._getCurrentCandleForChart(this._getOrderContextChart() || this.chart);
+        const ctx = this._getOrderContextChart() || this.chart;
+        let c = this._getCurrentCandleForChart(ctx);
+        if (c) return c;
+        const main = typeof window !== 'undefined' ? window.chart : null;
+        if (main && main !== ctx && this._sameChartInstrument(ctx, main)) {
+            c = this._getCurrentCandleForChart(main);
+            if (c) return c;
+        }
+        return null;
     }
 
     /**
@@ -26899,10 +26933,7 @@ class OrderManager {
         });
 
         if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
-        if (this.chart && typeof this.chart.render === 'function') {
-            this.chart.renderPending = true;
-            this.chart.render();
-        }
+        this._renderAllLayoutCharts();
         console.log('🎨 redrawPreservedTradeMarkers: redrawn markers for',
             (preserved || []).length, 'closed +',
             (this.openPositions || []).length, 'open +',
@@ -27098,9 +27129,26 @@ class OrderManager {
      * Draw entry marker on chart (TradingView style — arrow + tick + hover tooltip)
      */
     drawEntryMarker(order, targetChart = null) {
+        if (targetChart == null && this._isMultiPanelLayout()) {
+            const charts = this._collectLayoutCharts();
+            for (const ch of charts) {
+                if (!this._positionTickerMatchesChartSymbol(order, ch)) continue;
+                const has = (this.entryMarkers || []).some(
+                    (m) => m.orderId === order.id && (m.chart || this.chart) === ch
+                );
+                if (!has) this.drawEntryMarker(order, ch);
+            }
+            return;
+        }
+
         const chart = targetChart || this.chart;
         if (!chart || !chart.svg || !chart.scales) return;
         if (order && !this._positionTickerMatchesChartSymbol(order, chart)) return;
+
+        const alreadyDrawnHere = (this.entryMarkers || []).some(
+            (m) => m.orderId === order.id && (m.chart || this.chart) === chart
+        );
+        if (alreadyDrawnHere) return;
         const { yScale } = chart.scales;
         if (!yScale) return;
 
@@ -28879,7 +28927,7 @@ class OrderManager {
         console.log(`✅ Stop Loss removed from order #${orderId}`);
         this.showNotification(`Stop Loss removed from order #${orderId}`, 'info');
         if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
-        if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
+        this._renderAllLayoutCharts();
     }
     
     /**
@@ -28969,7 +29017,7 @@ class OrderManager {
         console.log(`✅ Take Profit removed from order #${orderId}`);
         this.showNotification(`Take Profit removed from order #${orderId}`, 'info');
         if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
-        if (this.chart?.render) { this.chart.renderPending = true; this.chart.render(); }
+        this._renderAllLayoutCharts();
     }
     
     /**
