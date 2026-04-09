@@ -14973,8 +14973,15 @@ class OrderManager {
                     lineData.hitLine.attr('y1', clampedY).attr('y2', clampedY);
                 }
                 
-                // Update price text without full re-render for performance
                 const formattedPrice = self.formatPrice(newPrice);
+                // Sync SL input before $/lot label math (multi-entry uses #slPrice for per-level lots).
+                if (lineData.label === 'SL') {
+                    self.slManuallyPositioned = true;
+                    const slInputEarly = document.getElementById('slPrice');
+                    if (slInputEarly) slInputEarly.value = formattedPrice;
+                }
+                
+                // Update price text without full re-render for performance
                 if (lineData.priceText) {
                     const isSingleTpOrSl = lineData.label === 'TP' || lineData.label === 'SL';
                     const isMultiTp = lineData.label && lineData.label.startsWith('TP') && lineData.label !== 'TP';
@@ -15091,12 +15098,7 @@ class OrderManager {
                         if (ch) self._updateMultiTPAvgLines(ch);
                     }
                 } else if (lineData.label === 'SL') {
-                    // Mark SL as manually positioned BEFORE updating input (prevents sync)
-                    self.slManuallyPositioned = true;
-                    const slInput = document.getElementById('slPrice');
-                    if (slInput) {
-                        slInput.value = formattedPrice;
-                    }
+                    // Input synced above so _formatTpSlInfoText / panel match while dragging
                     
                     // Calculate SL pips/amount and R:R immediately
                     const entryPrice = self.previewLines.entry?.price || parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
@@ -26472,7 +26474,7 @@ class OrderManager {
                 }
 
                 const text = labelGroup.append('text')
-                    .attr('class', 'order-overlay-sublayer')
+                    .attr('class', 'order-overlay-sublayer pending-target-label-main')
                     .attr('fill', '#ffffff')
                     .attr('font-size', '11px')
                     .attr('font-weight', '600')
@@ -26502,7 +26504,7 @@ class OrderManager {
                 const hasPnl = target.pnlStr && (target.type === 'TP' || target.type === 'SL');
                 if (hasPnl) {
                     const pnlText = labelGroup.append('text')
-                        .attr('class', 'order-overlay-sublayer')
+                        .attr('class', 'order-overlay-sublayer pending-target-label-pnl')
                         .attr('fill', pnlAccent)
                         .attr('font-size', '11px')
                         .attr('font-weight', '600')
@@ -26715,6 +26717,75 @@ class OrderManager {
     }
 
     /**
+     * Live-update pending TP/SL tag + $ P&L text while dragging (avoids stale labels until drag end).
+     */
+    _updatePendingTargetChartLabelsLive(target, pendingOrder) {
+        if (!target?.labelGroup || !pendingOrder) return;
+        const main = target.labelGroup.select('.pending-target-label-main');
+        const pnl = target.labelGroup.select('.pending-target-label-pnl');
+        if (main.empty()) return;
+
+        const quantity = pendingOrder.quantity;
+
+        if (target.type === 'SL' && pendingOrder.stopLoss) {
+            let slPnL;
+            let totalSlQty = quantity;
+            if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId) {
+                const members = this._getSplitGroupPendingOrders(pendingOrder);
+                let gross = 0;
+                let comm = 0;
+                members.forEach((m) => {
+                    const q = Number(m.quantity) || 0;
+                    if (q <= 0) return;
+                    gross += this.estimateOpenLegPnLSlice(m, pendingOrder.stopLoss, q);
+                    comm += this._getRoundTripCommissionUsd(m);
+                });
+                slPnL = gross - comm;
+                totalSlQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
+            } else {
+                slPnL = this.estimateOpenLegPnLSlice(pendingOrder, pendingOrder.stopLoss, quantity)
+                    - this._getRoundTripCommissionUsd(pendingOrder);
+            }
+            main.text(`SL  ${totalSlQty.toFixed(2)}`);
+            if (!pnl.empty()) pnl.text(`${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`);
+            return;
+        }
+
+        if (target.type === 'TP') {
+            if (target.isPendingMultiTP && pendingOrder.tpTargets && target.tpTargetIndex != null) {
+                const idx = target.tpTargetIndex;
+                const t = pendingOrder.tpTargets[idx];
+                if (!t || t.hit) return;
+                const { pnl: tpPnL, lots: totalCloseQty } = this._multiTpTargetChartMetrics(
+                    pendingOrder,
+                    t,
+                    idx,
+                    'pending'
+                );
+                const ladderPct = Number(t.percentage) || 0;
+                main.text(`TP${idx + 1} (${ladderPct.toFixed(0)}%) ${totalCloseQty.toFixed(2)}`);
+                if (!pnl.empty()) pnl.text(`${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
+                return;
+            }
+            if (pendingOrder.takeProfit) {
+                let tpPnL = this.estimateOpenLegPnLSlice(pendingOrder, pendingOrder.takeProfit, quantity);
+                let totalTpQty = quantity;
+                if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) === 1) {
+                    const members = this._getSplitGroupPendingOrders(pendingOrder);
+                    tpPnL = members.reduce((sum, m) => {
+                        const q = Number(m.quantity) || 0;
+                        if (q <= 0) return sum;
+                        return sum + this.estimateOpenLegPnLSlice(m, pendingOrder.takeProfit, q);
+                    }, 0);
+                    totalTpQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
+                }
+                main.text(`TP  ${totalTpQty.toFixed(2)}`);
+                if (!pnl.empty()) pnl.text(`${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
+            }
+        }
+    }
+
+    /**
      * Make pending order TP/SL target draggable (same pattern as executed orders)
      * @param {object} dragChart — chart whose SVG/scales own the target geometry
      */
@@ -26854,6 +26925,9 @@ class OrderManager {
                         });
                     }
                     self._schedulePendingOrdersPanelRefresh();
+                }
+                if (target.type === 'SL' || target.type === 'TP') {
+                    self._updatePendingTargetChartLabelsLive(target, pendingOrder);
                 }
                 self._drawExecutedOrderConnectors(ch);
                 if (target.type === 'TP' && pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 1) {
