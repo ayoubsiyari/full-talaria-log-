@@ -20051,7 +20051,7 @@ class OrderManager {
             return Object.assign({}, bar, { c });
         };
 
-        const rs = (ch && ch.replaySystem) || this.replaySystem;
+        const rs = (ch && ch.replaySystem) || this._playbackReplaySystem();
 
         if (rs && rs.isActive) {
             if (rs.animatingCandle) {
@@ -26982,13 +26982,27 @@ class OrderManager {
     _chartIndexForCloseMarkerOnChart(ch, closeTime) {
         const data = ch?.data;
         if (!data || !data.length || closeTime == null) return -1;
-        const rs = this.replaySystem;
-        if (rs?.isActive && rs.animatingCandle) {
-            const animT = rs.animatingCandle.t;
-            if (Number.isFinite(Number(closeTime)) && Number.isFinite(Number(animT)) && Number(closeTime) === Number(animT)) {
+        const ct = Number(closeTime);
+        if (!Number.isFinite(ct)) return -1;
+
+        // Must use this chart's replay driver (same as _getCurrentCandleForChart). OrderManager's
+        // this.replaySystem can disagree with ch.replaySystem → anim.t match fails, then
+        // _findCandleIndexForTime maps TP exits to the wrong column (marker in empty space).
+        const rs = (ch && ch.replaySystem) || this._playbackReplaySystem();
+
+        if (rs?.isActive) {
+            const live = this._getCurrentCandleForChart(ch);
+            if (live && Number.isFinite(Number(live.t)) && ct === Number(live.t)) {
                 return data.length - 1;
             }
+            if (rs.animatingCandle) {
+                const animT = Number(rs.animatingCandle.t);
+                if (Number.isFinite(animT) && ct === animT) {
+                    return data.length - 1;
+                }
+            }
         }
+
         return this._findCandleIndexForTime(data, closeTime);
     }
 
