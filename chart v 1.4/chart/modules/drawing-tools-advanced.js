@@ -2205,8 +2205,11 @@ class BaseRiskRewardTool extends BaseDrawing {
             lowerY
         };
 
-        // Invisible strip so the entry can be dragged from the middle (center pill sits on this line).
-        // End before the right-side + button (same Y as entry).
+        this.createHandles(this.group, scales);
+
+        // Full-width entry drag strip MUST come after createHandles — it clears all .resize-handle-hit
+        // before recreating the left dot hits. Otherwise this line is removed every render and entry
+        // cannot be dragged from the center (unlike TP, whose handle is recreated by createHandles).
         if (this.selected) {
             const entryDragX2 = zoneX2 - 28;
             this.group.append('line')
@@ -2222,7 +2225,6 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .style('cursor', 'ns-resize');
         }
 
-        this.createHandles(this.group, scales);
         this.createCornerHandles(scales, zoneX1, zoneX2, upperY, lowerY);
 
         return this.group;
