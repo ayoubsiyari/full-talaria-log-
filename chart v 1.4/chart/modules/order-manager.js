@@ -30272,6 +30272,9 @@ class OrderManager {
         this._updateMultiTPAvgLines(ch);
         this.updateSLTPLines(ch);
         this.updateBELines(ch);
+        // Before pending TP controls: if drawn after, SVG hit-testing can leave vertical lines above ×/+
+        // even with group pointer-events:none on some engines — pending multi-TP delete then fails.
+        this._drawExecutedOrderConnectors(ch);
 
         if (ch === this.chart) {
             this.updatePreviewLinePositions();
@@ -30281,8 +30284,6 @@ class OrderManager {
             this.positionPendingOrderTargets(ch);
         }
         this._alignAllOrderLabels(ch);
-        // Connectors last so TP/pending line Y matches dots (same rules as visible ladder rows).
-        this._drawExecutedOrderConnectors(ch);
     }
 
     /**
@@ -30461,9 +30462,11 @@ class OrderManager {
                     const tpY = yScale(t.price);
                     if (Number.isFinite(tpY)) {
                         cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
-                            .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
+                            .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7)
+                            .style('pointer-events', 'none');
                         cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
-                            .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                            .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1)
+                            .style('pointer-events', 'none');
                     }
                 });
                 const activeRungs = pos.tpTargets.filter((t, i) => this._tpTargetStillActiveOnChart(pos, t, i)).length;
@@ -30472,30 +30475,36 @@ class OrderManager {
                     const avgY = yScale(avgG.avgTP);
                     if (Number.isFinite(avgY)) {
                         cg.append('circle').attr('cx', connX).attr('cy', avgY).attr('r', 2.5)
-                            .attr('fill', '#eab308').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                            .attr('fill', '#eab308').attr('stroke', '#0f172a').attr('stroke-width', 1)
+                            .style('pointer-events', 'none');
                     }
                 }
             } else if (tpPx > 0) {
                 const tpY = yScale(tpPx);
                 if (Number.isFinite(tpY)) {
                     cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
-                        .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
+                        .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7)
+                        .style('pointer-events', 'none');
                     cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
-                        .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                        .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1)
+                        .style('pointer-events', 'none');
                 }
             }
             if (slPx > 0) {
                 const slY = yScale(slPx);
                 if (Number.isFinite(slY)) {
                     cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', slY)
-                        .attr('stroke', '#f23645').attr('stroke-width', 1).attr('opacity', 0.7);
+                        .attr('stroke', '#f23645').attr('stroke-width', 1).attr('opacity', 0.7)
+                        .style('pointer-events', 'none');
                     cg.append('circle').attr('cx', connX).attr('cy', slY).attr('r', 2.5)
-                        .attr('fill', '#f23645').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                        .attr('fill', '#f23645').attr('stroke', '#0f172a').attr('stroke-width', 1)
+                        .style('pointer-events', 'none');
                 }
             }
             const eColor = pos.type === 'BUY' ? '#2962ff' : '#f23645';
             cg.append('circle').attr('cx', connX).attr('cy', entryY).attr('r', 2.5)
-                .attr('fill', eColor).attr('stroke', '#0f172a').attr('stroke-width', 1);
+                .attr('fill', eColor).attr('stroke', '#0f172a').attr('stroke-width', 1)
+                .style('pointer-events', 'none');
             try { cg.lower(); } catch (_) {}
         }
 
@@ -30514,9 +30523,11 @@ class OrderManager {
                     const tpY = yScale(t.price);
                     if (Number.isFinite(tpY)) {
                         cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
-                            .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
+                            .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7)
+                            .style('pointer-events', 'none');
                         cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
-                            .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                            .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1)
+                            .style('pointer-events', 'none');
                     }
                 });
                 const activeRungs = (po.tpTargets || []).filter((t) => !t.hit && t.price > 0 && (t.percentage || 0) > 0).length;
@@ -30525,30 +30536,36 @@ class OrderManager {
                     const avgY = yScale(avgG.avgTP);
                     if (Number.isFinite(avgY)) {
                         cg.append('circle').attr('cx', connX).attr('cy', avgY).attr('r', 2.5)
-                            .attr('fill', '#eab308').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                            .attr('fill', '#eab308').attr('stroke', '#0f172a').attr('stroke-width', 1)
+                            .style('pointer-events', 'none');
                     }
                 }
             } else if (tpPx > 0) {
                 const tpY = yScale(tpPx);
                 if (Number.isFinite(tpY)) {
                     cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
-                        .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
+                        .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7)
+                        .style('pointer-events', 'none');
                     cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
-                        .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                        .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1)
+                        .style('pointer-events', 'none');
                 }
             }
             if (slPx > 0) {
                 const slY = yScale(slPx);
                 if (Number.isFinite(slY)) {
                     cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', slY)
-                        .attr('stroke', '#f23645').attr('stroke-width', 1).attr('opacity', 0.7);
+                        .attr('stroke', '#f23645').attr('stroke-width', 1).attr('opacity', 0.7)
+                        .style('pointer-events', 'none');
                     cg.append('circle').attr('cx', connX).attr('cy', slY).attr('r', 2.5)
-                        .attr('fill', '#f23645').attr('stroke', '#0f172a').attr('stroke-width', 1);
+                        .attr('fill', '#f23645').attr('stroke', '#0f172a').attr('stroke-width', 1)
+                        .style('pointer-events', 'none');
                 }
             }
             const eColor = po.direction === 'BUY' ? '#2962ff' : '#f23645';
             cg.append('circle').attr('cx', connX).attr('cy', entryY).attr('r', 2.5)
-                .attr('fill', eColor).attr('stroke', '#0f172a').attr('stroke-width', 1);
+                .attr('fill', eColor).attr('stroke', '#0f172a').attr('stroke-width', 1)
+                .style('pointer-events', 'none');
             try { cg.lower(); } catch (_) {}
         }
     }
