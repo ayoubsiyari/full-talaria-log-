@@ -24691,17 +24691,18 @@ class OrderManager {
 
     /**
      * One Avg TP for the whole split group: lot-weighted mean of each leg's weighted TP level.
+     * @param {{ openLegsOnly?: boolean }} [opts] — If true and the group has OPEN legs, average only those
+     *   (matches chart TPs drawn from fills). If false, include pending legs (required for pending delete/redraw
+     *   and pending-only split groups). Mixed basket live updates pass openLegsOnly from the caller.
      * @returns {{ avgTP: number, totalQty: number }|null}
      */
-    _computeSplitGroupCombinedAvgTP(splitGroupId, mode) {
+    _computeSplitGroupCombinedAvgTP(splitGroupId, mode, opts = {}) {
         let legs = this._getSplitGroupLegsForMultiTP(splitGroupId);
         if (legs.length === 0) return null;
-        // Chart TP / multi-TP lines are drawn from OPEN (filled) split legs only (drawSLTPLines skips
-        // splitIndex > 1, and pending legs are separate rows). Blending PENDING legs into Avg TP used their
-        // tpTargets (often stale vs the live ladder or different entry context), producing impossible
-        // averages (e.g. below every visible TP) and "0.78 lots" while TP badges only reflect filled size.
-        const hasOpenLeg = legs.some((o) => o.status === 'OPEN');
-        if (hasOpenLeg) {
+        // Chart TP lines for fills use OPEN legs only; pending ladders are edited separately. Using OPEN-only
+        // when explicitly requested avoids stale pending data in the average — but must not run for
+        // drawMultiTPAvgLine(..., 'pending') or pending-only deletes will see null and skip redraw.
+        if (opts.openLegsOnly === true) {
             const openLegs = legs.filter((o) => o.status === 'OPEN');
             if (openLegs.length > 0) legs = openLegs;
         }
@@ -24776,7 +24777,9 @@ class OrderManager {
                 if (ix === -1) break;
                 this._destroyMultiTPAvgEntry(ix);
             }
-            const comb = this._computeSplitGroupCombinedAvgTP(order.splitGroupId, mode);
+            const comb = this._computeSplitGroupCombinedAvgTP(order.splitGroupId, mode, {
+                openLegsOnly: mode === 'open',
+            });
             if (!comb) return;
             avgTP = comb.avgTP;
             qty = comb.totalQty;
@@ -24976,6 +24979,7 @@ class OrderManager {
             let side = 'BUY';
             let sym = this._getSymbol();
             let combinedSplitGrpId = null;
+            let splitGrpAvgOpenLegsOnly = false;
 
             if (g.mode === 'open') {
                 const isSplitGrp = typeof g.orderId === 'string' && g.orderId.startsWith('splitgrp_');
@@ -24984,6 +24988,7 @@ class OrderManager {
                     combinedSplitGrpId = grpId;
                     const openLegs = (this.openPositions || []).filter(p => p.splitGroupId == grpId);
                     const pendingLegs = (this.pendingOrders || []).filter(p => p.splitGroupId == grpId);
+                    splitGrpAvgOpenLegsOnly = openLegs.length > 0;
                     const allLegs = [...openLegs, ...pendingLegs];
                     const refLeg = openLegs[0] || pendingLegs[0];
                     if (!refLeg || !refLeg.tpTargets || refLeg.tpTargets.length < 1) {
@@ -25015,6 +25020,7 @@ class OrderManager {
                     combinedSplitGrpId = grpId;
                     const pendingLegs = (this.pendingOrders || []).filter(p => p.splitGroupId == grpId);
                     const openLegs = (this.openPositions || []).filter(p => p.splitGroupId == grpId);
+                    splitGrpAvgOpenLegsOnly = pendingLegs.length > 0 && openLegs.length > 0;
                     const allLegs = [...pendingLegs, ...openLegs];
                     const refLeg = pendingLegs[0] || openLegs[0];
                     if (!refLeg || !refLeg.tpTargets || refLeg.tpTargets.length < 1) {
@@ -25056,7 +25062,9 @@ class OrderManager {
 
             let avgTP;
             if (combinedSplitGrpId != null) {
-                const comb = this._computeSplitGroupCombinedAvgTP(combinedSplitGrpId, g.mode);
+                const comb = this._computeSplitGroupCombinedAvgTP(combinedSplitGrpId, g.mode, {
+                    openLegsOnly: splitGrpAvgOpenLegsOnly,
+                });
                 if (!comb) {
                     toRemove.push(g.orderId);
                     continue;
