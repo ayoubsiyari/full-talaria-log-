@@ -2205,6 +2205,23 @@ class BaseRiskRewardTool extends BaseDrawing {
             lowerY
         };
 
+        // Invisible strip so the entry can be dragged from the middle (center pill sits on this line).
+        // End before the right-side + button (same Y as entry).
+        if (this.selected) {
+            const entryDragX2 = zoneX2 - 28;
+            this.group.append('line')
+                .attr('class', 'resize-handle-hit rr-entry-line-drag-hit')
+                .attr('data-point-index', 0)
+                .attr('x1', zoneX1)
+                .attr('y1', entryY)
+                .attr('x2', entryDragX2)
+                .attr('y2', entryY)
+                .attr('stroke', 'transparent')
+                .attr('stroke-width', 24)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'ns-resize');
+        }
+
         this.createHandles(this.group, scales);
         this.createCornerHandles(scales, zoneX1, zoneX2, upperY, lowerY);
 
