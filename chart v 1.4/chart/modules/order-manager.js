@@ -2497,6 +2497,100 @@ class OrderManager {
     }
 
     /**
+     * Apply Risk/Reward toolbar sync flags using the same DOM paths as the order panel.
+     * @param {{ multiTP?: boolean, splitEntry?: boolean, breakeven?: boolean, trailing?: boolean, entryPrice?: number, slPrice?: number }} opts
+     */
+    applyRiskRewardToolPanelSync(opts = {}) {
+        let {
+            multiTP = false,
+            splitEntry = false,
+            breakeven = false,
+            trailing = false,
+            entryPrice: entryPriceOpt,
+            slPrice: slPriceOpt
+        } = opts;
+
+        if (breakeven && trailing) {
+            trailing = false;
+        }
+
+        const entryPrice = Number.isFinite(entryPriceOpt)
+            ? entryPriceOpt
+            : parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        const slPrice = Number.isFinite(slPriceOpt)
+            ? slPriceOpt
+            : parseFloat(document.getElementById('slPrice')?.value || 0);
+
+        const multipleTPToggle = document.getElementById('multipleTPToggle');
+        if (multipleTPToggle) {
+            if (multiTP) {
+                if (!multipleTPToggle.checked) {
+                    multipleTPToggle.checked = true;
+                    multipleTPToggle.dispatchEvent(new Event('change', { bubbles: true }));
+                } else {
+                    this.initializeTPTargets();
+                }
+            } else if (multipleTPToggle.checked) {
+                multipleTPToggle.checked = false;
+                multipleTPToggle.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }
+
+        const prec = this.getPricePrecision ? this.getPricePrecision() : 5;
+        const eps = Math.pow(10, -prec);
+
+        if (splitEntry) {
+            this.clearSplitEntries();
+            if (entryPrice > 0 && slPrice > 0 && Math.abs(entryPrice - slPrice) > eps) {
+                let mid = (entryPrice + slPrice) / 2;
+                mid = parseFloat(mid.toFixed(prec));
+                if (Math.abs(mid - entryPrice) < eps) {
+                    const towardStop = slPrice < entryPrice ? -1 : 1;
+                    mid = parseFloat((entryPrice + towardStop * eps).toFixed(prec));
+                }
+                if (Math.abs(mid - entryPrice) >= eps * 0.5) {
+                    this.addSplitEntry(mid);
+                }
+            }
+        } else {
+            this.clearSplitEntries();
+        }
+
+        const autoBreakevenToggle = document.getElementById('autoBreakevenToggle');
+        const trailingSLToggle = document.getElementById('trailingSLToggle');
+
+        if (trailing) {
+            if (autoBreakevenToggle) autoBreakevenToggle.checked = false;
+            if (trailingSLToggle) {
+                trailingSLToggle.checked = true;
+                trailingSLToggle.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        } else if (breakeven) {
+            if (trailingSLToggle) trailingSLToggle.checked = false;
+            if (autoBreakevenToggle) {
+                autoBreakevenToggle.checked = true;
+                autoBreakevenToggle.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        } else {
+            if (trailingSLToggle?.checked) {
+                trailingSLToggle.checked = false;
+                trailingSLToggle.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            if (autoBreakevenToggle?.checked) {
+                autoBreakevenToggle.checked = false;
+                autoBreakevenToggle.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }
+
+        if (typeof this.calculateAdvancedRiskReward === 'function') {
+            this.calculateAdvancedRiskReward();
+        }
+        if (typeof this.updatePreviewLines === 'function') {
+            this.updatePreviewLines();
+        }
+    }
+
+    /**
      * Position size (lots / contracts / units) from a fixed dollar risk.
      * @param {number} riskUSD
      * @param {number} entry

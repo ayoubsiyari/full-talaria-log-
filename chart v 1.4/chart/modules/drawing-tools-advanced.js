@@ -955,6 +955,14 @@ class BaseRiskRewardTool extends BaseDrawing {
             this.meta.zoneWidthRatio = null;
         }
         this.lastRenderMeta = null;
+        if (!this.meta.orderPanelSync) {
+            this.meta.orderPanelSync = {
+                multiTP: false,
+                splitEntry: false,
+                breakeven: false,
+                trailing: false
+            };
+        }
         this.ensureRiskSettings();
     }
 
@@ -1433,6 +1441,15 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (orderManager.tpPrice !== undefined) orderManager.tpPrice = tpPrice;
         if (orderManager.slPrice !== undefined) orderManager.slPrice = slPrice;
         if (orderManager.entryPrice !== undefined) orderManager.entryPrice = entryPrice;
+
+        const sync = this.meta?.orderPanelSync;
+        if (sync && typeof orderManager.applyRiskRewardToolPanelSync === 'function') {
+            orderManager.applyRiskRewardToolPanelSync({
+                ...sync,
+                entryPrice,
+                slPrice
+            });
+        }
     }
 
     render(container, scales) {
@@ -2028,7 +2045,13 @@ class BaseRiskRewardTool extends BaseDrawing {
         return {
             ...super.toJSON(),
             orientation: this.meta.orientation,
-            risk: this.meta.risk
+            risk: this.meta.risk,
+            orderPanelSync: this.meta.orderPanelSync || {
+                multiTP: false,
+                splitEntry: false,
+                breakeven: false,
+                trailing: false
+            }
         };
     }
 
@@ -2042,6 +2065,16 @@ class BaseRiskRewardTool extends BaseDrawing {
             ...(instance.meta.risk || {}),
             ...(data.risk || {})
         };
+        instance.meta.orderPanelSync = {
+            multiTP: false,
+            splitEntry: false,
+            breakeven: false,
+            trailing: false,
+            ...(data.orderPanelSync || {})
+        };
+        if (instance.meta.orderPanelSync.breakeven && instance.meta.orderPanelSync.trailing) {
+            instance.meta.orderPanelSync.trailing = false;
+        }
         instance.chart = chart; // Set chart reference for multi-timeframe support
         instance.ensureRiskSettings();
         return instance;
