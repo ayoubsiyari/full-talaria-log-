@@ -996,9 +996,9 @@ class BaseRiskRewardTool extends BaseDrawing {
                     if (row && Number.isFinite(row.y)) row.y += ddy;
                 });
             });
-            if (typeof this.normalizeRiskRewardTargetLevels === 'function') {
-                this.normalizeRiskRewardTargetLevels();
-            }
+            // Do not call normalizeRiskRewardTargetLevels here: it re-sorts TP primary vs extras and
+            // can make ladder levels look "stuck" vs entry after a rigid vertical move. Normalize only
+            // after order-manager sync / load (_afterRiskRewardOrderManagerSync, baseFromJSON).
         }
         this.meta.updatedAt = Date.now();
         if (typeof this.ensureRiskSettings === 'function') {
