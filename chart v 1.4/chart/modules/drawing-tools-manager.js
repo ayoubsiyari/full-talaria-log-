@@ -3554,6 +3554,30 @@ class DrawingToolsManager {
         
         // Setup interaction handlers
         this.setupDrawingInteraction(drawing);
+        // Order panel preview lines are appended to the root SVG after .drawings — they stack on top
+        // and steal drags from risk/reward / other tools unless we lift the drawing layers again.
+        this.raiseDrawingLayersAboveOrderPreviews();
+    }
+
+    /**
+     * SVG paint order = DOM order. OrderManager preview TP/SL/Entry lines use svg.append() so they
+     * end up above .drawings and block hits. Re-append drawing groups last so tools stay interactive.
+     */
+    raiseDrawingLayersAboveOrderPreviews() {
+        if (!this.svg || this.svg.empty()) return;
+        try {
+            if (this.drawingsGroup && !this.drawingsGroup.empty()) {
+                this.drawingsGroup.raise();
+            }
+            if (this.labelsGroup && !this.labelsGroup.empty()) {
+                this.labelsGroup.raise();
+            }
+            if (this.tempGroup && !this.tempGroup.empty()) {
+                this.tempGroup.raise();
+            }
+        } catch (_e) {
+            /* ignore */
+        }
     }
 
     /**
@@ -5756,6 +5780,7 @@ class DrawingToolsManager {
         this.drawings.forEach(drawing => {
             this.renderDrawing(drawing);
         });
+        this.raiseDrawingLayersAboveOrderPreviews();
     }
 
     /**

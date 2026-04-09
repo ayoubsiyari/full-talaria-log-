@@ -14608,6 +14608,10 @@ class OrderManager {
         this.alignPreviewLabels();
         this._reflowEntryAnchoredTpSlBadges();
         this._syncPendingLimitStopConnector();
+        const dm = previewChart && previewChart.drawingManager;
+        if (dm && typeof dm.raiseDrawingLayersAboveOrderPreviews === 'function') {
+            dm.raiseDrawingLayersAboveOrderPreviews();
+        }
         } finally {
             this._previewTargetChart = null;
         }
