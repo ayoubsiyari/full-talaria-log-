@@ -567,8 +567,17 @@ class OrderManager {
         s.selectAll('.exec-order-connector').remove();
         s.selectAll('.y-axis-pending-highlight,.y-axis-entry-highlight,.y-axis-sl-highlight,.y-axis-tp-highlight,.y-axis-pending-sl-highlight,.y-axis-pending-tp-highlight,.y-axis-pending-be-highlight,.y-axis-price-highlight').remove();
         s.selectAll('g[class*="entry-marker-"]').remove();
+        s.selectAll('.exit-marker, [class*="exit-marker-"], .partial-close-marker, [class*="partial-close-marker-"]').remove();
         s.selectAll('.trade-connector').remove();
-        if (this.tradeConnectors) this.tradeConnectors = [];
+        if (this.tradeConnectors?.length) {
+            this.tradeConnectors = this.tradeConnectors.filter((tc) => (tc.chart || this.chart) !== chart);
+        }
+        if (this.exitMarkers?.length) {
+            this.exitMarkers = this.exitMarkers.filter((m) => (m.chart || this.chart) !== chart);
+        }
+        if (this.partialCloseMarkers?.length) {
+            this.partialCloseMarkers = this.partialCloseMarkers.filter((m) => (m.chart || this.chart) !== chart);
+        }
         s.selectAll('text[class*="pip-indicator"]').remove();
         s.selectAll('text[class*="dollar-indicator"]').remove();
         s.selectAll('text[class*="rr-indicator"]').remove();
@@ -1334,7 +1343,7 @@ class OrderManager {
     }
 
     _getCurrentTickSnapshot() {
-        const rs = this.replaySystem;
+        const rs = this._playbackReplaySystem();
         if (!rs || !rs.isActive) return { t: null, tick: -1 };
         const anim = rs.animatingCandle;
         if (anim) {
@@ -22589,24 +22598,25 @@ class OrderManager {
                 if (lineType === 'entry') {
                     order.openPrice = newPrice;
                 } else if (lineType === 'sl') {
-                    const curBar = self._getCurrentCandleForChart(ctx);
+                    // Same bar as updatePositions() / getCurrentCandle — not ctx (line may be on another panel).
+                    const guardBar = self.getCurrentCandle();
                     const siblings = order.isSplitEntry && order.splitGroupId
                         ? self._getSplitGroupOpenPositions(order) : [order];
                     for (const sib of siblings) {
                         sib.stopLoss = newPrice;
-                        if (curBar) {
-                            sib._slNoTriggerBeforeTime = curBar.t;
+                        if (guardBar) {
+                            sib._slNoTriggerBeforeTime = guardBar.t;
                             sib._slNoTriggerBeforeTick = Infinity;
                         }
                     }
                 } else if (lineType === 'tp') {
-                    const curBar = self._getCurrentCandleForChart(ctx);
+                    const guardBar = self.getCurrentCandle();
                     const siblings = order.isSplitEntry && order.splitGroupId
                         ? self._getSplitGroupOpenPositions(order) : [order];
                     for (const sib of siblings) {
                         sib.takeProfit = newPrice;
-                        if (curBar) {
-                            sib._tpNoTriggerBeforeTime = curBar.t;
+                        if (guardBar) {
+                            sib._tpNoTriggerBeforeTime = guardBar.t;
                             sib._tpNoTriggerBeforeTick = Infinity;
                         }
                     }
@@ -22815,7 +22825,7 @@ class OrderManager {
 
             // SL released with stop on the "wrong" side of current price: next SL fill uses market at release, not dragged level.
             if (lineType === 'sl') {
-                const curBarSl = self._getCurrentCandleForChart(ctx);
+                const curBarSl = self.getCurrentCandle();
                 const markPx = Number(curBarSl?.c);
                 const sibsSl = order.isSplitEntry && order.splitGroupId
                     ? self._getSplitGroupOpenPositions(order) : [order];
@@ -22845,7 +22855,7 @@ class OrderManager {
             // Use current tickProgress so the SL/TP can trigger from
             // the very next tick after the drag ends.
             if (lineType === 'sl' || lineType === 'tp') {
-                const curBar = self._getCurrentCandleForChart(ctx);
+                const curBar = self.getCurrentCandle();
                 const endTick = self._getCurrentTickSnapshot().tick;
                 if (curBar) {
                     const siblings = order.isSplitEntry && order.splitGroupId
@@ -22967,14 +22977,14 @@ class OrderManager {
 
                 // Update target price in the order (and all split siblings)
                 if (order.tpTargets && order.tpTargets[targetIndex]) {
-                    const curBar = self._getCurrentCandleForChart(ctx);
+                    const guardBar = self.getCurrentCandle();
                     const siblings = order.isSplitEntry && order.splitGroupId
                         ? self._getSplitGroupOpenPositions(order) : [order];
                     for (const sib of siblings) {
                         if (sib.tpTargets && sib.tpTargets[targetIndex]) {
                             sib.tpTargets[targetIndex].price = newPrice;
-                            if (curBar) {
-                                sib.tpTargets[targetIndex]._noTriggerBeforeTime = curBar.t;
+                            if (guardBar) {
+                                sib.tpTargets[targetIndex]._noTriggerBeforeTime = guardBar.t;
                                 sib.tpTargets[targetIndex]._noTriggerBeforeTick = Infinity;
                             }
                         }
@@ -23032,7 +23042,7 @@ class OrderManager {
             // Refresh guard on this order AND all split siblings.
             // Use current tickProgress (not Infinity) so the TP can trigger
             // from the very next tick after the drag ends.
-            const curBar = self._getCurrentCandleForChart(ctx);
+            const curBar = self.getCurrentCandle();
             const endTick = self._getCurrentTickSnapshot().tick;
             if (curBar) {
                 const siblings = order.isSplitEntry && order.splitGroupId
@@ -26969,8 +26979,8 @@ class OrderManager {
      * (next raw bar) while chart.data is updated in the *last* slot — map to that slot so the tick
      * lines up with the candle being played, not the next empty column.
      */
-    _chartIndexForCloseMarker(closeTime) {
-        const data = this.chart?.data;
+    _chartIndexForCloseMarkerOnChart(ch, closeTime) {
+        const data = ch?.data;
         if (!data || !data.length || closeTime == null) return -1;
         const rs = this.replaySystem;
         if (rs?.isActive && rs.animatingCandle) {
@@ -26980,6 +26990,10 @@ class OrderManager {
             }
         }
         return this._findCandleIndexForTime(data, closeTime);
+    }
+
+    _chartIndexForCloseMarker(closeTime) {
+        return this._chartIndexForCloseMarkerOnChart(this.chart, closeTime);
     }
 
     /**
@@ -27044,31 +27058,43 @@ class OrderManager {
     }
 
     _findExitMarkerSelectionForOrder(orderId) {
-        const svg = this.chart?.svg;
-        if (!svg || typeof svg.select !== 'function') return null;
+        const charts = this._isMultiPanelLayout()
+            ? (this._collectLayoutCharts() || [])
+            : [this.chart];
         const oid = String(orderId);
-        const direct = svg.select(`.exit-marker-${oid}`);
-        if (!direct.empty()) return direct;
-        let found = null;
-        svg.selectAll('g.exit-marker').each(function () {
-            if (found) return;
-            const ids = (this.getAttribute && this.getAttribute('data-linked-order-ids')) || '';
-            if (ids.split(',').map((s) => s.trim()).filter(Boolean).includes(oid)) found = this;
-        });
-        return found ? d3.select(found) : null;
+        for (const ch of charts) {
+            const svg = ch?.svg;
+            if (!svg || typeof svg.select !== 'function') continue;
+            const direct = svg.select(`.exit-marker-${oid}`);
+            if (!direct.empty()) return direct;
+            let found = null;
+            svg.selectAll('g.exit-marker').each(function () {
+                if (found) return;
+                const ids = (this.getAttribute && this.getAttribute('data-linked-order-ids')) || '';
+                if (ids.split(',').map((s) => s.trim()).filter(Boolean).includes(oid)) found = this;
+            });
+            if (found) return d3.select(found);
+        }
+        return null;
     }
 
     _setConnectorHoverHighlight(orderId, active) {
-        const svg = this.chart?.svg;
-        if (!svg) return;
-        const line = svg.select(`.trade-connector-${orderId}`);
-        if (line.empty()) return;
-        if (active) {
-            this._ensureMarkerGlowFilter(svg, 'trade-connector-glow', '#94a3b8');
-            line.attr('stroke', 'rgba(200, 210, 230, 0.95)').attr('stroke-width', 2.5)
-                .attr('filter', 'url(#trade-connector-glow)');
-        } else {
-            line.attr('stroke', 'rgba(150, 150, 150, 0.4)').attr('stroke-width', 1).attr('filter', null);
+        const charts = this._isMultiPanelLayout()
+            ? (this._collectLayoutCharts() || [])
+            : [this.chart];
+        const oid = String(orderId);
+        for (const ch of charts) {
+            const svg = ch?.svg;
+            if (!svg || typeof svg.select !== 'function') continue;
+            const line = svg.select(`.trade-connector-${oid}`);
+            if (line.empty()) continue;
+            if (active) {
+                this._ensureMarkerGlowFilter(svg, 'trade-connector-glow', '#94a3b8');
+                line.attr('stroke', 'rgba(200, 210, 230, 0.95)').attr('stroke-width', 2.5)
+                    .attr('filter', 'url(#trade-connector-glow)');
+            } else {
+                line.attr('stroke', 'rgba(150, 150, 150, 0.4)').attr('stroke-width', 1).attr('filter', null);
+            }
         }
     }
 
@@ -27112,12 +27138,16 @@ class OrderManager {
     }
 
     _setExitArrowHoverGlowFromSelection(exitGroupSel, active) {
-        if (!exitGroupSel || exitGroupSel.empty() || !this.chart?.svg) return;
+        if (!exitGroupSel || exitGroupSel.empty()) return;
         const exitArrowEl = exitGroupSel.select('[data-role="exit-arrow"]');
         if (exitArrowEl.empty()) return;
         const c = exitArrowEl.attr('fill') || '#22c55e';
         const glowId = exitGroupSel.attr('data-exit-glow-id') || 'exit-glow-fallback';
-        this._ensureMarkerGlowFilter(this.chart.svg, glowId, c);
+        const node = exitGroupSel.node();
+        const owner = node && node.ownerSVGElement;
+        const svg = owner ? d3.select(owner) : this.chart?.svg;
+        if (!svg || typeof svg.select !== 'function') return;
+        this._ensureMarkerGlowFilter(svg, glowId, c);
         if (active) {
             exitArrowEl.attr('filter', `url(#${glowId})`).attr('stroke', c).attr('stroke-width', 1);
         } else {
@@ -27285,19 +27315,31 @@ class OrderManager {
      * Draw exit marker on chart (TradingView style — arrow + tick + hover tooltip)
      * Aggregates P&L for markers at the same price level (for split entries)
      */
-    drawExitMarker(order, closeData) {
-        if (!this.chart || !this.chart.svg || !this.chart.scales) return;
-        const { yScale } = this.chart.scales;
+    drawExitMarker(order, closeData, targetChart = null) {
+        if (targetChart == null && this._isMultiPanelLayout()) {
+            const charts = this._collectLayoutCharts();
+            for (const ch of charts) {
+                if (!this._positionTickerMatchesChartSymbol(order, ch)) continue;
+                this.drawExitMarker(order, closeData, ch);
+            }
+            return;
+        }
+
+        const chart = targetChart || this.chart;
+        if (!chart || !chart.svg || !chart.scales) return;
+        if (order && !this._positionTickerMatchesChartSymbol(order, chart)) return;
+
+        const { yScale } = chart.scales;
         if (!yScale) return;
 
-        const dataIndex = this._chartIndexForCloseMarker(closeData.closeTime);
+        const dataIndex = this._chartIndexForCloseMarkerOnChart(chart, closeData.closeTime);
         if (dataIndex === -1) return;
 
         if (!this.exitMarkers) this.exitMarkers = [];
 
         const priceKey = this.formatPrice(closeData.closePrice);
         const existingMarker = this.exitMarkers.find(m =>
-            m.priceKey === priceKey && m.time === closeData.closeTime
+            m.priceKey === priceKey && m.time === closeData.closeTime && (m.chart || this.chart) === chart
         );
 
         if (existingMarker) {
@@ -27316,15 +27358,14 @@ class OrderManager {
             if (!lotsTxt.empty()) {
                 lotsTxt.text(`${existingMarker.totalQuantity.toFixed(2)} lots`);
             }
-            this._drawTradeConnector(order, closeData);
+            this._drawTradeConnector(order, closeData, chart);
             return;
         }
 
-        const candleSpacing = this.chart.getCandleSpacing();
-        const mg = this.chart.margin;
-        const x = this.chart.dataIndexToPixel(dataIndex);
+        const candleSpacing = chart.getCandleSpacing();
+        const x = chart.dataIndexToPixel(dataIndex);
         const y = yScale(closeData.closePrice);
-        const candle = this.chart.data[dataIndex];
+        const candle = chart.data[dataIndex];
         const sz = 12;
         const gap = 4;
         const tickW = Math.max(candleSpacing * 0.6, 8);
@@ -27335,7 +27376,7 @@ class OrderManager {
         const arrowCY = isBuyExit ? wickY - sz - gap : wickY + sz + gap;
         const color = arrowCY < wickY ? '#ef4444' : '#22c55e';
 
-        const markerGroup = this.chart.svg.append('g')
+        const markerGroup = chart.svg.append('g')
             .attr('class', `exit-marker exit-marker-${order.id}`)
             .attr('data-linked-order-ids', String(order.id))
             .style('pointer-events', 'all')
@@ -27355,9 +27396,9 @@ class OrderManager {
 
         const exitGlowId = `exit-glow-${order.id}`;
         markerGroup.attr('data-exit-glow-id', exitGlowId);
-        this._ensureMarkerGlowFilter(this.chart.svg, exitGlowId, color);
+        this._ensureMarkerGlowFilter(chart.svg, exitGlowId, color);
 
-        const exitArrowEl = markerGroup.append('path')
+        markerGroup.append('path')
             .attr('data-role', 'exit-arrow')
             .attr('d', arrowPath)
             .attr('fill', color)
@@ -27429,30 +27470,32 @@ class OrderManager {
             totalQuantity: order.quantity,
             count: 1,
             isBuyExit,
-            linkedOrderIds: [String(order.id)]
+            linkedOrderIds: [String(order.id)],
+            chart
         });
 
-        this._drawTradeConnector(order, closeData);
+        this._drawTradeConnector(order, closeData, chart);
     }
     
     /**
      * Draw a soft gray dashed line from entry tick to exit tick
      */
-    _drawTradeConnector(order, closeData) {
-        if (!this.chart || !this.chart.svg || !this.chart.scales) return;
-        const { yScale } = this.chart.scales;
+    _drawTradeConnector(order, closeData, targetChart = null) {
+        const chart = targetChart || this.chart;
+        if (!chart || !chart.svg || !chart.scales) return;
+        const { yScale } = chart.scales;
         if (!yScale) return;
 
-        const entryIdx = this._findCandleIndexForTime(this.chart.data, order.openTime);
-        const exitIdx = this._chartIndexForCloseMarker(closeData.closeTime);
+        const entryIdx = this._findCandleIndexForTime(chart.data, order.openTime);
+        const exitIdx = this._chartIndexForCloseMarkerOnChart(chart, closeData.closeTime);
         if (entryIdx === -1 || exitIdx === -1) return;
 
-        const x1 = this.chart.dataIndexToPixel(entryIdx);
+        const x1 = chart.dataIndexToPixel(entryIdx);
         const y1 = yScale(order.openPrice);
-        const x2 = this.chart.dataIndexToPixel(exitIdx);
+        const x2 = chart.dataIndexToPixel(exitIdx);
         const y2 = yScale(closeData.closePrice);
 
-        const line = this.chart.svg.append('line')
+        const line = chart.svg.append('line')
             .attr('class', `trade-connector trade-connector-${order.id}`)
             .attr('x1', x1).attr('y1', y1)
             .attr('x2', x2).attr('y2', y2)
@@ -27466,6 +27509,7 @@ class OrderManager {
         this.tradeConnectors.push({
             orderId: order.id,
             line,
+            chart,
             entryTime: order.openTime,
             entryPrice: order.openPrice,
             exitTime: closeData.closeTime,
@@ -27480,23 +27524,34 @@ class OrderManager {
      * Uses the same TradingView-style arrow + tick + hover tooltip as drawExitMarker.
      * Aggregates P&L for markers at the same price level (for split entries).
      */
-    drawPartialCloseMarker(order, closeData) {
-        if (!this.chart || !this.chart.svg || !this.chart.scales) {
-            console.warn('⚠️ Cannot draw partial close marker - chart not ready');
+    drawPartialCloseMarker(order, closeData, targetChart = null) {
+        if (targetChart == null && this._isMultiPanelLayout()) {
+            const charts = this._collectLayoutCharts();
+            for (const ch of charts) {
+                if (!this._positionTickerMatchesChartSymbol(order, ch)) continue;
+                this.drawPartialCloseMarker(order, closeData, ch);
+            }
             return;
         }
 
-        const { yScale } = this.chart.scales;
+        const chart = targetChart || this.chart;
+        if (!chart || !chart.svg || !chart.scales) {
+            console.warn('⚠️ Cannot draw partial close marker - chart not ready');
+            return;
+        }
+        if (order && !this._positionTickerMatchesChartSymbol(order, chart)) return;
+
+        const { yScale } = chart.scales;
         if (!yScale) return;
 
-        const dataIndex = this._chartIndexForCloseMarker(closeData.closeTime);
+        const dataIndex = this._chartIndexForCloseMarkerOnChart(chart, closeData.closeTime);
         if (dataIndex === -1) return;
 
         if (!this.partialCloseMarkers) this.partialCloseMarkers = [];
 
         const priceKey = this.formatPrice(closeData.closePrice);
         const existingMarker = this.partialCloseMarkers.find(m =>
-            m.priceKey === priceKey && m.time === closeData.closeTime
+            m.priceKey === priceKey && m.time === closeData.closeTime && (m.chart || this.chart) === chart
         );
 
         if (existingMarker) {
@@ -27515,15 +27570,15 @@ class OrderManager {
             if (!lotsTxt.empty()) {
                 lotsTxt.text(`${existingMarker.totalQuantity.toFixed(2)} lots`);
             }
-            this._drawTradeConnector(order, closeData);
+            this._drawTradeConnector(order, closeData, chart);
             console.log(`   📊 Aggregated partial close: ${existingMarker.count} positions, total P&L: ${existingMarker.totalPnL.toFixed(2)}`);
             return;
         }
 
-        const candleSpacing = this.chart.getCandleSpacing();
-        const x = this.chart.dataIndexToPixel(dataIndex);
+        const candleSpacing = chart.getCandleSpacing();
+        const x = chart.dataIndexToPixel(dataIndex);
         const y = yScale(closeData.closePrice);
-        const candle = this.chart.data[dataIndex];
+        const candle = chart.data[dataIndex];
         const sz = 12;
         const gap = 4;
         const tickW = Math.max(candleSpacing * 0.6, 8);
@@ -27534,7 +27589,7 @@ class OrderManager {
         const arrowCY = isBuyExit ? wickY - sz - gap : wickY + sz + gap;
         const color = arrowCY < wickY ? '#ef4444' : '#22c55e';
 
-        const markerGroup = this.chart.svg.append('g')
+        const markerGroup = chart.svg.append('g')
             .attr('class', `partial-close-marker partial-close-marker-${order.id}-${closeData.targetId}`)
             .attr('data-linked-order-ids', String(order.id))
             .style('pointer-events', 'all')
@@ -27554,7 +27609,7 @@ class OrderManager {
 
         const glowId = `partial-glow-${order.id}-${closeData.targetId}`;
         markerGroup.attr('data-exit-glow-id', glowId);
-        this._ensureMarkerGlowFilter(this.chart.svg, glowId, color);
+        this._ensureMarkerGlowFilter(chart.svg, glowId, color);
 
         markerGroup.append('path')
             .attr('data-role', 'exit-arrow')
@@ -27630,10 +27685,11 @@ class OrderManager {
             count: 1,
             price: closeData.closePrice,
             isBuyExit,
-            linkedOrderIds: [String(order.id)]
+            linkedOrderIds: [String(order.id)],
+            chart
         });
 
-        this._drawTradeConnector(order, closeData);
+        this._drawTradeConnector(order, closeData, chart);
 
         const pnlText = `${closeData.pnl >= 0 ? '+' : ''}$${closeData.pnl.toFixed(2)}`;
         console.log(`✅ Partial close marker drawn for order #${order.id} target #${closeData.targetId} (P&L: ${pnlText})`);
@@ -27685,17 +27741,17 @@ class OrderManager {
     }
 
     _updateExitAndPartialMarkersOnMain() {
-        if (!this.chart?.scales) return;
-
         if (this.exitMarkers && this.exitMarkers.length > 0) {
-            const { yScale: mainY } = this.chart.scales;
-            this.exitMarkers.forEach(({ marker, time, price, isBuyExit }) => {
-                const dataIndex = this._chartIndexForCloseMarker(time);
+            this.exitMarkers.forEach(({ marker, time, price, isBuyExit, chart: mch }) => {
+                const ch = mch || this.chart;
+                if (!ch?.scales?.yScale || !ch.data) return;
+                const mainY = ch.scales.yScale;
+                const dataIndex = this._chartIndexForCloseMarkerOnChart(ch, time);
                 if (dataIndex === -1) return;
 
-                const candle = this.chart.data[dataIndex];
-                const candleSpacing = this.chart.getCandleSpacing();
-                const x = this.chart.dataIndexToPixel(dataIndex);
+                const candle = ch.data[dataIndex];
+                const candleSpacing = ch.getCandleSpacing();
+                const x = ch.dataIndexToPixel(dataIndex);
                 const y = mainY(price);
                 const sz = 12;
                 const gap = 4;
@@ -27729,14 +27785,16 @@ class OrderManager {
         }
 
         if (this.partialCloseMarkers && this.partialCloseMarkers.length > 0) {
-            const { yScale: partialY } = this.chart.scales;
-            this.partialCloseMarkers.forEach(({ marker, time, price, isBuyExit }) => {
-                const dataIndex = this._chartIndexForCloseMarker(time);
+            this.partialCloseMarkers.forEach(({ marker, time, price, isBuyExit, chart: mch }) => {
+                const ch = mch || this.chart;
+                if (!ch?.scales?.yScale || !ch.data) return;
+                const partialY = ch.scales.yScale;
+                const dataIndex = this._chartIndexForCloseMarkerOnChart(ch, time);
                 if (dataIndex === -1) return;
 
-                const candle = this.chart.data[dataIndex];
-                const candleSpacing = this.chart.getCandleSpacing();
-                const x = this.chart.dataIndexToPixel(dataIndex);
+                const candle = ch.data[dataIndex];
+                const candleSpacing = ch.getCandleSpacing();
+                const x = ch.dataIndexToPixel(dataIndex);
                 const y = partialY(price);
                 const sz = 12;
                 const gap = 4;
@@ -27770,15 +27828,17 @@ class OrderManager {
         }
 
         if (this.tradeConnectors && this.tradeConnectors.length > 0) {
-            const { yScale: mainY } = this.chart.scales;
             this.tradeConnectors.forEach((tc) => {
-                const eIdx = this._findCandleIndexForTime(this.chart.data, tc.entryTime);
-                const xIdx = this._chartIndexForCloseMarker(tc.exitTime);
+                const ch = tc.chart || this.chart;
+                if (!ch?.scales?.yScale || !ch.data) return;
+                const mainY = ch.scales.yScale;
+                const eIdx = this._findCandleIndexForTime(ch.data, tc.entryTime);
+                const xIdx = this._chartIndexForCloseMarkerOnChart(ch, tc.exitTime);
                 if (eIdx === -1 || xIdx === -1) return;
                 tc.line
-                    .attr('x1', this.chart.dataIndexToPixel(eIdx))
+                    .attr('x1', ch.dataIndexToPixel(eIdx))
                     .attr('y1', mainY(tc.entryPrice))
-                    .attr('x2', this.chart.dataIndexToPixel(xIdx))
+                    .attr('x2', ch.dataIndexToPixel(xIdx))
                     .attr('y2', mainY(tc.exitPrice));
             });
         }
@@ -27788,10 +27848,13 @@ class OrderManager {
      * Update entry/exit marker positions on chart render
      */
     updateTradeMarkers() {
-        if (!this.chart?.scales) return;
-
         const entryCount = this.entryMarkers?.length || 0;
         const exitCount = this.exitMarkers?.length || 0;
+        const partialCount = this.partialCloseMarkers?.length || 0;
+        if (!entryCount && !exitCount && !partialCount) return;
+
+        const anyScale = (this._collectLayoutCharts() || [this.chart]).some((c) => c?.scales?.yScale);
+        if (!anyScale) return;
 
         if (entryCount > 0 || exitCount > 0) {
             console.log(`📍 Updating ${entryCount} entry markers and ${exitCount} exit markers`);
@@ -29686,9 +29749,8 @@ class OrderManager {
 
         this._updateEntryMarkersForChart(ch);
 
-        if (ch === this.chart) {
-            this._updateExitAndPartialMarkersOnMain();
-        }
+        // Exit/partial markers and connectors store their host chart; update all whenever any surface renders.
+        this._updateExitAndPartialMarkersOnMain();
 
         ch.svg.selectAll('.y-axis-pending-highlight').remove();
         ch.svg.selectAll('.y-axis-entry-highlight').remove();
