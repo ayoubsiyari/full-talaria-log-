@@ -934,6 +934,10 @@ class DatePriceRangeTool extends BaseDrawing {
 // ============================================================================
 // Risk-Reward Tools
 // ============================================================================
+/** Default spacing for a new ladder entry from primary (tool “+” / panel). Not single-tick — avoids E2 on top of entry. */
+const RR_EXTRA_ENTRY_OFFSET_FRAC = 0.0045;
+const RR_EXTRA_ENTRY_MIN_TICK_MULT = 48;
+
 class BaseRiskRewardTool extends BaseDrawing {
     constructor(type, points = [], style = {}) {
         super(type, points, style);
@@ -1115,7 +1119,11 @@ class BaseRiskRewardTool extends BaseDrawing {
             this._ensureExtraLevelMeta();
             const step = this.getPriceStep();
             const e = this.points[0].y;
-            const y = this.isLong ? e - step : e + step;
+            const offset = Math.max(
+                step * RR_EXTRA_ENTRY_MIN_TICK_MULT,
+                Math.abs(e) * RR_EXTRA_ENTRY_OFFSET_FRAC
+            );
+            const y = this.isLong ? e - offset : e + offset;
             this.meta.extraEntries.push({ id: this._nextExtraLevelId(), y: this.sanitizeExtraEntryPrice(y) });
             this.ensureRiskSettings();
         }
@@ -1879,16 +1887,29 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         const bodyTopPx = Math.min(riskTop, rewTop);
         const bodyBotPx = Math.max(riskBot, rewBot);
-        this.group.append('rect')
-            .attr('class', 'rr-body-drag')
-            .attr('x', zoneX1)
-            .attr('y', bodyTopPx)
-            .attr('width', zoneWidth)
-            .attr('height', Math.max(1, bodyBotPx - bodyTopPx))
-            .attr('fill', 'rgba(0,0,0,0)')
-            .attr('stroke', 'none')
-            .style('pointer-events', this.selected ? 'all' : 'none')
-            .style('cursor', 'move');
+        // No whole-tool drag on the entry row — gap so only the entry hit strip (painted later) sees events.
+        const entryRowGapPx = 36;
+        const gapHalf = entryRowGapPx / 2;
+        const bandTop = entryY - gapHalf;
+        const bandBot = entryY + gapHalf;
+        const upperBodyH = Math.max(0, bandTop - bodyTopPx);
+        const lowerBodyY = bandBot;
+        const lowerBodyH = Math.max(0, bodyBotPx - lowerBodyY);
+        const appendBodyDrag = (y0, h) => {
+            if (h < 1) return;
+            this.group.append('rect')
+                .attr('class', 'rr-body-drag')
+                .attr('x', zoneX1)
+                .attr('y', y0)
+                .attr('width', zoneWidth)
+                .attr('height', h)
+                .attr('fill', 'rgba(0,0,0,0)')
+                .attr('stroke', 'none')
+                .style('pointer-events', this.selected ? 'all' : 'none')
+                .style('cursor', 'move');
+        };
+        appendBodyDrag(bodyTopPx, upperBodyH);
+        appendBodyDrag(lowerBodyY, lowerBodyH);
 
         // Same as TP/stop visible lines: do not capture pointer-events on the stroke. Otherwise this
         // line competes with whole-tool drag and blocks the entry hit rect / left handles (TP feels

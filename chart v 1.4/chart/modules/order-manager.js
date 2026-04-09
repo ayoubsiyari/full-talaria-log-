@@ -16669,7 +16669,7 @@ class OrderManager {
         if (existingPrices.length > 0) {
             const offsetDir = (this.orderSide === 'SELL') ? 1 : -1;
             const basePrice = offsetDir === -1 ? Math.min(...existingPrices) : Math.max(...existingPrices);
-            const raw = basePrice * (1 + offsetDir * 0.001);
+            const raw = basePrice * (1 + offsetDir * 0.0045);
             newPrice = this._clampMultiEntryPriceForStop(raw, existingPrices);
         }
 
@@ -17575,7 +17575,8 @@ class OrderManager {
                 { id: this.multiEntryIdCounter++, price: currentPrice, amount: amt1 }
             ];
             const offsetDir = (this.orderSide === 'SELL') ? 1 : -1;
-            const rawSecond = currentPrice > 0 ? currentPrice * (1 + offsetDir * 0.001) : 0;
+            // ~0.45% from primary — wider default than 0.1% so E2 is not visually on the entry line
+            const rawSecond = currentPrice > 0 ? currentPrice * (1 + offsetDir * 0.0045) : 0;
             const secondPrice = currentPrice > 0
                 ? this._clampMultiEntryPriceForStop(rawSecond, [currentPrice])
                 : 0;
