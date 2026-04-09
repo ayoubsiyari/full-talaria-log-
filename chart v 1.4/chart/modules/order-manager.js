@@ -23697,22 +23697,35 @@ class OrderManager {
      * Delete a specific TP target from an order.
      * If only 2 targets remain and one is deleted, revert to single TP.
      */
-    _deleteTPTarget(orderId, targetIndex, isPending) {
+    /**
+     * @param {number|null|undefined} [canonicalTargetId] — stable TP row id from _tpCanonicalTargetId (fixes stale index after add/remove).
+     */
+    _deleteTPTarget(orderId, targetIndex, isPending, canonicalTargetId = null) {
         const source = isPending
             ? this.pendingOrders.find(p => p.id === orderId)
             : this.openPositions.find(p => p.id === orderId);
-        if (!source || !source.tpTargets || targetIndex < 0 || targetIndex >= source.tpTargets.length) return;
+        if (!source || !source.tpTargets?.length) return;
 
-        const removedPrice = source.tpTargets[targetIndex].price;
+        let ix = targetIndex;
+        if (canonicalTargetId != null && canonicalTargetId !== undefined) {
+            const j = source.tpTargets.findIndex((t, ti) => {
+                const cid = this._tpCanonicalTargetId(t, ti);
+                return cid === canonicalTargetId || String(cid) === String(canonicalTargetId);
+            });
+            if (j >= 0) ix = j;
+        }
+        if (ix < 0 || ix >= source.tpTargets.length) return;
+
+        const removedPrice = source.tpTargets[ix].price;
 
         if (source.tpTargets.length <= 2) {
             // Going from 2 → 1: revert to single TP
-            const remaining = source.tpTargets.filter((_, i) => i !== targetIndex);
+            const remaining = source.tpTargets.filter((_, i) => i !== ix);
             source.takeProfit = remaining.length > 0 ? remaining[0].price : 0;
             source.tpTargets = [];
         } else {
             // Remove target and redistribute percentages
-            source.tpTargets.splice(targetIndex, 1);
+            source.tpTargets.splice(ix, 1);
             const n = source.tpTargets.length;
             const equalPct = Math.round(100 / n);
             source.tpTargets.forEach((t, i) => {
@@ -23749,6 +23762,16 @@ class OrderManager {
                 this.drawMultiTPAvgLine(source, 'pending');
             }
             this.positionPendingOrderTargets();
+        } else {
+            this.removeSLTPLines(source.id);
+            this.removeMultiTPAvgLine(source.id);
+            if (source.isSplitEntry && source.splitGroupId) {
+                this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
+            }
+            this.drawSLTPLines(source);
+            if (source.tpTargets && source.tpTargets.length >= 1) {
+                this.drawMultiTPAvgLine(source);
+            }
         }
         this.updateOrderLines();
         this.showNotification(`TP target @ ${this.formatPrice(removedPrice)} removed`, 'info');
@@ -25789,10 +25812,7 @@ class OrderManager {
             const charts = this._collectLayoutCharts();
             for (const ch of charts) {
                 if (!this._positionTickerMatchesChartSymbol(pendingOrder, ch)) continue;
-                const hasTargets = (this.pendingTargetLines || []).some(
-                    (e) => e.orderId === pendingOrder.id && e.chart === ch
-                );
-                if (!hasTargets) this.drawPendingOrderTargets(pendingOrder, ch);
+                this.drawPendingOrderTargets(pendingOrder, ch);
             }
             return;
         }
@@ -25809,6 +25829,8 @@ class OrderManager {
         if (pendingOrder.isSplitEntry && pendingOrder.splitGroupId && Number(pendingOrder.splitIndex) > 1) {
             return;
         }
+
+        this._clearPendingTargetsOnChart(pendingOrder.id, chart);
 
         const entries = [];
         const quantity = pendingOrder.quantity;
@@ -26148,8 +26170,14 @@ class OrderManager {
                         target._pctIncBtn = incG;
                     }
                     target._pctDecBtn.attr('transform', `translate(${xAfterLabel}, ${y - arrowSize / 2})`);
+                    try {
+                        if (typeof target._pctDecBtn.raise === 'function') target._pctDecBtn.raise();
+                    } catch (_) {}
                     xAfterLabel += arrowSize + arrowGap;
                     target._pctIncBtn.attr('transform', `translate(${xAfterLabel}, ${y - arrowSize / 2})`);
+                    try {
+                        if (typeof target._pctIncBtn.raise === 'function') target._pctIncBtn.raise();
+                    } catch (_) {}
                     xAfterLabel += arrowSize + arrowGap;
                 } else {
                     if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} target._pctDecBtn = null; }
@@ -26170,10 +26198,16 @@ class OrderManager {
                         dbg.append('text').attr('class', 'order-overlay-sublayer').attr('fill', '#e2e8f0').attr('font-size', '14px')
                             .attr('font-weight', '700').attr('text-anchor', 'middle').attr('dy', '0.35em')
                             .style('pointer-events', 'none').text('×');
+                        dbg.on('mousedown', (e) => e.stopPropagation());
                         dbg.on('click', (event) => {
                             event.stopPropagation();
                             if (isMultiTP) {
-                                this._deleteTPTarget(entry.pendingOrder.id, target.tpTargetIndex, true);
+                                this._deleteTPTarget(
+                                    entry.pendingOrder.id,
+                                    target.tpTargetIndex,
+                                    true,
+                                    target.targetId
+                                );
                             } else if (target.type === 'SL') {
                                 this.removePendingStopLoss(entry.pendingOrder.id);
                             } else if (target.type === 'TP') {
@@ -26190,6 +26224,9 @@ class OrderManager {
                         target._deleteBtn = dbg;
                     }
                     target._deleteBtn.attr('transform', `translate(${closeBtnX}, ${y})`);
+                    try {
+                        if (typeof target._deleteBtn.raise === 'function') target._deleteBtn.raise();
+                    } catch (_) {}
                     xAfterLabel = closeBtnX + closeBtnR + closeBtnGap;
                 }
 
@@ -26207,6 +26244,7 @@ class OrderManager {
                         sbg.append('text').attr('class', 'order-overlay-sublayer').attr('fill', '#089981').attr('font-size', '14px')
                             .attr('font-weight', '700').attr('text-anchor', 'middle').attr('dy', '0.35em')
                             .style('pointer-events', 'none').text('+');
+                        sbg.on('mousedown', (e) => e.stopPropagation());
                         sbg.on('click', (event) => {
                             event.stopPropagation();
                             event.preventDefault();
@@ -26227,6 +26265,9 @@ class OrderManager {
                         target._splitBtn = sbg;
                     }
                     target._splitBtn.attr('transform', `translate(${splitX}, ${y})`);
+                    try {
+                        if (typeof target._splitBtn.raise === 'function') target._splitBtn.raise();
+                    } catch (_) {}
                 }
 
                 if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} target._tpPlusBadge = null; }
@@ -26499,6 +26540,36 @@ class OrderManager {
         target.line.call(drag);
         if (target.hitLine) target.hitLine.call(drag);
         target.labelGroup.call(drag);
+    }
+
+    /**
+     * Remove pending target DOM + in-memory row for one order on one chart only.
+     * Prevents duplicate pendingTargetLines entries (stuck/wrong TP delete) when redraw runs without removePendingSLTPLines.
+     */
+    _clearPendingTargetsOnChart(orderId, chart) {
+        if (!this.pendingTargetLines?.length || !chart) return;
+        const stale = this.pendingTargetLines.filter(
+            (e) => e.orderId === orderId && e.chart === chart
+        );
+        for (const record of stale) {
+            record.targets.forEach((target) => {
+                try {
+                    target.line?.remove();
+                    target.hitLine?.remove();
+                    target.labelGroup?.remove();
+                    target.priceHighlight?.remove();
+                    if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} }
+                    if (target._pctIncBtn) { try { target._pctIncBtn.remove(); } catch (_) {} }
+                    if (target._deleteBtn) { try { target._deleteBtn.remove(); } catch (_) {} }
+                    if (target._splitBtn) { try { target._splitBtn.remove(); } catch (_) {} }
+                    if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} }
+                } catch (_) {}
+                target.dragApplied = false;
+            });
+        }
+        this.pendingTargetLines = this.pendingTargetLines.filter(
+            (e) => !(e.orderId === orderId && e.chart === chart)
+        );
     }
 
     removePendingSLTPLines(orderId) {
@@ -28517,9 +28588,10 @@ class OrderManager {
                         .attr('fill', '#e2e8f0').attr('font-size', '12px').attr('font-weight', '700')
                         .attr('text-anchor', 'middle').attr('dy', '0.35em')
                         .style('pointer-events', 'none').text('×');
+                    tpDeleteBtn.on('mousedown', (e) => e.stopPropagation());
                     tpDeleteBtn.on('click', (event) => {
                         event.stopPropagation();
-                        this._deleteTPTarget(order.id, index, false);
+                        this._deleteTPTarget(order.id, index, false, tpKey);
                     });
 
                     // TP+ split button for multi-TP (adds another target)
