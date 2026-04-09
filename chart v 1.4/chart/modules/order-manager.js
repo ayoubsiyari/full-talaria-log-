@@ -20722,6 +20722,9 @@ class OrderManager {
             return oc?.currentFileId != null ? String(oc.currentFileId) : '';
         })();
 
+        const suppressTpHitsWhileDraggingTp =
+            this._isDraggingOrderLine && this._draggingManagedOpenLineKind === 'tp';
+
         this.openPositions.forEach(position => {
             const posTicker = this._positionTicker(position);
             const posFileId = position.sourceFileId != null ? String(position.sourceFileId) : '';
@@ -20998,7 +21001,7 @@ class OrderManager {
                         } else {
                             tpTgtHit = high >= target.price;
                         }
-                        if (tpTgtHit) {
+                        if (tpTgtHit && !suppressTpHitsWhileDraggingTp) {
                             const markPx = Number(currentPrice);
                             const fillPx = tpTgtGuarded && Number.isFinite(markPx)
                                 ? markPx
@@ -21065,7 +21068,7 @@ class OrderManager {
                             const _slBuy = this._slCloseHitType(position);
                             console.log(`   ${_slBuy === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing BUY #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
                             this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
-                        } else if (tpHit) {
+                        } else if (tpHit && !suppressTpHitsWhileDraggingTp) {
                             position._tpNoTriggerBeforeTime = null;
                             position._tpNoTriggerBeforeTick = undefined;
                             const markPx = Number(currentPrice);
@@ -21322,7 +21325,7 @@ class OrderManager {
                         } else {
                             sellTpTgtHit = low <= target.price;
                         }
-                        if (sellTpTgtHit) {
+                        if (sellTpTgtHit && !suppressTpHitsWhileDraggingTp) {
                             const markPx = Number(currentPrice);
                             const fillPx = sellTpTgtGuarded && Number.isFinite(markPx)
                                 ? markPx
@@ -21389,7 +21392,7 @@ class OrderManager {
                             const _slSell = this._slCloseHitType(position);
                             console.log(`   ${_slSell === 'BE' ? '⚖️ BREAKEVEN' : '🛑 STOP LOSS'} HIT! Closing SELL #${position.id} at ${fillPx.toFixed(5)}${fillPx !== position.stopLoss ? ' (gap fill, SL was ' + position.stopLoss.toFixed(5) + ')' : ''}`);
                             this._pushSplitGroupSlClosesFromHit(position, fillPx, positionsToClose, queuedSplitSlGroupIds);
-                        } else if (tpHitSell) {
+                        } else if (tpHitSell && !suppressTpHitsWhileDraggingTp) {
                             position._tpNoTriggerBeforeTime = null;
                             position._tpNoTriggerBeforeTick = undefined;
                             const markPx = Number(currentPrice);
@@ -22955,6 +22958,8 @@ class OrderManager {
             e.stopPropagation();
             
             isDragging = true;
+            self._isDraggingOrderLine = true;
+            self._draggingManagedOpenLineKind = 'tp';
             startY = e.clientY;
             dragStartPrice = target.price;
             
@@ -23028,6 +23033,8 @@ class OrderManager {
             if (!isDragging) return;
             
             isDragging = false;
+            self._isDraggingOrderLine = false;
+            self._draggingManagedOpenLineKind = null;
             
             // Remove document listeners
             document.removeEventListener('mousemove', onMouseMove);
@@ -23962,6 +23969,7 @@ class OrderManager {
             e.stopPropagation();
             isDragging = true;
             self._isDraggingOrderLine = true;
+            self._draggingManagedOpenLineKind = 'tp';
 
             previewLine = ctx.svg.append('line')
                 .attr('stroke', color).attr('stroke-width', 1.5)
@@ -24029,6 +24037,7 @@ class OrderManager {
             if (!isDragging) return;
             isDragging = false;
             self._isDraggingOrderLine = false;
+            self._draggingManagedOpenLineKind = null;
 
             if (previewLine) previewLine.remove();
             if (previewLabelBg) previewLabelBg.remove();
