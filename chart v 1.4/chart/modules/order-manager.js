@@ -14624,7 +14624,7 @@ class OrderManager {
             let beLabel = this._formatBreakevenLabelText(beMode, beValue);
             if (pipOffset !== 0) beLabel += ` +${pipOffset}pts`;
             
-            this.previewLines.be = this.drawPreviewLine(beTriggerPrice, '#f59e0b', beLabel, null, true);
+            this.previewLines.be = this.drawPreviewLine(beTriggerPrice, '#f59e0b', beLabel, null, true, undefined, undefined, { skipYAxisPriceHighlight: true });
             if (this.previewLines.be) {
                 this.previewLines.be.targetPrice = beTriggerPrice;
                 this.previewLines.be.isBELine = true;
@@ -14730,10 +14730,12 @@ class OrderManager {
         this.renderPreviewLabel(lineData, y);
         this.adjustPreviewLineForLabel(lineData);
         
-        // Add Y-axis price highlight for all order lines (Entry, TP, SL, BE, etc.)
-        lineData.yAxisHighlight = this.drawYAxisPriceHighlight(price, color, label, 0, chart);
-        if (disabled && lineData.yAxisHighlight) {
-            lineData.yAxisHighlight.style('opacity', 0.45);
+        // Y-axis price tag (optional — skip for BE so only the orange BE label shows, no duplicate price)
+        if (!options?.skipYAxisPriceHighlight) {
+            lineData.yAxisHighlight = this.drawYAxisPriceHighlight(price, color, label, 0, chart);
+            if (disabled && lineData.yAxisHighlight) {
+                lineData.yAxisHighlight.style('opacity', 0.45);
+            }
         }
 
         if (isDraggable) {
@@ -26704,14 +26706,17 @@ class OrderManager {
 
                 if (target.priceHighlight) {
                     target.priceHighlight.remove();
+                    target.priceHighlight = null;
                 }
-                target.priceHighlight = this.drawYAxisPriceHighlight(
-                    target.price,
-                    bgColor,
-                    `pending-${target.type.toLowerCase()}`,
-                    0,
-                    ch
-                );
+                if (target.type !== 'BE') {
+                    target.priceHighlight = this.drawYAxisPriceHighlight(
+                        target.price,
+                        bgColor,
+                        `pending-${target.type.toLowerCase()}`,
+                        0,
+                        ch
+                    );
+                }
             });
         });
     }
@@ -26883,9 +26888,12 @@ class OrderManager {
                 
                 if (target.priceHighlight) {
                     target.priceHighlight.remove();
+                    target.priceHighlight = null;
                 }
-                const color = target.type === 'TP' ? '#22c55e' : target.type === 'SL' ? '#f23645' : '#f59e0b';
-                target.priceHighlight = self.drawYAxisPriceHighlight(newPrice, color, `pending-${target.type.toLowerCase()}`, 0, ch);
+                if (target.type !== 'BE') {
+                    const color = target.type === 'TP' ? '#22c55e' : '#f23645';
+                    target.priceHighlight = self.drawYAxisPriceHighlight(newPrice, color, `pending-${target.type.toLowerCase()}`, 0, ch);
+                }
                 
                 target.price = newPrice;
                 if (target.type === 'TP') {
@@ -29375,28 +29383,9 @@ class OrderManager {
                 .style('cursor', 'ns-resize')
                 .text(beLabel);
             
-            // Right side price box
-            const bePriceBox = chart.svg.append('rect')
-                .attr('class', `be-price-box be-${order.id}`)
-                .attr('fill', '#f59e0b')
-                .attr('rx', 3)
-                .style('cursor', 'ns-resize');
-            
-            const bePriceText = chart.svg.append('text')
-                .attr('class', `be-price-text be-${order.id}`)
-                .attr('fill', '#ffffff')
-                .attr('font-size', '12px')
-                .attr('font-weight', '600')
-                .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
-                .attr('text-anchor', 'middle')
-                .style('cursor', 'ns-resize')
-                .text(this.formatPrice(beTriggerPrice));
-            
-            // Make BE line draggable (pass label/price elements for proper drag)
+            // Make BE line draggable (no separate price pill — trigger is in the orange label)
             this.makeLineDraggable(beLine, beLabelBox, order, 'be', {
                 labelText: beLabelText,
-                priceBox: bePriceBox,
-                priceText: bePriceText,
                 hitLine: beHitLine
             }, chart);
             
@@ -29408,8 +29397,6 @@ class OrderManager {
                 hitLine: beHitLine,
                 labelBox: beLabelBox,
                 labelText: beLabelText,
-                priceBox: bePriceBox,
-                priceText: bePriceText,
                 triggerPrice: beTriggerPrice,
                 type: 'BE',
                 chart
@@ -30351,7 +30338,7 @@ class OrderManager {
         ch.svg.selectAll('.y-axis-be-highlight').remove();
 
         beForChart.forEach((beData) => {
-            const { orderId, line, hitLine, labelBox, labelText, priceBox, priceText, triggerPrice } = beData;
+            const { orderId, line, hitLine, labelBox, labelText, triggerPrice } = beData;
             const y = ch.scales.yScale(triggerPrice);
             const boxHeight = 22;
             const boxY = y - boxHeight / 2;
@@ -30388,13 +30375,6 @@ class OrderManager {
             labelText
                 .attr('x', startX + pad)
                 .attr('y', y + 4);
-            
-            // Hide price box (redundant with Y-axis highlight)
-            if (priceBox) priceBox.style('display', 'none');
-            if (priceText) priceText.style('display', 'none');
-
-            // Y-axis highlight for BE
-            beData.yAxisHighlight = this.drawYAxisPriceHighlight(triggerPrice, '#f59e0b', 'be', 0, ch);
         });
     }
     
