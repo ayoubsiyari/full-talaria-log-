@@ -955,14 +955,6 @@ class BaseRiskRewardTool extends BaseDrawing {
             this.meta.zoneWidthRatio = null;
         }
         this.lastRenderMeta = null;
-        if (!this.meta.orderPanelSync) {
-            this.meta.orderPanelSync = {
-                multiTP: false,
-                splitEntry: false,
-                breakeven: false,
-                trailing: false
-            };
-        }
         this.ensureRiskSettings();
     }
 
@@ -1441,15 +1433,6 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (orderManager.tpPrice !== undefined) orderManager.tpPrice = tpPrice;
         if (orderManager.slPrice !== undefined) orderManager.slPrice = slPrice;
         if (orderManager.entryPrice !== undefined) orderManager.entryPrice = entryPrice;
-
-        const sync = this.meta?.orderPanelSync;
-        if (sync && typeof orderManager.applyRiskRewardToolPanelSync === 'function') {
-            orderManager.applyRiskRewardToolPanelSync({
-                ...sync,
-                entryPrice,
-                slPrice
-            });
-        }
     }
 
     render(container, scales) {
@@ -1787,95 +1770,8 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         this.createHandles(this.group, scales);
         this.createCornerHandles(scales, zoneX1, zoneX2, upperY, lowerY);
-        this._createOrderPanelSyncButtons(zoneX2, targetY, entryY, stopY);
 
         return this.group;
-    }
-
-    /**
-     * On-shape toggles for meta.orderPanelSync (same flags as order panel Execute sync).
-     */
-    _createOrderPanelSyncButtons(zoneX2, targetY, entryY, stopY) {
-        if (!this.group) return;
-        const sync = this.meta.orderPanelSync || {
-            multiTP: false,
-            splitEntry: false,
-            breakeven: false,
-            trailing: false
-        };
-        const colX = zoneX2 + 12;
-        const midTE = (targetY + entryY) / 2;
-        const specs = [
-            { key: 'multiTP', y: targetY, label: 'M', stroke: '#089981', title: 'Multi TP' },
-            { key: 'splitEntry', y: midTE, label: 'S', stroke: '#2962ff', title: 'Split entry' },
-            { key: 'breakeven', y: entryY, label: 'B', stroke: '#ca8a04', title: 'Breakeven' },
-            { key: 'trailing', y: stopY, label: 'T', stroke: '#a855f7', title: 'Trailing SL' }
-        ];
-        const self = this;
-        specs.forEach((spec) => {
-            const on = !!sync[spec.key];
-            const g = this.group.append('g')
-                .attr('class', 'rr-order-sync-btn')
-                .attr('pointer-events', 'all')
-                .style('cursor', 'pointer')
-                .attr('transform', `translate(${colX}, ${spec.y})`);
-
-            g.append('circle')
-                .attr('r', 9)
-                .attr('fill', on ? spec.stroke : '#0f172a')
-                .attr('stroke', spec.stroke)
-                .attr('stroke-width', on ? 2 : 1.2)
-                .attr('opacity', 0.95);
-
-            g.append('text')
-                .attr('text-anchor', 'middle')
-                .attr('dy', '0.35em')
-                .attr('fill', on ? '#ffffff' : spec.stroke)
-                .attr('font-size', '10px')
-                .attr('font-weight', '700')
-                .style('pointer-events', 'none')
-                .text(spec.label);
-
-            g.append('title').text(`${spec.title}${on ? ' (on)' : ' (off)'}`);
-
-            const toggle = (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                if (!self.meta.orderPanelSync) {
-                    self.meta.orderPanelSync = {
-                        multiTP: false,
-                        splitEntry: false,
-                        breakeven: false,
-                        trailing: false
-                    };
-                }
-                const s = self.meta.orderPanelSync;
-                if (spec.key === 'breakeven') {
-                    if (s.breakeven) {
-                        s.breakeven = false;
-                    } else {
-                        s.breakeven = true;
-                        s.trailing = false;
-                    }
-                } else if (spec.key === 'trailing') {
-                    if (s.trailing) {
-                        s.trailing = false;
-                    } else {
-                        s.trailing = true;
-                        s.breakeven = false;
-                    }
-                } else if (spec.key === 'multiTP') {
-                    s.multiTP = !s.multiTP;
-                } else if (spec.key === 'splitEntry') {
-                    s.splitEntry = !s.splitEntry;
-                }
-                if (self.manager && typeof self.manager.renderDrawing === 'function') {
-                    self.manager.renderDrawing(self);
-                }
-            };
-            g.on('mousedown', (e) => e.stopPropagation());
-            g.on('click', toggle);
-        });
     }
 
     onPointHandleDrag(index, context = {}) {
@@ -2132,13 +2028,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         return {
             ...super.toJSON(),
             orientation: this.meta.orientation,
-            risk: this.meta.risk,
-            orderPanelSync: this.meta.orderPanelSync || {
-                multiTP: false,
-                splitEntry: false,
-                breakeven: false,
-                trailing: false
-            }
+            risk: this.meta.risk
         };
     }
 
@@ -2152,16 +2042,6 @@ class BaseRiskRewardTool extends BaseDrawing {
             ...(instance.meta.risk || {}),
             ...(data.risk || {})
         };
-        instance.meta.orderPanelSync = {
-            multiTP: false,
-            splitEntry: false,
-            breakeven: false,
-            trailing: false,
-            ...(data.orderPanelSync || {})
-        };
-        if (instance.meta.orderPanelSync.breakeven && instance.meta.orderPanelSync.trailing) {
-            instance.meta.orderPanelSync.trailing = false;
-        }
         instance.chart = chart; // Set chart reference for multi-timeframe support
         instance.ensureRiskSettings();
         return instance;
