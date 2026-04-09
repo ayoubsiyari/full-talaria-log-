@@ -3570,6 +3570,9 @@ class DrawingToolsManager {
         // For lines and text, use 'all'; for shape borders, use 'stroke' to ONLY detect stroke clicks
         drawing.group.selectAll('line:not(.shape-border-hit), polyline, text, circle:not(.pin-center-hole), ellipse, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle, .image-content, .image-placeholder')
             .style('pointer-events', 'all');
+        drawing.group.selectAll('.rr-plus-btn circle')
+            .style('pointer-events', 'all')
+            .style('cursor', 'pointer');
         
         // Shape borders use 'stroke' - ONLY responds to clicks on the actual stroke path
         drawing.group.selectAll('.shape-border:not(.shape-border-hit)')
@@ -3698,6 +3701,11 @@ class DrawingToolsManager {
         
         // Click handler function
         const handleClick = function(event) {
+            // Risk/reward + buttons: let the tool's handler on the parent .rr-plus-btn run (bubble)
+            if (event.target && event.target.closest && event.target.closest('.rr-plus-btn')) {
+                return;
+            }
+
             // Skip if clicking on inline-editable text (let element's own click handler work)
             const targetSel = d3.select(event.target);
             if (targetSel.classed('inline-editable-text')) {
@@ -3792,6 +3800,9 @@ class DrawingToolsManager {
         
         // Double-click handler
         const handleDblClick = function(event) {
+            if (event.target && event.target.closest && event.target.closest('.rr-plus-btn')) {
+                return;
+            }
             // Skip if clicking on inline-editable text (let element's own handler work)
             const target = d3.select(event.target);
             if (target.classed('inline-editable-text')) {
@@ -3994,6 +4005,9 @@ class DrawingToolsManager {
                     }
 
                     const isAnyHandle = !!(targetEl && targetEl.closest && targetEl.closest('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'));
+                    if (targetEl && targetEl.closest && targetEl.closest('.rr-plus-btn')) {
+                        return false;
+                    }
                     const isShapeFill = targetSelection.classed('shape-fill');
                     const isUpperFill = targetSelection.classed('upper-fill');
                     const isLowerFill = targetSelection.classed('lower-fill');
@@ -5011,6 +5025,9 @@ class DrawingToolsManager {
             this.objectTreeManager.refresh();
         }
         this._updateAxisZonePointerEvents();
+        if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
+            this.chart.updateSVGPointerEvents();
+        }
     }
 
     /**
@@ -5028,7 +5045,8 @@ class DrawingToolsManager {
                 this.svg.style('pointer-events', 'all');
             } else if (drawingSelected) {
                 this.svg.style('z-index', '11');
-                this.svg.style('pointer-events', 'none');
+                // Must allow pointer events so selected drawings (handles, risk/reward + buttons, borders) work.
+                this.svg.style('pointer-events', 'all');
             } else {
                 // Never clear z-index to '' on panels: panel canvas uses z-index 1; SVG default (auto)
                 // stacks below it, so drawings vanish until a tool sets z-index 11 again.
@@ -5072,6 +5090,9 @@ class DrawingToolsManager {
         this.toolbar.hide(); // Hide toolbar
         this.redrawAll();
         this._updateAxisZonePointerEvents();
+        if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
+            this.chart.updateSVGPointerEvents();
+        }
     }
 
     /**

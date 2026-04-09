@@ -14416,7 +14416,13 @@ class Chart {
             document.getElementById('orderPanel').classList.contains('visible')
         );
 
-        if (legacyToolActive || drawingManagerActive || orderPreviewActive) {
+        const drawingSelectedOnChart = !!(
+            this.drawingManager &&
+            Array.isArray(this.drawingManager.selectedDrawings) &&
+            this.drawingManager.selectedDrawings.length > 0
+        );
+
+        if (legacyToolActive || drawingManagerActive || orderPreviewActive || drawingSelectedOnChart) {
             this.svg.style('pointer-events', 'all'); // Capture all events for drawing
         } else {
             this.svg.style('pointer-events', 'none'); // Let canvas handle panning, shapes handle their own events
