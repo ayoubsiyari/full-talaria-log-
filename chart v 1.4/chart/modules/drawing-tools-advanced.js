@@ -2005,7 +2005,8 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('stroke-width', 1)
                 .attr('stroke-dasharray', dashExtra)
                 .style('pointer-events', 'none');
-            appendExtraEntryDragHit(yy, `rr-extra-entry-${idx}`);
+            // Drag hit for E2+ is appended after .rr-entry-line-drag-hit (see below) so the wide
+            // primary entry strip does not sit on top and block E2 when it is close to entry.
         });
 
         // Recalculate lot size from risk before rendering labels
@@ -2301,6 +2302,12 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
         }
+
+        (this.meta.extraEntries || []).forEach((row, idx) => {
+            if (!row || !Number.isFinite(row.y)) return;
+            const yy = scales.yScale(row.y);
+            appendExtraEntryDragHit(yy, `rr-extra-entry-${idx}`);
+        });
 
         return this.group;
     }
