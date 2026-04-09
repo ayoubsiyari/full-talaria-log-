@@ -3961,6 +3961,10 @@ class DrawingToolsManager {
         let startDataPoint = null;
         let beforeState = null;
         let multiDragStartPoints = null;
+        /** Cumulative constrained delta from drag start (single drawing whole-move). */
+        let rrLastCumulative = { x: 0, y: 0 };
+        /** Per-drawing cumulative constrained delta for multi-select whole-move (long/short extra levels). */
+        let rrLastByDrawingId = null;
 
         const getDragDataPoint = (dragEvent) => {
             const src = (dragEvent && dragEvent.sourceEvent) ? dragEvent.sourceEvent : dragEvent;
@@ -4135,6 +4139,8 @@ class DrawingToolsManager {
                             beforeState = self.history.captureState(drawing);
                         }
                     }
+                    rrLastCumulative = { x: 0, y: 0 };
+                    rrLastByDrawingId = Object.create(null);
                 })
                 .on('drag', function(event) {
                     if (!dragStartPoints || !startDataPoint) return;
@@ -4155,10 +4161,19 @@ class DrawingToolsManager {
                         // Move all selected drawings together
                         multiDragStartPoints.forEach(item => {
                             const { dx: constrainedDx, dy: constrainedDy } = self.getConstrainedDragDelta(item.drawing, dx, dy);
+                            const kid = item.drawing && item.drawing.id != null ? item.drawing.id : '_';
+                            const prev = (rrLastByDrawingId && rrLastByDrawingId[kid]) || { x: 0, y: 0 };
+                            const incX = constrainedDx - prev.x;
+                            const incY = constrainedDy - prev.y;
+                            if (!rrLastByDrawingId) rrLastByDrawingId = Object.create(null);
+                            rrLastByDrawingId[kid] = { x: constrainedDx, y: constrainedDy };
                             item.drawing.points = item.points.map(p => ({
                                 x: p.x + constrainedDx,
                                 y: p.y + constrainedDy
                             }));
+                            if (typeof item.drawing.afterPointsMoveDelta === 'function' && (incX !== 0 || incY !== 0)) {
+                                item.drawing.afterPointsMoveDelta(incX, incY);
+                            }
                             self.clampDrawingPointsToCandleRange(item.drawing);
                             self.renderDrawing(item.drawing);
                             
@@ -4170,10 +4185,16 @@ class DrawingToolsManager {
                     } else {
                         // Move single drawing
                         const { dx: constrainedDx, dy: constrainedDy } = self.getConstrainedDragDelta(drawing, dx, dy);
+                        const incX = constrainedDx - rrLastCumulative.x;
+                        const incY = constrainedDy - rrLastCumulative.y;
+                        rrLastCumulative = { x: constrainedDx, y: constrainedDy };
                         drawing.points = dragStartPoints.map(p => ({
                             x: p.x + constrainedDx,
                             y: p.y + constrainedDy
                         }));
+                        if (typeof drawing.afterPointsMoveDelta === 'function' && (incX !== 0 || incY !== 0)) {
+                            drawing.afterPointsMoveDelta(incX, incY);
+                        }
                         self.clampDrawingPointsToCandleRange(drawing);
                         
                         // Re-render
