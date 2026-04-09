@@ -23671,6 +23671,8 @@ class OrderManager {
             if (source.isSplitEntry && source.splitGroupId) {
                 this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
             }
+            this.removePendingOrderLine(source.id);
+            this.drawPendingOrderLine(source);
             this.drawPendingOrderTargets(source);
             if (source.tpTargets.length >= 1) {
                 this.drawMultiTPAvgLine(source, 'pending');
@@ -23742,6 +23744,9 @@ class OrderManager {
             if (source.isSplitEntry && source.splitGroupId) {
                 this.removeMultiTPAvgLine(`splitgrp_${source.splitGroupId}`);
             }
+            // Rebuild entry row so SL/TP badges and layout match new tpTargets (same as pending target drag end).
+            this.removePendingOrderLine(source.id);
+            this.drawPendingOrderLine(source);
             this.drawPendingOrderTargets(source);
             if (source.tpTargets && source.tpTargets.length >= 1) {
                 this.drawMultiTPAvgLine(source, 'pending');
