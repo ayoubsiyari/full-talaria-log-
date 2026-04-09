@@ -1861,7 +1861,9 @@ class BaseRiskRewardTool extends BaseDrawing {
             .attr('height', riskHeight)
             .attr('fill', this.style.riskColor)
             .attr('stroke', 'none')
-            .style('pointer-events', 'all')
+            // When selected, zones must not steal events — whole-tool drag uses .rr-body-drag instead
+            // so the entry hit strip (painted later) wins on the middle row.
+            .style('pointer-events', this.selected ? 'none' : 'all')
             .style('cursor', 'move');
 
         this.group.insert('rect', ':first-child')
@@ -1871,7 +1873,21 @@ class BaseRiskRewardTool extends BaseDrawing {
             .attr('width', zoneWidth)
             .attr('height', rewardHeight)
             .attr('fill', this.style.rewardColor)
-            .style('pointer-events', 'all')
+            .attr('stroke', 'none')
+            .style('pointer-events', this.selected ? 'none' : 'all')
+            .style('cursor', 'move');
+
+        const bodyTopPx = Math.min(riskTop, rewTop);
+        const bodyBotPx = Math.max(riskBot, rewBot);
+        this.group.append('rect')
+            .attr('class', 'rr-body-drag')
+            .attr('x', zoneX1)
+            .attr('y', bodyTopPx)
+            .attr('width', zoneWidth)
+            .attr('height', Math.max(1, bodyBotPx - bodyTopPx))
+            .attr('fill', 'rgba(0,0,0,0)')
+            .attr('stroke', 'none')
+            .style('pointer-events', this.selected ? 'all' : 'none')
             .style('cursor', 'move');
 
         // Same as TP/stop visible lines: do not capture pointer-events on the stroke. Otherwise this
