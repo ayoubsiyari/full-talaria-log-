@@ -1627,6 +1627,9 @@ class Chart {
             if (mainOm && typeof mainOm.syncPipFromActiveSymbol === 'function') {
                 mainOm.syncPipFromActiveSymbol();
             }
+            if (mainOm && typeof mainOm.syncOrderVisualsToActiveChart === 'function') {
+                mainOm.syncOrderVisualsToActiveChart();
+            }
 
             // Trigger symbol sync if enabled
             if (window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.symbol) {

@@ -3550,9 +3550,9 @@ class ReplaySystem {
             this.chart.render();
         }
 
-        if (this.tickProgress % 4 === 0) {
-            this.syncPanelChartsWithAnimatedCandle(this._animSlice, animatedCandle);
-        }
+        // Keep panels in lockstep with the main chart every tick. Throttling to every 4th tick
+        // made order/preview lines and the last candle jump on panel surfaces while the main chart stayed smooth.
+        this.syncPanelChartsWithAnimatedCandle(this._animSlice, animatedCandle);
 
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
             this.chart.orderManager.updatePositions();

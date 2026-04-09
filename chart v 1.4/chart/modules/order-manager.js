@@ -28827,7 +28827,15 @@ class OrderManager {
             }
         }
 
-        if (chart.scales?.yScale) {
+        if (this._isMultiPanelLayout()) {
+            (this._collectLayoutCharts() || []).forEach((ch) => {
+                if (ch && ch.scales && ch.scales.yScale) {
+                    try {
+                        this.positionPendingOrderTargets(ch);
+                    } catch (_e) { /* ignore */ }
+                }
+            });
+        } else if (chart.scales?.yScale) {
             this.positionPendingOrderTargets(chart);
         }
     }
@@ -29698,7 +29706,7 @@ class OrderManager {
 
                 // Live P&L for open (non-pending) positions
                 if (!isPending && pnlBox && pnlText && orderData) {
-                    const currentCandle = this.getCurrentCandle();
+                    const currentCandle = this._getCurrentCandleForChart(ch);
                     const currentPrice = currentCandle ? currentCandle.c : 0;
                     if (currentPrice > 0) {
                         const orderSym = orderData.ticker || orderData.symbol || this._getSymbol();

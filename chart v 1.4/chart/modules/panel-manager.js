@@ -1990,7 +1990,9 @@ class PanelManager {
 
             // Order draft preview (TP/SL/entry) must move to the selected chart; otherwise lines stay on the previous panel's SVG.
             try {
-                const om = typeof window !== 'undefined' ? window.orderManager : null;
+                const om = (typeof window !== 'undefined' && window.chart && window.chart.orderManager)
+                    ? window.chart.orderManager
+                    : (typeof window !== 'undefined' ? window.orderManager : null);
                 if (om && typeof om.refreshDraftPreviewForActivePanel === 'function') {
                     requestAnimationFrame(() => {
                         try {

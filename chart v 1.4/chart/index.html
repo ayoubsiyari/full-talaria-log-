@@ -42997,7 +42997,7 @@
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
     <script defer src="chart.js?v=202604088"></script>
 
-    <script defer src="modules/replay-system.js?v=2026040455"></script>
+    <script defer src="modules/replay-system.js?v=2026040456"></script>
 
     <script defer src="modules/order-event-bus.js?v=20260404"></script>
 
@@ -46182,12 +46182,11 @@
 
                                 });
 
-                                if (typeof chart !== 'undefined' && chart.orderManager && typeof chart.orderManager.syncOrderVisualsToActiveChart === 'function') {
-                                    chart.orderManager.syncOrderVisualsToActiveChart();
-                                }
+                            }
 
-                            } else {
-
+                            // Always re-sync order/pending lines onto every panel surface (multi-instrument), even if main had no bars yet.
+                            if (typeof chart !== 'undefined' && chart.orderManager && typeof chart.orderManager.syncOrderVisualsToActiveChart === 'function') {
+                                chart.orderManager.syncOrderVisualsToActiveChart();
                             }
 
                         }, 200);
