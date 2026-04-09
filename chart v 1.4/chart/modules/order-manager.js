@@ -17731,6 +17731,8 @@ class OrderManager {
         }
 
         this.pushRiskRewardToolToManager(drawing);
+        this.updatePreviewLines();
+        this.calculateAdvancedRiskReward();
         this.pullRiskRewardToolFromManager(drawing);
     }
 

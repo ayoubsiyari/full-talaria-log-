@@ -2305,8 +2305,9 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (this.selected) {
             const entryDragX2 = zoneX2 - 28;
             const hasExtraEntries = (this.meta.extraEntries || []).length > 0;
+            // With E2+, keep a generous vertical strip (was capped at 52px, which made primary hard to grab).
             const hitH = hasExtraEntries
-                ? Math.min(Math.max(40, primaryEntryHitHeight), 52)
+                ? Math.max(52, Math.min(primaryEntryHitHeight, 80))
                 : Math.max(48, primaryEntryHitHeight);
             const hitW = Math.max(1, entryDragX2 - zoneX1);
             this.group.append('rect')

@@ -4492,8 +4492,8 @@ class DrawingToolsManager {
         };
 
         const hasExtraEntries = (drawing.meta?.extraEntries || []).length > 0;
-        // Match thinner .rr-primary-entry-drag-hit when E2+ exists (see BaseRiskRewardTool.render).
-        const primaryHalfH = hasExtraEntries ? 22 : 36;
+        // Match .rr-primary-entry-drag-hit vertical extent when E2+ exists (see BaseRiskRewardTool.render).
+        const primaryHalfH = hasExtraEntries ? 30 : 36;
 
         const p0 = drawing.points && drawing.points[0];
         if (p0 && Number.isFinite(p0.y)) {
@@ -4516,14 +4516,8 @@ class DrawingToolsManager {
 
         if (!hits.length) return null;
         hits.sort((a, b) => a.dist - b.dist);
-        // Ambiguous band near primary: prefer E2/E3 drag over whole-strip primary when distances are close.
-        if (hasExtraEntries && hits.length >= 2) {
-            const a = hits[0];
-            const b = hits[1];
-            if (a.role === 'rr-primary-entry' && b.role.startsWith('rr-extra-entry') && (b.dist - a.dist) < 16) {
-                return b.role;
-            }
-        }
+        // Closest handle wins so the primary entry line is draggable when it is nearer than E2/E3
+        // (the old E2-preference override made the main entry feel stuck when levels were close).
         return hits[0].role;
     }
 
