@@ -9781,7 +9781,7 @@ class OrderManager {
             ];
         }
 
-        // Handle BE labels (e.g., "BE @ 1R" or "BE @ $50")
+        // Handle BE labels (e.g., "BE @ 1R" or "BE @ $50") — one tag only; price stays on the Y-axis, not beside the line
         if (label && label.startsWith('BE @')) {
             return [
                 {
@@ -9792,15 +9792,6 @@ class OrderManager {
                     fontWeight: '700',
                     strokeWidth: 1.5,
                     minWidth: 80
-                },
-                {
-                    text: priceText,
-                    fill: '#0f172a',
-                    stroke: '#f59e0b',
-                    textColor: '#ffffff',
-                    fontWeight: '700',
-                    minWidth: 74,
-                    role: 'price'
                 }
             ];
         }
@@ -14624,7 +14615,7 @@ class OrderManager {
             let beLabel = this._formatBreakevenLabelText(beMode, beValue);
             if (pipOffset !== 0) beLabel += ` +${pipOffset}pts`;
             
-            this.previewLines.be = this.drawPreviewLine(beTriggerPrice, '#f59e0b', beLabel, null, true, undefined, undefined, { skipYAxisPriceHighlight: true });
+            this.previewLines.be = this.drawPreviewLine(beTriggerPrice, '#f59e0b', beLabel, null, true);
             if (this.previewLines.be) {
                 this.previewLines.be.targetPrice = beTriggerPrice;
                 this.previewLines.be.isBELine = true;
@@ -14730,12 +14721,11 @@ class OrderManager {
         this.renderPreviewLabel(lineData, y);
         this.adjustPreviewLineForLabel(lineData);
         
-        // Y-axis price tag (optional — skip for BE so only the orange BE label shows, no duplicate price)
-        if (!options?.skipYAxisPriceHighlight) {
-            lineData.yAxisHighlight = this.drawYAxisPriceHighlight(price, color, label, 0, chart);
-            if (disabled && lineData.yAxisHighlight) {
-                lineData.yAxisHighlight.style('opacity', 0.45);
-            }
+        // Add Y-axis price highlight for all preview lines (BE: line shows "BE @ …" only; axis shows the level price)
+        const axisClassLabel = (typeof label === 'string' && label.startsWith('BE @')) ? 'be' : label;
+        lineData.yAxisHighlight = this.drawYAxisPriceHighlight(price, color, axisClassLabel, 0, chart);
+        if (disabled && lineData.yAxisHighlight) {
+            lineData.yAxisHighlight.style('opacity', 0.45);
         }
 
         if (isDraggable) {
@@ -26708,15 +26698,13 @@ class OrderManager {
                     target.priceHighlight.remove();
                     target.priceHighlight = null;
                 }
-                if (target.type !== 'BE') {
-                    target.priceHighlight = this.drawYAxisPriceHighlight(
-                        target.price,
-                        bgColor,
-                        `pending-${target.type.toLowerCase()}`,
-                        0,
-                        ch
-                    );
-                }
+                target.priceHighlight = this.drawYAxisPriceHighlight(
+                    target.price,
+                    bgColor,
+                    `pending-${target.type.toLowerCase()}`,
+                    0,
+                    ch
+                );
             });
         });
     }
@@ -26890,10 +26878,8 @@ class OrderManager {
                     target.priceHighlight.remove();
                     target.priceHighlight = null;
                 }
-                if (target.type !== 'BE') {
-                    const color = target.type === 'TP' ? '#22c55e' : '#f23645';
-                    target.priceHighlight = self.drawYAxisPriceHighlight(newPrice, color, `pending-${target.type.toLowerCase()}`, 0, ch);
-                }
+                const hlColor = target.type === 'TP' ? '#22c55e' : target.type === 'SL' ? '#f23645' : '#f59e0b';
+                target.priceHighlight = self.drawYAxisPriceHighlight(newPrice, hlColor, `pending-${target.type.toLowerCase()}`, 0, ch);
                 
                 target.price = newPrice;
                 if (target.type === 'TP') {
@@ -30375,6 +30361,8 @@ class OrderManager {
             labelText
                 .attr('x', startX + pad)
                 .attr('y', y + 4);
+
+            beData.yAxisHighlight = this.drawYAxisPriceHighlight(triggerPrice, '#f59e0b', 'be', 0, ch);
         });
     }
     
