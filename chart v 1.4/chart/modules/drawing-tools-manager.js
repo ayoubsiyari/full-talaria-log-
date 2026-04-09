@@ -3644,6 +3644,12 @@ class DrawingToolsManager {
         // For lines and text, use 'all'; for shape borders, use 'stroke' to ONLY detect stroke clicks
         drawing.group.selectAll('line:not(.shape-border-hit):not(.rr-entry-stroke), polyline, text, circle:not(.pin-center-hole), ellipse, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle, .image-content, .image-placeholder')
             .style('pointer-events', 'all');
+        // Long/short R/R: informational labels (P&L pill, TP/SL captions) must not capture drags — the blanket
+        // `text { pointer-events: all }` rule above would otherwise steal hits from .rr-primary-entry-drag-hit.
+        if (drawing.type === 'long-position' || drawing.type === 'short-position') {
+            drawing.group.selectAll('.rr-no-hit text, .rr-no-hit rect, .rr-no-hit tspan')
+                .style('pointer-events', 'none');
+        }
         drawing.group.selectAll('.rr-plus-btn circle')
             .style('pointer-events', 'all')
             .style('cursor', 'pointer');

@@ -2061,7 +2061,9 @@ class BaseRiskRewardTool extends BaseDrawing {
             const wideSnapThreshold = 260;
 
             const createEdgeLabel = ({ className, text, lineY, fill, side }) => {
-                const labelGroup = this.group.append('g').attr('class', className);
+                // rr-no-hit: setupDrawingInteraction sets all `text` to pointer-events:all — exclude these labels
+                // so the primary entry .custom-handle rect receives drags (see drawing-tools-manager).
+                const labelGroup = this.group.append('g').attr('class', `${className} rr-no-hit`);
 
                 const textNode = labelGroup.append('text')
                     .attr('x', 0)
@@ -2092,11 +2094,13 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .attr('width', labelWidth)
                     .attr('height', labelHeight)
                     .attr('fill', fill)
-                    .attr('rx', edgeLabelRadius);
+                    .attr('rx', edgeLabelRadius)
+                    .style('pointer-events', 'none');
 
                 textNode
                     .attr('x', rectX + (labelWidth / 2))
-                    .attr('y', rectTop + labelPaddingY);
+                    .attr('y', rectTop + labelPaddingY)
+                    .style('pointer-events', 'none');
             };
 
             const targetLabelFill = '#22c55e';
@@ -2128,7 +2132,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             const centerInfoLine1 = `Open P&L: ${pnl.toFixed(0)}, Qty: ${quantity.toFixed(2)}`;
             const centerInfoLine2 = `Risk/Reward Ratio: ${rrRatio}`;
             const centerInfo = this.group.append('g')
-                .attr('class', 'center-info')
+                .attr('class', 'center-info rr-no-hit')
                 .style('pointer-events', 'none');
 
             // Calculate center X position of the zone
@@ -2178,7 +2182,8 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('fill', centerInfoFill)
                 .attr('stroke', '#ffffff')
                 .attr('stroke-width', 2)
-                .attr('rx', centerLabelRadius);
+                .attr('rx', centerLabelRadius)
+                .style('pointer-events', 'none');
 
             const centerTextX = centerRectX + (centerWidth / 2);
             const centerTextY = centerRectY + centerPaddingY;
