@@ -14882,6 +14882,9 @@ class OrderManager {
                 if (!isDragging || !ch?.scales?.yScale) return;
                 if (event.sourceEvent && ch.updateCrosshair) ch.updateCrosshair(event.sourceEvent);
 
+                // Set when risk-based block already called _refreshMultiEntryPreviewEntryLabels (avoid double render on SL drag).
+                let refreshedMultiEntryPreviewLabels = false;
+
                 const chartHeightRaw = ch.h ?? ch.height ?? ch.svg?.attr('height') ?? 0;
                 const chartHeight = Number(chartHeightRaw) || 0;
                 let clampedY = Math.max(0, Math.min(chartHeight, event.y));
@@ -15399,8 +15402,11 @@ class OrderManager {
                         // Restore flag
                         self.isDraggingPreviewLine = wasDragging;
                         
-                        // Manually update Entry label to show new lot size
-                        if (self.previewLines.entry) {
+                        // Manually update Entry#1 + split entry labels (LIMIT BUY lots, etc.) when risk lot size changes
+                        if (self.isMultiEntryMode && self.multiEntryLevels?.length > 0) {
+                            self._refreshMultiEntryPreviewEntryLabels(ch);
+                            refreshedMultiEntryPreviewLabels = true;
+                        } else if (self.previewLines.entry) {
                             const entryY = ch.scales.yScale(self.previewLines.entry.price);
                             self.renderPreviewLabel(self.previewLines.entry, entryY);
                         }
@@ -15493,6 +15499,11 @@ class OrderManager {
                             self.previewLines.be.labelGroup.attr('transform', `translate(${beX}, ${beY})`);
                         }
                     }
+                }
+
+                // SL drag in lot-size mode (or when risk block above did not run): per-level lots still depend on SL — refresh all entry legs live.
+                if (lineData.label === 'SL' && self.isMultiEntryMode && self.multiEntryLevels?.length > 0 && !refreshedMultiEntryPreviewLabels) {
+                    self._refreshMultiEntryPreviewEntryLabels(ch);
                 }
 
                 // After every label path (renderPreviewLabel, badges, BE, risk entry relayout). Running earlier
@@ -16998,6 +17009,34 @@ class OrderManager {
     }
 
     /**
+     * Re-render Entry#1 and all split entry preview labels plus panel rows when SL distance changes lot allocation.
+     * Used during preview SL drag so LIMIT BUY / Entry#N pills match Entry#1 live, not only on mouseup.
+     */
+    _refreshMultiEntryPreviewEntryLabels(ch) {
+        if (!ch?.scales?.yScale) return;
+        if (!this.isMultiEntryMode || !this.multiEntryLevels?.length) {
+            if (this.previewLines?.entry) {
+                const ey = ch.scales.yScale(this.previewLines.entry.price);
+                this.renderPreviewLabel(this.previewLines.entry, ey);
+            }
+            return;
+        }
+        this.updateMultiEntrySummary();
+        this._syncAvgEntryPreviewLineFromLevels();
+        if (this.previewLines.entry) {
+            const ey = ch.scales.yScale(this.previewLines.entry.price);
+            this.renderPreviewLabel(this.previewLines.entry, ey);
+            this.adjustPreviewLineForLabel(this.previewLines.entry);
+        }
+        (this.previewLines.splitEntries || []).forEach(splitLd => {
+            if (!splitLd?.line) return;
+            const sy = ch.scales.yScale(splitLd.price);
+            this.renderPreviewLabel(splitLd, sy);
+            this.adjustPreviewLineForLabel(splitLd);
+        });
+    }
+
+    /**
      * Update the Avg Entry and Total Qty summary display
      */
     updateMultiEntrySummary() {
@@ -17033,7 +17072,7 @@ class OrderManager {
             }
         }
 
-        // Per-row % and lots (chart drags / SL changes only hit updateMultiEntrySummary, not render)
+        // Per-row % and lots — chart also calls _refreshMultiEntryPreviewEntryLabels on SL drag for live labels
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
             this._updateMultiEntryInfoRows();
         }
