@@ -30272,7 +30272,6 @@ class OrderManager {
         this._updateMultiTPAvgLines(ch);
         this.updateSLTPLines(ch);
         this.updateBELines(ch);
-        this._drawExecutedOrderConnectors(ch);
 
         if (ch === this.chart) {
             this.updatePreviewLinePositions();
@@ -30282,6 +30281,8 @@ class OrderManager {
             this.positionPendingOrderTargets(ch);
         }
         this._alignAllOrderLabels(ch);
+        // Connectors last so TP/pending line Y matches dots (same rules as visible ladder rows).
+        this._drawExecutedOrderConnectors(ch);
     }
 
     /**
@@ -30455,8 +30456,8 @@ class OrderManager {
             if (!Number.isFinite(entryY)) continue;
             const cg = ch.svg.append('g').attr('class', 'exec-order-connector').style('pointer-events', 'none');
             if (hasMultiTP) {
-                for (const t of pos.tpTargets) {
-                    if (t.hit || !(t.price > 0)) continue;
+                pos.tpTargets.forEach((t, ti) => {
+                    if (!this._tpTargetStillActiveOnChart(pos, t, ti)) return;
                     const tpY = yScale(t.price);
                     if (Number.isFinite(tpY)) {
                         cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
@@ -30464,9 +30465,10 @@ class OrderManager {
                         cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
                             .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
                     }
-                }
+                });
+                const activeRungs = pos.tpTargets.filter((t, i) => this._tpTargetStillActiveOnChart(pos, t, i)).length;
                 const avgG = this.multiTPAvgLines.find((g) => g.orderId === pos.id && g.chart === ch);
-                if (avgG && Number.isFinite(avgG.avgTP)) {
+                if (activeRungs >= 2 && avgG && Number.isFinite(avgG.avgTP) && avgG.line?.node()?.isConnected) {
                     const avgY = yScale(avgG.avgTP);
                     if (Number.isFinite(avgY)) {
                         cg.append('circle').attr('cx', connX).attr('cy', avgY).attr('r', 2.5)
@@ -30507,8 +30509,8 @@ class OrderManager {
             if (!Number.isFinite(entryY)) continue;
             const cg = ch.svg.append('g').attr('class', 'exec-order-connector').style('pointer-events', 'none');
             if (hasMultiTP) {
-                for (const t of po.tpTargets) {
-                    if (t.hit || !(t.price > 0)) continue;
+                po.tpTargets.forEach((t, ti) => {
+                    if (t.hit || !(t.price > 0) || !((t.percentage || 0) > 0)) return;
                     const tpY = yScale(t.price);
                     if (Number.isFinite(tpY)) {
                         cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
@@ -30516,9 +30518,10 @@ class OrderManager {
                         cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
                             .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
                     }
-                }
+                });
+                const activeRungs = (po.tpTargets || []).filter((t) => !t.hit && t.price > 0 && (t.percentage || 0) > 0).length;
                 const avgG = this.multiTPAvgLines.find((g) => g.orderId === po.id && g.chart === ch);
-                if (avgG && Number.isFinite(avgG.avgTP)) {
+                if (activeRungs >= 2 && avgG && Number.isFinite(avgG.avgTP) && avgG.line?.node()?.isConnected) {
                     const avgY = yScale(avgG.avgTP);
                     if (Number.isFinite(avgY)) {
                         cg.append('circle').attr('cx', connX).attr('cy', avgY).attr('r', 2.5)
