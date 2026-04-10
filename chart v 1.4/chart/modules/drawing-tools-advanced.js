@@ -2182,13 +2182,24 @@ class BaseRiskRewardTool extends BaseDrawing {
             const stopPrice = stop.y;
             const targetPrice = target.y;
 
+            const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
+            const rrPrec = typeof om?.getPricePrecision === 'function' ? om.getPricePrecision() : 5;
+            const rrRoundPx = (p) => (Number.isFinite(p) ? parseFloat(Number(p).toFixed(rrPrec)) : p);
+            const slFromDrawing = rrRoundPx(
+                Number.isFinite(stop.y) ? stop.y : parseFloat(document.getElementById('slPrice')?.value || '') || 0
+            );
+
             const targetPercent = ((Math.abs(targetPrice - entryPrice) / entryPrice) * 100).toFixed(3);
             const stopPercent = ((Math.abs(stopPrice - entryPrice) / entryPrice) * 100).toFixed(3);
 
             const targetTicks = (Math.abs(targetPrice - entryPrice) / 0.0001).toFixed(1);
             const stopTicks = (Math.abs(stopPrice - entryPrice) / 0.0001).toFixed(1);
 
-            const quantity = this.meta.risk?.lotSize || 0.01;
+            let panelOrderQty = parseFloat(document.getElementById('orderQuantity')?.value || '');
+            if (!Number.isFinite(panelOrderQty) || panelOrderQty < 0) {
+                panelOrderQty = this.meta.risk?.lotSize || 0.01;
+            }
+            const quantity = panelOrderQty;
 
             // Get risk amount from settings (THIS is the amount we're risking)
             let riskUSD = 100; // Default
@@ -2290,10 +2301,60 @@ class BaseRiskRewardTool extends BaseDrawing {
                 side: stopSide
             });
 
-            // Center Info Box (TradingView-like red pill with border)
-            const pnl = 0; // Will be calculated when order is active
-            const centerInfoLine1 = `Open P&L: ${pnl.toFixed(0)}, Qty: ${quantity.toFixed(2)}`;
-            const centerInfoLine2 = `Risk/Reward Ratio: ${rrRatio}`;
+            // Center Info Box — mirror order panel: #orderQuantity, tpRRInput / $reward÷$risk, mark P&L via OM engine
+            const parseMoneyReadout = (el) => {
+                const t = el?.textContent?.trim() ?? '';
+                if (!t || t === '—' || t === '∞' || t === '--') return null;
+                const n = parseFloat(t.replace(/[^0-9.-]+/g, ''));
+                return Number.isFinite(n) ? n : null;
+            };
+            let panelRRLabel = String(rrRatio);
+            const tpRRParsed = parseFloat(document.getElementById('tpRRInput')?.value || '');
+            if (Number.isFinite(tpRRParsed) && tpRRParsed > 0) {
+                panelRRLabel = tpRRParsed.toFixed(1);
+            } else {
+                const summaryTxt = document.getElementById('tpSummaryRRDisplay')?.textContent?.trim() || '';
+                const sm = summaryTxt.match(/1\s*:\s*([\d.]+)/);
+                if (sm) {
+                    const v = parseFloat(sm[1]);
+                    if (Number.isFinite(v) && v > 0) panelRRLabel = v.toFixed(1);
+                } else {
+                    const rewUsd = parseMoneyReadout(document.getElementById('rewardAmount'));
+                    const riskUsd = parseMoneyReadout(document.getElementById('riskAmount'));
+                    if (rewUsd != null && riskUsd != null && riskUsd > 0 && rewUsd >= 0) {
+                        const rv = rewUsd / riskUsd;
+                        if (Number.isFinite(rv) && rv > 0) panelRRLabel = rv.toFixed(1);
+                    }
+                }
+            }
+
+            const sideStr = this.isLong ? 'BUY' : 'SELL';
+            const markPx = this.chart?.resolveEffectiveCurrentPrice?.(this.chart?.data);
+            let openPnlUsd = 0;
+            if (om && Number.isFinite(markPx) && markPx > 0 && slFromDrawing > 0) {
+                const pipS = om.pipSize || 0.0001;
+                const pipV = om.pipValuePerLot || 10;
+                const minLotR = om.getMarketConfig?.()?.minSize ?? 0.01;
+                if (om.isMultiEntryMode && om.multiEntryLevels && om.multiEntryLevels.length > 1) {
+                    for (const lev of om.multiEntryLevels) {
+                        if (!(lev.price > 0)) continue;
+                        if (typeof om._multiEntryLevelMeetsMinLot === 'function'
+                            && !om._multiEntryLevelMeetsMinLot(lev, slFromDrawing, pipS, pipV, minLotR)) continue;
+                        const lots = typeof om._calcLevelLotSizeNumeric === 'function'
+                            ? om._calcLevelLotSizeNumeric(lev, slFromDrawing, pipS, pipV)
+                            : 0;
+                        if (lots > 0 && typeof om.estimatePnLForPriceLevel === 'function') {
+                            openPnlUsd += om.estimatePnLForPriceLevel(sideStr, lev.price, markPx, lots);
+                        }
+                    }
+                } else if (Number.isFinite(zoneEntryPrice) && quantity > 0
+                    && typeof om.estimatePnLForPriceLevel === 'function') {
+                    openPnlUsd = om.estimatePnLForPriceLevel(sideStr, zoneEntryPrice, markPx, quantity);
+                }
+            }
+            const pnlStr = `${openPnlUsd >= 0 ? '' : '-'}$${Math.abs(openPnlUsd).toFixed(2)}`;
+            const centerInfoLine1 = `Open P&L: ${pnlStr}, Qty: ${quantity.toFixed(2)}`;
+            const centerInfoLine2 = `Risk/Reward Ratio: ${panelRRLabel}`;
             // Multi-entry: pill on weighted-avg (middle) line; draggable = whole-tool move so E1/E2/SL/TP follow (avg moves with ladder).
             const centerInfo = this.group.append('g')
                 .attr('class', hasMultiEntry ? 'center-info rr-multi-pill-drag' : 'center-info rr-no-hit')
@@ -2407,14 +2468,8 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .text(line);
             };
 
-            const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
             // SL/leg prices must come from the drawing (points), not panel-only OM rows: whole-tool moves
             // update the drawing every frame while multiEntryLevels can lag or differ in float noise → lots jitter.
-            const rrPrec = typeof om?.getPricePrecision === 'function' ? om.getPricePrecision() : 5;
-            const rrRoundPx = (p) => (Number.isFinite(p) ? parseFloat(Number(p).toFixed(rrPrec)) : p);
-            const slFromDrawing = rrRoundPx(
-                Number.isFinite(stop.y) ? stop.y : parseFloat(document.getElementById('slPrice')?.value || '') || 0
-            );
             const pipS = om?.pipSize || this.getPriceStep();
             const pipV = om?.pipValuePerLot || 10;
             const entryFill = 'rgba(30, 64, 175, 0.92)';
