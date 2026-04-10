@@ -1014,9 +1014,6 @@ class BaseRiskRewardTool extends BaseDrawing {
             if (this.meta.rrBreakevenLine && Number.isFinite(this.meta.rrBreakevenLine.y)) {
                 this.meta.rrBreakevenLine.y += ddy;
             }
-            if (Number.isFinite(this.meta?.rrAvgEntryPrice)) {
-                this.meta.rrAvgEntryPrice += ddy;
-            }
             // Do not call normalizeRiskRewardTargetLevels here: it re-sorts TP primary vs extras and
             // can make ladder levels look "stuck" vs entry after a rigid vertical move. Normalize only
             // after order-manager sync / load (_afterRiskRewardOrderManagerSync, baseFromJSON).
@@ -1043,15 +1040,6 @@ class BaseRiskRewardTool extends BaseDrawing {
         const p = this.points[0] ? this.points[0].y : null;
         const ex = (this.meta.extraEntries || []).map((r) => r.y).filter(Number.isFinite);
         return Number.isFinite(p) ? [p, ...ex] : ex.slice();
-    }
-
-    /**
-     * Price used for risk/reward zone split, center pill, and BE clamp — matches panel Avg Entry when set.
-     */
-    getRiskRewardZoneEntryPrice() {
-        const avg = this.meta?.rrAvgEntryPrice;
-        if (Number.isFinite(avg) && avg > 0) return avg;
-        return this.points[0]?.y;
     }
 
     /** Worst-case stop price for zone shading (furthest into loss). */
@@ -1226,15 +1214,6 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (this.meta.rrBreakevenLine && Number.isFinite(this.meta.rrBreakevenLine.y)) {
             this.meta.rrBreakevenLine.y = this.sanitizeBreakevenTriggerPrice(this.meta.rrBreakevenLine.y);
         }
-        const omAvg = window.chart?.orderManager;
-        if (Number.isFinite(this.meta?.rrAvgEntryPrice) && omAvg && typeof omAvg._calcMultiEntryAvgPrice === 'function'
-            && omAvg.isMultiEntryMode && omAvg.splitEntriesEnabled && omAvg.multiEntryLevels?.length > 1) {
-            const a = omAvg._calcMultiEntryAvgPrice();
-            if (a > 0) {
-                const prec = typeof omAvg.getPricePrecision === 'function' ? omAvg.getPricePrecision() : 5;
-                this.meta.rrAvgEntryPrice = parseFloat(a.toFixed(prec));
-            }
-        }
         if (this.points[2] && Number.isFinite(this.points[2].y)) {
             this.setTargetPrice(this.points[2].y);
         }
@@ -1289,9 +1268,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         const stop = this.points[1] || entry;
         const target = this.points[2] || entry;
 
-        const entryPrice = typeof this.getRiskRewardZoneEntryPrice === 'function'
-            ? this.getRiskRewardZoneEntryPrice()
-            : entry.y;
+        const entryPrice = entry.y;
         const stopDiff = Math.abs(entryPrice - stop.y);
         const profitDiff = Math.abs(target.y - entryPrice);
         const riskPercent = entryPrice !== 0 ? (stopDiff / Math.abs(entryPrice)) * 100 : 0;
@@ -1333,9 +1310,7 @@ class BaseRiskRewardTool extends BaseDrawing {
     /** BE trigger sits between entry and TP (not a second SL). */
     sanitizeBreakevenTriggerPrice(price) {
         if (!Array.isArray(this.points) || this.points.length < 3) return price;
-        const entry = typeof this.getRiskRewardZoneEntryPrice === 'function'
-            ? this.getRiskRewardZoneEntryPrice()
-            : this.points[0].y;
+        const entry = this.points[0].y;
         const tp = typeof this.getAggregatedTargetPrice === 'function'
             ? this.getAggregatedTargetPrice()
             : this.points[2].y;
@@ -1859,13 +1834,6 @@ class BaseRiskRewardTool extends BaseDrawing {
         const entry = this.points[0];
         const stop = this.points[1];
         const target = this.points[2];
-        const zoneEntryPrice = typeof this.getRiskRewardZoneEntryPrice === 'function'
-            ? this.getRiskRewardZoneEntryPrice()
-            : entry.y;
-        const leg1Ypx = scales.yScale(entry.y);
-        const zoneEntryYpx = scales.yScale(zoneEntryPrice);
-        const showLeg1AsExtra = Number.isFinite(this.meta?.rrAvgEntryPrice) && this.meta.rrAvgEntryPrice > 0
-            && Math.abs(entry.y - zoneEntryPrice) > this.getPriceStep() * 0.25;
 
         const xRange = scales.xScale.range();
         const chartWidth = Math.abs(xRange[1] - xRange[0]);
@@ -1930,7 +1898,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             this.meta.zoneWidthRatio = zoneWidth / chartWidth;
         }
 
-        const entryY = zoneEntryYpx;
+        const entryY = scales.yScale(entry.y);
         const stopY = scales.yScale(stop.y);
         const targetY = scales.yScale(target.y);
 
@@ -1945,8 +1913,8 @@ class BaseRiskRewardTool extends BaseDrawing {
         const rewBot = Math.max(entryY, bestTargetPx);
         const rewardHeight = rewBot - rewTop;
 
-        const risk = Math.max(Math.abs(zoneEntryPrice - stop.y), 0.0000001);
-        const reward = Math.abs(target.y - zoneEntryPrice);
+        const risk = Math.max(Math.abs(entry.y - stop.y), 0.0000001);
+        const reward = Math.abs(target.y - entry.y);
         const rrRatio = (reward / risk).toFixed(2);
 
         const dashExtra = '6 4';
@@ -2014,19 +1982,6 @@ class BaseRiskRewardTool extends BaseDrawing {
             .attr('stroke-width', 1.5)
             .style('pointer-events', 'none')
             .style('cursor', 'inherit');
-
-        if (showLeg1AsExtra) {
-            this.group.append('line')
-                .attr('class', 'rr-extra-line rr-extra-entry rr-entry-first-leg')
-                .attr('x1', zoneX1)
-                .attr('y1', leg1Ypx)
-                .attr('x2', zoneX2)
-                .attr('y2', leg1Ypx)
-                .attr('stroke', this.style.entryColor || '#2962FF')
-                .attr('stroke-width', 1)
-                .attr('stroke-dasharray', dashExtra)
-                .style('pointer-events', 'none');
-        }
 
         this.group.append('line')
             .attr('x1', zoneX1)
@@ -2124,8 +2079,8 @@ class BaseRiskRewardTool extends BaseDrawing {
         const showDetails = this.selected;
 
         if (showDetails) {
-            // Calculate percentages and amounts (use zone / Avg Entry when split multi-entry)
-            const entryPrice = zoneEntryPrice;
+            // Calculate percentages and amounts
+            const entryPrice = entry.y;
             const stopPrice = stop.y;
             const targetPrice = target.y;
 
@@ -2337,18 +2292,6 @@ class BaseRiskRewardTool extends BaseDrawing {
             mkPlus(entryY, '#2962FF', () => this.addExtraEntry());
             mkPlus(stopY, '#ef4444', () => this.addExtraStop());
 
-            if (showLeg1AsExtra) {
-                this.group.append('text')
-                    .attr('class', 'rr-extra-tag')
-                    .attr('x', zoneX1 + 4)
-                    .attr('y', leg1Ypx + 4)
-                    .attr('fill', '#93c5fd')
-                    .attr('font-size', '10px')
-                    .attr('font-weight', '600')
-                    .style('pointer-events', 'none')
-                    .text('E1');
-            }
-
             (this.meta.extraTargets || []).forEach((row, i) => {
                 if (!row || !Number.isFinite(row.y)) return;
                 const yy = scales.yScale(row.y);
@@ -2404,16 +2347,8 @@ class BaseRiskRewardTool extends BaseDrawing {
         }
 
         // Include all extra stops/targets so corner metadata spans the full vertical extent (fixes TP2 "outside" box).
-        let upperY = Math.min(entryY, bestTargetPx, worstStopPx);
-        let lowerY = Math.max(entryY, bestTargetPx, worstStopPx);
-        if (beLinePx != null) {
-            upperY = Math.min(upperY, beLinePx);
-            lowerY = Math.max(lowerY, beLinePx);
-        }
-        if (showLeg1AsExtra) {
-            upperY = Math.min(upperY, leg1Ypx);
-            lowerY = Math.max(lowerY, leg1Ypx);
-        }
+        const upperY = Math.min(entryY, bestTargetPx, worstStopPx, beLinePx != null ? beLinePx : entryY);
+        const lowerY = Math.max(entryY, bestTargetPx, worstStopPx, beLinePx != null ? beLinePx : entryY);
 
         this.lastRenderMeta = {
             entryX,
@@ -2443,7 +2378,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('class', 'custom-handle rr-primary-entry-drag-hit')
                 .attr('data-handle-role', 'rr-primary-entry')
                 .attr('x', zoneX1)
-                .attr('y', leg1Ypx - hitH / 2)
+                .attr('y', entryY - hitH / 2)
                 .attr('width', hitW)
                 .attr('height', hitH)
                 .attr('fill', 'rgba(0, 0, 0, 0.02)')
@@ -2780,11 +2715,8 @@ class BaseRiskRewardTool extends BaseDrawing {
         const handleStroke = '#2962FF';
         const handleStrokeWidth = 2;
         
-        // Only create corner handles on entry line (for width adjustment) — Avg Entry when split ladder
-        const zoneP = typeof this.getRiskRewardZoneEntryPrice === 'function'
-            ? this.getRiskRewardZoneEntryPrice()
-            : this.points[0].y;
-        const entryY = scales.yScale(zoneP);
+        // Only create corner handles on entry line (for width adjustment)
+        const entryY = scales.yScale(this.points[0].y);
         
         const positions = [
             { role: 'corner-entry-right', x: zoneX2, y: entryY, cursor: 'ew-resize' }
