@@ -17405,7 +17405,8 @@ class OrderManager {
     // Split entries now use drawPreviewLine with Entry#N labels and sync-back in makePreviewLineDraggable.
 
     /**
-     * Preview multi-TP: + on a TP line adds another target (same price rule as pending TP split).
+     * Preview multi-TP: + on a TP line adds another target between entry and this TP line.
+     * Keeps the outer (farthest) TP unchanged so risk/reward reward zone height does not grow.
      */
     _splitPreviewTPFromLine(linePrice) {
         const ep = typeof this._getReferenceEntryForOrderMath === 'function'
@@ -17414,7 +17415,11 @@ class OrderManager {
         const tp = Number(linePrice);
         if (!Number.isFinite(ep) || ep <= 0 || !Number.isFinite(tp) || tp <= 0) return;
         const dist = Math.abs(tp - ep);
-        const newTP = this.orderSide === 'BUY' ? tp + dist * 0.5 : tp - dist * 0.5;
+        if (dist < 1e-12) return;
+        // Interior TP only (was: tp ± dist*0.5 past the line, which expanded the green reward band).
+        const newTP = this.orderSide === 'BUY'
+            ? ep + (tp - ep) * 0.5
+            : ep - (ep - tp) * 0.5;
         this.addTPFromSplit(newTP);
     }
 
