@@ -1043,30 +1043,49 @@ class BaseRiskRewardTool extends BaseDrawing {
     }
 
     /**
-     * Volume-style average entry for multi-leg ladder: weights from order panel row amounts
-     * (risk %, risk $ split, or lot-size). Used as the R/R zone boundary (middle line) while E1 stays a separate dashed leg.
+     * VWAP-style average entry: weights = implied lots per row (same as order panel / _calcLevelLotSizeNumeric).
+     * Leg prices and SL follow the drawing so whole-tool moves stay consistent with mini badges.
      */
     _getWeightedAverageEntryPrice() {
         const p0 = this.points[0]?.y;
         if (!Number.isFinite(p0)) return NaN;
         const extras = (this.meta.extraEntries || []).map((r) => r.y).filter(Number.isFinite);
         if (!extras.length) return p0;
-        const prices = [p0, ...extras];
         const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
-        if (om?.isMultiEntryMode && Array.isArray(om.multiEntryLevels) && om.multiEntryLevels.length) {
-            const weights = prices.map((_, i) => {
-                const a = Number(om.multiEntryLevels[i]?.amount);
-                return Number.isFinite(a) && a > 0 ? a : 0;
-            });
-            const sumW = weights.reduce((s, w) => s + w, 0);
-            if (sumW < 1e-12) {
-                return prices.reduce((s, p) => s + p, 0) / prices.length;
-            }
-            let sumPW = 0;
-            for (let i = 0; i < prices.length; i++) sumPW += prices[i] * weights[i];
-            return sumPW / sumW;
+        if (!om?.isMultiEntryMode || !Array.isArray(om.multiEntryLevels) || typeof om._calcLevelLotSizeNumeric !== 'function') {
+            return (p0 + extras.reduce((s, x) => s + x, 0)) / (1 + extras.length);
         }
-        return prices.reduce((s, p) => s + p, 0) / prices.length;
+        const prec = typeof om.getPricePrecision === 'function' ? om.getPricePrecision() : 5;
+        const rrRoundPx = (p) => (Number.isFinite(p) ? parseFloat(Number(p).toFixed(prec)) : p);
+        const stop = this.points[1];
+        const slPrice = rrRoundPx(
+            Number.isFinite(stop?.y) ? stop.y : parseFloat(document.getElementById('slPrice')?.value || '') || 0
+        );
+        const pipS = om.pipSize || (typeof this.getPriceStep === 'function' ? this.getPriceStep() : 0.0001);
+        const pipV = om.pipValuePerLot || 10;
+
+        let sumW = 0;
+        let sumPW = 0;
+        const nLegs = 1 + extras.length;
+        for (let i = 0; i < nLegs; i++) {
+            const lv = om.multiEntryLevels[i];
+            if (!lv) continue;
+            if (i > 0) {
+                const ex = (this.meta.extraEntries || [])[i - 1];
+                if (!ex || !Number.isFinite(ex.y)) continue;
+            }
+            const rowY = i === 0 ? p0 : (this.meta.extraEntries || [])[i - 1].y;
+            if (!Number.isFinite(rowY) || rowY <= 0) continue;
+            const legPx = rrRoundPx(rowY);
+            const levelForLots = { ...lv, price: legPx };
+            const w = om._calcLevelLotSizeNumeric(levelForLots, slPrice, pipS, pipV);
+            if (Number.isFinite(w) && w > 0) {
+                sumW += w;
+                sumPW += legPx * w;
+            }
+        }
+        if (sumW > 1e-12) return sumPW / sumW;
+        return (p0 + extras.reduce((s, x) => s + x, 0)) / (1 + extras.length);
     }
 
     /** Worst-case stop price for zone shading (furthest into loss). */
