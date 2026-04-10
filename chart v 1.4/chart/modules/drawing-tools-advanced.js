@@ -1984,11 +1984,23 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         const bodyTopPx = Math.min(riskTop, rewTop);
         const bodyBotPx = Math.max(riskBot, rewBot);
-        // No whole-tool drag on the entry row — gap so only the entry hit strip (painted later) sees events.
+        // No whole-tool drag across entry-related Ys. If the gap is only around avg, E1/E2 strips sit
+        // under .rr-body-drag and the tool moves instead of the entry handles (broken drag).
         const entryRowGapPx = 36;
         const gapHalf = entryRowGapPx / 2;
-        const bandTop = avgEntryYpx - gapHalf;
-        const bandBot = avgEntryYpx + gapHalf;
+        let bandTop;
+        let bandBot;
+        if (hasMultiEntry) {
+            const ys = [entryY, avgEntryYpx];
+            (this.meta.extraEntries || []).forEach((row) => {
+                if (row && Number.isFinite(row.y)) ys.push(scales.yScale(row.y));
+            });
+            bandTop = Math.min(...ys) - gapHalf;
+            bandBot = Math.max(...ys) + gapHalf;
+        } else {
+            bandTop = entryY - gapHalf;
+            bandBot = entryY + gapHalf;
+        }
         const upperBodyH = Math.max(0, bandTop - bodyTopPx);
         const lowerBodyY = bandBot;
         const lowerBodyH = Math.max(0, bodyBotPx - lowerBodyY);
