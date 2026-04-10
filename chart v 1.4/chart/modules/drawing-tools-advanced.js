@@ -2189,11 +2189,32 @@ class BaseRiskRewardTool extends BaseDrawing {
                 Number.isFinite(stop.y) ? stop.y : parseFloat(document.getElementById('slPrice')?.value || '') || 0
             );
 
+            if (om && typeof om.calculateAdvancedRiskReward === 'function') {
+                try {
+                    om.calculateAdvancedRiskReward();
+                } catch (_) { /* ignore */ }
+            }
+
+            const parsePanelSummaryAmount = (el) => {
+                const t = el?.textContent?.trim() ?? '';
+                if (!t || t === '—' || t === '--') return null;
+                return t;
+            };
+            const formatRrDistFromPx = (distAbs) => {
+                if (!Number.isFinite(distAbs) || distAbs <= 0) return '';
+                const cfg = om?.getMarketConfig?.() || {};
+                const pip = Number.isFinite(cfg.pipSize) && cfg.pipSize > 0 ? cfg.pipSize
+                    : (Number.isFinite(om?.pipSize) && om.pipSize > 0 ? om.pipSize : 0.0001);
+                if (cfg.showPips) return `${(distAbs / pip).toFixed(2)} pips`;
+                if (cfg.showTicks) return `${(distAbs / pip).toFixed(2)} pts`;
+                return `${distAbs.toFixed(cfg.symbolPrecision ?? 5)} pts`;
+            };
+
             const targetPercent = ((Math.abs(targetPrice - entryPrice) / entryPrice) * 100).toFixed(3);
             const stopPercent = ((Math.abs(stopPrice - entryPrice) / entryPrice) * 100).toFixed(3);
 
-            const targetTicks = (Math.abs(targetPrice - entryPrice) / 0.0001).toFixed(1);
-            const stopTicks = (Math.abs(stopPrice - entryPrice) / 0.0001).toFixed(1);
+            const targetTicksFb = (Math.abs(targetPrice - entryPrice) / 0.0001).toFixed(1);
+            const stopTicksFb = (Math.abs(stopPrice - entryPrice) / 0.0001).toFixed(1);
 
             let panelOrderQty = parseFloat(document.getElementById('orderQuantity')?.value || '');
             if (!Number.isFinite(panelOrderQty) || panelOrderQty < 0) {
@@ -2211,13 +2232,6 @@ class BaseRiskRewardTool extends BaseDrawing {
                     riskUSD = (accountSize * (this.meta.risk.riskPercent || 1)) / 100;
                 }
             }
-
-            // Stop Loss Amount = Your Risk Amount (what you're willing to lose)
-            const stopAmount = Math.round(riskUSD);
-
-            // Target Amount = Risk × R:R Ratio (potential reward)
-            // Use rrRatio already calculated above
-            const targetAmount = Math.round(riskUSD * parseFloat(rrRatio));
 
             const labelPaddingX = 10;
             const labelPaddingY = 4;
@@ -2280,8 +2294,35 @@ class BaseRiskRewardTool extends BaseDrawing {
             const targetLabelFill = '#22c55e';
             const stopLabelFill = '#ef4444';
 
-            // Target / Stop labels: TV-like behavior (wide = edge-snapped, narrow = floated with fixed spacing)
-            const targetLabelText = `Target: ${targetPrice.toFixed(5)} (${targetPercent}%) ${targetTicks}, Amount: ${targetAmount}`;
+            const tpDistPanel = document.getElementById('tpDistanceDisplay')?.textContent?.trim() || '';
+            const slDistPanel = document.getElementById('slPipsDisplay')?.textContent?.trim() || '';
+            const tpDistSeg = (tpDistPanel && tpDistPanel !== '—')
+                ? tpDistPanel
+                : (formatRrDistFromPx(Math.abs(targetPrice - entryPrice)) || targetTicksFb);
+            const slDistSeg = (slDistPanel && slDistPanel !== '—')
+                ? slDistPanel
+                : (formatRrDistFromPx(Math.abs(stopPrice - entryPrice)) || stopTicksFb);
+
+            let targetAmountStr = parsePanelSummaryAmount(document.getElementById('rewardAmount'));
+            if (targetAmountStr == null) {
+                targetAmountStr = `$${Math.round(riskUSD * parseFloat(rrRatio))}`;
+            }
+            let stopAmountStr = parsePanelSummaryAmount(document.getElementById('riskAmount'));
+            if (stopAmountStr == null) {
+                stopAmountStr = `$${Math.round(riskUSD)}`;
+            }
+
+            let targetRewardUsdForBadges = Math.round(riskUSD * parseFloat(rrRatio));
+            const rewNum = parseFloat(String(targetAmountStr).replace(/[^0-9.-]+/g, ''));
+            if (Number.isFinite(rewNum) && targetAmountStr && !String(targetAmountStr).includes('∞')) {
+                targetRewardUsdForBadges = rewNum;
+            }
+
+            const tpPriceStr = typeof om?.formatPrice === 'function' ? om.formatPrice(targetPrice) : targetPrice.toFixed(5);
+            const slPriceStr = typeof om?.formatPrice === 'function' ? om.formatPrice(stopPrice) : stopPrice.toFixed(5);
+
+            // Target / Stop labels — same distance + $ readouts as order panel (TP/SL cards + summary)
+            const targetLabelText = `Target: ${tpPriceStr} (${targetPercent}%) ${tpDistSeg}, Amount: ${targetAmountStr}`;
             const targetSide = targetY <= avgEntryYpx ? 'top' : 'bottom';
             createEdgeLabel({
                 className: 'target-label',
@@ -2291,7 +2332,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 side: targetSide
             });
 
-            const stopLabelText = `Stop: ${stopPrice.toFixed(5)} (${stopPercent}%) ${stopTicks}, Amount: ${stopAmount}`;
+            const stopLabelText = `Stop: ${slPriceStr} (${stopPercent}%) ${slDistSeg}, Amount: ${stopAmountStr}`;
             const stopSide = stopY <= avgEntryYpx ? 'top' : 'bottom';
             createEdgeLabel({
                 className: 'stop-label',
@@ -2533,7 +2574,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                     const leg = innerTp[i];
                     const pct = leg ? Number(leg.percentage) : NaN;
                     const pctStr = Number.isFinite(pct) ? `${Math.round(pct)}%` : '—';
-                    const usd = Number.isFinite(pct) ? Math.round(targetAmount * (pct / 100)) : null;
+                    const usd = Number.isFinite(pct) ? Math.round(targetRewardUsdForBadges * (pct / 100)) : null;
                     const sub = usd != null ? `$${usd} · ${pctStr}` : pctStr;
                     appendRrMiniBadge(yy, [`TP${i + 2}`, sub], tpInnerFill);
                 });
