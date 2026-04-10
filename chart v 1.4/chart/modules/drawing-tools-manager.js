@@ -3382,11 +3382,11 @@ class DrawingToolsManager {
         const rewardRatio = positionDefaults.rewardRatio;
 
         // Fixed pixel leg on the stop side → stable on-screen size across zoom / timeframe.
-        // (Saved stopTicks from a previous tool still uses absolute price — user preference.)
+        // Do not use persisted stopTicks here: a saved price distance made the next tool copy the
+        // previous physical size. Reward ratio still comes from getPositionRiskDefaults.
         const RR_DEFAULT_STOP_LEG_PX = 72;
         if (
-            !positionDefaults.stopOffset
-            && chart
+            chart
             && chart.yScale
             && typeof chart.yScale === 'function'
             && typeof chart.yScale.invert === 'function'
@@ -3430,9 +3430,7 @@ class DrawingToolsManager {
         }
 
         let stopOffset;
-        if (positionDefaults.stopOffset) {
-            stopOffset = positionDefaults.stopOffset;
-        } else if (chart && chart.yScale) {
+        if (chart && chart.yScale) {
             const domain = chart.yScale.domain();
             const priceRange = Math.abs(domain[1] - domain[0]);
             stopOffset = priceRange * 0.05;
