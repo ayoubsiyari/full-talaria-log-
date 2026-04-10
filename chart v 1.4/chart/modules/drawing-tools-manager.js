@@ -3354,6 +3354,7 @@ class DrawingToolsManager {
             riskMode: existingRisk.riskMode,
             riskPercent: existingRisk.riskPercent,
             riskAmountUSD: existingRisk.riskAmountUSD,
+            lotSizeAmount: existingRisk.lotSizeAmount,
             lotSize: existingRisk.lotSize,
             leverage: existingRisk.leverage,
             rewardRatio: computedRatio,
@@ -8388,7 +8389,7 @@ class DrawingToolsManager {
             const src = options.riskSettings;
             const normalized = {};
 
-            if (src.riskMode === 'risk-percent' || src.riskMode === 'risk-usd') {
+            if (src.riskMode === 'risk-percent' || src.riskMode === 'risk-usd' || src.riskMode === 'lot-size') {
                 normalized.riskMode = src.riskMode;
             }
 
@@ -8405,6 +8406,11 @@ class DrawingToolsManager {
             const lotSize = Number(src.lotSize);
             if (Number.isFinite(lotSize)) {
                 normalized.lotSize = Math.max(0.01, lotSize);
+            }
+
+            const lotSizeAmount = Number(src.lotSizeAmount);
+            if (Number.isFinite(lotSizeAmount) && lotSizeAmount > 0) {
+                normalized.lotSizeAmount = Math.max(0.01, lotSizeAmount);
             }
 
             const rewardRatio = Number(src.rewardRatio);

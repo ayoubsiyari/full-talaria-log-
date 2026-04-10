@@ -2571,7 +2571,7 @@ class OrderManager {
     applyPositionSizeModeToUI(mode) {
         const m = mode === 'risk-percent' || mode === 'lot-size' ? mode : 'risk-usd';
         this.positionSizeMode = m;
-        document.querySelectorAll('.position-mode-tab').forEach((t) => {
+        document.querySelectorAll('#orderPanel .position-mode-tab').forEach((t) => {
             t.style.cssText = '';
             t.classList.toggle('active', t.dataset.mode === m);
         });
@@ -11436,8 +11436,8 @@ class OrderManager {
             };
         });
         
-        // Position sizing mode tabs
-        document.querySelectorAll('.position-mode-tab').forEach(tab => {
+        // Position sizing mode tabs (order panel only — RR drawing settings use same classes outside #orderPanel)
+        document.querySelectorAll('#orderPanel .position-mode-tab').forEach(tab => {
             tab.onclick = () => {
                 const prevMode = this.positionSizeMode || 'risk-usd';
                 const mode = tab.dataset.mode;
@@ -11447,7 +11447,7 @@ class OrderManager {
                 }
                 
                 // Update tab styling
-                document.querySelectorAll('.position-mode-tab').forEach(t => {
+                document.querySelectorAll('#orderPanel .position-mode-tab').forEach(t => {
                     t.style.cssText = '';
                     t.classList.toggle('active', t === tab);
                 });
@@ -17927,7 +17927,7 @@ class OrderManager {
         const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision() : 5;
 
         const metaRisk = drawing.meta?.risk;
-        if (metaRisk?.riskMode === 'risk-usd' || metaRisk?.riskMode === 'risk-percent') {
+        if (metaRisk?.riskMode === 'risk-usd' || metaRisk?.riskMode === 'risk-percent' || metaRisk?.riskMode === 'lot-size') {
             this.applyPositionSizeModeToUI(metaRisk.riskMode);
         }
         if (metaRisk?.riskMode === 'risk-usd') {
@@ -17938,6 +17938,10 @@ class OrderManager {
             const pct = Number(metaRisk.riskPercent);
             const rpEl = document.getElementById('riskAmountPercent');
             if (rpEl && Number.isFinite(pct)) rpEl.value = String(pct);
+        } else if (metaRisk?.riskMode === 'lot-size') {
+            const lots = Number(metaRisk.lotSizeAmount ?? metaRisk.lotSize);
+            const lotEl = document.getElementById('lotSizeAmount');
+            if (lotEl && Number.isFinite(lots) && lots > 0) lotEl.value = String(lots);
         } else {
             const riskUsdLegacy = Number(metaRisk?.riskAmountUSD ?? metaRisk?.riskAmount);
             const raUsd = document.getElementById('riskAmountUSD');
