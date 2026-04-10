@@ -1624,12 +1624,12 @@ class BaseRiskRewardTool extends BaseDrawing {
     prefillOrderPanel(orderManager, direction, entryPrice, slPrice, tpPrice, quantity, riskAmount) {
         this.ensureRiskSettings();
         const entryList = this._allEntryPrices();
-        const avgEntry = entryList.length
-            ? entryList.reduce((a, b) => a + b, 0) / entryList.length
-            : entryPrice;
+        // Primary leg = tool zone boundary (points[0] first in _allEntryPrices). Never use a mean here:
+        // writing avg into #orderEntryPrice and dispatching 'input' before multi-entry rows exist made
+        // pullRiskRewardToolFromManager snap points[0] to the average and clear extraEntries.
+        const primaryEntry = entryList.length > 0 ? entryList[0] : entryPrice;
         const stops = this._allStopPrices();
         const tgs = this._allTargetPrices();
-        entryPrice = avgEntry;
         if (stops.length) {
             slPrice = this.isLong ? Math.min(...stops) : Math.max(...stops);
         }
@@ -1639,7 +1639,7 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         console.log(`📋 Prefilling order panel:`);
         console.log(`   Direction: ${direction}`);
-        console.log(`   Entry: ${entryPrice}`);
+        console.log(`   Entry (primary): ${primaryEntry}`);
         console.log(`   SL: ${slPrice}`);
         console.log(`   TP: ${tpPrice}`);
         
@@ -1665,10 +1665,10 @@ class BaseRiskRewardTool extends BaseDrawing {
         let orderType = 'limit'; // Default to limit for pending orders
         
         if (currentPrice > 0) {
-            const priceDiff = entryPrice - currentPrice;
+            const priceDiff = primaryEntry - currentPrice;
             const tolerance = currentPrice * 0.0001; // 0.01% tolerance for "at market"
             
-            console.log(`   Price comparison: Entry=${entryPrice.toFixed(5)}, Current=${currentPrice.toFixed(5)}, Diff=${priceDiff.toFixed(5)}`);
+            console.log(`   Price comparison: Entry=${primaryEntry.toFixed(5)}, Current=${currentPrice.toFixed(5)}, Diff=${priceDiff.toFixed(5)}`);
             
             if (Math.abs(priceDiff) <= tolerance) {
                 // Entry is at current price - Market order
@@ -1720,10 +1720,33 @@ class BaseRiskRewardTool extends BaseDrawing {
             }
         }
 
-        // Fill in the entry price
+        // Multiple entries (ladder) MUST run before #orderEntryPrice input events, or pull() sees
+        // isMultiEntryMode false and overwrites the tool's primary with the main field value.
+        if (entryList.length > 1 && typeof orderManager.setEntryMode === 'function') {
+            if (!Number.isFinite(orderManager.multiEntryIdCounter)) orderManager.multiEntryIdCounter = 1;
+            const prec = typeof orderManager.getPricePrecision === 'function' ? orderManager.getPricePrecision() : 5;
+            const riskUsd = this.meta.risk?.riskAmountUSD
+                ?? this.meta.risk?.riskAmount
+                ?? riskAmount
+                ?? 100;
+            const n = entryList.length;
+            const amt = Math.max(1, Math.round(riskUsd / n));
+            // Same ladder order as the tool (E1 = primary), not price-sorted.
+            orderManager.multiEntryLevels = entryList.map((price) => ({
+                id: orderManager.multiEntryIdCounter++,
+                price: parseFloat(price.toFixed(prec)),
+                amount: amt
+            }));
+            orderManager.setEntryMode(true);
+        }
+
+        // Fill in the entry price (primary leg — matches RR zone boundary)
         const entryInput = document.getElementById('orderEntryPrice');
         if (entryInput) {
-            entryInput.value = entryPrice.toFixed(5);
+            const prec = typeof orderManager.getPricePrecision === 'function' ? orderManager.getPricePrecision() : 5;
+            entryInput.value = typeof orderManager.formatPrice === 'function'
+                ? orderManager.formatPrice(primaryEntry)
+                : primaryEntry.toFixed(prec);
             entryInput.dispatchEvent(new Event('input', { bubbles: true }));
         }
 
@@ -1784,25 +1807,6 @@ class BaseRiskRewardTool extends BaseDrawing {
             }
         }
 
-        // Multiple entries (ladder)
-        if (entryList.length > 1 && typeof orderManager.setEntryMode === 'function') {
-            if (!Number.isFinite(orderManager.multiEntryIdCounter)) orderManager.multiEntryIdCounter = 1;
-            const prec = typeof orderManager.getPricePrecision === 'function' ? orderManager.getPricePrecision() : 5;
-            const sortedEnt = [...entryList].sort((a, b) => (this.isLong ? a - b : b - a));
-            const riskUsd = this.meta.risk?.riskAmountUSD
-                ?? this.meta.risk?.riskAmount
-                ?? riskAmount
-                ?? 100;
-            const n = sortedEnt.length;
-            const amt = Math.max(1, Math.round(riskUsd / n));
-            orderManager.multiEntryLevels = sortedEnt.map((price) => ({
-                id: orderManager.multiEntryIdCounter++,
-                price: parseFloat(price.toFixed(prec)),
-                amount: amt
-            }));
-            orderManager.setEntryMode(true);
-        }
-
         if (typeof orderManager.calculatePositionFromRisk === 'function') {
             orderManager.calculatePositionFromRisk();
         }
@@ -1810,7 +1814,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         // Also set on orderManager for calculations
         if (orderManager.tpPrice !== undefined) orderManager.tpPrice = tpPrice;
         if (orderManager.slPrice !== undefined) orderManager.slPrice = slPrice;
-        if (orderManager.entryPrice !== undefined) orderManager.entryPrice = entryPrice;
+        if (orderManager.entryPrice !== undefined) orderManager.entryPrice = primaryEntry;
     }
 
     render(container, scales) {

@@ -17773,12 +17773,17 @@ class OrderManager {
         const slPx = parseFloat(document.getElementById('slPrice')?.value || '');
         if (Number.isFinite(slPx)) drawing.points[1] = { ...drawing.points[1], y: slPx };
 
-        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 1) {
+        // Use ladder row 0 as RR points[0] whenever multi-entry UI is on (including exactly one row).
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length >= 1) {
             const lv = [...this.multiEntryLevels].filter((l) => l.price > 0);
             if (lv.length) {
                 drawing.points[0] = { ...drawing.points[0], y: lv[0].price };
-                if (!drawing.meta.extraEntries) drawing.meta.extraEntries = [];
-                drawing.meta.extraEntries = lv.slice(1).map((l) => ({ id: l.id, y: l.price }));
+                if (lv.length > 1) {
+                    if (!drawing.meta.extraEntries) drawing.meta.extraEntries = [];
+                    drawing.meta.extraEntries = lv.slice(1).map((l) => ({ id: l.id, y: l.price }));
+                } else {
+                    drawing.meta.extraEntries = [];
+                }
             }
         } else {
             const e = parseFloat(document.getElementById('orderEntryPrice')?.value || '');
