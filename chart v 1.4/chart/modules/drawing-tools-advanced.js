@@ -2142,7 +2142,48 @@ class BaseRiskRewardTool extends BaseDrawing {
             const targetTicks = (Math.abs(targetPrice - entryPrice) / 0.0001).toFixed(1);
             const stopTicks = (Math.abs(stopPrice - entryPrice) / 0.0001).toFixed(1);
 
-            const quantity = this.meta.risk?.lotSize || 0.01;
+            let displayQty = this.meta.risk?.lotSize || 0.01;
+            const hasLadderExtras = (this.meta.extraEntries || []).length > 0;
+            const omQty = typeof window !== 'undefined' ? window.chart?.orderManager : null;
+            if (hasLadderExtras && omQty?.isMultiEntryMode && Array.isArray(omQty.multiEntryLevels)) {
+                const precQ = typeof omQty.getPricePrecision === 'function' ? omQty.getPricePrecision() : 5;
+                const rrp = (p) => (Number.isFinite(p) ? parseFloat(Number(p).toFixed(precQ)) : p);
+                const slQ = rrp(
+                    Number.isFinite(stop.y) ? stop.y : parseFloat(document.getElementById('slPrice')?.value || '') || 0
+                );
+                const psQ = omQty.pipSize || this.getPriceStep();
+                const pvQ = omQty.pipValuePerLot || 10;
+                let sumLots = 0;
+                let counted = 0;
+                omQty.multiEntryLevels.forEach((lv, i) => {
+                    if (!lv) return;
+                    if (i > 0) {
+                        const ex = (this.meta.extraEntries || [])[i - 1];
+                        if (!ex || !Number.isFinite(ex.y)) return;
+                    }
+                    const rowY = i === 0 ? entry.y : (this.meta.extraEntries || [])[i - 1].y;
+                    if (!Number.isFinite(rowY) || rowY <= 0) return;
+                    const legPx = rrp(rowY);
+                    const levelForLots = { ...lv, price: legPx };
+                    if (slQ > 0 && typeof omQty._calcLevelLotSizeNumeric === 'function') {
+                        const n = omQty._calcLevelLotSizeNumeric(levelForLots, slQ, psQ, pvQ);
+                        if (Number.isFinite(n) && n > 0) {
+                            sumLots += n;
+                            counted += 1;
+                        }
+                    }
+                });
+                if (counted > 0) displayQty = sumLots;
+            }
+
+            const omFmtEarly = typeof window !== 'undefined' ? window.chart?.orderManager : null;
+            const avgPriceLabel = hasMultiEntry && Number.isFinite(zoneEntryPrice)
+                ? (typeof omFmtEarly?.formatPrice === 'function'
+                    ? omFmtEarly.formatPrice(zoneEntryPrice)
+                    : zoneEntryPrice.toFixed(
+                        typeof omFmtEarly?.getPricePrecision === 'function' ? omFmtEarly.getPricePrecision() : 5
+                    ))
+                : '';
 
             // Get risk amount from settings (THIS is the amount we're risking)
             let riskUSD = 100; // Default
@@ -2246,8 +2287,10 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             // Center Info Box (TradingView-like red pill with border)
             const pnl = 0; // Will be calculated when order is active
-            const centerInfoLine1 = `Open P&L: ${pnl.toFixed(0)}, Qty: ${quantity.toFixed(2)}`;
-            const centerInfoLine2 = `Risk/Reward Ratio: ${rrRatio}`;
+            const centerInfoLine1 = `Open P&L: ${pnl.toFixed(0)}, Qty: ${displayQty.toFixed(2)}`;
+            const centerInfoLine2 = hasMultiEntry && avgPriceLabel
+                ? `Risk/Reward Ratio: ${rrRatio} · Avg ${avgPriceLabel}`
+                : `Risk/Reward Ratio: ${rrRatio}`;
             const centerInfo = this.group.append('g')
                 .attr('class', 'center-info rr-no-hit')
                 .style('pointer-events', 'none');
@@ -2400,12 +2443,17 @@ class BaseRiskRewardTool extends BaseDrawing {
                     appendRrMiniBadge(yPix, [`E${i + 1}`, `${lotStr} lot`], entryFill);
                 });
             } else if (hasDrawnExtras) {
-                const fallbackLot = Number.isFinite(quantity) ? quantity.toFixed(2) : '—';
+                const fallbackLot = Number.isFinite(displayQty) ? displayQty.toFixed(2) : '—';
                 appendRrMiniBadge(entryY, ['E1', `${fallbackLot} lot`], entryFill);
                 (this.meta.extraEntries || []).forEach((row, i) => {
                     if (!row || !Number.isFinite(row.y)) return;
                     appendRrMiniBadge(scales.yScale(row.y), [`E${i + 2}`, `${fallbackLot} lot`], entryFill);
                 });
+            }
+
+            const avgFill = 'rgba(71, 85, 105, 0.92)';
+            if (hasMultiEntry && avgPriceLabel) {
+                appendRrMiniBadge(avgEntryYpx, ['Avg', avgPriceLabel], avgFill);
             }
 
             const mtOn = typeof document !== 'undefined' && document.getElementById('multipleTPToggle')?.checked;
