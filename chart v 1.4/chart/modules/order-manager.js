@@ -17779,11 +17779,19 @@ class OrderManager {
                 drawing.points[0] = { ...drawing.points[0], y: lv[0].price };
                 if (!drawing.meta.extraEntries) drawing.meta.extraEntries = [];
                 drawing.meta.extraEntries = lv.slice(1).map((l) => ({ id: l.id, y: l.price }));
+                if (this.splitEntriesEnabled) {
+                    const avg = this._calcMultiEntryAvgPrice();
+                    if (avg > 0) drawing.meta.rrAvgEntryPrice = parseFloat(avg.toFixed(prec));
+                    else delete drawing.meta.rrAvgEntryPrice;
+                } else {
+                    delete drawing.meta.rrAvgEntryPrice;
+                }
             }
         } else {
             const e = parseFloat(document.getElementById('orderEntryPrice')?.value || '');
             if (Number.isFinite(e)) drawing.points[0] = { ...drawing.points[0], y: e };
             drawing.meta.extraEntries = [];
+            delete drawing.meta.rrAvgEntryPrice;
         }
 
         const mtOn = document.getElementById('multipleTPToggle')?.checked;
