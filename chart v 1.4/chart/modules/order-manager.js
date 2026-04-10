@@ -9208,6 +9208,161 @@ class OrderManager {
 
                 /* ── MISC ────────────────────────────────────────────────────────── */
                 .is-hidden { display: none !important; }
+
+                /* RR tool Inputs tab — mirror order panel form styling (modal is not inside .order-panel) */
+                #rrMirrorOrderRoot {
+                    --om-bg: #080b11;
+                    --om-panel: #0f1319;
+                    --om-panel2: #141a22;
+                    --om-b: #1a2030;
+                    --om-b2: #242e3e;
+                    --om-tx: #c8cfd8;
+                    --om-dim: #5e6a7a;
+                    --om-muted: #333e50;
+                    --om-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+                    --om-ot-gold: #C9A84C;
+                    --om-seg-bg: #080b11;
+                    --om-seg-border: #1a2030;
+                    --om-tab-dim: #5e6a7a;
+                    --op-border: var(--om-b);
+                    --op-bg: var(--om-panel);
+                    --op-surface: var(--om-panel2);
+                    --op-text: var(--om-tx);
+                    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    color: var(--om-tx);
+                    background: var(--om-bg);
+                    border: 1px solid var(--om-b);
+                    border-radius: 8px;
+                    padding: 10px 12px 12px;
+                    box-sizing: border-box;
+                    max-width: 100%;
+                }
+                #rrMirrorOrderRoot .order-section {
+                    padding-bottom: 10px;
+                    margin-bottom: 2px;
+                    border-bottom: 1px solid var(--om-b);
+                }
+                #rrMirrorOrderRoot .order-section:last-child {
+                    border-bottom: none;
+                    margin-bottom: 0;
+                    padding-bottom: 0;
+                }
+                #rrMirrorOrderRoot .order-section.order-tp-card--compact {
+                    padding-bottom: 0;
+                    margin-bottom: 0;
+                }
+                #rrMirrorOrderRoot .order-risk-compact {
+                    display: flex;
+                    flex-wrap: wrap;
+                    align-items: center;
+                    gap: 8px;
+                    width: 100%;
+                }
+                #rrMirrorOrderRoot .order-input-wrapper:has(.order-input--compact) {
+                    padding: 0 8px;
+                    min-height: 0;
+                }
+                #rrMirrorOrderRoot input.order-input[type="number"] {
+                    -moz-appearance: textfield;
+                    appearance: textfield;
+                    background: transparent;
+                    min-height: 0;
+                }
+                #rrMirrorOrderRoot input.order-input[type="number"]::-webkit-outer-spin-button,
+                #rrMirrorOrderRoot input.order-input[type="number"]::-webkit-inner-spin-button {
+                    -webkit-appearance: none;
+                    margin: 0;
+                }
+                #rrMirrorOrderRoot .order-input.order-input--compact {
+                    padding: 5px 7px;
+                    font-size: 11px;
+                    line-height: 1.2;
+                    min-height: 0;
+                    height: auto;
+                }
+                #rrMirrorOrderRoot .order-input-wrapper:has(.input-stepper) {
+                    padding: 0 0 0 8px;
+                }
+                #rrMirrorOrderRoot .order-input-wrapper:has(.input-stepper) .order-input-prefix,
+                #rrMirrorOrderRoot .order-input-wrapper:has(.input-stepper) .order-input-suffix {
+                    font-size: 12px;
+                    font-family: var(--om-mono);
+                }
+                #rrMirrorOrderRoot .input-stepper {
+                    width: 28px !important;
+                    height: 32px !important;
+                    border-radius: 0 !important;
+                    border: none !important;
+                    border-left: 1px solid var(--om-b) !important;
+                    background: var(--om-panel2) !important;
+                    color: var(--om-dim) !important;
+                    font-size: 14px !important;
+                    font-weight: 700 !important;
+                    cursor: pointer !important;
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    transition: background 0.15s ease, color 0.15s ease !important;
+                    flex-shrink: 0 !important;
+                }
+                #rrMirrorOrderRoot .input-stepper:hover {
+                    background: var(--om-b2) !important;
+                    color: var(--om-tx) !important;
+                }
+                #rrMirrorOrderRoot .input-stepper-group {
+                    display: inline-flex;
+                    align-items: stretch;
+                    flex-shrink: 0;
+                    gap: 0;
+                }
+                #rrMirrorOrderRoot .multi-entry-row-inputs .input-stepper {
+                    width: 22px !important;
+                    height: 26px !important;
+                    font-size: 11px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-amount-wrap .input-stepper {
+                    width: 22px !important;
+                    height: 26px !important;
+                    font-size: 11px !important;
+                    border-left: 1px solid var(--om-b) !important;
+                }
+
+                /* RR mirror — light theme (modal is outside .order-panel; mirror vars must match panel) */
+                body.light-mode #rrMirrorOrderRoot {
+                    --om-bg: #f7f8fa !important;
+                    --om-panel: #ffffff !important;
+                    --om-panel2: #f0f3fa !important;
+                    --om-b: #e0e3eb !important;
+                    --om-b2: #d1d5db !important;
+                    --om-tx: #131722 !important;
+                    --om-dim: #787b86 !important;
+                    --om-muted: #9ca3af !important;
+                    --op-bg: #ffffff !important;
+                    --op-surface: #f0f3fa !important;
+                    --op-text: #131722 !important;
+                    --op-border: #e0e3eb !important;
+                    --om-seg-bg: #f0f3fa !important;
+                    --om-seg-border: #e0e3eb !important;
+                    --om-tab-dim: #787b86 !important;
+                    background: #ffffff !important;
+                    border: 1px solid #e0e3eb !important;
+                    color: #131722 !important;
+                }
+                body.light-mode #rrMirrorOrderRoot .input-stepper {
+                    background: #f0f3fa !important;
+                    border: none !important;
+                    border-left: 1px solid #e0e3eb !important;
+                    color: #787b86 !important;
+                }
+                body.light-mode #rrMirrorOrderRoot .input-stepper:hover {
+                    background: #e8ecf3 !important;
+                    color: #131722 !important;
+                }
+                body.light-mode #rrMirrorOrderRoot input.order-input[type="number"]::-webkit-outer-spin-button,
+                body.light-mode #rrMirrorOrderRoot input.order-input[type="number"]::-webkit-inner-spin-button {
+                    -webkit-appearance: none !important;
+                    margin: 0 !important;
+                }
             `;
             document.head.appendChild(styleEl);
         }
@@ -18052,7 +18207,10 @@ class OrderManager {
 
         const met = document.getElementById('multiEntryToggle');
         const rmet = document.getElementById('rrMirror_multiEntryToggle');
-        if (met && rmet) rmet.textContent = met.textContent;
+        if (met && rmet) {
+            rmet.textContent = met.textContent;
+            rmet.classList.toggle('active', met.classList.contains('active'));
+        }
 
         const mirSingle = document.getElementById('rrMirror_singleEntryMode');
         const mirMulti = document.getElementById('rrMirror_multiEntryMode');
@@ -18064,7 +18222,10 @@ class OrderManager {
 
         const mtp = document.getElementById('multiTPBtn');
         const rmtp = document.getElementById('rrMirror_multiTPBtn');
-        if (mtp && rmtp) rmtp.textContent = mtp.textContent;
+        if (mtp && rmtp) {
+            rmtp.textContent = mtp.textContent;
+            rmtp.classList.toggle('active', mtp.classList.contains('active'));
+        }
 
         const tpSingle = document.querySelector('#orderPanel .order-tp-single');
         const tpMulti = document.getElementById('multipleTPSettings');

@@ -29722,95 +29722,137 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
         const mirrorHtml = `
-<div id="rrMirrorOrderRoot" class="rr-mirror-order" style="margin-top:4px;padding:10px;border:1px solid rgba(255,255,255,0.08);border-radius:8px;background:rgba(0,0,0,0.18);max-width:100%;box-sizing:border-box;">
-  <div style="font-size:10px;color:#787b86;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em;">Place order (linked)</div>
-  <div class="order-risk-compact" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px;">
-    <div class="order-button-group order-button-group--inline order-risk-compact__tabs" style="display:flex;gap:4px;">
-      <button type="button" class="position-mode-tab rr-mirror-position-tab" data-mode="risk-usd">$</button>
-      <button type="button" class="position-mode-tab rr-mirror-position-tab" data-mode="risk-percent">%</button>
-      <button type="button" class="position-mode-tab rr-mirror-position-tab" data-mode="lot-size">#</button>
-    </div>
-    <div id="rrMirror_riskUSDInput" class="order-input-wrapper order-risk-compact__input" style="display:flex;gap:4px;align-items:center;flex:1;min-width:120px;">
-      <span class="order-input-prefix">$</span>
-      <input type="number" id="rrMirror_riskAmountUSD" class="order-input order-input--compact" min="1" step="1" style="flex:1;min-width:0;" />
-      <span class="input-stepper-group">
-        <button type="button" class="input-stepper" data-target="rrMirror_riskAmountUSD" data-step="-10">−</button>
-        <button type="button" class="input-stepper" data-target="rrMirror_riskAmountUSD" data-step="+10">+</button>
-      </span>
-    </div>
-    <div id="rrMirror_riskPercentInput" class="order-input-wrapper order-risk-compact__input is-hidden" style="display:flex;gap:4px;align-items:center;flex:1;min-width:120px;">
-      <input type="number" id="rrMirror_riskAmountPercent" class="order-input order-input--compact" min="0.1" step="0.1" style="flex:1;min-width:0;" />
-      <span class="order-input-suffix">%</span>
-      <span class="input-stepper-group">
-        <button type="button" class="input-stepper" data-target="rrMirror_riskAmountPercent" data-step="-0.5">−</button>
-        <button type="button" class="input-stepper" data-target="rrMirror_riskAmountPercent" data-step="+0.5">+</button>
-      </span>
-    </div>
-    <div id="rrMirror_lotSizeInput" class="order-input-wrapper order-risk-compact__input is-hidden" style="display:flex;gap:4px;align-items:center;flex:1;min-width:120px;">
-      <input type="number" id="rrMirror_lotSizeAmount" class="order-input order-input--compact" min="0.01" step="0.01" style="flex:1;min-width:0;" />
-      <span class="order-input-suffix">Lots</span>
-      <span class="input-stepper-group">
-        <button type="button" class="input-stepper" data-target="rrMirror_lotSizeAmount" data-step="-0.1">−</button>
-        <button type="button" class="input-stepper" data-target="rrMirror_lotSizeAmount" data-step="+0.1">+</button>
-      </span>
+<div id="rrMirrorOrderRoot" class="rr-mirror-order">
+  <label class="order-label" style="display:block;margin-bottom:8px;">Place order (linked)</label>
+
+  <div class="order-section order-section--risk-row">
+    <div class="order-risk-compact">
+      <div class="order-button-group order-button-group--inline order-button-group--position-mode order-risk-compact__tabs">
+        <button type="button" class="position-mode-tab rr-mirror-position-tab" data-mode="risk-usd">$</button>
+        <button type="button" class="position-mode-tab rr-mirror-position-tab" data-mode="risk-percent">%</button>
+        <button type="button" class="position-mode-tab rr-mirror-position-tab" data-mode="lot-size">#</button>
+      </div>
+      <div id="rrMirror_balanceSourceToggle" style="display:none;gap:0;margin-left:auto;align-self:center;">
+        <button type="button" class="balance-source-tab rr-mirror-balance-tab" data-balance="current" style="font-size:9px;padding:2px 8px;border-radius:4px 0 0 4px;background:#334155;color:#e2e8f0;border:1px solid #475569;cursor:pointer;white-space:nowrap;">Current</button>
+        <button type="button" class="balance-source-tab rr-mirror-balance-tab" data-balance="initial" style="font-size:9px;padding:2px 8px;border-radius:0 4px 4px 0;background:transparent;color:#94a3b8;border:1px solid #475569;border-left:none;cursor:pointer;white-space:nowrap;">Initial</button>
+      </div>
+      <div id="rrMirror_riskUSDInput" class="order-input-wrapper order-risk-compact__input" style="display:flex;gap:4px;align-items:center;flex:1;min-width:0;">
+        <span class="order-input-prefix">$</span>
+        <input type="number" id="rrMirror_riskAmountUSD" class="order-input order-input--compact" min="1" step="1" style="flex:1;min-width:0;" />
+        <span class="input-stepper-group">
+          <button type="button" class="input-stepper" data-target="rrMirror_riskAmountUSD" data-step="-10">−</button>
+          <button type="button" class="input-stepper" data-target="rrMirror_riskAmountUSD" data-step="+10">+</button>
+        </span>
+      </div>
+      <div id="rrMirror_riskPercentInput" class="order-input-wrapper order-risk-compact__input is-hidden" style="display:flex;gap:4px;align-items:center;flex:1;min-width:0;">
+        <input type="number" id="rrMirror_riskAmountPercent" class="order-input order-input--compact" min="0.1" step="0.1" style="flex:1;min-width:0;" />
+        <span class="order-input-suffix">%</span>
+        <span class="input-stepper-group">
+          <button type="button" class="input-stepper" data-target="rrMirror_riskAmountPercent" data-step="-0.5">−</button>
+          <button type="button" class="input-stepper" data-target="rrMirror_riskAmountPercent" data-step="+0.5">+</button>
+        </span>
+      </div>
+      <div id="rrMirror_lotSizeInput" class="order-input-wrapper order-risk-compact__input is-hidden" style="display:flex;gap:4px;align-items:center;flex:1;min-width:0;">
+        <input type="number" id="rrMirror_lotSizeAmount" class="order-input order-input--compact" min="0.01" step="0.01" style="flex:1;min-width:0;" />
+        <span class="order-input-suffix">Lots</span>
+        <span class="input-stepper-group">
+          <button type="button" class="input-stepper" data-target="rrMirror_lotSizeAmount" data-step="-0.1">−</button>
+          <button type="button" class="input-stepper" data-target="rrMirror_lotSizeAmount" data-step="+0.1">+</button>
+        </span>
+      </div>
     </div>
   </div>
-  <div id="rrMirror_balanceSourceToggle" style="display:none;gap:4px;margin-bottom:8px;flex-wrap:wrap;">
-    <button type="button" class="balance-source-tab rr-mirror-balance-tab" data-balance="current" style="font-size:9px;padding:2px 8px;border-radius:4px 0 0 4px;">Current</button>
-    <button type="button" class="balance-source-tab rr-mirror-balance-tab" data-balance="initial" style="font-size:9px;padding:2px 8px;border-radius:0 4px 4px 0;">Initial</button>
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;align-items:start;">
-    <div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-        <span style="color:#9aa1b7;font-size:10px;">Entry</span>
-        <button type="button" id="rrMirror_multiEntryToggle" class="multi-entry-toggle multi-entry-toggle--compact">Multi</button>
-      </div>
-      <div id="rrMirror_singleEntryMode">
-        <input type="number" id="rrMirror_orderEntryPrice" class="order-input order-input--compact order-input--entry-sl" step="0.00001" style="width:100%;box-sizing:border-box;" />
-      </div>
-      <div id="rrMirror_multiEntryMode" style="display:none;">
-        <div style="display:flex;font-size:9px;color:#787b86;gap:4px;margin-bottom:4px;">
-          <span style="flex:1;">Price</span>
-          <span id="rrSettingsMultiEntryAmountColLabel" style="flex:1;">Risk ($)</span>
+
+  <div class="order-section order-section--entry-sl">
+    <div class="order-entry-sl-grid">
+      <div class="order-entry-sl-col">
+        <div class="order-entry-sl-header">
+          <label class="order-label order-label--compact">Entry</label>
+          <button type="button" id="rrMirror_multiEntryToggle" class="multi-entry-toggle multi-entry-toggle--compact">Multi</button>
         </div>
-        <div id="rrSettingsMultiEntryRows" class="multi-entry-rows multi-entry-rows--scroll" style="max-height:140px;overflow:auto;"></div>
-        <div style="margin-top:6px;font-size:10px;color:#d1d4dc;display:flex;flex-direction:column;gap:4px;">
-          <div><span style="color:#787b86;">Avg</span> <span id="rrMirror_multiEntryAvgPrice">—</span></div>
-          <div><span style="color:#787b86;">Qty</span> <span id="rrMirror_multiEntryTotalQty">—</span></div>
+        <div id="rrMirror_singleEntryMode">
+          <input type="number" id="rrMirror_orderEntryPrice" class="order-input order-input--compact order-input--entry-sl" step="0.00001" style="width:100%;box-sizing:border-box;">
+        </div>
+        <div id="rrMirror_multiEntryMode" class="multi-entry-inline" style="display:none;">
+          <div class="multi-entry-container multi-entry-container--inline">
+            <div class="multi-entry-columns">
+              <span class="multi-entry-col-label">Price</span>
+              <span class="multi-entry-col-label" id="rrSettingsMultiEntryAmountColLabel">Risk ($)</span>
+              <span></span>
+            </div>
+            <div class="multi-entry-rows multi-entry-rows--scroll" id="rrSettingsMultiEntryRows" style="max-height:140px;"></div>
+          </div>
+          <div class="multi-entry-summary multi-entry-summary--inline" style="margin-top:8px;">
+            <div class="multi-entry-summary-row">
+              <span class="multi-entry-summary-label">Avg</span>
+              <span class="multi-entry-summary-value" id="rrMirror_multiEntryAvgPrice">—</span>
+            </div>
+            <div class="multi-entry-summary-row">
+              <span class="multi-entry-summary-label">Qty</span>
+              <span class="multi-entry-summary-value" id="rrMirror_multiEntryTotalQty">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="order-entry-sl-col" id="rrMirror_slSection">
+        <div class="order-entry-sl-header">
+          <div class="order-entry-sl-header__title">
+            <span class="order-sl-dot"></span>
+            <label class="order-label order-label--compact order-label--sl">Stop Loss</label>
+          </div>
+          <label class="order-entry-sl-enable" for="rrMirror_enableSL">
+            <input type="checkbox" id="rrMirror_enableSL" class="order-checkbox" checked>
+          </label>
+        </div>
+        <div class="order-sl-card__body">
+          <input type="number" id="rrMirror_slPrice" class="order-input order-input--compact order-input--entry-sl" step="0.00001" placeholder="0" style="width:100%;box-sizing:border-box;">
         </div>
       </div>
     </div>
-    <div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-        <span style="color:#9aa1b7;font-size:10px;">Stop Loss</span>
-        <label><input type="checkbox" id="rrMirror_enableSL" class="order-checkbox" checked /></label>
-      </div>
-      <input type="number" id="rrMirror_slPrice" class="order-input order-input--compact order-input--entry-sl" step="0.00001" style="width:100%;box-sizing:border-box;" />
-    </div>
   </div>
-  <div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:6px;">
-      <span style="color:#9aa1b7;font-size:10px;">Profit Target</span>
-      <div style="display:flex;gap:6px;align-items:center;">
-        <label><input type="checkbox" id="rrMirror_enableTP" class="order-checkbox" checked /></label>
-        <button type="button" id="rrMirror_multiTPBtn" class="multi-entry-toggle multi-entry-toggle--compact">Single</button>
+
+  <div class="order-section order-tp-card order-tp-card--compact" id="rrMirror_tpSection">
+    <div class="order-tp-card__header order-tp-card__header--compact">
+      <div class="order-tp-card__title-group">
+        <span class="order-tp-card__icon" aria-hidden="true"></span>
+        <span class="order-tp-card__title">Profit Target</span>
+      </div>
+      <div class="order-tp-card__header-right">
+        <label class="order-entry-sl-enable" for="rrMirror_enableTP" style="margin-right:4px;">
+          <input type="checkbox" id="rrMirror_enableTP" class="order-checkbox" checked>
+        </label>
+        <button type="button" id="rrMirror_multiTPBtn" class="multi-entry-toggle multi-entry-toggle--compact multi-tp-toggle">Single</button>
       </div>
     </div>
-    <div id="rrMirror_tpSingleView" class="order-tp-single">
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
-        <div><span class="order-tp-col-label" style="font-size:9px;color:#787b86;">Price</span><input type="number" id="rrMirror_tpPrice" class="order-input order-input--compact" step="0.00001" style="width:100%;" /></div>
-        <div><span class="order-tp-col-label" style="font-size:9px;color:#787b86;">R:R</span><input type="number" id="rrMirror_tpRRInput" class="order-input order-input--compact" step="0.1" style="width:100%;" /></div>
-        <div><span class="order-tp-col-label" style="font-size:9px;color:#787b86;">Profit</span><input type="number" id="rrMirror_tpTargetProfitUSD" class="order-input order-input--compact" step="1" style="width:100%;" /></div>
+    <div class="order-tp-card__main">
+      <div id="rrMirror_tpSingleView" class="order-tp-card__body order-tp-single">
+        <div class="order-tp-single__row">
+          <div class="order-tp-single__field">
+            <label class="order-tp-col-label">Price</label>
+            <input type="number" id="rrMirror_tpPrice" class="order-input order-input--compact order-input--tp-inline" step="0.00001" placeholder="0">
+          </div>
+          <div class="order-tp-single__field">
+            <label class="order-tp-col-label">R:R</label>
+            <input type="number" id="rrMirror_tpRRInput" class="order-input order-input--compact order-input--tp-inline" step="0.1" min="0">
+          </div>
+          <div class="order-tp-single__field">
+            <label class="order-tp-col-label">Profit</label>
+            <input type="number" id="rrMirror_tpTargetProfitUSD" class="order-input order-input--compact order-input--tp-inline" min="0" step="1" placeholder="0">
+          </div>
+        </div>
       </div>
-    </div>
-    <div id="rrMirror_multipleTPSettings" class="order-tp-multi is-hidden" style="margin-top:6px;">
-      <div class="order-tp-multi__cols" style="display:flex;font-size:9px;color:#787b86;margin-bottom:4px;">
-        <span style="flex:1;">Price</span><span style="flex:0 0 36px;text-align:center;">R:R</span><span style="flex:1;">Profit</span><span style="flex:0 0 22px;"></span>
-      </div>
-      <div id="rrSettingsMultipleTPList" class="order-tp-multi__rows"></div>
-      <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:10px;color:#d1d4dc;">
-        <span style="color:#787b86;">Blended</span>
-        <span id="rrSettingsTpBlendedValue">—</span>
+      <div id="rrMirror_multipleTPSettings" class="order-tp-multi is-hidden">
+        <div class="order-tp-multi__cols">
+          <span class="order-tp-col-label" style="flex:1;">Price</span>
+          <span class="order-tp-col-label" style="flex:0 0 40px;">R:R</span>
+          <span class="order-tp-col-label" style="flex:1;">Profit</span>
+          <span style="flex:0 0 22px;"></span>
+        </div>
+        <div id="rrSettingsMultipleTPList" class="order-tp-multi__rows"></div>
+        <div class="order-tp-multi__blend" id="rrMirror_tpMultiBlend">
+          <span class="order-tp-multi__blend-label">Blended</span>
+          <span class="order-tp-multi__blend-value" id="rrSettingsTpBlendedValue">—</span>
+        </div>
       </div>
     </div>
   </div>
