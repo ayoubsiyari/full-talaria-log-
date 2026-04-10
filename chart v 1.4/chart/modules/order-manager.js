@@ -11640,6 +11640,7 @@ class OrderManager {
                 // Update preview lines to show/hide the breakeven line immediately
                 this.updatePreviewLines();
                 this._updateBreakevenSummary();
+                this._syncSelectedRiskRewardDrawingFromBreakevenPanel();
             };
             autoBreakevenToggle.onchange = () => {
                 if (this._beTrailMutex) {
@@ -11780,6 +11781,7 @@ class OrderManager {
                 this._updateBreakevenSummary();
                 this.updatePreviewLines();
                 this._syncPendingOrdersBreakevenFromPanel();
+                this._syncSelectedRiskRewardDrawingFromBreakevenPanel();
             };
         });
 
@@ -11920,6 +11922,7 @@ class OrderManager {
                 this._updateBreakevenSummary();
                 this.updatePreviewLines();
                 this._syncPendingOrdersBreakevenFromPanel();
+                this._syncSelectedRiskRewardDrawingFromBreakevenPanel();
             };
         }
         if (breakevenAmountInput) {
@@ -11927,6 +11930,7 @@ class OrderManager {
                 this._updateBreakevenSummary();
                 this.updatePreviewLines();
                 this._syncPendingOrdersBreakevenFromPanel();
+                this._syncSelectedRiskRewardDrawingFromBreakevenPanel();
             };
         }
         if (breakevenPipOffsetInput) {
@@ -11934,6 +11938,7 @@ class OrderManager {
                 this._updateBreakevenSummary();
                 this.updatePreviewLines();
                 this._syncPendingOrdersBreakevenFromPanel();
+                this._syncSelectedRiskRewardDrawingFromBreakevenPanel();
             };
         }
         
@@ -11976,6 +11981,7 @@ class OrderManager {
                     // Update preview lines when TP/SL/Entry/Quantity values change
                     if (id.includes('tp') || id.includes('sl') || id === 'orderEntryPrice' || id === 'orderQuantity') {
                         this.updatePreviewLines();
+                        this._syncSelectedRiskRewardDrawingFromBreakevenPanel();
                     }
                 };
             }
@@ -17555,6 +17561,111 @@ class OrderManager {
     }
 
     /**
+     * BE trigger price from panel inputs (read-only — does not mutate breakeven fields or preview).
+     * Mirrors {@link updatePreviewLines} breakeven branch.
+     */
+    _computeBreakevenTriggerPriceFromPanelReadonly() {
+        const beEnabled = document.getElementById('autoBreakevenToggle')?.checked;
+        const slEnabled = document.getElementById('enableSL')?.checked;
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        if (!beEnabled || !slEnabled || !(slPrice > 0)) return NaN;
+
+        const tpEnabled = document.getElementById('enableTP')?.checked;
+        const tpPrice = parseFloat(document.getElementById('tpPrice')?.value || 0);
+        const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
+
+        const beMode = this.breakevenMode || 'rr';
+        let beValue;
+        if (beMode === 'rr') {
+            beValue = parseFloat(document.getElementById('breakevenPips')?.value || 0.5);
+        } else if (beMode === 'pips') {
+            beValue = parseFloat(document.getElementById('breakevenPips')?.value || 10);
+        } else {
+            beValue = parseFloat(document.getElementById('breakevenAmount')?.value || 50);
+        }
+
+        const beAnchor = this._previewBreakevenAnchorEntry();
+        const beLots = this._previewBreakevenAnchorLots();
+        if (!beAnchor) return NaN;
+
+        let beTriggerPrice = 0;
+        const riskDistance = Math.abs(beAnchor - slPrice);
+
+        if (!this.beManuallyPositioned && tpEnabled && tpPrice > 0) {
+            const tpDistance = Math.abs(tpPrice - beAnchor);
+            const beDistance = tpDistance * 0.5;
+            beTriggerPrice = this.orderSide === 'BUY'
+                ? beAnchor + beDistance
+                : beAnchor - beDistance;
+        } else if (beMode === 'rr' && riskDistance > 0) {
+            const profitDistance = beValue * riskDistance;
+            beTriggerPrice = this.orderSide === 'BUY'
+                ? beAnchor + profitDistance
+                : beAnchor - profitDistance;
+        } else if (beMode === 'pips') {
+            const profitPrice = beValue * this.pipSize;
+            beTriggerPrice = this.orderSide === 'BUY'
+                ? beAnchor + profitPrice
+                : beAnchor - profitPrice;
+        } else {
+            const denom = (beLots > 0 ? beLots : quantity) * this.pipValuePerLot;
+            const profitPips = beValue / denom;
+            const profitPrice = profitPips * this.pipSize;
+            beTriggerPrice = this.orderSide === 'BUY'
+                ? beAnchor + profitPrice
+                : beAnchor - profitPrice;
+        }
+        return beTriggerPrice;
+    }
+
+    /**
+     * Update breakeven R / pips / $ inputs from a trigger price (same math as dragging the BE preview line).
+     */
+    _applyBreakevenInputsFromTriggerPrice(newPrice) {
+        if (!Number.isFinite(newPrice)) return;
+        const beAnchor = this._previewBreakevenAnchorEntry();
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const beLots = this._previewBreakevenAnchorLots();
+        const beMode = this.breakevenMode || 'rr';
+        if (!beAnchor) return;
+
+        const profit = Math.abs(newPrice - beAnchor);
+
+        if (beMode === 'rr' && slPrice > 0) {
+            const riskDistance = Math.abs(beAnchor - slPrice);
+            if (riskDistance > 0) {
+                const rVal = profit / riskDistance;
+                const rInput = document.getElementById('breakevenPips');
+                if (rInput) rInput.value = parseFloat(rVal.toFixed(2));
+            }
+        } else if (beMode === 'pips') {
+            const newPips = profit / this.pipSize;
+            const pipsInput = document.getElementById('breakevenPips');
+            if (pipsInput) pipsInput.value = Math.round(newPips);
+        } else {
+            const profitPips = profit / this.pipSize;
+            const qUse = beLots > 0 ? beLots : 1;
+            const newAmount = profitPips * qUse * this.pipValuePerLot;
+            const amountInput = document.getElementById('breakevenAmount');
+            if (amountInput) amountInput.value = Math.round(newAmount);
+            const visibleInput = document.getElementById('breakevenPips');
+            if (visibleInput) visibleInput.value = Math.round(newAmount);
+        }
+        if (typeof this._updateBreakevenSummary === 'function') this._updateBreakevenSummary();
+    }
+
+    /** Keep selected risk/reward tool BE line in sync when breakeven panel or SL/entry/TP inputs change. */
+    _syncSelectedRiskRewardDrawingFromBreakevenPanel() {
+        const dm = typeof window !== 'undefined' && window.chart?.drawingManager;
+        const d = dm?.selectedDrawing;
+        if (!d || (d.type !== 'long-position' && d.type !== 'short-position')) return;
+        if (typeof this.pullRiskRewardToolFromManager !== 'function') return;
+        this.pullRiskRewardToolFromManager(d);
+        if (typeof dm.renderDrawing === 'function') dm.renderDrawing(d);
+        if (typeof dm.saveDrawings === 'function') dm.saveDrawings();
+    }
+
+    /**
      * Push long/short position tool geometry into the same inputs + tpTargets / multiEntryLevels
      * structures used by the order panel (for shared + / drag math).
      */
@@ -17640,6 +17751,16 @@ class OrderManager {
                 amount: amtEach
             }));
         }
+
+        const beLineY = drawing.meta?.rrBreakevenLine?.y;
+        if (Number.isFinite(beLineY)) {
+            const tgl = document.getElementById('autoBreakevenToggle');
+            if (tgl) tgl.checked = true;
+            const bes = document.getElementById('breakevenSettings');
+            if (bes) bes.classList.remove('is-hidden');
+            this._applyBreakevenInputsFromTriggerPrice(beLineY);
+            this.beManuallyPositioned = true;
+        }
     }
 
     /**
@@ -17678,8 +17799,59 @@ class OrderManager {
             drawing.meta.extraTargets = [];
         }
 
+        const beOn = document.getElementById('autoBreakevenToggle')?.checked;
+        const slEn = document.getElementById('enableSL')?.checked;
+        if (!beOn || !slEn || !Number.isFinite(slPx) || !(slPx > 0)) {
+            delete drawing.meta.rrBreakevenLine;
+        } else {
+            const yRaw = this._computeBreakevenTriggerPriceFromPanelReadonly();
+            if (Number.isFinite(yRaw) && yRaw > 0) {
+                let yy = parseFloat(yRaw.toFixed(prec));
+                if (typeof drawing.sanitizeBreakevenTriggerPrice === 'function') {
+                    yy = drawing.sanitizeBreakevenTriggerPrice(yy);
+                }
+                if (!drawing.meta.rrBreakevenLine) {
+                    drawing.meta.rrBreakevenLine = { id: Date.now(), y: yy };
+                } else {
+                    drawing.meta.rrBreakevenLine = { ...drawing.meta.rrBreakevenLine, y: yy };
+                }
+            }
+        }
+
         if (typeof drawing.ensureRiskSettings === 'function') drawing.ensureRiskSettings();
         drawing.meta.updatedAt = Date.now();
+    }
+
+    /**
+     * Risk/reward SL +: enable auto-BE in the panel and draw a draggable BE line on the tool (synced with BE R/pips/$).
+     */
+    riskRewardAddBEFromTool(drawing) {
+        this.pushRiskRewardToolToManager(drawing);
+        const tgl = document.getElementById('autoBreakevenToggle');
+        if (tgl) tgl.checked = true;
+        const bes = document.getElementById('breakevenSettings');
+        if (bes) bes.classList.remove('is-hidden');
+        const bp = document.getElementById('breakevenPips');
+        if (bp && (!parseFloat(bp.value) || parseFloat(bp.value) <= 0)) bp.value = '0.5';
+        this.beManuallyPositioned = true;
+        this.updatePreviewLines();
+        this.calculateAdvancedRiskReward();
+        this.pullRiskRewardToolFromManager(drawing);
+    }
+
+    /** Drag BE line on the risk/reward tool — updates breakeven inputs like dragging the chart BE preview. */
+    riskRewardSyncBEDragFromTool(drawing, newY) {
+        this.pushRiskRewardToolToManager(drawing);
+        const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision() : 5;
+        let p = parseFloat(parseFloat(newY).toFixed(prec));
+        if (typeof drawing.sanitizeBreakevenTriggerPrice === 'function') {
+            p = drawing.sanitizeBreakevenTriggerPrice(p);
+        }
+        this.beManuallyPositioned = true;
+        this._applyBreakevenInputsFromTriggerPrice(p);
+        this.updatePreviewLines();
+        this.calculateAdvancedRiskReward();
+        this.pullRiskRewardToolFromManager(drawing);
     }
 
     /**

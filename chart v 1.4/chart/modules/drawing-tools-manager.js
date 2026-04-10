@@ -4513,6 +4513,9 @@ class DrawingToolsManager {
             if (!row || !Number.isFinite(row.y)) return;
             pushHit(`rr-extra-stop-${idx}`, chart.yScale(row.y), halfExtra, x2Full);
         });
+        if (drawing.meta?.rrBreakevenLine && Number.isFinite(drawing.meta.rrBreakevenLine.y)) {
+            pushHit('rr-be-line', chart.yScale(drawing.meta.rrBreakevenLine.y), halfExtra, x2Full);
+        }
 
         if (!hits.length) return null;
         hits.sort((a, b) => a.dist - b.dist);

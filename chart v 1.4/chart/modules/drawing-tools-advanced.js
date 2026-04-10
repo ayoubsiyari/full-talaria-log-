@@ -1011,6 +1011,9 @@ class BaseRiskRewardTool extends BaseDrawing {
                     if (row && Number.isFinite(row.y)) row.y += ddy;
                 });
             });
+            if (this.meta.rrBreakevenLine && Number.isFinite(this.meta.rrBreakevenLine.y)) {
+                this.meta.rrBreakevenLine.y += ddy;
+            }
             // Do not call normalizeRiskRewardTargetLevels here: it re-sorts TP primary vs extras and
             // can make ladder levels look "stuck" vs entry after a rigid vertical move. Normalize only
             // after order-manager sync / load (_afterRiskRewardOrderManagerSync, baseFromJSON).
@@ -1095,13 +1098,24 @@ class BaseRiskRewardTool extends BaseDrawing {
 
     addExtraStop() {
         if (!Array.isArray(this.points) || this.points.length < 3) return;
-        this._ensureExtraLevelMeta();
-        const step = this.getPriceStep();
-        const all = this._allStopPrices();
-        const ref = this.isLong ? Math.min(...all) : Math.max(...all);
-        const y = this.isLong ? ref - step : ref + step;
-        this.meta.extraStops.push({ id: this._nextExtraLevelId(), y: this.sanitizeStopPrice(y) });
-        this.ensureRiskSettings();
+        const om = window.chart?.orderManager;
+        if (om && typeof om.riskRewardAddBEFromTool === 'function') {
+            om.riskRewardAddBEFromTool(this);
+            this._afterRiskRewardOrderManagerSync();
+        } else {
+            this._ensureExtraLevelMeta();
+            const entry = this.points[0].y;
+            const tp = typeof this.getAggregatedTargetPrice === 'function'
+                ? this.getAggregatedTargetPrice()
+                : this.points[2].y;
+            const mid = (entry + tp) / 2;
+            const y = this.sanitizeBreakevenTriggerPrice(mid);
+            this.meta.rrBreakevenLine = {
+                id: this._nextExtraLevelId(),
+                y
+            };
+            this.ensureRiskSettings();
+        }
         const dmStop = this._drawingManager();
         if (dmStop) {
             dmStop.renderDrawing(this);
@@ -1197,6 +1211,9 @@ class BaseRiskRewardTool extends BaseDrawing {
         (this.meta.extraEntries || []).forEach((row) => {
             if (row && Number.isFinite(row.y)) row.y = this.sanitizeExtraEntryPrice(row.y);
         });
+        if (this.meta.rrBreakevenLine && Number.isFinite(this.meta.rrBreakevenLine.y)) {
+            this.meta.rrBreakevenLine.y = this.sanitizeBreakevenTriggerPrice(this.meta.rrBreakevenLine.y);
+        }
         if (this.points[2] && Number.isFinite(this.points[2].y)) {
             this.setTargetPrice(this.points[2].y);
         }
@@ -1288,6 +1305,27 @@ class BaseRiskRewardTool extends BaseDrawing {
             return price > entryPrice + epsilon ? price : entryPrice + epsilon;
         }
         return price < entryPrice - epsilon ? price : entryPrice - epsilon;
+    }
+
+    /** BE trigger sits between entry and TP (not a second SL). */
+    sanitizeBreakevenTriggerPrice(price) {
+        if (!Array.isArray(this.points) || this.points.length < 3) return price;
+        const entry = this.points[0].y;
+        const tp = typeof this.getAggregatedTargetPrice === 'function'
+            ? this.getAggregatedTargetPrice()
+            : this.points[2].y;
+        if (!Number.isFinite(entry) || !Number.isFinite(tp)) return price;
+        const step = Math.max(this.getPriceStep() * 2, 1e-12);
+        if (this.isLong) {
+            const lo = entry + step;
+            const hi = tp - step;
+            if (hi <= lo) return price;
+            return Math.min(Math.max(price, lo), hi);
+        }
+        const lo = tp + step;
+        const hi = entry - step;
+        if (hi <= lo) return price;
+        return Math.min(Math.max(price, lo), hi);
     }
 
     setEntryPrice(price) {
@@ -1958,7 +1996,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             .style('pointer-events', 'none');
 
         const dashExtra = '6 4';
-        /** Same wide transparent stroke for every extra level (TP2, SL2, E2) — one code path as TP. */
+        /** Same wide transparent stroke for every extra level (TP2, E2, BE, SL2) — one code path as TP. */
         const extraDragHitW = 24;
         const appendExtraDragHit = (yy, role, hitW = extraDragHitW) => {
             this.group.append('line')
@@ -1990,6 +2028,20 @@ class BaseRiskRewardTool extends BaseDrawing {
             // Drag hit lines for extra stops/targets are painted after the primary entry rect (see end of render)
             // so E2 / TP2 strips stay above the wide middle hit rect and receive clicks.
         });
+        let beLinePx = null;
+        if (this.meta.rrBreakevenLine && Number.isFinite(this.meta.rrBreakevenLine.y)) {
+            beLinePx = scales.yScale(this.meta.rrBreakevenLine.y);
+            this.group.append('line')
+                .attr('class', 'rr-extra-line rr-extra-be')
+                .attr('x1', zoneX1)
+                .attr('y1', beLinePx)
+                .attr('x2', zoneX2)
+                .attr('y2', beLinePx)
+                .attr('stroke', '#f59e0b')
+                .attr('stroke-width', 1)
+                .attr('stroke-dasharray', dashExtra)
+                .style('pointer-events', 'none');
+        }
         (this.meta.extraTargets || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
             const yy = scales.yScale(row.y);
@@ -2278,13 +2330,24 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .style('pointer-events', 'none')
                     .text(`SL${i + 2}`);
             });
+            if (beLinePx != null) {
+                this.group.append('text')
+                    .attr('class', 'rr-extra-tag')
+                    .attr('x', zoneX1 + 4)
+                    .attr('y', beLinePx + 4)
+                    .attr('fill', '#fcd34d')
+                    .attr('font-size', '10px')
+                    .attr('font-weight', '600')
+                    .style('pointer-events', 'none')
+                    .text('BE');
+            }
 
             // Execute button moved to floating toolbar
         }
 
         // Include all extra stops/targets so corner metadata spans the full vertical extent (fixes TP2 "outside" box).
-        const upperY = Math.min(entryY, bestTargetPx, worstStopPx);
-        const lowerY = Math.max(entryY, bestTargetPx, worstStopPx);
+        const upperY = Math.min(entryY, bestTargetPx, worstStopPx, beLinePx != null ? beLinePx : entryY);
+        const lowerY = Math.max(entryY, bestTargetPx, worstStopPx, beLinePx != null ? beLinePx : entryY);
 
         this.lastRenderMeta = {
             entryX,
@@ -2328,6 +2391,9 @@ class BaseRiskRewardTool extends BaseDrawing {
             const yy = scales.yScale(row.y);
             appendExtraDragHit(yy, `rr-extra-stop-${idx}`);
         });
+        if (this.meta.rrBreakevenLine && Number.isFinite(this.meta.rrBreakevenLine.y)) {
+            appendExtraDragHit(scales.yScale(this.meta.rrBreakevenLine.y), 'rr-be-line');
+        }
         (this.meta.extraTargets || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
             const yy = scales.yScale(row.y);
@@ -2401,6 +2467,28 @@ class BaseRiskRewardTool extends BaseDrawing {
             const py = context.point?.y ?? context.dataPoint?.y;
             if (Number.isFinite(py)) {
                 return this.applyPrimaryEntryLineDragY(py, context);
+            }
+            return false;
+        }
+
+        if (handleRole === 'rr-be-line') {
+            const py = context.point?.y ?? context.dataPoint?.y;
+            const omBe = window.chart?.orderManager;
+            if (omBe && typeof omBe.riskRewardSyncBEDragFromTool === 'function' && Number.isFinite(py)) {
+                omBe.riskRewardSyncBEDragFromTool(this, py);
+                this._afterRiskRewardOrderManagerSync();
+                return true;
+            }
+            if (Number.isFinite(py)) {
+                const y = this.sanitizeBreakevenTriggerPrice(py);
+                if (!this.meta.rrBreakevenLine) {
+                    this._ensureExtraLevelMeta();
+                    this.meta.rrBreakevenLine = { id: this._nextExtraLevelId(), y };
+                } else {
+                    this.meta.rrBreakevenLine = { ...this.meta.rrBreakevenLine, y };
+                }
+                this.ensureRiskSettings();
+                return true;
             }
             return false;
         }
@@ -2616,6 +2704,9 @@ class BaseRiskRewardTool extends BaseDrawing {
             if (!row || !Number.isFinite(row.y)) return;
             appendExtraHandle(scales.yScale(row.y), `rr-extra-stop-${idx}`);
         });
+        if (this.meta.rrBreakevenLine && Number.isFinite(this.meta.rrBreakevenLine.y)) {
+            appendExtraHandle(scales.yScale(this.meta.rrBreakevenLine.y), 'rr-be-line');
+        }
     }
 
     createCornerHandles(scales, zoneX1, zoneX2, upperY, lowerY) {
