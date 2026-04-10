@@ -934,7 +934,7 @@ class DatePriceRangeTool extends BaseDrawing {
 // ============================================================================
 // Risk-Reward Tools
 // ============================================================================
-/** Default spacing for a new ladder entry from primary (tool “+” / panel). Not single-tick — avoids E2 on top of entry. */
+/** Default spacing for a new ladder entry from primary (tool “+” / panel): toward reward (above E1 long / below E1 short). */
 const RR_EXTRA_ENTRY_OFFSET_FRAC = 0.0045;
 const RR_EXTRA_ENTRY_MIN_TICK_MULT = 48;
 
@@ -1123,7 +1123,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 step * RR_EXTRA_ENTRY_MIN_TICK_MULT,
                 Math.abs(e) * RR_EXTRA_ENTRY_OFFSET_FRAC
             );
-            const y = this.isLong ? e - offset : e + offset;
+            const y = this.isLong ? e + offset : e - offset;
             this.meta.extraEntries.push({ id: this._nextExtraLevelId(), y: this.sanitizeExtraEntryPrice(y) });
             this.ensureRiskSettings();
         }

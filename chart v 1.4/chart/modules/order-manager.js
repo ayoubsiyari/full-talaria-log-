@@ -16091,6 +16091,65 @@ class OrderManager {
     }
 
     /**
+     * Clamp a new ladder step toward profit: BUY — above existing entries, below TP; SELL — below entries, above TP.
+     * (Stop-side clamp {@link _clampMultiEntryPriceForStop} targets the opposite direction.)
+     */
+    _clampMultiEntryPriceForReward(proposedPrice, siblingPrices) {
+        if (!Number.isFinite(proposedPrice) || proposedPrice <= 0) return proposedPrice;
+        const prec = this.getPricePrecision();
+        const pip = Number(this.pipSize) > 0 ? Number(this.pipSize) : 0.0001;
+        const sep = Math.max(pip * 0.5, 1e-12);
+        const sibs = (siblingPrices || []).filter((p) => Number.isFinite(p) && p > 0);
+        const slOn = document.getElementById('enableSL')?.checked;
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+
+        let tpFar = parseFloat(document.getElementById('tpPrice')?.value || 0);
+        const mtOn = document.getElementById('multipleTPToggle')?.checked;
+        if (mtOn && this.tpTargets?.length) {
+            const isLong = this.orderSide === 'BUY';
+            const sorted = [...this.tpTargets].sort((a, b) => (isLong ? a.price - b.price : b.price - a.price));
+            const last = sorted[sorted.length - 1];
+            if (last && Number.isFinite(last.price)) tpFar = last.price;
+        }
+
+        if (this.orderSide === 'BUY') {
+            const sibsMax = sibs.length ? Math.max(...sibs) : -Infinity;
+            if (slOn && Number.isFinite(slPrice) && slPrice > 0 && sibs.length) {
+                const sibsMin = Math.min(...sibs);
+                if (!(slPrice < sibsMin)) return parseFloat(proposedPrice.toFixed(prec));
+            }
+            let p = proposedPrice;
+            if (slOn && Number.isFinite(slPrice) && slPrice > 0) {
+                p = Math.max(p, slPrice + sep);
+            }
+            if (Number.isFinite(sibsMax)) {
+                p = Math.max(p, sibsMax + Math.max(sep, pip));
+            }
+            if (Number.isFinite(tpFar) && tpFar > 0) {
+                p = Math.min(p, tpFar - Math.max(sep, pip));
+            }
+            return parseFloat(p.toFixed(prec));
+        }
+
+        const sibsMin = sibs.length ? Math.min(...sibs) : Infinity;
+        if (slOn && Number.isFinite(slPrice) && slPrice > 0 && sibs.length) {
+            const sibsMax = Math.max(...sibs);
+            if (!(slPrice > sibsMax)) return parseFloat(proposedPrice.toFixed(prec));
+        }
+        let p = proposedPrice;
+        if (slOn && Number.isFinite(slPrice) && slPrice > 0) {
+            p = Math.min(p, slPrice - sep);
+        }
+        if (Number.isFinite(sibsMin)) {
+            p = Math.min(p, sibsMin - Math.max(sep, pip));
+        }
+        if (Number.isFinite(tpFar) && tpFar > 0) {
+            p = Math.max(p, tpFar + Math.max(sep, pip));
+        }
+        return parseFloat(p.toFixed(prec));
+    }
+
+    /**
      * Single vs multi entry UI. Button label is the mode you switch TO when clicked
      * (single default: "Multiple"; multi active: "Single").
      * @param {boolean} isMulti
@@ -16139,12 +16198,12 @@ class OrderManager {
                     price: currentPrice,
                     amount: amt1
                 });
-                const offsetDir = (this.orderSide === 'SELL') ? 1 : -1;
+                const offsetDir = (this.orderSide === 'SELL') ? -1 : 1;
                 const rawSecond = currentPrice > 0
                     ? currentPrice * (1 + offsetDir * 0.001)
                     : 0;
                 const secondPrice = currentPrice > 0
-                    ? this._clampMultiEntryPriceForStop(rawSecond, [currentPrice])
+                    ? this._clampMultiEntryPriceForReward(rawSecond, [currentPrice])
                     : 0;
                 this.multiEntryLevels.push({
                     id: this.multiEntryIdCounter++,
@@ -16704,14 +16763,17 @@ class OrderManager {
                 : 40;
         }
 
-        // Default price: offset from the lowest (BUY) or highest (SELL) existing level
+        // Default price: step toward reward from the extreme entry (highest BUY / lowest SELL)
         const existingPrices = this.multiEntryLevels.filter(l => l.price > 0).map(l => l.price);
         let newPrice = 0;
         if (existingPrices.length > 0) {
-            const offsetDir = (this.orderSide === 'SELL') ? 1 : -1;
-            const basePrice = offsetDir === -1 ? Math.min(...existingPrices) : Math.max(...existingPrices);
-            const raw = basePrice * (1 + offsetDir * 0.0045);
-            newPrice = this._clampMultiEntryPriceForStop(raw, existingPrices);
+            let raw;
+            if (this.orderSide === 'BUY') {
+                raw = Math.max(...existingPrices) * (1 + 0.0045);
+            } else {
+                raw = Math.min(...existingPrices) * (1 - 0.0045);
+            }
+            newPrice = this._clampMultiEntryPriceForReward(raw, existingPrices);
         }
 
         this.multiEntryLevels.push({
@@ -17653,11 +17715,11 @@ class OrderManager {
         this.multiEntryLevels = [
             { id: this.multiEntryIdCounter++, price: currentPrice, amount: amt1 }
         ];
-        const offsetDir = (this.orderSide === 'SELL') ? 1 : -1;
-        // ~0.45% from primary — wider default than 0.1% so E2 is not visually on the entry line
+        const offsetDir = (this.orderSide === 'SELL') ? -1 : 1;
+        // ~0.45% toward TP — E2 above primary (long) / below primary (short), not into the stop side
         const rawSecond = currentPrice > 0 ? currentPrice * (1 + offsetDir * 0.0045) : 0;
         const secondPrice = currentPrice > 0
-            ? this._clampMultiEntryPriceForStop(rawSecond, [currentPrice])
+            ? this._clampMultiEntryPriceForReward(rawSecond, [currentPrice])
             : 0;
         this.multiEntryLevels.push({
             id: this.multiEntryIdCounter++,
