@@ -17933,10 +17933,28 @@ class OrderManager {
     }
 
     /**
+     * Minimum price spacing for extra ladder legs (chart tick / pip) so new entries sit next to the
+     * previous rung instead of jumping toward TP (avoids overlap and “stuck on TP” lines).
+     * @param {object} [drawing] - optional RR drawing with getPriceStep()
+     */
+    _riskRewardMultiEntryStepPx(drawing) {
+        const pip = Number(this.pipSize) > 0 ? Number(this.pipSize) : 0.0001;
+        let inc = pip;
+        if (drawing && typeof drawing.getPriceStep === 'function') {
+            inc = Math.max(inc, Number(drawing.getPriceStep()) || 0);
+        } else if (typeof window !== 'undefined' && window.chart && Number.isFinite(window.chart.priceIncrement) && window.chart.priceIncrement > 0) {
+            inc = Math.max(inc, window.chart.priceIncrement);
+        }
+        const tickMul = 14;
+        return Math.max(inc * tickMul, pip * 8, 1e-12);
+    }
+
+    /**
      * Replace multi-entry ladder with Entry1 + one default E2 (same math as first-time R/R entry +).
      * @param {number} currentPrice - primary entry price (Entry1)
+     * @param {object} [drawing] - optional RR drawing for tick-based spacing
      */
-    _buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice) {
+    _buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice, drawing) {
         if (!Number.isFinite(this.multiEntryIdCounter)) this.multiEntryIdCounter = 1;
         const psMode = this.positionSizeMode || 'risk-usd';
         let amt1; let amt2;
@@ -17956,8 +17974,8 @@ class OrderManager {
             { id: this.multiEntryIdCounter++, price: currentPrice, amount: amt1 }
         ];
         const offsetDir = (this.orderSide === 'SELL') ? -1 : 1;
-        // ~0.45% toward TP — E2 above primary (long) / below primary (short), not into the stop side
-        const rawSecond = currentPrice > 0 ? currentPrice * (1 + offsetDir * 0.0045) : 0;
+        const step = this._riskRewardMultiEntryStepPx(drawing);
+        const rawSecond = currentPrice > 0 ? currentPrice + offsetDir * step : 0;
         const secondPrice = currentPrice > 0
             ? this._clampMultiEntryPriceForReward(rawSecond, [currentPrice])
             : 0;
@@ -17977,24 +17995,45 @@ class OrderManager {
         const allE = typeof drawing._allEntryPrices === 'function' ? drawing._allEntryPrices() : [drawing.points[0].y];
         const currentPrice = drawing.points[0].y;
         if (!this.isMultiEntryMode || !this.multiEntryLevels?.length || allE.length <= 1) {
-            this._buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice);
+            this._buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice, drawing);
             // Same as panel "Multi": show multi-entry UI, preview lines, risk summary — not only isMultiEntryMode + rows.
             this.setEntryMode(true);
         } else {
             const priced = (this.multiEntryLevels || []).filter((l) => l && l.price > 0);
             if (!priced.length) {
-                this._buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice);
+                this._buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice, drawing);
                 this.setEntryMode(true);
             } else {
-                const refPrice = this.orderSide === 'BUY'
+                const prec = this.getPricePrecision();
+                const isBuy = this.orderSide === 'BUY';
+                const refPrice = isBuy
                     ? Math.max(...priced.map((l) => l.price))
                     : Math.min(...priced.map((l) => l.price));
-                const offsetDir = this.orderSide === 'SELL' ? -1 : 1;
-                const rawNext = refPrice > 0 ? refPrice * (1 + offsetDir * 0.0045) : 0;
+                const step = this._riskRewardMultiEntryStepPx(drawing);
                 const siblingPrices = priced.map((l) => l.price);
-                const nextPrice = refPrice > 0
-                    ? this._clampMultiEntryPriceForReward(rawNext, siblingPrices)
-                    : 0;
+                const minGap = step * 0.85;
+                const roundP = (p) => parseFloat(parseFloat(p).toFixed(prec));
+
+                const tooCloseToAny = (p) => priced.some((l) => Math.abs(l.price - p) < minGap);
+
+                let nextPrice = NaN;
+                let tryStep = step;
+                for (let attempt = 0; attempt < 8; attempt++) {
+                    const rawNext = refPrice > 0
+                        ? (isBuy ? refPrice + tryStep : refPrice - tryStep)
+                        : 0;
+                    const clamped = refPrice > 0
+                        ? this._clampMultiEntryPriceForReward(rawNext, siblingPrices)
+                        : 0;
+                    const candidate = roundP(clamped);
+                    if (!(candidate > 0) || !Number.isFinite(candidate)) break;
+                    if (!tooCloseToAny(candidate)) {
+                        nextPrice = candidate;
+                        break;
+                    }
+                    tryStep *= 1.35;
+                }
+
                 if (nextPrice > 0 && Number.isFinite(nextPrice)) {
                     if (!Number.isFinite(this.multiEntryIdCounter)) this.multiEntryIdCounter = 1;
                     this.multiEntryLevels.push({
