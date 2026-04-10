@@ -2399,7 +2399,9 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .attr('cx', plusX)
                     .attr('cy', lineY)
                     .attr('r', plusHitR)
-                    .attr('fill', 'transparent')
+                    // Nearly invisible but not CSS/SVG "transparent" — browsers often skip hit-testing
+                    // the interior of a fully transparent, strokeless circle; only the rim feels clickable.
+                    .attr('fill', 'rgba(0,0,0,0.02)')
                     .attr('stroke', 'none')
                     .style('pointer-events', 'all')
                     .style('cursor', 'pointer')
