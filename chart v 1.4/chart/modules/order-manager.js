@@ -11847,18 +11847,7 @@ class OrderManager {
         this.loadOrderPanelPresetsIntoSelect();
         const presetSaveBtn = document.getElementById('orderPanelPresetSaveBtn');
         if (presetSaveBtn) {
-            presetSaveBtn.onclick = () => {
-                const name = typeof window !== 'undefined' && window.prompt
-                    ? window.prompt('Template name', '')
-                    : '';
-                if (name == null) return;
-                const trimmed = String(name).trim();
-                if (!trimmed) {
-                    this.showNotification('Please enter a template name', 'warning');
-                    return;
-                }
-                this.saveOrderPanelPreset(trimmed);
-            };
+            presetSaveBtn.onclick = () => this.openOrderPanelPresetSaveModal();
         }
         const presetLoadBtn = document.getElementById('orderPanelPresetLoadBtn');
         if (presetLoadBtn) {
@@ -32939,18 +32928,28 @@ class OrderManager {
         }
     }
 
-    saveOrderPanelPreset(name) {
+    /**
+     * @param {string} name
+     * @param {{ forceOverwrite?: boolean }} [options]
+     * @returns {'ok'|'exists'|'invalid'}
+     */
+    saveOrderPanelPreset(name, options = {}) {
+        const trimmed = String(name || '').trim();
+        if (!trimmed) return 'invalid';
+        const force = !!options.forceOverwrite;
         const key = this._orderPanelPresetsStorageKey || 'orderPanelPresets';
-        const preset = { ...this.captureOrderPanelPreset(), name };
+        const preset = { ...this.captureOrderPanelPreset(), name: trimmed };
         let saved = [];
         try {
             saved = JSON.parse(userStorage.getItem(key) || '[]');
         } catch (_e) {
             saved = [];
         }
-        const idx = saved.findIndex((p) => p && p.name === name);
+        const idx = saved.findIndex((p) => p && p.name === trimmed);
+        if (idx >= 0 && !force) {
+            return 'exists';
+        }
         if (idx >= 0) {
-            if (!confirm(`Overwrite template "${name}"?`)) return;
             saved[idx] = preset;
         } else {
             saved.push(preset);
@@ -32958,8 +32957,216 @@ class OrderManager {
         userStorage.setItem(key, JSON.stringify(saved));
         this.loadOrderPanelPresetsIntoSelect();
         const sel = document.getElementById('orderPanelPresetSelect');
-        if (sel) sel.value = name;
-        this.showNotification(`Saved template "${name}"`, 'success');
+        if (sel) sel.value = trimmed;
+        this.showNotification(`Saved template "${trimmed}"`, 'success');
+        return 'ok';
+    }
+
+    /**
+     * In-app modal to name a template (replaces window.prompt).
+     */
+    openOrderPanelPresetSaveModal() {
+        const existing = document.getElementById('orderPanelPresetSaveModal');
+        if (existing) existing.remove();
+
+        const sel = document.getElementById('orderPanelPresetSelect');
+        const defaultName = sel?.value ? String(sel.value) : '';
+
+        const overlay = document.createElement('div');
+        overlay.id = 'orderPanelPresetSaveModal';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        overlay.setAttribute('aria-labelledby', 'orderPanelPresetSaveModalTitle');
+        overlay.style.cssText = `
+            position: fixed;
+            inset: 0;
+            z-index: 1000020;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            background: rgba(0, 0, 0, 0.72);
+            backdrop-filter: blur(4px);
+        `;
+
+        const card = document.createElement('div');
+        card.style.cssText = `
+            width: 100%;
+            max-width: 380px;
+            background: var(--om-panel, #0f1319);
+            border: 1px solid var(--om-b, #1a2030);
+            border-radius: 10px;
+            padding: 18px 20px 16px;
+            box-shadow: 0 24px 48px rgba(0,0,0,0.55);
+            color: var(--om-tx, #c8cfd8);
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        `;
+
+        const closeModal = () => {
+            overlay.remove();
+            document.removeEventListener('keydown', onKey);
+        };
+
+        const onKey = (e) => {
+            if (e.key === 'Escape') closeModal();
+        };
+        document.addEventListener('keydown', onKey);
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeModal();
+        });
+
+        const title = document.createElement('h3');
+        title.id = 'orderPanelPresetSaveModalTitle';
+        title.textContent = 'Save template';
+        title.style.cssText = 'margin:0 0 14px 0;font-size:15px;font-weight:700;color:var(--om-tx,#c8cfd8);letter-spacing:0.02em;';
+
+        const label = document.createElement('label');
+        label.htmlFor = 'orderPanelPresetSaveModalInput';
+        label.textContent = 'Template name';
+        label.style.cssText = 'display:block;font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--om-dim,#5e6a7a);margin-bottom:8px;';
+
+        const input = document.createElement('input');
+        input.id = 'orderPanelPresetSaveModalInput';
+        input.type = 'text';
+        input.value = defaultName;
+        input.autocomplete = 'off';
+        input.placeholder = 'e.g. London breakout';
+        input.style.cssText = `
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px 12px;
+            font-size: 13px;
+            border-radius: 6px;
+            border: 1px solid var(--om-b,#1a2030);
+            background: var(--om-bg,#080b11);
+            color: var(--om-tx,#c8cfd8);
+            outline: none;
+            margin-bottom: 8px;
+        `;
+        input.addEventListener('focus', () => {
+            input.style.borderColor = 'rgba(201, 168, 76, 0.45)';
+            input.style.boxShadow = '0 0 0 1px rgba(201, 168, 76, 0.12)';
+        });
+        input.addEventListener('blur', () => {
+            input.style.borderColor = 'var(--om-b,#1a2030)';
+            input.style.boxShadow = 'none';
+        });
+
+        const overwriteRow = document.createElement('div');
+        overwriteRow.style.cssText = 'display:none;margin:0 0 12px 0;padding:10px 12px;border-radius:6px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.25);font-size:12px;line-height:1.45;color:var(--om-dim,#94a3b8);';
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;margin-top:16px;';
+
+        const btnCancel = document.createElement('button');
+        btnCancel.type = 'button';
+        btnCancel.textContent = 'Cancel';
+        btnCancel.style.cssText = `
+            padding: 9px 16px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 1px solid var(--om-b,#1a2030);
+            background: var(--om-panel2,#141a22);
+            color: var(--om-dim,#94a3b8);
+        `;
+        btnCancel.addEventListener('mouseenter', () => {
+            btnCancel.style.borderColor = 'var(--om-b2,#242e3e)';
+            btnCancel.style.color = 'var(--om-tx,#c8cfd8)';
+        });
+        btnCancel.addEventListener('mouseleave', () => {
+            btnCancel.style.borderColor = 'var(--om-b,#1a2030)';
+            btnCancel.style.color = 'var(--om-dim,#94a3b8)';
+        });
+        btnCancel.onclick = () => closeModal();
+
+        const btnPrimary = document.createElement('button');
+        btnPrimary.type = 'button';
+        btnPrimary.textContent = 'Save';
+        btnPrimary.style.cssText = `
+            padding: 9px 18px;
+            font-size: 12px;
+            font-weight: 700;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 1px solid rgba(201, 168, 76, 0.45);
+            background: rgba(201, 168, 76, 0.14);
+            color: var(--om-ot-gold,#C9A84C);
+        `;
+        btnPrimary.addEventListener('mouseenter', () => {
+            btnPrimary.style.background = 'rgba(201, 168, 76, 0.22)';
+        });
+        btnPrimary.addEventListener('mouseleave', () => {
+            btnPrimary.style.background = 'rgba(201, 168, 76, 0.14)';
+        });
+
+        let pendingName = '';
+
+        input.addEventListener('input', () => {
+            overwriteRow.style.display = 'none';
+            btnPrimary.textContent = 'Save';
+            pendingName = '';
+        });
+
+        const trySave = (forceOverwrite) => {
+            const trimmed = String(input.value || '').trim();
+            if (!trimmed) {
+                this.showNotification('Please enter a template name', 'warning');
+                input.focus();
+                return;
+            }
+            const result = this.saveOrderPanelPreset(trimmed, { forceOverwrite: !!forceOverwrite });
+            if (result === 'invalid') {
+                this.showNotification('Please enter a template name', 'warning');
+                input.focus();
+                return;
+            }
+            if (result === 'exists') {
+                pendingName = trimmed;
+                overwriteRow.style.display = 'block';
+                overwriteRow.textContent = `A template named "${trimmed}" already exists. Click Replace to overwrite it, or change the name.`;
+                btnPrimary.textContent = 'Replace';
+                return;
+            }
+            closeModal();
+        };
+
+        btnPrimary.onclick = () => {
+            const trimmed = String(input.value || '').trim();
+            if (btnPrimary.textContent === 'Replace' && pendingName === trimmed) {
+                trySave(true);
+            } else {
+                pendingName = '';
+                btnPrimary.textContent = 'Save';
+                overwriteRow.style.display = 'none';
+                trySave(false);
+            }
+        };
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                btnPrimary.click();
+            }
+        });
+
+        btnRow.appendChild(btnCancel);
+        btnRow.appendChild(btnPrimary);
+
+        card.appendChild(title);
+        card.appendChild(label);
+        card.appendChild(input);
+        card.appendChild(overwriteRow);
+        card.appendChild(btnRow);
+        overlay.appendChild(card);
+        document.body.appendChild(overlay);
+
+        setTimeout(() => {
+            input.focus();
+            input.select();
+        }, 50);
     }
 
     /**
