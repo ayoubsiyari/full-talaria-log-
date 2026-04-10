@@ -17554,7 +17554,16 @@ class OrderManager {
         }
 
         const allE = typeof drawing._allEntryPrices === 'function' ? drawing._allEntryPrices() : [entry];
-        const uniqE = [...new Set((allE || []).filter(Number.isFinite))].sort((a, b) => (isLong ? a - b : b - a));
+        // Keep primary first (points[0] then extraEntries). Price-sorting made E2 the new points[0] for
+        // longs and shifted the R/R zone boundary to the wrong line.
+        const seenE = new Set();
+        const uniqE = [];
+        for (const p of allE || []) {
+            if (!Number.isFinite(p)) continue;
+            if (seenE.has(p)) continue;
+            seenE.add(p);
+            uniqE.push(p);
+        }
         if (uniqE.length <= 1) {
             this.isMultiEntryMode = false;
             this.multiEntryLevels = [];
@@ -17582,8 +17591,7 @@ class OrderManager {
         if (Number.isFinite(slPx)) drawing.points[1] = { ...drawing.points[1], y: slPx };
 
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 1) {
-            const lv = [...this.multiEntryLevels].filter((l) => l.price > 0)
-                .sort((a, b) => (isLong ? a.price - b.price : b.price - a.price));
+            const lv = [...this.multiEntryLevels].filter((l) => l.price > 0);
             if (lv.length) {
                 drawing.points[0] = { ...drawing.points[0], y: lv[0].price };
                 if (!drawing.meta.extraEntries) drawing.meta.extraEntries = [];
