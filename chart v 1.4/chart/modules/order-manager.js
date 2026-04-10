@@ -17492,6 +17492,68 @@ class OrderManager {
     }
 
     /**
+     * Risk/reward TP +: after the first split, entry→farthest midpoint is already filled; insert at the
+     * midpoint of the widest gap (entry↔first TP, or between consecutive TPs) so + can add many levels.
+     */
+    _splitPreviewTPFromLineForRiskRewardTool(drawing) {
+        const ep = typeof this._getReferenceEntryForOrderMath === 'function'
+            ? this._getReferenceEntryForOrderMath()
+            : parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        if (!Number.isFinite(ep) || ep <= 0) return;
+
+        const prec = this.getPricePrecision();
+        const mtOn = document.getElementById('multipleTPToggle')?.checked;
+        const nTargets = this.tpTargets?.length || 0;
+
+        if (!mtOn || nTargets <= 1) {
+            const outer = Number.isFinite(drawing?.points?.[2]?.y) ? drawing.points[2].y : NaN;
+            const tp = Number.isFinite(outer) && outer > 0
+                ? outer
+                : parseFloat(document.getElementById('tpPrice')?.value || 0);
+            this._splitPreviewTPFromLine(tp);
+            return;
+        }
+
+        const isLong = this.orderSide === 'BUY';
+        const prices = (this.tpTargets || [])
+            .map((t) => t.price)
+            .filter((p) => Number.isFinite(p) && p > 0);
+        if (prices.length < 2) {
+            const tp = Number.isFinite(drawing?.points?.[2]?.y) ? drawing.points[2].y : prices[0];
+            this._splitPreviewTPFromLine(tp);
+            return;
+        }
+
+        const sorted = isLong ? [...prices].sort((a, b) => a - b) : [...prices].sort((a, b) => b - a);
+        const gaps = [];
+        const pushGap = (a, b) => {
+            if (!Number.isFinite(a) || !Number.isFinite(b)) return;
+            const lo = Math.min(a, b);
+            const hi = Math.max(a, b);
+            const w = hi - lo;
+            if (w > 1e-15) gaps.push({ lo, hi, w });
+        };
+        pushGap(ep, sorted[0]);
+        for (let i = 0; i < sorted.length - 1; i++) pushGap(sorted[i], sorted[i + 1]);
+        if (!gaps.length) return;
+        gaps.sort((g1, g2) => g2.w - g1.w);
+
+        const pip = Number(this.pipSize) > 0 ? Number(this.pipSize) : 0.0001;
+        const tick = Math.max(pip * 0.25, Math.abs(ep) * 1e-8, 10 ** (-Math.max(0, prec)));
+
+        const tooClose = (p) => sorted.some((x) => Math.abs(x - p) < tick * 0.85);
+
+        for (const g of gaps) {
+            let mid = (g.lo + g.hi) / 2;
+            mid = parseFloat(mid.toFixed(prec));
+            if (!tooClose(mid)) {
+                this.addTPFromSplit(mid);
+                return;
+            }
+        }
+    }
+
+    /**
      * Add a new TP target from split drag
      */
     addTPFromSplit(price) {
@@ -17866,8 +17928,7 @@ class OrderManager {
      */
     riskRewardAddTPFromTool(drawing) {
         this.pushRiskRewardToolToManager(drawing);
-        const linePrice = drawing.points[2].y;
-        this._splitPreviewTPFromLine(linePrice);
+        this._splitPreviewTPFromLineForRiskRewardTool(drawing);
         this.pullRiskRewardToolFromManager(drawing);
     }
 
@@ -17908,8 +17969,8 @@ class OrderManager {
     }
 
     /**
-     * Risk/reward +: first click enables multi-entry with two levels; further clicks reset to a fresh E2
-     * (same as first-time ladder) instead of appending E3+.
+     * Risk/reward +: first click enables multi-entry with two levels; further clicks append another step
+     * toward TP (same default offset as the first ladder), re-equalizing amounts.
      */
     riskRewardAddEntryFromTool(drawing) {
         this.pushRiskRewardToolToManager(drawing);
@@ -17920,12 +17981,32 @@ class OrderManager {
             // Same as panel "Multi": show multi-entry UI, preview lines, risk summary — not only isMultiEntryMode + rows.
             this.setEntryMode(true);
         } else {
-            this._buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice);
-            this._rebalanceLevelAmountsToTarget();
-            this.renderMultiEntryRows();
-            this.syncMultiEntryToSplitEntries();
-            this.updatePreviewLines();
-            this.calculateAdvancedRiskReward();
+            const priced = (this.multiEntryLevels || []).filter((l) => l && l.price > 0);
+            if (!priced.length) {
+                this._buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice);
+                this.setEntryMode(true);
+            } else {
+                const refPrice = this.orderSide === 'BUY'
+                    ? Math.max(...priced.map((l) => l.price))
+                    : Math.min(...priced.map((l) => l.price));
+                const offsetDir = this.orderSide === 'SELL' ? -1 : 1;
+                const rawNext = refPrice > 0 ? refPrice * (1 + offsetDir * 0.0045) : 0;
+                const siblingPrices = priced.map((l) => l.price);
+                const nextPrice = refPrice > 0
+                    ? this._clampMultiEntryPriceForReward(rawNext, siblingPrices)
+                    : 0;
+                if (nextPrice > 0 && Number.isFinite(nextPrice)) {
+                    if (!Number.isFinite(this.multiEntryIdCounter)) this.multiEntryIdCounter = 1;
+                    this.multiEntryLevels.push({
+                        id: this.multiEntryIdCounter++,
+                        price: nextPrice,
+                        amount: 0
+                    });
+                    this.equalizeMultiEntryAmounts();
+                    this.updatePreviewLines();
+                    this.calculateAdvancedRiskReward();
+                }
+            }
         }
         this.pullRiskRewardToolFromManager(drawing);
     }
