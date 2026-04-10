@@ -1435,31 +1435,52 @@ class BaseRiskRewardTool extends BaseDrawing {
     
     recalculateLotSizeFromRisk() {
         if (!this.meta.risk) return;
-        
+
+        const mode = this.meta.risk.riskMode || this.meta.risk.positionSizeMode || 'risk-usd';
+        if (mode === 'lot-size') {
+            const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
+            const pip = om?.pipSize || (typeof this.getPriceStep === 'function' ? this.getPriceStep() : 0.0001);
+            let lots = parseFloat(
+                typeof document !== 'undefined' ? document.getElementById('lotSizeAmount')?.value : ''
+            );
+            if (!Number.isFinite(lots) || lots <= 0) {
+                lots = Number(this.meta.risk.lotSize) || 0.01;
+            }
+            this.meta.risk.lotSize = Math.max(0.01, lots);
+            this.meta.risk.riskMode = 'lot-size';
+            const entry = this.meta.risk.entryPrice || 0;
+            const stop = this.meta.risk.stopPrice || 0;
+            const slPips = entry && stop ? Math.abs(entry - stop) / pip : 0;
+            const pipVal = om?.pipValuePerLot || 10;
+            const riskUsd = slPips > 0 ? lots * slPips * pipVal : 0;
+            console.log(`🔄 Lot size mode: ${this.meta.risk.lotSize.toFixed(2)} lots → ~$${riskUsd.toFixed(2)} risk @ ${slPips.toFixed(1)} pips`);
+            return;
+        }
+
         const entry = this.meta.risk.entryPrice || 0;
         const stop = this.meta.risk.stopPrice || 0;
         const slDistance = Math.abs(entry - stop);
-        
+
         if (slDistance === 0 || entry === 0) {
             this.meta.risk.lotSize = 0.01;
             return;
         }
-        
-        // Get risk amount in USD
+
         let riskUSD = 0;
-        if (this.meta.risk.riskMode === 'risk-usd') {
+        if (mode === 'risk-usd') {
             riskUSD = this.meta.risk.riskAmountUSD || 100;
         } else {
             const accountSize = this.meta.risk.accountSize || 10000;
             riskUSD = (accountSize * (this.meta.risk.riskPercent || 1)) / 100;
         }
-        
-        // Calculate lot size using proper pip value formula
-        const slPips = slDistance / 0.0001;
-        const pipValue = 10;
+
+        const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
+        const pip = om?.pipSize || 0.0001;
+        const pipValue = om?.pipValuePerLot || 10;
+        const slPips = slDistance / pip;
         const calculatedLots = riskUSD / (slPips * pipValue);
         this.meta.risk.lotSize = Math.max(0.01, calculatedLots);
-        
+
         console.log(`🔄 Lot size recalculated: ${this.meta.risk.lotSize.toFixed(2)} lots for risk $${riskUSD.toFixed(2)} @ ${slPips.toFixed(1)} pips`);
     }
 

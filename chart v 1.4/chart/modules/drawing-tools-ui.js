@@ -334,6 +334,8 @@ class DrawingSettingsPanel {
 
         };
 
+        this._rrMirrorSummaryRefresh = null;
+
         // Timeframe visibility defaults
 
         this.defaultTimeframes = [
@@ -25556,6 +25558,29 @@ applyTemplate(drawing, templateId, modal) {
 
      */
 
+    /**
+     * Refresh RR tool settings mirror from the order panel and summary numbers (when modal is open).
+     */
+    refreshRiskRewardMirror() {
+
+        const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
+
+        if (om && typeof om.syncRrSettingsMirrorFromPanel === 'function') {
+
+            om.syncRrSettingsMirrorFromPanel();
+
+        }
+
+        if (typeof this._rrMirrorSummaryRefresh === 'function') {
+
+            this._rrMirrorSummaryRefresh();
+
+        }
+
+    }
+
+
+
     show(drawing, x, y, onSave, onDelete) {
 
         this.currentDrawing = drawing;
@@ -29600,465 +29625,45 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
 
-        const risk = (drawing.meta && drawing.meta.risk) ? drawing.meta.risk : {};
+        const summarySection = section.append('div')
 
-        
+            .style('border-bottom', '1px solid #363a45')
 
-        // Initialize risk mode and defaults if not set
+            .style('padding-bottom', '12px')
 
-        if (!risk.riskMode) risk.riskMode = 'risk-usd';
-
-        if (!risk.balanceType) risk.balanceType = 'current';
-
-        if (!risk.riskAmountUSD) risk.riskAmountUSD = 100; // Default $100 risk
-
-        if (!risk.riskPercent) risk.riskPercent = 1; // Default 1% risk
-
-        
-
-        // Save initialized values back to drawing
-
-        if (drawing.meta) {
-
-            drawing.meta.risk = risk;
-
-        }
-
-        const controlsWrap = section.append('div')
-
-            .style('display', 'grid')
-
-            .style('grid-template-columns', 'repeat(2, minmax(0, 1fr))')
-
-            .style('column-gap', '8px')
-
-            .style('row-gap', '6px')
-
-            .style('margin-bottom', '8px')
-
-            .style('padding-bottom', '0')
-
-            .style('border-bottom', 'none');
-
-
-
-        const controlsColumnWidth = 112;
-
-
-
-        const createControlRow = (labelText) => {
-
-            const row = controlsWrap.append('div')
-
-                .attr('class', 'tv-prop-row')
-
-                .style('display', 'flex')
-
-                .style('flex-direction', 'column')
-
-                .style('align-items', 'stretch')
-
-                .style('gap', '4px')
-
-                .style('min-width', '0')
-
-                .style('min-height', '0')
-
-                .style('padding', '0');
-
-
-
-            const label = row.append('span')
-
-                .attr('class', 'tv-prop-label')
-
-                .style('min-width', '0')
-
-                .style('width', 'auto')
-
-                .style('flex', 'none')
-
-                .style('text-align', 'center')
-
-                .style('font-size', '11px')
-
-                .style('color', '#9aa1b7')
-
-                .text(labelText);
-
-
-
-            const controls = row.append('div')
-
-                .attr('class', 'tv-prop-controls')
-
-                .style('width', '100%')
-
-                .style('min-height', '24px')
-
-                .style('display', 'flex')
-
-                .style('align-items', 'center')
-
-                .style('justify-content', 'center');
-
-
-
-            return { row, label, controls };
-
-        };
-
-
-
-        const createNumberControl = (controls, initialValue, onInput, options = {}) => {
-
-            const {
-
-                min = null,
-
-                max = null,
-
-                step = null,
-
-                decimals = 2
-
-            } = options;
-
-
-
-            const input = controls.append('input')
-
-                .attr('type', 'number')
-
-                .attr('class', 'tv-input')
-
-                .style('width', `${controlsColumnWidth}px`)
-
-                .style('max-width', '100%')
-
-                .style('height', '24px')
-
-                .style('padding', '0 6px')
-
-                .style('text-align', 'center')
-
-                .style('font-size', '10px');
-
-
-
-            if (min !== null) input.attr('min', min);
-
-            if (max !== null) input.attr('max', max);
-
-            if (step !== null) input.attr('step', step);
-
-
-
-            input.node().__decimals = decimals;
-
-            input.property('value', this.formatNumericValue(initialValue, decimals));
-
-
-
-            const commit = () => {
-
-                const raw = input.property('value');
-
-                if (raw === '' || raw === null || raw === undefined) return;
-
-                const parsed = Number.parseFloat(raw);
-
-                if (!Number.isFinite(parsed)) return;
-
-                onInput(parsed);
-
-            };
-
-
-
-            input.on('input', commit);
-
-            input.on('change', commit);
-
-            return input;
-
-        };
-
-
-
-        const setInputValue = (input, value) => {
-
-            if (!input || typeof input.property !== 'function') return;
-
-            const node = input.node && input.node();
-
-            if (node && document.activeElement === node) {
-
-                return;
-
-            }
-
-            const decimals = input.node().__decimals;
-
-            input.property('value', this.formatNumericValue(value, decimals));
-
-        };
-
-
-
-        const riskModeRow = createControlRow('Risk Mode');
-
-        const riskModeSelect = riskModeRow.controls.append('select')
-
-            .attr('class', 'tv-select')
-
-            .style('width', `${controlsColumnWidth}px`)
-
-            .style('max-width', '100%')
-
-            .style('min-width', '0')
-
-            .style('height', '24px')
-
-            .style('text-align', 'center')
-
-            .style('text-align-last', 'center')
-
-            .style('font-size', '10px')
-
-            .html(`
-
-                <option value="risk-usd">Fixed USD</option>
-
-                <option value="risk-percent">% of Account</option>
-
-            `);
-
-
-
-        riskModeSelect.property('value', risk.riskMode);
-
-        riskModeSelect.on('change', () => {
-
-            risk.riskMode = riskModeSelect.property('value');
-
-            refreshRisk(true);
-
-        });
-
-
-
-        const accountRow = createControlRow('Account Size');
-
-        const accountInput = createNumberControl(accountRow.controls, risk.accountSize ?? 10000, (value) => {
-
-            risk.accountSize = value;
-
-            drawing.setAccountSize?.(value);
-
-            drawing.ensureRiskSettings?.();
-
-            refreshRisk(true);
-
-        }, { min: 0, step: 100, decimals: 2 });
-
-
-
-        const riskAmountRow = createControlRow('Risk Amount (USD)');
-
-        let riskInput = null;
-
-        let activeRiskInputMode = null;
-
-
-
-        const calculateLotSizeFromRisk = () => {
-
-            const state = (drawing.meta && drawing.meta.risk) ? drawing.meta.risk : risk;
-
-            const entry = state.entryPrice || 0;
-
-            const stop = state.stopPrice || 0;
-
-            const slDistance = Math.abs(entry - stop);
-
-
-
-            if (slDistance === 0 || entry === 0) {
-
-                state.lotSize = 0.01;
-
-                lotSizeValue.text('0.01 Lots');
-
-                drawing.setLotSize?.(state.lotSize);
-
-                return;
-
-            }
-
-
-
-            let riskUSD = 0;
-
-            if (state.riskMode === 'risk-usd') {
-
-                riskUSD = state.riskAmountUSD || 100;
-
-            } else {
-
-                const accountSize = state.accountSize || 10000;
-
-                riskUSD = (accountSize * (state.riskPercent || 1)) / 100;
-
-            }
-
-
-
-            const slPips = slDistance / 0.0001;
-
-            const pipValue = 10;
-
-            const calculatedLots = riskUSD / (slPips * pipValue);
-
-            state.lotSize = Math.max(0.01, calculatedLots);
-
-
-
-            lotSizeValue.text(`${state.lotSize.toFixed(2)} Lots`);
-
-            drawing.setLotSize?.(state.lotSize);
-
-        };
-
-
-
-        const createRiskInput = () => {
-
-            const state = (drawing.meta && drawing.meta.risk) ? drawing.meta.risk : risk;
-
-            const mode = state.riskMode || 'risk-usd';
-
-            activeRiskInputMode = mode;
-
-
-
-            riskAmountRow.controls.selectAll('*').remove();
-
-            if (mode === 'risk-usd') {
-
-                riskAmountRow.label.text('Risk Amount (USD)');
-
-                riskInput = createNumberControl(riskAmountRow.controls, state.riskAmountUSD ?? 100, (value) => {
-
-                    state.riskAmountUSD = value;
-
-                    calculateLotSizeFromRisk();
-
-                    refreshRisk(true);
-
-                }, { min: 0, step: 10, decimals: 2 });
-
-            } else {
-
-                riskAmountRow.label.text('Risk Percent (%)');
-
-                riskInput = createNumberControl(riskAmountRow.controls, state.riskPercent ?? 1, (value) => {
-
-                    state.riskPercent = value;
-
-                    calculateLotSizeFromRisk();
-
-                    refreshRisk(true);
-
-                }, { min: 0, step: 0.1, decimals: 2 });
-
-            }
-
-        };
-
-
-
-        const entryRow = createControlRow('Entry Price');
-
-        const entryInput = createNumberControl(entryRow.controls, risk.entryPrice ?? drawing.points?.[0]?.y ?? 0, (value) => {
-
-            risk.entryPrice = value;
-
-            drawing.setEntryPrice?.(value);
-
-            calculateLotSizeFromRisk();
-
-            refreshRisk(true);
-
-        }, { step: 0.00001, decimals: 5 });
-
-
-
-        const stopRow = createControlRow('Stop Price');
-
-        const stopPriceInput = createNumberControl(stopRow.controls, risk.stopPrice ?? drawing.points?.[1]?.y ?? 0, (value) => {
-
-            risk.stopPrice = value;
-
-            drawing.setStopPrice?.(value);
-
-            calculateLotSizeFromRisk();
-
-            refreshRisk(true);
-
-        }, { step: 0.00001, decimals: 5 });
-
-
-
-        const targetRow = createControlRow('Target Price');
-
-        const profitPriceInput = createNumberControl(targetRow.controls, risk.targetPrice ?? drawing.points?.[2]?.y ?? 0, (value) => {
-
-            risk.targetPrice = value;
-
-            drawing.setTargetPrice?.(value);
-
-            refreshRisk(true);
-
-        }, { step: 0.00001, decimals: 5 });
-
-
-
-        const lotSizeRow = createControlRow('Calculated Lot Size');
-
-        lotSizeRow.row.style('grid-column', '1 / -1');
-
-        const lotSizeValue = lotSizeRow.controls.append('div')
-
-            .style('width', `${controlsColumnWidth}px`)
-
-            .style('max-width', '100%')
-
-            .style('height', '24px')
-
-            .style('box-sizing', 'border-box')
-
-            .style('padding', '0 6px')
-
-            .style('border-radius', '4px')
-
-            .style('border', '1px solid rgba(255, 255, 255, 0.12)')
-
-            .style('background', 'rgba(255, 255, 255, 0.04)')
-
-            .style('color', '#d1d4dc')
-
-            .style('font-size', '10px')
-
-            .style('font-weight', '600')
+            .style('margin-bottom', '12px')
 
             .style('display', 'flex')
 
-            .style('align-items', 'center')
+            .style('flex-direction', 'column')
 
-            .style('justify-content', 'flex-end')
+            .style('gap', '8px');
 
-            .text('0.00 Lots');
+
+
+        summarySection.append('div')
+
+            .text('Summary')
+
+            .style('color', '#787b86')
+
+            .style('font-size', '11px')
+
+            .style('font-weight', '600')
+
+            .style('letter-spacing', '0.08em')
+
+            .style('text-transform', 'uppercase');
+
+
+
+        const summaryRows = summarySection.append('div')
+
+            .style('display', 'flex')
+
+            .style('flex-direction', 'column')
+
+            .style('gap', '6px');
 
 
 
@@ -30110,57 +29715,112 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
 
-        const summarySection = section.append('div')
-
-            .style('border-bottom', '1px solid #363a45')
-
-            .style('padding-bottom', '12px')
-
-            .style('margin-bottom', '12px')
-
-            .style('display', 'flex')
-
-            .style('flex-direction', 'column')
-
-            .style('gap', '8px');
-
-
-
-        summarySection.append('div')
-
-            .text('Summary')
-
-            .style('color', '#787b86')
-
-            .style('font-size', '11px')
-
-            .style('font-weight', '600')
-
-            .style('letter-spacing', '0.08em')
-
-            .style('text-transform', 'uppercase');
-
-
-
-        const summaryRows = summarySection.append('div')
-
-            .style('display', 'flex')
-
-            .style('flex-direction', 'column')
-
-            .style('gap', '6px');
-
-
-
         const riskAmountText = createReadOnlyRow(summaryRows, 'Risk Amount');
 
         const rewardRatioText = createReadOnlyRow(summaryRows, 'Reward Ratio');
 
 
 
-        // Keep summary at the top (just below the section title).
+        const mirrorHtml = `
+<div id="rrMirrorOrderRoot" class="rr-mirror-order" style="margin-top:4px;padding:10px;border:1px solid rgba(255,255,255,0.08);border-radius:8px;background:rgba(0,0,0,0.18);max-width:100%;box-sizing:border-box;">
+  <div style="font-size:10px;color:#787b86;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em;">Place order (linked)</div>
+  <div class="order-risk-compact" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px;">
+    <div class="order-button-group order-button-group--inline order-risk-compact__tabs" style="display:flex;gap:4px;">
+      <button type="button" class="position-mode-tab rr-mirror-position-tab" data-mode="risk-usd">$</button>
+      <button type="button" class="position-mode-tab rr-mirror-position-tab" data-mode="risk-percent">%</button>
+      <button type="button" class="position-mode-tab rr-mirror-position-tab" data-mode="lot-size">#</button>
+    </div>
+    <div id="rrMirror_riskUSDInput" class="order-input-wrapper order-risk-compact__input" style="display:flex;gap:4px;align-items:center;flex:1;min-width:120px;">
+      <span class="order-input-prefix">$</span>
+      <input type="number" id="rrMirror_riskAmountUSD" class="order-input order-input--compact" min="1" step="1" style="flex:1;min-width:0;" />
+      <span class="input-stepper-group">
+        <button type="button" class="input-stepper" data-target="rrMirror_riskAmountUSD" data-step="-10">−</button>
+        <button type="button" class="input-stepper" data-target="rrMirror_riskAmountUSD" data-step="+10">+</button>
+      </span>
+    </div>
+    <div id="rrMirror_riskPercentInput" class="order-input-wrapper order-risk-compact__input is-hidden" style="display:flex;gap:4px;align-items:center;flex:1;min-width:120px;">
+      <input type="number" id="rrMirror_riskAmountPercent" class="order-input order-input--compact" min="0.1" step="0.1" style="flex:1;min-width:0;" />
+      <span class="order-input-suffix">%</span>
+      <span class="input-stepper-group">
+        <button type="button" class="input-stepper" data-target="rrMirror_riskAmountPercent" data-step="-0.5">−</button>
+        <button type="button" class="input-stepper" data-target="rrMirror_riskAmountPercent" data-step="+0.5">+</button>
+      </span>
+    </div>
+    <div id="rrMirror_lotSizeInput" class="order-input-wrapper order-risk-compact__input is-hidden" style="display:flex;gap:4px;align-items:center;flex:1;min-width:120px;">
+      <input type="number" id="rrMirror_lotSizeAmount" class="order-input order-input--compact" min="0.01" step="0.01" style="flex:1;min-width:0;" />
+      <span class="order-input-suffix">Lots</span>
+      <span class="input-stepper-group">
+        <button type="button" class="input-stepper" data-target="rrMirror_lotSizeAmount" data-step="-0.1">−</button>
+        <button type="button" class="input-stepper" data-target="rrMirror_lotSizeAmount" data-step="+0.1">+</button>
+      </span>
+    </div>
+  </div>
+  <div id="rrMirror_balanceSourceToggle" style="display:none;gap:4px;margin-bottom:8px;flex-wrap:wrap;">
+    <button type="button" class="balance-source-tab rr-mirror-balance-tab" data-balance="current" style="font-size:9px;padding:2px 8px;border-radius:4px 0 0 4px;">Current</button>
+    <button type="button" class="balance-source-tab rr-mirror-balance-tab" data-balance="initial" style="font-size:9px;padding:2px 8px;border-radius:0 4px 4px 0;">Initial</button>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;align-items:start;">
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="color:#9aa1b7;font-size:10px;">Entry</span>
+        <button type="button" id="rrMirror_multiEntryToggle" class="multi-entry-toggle multi-entry-toggle--compact">Multi</button>
+      </div>
+      <div id="rrMirror_singleEntryMode">
+        <input type="number" id="rrMirror_orderEntryPrice" class="order-input order-input--compact order-input--entry-sl" step="0.00001" style="width:100%;box-sizing:border-box;" />
+      </div>
+      <div id="rrMirror_multiEntryMode" style="display:none;">
+        <div style="display:flex;font-size:9px;color:#787b86;gap:4px;margin-bottom:4px;">
+          <span style="flex:1;">Price</span>
+          <span id="rrSettingsMultiEntryAmountColLabel" style="flex:1;">Risk ($)</span>
+        </div>
+        <div id="rrSettingsMultiEntryRows" class="multi-entry-rows multi-entry-rows--scroll" style="max-height:140px;overflow:auto;"></div>
+        <div style="margin-top:6px;font-size:10px;color:#d1d4dc;display:flex;flex-direction:column;gap:4px;">
+          <div><span style="color:#787b86;">Avg</span> <span id="rrMirror_multiEntryAvgPrice">—</span></div>
+          <div><span style="color:#787b86;">Qty</span> <span id="rrMirror_multiEntryTotalQty">—</span></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="color:#9aa1b7;font-size:10px;">Stop Loss</span>
+        <label><input type="checkbox" id="rrMirror_enableSL" class="order-checkbox" checked /></label>
+      </div>
+      <input type="number" id="rrMirror_slPrice" class="order-input order-input--compact order-input--entry-sl" step="0.00001" style="width:100%;box-sizing:border-box;" />
+    </div>
+  </div>
+  <div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:6px;">
+      <span style="color:#9aa1b7;font-size:10px;">Profit Target</span>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <label><input type="checkbox" id="rrMirror_enableTP" class="order-checkbox" checked /></label>
+        <button type="button" id="rrMirror_multiTPBtn" class="multi-entry-toggle multi-entry-toggle--compact">Single</button>
+      </div>
+    </div>
+    <div id="rrMirror_tpSingleView" class="order-tp-single">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
+        <div><span class="order-tp-col-label" style="font-size:9px;color:#787b86;">Price</span><input type="number" id="rrMirror_tpPrice" class="order-input order-input--compact" step="0.00001" style="width:100%;" /></div>
+        <div><span class="order-tp-col-label" style="font-size:9px;color:#787b86;">R:R</span><input type="number" id="rrMirror_tpRRInput" class="order-input order-input--compact" step="0.1" style="width:100%;" /></div>
+        <div><span class="order-tp-col-label" style="font-size:9px;color:#787b86;">Profit</span><input type="number" id="rrMirror_tpTargetProfitUSD" class="order-input order-input--compact" step="1" style="width:100%;" /></div>
+      </div>
+    </div>
+    <div id="rrMirror_multipleTPSettings" class="order-tp-multi is-hidden" style="margin-top:6px;">
+      <div class="order-tp-multi__cols" style="display:flex;font-size:9px;color:#787b86;margin-bottom:4px;">
+        <span style="flex:1;">Price</span><span style="flex:0 0 36px;text-align:center;">R:R</span><span style="flex:1;">Profit</span><span style="flex:0 0 22px;"></span>
+      </div>
+      <div id="rrSettingsMultipleTPList" class="order-tp-multi__rows"></div>
+      <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:10px;color:#d1d4dc;">
+        <span style="color:#787b86;">Blended</span>
+        <span id="rrSettingsTpBlendedValue">—</span>
+      </div>
+    </div>
+  </div>
+</div>`;
 
-        section.node().insertBefore(summarySection.node(), controlsWrap.node());
+
+
+        section.append('div')
+
+            .html(mirrorHtml);
 
 
 
@@ -30168,11 +29828,11 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
             .attr('class', 'risk-position-info')
 
-            .style('border-top', 'none')
+            .style('border-top', '1px solid #363a45')
 
-            .style('padding-top', '0')
+            .style('padding-top', '12px')
 
-            .style('margin-top', '8px')
+            .style('margin-top', '12px')
 
             .style('display', 'flex')
 
@@ -30232,87 +29892,85 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
 
+        const triggerDrawingUpdate = () => {
+
+            if (typeof this.onUpdate === 'function') {
+
+                this.onUpdate(drawing);
+
+            } else if (window.drawingManager) {
+
+                window.drawingManager.renderDrawing(drawing);
+
+                window.drawingManager.saveDrawings();
+
+            }
+
+        };
+
+
+
         const refreshRisk = (propagate = false) => {
 
             drawing.ensureRiskSettings?.();
+
+
+
+            const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
 
             const state = (drawing.meta && drawing.meta.risk) ? drawing.meta.risk : {};
 
 
 
-            if (state.riskMode !== 'risk-usd' && state.riskMode !== 'risk-percent') {
-
-                state.riskMode = 'risk-usd';
-
-            }
-
-            riskModeSelect.property('value', state.riskMode);
-
-            
-
-            // Recreate risk input only when mode changed; otherwise keep current element
-
-            // so user typing/focus isn't interrupted.
-
-            if (!riskInput || activeRiskInputMode !== state.riskMode) {
-
-                createRiskInput();
-
-            }
-
-
-
-            if (riskInput) {
-
-                if (state.riskMode === 'risk-usd') {
-
-                    setInputValue(riskInput, state.riskAmountUSD);
-
-                } else {
-
-                    setInputValue(riskInput, state.riskPercent);
-
-                }
-
-            }
-
-            
-
-            // Update all input values
-
-            setInputValue(accountInput, state.accountSize);
-
-            setInputValue(entryInput, state.entryPrice);
-
-            setInputValue(stopPriceInput, state.stopPrice);
-
-            setInputValue(profitPriceInput, state.targetPrice);
-
-            
-
-            // Update lot size display
-
-            calculateLotSizeFromRisk();
-
-            
-
-            // Calculate actual risk amount in USD
-
             let riskUSD = 0;
 
-            if (state.riskMode === 'risk-usd') {
+            const psm = om?.positionSizeMode || state.riskMode || 'risk-usd';
 
-                riskUSD = state.riskAmountUSD || 100;
+            if (psm === 'risk-usd') {
+
+                const v = parseFloat(document.getElementById('riskAmountUSD')?.value || '');
+
+                riskUSD = Number.isFinite(v) ? v : (state.riskAmountUSD || 100);
+
+            } else if (psm === 'risk-percent') {
+
+                const rp = parseFloat(document.getElementById('riskAmountPercent')?.value || '');
+
+                const bt = document.querySelector('#orderPanel input[name="balanceType"]:checked')?.value || 'current';
+
+                const bal = bt === 'current' ? (om?.balance ?? 10000) : (om?.initialBalance ?? 10000);
+
+                const pct = Number.isFinite(rp) ? rp : (state.riskPercent || 1);
+
+                riskUSD = (bal * pct) / 100;
 
             } else {
 
-                riskUSD = ((state.accountSize || 10000) * (state.riskPercent || 1)) / 100;
+                riskUSD = state.riskAmountUSD || 100;
 
             }
 
 
 
-            const entry = toFiniteNumber(state.entryPrice, drawing.points?.[0]?.y || 0);
+            const pipSize = om?.pipSize || 0.0001;
+
+            const pipValue = om?.pipValuePerLot || 10;
+
+
+
+            let entry = toFiniteNumber(state.entryPrice, drawing.points?.[0]?.y || 0);
+
+            const extras = (drawing.meta?.extraEntries || []).filter((r) => r && Number.isFinite(r.y));
+
+            if (extras.length && typeof drawing._getWeightedAverageEntryPrice === 'function') {
+
+                const w = drawing._getWeightedAverageEntryPrice();
+
+                if (Number.isFinite(w)) entry = w;
+
+            }
+
+
 
             const stop = toFiniteNumber(state.stopPrice, drawing.points?.[1]?.y || entry);
 
@@ -30320,9 +29978,9 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
 
-            const stopPips = Math.abs(entry - stop) / 0.0001;
+            const stopPips = Math.abs(entry - stop) / pipSize;
 
-            const targetPips = Math.abs(target - entry) / 0.0001;
+            const targetPips = Math.abs(target - entry) / pipSize;
 
             const stopPercent = entry !== 0 ? (Math.abs(stop - entry) / Math.abs(entry)) * 100 : 0;
 
@@ -30332,7 +29990,19 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
 
-            const qty = toFiniteNumber(state.lotSize, 0.01);
+            let qty = toFiniteNumber(state.lotSize, 0.01);
+
+            if (om && typeof om.calculatePositionFromRisk === 'function') {
+
+                const qEl = document.getElementById('orderQuantity');
+
+                const qv = parseFloat(qEl?.value || '');
+
+                if (Number.isFinite(qv) && qv > 0) qty = qv;
+
+            }
+
+
 
             const stopAmount = Math.round(riskUSD);
 
@@ -30360,9 +30030,9 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
 
-            if (propagate && this.onUpdate) {
+            if (propagate) {
 
-                this.onUpdate(drawing);
+                triggerDrawingUpdate();
 
             }
 
@@ -30370,15 +30040,36 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
 
-        // Initial setup
+        this._rrMirrorSummaryRefresh = () => refreshRisk(false);
 
-        createRiskInput();
 
-        calculateLotSizeFromRisk();
+
+        const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
+
+        if (om && typeof om.pushRiskRewardToolToManager === 'function') {
+
+            om.pushRiskRewardToolToManager(drawing);
+
+        }
+
+        if (om && typeof om.initRrMirrorControls === 'function') {
+
+            om.initRrMirrorControls();
+
+        }
+
+        if (om && typeof om.syncRrSettingsMirrorFromPanel === 'function') {
+
+            setTimeout(() => om.syncRrSettingsMirrorFromPanel(), 0);
+
+        }
+
+
 
         refreshRisk(false);
 
     }
+
 
 
 
