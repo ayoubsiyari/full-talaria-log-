@@ -17965,8 +17965,9 @@ class OrderManager {
      * Minimum price spacing for extra ladder legs (chart tick / pip) so new entries sit next to the
      * previous rung instead of jumping toward TP (avoids overlap and “stuck on TP” lines).
      * @param {object} [drawing] - optional RR drawing with getPriceStep()
+     * @param {number} [refPrice] - anchor price; same 0.0045*|price| floor as RR addExtraEntry fallback
      */
-    _riskRewardMultiEntryStepPx(drawing) {
+    _riskRewardMultiEntryStepPx(drawing, refPrice) {
         const pip = Number(this.pipSize) > 0 ? Number(this.pipSize) : 0.0001;
         let inc = pip;
         if (drawing && typeof drawing.getPriceStep === 'function') {
@@ -17974,8 +17975,13 @@ class OrderManager {
         } else if (typeof window !== 'undefined' && window.chart && Number.isFinite(window.chart.priceIncrement) && window.chart.priceIncrement > 0) {
             inc = Math.max(inc, window.chart.priceIncrement);
         }
-        const tickMul = 14;
-        return Math.max(inc * tickMul, pip * 8, 1e-12);
+        const tickMul = 48;
+        const offsetFrac = 0.0045;
+        const tickPart = inc * tickMul;
+        const fracPart = Number.isFinite(refPrice) && Math.abs(refPrice) > 0
+            ? Math.abs(refPrice) * offsetFrac
+            : 0;
+        return Math.max(tickPart, fracPart, pip * 8, 1e-12);
     }
 
     /**
@@ -18003,7 +18009,7 @@ class OrderManager {
             { id: this.multiEntryIdCounter++, price: currentPrice, amount: amt1 }
         ];
         const offsetDir = (this.orderSide === 'SELL') ? -1 : 1;
-        const step = this._riskRewardMultiEntryStepPx(drawing);
+        const step = this._riskRewardMultiEntryStepPx(drawing, currentPrice);
         const rawSecond = currentPrice > 0 ? currentPrice + offsetDir * step : 0;
         const secondPrice = currentPrice > 0
             ? this._clampMultiEntryPriceForReward(rawSecond, [currentPrice])
@@ -18038,7 +18044,7 @@ class OrderManager {
                 const refPrice = isBuy
                     ? Math.max(...priced.map((l) => l.price))
                     : Math.min(...priced.map((l) => l.price));
-                const step = this._riskRewardMultiEntryStepPx(drawing);
+                const step = this._riskRewardMultiEntryStepPx(drawing, refPrice);
                 const siblingPrices = priced.map((l) => l.price);
                 const minGap = step * 0.85;
                 const roundP = (p) => parseFloat(parseFloat(p).toFixed(prec));

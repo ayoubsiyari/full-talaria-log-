@@ -1042,6 +1042,33 @@ class BaseRiskRewardTool extends BaseDrawing {
         return Number.isFinite(p) ? [p, ...ex] : ex.slice();
     }
 
+    /**
+     * Volume-style average entry for multi-leg ladder: weights from order panel row amounts
+     * (risk %, risk $ split, or lot-size). Used as the R/R zone boundary (middle line) while E1 stays a separate dashed leg.
+     */
+    _getWeightedAverageEntryPrice() {
+        const p0 = this.points[0]?.y;
+        if (!Number.isFinite(p0)) return NaN;
+        const extras = (this.meta.extraEntries || []).map((r) => r.y).filter(Number.isFinite);
+        if (!extras.length) return p0;
+        const prices = [p0, ...extras];
+        const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
+        if (om?.isMultiEntryMode && Array.isArray(om.multiEntryLevels) && om.multiEntryLevels.length) {
+            const weights = prices.map((_, i) => {
+                const a = Number(om.multiEntryLevels[i]?.amount);
+                return Number.isFinite(a) && a > 0 ? a : 0;
+            });
+            const sumW = weights.reduce((s, w) => s + w, 0);
+            if (sumW < 1e-12) {
+                return prices.reduce((s, p) => s + p, 0) / prices.length;
+            }
+            let sumPW = 0;
+            for (let i = 0; i < prices.length; i++) sumPW += prices[i] * weights[i];
+            return sumPW / sumW;
+        }
+        return prices.reduce((s, p) => s + p, 0) / prices.length;
+    }
+
     /** Worst-case stop price for zone shading (furthest into loss). */
     getAggregatedStopPrice() {
         const s = this._allStopPrices();
@@ -1906,19 +1933,27 @@ class BaseRiskRewardTool extends BaseDrawing {
         const stopY = scales.yScale(stop.y);
         const targetY = scales.yScale(target.y);
 
+        const hasMultiEntry = (this.meta.extraEntries || []).length > 0;
+        let zoneEntryPrice = entry.y;
+        if (hasMultiEntry) {
+            const wAvg = this._getWeightedAverageEntryPrice();
+            if (Number.isFinite(wAvg)) zoneEntryPrice = wAvg;
+        }
+        const avgEntryYpx = scales.yScale(zoneEntryPrice);
+
         const worstStopPx = scales.yScale(this.getAggregatedStopPrice());
         const bestTargetPx = scales.yScale(this.getAggregatedTargetPrice());
 
-        const riskTop = Math.min(entryY, worstStopPx);
-        const riskBot = Math.max(entryY, worstStopPx);
+        const riskTop = Math.min(avgEntryYpx, worstStopPx);
+        const riskBot = Math.max(avgEntryYpx, worstStopPx);
         const riskHeight = riskBot - riskTop;
 
-        const rewTop = Math.min(entryY, bestTargetPx);
-        const rewBot = Math.max(entryY, bestTargetPx);
+        const rewTop = Math.min(avgEntryYpx, bestTargetPx);
+        const rewBot = Math.max(avgEntryYpx, bestTargetPx);
         const rewardHeight = rewBot - rewTop;
 
-        const risk = Math.max(Math.abs(entry.y - stop.y), 0.0000001);
-        const reward = Math.abs(target.y - entry.y);
+        const risk = Math.max(Math.abs(zoneEntryPrice - stop.y), 0.0000001);
+        const reward = Math.abs(target.y - zoneEntryPrice);
         const rrRatio = (reward / risk).toFixed(2);
 
         const dashExtra = '6 4';
@@ -1952,8 +1987,8 @@ class BaseRiskRewardTool extends BaseDrawing {
         // No whole-tool drag on the entry row — gap so only the entry hit strip (painted later) sees events.
         const entryRowGapPx = 36;
         const gapHalf = entryRowGapPx / 2;
-        const bandTop = entryY - gapHalf;
-        const bandBot = entryY + gapHalf;
+        const bandTop = avgEntryYpx - gapHalf;
+        const bandBot = avgEntryYpx + gapHalf;
         const upperBodyH = Math.max(0, bandTop - bodyTopPx);
         const lowerBodyY = bandBot;
         const lowerBodyH = Math.max(0, bodyBotPx - lowerBodyY);
@@ -1977,15 +2012,28 @@ class BaseRiskRewardTool extends BaseDrawing {
         // line competes with whole-tool drag and blocks the entry hit rect / left handles (TP feels
         // fine because its dashed line uses pointer-events: none).
         this.group.append('line')
-            .attr('class', 'shape-border rr-entry-stroke')
+            .attr('class', 'shape-border rr-entry-stroke rr-avg-entry-stroke')
             .attr('x1', zoneX1)
-            .attr('y1', entryY)
+            .attr('y1', avgEntryYpx)
             .attr('x2', zoneX2)
-            .attr('y2', entryY)
+            .attr('y2', avgEntryYpx)
             .attr('stroke', this.style.entryColor || '#565656ff')
-            .attr('stroke-width', 1.5)
+            .attr('stroke-width', hasMultiEntry ? 2 : 1.5)
             .style('pointer-events', 'none')
             .style('cursor', 'inherit');
+
+        if (hasMultiEntry) {
+            this.group.append('line')
+                .attr('class', 'rr-extra-line rr-extra-entry rr-e1-leg')
+                .attr('x1', zoneX1)
+                .attr('y1', entryY)
+                .attr('x2', zoneX2)
+                .attr('y2', entryY)
+                .attr('stroke', this.style.entryColor || '#2962FF')
+                .attr('stroke-width', 1)
+                .attr('stroke-dasharray', dashExtra)
+                .style('pointer-events', 'none');
+        }
 
         this.group.append('line')
             .attr('x1', zoneX1)
@@ -2083,8 +2131,8 @@ class BaseRiskRewardTool extends BaseDrawing {
         const showDetails = this.selected;
 
         if (showDetails) {
-            // Calculate percentages and amounts
-            const entryPrice = entry.y;
+            // Percent / ticks vs weighted avg entry when E2+ (same reference as zone boundary & R:R pill).
+            const entryPrice = zoneEntryPrice;
             const stopPrice = stop.y;
             const targetPrice = target.y;
 
@@ -2177,7 +2225,7 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             // Target / Stop labels: TV-like behavior (wide = edge-snapped, narrow = floated with fixed spacing)
             const targetLabelText = `Target: ${targetPrice.toFixed(5)} (${targetPercent}%) ${targetTicks}, Amount: ${targetAmount}`;
-            const targetSide = targetY <= entryY ? 'top' : 'bottom';
+            const targetSide = targetY <= avgEntryYpx ? 'top' : 'bottom';
             createEdgeLabel({
                 className: 'target-label',
                 text: targetLabelText,
@@ -2187,7 +2235,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             });
 
             const stopLabelText = `Stop: ${stopPrice.toFixed(5)} (${stopPercent}%) ${stopTicks}, Amount: ${stopAmount}`;
-            const stopSide = stopY <= entryY ? 'top' : 'bottom';
+            const stopSide = stopY <= avgEntryYpx ? 'top' : 'bottom';
             createEdgeLabel({
                 className: 'stop-label',
                 text: stopLabelText,
@@ -2239,7 +2287,7 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             const centerRectX = zoneCenterX - (centerWidth / 2);
 
-            const centerRectY = entryY - (centerHeight / 2);
+            const centerRectY = avgEntryYpx - (centerHeight / 2);
 
             const centerInfoFill = this.isLong ? stopLabelFill : targetLabelFill;
 
@@ -2407,9 +2455,15 @@ class BaseRiskRewardTool extends BaseDrawing {
             // Execute button moved to floating toolbar
         }
 
-        // Include all extra stops/targets so corner metadata spans the full vertical extent (fixes TP2 "outside" box).
-        const upperY = Math.min(entryY, bestTargetPx, worstStopPx, beLinePx != null ? beLinePx : entryY);
-        const lowerY = Math.max(entryY, bestTargetPx, worstStopPx, beLinePx != null ? beLinePx : entryY);
+        // Include avg entry, E1, E2+, TP/SL/BE so corner handles span the full ladder.
+        const entryLegPixels = [avgEntryYpx, entryY];
+        (this.meta.extraEntries || []).forEach((row) => {
+            if (row && Number.isFinite(row.y)) entryLegPixels.push(scales.yScale(row.y));
+        });
+        const entrySpanMinPx = Math.min(...entryLegPixels);
+        const entrySpanMaxPx = Math.max(...entryLegPixels);
+        const upperY = Math.min(entrySpanMinPx, bestTargetPx, worstStopPx, beLinePx != null ? beLinePx : entrySpanMinPx);
+        const lowerY = Math.max(entrySpanMaxPx, bestTargetPx, worstStopPx, beLinePx != null ? beLinePx : entrySpanMaxPx);
 
         this.lastRenderMeta = {
             entryX,
@@ -2837,11 +2891,16 @@ class BaseRiskRewardTool extends BaseDrawing {
         const handleStroke = '#2962FF';
         const handleStrokeWidth = 2;
         
-        // Only create corner handles on entry line (for width adjustment)
-        const entryY = scales.yScale(this.points[0].y);
+        // Width handle on the same Y as the zone boundary: avg entry when E2+, else E1.
+        const hasLadder = (this.meta.extraEntries || []).length > 0;
+        let cornerY = scales.yScale(this.points[0].y);
+        if (hasLadder) {
+            const wAvg = this._getWeightedAverageEntryPrice();
+            if (Number.isFinite(wAvg)) cornerY = scales.yScale(wAvg);
+        }
         
         const positions = [
-            { role: 'corner-entry-right', x: zoneX2, y: entryY, cursor: 'ew-resize' }
+            { role: 'corner-entry-right', x: zoneX2, y: cornerY, cursor: 'ew-resize' }
         ];
 
         positions.forEach((pos) => {
