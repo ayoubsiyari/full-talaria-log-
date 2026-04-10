@@ -1652,6 +1652,24 @@ class OrderManager {
     }
 
     /**
+     * Price used as "entry" when placing auto-BE by R / pips / $ vs SL (preview + RR tool line).
+     * With a multi-entry ladder, use **first row (E1)** only — not weighted avg — so dragging E2/E3
+     * does not shift the BE trigger; moving E1 or SL still updates BE as expected.
+     */
+    _breakevenRiskAnchorPriceFromLadder() {
+        if (
+            this.isMultiEntryMode
+            && this.splitEntriesEnabled
+            && Array.isArray(this.multiEntryLevels)
+            && this.multiEntryLevels.length > 1
+        ) {
+            const p = Number(this.multiEntryLevels[0]?.price);
+            if (Number.isFinite(p) && p > 0) return p;
+        }
+        return this._previewBreakevenAnchorEntry();
+    }
+
+    /**
      * First split leg: lowest splitIndex, then earliest openTime (first activated entry in the ladder).
      */
     _getSplitGroupFirstActivatedEntryPrice(position) {
@@ -14582,7 +14600,7 @@ class OrderManager {
                 beValue = parseFloat(document.getElementById('breakevenAmount')?.value || 50);
             }
             
-            const beAnchor = this._previewBreakevenAnchorEntry();
+            const beAnchor = this._breakevenRiskAnchorPriceFromLadder();
             const beLots = this._previewBreakevenAnchorLots();
             let beTriggerPrice = 0;
             const riskDistance = Math.abs(beAnchor - slPrice);
@@ -15165,8 +15183,8 @@ class OrderManager {
                     // Mark BE as manually positioned
                     self.beManuallyPositioned = true;
                     
-                    // BE line drag: R / pips / $ vs weighted Avg Entry anchor (multi-entry), not Entry#1 only
-                    const beAnchor = self._previewBreakevenAnchorEntry();
+                    // BE line drag: R / pips / $ vs E1 when ladder (see _breakevenRiskAnchorPriceFromLadder)
+                    const beAnchor = self._breakevenRiskAnchorPriceFromLadder();
                     const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
                     const beLots = self._previewBreakevenAnchorLots();
                     const beMode = self.breakevenMode || 'rr';
@@ -15468,7 +15486,7 @@ class OrderManager {
                     
                     // Update BE line position when Entry or SL changes
                     if (self.previewLines.be && document.getElementById('autoBreakevenToggle')?.checked) {
-                        const beAnchor = self._previewBreakevenAnchorEntry();
+                        const beAnchor = self._breakevenRiskAnchorPriceFromLadder();
                         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
                         const beMode = self.breakevenMode || 'rr';
                         const beLots = self._previewBreakevenAnchorLots();
@@ -17657,7 +17675,7 @@ class OrderManager {
             beValue = parseFloat(document.getElementById('breakevenAmount')?.value || 50);
         }
 
-        const beAnchor = this._previewBreakevenAnchorEntry();
+        const beAnchor = this._breakevenRiskAnchorPriceFromLadder();
         const beLots = this._previewBreakevenAnchorLots();
         if (!beAnchor) return NaN;
 
@@ -17696,7 +17714,7 @@ class OrderManager {
      */
     _applyBreakevenInputsFromTriggerPrice(newPrice) {
         if (!Number.isFinite(newPrice)) return;
-        const beAnchor = this._previewBreakevenAnchorEntry();
+        const beAnchor = this._breakevenRiskAnchorPriceFromLadder();
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         const beLots = this._previewBreakevenAnchorLots();
         const beMode = this.breakevenMode || 'rr';
