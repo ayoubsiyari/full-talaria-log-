@@ -2020,6 +2020,20 @@ class BaseRiskRewardTool extends BaseDrawing {
         appendBodyDrag(bodyTopPx, upperBodyH);
         appendBodyDrag(lowerBodyY, lowerBodyH);
 
+        // Eat pointer events at weighted-avg Y so d3 whole-tool drag (lines/rects behind) does not
+        // start when grabbing the avg row or left "Avg" badge area (pass-through hits body/SL/TP lines).
+        if (hasMultiEntry) {
+            const shH = 36;
+            this.group.append('rect')
+                .attr('class', 'rr-avg-drag-shield')
+                .attr('x', zoneX1)
+                .attr('y', avgEntryYpx - shH / 2)
+                .attr('width', zoneWidth)
+                .attr('height', shH)
+                .attr('fill', 'rgba(0,0,0,0)')
+                .attr('stroke', 'none');
+        }
+
         // Same as TP/stop visible lines: do not capture pointer-events on the stroke. Otherwise this
         // line competes with whole-tool drag and blocks the entry hit rect / left handles (TP feels
         // fine because its dashed line uses pointer-events: none).
@@ -2392,6 +2406,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 const bx = zoneX1 + 4;
                 const by = lineYpx - bh / 2;
                 g.append('rect')
+                    .attr('class', 'rr-mini-badge-bg')
                     .attr('x', bx)
                     .attr('y', by)
                     .attr('width', bw)
