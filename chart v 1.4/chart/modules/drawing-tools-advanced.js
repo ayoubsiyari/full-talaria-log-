@@ -2266,7 +2266,9 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('y', centerTextY + centerLineHeight);
 
             const plusR = 9;
-            const plusX = zoneX2 - 12;
+            // Park + controls outside the colored zone (gap from zone edge to circle’s inner side).
+            const plusOutsideGap = 8;
+            const plusX = zoneX2 + plusOutsideGap + plusR;
             const mkPlus = (lineY, fill, handler) => {
                 const g = this.group.append('g').attr('class', 'rr-plus-btn');
                 g.append('circle')
@@ -2371,7 +2373,8 @@ class BaseRiskRewardTool extends BaseDrawing {
         // Primary entry hit rect first (below); extra TP/SL/E drag lines after (on top) so E2 is draggable
         // and does not lose events to this wide strip.
         if (this.selected) {
-            const entryDragX2 = zoneX2 - 28;
+            // + buttons sit past zoneX2; primary entry strip can use full zone width.
+            const entryDragX2 = zoneX2;
             const hasExtraEntries = (this.meta.extraEntries || []).length > 0;
             // With E2+, keep a generous vertical strip (was capped at 52px, which made primary hard to grab).
             const hitH = hasExtraEntries

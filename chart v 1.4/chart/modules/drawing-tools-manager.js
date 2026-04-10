@@ -4481,7 +4481,8 @@ class DrawingToolsManager {
         }
         const x1 = meta.zoneX1;
         const x2Full = meta.zoneX2;
-        const x2NoPlus = meta.zoneX2 - 28;
+        // RR + buttons render outside the zone; primary entry hit can span to zoneX2.
+        const x2NoPlus = meta.zoneX2;
         if (!(x2Full > x1)) return null;
 
         const hits = [];
