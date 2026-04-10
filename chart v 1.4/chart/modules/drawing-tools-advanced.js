@@ -1095,17 +1095,6 @@ class BaseRiskRewardTool extends BaseDrawing {
 
     addExtraStop() {
         if (!Array.isArray(this.points) || this.points.length < 3) return;
-        const om = window.chart?.orderManager;
-        if (om && typeof om.riskRewardAddBEFromTool === 'function') {
-            om.riskRewardAddBEFromTool(this);
-            this._afterRiskRewardOrderManagerSync();
-            const dmStop = this._drawingManager();
-            if (dmStop) {
-                dmStop.renderDrawing(this);
-                dmStop.saveDrawings();
-            }
-            return;
-        }
         this._ensureExtraLevelMeta();
         const step = this.getPriceStep();
         const all = this._allStopPrices();
@@ -1788,10 +1777,6 @@ class BaseRiskRewardTool extends BaseDrawing {
 
     render(container, scales) {
         this.ensureRiskSettings();
-        const omSync = window.chart?.orderManager;
-        if (omSync && typeof omSync._assignBreakevenMetaFromPanel === 'function') {
-            omSync._assignBreakevenMetaFromPanel(this);
-        }
         if (this.group) {
             this.group.remove();
         }
@@ -2035,21 +2020,6 @@ class BaseRiskRewardTool extends BaseDrawing {
             // E2+ drag hits appended after primary entry strip (see end of render).
         });
 
-        const bePrice = this.meta.breakevenPrice;
-        if (Number.isFinite(bePrice)) {
-            const byy = scales.yScale(bePrice);
-            this.group.append('line')
-                .attr('class', 'rr-extra-line rr-breakeven-line')
-                .attr('x1', zoneX1)
-                .attr('y1', byy)
-                .attr('x2', zoneX2)
-                .attr('y2', byy)
-                .attr('stroke', '#f59e0b')
-                .attr('stroke-width', 1)
-                .attr('stroke-dasharray', dashExtra)
-                .style('pointer-events', 'none');
-        }
-
         // Recalculate lot size from risk before rendering labels
         this.recalculateLotSizeFromRisk();
 
@@ -2242,9 +2212,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             const plusX = zoneX2 - 12;
             const mkPlus = (lineY, fill, handler) => {
                 const g = this.group.append('g').attr('class', 'rr-plus-btn');
-                // rr-plus-circle: excluded from setupDrawingDrag so d3.drag does not eat clicks (red/green/blue +).
                 g.append('circle')
-                    .attr('class', 'rr-plus-circle')
                     .attr('cx', plusX)
                     .attr('cy', lineY)
                     .attr('r', plusR)
@@ -2252,12 +2220,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .attr('stroke', 'rgba(255,255,255,0.85)')
                     .attr('stroke-width', 1)
                     .style('pointer-events', 'all')
-                    .style('cursor', 'pointer')
-                    .on('click', (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handler();
-                    });
+                    .style('cursor', 'pointer');
                 g.append('text')
                     .attr('x', plusX)
                     .attr('y', lineY + 4)
@@ -2267,6 +2230,10 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .attr('font-weight', '700')
                     .style('pointer-events', 'none')
                     .text('+');
+                g.on('click', (e) => {
+                    e.stopPropagation();
+                    handler();
+                });
             };
             mkPlus(targetY, '#16a34a', () => this.addExtraTarget());
             mkPlus(entryY, '#2962FF', () => this.addExtraEntry());
@@ -2311,18 +2278,6 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .style('pointer-events', 'none')
                     .text(`SL${i + 2}`);
             });
-            if (Number.isFinite(this.meta.breakevenPrice)) {
-                const yy = scales.yScale(this.meta.breakevenPrice);
-                this.group.append('text')
-                    .attr('class', 'rr-extra-tag')
-                    .attr('x', zoneX1 + 4)
-                    .attr('y', yy + 4)
-                    .attr('fill', '#fbbf24')
-                    .attr('font-size', '10px')
-                    .attr('font-weight', '600')
-                    .style('pointer-events', 'none')
-                    .text('BE');
-            }
 
             // Execute button moved to floating toolbar
         }

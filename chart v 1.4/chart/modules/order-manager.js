@@ -17610,88 +17610,6 @@ class OrderManager {
 
         if (typeof drawing.ensureRiskSettings === 'function') drawing.ensureRiskSettings();
         drawing.meta.updatedAt = Date.now();
-        this._assignBreakevenMetaFromPanel(drawing);
-    }
-
-    /**
-     * Breakeven trigger price for the long/short drawing (same math as BE preview), without mutating panel flags.
-     * When TP is on, uses halfway between anchor and TP so the tool line sits between entry and TP like TP2.
-     */
-    _computeBreakevenTriggerPriceForRiskRewardDrawing() {
-        const beEnabled = document.getElementById('autoBreakevenToggle')?.checked;
-        const slEnabled = document.getElementById('enableSL')?.checked;
-        const tpEnabled = document.getElementById('enableTP')?.checked;
-        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
-        const tpPrice = parseFloat(document.getElementById('tpPrice')?.value || 0);
-        const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
-        if (!beEnabled || !slEnabled || !(slPrice > 0)) return NaN;
-
-        const beAnchor = this._previewBreakevenAnchorEntry();
-        if (!(beAnchor > 0)) return NaN;
-
-        const riskDistance = Math.abs(beAnchor - slPrice);
-        const beMode = this.breakevenMode || 'rr';
-        let beValue;
-        if (beMode === 'rr') {
-            beValue = parseFloat(document.getElementById('breakevenPips')?.value || 0.5);
-        } else if (beMode === 'pips') {
-            beValue = parseFloat(document.getElementById('breakevenPips')?.value || 10);
-        } else {
-            beValue = parseFloat(document.getElementById('breakevenAmount')?.value || 50);
-        }
-
-        const beLots = this._previewBreakevenAnchorLots();
-
-        // Match “TP2” placement: interior line halfway to main TP when TP exists.
-        if (tpEnabled && tpPrice > 0) {
-            const tpDistance = Math.abs(tpPrice - beAnchor);
-            if (tpDistance < 1e-12) return NaN;
-            const beDistance = tpDistance * 0.5;
-            return this.orderSide === 'BUY'
-                ? beAnchor + beDistance
-                : beAnchor - beDistance;
-        }
-
-        if (beMode === 'rr' && riskDistance > 0) {
-            const profitDistance = beValue * riskDistance;
-            return this.orderSide === 'BUY'
-                ? beAnchor + profitDistance
-                : beAnchor - profitDistance;
-        }
-        if (beMode === 'pips') {
-            const profitPrice = beValue * this.pipSize;
-            return this.orderSide === 'BUY'
-                ? beAnchor + profitPrice
-                : beAnchor - profitPrice;
-        }
-        const denom = (beLots > 0 ? beLots : quantity) * this.pipValuePerLot;
-        if (!(denom > 0)) return NaN;
-        const profitPips = beValue / denom;
-        const profitPrice = profitPips * this.pipSize;
-        return this.orderSide === 'BUY'
-            ? beAnchor + profitPrice
-            : beAnchor - profitPrice;
-    }
-
-    /** Sync drawing.meta.breakevenPrice from panel / preview so the R/R tool can draw a BE line on-chart. */
-    _assignBreakevenMetaFromPanel(drawing) {
-        if (!drawing || !drawing.meta) return;
-        const panel = document.getElementById('orderPanel');
-        if (!panel || !panel.classList.contains('visible')) return;
-
-        if (!document.getElementById('autoBreakevenToggle')?.checked
-            || !document.getElementById('enableSL')?.checked) {
-            drawing.meta.breakevenPrice = null;
-            return;
-        }
-
-        let p = NaN;
-        if (this.previewLines?.be?.targetPrice > 0) {
-            p = this.previewLines.be.targetPrice;
-        } else {
-            p = this._computeBreakevenTriggerPriceForRiskRewardDrawing();
-        }
-        drawing.meta.breakevenPrice = Number.isFinite(p) && p > 0 ? p : null;
     }
 
     /**
@@ -17705,81 +17623,10 @@ class OrderManager {
     }
 
     /**
-     * Risk/reward red + on stop: enable Auto Breakeven (preview BE line) instead of adding a split SL (SL2).
-     */
-    riskRewardAddBEFromTool(drawing) {
-        if (!drawing || !drawing.points || drawing.points.length < 3) return;
-        if (typeof this.openOrderPanel === 'function') {
-            this.openOrderPanel();
-        }
-        this.pushRiskRewardToolToManager(drawing);
-
-        const enableSL = document.getElementById('enableSL');
-        const slInputs = document.getElementById('slInputs');
-        if (enableSL && !enableSL.checked) {
-            enableSL.checked = true;
-            if (slInputs) slInputs.style.display = 'flex';
-            if (typeof enableSL.onchange === 'function') {
-                enableSL.onchange();
-            }
-        }
-
-        const slVal = drawing.points[1]?.y;
-        const slp = document.getElementById('slPrice');
-        const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision() : 5;
-        if (slp && Number.isFinite(slVal) && slVal > 0) {
-            slp.value = typeof this.formatPrice === 'function' ? this.formatPrice(slVal) : slVal.toFixed(prec);
-        }
-
-        const trailingSLToggleMutex = document.getElementById('trailingSLToggle');
-        const trailingSLSettingsMutex = document.getElementById('trailingSLSettings');
-        if (trailingSLToggleMutex?.checked) {
-            if (!this._beTrailMutex) {
-                this._beTrailMutex = true;
-                trailingSLToggleMutex.checked = false;
-                if (trailingSLSettingsMutex) trailingSLSettingsMutex.classList.add('is-hidden');
-                if (typeof this.stopTrailingSL === 'function') this.stopTrailingSL();
-                if (typeof this._updateTrailingSummary === 'function') this._updateTrailingSummary();
-                this._beTrailMutex = false;
-                this.showNotification('Trailing Stop turned off — Breakeven and Trailing cannot both be on.', 'info', 2600);
-            }
-        }
-
-        if (drawing.meta) {
-            drawing.meta.extraStops = [];
-        }
-
-        const autoBreakevenToggle = document.getElementById('autoBreakevenToggle');
-        if (autoBreakevenToggle) {
-            autoBreakevenToggle.checked = true;
-            if (typeof autoBreakevenToggle.onchange === 'function') {
-                autoBreakevenToggle.onchange();
-            } else {
-                document.getElementById('breakevenSettings')?.classList.remove('is-hidden');
-                this.beManuallyPositioned = false;
-                this.updatePreviewLines();
-                if (typeof this._updateBreakevenSummary === 'function') this._updateBreakevenSummary();
-            }
-            if (typeof this._checkBreakevenTrailingConflict === 'function') {
-                this._checkBreakevenTrailingConflict();
-            }
-        }
-
-        if (typeof drawing.ensureRiskSettings === 'function') drawing.ensureRiskSettings();
-        this.calculateAdvancedRiskReward();
-        if (typeof this.updatePlaceButtonText === 'function') this.updatePlaceButtonText();
-
-        this.pullRiskRewardToolFromManager(drawing);
-    }
-
-    /**
      * Replace multi-entry ladder with Entry1 + one default E2 (same math as first-time R/R entry +).
-     * E2 is placed between primary entry and stop (like TP2 between entry and main TP) so the ladder
-     * stays inside the entry–stop span instead of stepping outward by a fixed %.
      * @param {number} currentPrice - primary entry price (Entry1)
-     * @param {number} [stopPrice] - stop loss price (drawing SL); fallback offset if missing or span too tight
      */
-    _buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice, stopPrice) {
+    _buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice) {
         if (!Number.isFinite(this.multiEntryIdCounter)) this.multiEntryIdCounter = 1;
         const psMode = this.positionSizeMode || 'risk-usd';
         let amt1; let amt2;
@@ -17798,25 +17645,12 @@ class OrderManager {
         this.multiEntryLevels = [
             { id: this.multiEntryIdCounter++, price: currentPrice, amount: amt1 }
         ];
-        const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision() : 5;
-        const pip = Number(this.pipSize) > 0 ? Number(this.pipSize) : 0.0001;
-        const minSpan = Math.max(Math.abs(currentPrice) * 1e-9, pip * 2, 10 ** (-prec));
-        const sl = Number(stopPrice);
-        let secondPrice = 0;
-        if (currentPrice > 0 && Number.isFinite(sl) && sl > 0 && Math.abs(currentPrice - sl) > minSpan) {
-            const mid = this.orderSide === 'BUY'
-                ? sl + (currentPrice - sl) * 0.5
-                : currentPrice + (sl - currentPrice) * 0.5;
-            secondPrice = this._clampMultiEntryPriceForStop(mid, [currentPrice]);
-            if (!Number.isFinite(secondPrice) || Math.abs(secondPrice - currentPrice) < minSpan * 0.25) {
-                secondPrice = 0;
-            }
-        }
-        if (!secondPrice && currentPrice > 0) {
-            const offsetDir = (this.orderSide === 'SELL') ? 1 : -1;
-            const rawSecond = currentPrice * (1 + offsetDir * 0.0045);
-            secondPrice = this._clampMultiEntryPriceForStop(rawSecond, [currentPrice]);
-        }
+        const offsetDir = (this.orderSide === 'SELL') ? 1 : -1;
+        // ~0.45% from primary — wider default than 0.1% so E2 is not visually on the entry line
+        const rawSecond = currentPrice > 0 ? currentPrice * (1 + offsetDir * 0.0045) : 0;
+        const secondPrice = currentPrice > 0
+            ? this._clampMultiEntryPriceForStop(rawSecond, [currentPrice])
+            : 0;
         this.multiEntryLevels.push({
             id: this.multiEntryIdCounter++,
             price: secondPrice,
@@ -17832,13 +17666,12 @@ class OrderManager {
         this.pushRiskRewardToolToManager(drawing);
         const allE = typeof drawing._allEntryPrices === 'function' ? drawing._allEntryPrices() : [drawing.points[0].y];
         const currentPrice = drawing.points[0].y;
-        const stopY = drawing.points?.[1]?.y;
         if (!this.isMultiEntryMode || !this.multiEntryLevels?.length || allE.length <= 1) {
-            this._buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice, stopY);
+            this._buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice);
             // Same as panel "Multi": show multi-entry UI, preview lines, risk summary — not only isMultiEntryMode + rows.
             this.setEntryMode(true);
         } else {
-            this._buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice, stopY);
+            this._buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice);
             this._rebalanceLevelAmountsToTarget();
             this.renderMultiEntryRows();
             this.syncMultiEntryToSplitEntries();
