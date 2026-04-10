@@ -1374,6 +1374,21 @@ class BaseRiskRewardTool extends BaseDrawing {
         return Math.min(Math.max(price, lo), hi);
     }
 
+    /**
+     * Drop stale rrBreakevenLine when auto-BE is off or SL disabled — same rules as pullRiskRewardToolFromManager.
+     * Prevents BE line/badge from saved state or old sync when the panel is not active.
+     */
+    _syncBreakevenMetaWithPanel() {
+        if (typeof document === 'undefined') return;
+        if (!document.getElementById('autoBreakevenToggle')) return;
+        const beOn = document.getElementById('autoBreakevenToggle')?.checked;
+        const slEn = document.getElementById('enableSL')?.checked;
+        const slPx = parseFloat(document.getElementById('slPrice')?.value || '');
+        if (!beOn || !slEn || !Number.isFinite(slPx) || !(slPx > 0)) {
+            if (this.meta?.rrBreakevenLine) delete this.meta.rrBreakevenLine;
+        }
+    }
+
     setEntryPrice(price) {
         if (!Array.isArray(this.points) || this.points.length === 0) return;
         const delta = price - this.points[0].y;
@@ -1865,6 +1880,7 @@ class BaseRiskRewardTool extends BaseDrawing {
 
     render(container, scales) {
         this.ensureRiskSettings();
+        this._syncBreakevenMetaWithPanel();
         if (this.group) {
             this.group.remove();
         }
