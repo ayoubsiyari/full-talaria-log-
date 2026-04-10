@@ -16235,11 +16235,15 @@ class OrderManager {
             const multiRows = document.getElementById('multiEntryRows');
             if (multiRows) multiRows.innerHTML = '';
 
+            // Single-entry field and RR tool points[0] are the primary leg — not a lot-weighted average.
+            // Using the average here made the entry line jump when switching Multi → Single or when the panel re-synced.
             if (this.multiEntryLevels.length > 0) {
-                const avgPrice = this._calcMultiEntryAvgPrice();
-                if (avgPrice > 0) {
+                const primaryPx = this.multiEntryLevels[0]?.price > 0
+                    ? this.multiEntryLevels[0].price
+                    : this._calcMultiEntryAvgPrice();
+                if (primaryPx > 0) {
                     const entryInput = document.getElementById('orderEntryPrice');
-                    if (entryInput) entryInput.value = this.formatPrice(avgPrice);
+                    if (entryInput) entryInput.value = this.formatPrice(primaryPx);
                 }
             }
 
