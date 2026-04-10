@@ -9155,6 +9155,58 @@ class OrderManager {
                     -webkit-text-fill-color: #131722 !important;
                 }
 
+                /* BE / trailing unit tabs live in .order-adv-card (not .order-button-group--inline) — need real rules + no native button chrome */
+                .order-adv-card .breakeven-mode-tab,
+                .order-adv-card .trailing-unit-tab {
+                    padding: 4px 10px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-family: inherit;
+                    line-height: 1.2;
+                    margin: 0;
+                    appearance: none;
+                    -webkit-appearance: none;
+                    box-shadow: none;
+                    background: transparent;
+                    color: #94a3b8;
+                    border: 1px solid #334155;
+                    -webkit-text-fill-color: #94a3b8;
+                    transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+                }
+                .order-adv-card .breakeven-mode-tab.active,
+                .order-adv-card .trailing-unit-tab.active {
+                    background: #ca8a04;
+                    color: #0f172a;
+                    border-color: transparent;
+                    -webkit-text-fill-color: #0f172a;
+                }
+                .order-adv-card .breakeven-mode-tab:hover:not(.active),
+                .order-adv-card .trailing-unit-tab:hover:not(.active) {
+                    color: var(--om-tx);
+                    -webkit-text-fill-color: var(--om-tx);
+                }
+                body.light-mode .order-adv-card .breakeven-mode-tab,
+                body.light-mode .order-adv-card .trailing-unit-tab {
+                    background: #ffffff !important;
+                    border: 1px solid #e0e3eb !important;
+                    color: #787b86 !important;
+                    -webkit-text-fill-color: #787b86 !important;
+                }
+                body.light-mode .order-adv-card .breakeven-mode-tab.active,
+                body.light-mode .order-adv-card .trailing-unit-tab.active {
+                    background: rgba(201, 168, 76, 0.14) !important;
+                    border: 1px solid rgba(201, 168, 76, 0.4) !important;
+                    color: #b8922a !important;
+                    -webkit-text-fill-color: #b8922a !important;
+                }
+                body.light-mode .order-adv-card .breakeven-mode-tab:hover:not(.active),
+                body.light-mode .order-adv-card .trailing-unit-tab:hover:not(.active) {
+                    color: #131722 !important;
+                    -webkit-text-fill-color: #131722 !important;
+                }
+
                 /* ── MISC ────────────────────────────────────────────────────────── */
                 .is-hidden { display: none !important; }
             `;
@@ -9531,9 +9583,9 @@ class OrderManager {
                     <div id="breakevenSettings" class="is-hidden">
                         <div class="trailing-unit-row" style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; align-items:center;">
                             <span style="font-size:10px; color:#94a3b8; margin-right:4px;">Units</span>
-                            <button type="button" class="breakeven-mode-tab active" data-mode="rr" title="Multiples of initial risk (|entry − SL|)" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:#ca8a04;color:#0f172a;border:none;">R</button>
-                            <button type="button" class="breakeven-mode-tab" data-mode="pips" title="Points / Pips" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:transparent;color:#94a3b8;border:1px solid #334155;">Pips</button>
-                            <button type="button" class="breakeven-mode-tab" data-mode="amount" title="Profit in account currency" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:transparent;color:#94a3b8;border:1px solid #334155;">$</button>
+                            <button type="button" class="breakeven-mode-tab active" data-mode="rr" title="Multiples of initial risk (|entry − SL|)">R</button>
+                            <button type="button" class="breakeven-mode-tab" data-mode="pips" title="Points / Pips">Pips</button>
+                            <button type="button" class="breakeven-mode-tab" data-mode="amount" title="Profit in account currency">$</button>
                         </div>
                         <div class="order-adv-card__body">
                             <span>After</span>
@@ -9566,9 +9618,9 @@ class OrderManager {
                     <div id="trailingSLSettings" class="is-hidden">
                         <div class="trailing-unit-row" style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; align-items:center;">
                             <span style="font-size:10px; color:#94a3b8; margin-right:4px;">Units</span>
-                            <button type="button" class="trailing-unit-tab active" data-trail-unit="rr" title="Multiples of initial risk (|entry − SL|)" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:#ca8a04;color:#0f172a;border:none;">R</button>
-                            <button type="button" class="trailing-unit-tab" data-trail-unit="pips" title="Pips" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:transparent;color:#94a3b8;border:1px solid #334155;">Pips</button>
-                            <button type="button" class="trailing-unit-tab" data-trail-unit="amount" title="Profit in account currency (uses lot size)" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:transparent;color:#94a3b8;border:1px solid #334155;">$</button>
+                            <button type="button" class="trailing-unit-tab active" data-trail-unit="rr" title="Multiples of initial risk (|entry − SL|)">R</button>
+                            <button type="button" class="trailing-unit-tab" data-trail-unit="pips" title="Pips">Pips</button>
+                            <button type="button" class="trailing-unit-tab" data-trail-unit="amount" title="Profit in account currency (uses lot size)">$</button>
                         </div>
                         <div class="order-adv-card__body">
                             <span>After</span>
@@ -11150,12 +11202,10 @@ class OrderManager {
                 pipOffsetInput.value = order.breakevenSettings.pipOffset ?? 0;
             }
 
-            const _beActiveStyle  = 'padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:#ca8a04;color:#0f172a;border:none;';
-            const _beInactiveStyle = 'padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:transparent;color:#94a3b8;border:1px solid #334155;';
-            document.querySelectorAll('.breakeven-mode-tab').forEach(tab => {
+            document.querySelectorAll('.breakeven-mode-tab').forEach((tab) => {
                 const m = tab.getAttribute('data-mode');
                 const isActive = m === this.breakevenMode;
-                tab.style.cssText = isActive ? _beActiveStyle : _beInactiveStyle;
+                tab.style.cssText = '';
                 tab.classList.toggle('active', isActive);
             });
             // Restore unit label and offset visibility
@@ -11884,13 +11934,10 @@ class OrderManager {
 
                 this.breakevenMode = mode;
 
-                // --- Update tab styles ---
-                document.querySelectorAll('.breakeven-mode-tab').forEach(t => {
-                    t.style.cssText = 'padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:transparent;color:#94a3b8;border:1px solid #334155;';
-                    t.classList.remove('active');
+                document.querySelectorAll('.breakeven-mode-tab').forEach((t) => {
+                    t.style.cssText = '';
+                    t.classList.toggle('active', t === tab);
                 });
-                tab.style.cssText = 'padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:#ca8a04;color:#0f172a;border:none;';
-                tab.classList.add('active');
 
                 // --- Update unit label ---
                 const unitText = mode === 'rr' ? 'R' : mode === 'pips' ? 'Pips' : '$';
@@ -14152,10 +14199,8 @@ class OrderManager {
         document.querySelectorAll('.trailing-unit-tab').forEach((btn) => {
             const m = btn.getAttribute('data-trail-unit');
             const on = m === mode;
+            btn.style.cssText = '';
             btn.classList.toggle('active', on);
-            btn.style.background = on ? '#ca8a04' : 'transparent';
-            btn.style.color = on ? '#0f172a' : '#94a3b8';
-            btn.style.border = on ? 'none' : '1px solid #334155';
         });
         this._updateTrailingInlineUnits();
         this._updateTrailingSummary();
@@ -33006,8 +33051,8 @@ class OrderManager {
             if (beAmountInput) beAmountInput.style.display = 'flex';
         }
         
-        // Update tab styling
-        document.querySelectorAll('.breakeven-mode-tab').forEach(t => {
+        // Tab visuals: .order-adv-card rules + .active (do not clear without CSS — was breaking native button chrome)
+        document.querySelectorAll('.breakeven-mode-tab').forEach((t) => {
             const tabMode = t.getAttribute('data-mode');
             t.style.cssText = '';
             t.classList.toggle('active', tabMode === beMode);
