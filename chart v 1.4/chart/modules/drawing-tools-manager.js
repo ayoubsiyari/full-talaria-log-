@@ -1147,6 +1147,12 @@ class DrawingToolsManager {
                     event.target.closest('.toolbar')) {
                     return;
                 }
+
+                // RR + controls sit outside hit-tested zone; don't treat their click as "background".
+                const clickTgt = event.target;
+                if (clickTgt && typeof clickTgt.closest === 'function' && clickTgt.closest('.rr-plus-btn')) {
+                    return;
+                }
                 
                 if (!event.ctrlKey && this.selectedDrawings.length > 0 && !this.isRectSelecting) {
                     // [debug removed]
@@ -1801,7 +1807,30 @@ class DrawingToolsManager {
                 }
             }
 
+            // RR + buttons are outside the zone geometry — findDrawingsAtPoint misses them; without this
+            // mousedown falls through to "empty space" and deselects the tool before the click runs.
+            const rrPlusBtnNode = rawTargetNode && rawTargetNode.closest
+                ? rawTargetNode.closest('.rr-plus-btn')
+                : null;
+            if (!drawing && rrPlusBtnNode) {
+                const plusDrawingGroup = rawTargetNode.closest('.drawing');
+                if (plusDrawingGroup) {
+                    const plusDrawingId = d3.select(plusDrawingGroup).attr('data-id');
+                    const plusDrawing = this.drawings.find(d => d && d.id === plusDrawingId);
+                    if (plusDrawing) {
+                        drawing = plusDrawing;
+                        drawingGroup = plusDrawingGroup;
+                    }
+                }
+            }
+
             if (drawing) {
+                if (rawTargetNode && rawTargetNode.closest && rawTargetNode.closest('.rr-plus-btn')) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    return;
+                }
+
 
                 const stopDirectResizeListeners = () => {
                     if (this._directResizeMoveHandler) {
