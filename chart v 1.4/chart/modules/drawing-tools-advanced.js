@@ -2394,24 +2394,9 @@ class BaseRiskRewardTool extends BaseDrawing {
                     if (typeof e.preventDefault === 'function') e.preventDefault();
                     handler();
                 };
-                g.append('circle')
-                    .attr('class', 'rr-plus-hit')
-                    .attr('cx', plusX)
-                    .attr('cy', lineY)
-                    .attr('r', plusHitR)
-                    // Nearly invisible but not CSS/SVG "transparent" — browsers often skip hit-testing
-                    // the interior of a fully transparent, strokeless circle; only the rim feels clickable.
-                    .attr('fill', 'rgba(0,0,0,0.02)')
-                    .attr('stroke', 'none')
-                    .style('pointer-events', 'all')
-                    .style('cursor', 'pointer')
-                    // Stop mousedown bubbling to svg (empty-space → deselect) but do not preventDefault
-                    // or the browser may skip the click that runs the add handler.
-                    .on('mousedown', (e) => {
-                        if (e.button !== 0) return;
-                        e.stopPropagation();
-                    })
-                    .on('click', onClick);
+                // Paint visible glyph first; put the hit target LAST so it sits on top. Relying on
+                // pointer-events:none on text/circle is flaky in SVG — without a top hit layer,
+                // only stroke/edge regions feel clickable.
                 g.append('circle')
                     .attr('class', 'rr-plus-visible')
                     .attr('cx', plusX)
@@ -2420,6 +2405,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .attr('fill', fill)
                     .attr('stroke', 'rgba(255,255,255,0.85)')
                     .attr('stroke-width', 1)
+                    .attr('pointer-events', 'none')
                     .style('pointer-events', 'none')
                     .style('cursor', 'inherit');
                 g.append('text')
@@ -2429,8 +2415,25 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .attr('fill', '#ffffff')
                     .attr('font-size', '12px')
                     .attr('font-weight', '700')
+                    .attr('pointer-events', 'none')
                     .style('pointer-events', 'none')
                     .text('+');
+                g.append('circle')
+                    .attr('class', 'rr-plus-hit')
+                    .attr('cx', plusX)
+                    .attr('cy', lineY)
+                    .attr('r', plusHitR)
+                    .attr('fill', '#000000')
+                    .attr('fill-opacity', 0.04)
+                    .attr('stroke', 'none')
+                    .attr('pointer-events', 'all')
+                    .style('pointer-events', 'all')
+                    .style('cursor', 'pointer')
+                    .on('mousedown', (e) => {
+                        if (e.button !== 0) return;
+                        e.stopPropagation();
+                    })
+                    .on('click', onClick);
             };
             mkPlus(targetY, '#16a34a', () => this.addExtraTarget());
             mkPlus(entryY, '#2962FF', () => this.addExtraEntry());
