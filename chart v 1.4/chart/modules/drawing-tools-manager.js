@@ -3725,6 +3725,12 @@ class DrawingToolsManager {
         if (drawing.type === 'long-position' || drawing.type === 'short-position') {
             drawing.group.selectAll('.rr-no-hit text, .rr-no-hit rect, .rr-no-hit tspan')
                 .style('pointer-events', 'none');
+            drawing.group.selectAll('.rr-mini-level-badge')
+                .style('pointer-events', 'none');
+            // Multi-entry: P&L / R:R pill on avg entry — draggable for whole-tool move (same as zones).
+            drawing.group.selectAll('.rr-multi-pill-drag rect, .rr-multi-pill-drag text, .rr-multi-pill-drag tspan')
+                .style('pointer-events', 'all')
+                .style('cursor', 'move');
         }
         drawing.group.selectAll('.rr-plus-btn .rr-plus-hit')
             .style('pointer-events', 'all')

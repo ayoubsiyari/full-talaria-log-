@@ -1984,11 +1984,22 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         const bodyTopPx = Math.min(riskTop, rewTop);
         const bodyBotPx = Math.max(riskBot, rewBot);
-        // No whole-tool drag on the entry row — gap so only the entry hit strip (painted later) sees events.
+        // No whole-tool drag across entry-related Ys (E1, E2, avg). Gap only around avg would leave E1/E2 under .rr-body-drag.
         const entryRowGapPx = 36;
         const gapHalf = entryRowGapPx / 2;
-        const bandTop = avgEntryYpx - gapHalf;
-        const bandBot = avgEntryYpx + gapHalf;
+        let bandTop;
+        let bandBot;
+        if (hasMultiEntry) {
+            const ys = [entryY, avgEntryYpx];
+            (this.meta.extraEntries || []).forEach((row) => {
+                if (row && Number.isFinite(row.y)) ys.push(scales.yScale(row.y));
+            });
+            bandTop = Math.min(...ys) - gapHalf;
+            bandBot = Math.max(...ys) + gapHalf;
+        } else {
+            bandTop = entryY - gapHalf;
+            bandBot = entryY + gapHalf;
+        }
         const upperBodyH = Math.max(0, bandTop - bodyTopPx);
         const lowerBodyY = bandBot;
         const lowerBodyH = Math.max(0, bodyBotPx - lowerBodyY);
@@ -2248,9 +2259,10 @@ class BaseRiskRewardTool extends BaseDrawing {
             const pnl = 0; // Will be calculated when order is active
             const centerInfoLine1 = `Open P&L: ${pnl.toFixed(0)}, Qty: ${quantity.toFixed(2)}`;
             const centerInfoLine2 = `Risk/Reward Ratio: ${rrRatio}`;
+            // Multi-entry: center pill on avg — make it a whole-tool drag handle (raised above primary entry strip).
             const centerInfo = this.group.append('g')
-                .attr('class', 'center-info rr-no-hit')
-                .style('pointer-events', 'none');
+                .attr('class', hasMultiEntry ? 'center-info rr-multi-pill-drag' : 'center-info rr-no-hit')
+                .style('pointer-events', hasMultiEntry ? null : 'none');
 
             // Calculate center X position of the zone
             const zoneCenterX = zoneX1 + (zoneWidth / 2);
@@ -2291,7 +2303,7 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             const centerInfoFill = this.isLong ? stopLabelFill : targetLabelFill;
 
-            centerInfo.insert('rect', 'text')
+            const centerPillRect = centerInfo.insert('rect', 'text')
                 .attr('x', centerRectX)
                 .attr('y', centerRectY)
                 .attr('width', centerWidth)
@@ -2299,8 +2311,12 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('fill', centerInfoFill)
                 .attr('stroke', '#ffffff')
                 .attr('stroke-width', 2)
-                .attr('rx', centerLabelRadius)
-                .style('pointer-events', 'none');
+                .attr('rx', centerLabelRadius);
+            if (hasMultiEntry) {
+                centerPillRect.style('pointer-events', 'all').style('cursor', 'move');
+            } else {
+                centerPillRect.style('pointer-events', 'none');
+            }
 
             const centerTextX = centerRectX + (centerWidth / 2);
             const centerTextY = centerRectY + centerPaddingY;
@@ -2580,6 +2596,11 @@ class BaseRiskRewardTool extends BaseDrawing {
             mkPlus(targetY, '#16a34a', () => this.addExtraTarget());
             mkPlus(entryY, '#2962FF', () => this.addExtraEntry());
             mkPlus(stopY, '#ef4444', () => this.addExtraStop());
+        }
+
+        if (this.selected && hasMultiEntry) {
+            const pill = this.group.select('g.center-info.rr-multi-pill-drag');
+            if (!pill.empty()) pill.raise();
         }
 
         return this.group;
