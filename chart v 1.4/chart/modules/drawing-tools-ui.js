@@ -29975,6 +29975,10 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
             om.syncOrderPanelToRRMirror();
         }
 
+        if (om && typeof om.markRRMirrorHydrated === "function") {
+            om.markRRMirrorHydrated();
+        }
+
         self._refreshRiskRewardSummaryFromDrawing(drawing, {
             openPnlValueText,
             qtyValueText,

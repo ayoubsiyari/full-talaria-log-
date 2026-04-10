@@ -16685,11 +16685,21 @@ class OrderManager {
     registerRROrderMirror(mounts) {
         this._rrOrderMirrorMounts = mounts && mounts.root ? mounts : null;
         this._rrMirrorSummaryRefresh = mounts && typeof mounts.onSummaryRefresh === 'function' ? mounts.onSummaryRefresh : null;
+        this._rrMirrorHydrated = false;
+    }
+
+    /**
+     * After pushRiskRewardToolToManager + sync, allow mirror edits to flow back to the order panel.
+     * Prevents a fresh mirror (template 0s) from overwriting the real panel via debounced apply.
+     */
+    markRRMirrorHydrated() {
+        this._rrMirrorHydrated = true;
     }
 
     unregisterRROrderMirror() {
         this._rrOrderMirrorMounts = null;
         this._rrMirrorSummaryRefresh = null;
+        this._rrMirrorHydrated = false;
         if (this._rrMirrorRefreshRaf) {
             cancelAnimationFrame(this._rrMirrorRefreshRaf);
             this._rrMirrorRefreshRaf = null;
@@ -16824,6 +16834,7 @@ class OrderManager {
      */
     applyRRMirrorToOrderPanel() {
         if (!this._rrOrderMirrorMounts || !this._rrOrderMirrorMounts.root) return;
+        if (!this._rrMirrorHydrated) return;
         this._rrMirrorSuppressEcho = true;
         try {
             const pairs = [
@@ -18203,6 +18214,22 @@ class OrderManager {
     }
 
     /**
+     * Copy primary RR prices into the settings mirror so reopen is not stuck on template 0s when
+     * panel↔mirror sync races or the order panel is not mounted yet.
+     */
+    _syncRRMirrorPriceFieldsFromPush(prec, entryY, slY, tpFarY) {
+        if (!this._rrOrderMirrorMounts?.root) return;
+        const write = (id, y) => {
+            const el = document.getElementById(id);
+            if (!el || document.activeElement === el) return;
+            if (Number.isFinite(y) && y > 0) el.value = y.toFixed(prec);
+        };
+        write('rrm-orderEntryPrice', entryY);
+        write('rrm-slPrice', slY);
+        write('rrm-tpPrice', tpFarY);
+    }
+
+    /**
      * Push long/short position tool geometry into the same inputs + tpTargets / multiEntryLevels
      * structures used by the order panel (for shared + / drag math).
      */
@@ -18321,6 +18348,8 @@ class OrderManager {
             this._applyBreakevenInputsFromTriggerPrice(beLineY);
             this.beManuallyPositioned = true;
         }
+
+        this._syncRRMirrorPriceFieldsFromPush(prec, entry, sl, far);
     }
 
     /**
@@ -18331,7 +18360,8 @@ class OrderManager {
         const isLong = drawing.meta?.orientation === 'long' || drawing.type === 'long-position';
         const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision() : 5;
         const slPx = parseFloat(document.getElementById('slPrice')?.value || '');
-        if (Number.isFinite(slPx)) drawing.points[1] = { ...drawing.points[1], y: slPx };
+        // Panel defaults use 0; treating 0 as valid overwrote chart geometry on reopen.
+        if (Number.isFinite(slPx) && slPx > 0) drawing.points[1] = { ...drawing.points[1], y: slPx };
 
         // Use ladder row 0 as RR points[0] whenever multi-entry UI is on (including exactly one row).
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length >= 1) {
@@ -18347,7 +18377,7 @@ class OrderManager {
             }
         } else {
             const e = parseFloat(document.getElementById('orderEntryPrice')?.value || '');
-            if (Number.isFinite(e)) drawing.points[0] = { ...drawing.points[0], y: e };
+            if (Number.isFinite(e) && e > 0) drawing.points[0] = { ...drawing.points[0], y: e };
             drawing.meta.extraEntries = [];
         }
 
@@ -18355,12 +18385,14 @@ class OrderManager {
         if (mtOn && this.tpTargets && this.tpTargets.length > 1) {
             const sorted = [...this.tpTargets].sort((a, b) => (isLong ? a.price - b.price : b.price - a.price));
             const last = sorted[sorted.length - 1];
-            drawing.points[2] = { ...drawing.points[2], y: last.price };
+            if (last && last.price > 0) {
+                drawing.points[2] = { ...drawing.points[2], y: last.price };
+            }
             if (!drawing.meta.extraTargets) drawing.meta.extraTargets = [];
             drawing.meta.extraTargets = sorted.slice(0, -1).map((t) => ({ id: t.id, y: t.price }));
         } else {
             const tpPx = parseFloat(document.getElementById('tpPrice')?.value || '');
-            if (Number.isFinite(tpPx)) drawing.points[2] = { ...drawing.points[2], y: tpPx };
+            if (Number.isFinite(tpPx) && tpPx > 0) drawing.points[2] = { ...drawing.points[2], y: tpPx };
             drawing.meta.extraTargets = [];
         }
 
