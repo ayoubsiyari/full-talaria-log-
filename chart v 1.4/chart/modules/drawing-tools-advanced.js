@@ -1944,16 +1944,16 @@ class BaseRiskRewardTool extends BaseDrawing {
         const worstStopPx = scales.yScale(this.getAggregatedStopPrice());
         const bestTargetPx = scales.yScale(this.getAggregatedTargetPrice());
 
-        // Zone split + body-drag gap + solid middle stroke: always E1 (points[0]) — same movement as single-entry.
-        const riskTop = Math.min(entryY, worstStopPx);
-        const riskBot = Math.max(entryY, worstStopPx);
+        // Zone fill split at weighted avg (multi-entry). Drag gap / primary strip stay on E1 (below).
+        const riskTop = Math.min(avgEntryYpx, worstStopPx);
+        const riskBot = Math.max(avgEntryYpx, worstStopPx);
         const riskHeight = riskBot - riskTop;
 
-        const rewTop = Math.min(entryY, bestTargetPx);
-        const rewBot = Math.max(entryY, bestTargetPx);
+        const rewTop = Math.min(avgEntryYpx, bestTargetPx);
+        const rewBot = Math.max(avgEntryYpx, bestTargetPx);
         const rewardHeight = rewBot - rewTop;
 
-        // R:R and edge labels can still reference weighted avg when multi-entry (informational only).
+        // R:R text uses same avg reference as the zone boundary.
         const risk = Math.max(Math.abs(zoneEntryPrice - stop.y), 0.0000001);
         const reward = Math.abs(target.y - zoneEntryPrice);
         const rrRatio = (reward / risk).toFixed(2);
@@ -2010,34 +2010,41 @@ class BaseRiskRewardTool extends BaseDrawing {
         appendBodyDrag(bodyTopPx, upperBodyH);
         appendBodyDrag(lowerBodyY, lowerBodyH);
 
-        // Optional dashed guide at weighted avg (multi-entry only). Solid E1 line is the main boundary — same as single-entry feel.
-        if (hasMultiEntry && Math.abs(avgEntryYpx - entryY) > 0.5) {
+        // Multi: solid line at avg (visual zone edge, not a whole-tool drag target). Dashed E1 = ladder leg.
+        // Single: one rr-entry-stroke at E1 as before.
+        if (hasMultiEntry) {
             this.group.append('line')
-                .attr('class', 'rr-extra-line rr-avg-guide')
+                .attr('class', 'rr-avg-zone-edge')
                 .attr('x1', zoneX1)
                 .attr('y1', avgEntryYpx)
                 .attr('x2', zoneX2)
                 .attr('y2', avgEntryYpx)
-                .attr('stroke', this.style.entryColor || '#787b86')
+                .attr('stroke', this.style.entryColor || '#565656ff')
+                .attr('stroke-width', 2)
+                .style('pointer-events', 'none')
+                .style('cursor', 'inherit');
+            this.group.append('line')
+                .attr('class', 'rr-extra-line rr-extra-entry rr-e1-leg')
+                .attr('x1', zoneX1)
+                .attr('y1', entryY)
+                .attr('x2', zoneX2)
+                .attr('y2', entryY)
+                .attr('stroke', this.style.entryColor || '#2962FF')
                 .attr('stroke-width', 1)
                 .attr('stroke-dasharray', dashExtra)
-                .attr('opacity', 0.85)
                 .style('pointer-events', 'none');
+        } else {
+            this.group.append('line')
+                .attr('class', 'shape-border rr-entry-stroke')
+                .attr('x1', zoneX1)
+                .attr('y1', entryY)
+                .attr('x2', zoneX2)
+                .attr('y2', entryY)
+                .attr('stroke', this.style.entryColor || '#565656ff')
+                .attr('stroke-width', 1.5)
+                .style('pointer-events', 'none')
+                .style('cursor', 'inherit');
         }
-
-        // Same as TP/stop visible lines: do not capture pointer-events on the stroke. Otherwise this
-        // line competes with whole-tool drag and blocks the entry hit rect / left handles (TP feels
-        // fine because its dashed line uses pointer-events: none).
-        this.group.append('line')
-            .attr('class', 'shape-border rr-entry-stroke')
-            .attr('x1', zoneX1)
-            .attr('y1', entryY)
-            .attr('x2', zoneX2)
-            .attr('y2', entryY)
-            .attr('stroke', this.style.entryColor || '#565656ff')
-            .attr('stroke-width', 1.5)
-            .style('pointer-events', 'none')
-            .style('cursor', 'inherit');
 
         this.group.append('line')
             .attr('x1', zoneX1)
@@ -2229,7 +2236,7 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             // Target / Stop labels: TV-like behavior (wide = edge-snapped, narrow = floated with fixed spacing)
             const targetLabelText = `Target: ${targetPrice.toFixed(5)} (${targetPercent}%) ${targetTicks}, Amount: ${targetAmount}`;
-            const targetSide = targetY <= entryY ? 'top' : 'bottom';
+            const targetSide = targetY <= avgEntryYpx ? 'top' : 'bottom';
             createEdgeLabel({
                 className: 'target-label',
                 text: targetLabelText,
@@ -2239,7 +2246,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             });
 
             const stopLabelText = `Stop: ${stopPrice.toFixed(5)} (${stopPercent}%) ${stopTicks}, Amount: ${stopAmount}`;
-            const stopSide = stopY <= entryY ? 'top' : 'bottom';
+            const stopSide = stopY <= avgEntryYpx ? 'top' : 'bottom';
             createEdgeLabel({
                 className: 'stop-label',
                 text: stopLabelText,
