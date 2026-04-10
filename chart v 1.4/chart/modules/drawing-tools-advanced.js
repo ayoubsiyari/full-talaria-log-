@@ -2265,60 +2265,56 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('x', centerTextX)
                 .attr('y', centerTextY + centerLineHeight);
 
-            /** Left-gutter mini badges: lots per entry, TP leg profit share, BE setting (rr-no-hit). */
+            /** Left-gutter mini badges: one horizontal line (e.g. "BE 1.56R", "E1 0.05 lot"). */
             const appendRrMiniBadge = (lineYpx, lineTexts, bgFill) => {
                 const parts = (lineTexts || []).filter((x) => x != null && String(x).length > 0);
                 if (!parts.length) return;
-                const padX = 5;
+                const line = parts.join(' ');
+                const padX = 6;
                 const padY = 3;
-                const gap = 2;
                 const g = this.group.append('g').attr('class', 'rr-mini-level-badge rr-no-hit').style('pointer-events', 'none');
-                const measured = [];
-                parts.forEach((txt, idx) => {
-                    const t = g.append('text')
-                        .attr('opacity', 0)
-                        .attr('font-size', idx === 0 ? '10px' : '9px')
-                        .attr('font-weight', idx === 0 ? '700' : '600')
-                        .attr('font-family', labelFontFamily)
-                        .text(String(txt));
-                    const bb = t.node().getBBox();
-                    measured.push({ txt: String(txt), w: bb.width, h: bb.height, idx });
-                    t.remove();
-                });
-                let maxW = 0;
-                let totalH = padY * 2;
-                measured.forEach((s, i) => {
-                    maxW = Math.max(maxW, s.w);
-                    totalH += s.h + (i < measured.length - 1 ? gap : 0);
-                });
-                const bw = maxW + padX * 2;
+                const tmp = g.append('text')
+                    .attr('x', 0)
+                    .attr('y', 0)
+                    .attr('dominant-baseline', 'hanging')
+                    .attr('font-size', '10px')
+                    .attr('font-weight', '600')
+                    .attr('font-family', labelFontFamily)
+                    .attr('opacity', 0)
+                    .text(line);
+                const bb = tmp.node().getBBox();
+                tmp.remove();
+                const bw = bb.width + padX * 2;
+                const bh = bb.height + padY * 2;
                 const bx = zoneX1 + 4;
-                const by = lineYpx - totalH / 2;
+                const by = lineYpx - bh / 2;
                 g.append('rect')
                     .attr('x', bx)
                     .attr('y', by)
                     .attr('width', bw)
-                    .attr('height', totalH)
+                    .attr('height', bh)
                     .attr('rx', 4)
                     .attr('fill', bgFill)
                     .attr('stroke', 'rgba(255,255,255,0.14)');
-                let ty = by + padY;
-                measured.forEach((s) => {
-                    g.append('text')
-                        .attr('x', bx + padX)
-                        .attr('y', ty)
-                        .attr('dominant-baseline', 'hanging')
-                        .attr('fill', s.idx === 0 ? '#f8fafc' : '#cbd5e1')
-                        .attr('font-size', s.idx === 0 ? '10px' : '9px')
-                        .attr('font-weight', s.idx === 0 ? '700' : '600')
-                        .attr('font-family', labelFontFamily)
-                        .text(s.txt);
-                    ty += s.h + gap;
-                });
+                g.append('text')
+                    .attr('x', bx + padX)
+                    .attr('y', by + padY)
+                    .attr('dominant-baseline', 'hanging')
+                    .attr('fill', '#f1f5f9')
+                    .attr('font-size', '10px')
+                    .attr('font-weight', '600')
+                    .attr('font-family', labelFontFamily)
+                    .text(line);
             };
 
             const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
-            const slForLots = Number.isFinite(stop.y) ? stop.y : parseFloat(document.getElementById('slPrice')?.value || '') || 0;
+            // SL/leg prices must come from the drawing (points), not panel-only OM rows: whole-tool moves
+            // update the drawing every frame while multiEntryLevels can lag or differ in float noise → lots jitter.
+            const rrPrec = typeof om?.getPricePrecision === 'function' ? om.getPricePrecision() : 5;
+            const rrRoundPx = (p) => (Number.isFinite(p) ? parseFloat(Number(p).toFixed(rrPrec)) : p);
+            const slFromDrawing = rrRoundPx(
+                Number.isFinite(stop.y) ? stop.y : parseFloat(document.getElementById('slPrice')?.value || '') || 0
+            );
             const pipS = om?.pipSize || this.getPriceStep();
             const pipV = om?.pipValuePerLot || 10;
             const entryFill = 'rgba(30, 64, 175, 0.92)';
@@ -2331,21 +2327,22 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             if (omMulti) {
                 om.multiEntryLevels.forEach((lv, i) => {
-                    if (!lv || !(lv.price > 0)) return;
+                    if (!lv) return;
                     let rowY = entry.y;
-                    if (i === 0) {
-                        rowY = entry.y;
-                    } else {
+                    if (i > 0) {
                         const ex = (this.meta.extraEntries || [])[i - 1];
                         rowY = ex && Number.isFinite(ex.y) ? ex.y : lv.price;
                     }
+                    if (!Number.isFinite(rowY) || rowY <= 0) return;
                     const yPix = scales.yScale(rowY);
+                    const legPx = rrRoundPx(rowY);
+                    const levelForLots = { ...lv, price: legPx };
                     let lotStr = '—';
-                    if (slForLots > 0 && typeof om._calcLevelLotSize === 'function') {
-                        const s = String(om._calcLevelLotSize(lv, slForLots, pipS, pipV) || '').trim();
+                    if (slFromDrawing > 0 && typeof om._calcLevelLotSize === 'function') {
+                        const s = String(om._calcLevelLotSize(levelForLots, slFromDrawing, pipS, pipV) || '').trim();
                         if (s) lotStr = s;
-                    } else if (typeof om._calcLevelLotSizeNumeric === 'function' && slForLots > 0) {
-                        const n = om._calcLevelLotSizeNumeric(lv, slForLots, pipS, pipV);
+                    } else if (typeof om._calcLevelLotSizeNumeric === 'function' && slFromDrawing > 0) {
+                        const n = om._calcLevelLotSizeNumeric(levelForLots, slFromDrawing, pipS, pipV);
                         if (Number.isFinite(n) && n > 0) lotStr = n.toFixed(2);
                     } else if (Number.isFinite(lv.amount) && lv.amount > 0 && om.positionSizeMode === 'lot-size') {
                         lotStr = String(parseFloat(Number(lv.amount).toFixed(2)));
