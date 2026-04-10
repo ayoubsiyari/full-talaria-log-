@@ -1435,31 +1435,17 @@ class BaseRiskRewardTool extends BaseDrawing {
     
     recalculateLotSizeFromRisk() {
         if (!this.meta.risk) return;
-
-        const om = (typeof window !== 'undefined' && window.chart && window.chart.orderManager) ? window.chart.orderManager : null;
-        const pipSize = (om && Number(om.pipSize) > 0) ? Number(om.pipSize) : 0.0001;
-        const pipValue = (om && Number(om.pipValuePerLot) > 0) ? Number(om.pipValuePerLot) : 10;
-
-        if (this.meta.risk.riskMode === 'lot-size') {
-            const fromPanel = om && parseFloat(document.getElementById('lotSizeAmount')?.value || '');
-            if (Number.isFinite(fromPanel) && fromPanel > 0) {
-                this.meta.risk.lotSize = fromPanel;
-                return;
-            }
-            const v = Number(this.meta.risk.lotSize);
-            this.meta.risk.lotSize = Number.isFinite(v) && v > 0 ? v : 0.01;
-            return;
-        }
-
+        
         const entry = this.meta.risk.entryPrice || 0;
         const stop = this.meta.risk.stopPrice || 0;
         const slDistance = Math.abs(entry - stop);
-
+        
         if (slDistance === 0 || entry === 0) {
             this.meta.risk.lotSize = 0.01;
             return;
         }
-
+        
+        // Get risk amount in USD
         let riskUSD = 0;
         if (this.meta.risk.riskMode === 'risk-usd') {
             riskUSD = this.meta.risk.riskAmountUSD || 100;
@@ -1467,10 +1453,14 @@ class BaseRiskRewardTool extends BaseDrawing {
             const accountSize = this.meta.risk.accountSize || 10000;
             riskUSD = (accountSize * (this.meta.risk.riskPercent || 1)) / 100;
         }
-
-        const slPips = slDistance / pipSize;
+        
+        // Calculate lot size using proper pip value formula
+        const slPips = slDistance / 0.0001;
+        const pipValue = 10;
         const calculatedLots = riskUSD / (slPips * pipValue);
         this.meta.risk.lotSize = Math.max(0.01, calculatedLots);
+        
+        console.log(`🔄 Lot size recalculated: ${this.meta.risk.lotSize.toFixed(2)} lots for risk $${riskUSD.toFixed(2)} @ ${slPips.toFixed(1)} pips`);
     }
 
     setAccountSize(value) {

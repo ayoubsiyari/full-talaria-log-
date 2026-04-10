@@ -155,12 +155,6 @@ class OrderManager {
         this.pendingTargetLines = [];
         this._pendingPositionsPanelRaf = null;
 
-        /** Long/Short tool settings: mirror DOM mounts (rrm-*) kept in sync with the order panel */
-        this._rrOrderMirrorMounts = null;
-        this._rrMirrorSummaryRefresh = null;
-        this._rrMirrorSuppressEcho = false;
-        this._rrMirrorRefreshRaf = null;
-
         /** Resampled bars per fileId+timeframe for off-chart mark / SL-TP (matches main chart TF) */
         this._miSeriesByFileId = new Map();
         this._miSeriesInflight = new Set();
@@ -2600,28 +2594,6 @@ class OrderManager {
             riskPercentInput?.classList.add('is-hidden');
             lotSizeInput?.classList.remove('is-hidden');
             if (balToggle) balToggle.style.display = 'none';
-        }
-        const rrmUsd = document.getElementById('rrm-riskUSDInput');
-        const rrmPct = document.getElementById('rrm-riskPercentInput');
-        const rrmLot = document.getElementById('rrm-lotSizeInput');
-        const rrmBal = document.getElementById('rrm-balanceSourceToggle');
-        if (rrmUsd && rrmPct && rrmLot) {
-            if (m === 'risk-usd') {
-                rrmUsd.classList.remove('is-hidden');
-                rrmPct.classList.add('is-hidden');
-                rrmLot.classList.add('is-hidden');
-                if (rrmBal) rrmBal.style.display = 'none';
-            } else if (m === 'risk-percent') {
-                rrmUsd.classList.add('is-hidden');
-                rrmPct.classList.remove('is-hidden');
-                rrmLot.classList.add('is-hidden');
-                if (rrmBal) rrmBal.style.display = 'flex';
-            } else {
-                rrmUsd.classList.add('is-hidden');
-                rrmPct.classList.add('is-hidden');
-                rrmLot.classList.remove('is-hidden');
-                if (rrmBal) rrmBal.style.display = 'none';
-            }
         }
         if (typeof this._syncTpProfitTargetFieldVisibility === 'function') {
             this._syncTpProfitTargetFieldVisibility();
@@ -11474,10 +11446,10 @@ class OrderManager {
                     this._convertMultiEntryAmountsForModeSwitch(prevMode, mode);
                 }
                 
-                // Update tab styling (panel + RR mirror use same data-mode)
+                // Update tab styling
                 document.querySelectorAll('.position-mode-tab').forEach(t => {
                     t.style.cssText = '';
-                    t.classList.toggle('active', t.dataset.mode === mode);
+                    t.classList.toggle('active', t === tab);
                 });
                 
                 // Show/hide appropriate input by toggling is-hidden class
@@ -11651,33 +11623,12 @@ class OrderManager {
             };
         }
         
-        // TP row delete — delegated (panel + RR mirror lists)
-        if (!OrderManager._tpRowDelDocBound) {
-            OrderManager._tpRowDelDocBound = true;
-            document.addEventListener('click', (e) => {
-                const del = e.target.closest('.order-tp-multi__row-del[data-tp-id]');
-                if (!del) return;
-                const om = window.chart && window.chart.orderManager;
-                if (!om || typeof om.removeTPTarget !== 'function') return;
-                e.preventDefault();
-                const tid = del.getAttribute('data-tp-id');
-                om.removeTPTarget(tid);
-            });
-        }
-
-        // Input stepper buttons (+/- controls) — document delegation: #orderPanel + RR mirror root
-        if (!OrderManager._orderStepperDocBound) {
-            OrderManager._orderStepperDocBound = true;
-            document.addEventListener('click', (e) => {
+        // Input stepper buttons (+/- controls) — delegation so multi-entry rows work after re-render
+        const orderPanelForSteppers = document.getElementById('orderPanel');
+        if (orderPanelForSteppers) {
+            orderPanelForSteppers.addEventListener('click', (e) => {
                 const btn = e.target.closest('.input-stepper');
-                if (!btn) return;
-                const orderPanelForSteppers = document.getElementById('orderPanel');
-                const om = window.chart && window.chart.orderManager;
-                if (!om) return;
-                const mirRoot = om._rrOrderMirrorMounts && om._rrOrderMirrorMounts.root;
-                const inPanel = orderPanelForSteppers && orderPanelForSteppers.contains(btn);
-                const inMirror = mirRoot && mirRoot.contains(btn);
-                if (!inPanel && !inMirror) return;
+                if (!btn || !orderPanelForSteppers.contains(btn)) return;
                 e.preventDefault();
 
                 const targetId = btn.dataset.target;
@@ -11688,7 +11639,7 @@ class OrderManager {
                 if (btn.dataset.stepMode === 'pip') {
                     const mult = parseFloat(btn.dataset.step);
                     if (!Number.isFinite(mult)) return;
-                    const pip = Number(om.pipSize) > 0 ? Number(om.pipSize) : 0.0001;
+                    const pip = Number(this.pipSize) > 0 ? Number(this.pipSize) : 0.0001;
                     step = mult * pip;
                 } else {
                     step = parseFloat(btn.dataset.step);
@@ -11698,13 +11649,13 @@ class OrderManager {
                 const currentValue = parseFloat(input.value) || 0;
                 let newValue = currentValue + step;
 
-                if (targetId === 'riskAmountUSD' || targetId === 'rrm-riskAmountUSD') {
+                if (targetId === 'riskAmountUSD') {
                     newValue = Math.max(1, newValue);
                     newValue = Math.round(newValue);
-                } else if (targetId === 'riskAmountPercent' || targetId === 'rrm-riskAmountPercent') {
+                } else if (targetId === 'riskAmountPercent') {
                     newValue = Math.max(0.1, newValue);
                     newValue = parseFloat(newValue.toFixed(1));
-                } else if (targetId === 'lotSizeAmount' || targetId === 'rrm-lotSizeAmount') {
+                } else if (targetId === 'lotSizeAmount') {
                     newValue = Math.max(0.01, newValue);
                     newValue = parseFloat(newValue.toFixed(2));
                 } else if (targetId === 'maxRiskPercent') {
@@ -11713,16 +11664,16 @@ class OrderManager {
                 } else if (targetId === 'maxRiskAmount') {
                     newValue = Math.max(0, newValue);
                     newValue = Math.round(newValue);
-                } else if (targetId === 'tpRRInput' || targetId === 'rrm-tpRRInput') {
+                } else if (targetId === 'tpRRInput') {
                     newValue = Math.max(0, newValue);
                     newValue = parseFloat(newValue.toFixed(1));
-                } else if (targetId === 'tpTargetProfitUSD' || targetId === 'rrm-tpTargetProfitUSD') {
+                } else if (targetId === 'tpTargetProfitUSD') {
                     newValue = Math.max(0, newValue);
                     newValue = Math.round(newValue);
                 } else if (targetId === 'tpTargetProfitPercent') {
                     newValue = Math.max(0, newValue);
                     newValue = parseFloat(newValue.toFixed(1));
-                } else if (targetId.includes('multiEntryAmount_')) {
+                } else if (targetId.startsWith('multiEntryAmount_')) {
                     const mode = this.positionSizeMode || 'risk-usd';
                     if (mode === 'lot-size') {
                         newValue = Math.max(0, newValue);
@@ -11734,7 +11685,7 @@ class OrderManager {
                         newValue = Math.max(0, newValue);
                         newValue = Math.round(newValue);
                     }
-                } else if (targetId.includes('multiEntryPrice_') || ['orderEntryPrice', 'slPrice', 'tpPrice', 'rrm-orderEntryPrice', 'rrm-slPrice', 'rrm-tpPrice'].includes(targetId)) {
+                } else if (targetId.startsWith('multiEntryPrice_') || ['orderEntryPrice', 'slPrice', 'tpPrice'].includes(targetId)) {
                     const p = this.getPricePrecision();
                     newValue = parseFloat(this.formatPrice(newValue, p));
                 }
@@ -11742,28 +11693,9 @@ class OrderManager {
                 input.value = newValue;
                 input.dispatchEvent(new Event('input', { bubbles: true }));
 
-                const rrmToCanon = {
-                    'rrm-riskAmountUSD': 'riskAmountUSD',
-                    'rrm-riskAmountPercent': 'riskAmountPercent',
-                    'rrm-lotSizeAmount': 'lotSizeAmount',
-                    'rrm-orderEntryPrice': 'orderEntryPrice',
-                    'rrm-slPrice': 'slPrice',
-                    'rrm-tpPrice': 'tpPrice',
-                    'rrm-tpRRInput': 'tpRRInput',
-                    'rrm-tpTargetProfitUSD': 'tpTargetProfitUSD'
-                };
-                const canonId = rrmToCanon[targetId];
-                if (canonId) {
-                    const cEl = document.getElementById(canonId);
-                    if (cEl) {
-                        cEl.value = input.value;
-                        cEl.dispatchEvent(new Event('input', { bubbles: true }));
-                    }
-                }
-
-                if (['riskAmountUSD', 'riskAmountPercent', 'lotSizeAmount', 'rrm-riskAmountUSD', 'rrm-riskAmountPercent', 'rrm-lotSizeAmount'].includes(targetId)) {
-                    om.calculateAdvancedRiskReward();
-                    om.updatePlaceButtonText();
+                if (['riskAmountUSD', 'riskAmountPercent', 'lotSizeAmount'].includes(targetId)) {
+                    this.calculateAdvancedRiskReward();
+                    this.updatePlaceButtonText();
                 }
 
                 console.log(`📊 Adjusted ${targetId}: ${currentValue} → ${newValue}`);
@@ -12731,7 +12663,6 @@ class OrderManager {
             if (br) br.style.width = '50%';
             if (bw) bw.style.width = '50%';
             this.updateMarginLevelBadge();
-            this._queueRefreshRRMirrorFromPanel();
             return;
         }
         
@@ -13069,7 +13000,6 @@ class OrderManager {
 
         this.updateMarginLevelBadge();
         this.updatePlaceButtonText();
-        this._queueRefreshRRMirrorFromPanel();
     }
 
     updateMarginLevelBadge() {
@@ -13571,14 +13501,11 @@ class OrderManager {
     }
     
     /**
-     * @param {HTMLElement} list
-     * @param {{ idPrefix?: string, blendElId?: string }} opts
+     * Render TP targets in UI
      */
-    _renderTPTargetsInto(list, opts = {}) {
+    renderTPTargets() {
+        const list = document.getElementById('multipleTPList');
         if (!list || !this.tpTargets) return;
-
-        const idPrefix = opts.idPrefix || '';
-        const blendElId = opts.blendElId || 'tpBlendedValue';
 
         const prec = this.getPricePrecision();
         const stepVal = Math.pow(10, -prec).toFixed(prec);
@@ -13589,16 +13516,20 @@ class OrderManager {
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
         const side = (this.orderSide || 'BUY').toUpperCase();
 
+        // Compute risk in USD the same way single TP does (via estimatePnLForPriceLevel)
         let riskUsd = 0;
         if (slEnabled && entryPrice > 0 && slPrice > 0 && quantity > 0) {
             riskUsd = Math.abs(this.estimatePnLForPriceLevel(side, entryPrice, slPrice, quantity));
         }
 
+        // Pre-compute effective percentages to match what placeOrder will actually do
         const effectivePcts = this._computeEffectiveTPPercentages(entryPrice, quantity, side);
 
         list.innerHTML = this.tpTargets.map((target, tIdx) => {
+            const pctShare = target.percentage || 0;
             const effectivePct = effectivePcts[tIdx] || 0;
 
+            // Per-target profit (USD) — same formula as single TP reward
             let profitUsd = 0;
             if (entryPrice > 0 && target.price > 0 && effectivePct > 0) {
                 const shareQty = quantity * (effectivePct / 100);
@@ -13607,6 +13538,8 @@ class OrderManager {
                 }
             }
 
+            // Per-target R:R — USD-based, matching single TP: (partialReward / partialRisk)
+            // partialRisk = total risk × effectivePct fraction
             let rr = '—';
             if (riskUsd > 0 && profitUsd > 0 && effectivePct > 0) {
                 const partialRisk = riskUsd * (effectivePct / 100);
@@ -13614,11 +13547,10 @@ class OrderManager {
             }
 
             const profitText = profitUsd > 0 ? profitUsd.toFixed(2) : '0.00';
-            const pid = `${idPrefix}tpTarget${target.id}Price`;
 
             return `<div class="order-tp-multi__row">
                 <div class="order-tp-multi__row-price">
-                    <input type="number" id="${pid}" value="${target.price > 0 ? target.price.toFixed(prec) : ''}" step="${stepVal}" placeholder="0">
+                    <input type="number" id="tpTarget${target.id}Price" value="${target.price > 0 ? target.price.toFixed(prec) : ''}" step="${stepVal}" placeholder="0">
                 </div>
                 <div class="order-tp-multi__row-rr">
                     <input type="text" value="${rr}" readonly tabindex="-1" style="color:#22c55e;text-align:center;cursor:default;background:transparent;border-color:transparent;">
@@ -13626,11 +13558,12 @@ class OrderManager {
                 <div class="order-tp-multi__row-profit">
                     <input type="text" value="${profitText}" readonly tabindex="-1" style="color:#22c55e;cursor:default;background:transparent;border-color:transparent;">
                 </div>
-                <button type="button" class="order-tp-multi__row-del" data-tp-id="${target.id}">×</button>
+                <button class="order-tp-multi__row-del" onclick="chart.orderManager.removeTPTarget(${target.id})">×</button>
             </div>`;
         }).join('');
 
-        const blendEl = document.getElementById(blendElId);
+        // Blended R:R and total profit — USD-based, matching single TP (reward / risk)
+        const blendEl = document.getElementById('tpBlendedValue');
         if (blendEl) {
             let totalProfit = 0;
             this.tpTargets.forEach((t, tIdx) => {
@@ -13646,9 +13579,9 @@ class OrderManager {
             blendEl.textContent = `${blendRR}R → +$${totalProfit.toFixed(2)}`;
         }
 
-        this.tpTargets.forEach((target) => {
-            const pid = `${idPrefix}tpTarget${target.id}Price`;
-            const priceInput = document.getElementById(pid);
+        // Wire input listeners — also trigger calculateAdvancedRiskReward for panel sync
+        this.tpTargets.forEach(target => {
+            const priceInput = document.getElementById(`tpTarget${target.id}Price`);
             if (priceInput) {
                 priceInput.oninput = () => {
                     target.price = parseFloat(priceInput.value) || 0;
@@ -13668,17 +13601,8 @@ class OrderManager {
                 };
             }
         });
-    }
 
-    /**
-     * Render TP targets in UI (order panel + optional RR mirror list).
-     */
-    renderTPTargets() {
-        if (!Array.isArray(this.tpTargets)) this.tpTargets = [];
-        const list = document.getElementById('multipleTPList');
-        if (list) this._renderTPTargetsInto(list, { idPrefix: '', blendElId: 'tpBlendedValue' });
-        const listM = this._rrOrderMirrorMounts && this._rrOrderMirrorMounts.multipleTPList;
-        if (listM) this._renderTPTargetsInto(listM, { idPrefix: 'rrm-', blendElId: 'rrm-tpBlendedValue' });
+        // Ensure newly-rendered inputs have the correct step attribute
         this._applyPrecisionToInputs();
     }
     
@@ -16520,25 +16444,15 @@ class OrderManager {
         this.setEntryMode(!this.isMultiEntryMode);
     }
 
-    /** @returns {HTMLElement[]} */
-    _getMultiEntryRowContainers() {
-        const out = [];
-        const panel = document.getElementById('multiEntryRows');
-        if (panel) out.push(panel);
-        const mir = this._rrOrderMirrorMounts && this._rrOrderMirrorMounts.multiEntryRows;
-        if (mir) out.push(mir);
-        return out;
-    }
-
     /**
-     * Render multi-entry rows into one container (panel or RR mirror).
-     * @param {HTMLElement} container
-     * @param {string} [idPrefix] '' or 'rrm-'
+     * Render all multi-entry rows in the panel
      */
-    _renderMultiEntryRowsInto(container, idPrefix = '') {
-        if (!container || !this.multiEntryLevels) return;
+    renderMultiEntryRows() {
+        const container = document.getElementById('multiEntryRows');
+        if (!container) return;
 
-        const p = idPrefix || '';
+        this.updateMultiEntryColumnLabels();
+
         const mode = this.positionSizeMode || 'risk-usd';
         let amountPrefix = '$';
         let amountStep = '1';
@@ -16563,11 +16477,8 @@ class OrderManager {
         const config = this.getMarketConfig();
         const posLabel = config?.positionLabel || 'Lot';
 
-        const priceId = (lid) => `${p}multiEntryPrice_${lid}`;
-        const amountId = (lid) => `${p}multiEntryAmount_${lid}`;
-
         container.innerHTML = '';
-        this.multiEntryLevels.forEach((level) => {
+        this.multiEntryLevels.forEach((level, idx) => {
             const pct = totalAmount > 0 ? ((level.amount / totalAmount) * 100) : 0;
             const lots = this._calcLevelLotSize(level, slPrice, pipSize, pipValue);
             const amtVal = mode === 'lot-size'
@@ -16583,18 +16494,18 @@ class OrderManager {
             row.innerHTML = `
                 <div class="multi-entry-row-inputs">
                     <div style="display:flex; gap:4px; align-items:center; min-width:0;">
-                        <input type="number" class="multi-entry-row-input" id="${priceId(level.id)}" value="${level.price || ''}" step="0.00001" placeholder="0.00" data-level-id="${level.id}" data-field="price" style="flex:1; min-width:0;">
+                        <input type="number" class="multi-entry-row-input" id="multiEntryPrice_${level.id}" value="${level.price || ''}" step="0.00001" placeholder="0.00" data-level-id="${level.id}" data-field="price" style="flex:1; min-width:0;">
                         <span class="input-stepper-group">
-                        <button type="button" class="input-stepper" data-target="${priceId(level.id)}" data-step-mode="pip" data-step="-1">−</button>
-                        <button type="button" class="input-stepper" data-target="${priceId(level.id)}" data-step-mode="pip" data-step="1">+</button>
+                        <button type="button" class="input-stepper" data-target="multiEntryPrice_${level.id}" data-step-mode="pip" data-step="-1">−</button>
+                        <button type="button" class="input-stepper" data-target="multiEntryPrice_${level.id}" data-step-mode="pip" data-step="1">+</button>
                         </span>
                     </div>
                     <div class="multi-entry-amount-wrap">
                         <span class="multi-entry-amount-prefix">${amountPrefix}</span>
-                        <input type="number" class="multi-entry-amount-input" id="${amountId(level.id)}" value="${amtVal}" step="${amountStep}" min="0" data-level-id="${level.id}" data-field="amount">
+                        <input type="number" class="multi-entry-amount-input" id="multiEntryAmount_${level.id}" value="${amtVal}" step="${amountStep}" min="0" data-level-id="${level.id}" data-field="amount">
                         <span class="input-stepper-group">
-                        <button type="button" class="input-stepper" data-target="${amountId(level.id)}" data-step="${amountStepNeg}">−</button>
-                        <button type="button" class="input-stepper" data-target="${amountId(level.id)}" data-step="${amountStepPos}">+</button>
+                        <button type="button" class="input-stepper" data-target="multiEntryAmount_${level.id}" data-step="${amountStepNeg}">−</button>
+                        <button type="button" class="input-stepper" data-target="multiEntryAmount_${level.id}" data-step="${amountStepPos}">+</button>
                         </span>
                     </div>
                     ${deleteBtnHtml}
@@ -16606,16 +16517,17 @@ class OrderManager {
             container.appendChild(row);
         });
 
-        const allContainers = this._getMultiEntryRowContainers();
+        // Wire up events for new rows
         container.querySelectorAll('.multi-entry-row-input, .multi-entry-amount-input').forEach(input => {
             input.addEventListener('input', (e) => {
-                const id = parseInt(e.target.dataset.levelId, 10);
+                const id = parseInt(e.target.dataset.levelId);
                 const field = e.target.dataset.field;
                 const level = this.multiEntryLevels.find(l => l.id === id);
                 if (level) {
                     const newVal = parseFloat(e.target.value) || 0;
-
+                    
                     if (field === 'amount') {
+                        // Auto-redistribute: keep total constant, split remainder across others
                         const total = this.multiEntryLevels.reduce((s, l) => s + (l.amount || 0), 0);
                         level.amount = newVal;
                         const remaining = Math.max(0, total - newVal);
@@ -16632,27 +16544,25 @@ class OrderManager {
                             }
                             others.forEach(l => {
                                 l.amount = each;
-                                allContainers.forEach(c => {
-                                    const inp = c.querySelector(`.multi-entry-amount-input[data-level-id="${l.id}"]`);
-                                    if (inp) inp.value = each;
-                                });
+                                // Update other amount inputs in-place
+                                const inp = container.querySelector(`.multi-entry-amount-input[data-level-id="${l.id}"]`);
+                                if (inp) inp.value = each;
                             });
                         }
                     } else {
                         level[field] = newVal;
                     }
-
+                    
                     if (field === 'amount') {
                         this._rebalanceLevelAmountsToTarget();
                         this.multiEntryLevels.forEach(lvl => {
-                            allContainers.forEach(c => {
-                                const inp = c.querySelector(`.multi-entry-amount-input[data-level-id="${lvl.id}"]`);
-                                if (inp) inp.value = lvl.amount;
-                            });
+                            const inp = container.querySelector(`.multi-entry-amount-input[data-level-id="${lvl.id}"]`);
+                            if (inp) inp.value = lvl.amount;
                         });
                     }
                     this.updateMultiEntrySummary();
                     this.syncMultiEntryToSplitEntries();
+                    // Update info rows in-place (no DOM rebuild, keeps focus)
                     this._updateMultiEntryInfoRows();
                 }
             });
@@ -16660,226 +16570,12 @@ class OrderManager {
 
         container.querySelectorAll('.multi-entry-delete-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const lid = parseInt(e.currentTarget.dataset.levelId, 10);
-                this.removeMultiEntryLevel(lid);
+                const id = parseInt(e.currentTarget.dataset.levelId);
+                this.removeMultiEntryLevel(id);
             });
         });
-    }
 
-    /**
-     * Render all multi-entry rows in the panel and optional RR settings mirror.
-     */
-    renderMultiEntryRows() {
-        this.updateMultiEntryColumnLabels();
-        const panel = document.getElementById('multiEntryRows');
-        if (panel) this._renderMultiEntryRowsInto(panel, '');
-        const mir = this._rrOrderMirrorMounts && this._rrOrderMirrorMounts.multiEntryRows;
-        if (mir) this._renderMultiEntryRowsInto(mir, 'rrm-');
         this.updateMultiEntrySummary();
-    }
-
-    /**
-     * Register DOM mounts for Long/Short drawing tool settings mirror (rrm-* ids).
-     * @param {{ root: HTMLElement, multiEntryRows: HTMLElement, multipleTPList: HTMLElement } | null} mounts
-     */
-    registerRROrderMirror(mounts) {
-        this._rrOrderMirrorMounts = mounts && mounts.root ? mounts : null;
-        this._rrMirrorSummaryRefresh = mounts && typeof mounts.onSummaryRefresh === 'function' ? mounts.onSummaryRefresh : null;
-        this._rrMirrorHydrated = false;
-    }
-
-    /**
-     * After pushRiskRewardToolToManager + sync, allow mirror edits to flow back to the order panel.
-     * Prevents a fresh mirror (template 0s) from overwriting the real panel via debounced apply.
-     */
-    markRRMirrorHydrated() {
-        this._rrMirrorHydrated = true;
-    }
-
-    unregisterRROrderMirror() {
-        this._rrOrderMirrorMounts = null;
-        this._rrMirrorSummaryRefresh = null;
-        this._rrMirrorHydrated = false;
-        if (this._rrMirrorRefreshRaf) {
-            cancelAnimationFrame(this._rrMirrorRefreshRaf);
-            this._rrMirrorRefreshRaf = null;
-        }
-    }
-
-    _queueRefreshRRMirrorFromPanel() {
-        if (!this._rrOrderMirrorMounts || !this._rrOrderMirrorMounts.root) return;
-        if (this._rrMirrorSuppressEcho) return;
-        if (this._rrMirrorRefreshRaf) cancelAnimationFrame(this._rrMirrorRefreshRaf);
-        this._rrMirrorRefreshRaf = requestAnimationFrame(() => {
-            this._rrMirrorRefreshRaf = null;
-            this.syncOrderPanelToRRMirror();
-            if (typeof this._rrMirrorSummaryRefresh === 'function') {
-                try {
-                    this._rrMirrorSummaryRefresh();
-                } catch (_e) { /* ignore */ }
-            }
-        });
-    }
-
-    /**
-     * Copy canonical order panel field values into the RR tool mirror (rrm-*).
-     */
-    syncOrderPanelToRRMirror() {
-        if (!this._rrOrderMirrorMounts || !this._rrOrderMirrorMounts.root) return;
-        this._rrMirrorSuppressEcho = true;
-        try {
-            const pairs = [
-                ['riskAmountUSD', 'rrm-riskAmountUSD'],
-                ['riskAmountPercent', 'rrm-riskAmountPercent'],
-                ['lotSizeAmount', 'rrm-lotSizeAmount'],
-                ['orderEntryPrice', 'rrm-orderEntryPrice'],
-                ['orderEntryPriceMulti', 'rrm-orderEntryPriceMulti'],
-                ['slPrice', 'rrm-slPrice'],
-                ['tpPrice', 'rrm-tpPrice'],
-                ['tpRRInput', 'rrm-tpRRInput'],
-                ['tpTargetProfitUSD', 'rrm-tpTargetProfitUSD'],
-                ['orderQuantity', 'rrm-orderQuantity'],
-                ['calculatedLabel', 'rrm-calculatedLabel'],
-                ['calculatedValue', 'rrm-calculatedValue'],
-                ['numTPTargets', 'rrm-numTPTargets']
-            ];
-            for (const [fromId, toId] of pairs) {
-                const a = document.getElementById(fromId);
-                const b = document.getElementById(toId);
-                if (a && b && document.activeElement !== b) b.value = a.value;
-            }
-            const syncChecked = (fromId, toId) => {
-                const a = document.getElementById(fromId);
-                const b = document.getElementById(toId);
-                if (a && b) b.checked = a.checked;
-            };
-            syncChecked('enableSL', 'rrm-enableSL');
-            syncChecked('enableTP', 'rrm-enableTP');
-            syncChecked('multipleTPToggle', 'rrm-multipleTPToggle');
-            const bal = document.querySelector('input[name="balanceType"]:checked');
-            if (bal) {
-                const rrb = document.querySelector(`input[name="rrm-balanceType"][value="${bal.value}"]`);
-                if (rrb) rrb.checked = true;
-            }
-            const mtp = document.getElementById('multiTPBtn');
-            const rmtp = document.getElementById('rrm-multiTPBtn');
-            if (mtp && rmtp) {
-                rmtp.textContent = mtp.textContent;
-                rmtp.classList.toggle('active', mtp.classList.contains('active'));
-            }
-            const met = document.getElementById('multiEntryToggle');
-            const rmet = document.getElementById('rrm-multiEntryToggle');
-            if (met && rmet) {
-                rmet.textContent = met.textContent;
-                rmet.classList.toggle('active', met.classList.contains('active'));
-            }
-            const mset = document.getElementById('multipleTPSettings');
-            const rmset = document.getElementById('rrm-multipleTPSettings');
-            const tpsingle = document.querySelector('.order-tp-single');
-            const rtpsingle = document.getElementById('rrm-tpInputs');
-            if (mset && rmset) {
-                rmset.classList.toggle('is-hidden', mset.classList.contains('is-hidden'));
-            }
-            if (tpsingle && rtpsingle) {
-                rtpsingle.classList.toggle('is-hidden', tpsingle.classList.contains('is-hidden'));
-            }
-            const sem = document.getElementById('singleEntryMode');
-            const mem = document.getElementById('multiEntryMode');
-            const rsem = document.getElementById('rrm-singleEntryMode');
-            const rmem = document.getElementById('rrm-multiEntryMode');
-            if (sem && rsem) {
-                rsem.style.display = sem.style.display || '';
-            }
-            if (mem && rmem) {
-                rmem.style.display = mem.style.display || '';
-            }
-            const blend = document.getElementById('tpBlendedValue');
-            const rblend = document.getElementById('rrm-tpBlendedValue');
-            if (blend && rblend) rblend.textContent = blend.textContent;
-            const slP = document.getElementById('slPipsDisplay');
-            const rslP = document.getElementById('rrm-slPipsDisplay');
-            if (slP && rslP) rslP.textContent = slP.textContent;
-            const slQ = document.getElementById('slQuantityDisplay');
-            const rslQ = document.getElementById('rrm-slQuantityDisplay');
-            if (slQ && rslQ) rslQ.textContent = slQ.textContent;
-            const tpD = document.getElementById('tpDistanceDisplay');
-            const rtpD = document.getElementById('rrm-tpDistanceDisplay');
-            if (tpD && rtpD) rtpD.textContent = tpD.textContent;
-            const tpP = document.getElementById('tpProfitDisplay');
-            const rtpP = document.getElementById('rrm-tpProfitDisplay');
-            if (tpP && rtpP) rtpP.textContent = tpP.textContent;
-            const meAvg = document.getElementById('multiEntryAvgPrice');
-            const rmeAvg = document.getElementById('rrm-multiEntryAvgPrice');
-            if (meAvg && rmeAvg) rmeAvg.textContent = meAvg.textContent;
-            const meQty = document.getElementById('multiEntryTotalQty');
-            const rmeQty = document.getElementById('rrm-multiEntryTotalQty');
-            if (meQty && rmeQty) rmeQty.textContent = meQty.textContent;
-            const balTabs = document.querySelectorAll('#balanceSourceToggle .balance-source-tab');
-            const rbalTabs = document.querySelectorAll('#rrm-balanceSourceToggle .balance-source-tab');
-            balTabs.forEach((t, i) => {
-                if (rbalTabs[i]) {
-                    const active = t.classList.contains('active');
-                    rbalTabs[i].classList.toggle('active', active);
-                    rbalTabs[i].style.background = active ? '#334155' : 'transparent';
-                    rbalTabs[i].style.color = active ? '#e2e8f0' : '#94a3b8';
-                }
-            });
-        } finally {
-            this._rrMirrorSuppressEcho = false;
-        }
-    }
-
-    /**
-     * Copy RR mirror inputs into the canonical order panel, then recalculate.
-     */
-    applyRRMirrorToOrderPanel() {
-        if (!this._rrOrderMirrorMounts || !this._rrOrderMirrorMounts.root) return;
-        if (!this._rrMirrorHydrated) return;
-        this._rrMirrorSuppressEcho = true;
-        try {
-            const pairs = [
-                ['rrm-riskAmountUSD', 'riskAmountUSD'],
-                ['rrm-riskAmountPercent', 'riskAmountPercent'],
-                ['rrm-lotSizeAmount', 'lotSizeAmount'],
-                ['rrm-orderEntryPrice', 'orderEntryPrice'],
-                ['rrm-orderEntryPriceMulti', 'orderEntryPriceMulti'],
-                ['rrm-slPrice', 'slPrice'],
-                ['rrm-tpPrice', 'tpPrice'],
-                ['rrm-tpRRInput', 'tpRRInput'],
-                ['rrm-tpTargetProfitUSD', 'tpTargetProfitUSD'],
-                ['rrm-numTPTargets', 'numTPTargets']
-            ];
-            for (const [fromId, toId] of pairs) {
-                const a = document.getElementById(fromId);
-                const b = document.getElementById(toId);
-                if (a && b) b.value = a.value;
-            }
-            const syncChecked = (fromId, toId) => {
-                const a = document.getElementById(fromId);
-                const b = document.getElementById(toId);
-                if (a && b) b.checked = a.checked;
-            };
-            syncChecked('rrm-enableSL', 'enableSL');
-            syncChecked('rrm-enableTP', 'enableTP');
-            syncChecked('rrm-multipleTPToggle', 'multipleTPToggle');
-            const rrb = document.querySelector('input[name="rrm-balanceType"]:checked');
-            if (rrb) {
-                const main = document.querySelector(`input[name="balanceType"][value="${rrb.value}"]`);
-                if (main) main.checked = true;
-            }
-            ['enableSL', 'enableTP', 'multipleTPToggle'].forEach((id) => {
-                const el = document.getElementById(id);
-                if (el) el.dispatchEvent(new Event('change', { bubbles: true }));
-            });
-            this.calculatePositionFromRisk();
-            this.calculateAdvancedRiskReward();
-            this.updatePreviewLines();
-            this.renderTPTargets();
-            this.renderMultiEntryRows();
-        } finally {
-            this._rrMirrorSuppressEcho = false;
-        }
-        this.syncOrderPanelToRRMirror();
     }
 
     /**
@@ -17091,12 +16787,12 @@ class OrderManager {
      * Column header above multi-entry amount inputs — matches position size mode.
      */
     updateMultiEntryColumnLabels() {
-        const mode = this.positionSizeMode || 'risk-usd';
-        const label = mode === 'risk-usd' ? 'Risk ($)' : mode === 'risk-percent' ? 'Split (%)' : 'Lots';
         const el = document.getElementById('multiEntryAmountColLabel');
-        if (el) el.textContent = label;
-        const elM = document.getElementById('rrm-multiEntryAmountColLabel');
-        if (elM) elM.textContent = label;
+        if (!el) return;
+        const mode = this.positionSizeMode || 'risk-usd';
+        if (mode === 'risk-usd') el.textContent = 'Risk ($)';
+        else if (mode === 'risk-percent') el.textContent = 'Split (%)';
+        else el.textContent = 'Lots';
     }
 
     /** After global risk/lot inputs rebalance row weights, rebuild row DOM so inputs match model. */
@@ -17223,21 +16919,21 @@ class OrderManager {
      * Update info rows (percentages/lot sizes) in-place without rebuilding DOM
      */
     _updateMultiEntryInfoRows() {
+        const container = document.getElementById('multiEntryRows');
+        if (!container) return;
         const totalAmount = this.multiEntryLevels.reduce((sum, lvl) => sum + (lvl.amount || 0), 0);
         const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
         const pipSize = this.pipSize || 0.0001;
         const pipValue = this.pipValuePerLot || 10;
         const config = this.getMarketConfig();
         const posLabel = config?.positionLabel || 'Lot';
-        this._getMultiEntryRowContainers().forEach((container) => {
-            const infoEls = container.querySelectorAll('.multi-entry-row-info');
-            this.multiEntryLevels.forEach((level, idx) => {
-                if (infoEls[idx]) {
-                    const pct = totalAmount > 0 ? ((level.amount / totalAmount) * 100) : 0;
-                    const lots = this._calcLevelLotSize(level, slPrice, pipSize, pipValue);
-                    infoEls[idx].innerHTML = `<span>${pct.toFixed(0)}%</span>&nbsp;&nbsp;${lots} ${posLabel}`;
-                }
-            });
+        const infoEls = container.querySelectorAll('.multi-entry-row-info');
+        this.multiEntryLevels.forEach((level, idx) => {
+            if (infoEls[idx]) {
+                const pct = totalAmount > 0 ? ((level.amount / totalAmount) * 100) : 0;
+                const lots = this._calcLevelLotSize(level, slPrice, pipSize, pipValue);
+                infoEls[idx].innerHTML = `<span>${pct.toFixed(0)}%</span>&nbsp;&nbsp;${lots} ${posLabel}`;
+            }
         });
     }
 
@@ -18214,22 +17910,6 @@ class OrderManager {
     }
 
     /**
-     * Copy primary RR prices into the settings mirror so reopen is not stuck on template 0s when
-     * panel↔mirror sync races or the order panel is not mounted yet.
-     */
-    _syncRRMirrorPriceFieldsFromPush(prec, entryY, slY, tpFarY) {
-        if (!this._rrOrderMirrorMounts?.root) return;
-        const write = (id, y) => {
-            const el = document.getElementById(id);
-            if (!el || document.activeElement === el) return;
-            if (Number.isFinite(y) && y > 0) el.value = y.toFixed(prec);
-        };
-        write('rrm-orderEntryPrice', entryY);
-        write('rrm-slPrice', slY);
-        write('rrm-tpPrice', tpFarY);
-    }
-
-    /**
      * Push long/short position tool geometry into the same inputs + tpTargets / multiEntryLevels
      * structures used by the order panel (for shared + / drag math).
      */
@@ -18248,31 +17928,9 @@ class OrderManager {
         const far = isLong ? Math.max(...allT) : Math.min(...allT);
         const tpp = document.getElementById('tpPrice');
         if (tpp) tpp.value = far.toFixed(prec);
-        const riskMeta = drawing.meta?.risk;
-        const riskUsd = riskMeta?.riskAmountUSD ?? riskMeta?.riskAmount;
+        const riskUsd = drawing.meta?.risk?.riskAmountUSD ?? drawing.meta?.risk?.riskAmount;
         const ra = document.getElementById('riskAmountUSD');
         if (ra && Number.isFinite(riskUsd)) ra.value = String(Math.round(riskUsd));
-
-        const rm = riskMeta?.riskMode || 'risk-usd';
-        const posMode = rm === 'risk-percent' ? 'risk-percent' : rm === 'lot-size' ? 'lot-size' : 'risk-usd';
-        if (typeof this.applyPositionSizeModeToUI === 'function') {
-            this.applyPositionSizeModeToUI(posMode);
-        }
-        const rperc = document.getElementById('riskAmountPercent');
-        if (rperc && Number.isFinite(Number(riskMeta?.riskPercent))) {
-            rperc.value = String(riskMeta.riskPercent);
-        }
-        const lta = document.getElementById('lotSizeAmount');
-        if (lta && Number.isFinite(Number(riskMeta?.lotSize)) && posMode === 'lot-size') {
-            lta.value = String(parseFloat(riskMeta.lotSize).toFixed(2));
-        }
-        if (riskMeta?.balanceType) {
-            const br = document.querySelector(`input[name="balanceType"][value="${riskMeta.balanceType}"]`);
-            if (br) {
-                br.checked = true;
-                br.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-        }
 
         const uniqTp = [...new Set((allT || []).filter(Number.isFinite))];
         if (uniqTp.length <= 1) {
@@ -18348,8 +18006,6 @@ class OrderManager {
             this._applyBreakevenInputsFromTriggerPrice(beLineY);
             this.beManuallyPositioned = true;
         }
-
-        this._syncRRMirrorPriceFieldsFromPush(prec, entry, sl, far);
     }
 
     /**
@@ -18360,8 +18016,7 @@ class OrderManager {
         const isLong = drawing.meta?.orientation === 'long' || drawing.type === 'long-position';
         const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision() : 5;
         const slPx = parseFloat(document.getElementById('slPrice')?.value || '');
-        // Panel defaults use 0; treating 0 as valid overwrote chart geometry on reopen.
-        if (Number.isFinite(slPx) && slPx > 0) drawing.points[1] = { ...drawing.points[1], y: slPx };
+        if (Number.isFinite(slPx)) drawing.points[1] = { ...drawing.points[1], y: slPx };
 
         // Use ladder row 0 as RR points[0] whenever multi-entry UI is on (including exactly one row).
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length >= 1) {
@@ -18377,7 +18032,7 @@ class OrderManager {
             }
         } else {
             const e = parseFloat(document.getElementById('orderEntryPrice')?.value || '');
-            if (Number.isFinite(e) && e > 0) drawing.points[0] = { ...drawing.points[0], y: e };
+            if (Number.isFinite(e)) drawing.points[0] = { ...drawing.points[0], y: e };
             drawing.meta.extraEntries = [];
         }
 
@@ -18385,14 +18040,12 @@ class OrderManager {
         if (mtOn && this.tpTargets && this.tpTargets.length > 1) {
             const sorted = [...this.tpTargets].sort((a, b) => (isLong ? a.price - b.price : b.price - a.price));
             const last = sorted[sorted.length - 1];
-            if (last && last.price > 0) {
-                drawing.points[2] = { ...drawing.points[2], y: last.price };
-            }
+            drawing.points[2] = { ...drawing.points[2], y: last.price };
             if (!drawing.meta.extraTargets) drawing.meta.extraTargets = [];
             drawing.meta.extraTargets = sorted.slice(0, -1).map((t) => ({ id: t.id, y: t.price }));
         } else {
             const tpPx = parseFloat(document.getElementById('tpPrice')?.value || '');
-            if (Number.isFinite(tpPx) && tpPx > 0) drawing.points[2] = { ...drawing.points[2], y: tpPx };
+            if (Number.isFinite(tpPx)) drawing.points[2] = { ...drawing.points[2], y: tpPx };
             drawing.meta.extraTargets = [];
         }
 
@@ -18416,22 +18069,6 @@ class OrderManager {
         }
 
         delete drawing.meta.rrAvgEntryPrice;
-
-        if (!drawing.meta) drawing.meta = {};
-        if (!drawing.meta.risk) drawing.meta.risk = {};
-        const mr = drawing.meta.risk;
-        const pmode = this.positionSizeMode || 'risk-usd';
-        mr.riskMode = pmode === 'risk-percent' ? 'risk-percent' : pmode === 'lot-size' ? 'lot-size' : 'risk-usd';
-        const rau = parseFloat(document.getElementById('riskAmountUSD')?.value || '');
-        if (Number.isFinite(rau)) mr.riskAmountUSD = rau;
-        const rpt = parseFloat(document.getElementById('riskAmountPercent')?.value || '');
-        if (Number.isFinite(rpt)) mr.riskPercent = rpt;
-        const lsz = parseFloat(document.getElementById('lotSizeAmount')?.value || '');
-        if (Number.isFinite(lsz)) mr.lotSize = lsz;
-        const balType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
-        mr.balanceType = balType;
-        const balUse = balType === 'current' ? this.balance : this.initialBalance;
-        if (Number.isFinite(balUse) && balUse > 0) mr.accountSize = balUse;
 
         if (typeof drawing.ensureRiskSettings === 'function') drawing.ensureRiskSettings();
         drawing.meta.updatedAt = Date.now();
