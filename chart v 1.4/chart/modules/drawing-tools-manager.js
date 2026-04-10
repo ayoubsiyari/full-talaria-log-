@@ -3653,9 +3653,11 @@ class DrawingToolsManager {
             drawing.group.selectAll('.rr-no-hit text, .rr-no-hit rect, .rr-no-hit tspan')
                 .style('pointer-events', 'none');
         }
-        drawing.group.selectAll('.rr-plus-btn circle')
+        drawing.group.selectAll('.rr-plus-btn .rr-plus-hit')
             .style('pointer-events', 'all')
             .style('cursor', 'pointer');
+        drawing.group.selectAll('.rr-plus-btn .rr-plus-visible')
+            .style('pointer-events', 'none');
         
         // Shape borders use 'stroke' - ONLY responds to clicks on the actual stroke path
         // Risk/reward main entry line is .rr-entry-stroke: non-interactive; entry drag is

@@ -2265,39 +2265,6 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('x', centerTextX)
                 .attr('y', centerTextY + centerLineHeight);
 
-            const plusR = 9;
-            // Park + controls outside the colored zone (gap from zone edge to circle’s inner side).
-            const plusOutsideGap = 8;
-            const plusX = zoneX2 + plusOutsideGap + plusR;
-            const mkPlus = (lineY, fill, handler) => {
-                const g = this.group.append('g').attr('class', 'rr-plus-btn');
-                g.append('circle')
-                    .attr('cx', plusX)
-                    .attr('cy', lineY)
-                    .attr('r', plusR)
-                    .attr('fill', fill)
-                    .attr('stroke', 'rgba(255,255,255,0.85)')
-                    .attr('stroke-width', 1)
-                    .style('pointer-events', 'all')
-                    .style('cursor', 'pointer');
-                g.append('text')
-                    .attr('x', plusX)
-                    .attr('y', lineY + 4)
-                    .attr('text-anchor', 'middle')
-                    .attr('fill', '#ffffff')
-                    .attr('font-size', '12px')
-                    .attr('font-weight', '700')
-                    .style('pointer-events', 'none')
-                    .text('+');
-                g.on('click', (e) => {
-                    e.stopPropagation();
-                    handler();
-                });
-            };
-            mkPlus(targetY, '#16a34a', () => this.addExtraTarget());
-            mkPlus(entryY, '#2962FF', () => this.addExtraEntry());
-            mkPlus(stopY, '#ef4444', () => this.addExtraStop());
-
             (this.meta.extraTargets || []).forEach((row, i) => {
                 if (!row || !Number.isFinite(row.y)) return;
                 const yy = scales.yScale(row.y);
@@ -2412,6 +2379,55 @@ class BaseRiskRewardTool extends BaseDrawing {
             const yy = scales.yScale(row.y);
             appendExtraDragHit(yy, `rr-extra-entry-${idx}`);
         });
+
+        // + buttons last in paint order so drag hit rects / lines do not sit on top and eat clicks.
+        // Large transparent hit circle = full control target (not just the glyph).
+        if (this.selected) {
+            const plusR = 9;
+            const plusHitR = 20;
+            const plusOutsideGap = 8;
+            const plusX = zoneX2 + plusOutsideGap + plusR;
+            const mkPlus = (lineY, fill, handler) => {
+                const g = this.group.append('g').attr('class', 'rr-plus-btn');
+                const onActivate = (e) => {
+                    e.stopPropagation();
+                    if (typeof e.preventDefault === 'function') e.preventDefault();
+                    handler();
+                };
+                g.append('circle')
+                    .attr('class', 'rr-plus-hit')
+                    .attr('cx', plusX)
+                    .attr('cy', lineY)
+                    .attr('r', plusHitR)
+                    .attr('fill', 'transparent')
+                    .attr('stroke', 'none')
+                    .style('pointer-events', 'all')
+                    .style('cursor', 'pointer')
+                    .on('click', onActivate);
+                g.append('circle')
+                    .attr('class', 'rr-plus-visible')
+                    .attr('cx', plusX)
+                    .attr('cy', lineY)
+                    .attr('r', plusR)
+                    .attr('fill', fill)
+                    .attr('stroke', 'rgba(255,255,255,0.85)')
+                    .attr('stroke-width', 1)
+                    .style('pointer-events', 'none')
+                    .style('cursor', 'inherit');
+                g.append('text')
+                    .attr('x', plusX)
+                    .attr('y', lineY + 4)
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', '#ffffff')
+                    .attr('font-size', '12px')
+                    .attr('font-weight', '700')
+                    .style('pointer-events', 'none')
+                    .text('+');
+            };
+            mkPlus(targetY, '#16a34a', () => this.addExtraTarget());
+            mkPlus(entryY, '#2962FF', () => this.addExtraEntry());
+            mkPlus(stopY, '#ef4444', () => this.addExtraStop());
+        }
 
         return this.group;
     }
