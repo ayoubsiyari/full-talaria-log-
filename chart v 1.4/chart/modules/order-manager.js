@@ -17131,17 +17131,13 @@ class OrderManager {
             this.updatePlaceButtonText();
         }
 
-        // Sync avg price to the hidden field and the main orderEntryPrice
+        // Hidden field + summary row: only for active multi-entry UI. When the panel is in Single mode,
+        // isMultiEntryMode is false but multiEntryLevels can still hold ladder state (RR tool E2, etc.).
+        // Writing weighted avg into #orderEntryPrice then made pullRiskRewardToolFromManager snap points[0]
+        // to the average — above Entry#1 on longs — while the real order / Entry#1 line stayed put.
         const hiddenInput = document.getElementById('orderEntryPriceMulti');
-        if (hiddenInput) hiddenInput.value = avgPrice;
-
-        // Update the main entry price to avg for downstream calculations
-        // But NOT in multi-entry mode — each level keeps its own price on the chart
-        if (!this.isMultiEntryMode) {
-            const mainInput = document.getElementById('orderEntryPrice');
-            if (mainInput && avgPrice > 0) {
-                mainInput.value = this.formatPrice(avgPrice);
-            }
+        if (hiddenInput) {
+            hiddenInput.value = this.isMultiEntryMode ? avgPrice : '';
         }
 
         // Per-row % and lots — chart also calls _refreshMultiEntryPreviewEntryLabels on SL drag for live labels
