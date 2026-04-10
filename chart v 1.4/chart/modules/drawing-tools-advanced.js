@@ -2330,29 +2330,20 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             const sideStr = this.isLong ? 'BUY' : 'SELL';
             const markPx = this.chart?.resolveEffectiveCurrentPrice?.(this.chart?.data);
+            // P&L at weighted avg entry × total qty (same $ as summing each leg; matches “avg of two entries”).
             let openPnlUsd = 0;
-            if (om && Number.isFinite(markPx) && markPx > 0 && slFromDrawing > 0) {
-                const pipS = om.pipSize || 0.0001;
-                const pipV = om.pipValuePerLot || 10;
-                const minLotR = om.getMarketConfig?.()?.minSize ?? 0.01;
-                if (om.isMultiEntryMode && om.multiEntryLevels && om.multiEntryLevels.length > 1) {
-                    for (const lev of om.multiEntryLevels) {
-                        if (!(lev.price > 0)) continue;
-                        if (typeof om._multiEntryLevelMeetsMinLot === 'function'
-                            && !om._multiEntryLevelMeetsMinLot(lev, slFromDrawing, pipS, pipV, minLotR)) continue;
-                        const lots = typeof om._calcLevelLotSizeNumeric === 'function'
-                            ? om._calcLevelLotSizeNumeric(lev, slFromDrawing, pipS, pipV)
-                            : 0;
-                        if (lots > 0 && typeof om.estimatePnLForPriceLevel === 'function') {
-                            openPnlUsd += om.estimatePnLForPriceLevel(sideStr, lev.price, markPx, lots);
-                        }
-                    }
-                } else if (Number.isFinite(zoneEntryPrice) && quantity > 0
-                    && typeof om.estimatePnLForPriceLevel === 'function') {
-                    openPnlUsd = om.estimatePnLForPriceLevel(sideStr, zoneEntryPrice, markPx, quantity);
-                }
+            if (om && Number.isFinite(markPx) && markPx > 0
+                && Number.isFinite(zoneEntryPrice) && quantity > 0
+                && typeof om.estimatePnLForPriceLevel === 'function') {
+                openPnlUsd = om.estimatePnLForPriceLevel(sideStr, zoneEntryPrice, markPx, quantity);
             }
             const pnlStr = `${openPnlUsd >= 0 ? '' : '-'}$${Math.abs(openPnlUsd).toFixed(2)}`;
+            const avgEntryStr = typeof om?.formatPrice === 'function'
+                ? om.formatPrice(zoneEntryPrice)
+                : (Number.isFinite(zoneEntryPrice) ? zoneEntryPrice.toFixed(rrPrec) : '—');
+            const centerInfoLine0 = hasMultiEntry && Number.isFinite(zoneEntryPrice)
+                ? `Avg entry: ${avgEntryStr}`
+                : null;
             const centerInfoLine1 = `Open P&L: ${pnlStr}, Qty: ${quantity.toFixed(2)}`;
             const centerInfoLine2 = `Risk/Reward Ratio: ${panelRRLabel}`;
             // Multi-entry: pill on weighted-avg (middle) line; draggable = whole-tool move so E1/E2/SL/TP follow (avg moves with ladder).
@@ -2374,6 +2365,14 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('font-family', labelFontFamily);
 
             const centerLineHeight = Math.round(labelFontSize * 1.2);
+
+            let centerLine0 = null;
+            if (centerInfoLine0) {
+                centerLine0 = centerTextNode.append('tspan')
+                    .attr('x', 0)
+                    .attr('y', 0)
+                    .text(centerInfoLine0);
+            }
 
             const centerLine1 = centerTextNode.append('tspan')
                 .attr('x', 0)
@@ -2418,13 +2417,21 @@ class BaseRiskRewardTool extends BaseDrawing {
             const centerTextX = centerRectX + (centerWidth / 2);
             const centerTextY = centerRectY + centerPaddingY;
 
+            const lineBaseY = centerTextY;
+            if (centerLine0) {
+                centerLine0
+                    .attr('x', centerTextX)
+                    .attr('y', lineBaseY);
+            }
+            const y1 = lineBaseY + (centerLine0 ? centerLineHeight : 0);
+            const y2 = y1 + centerLineHeight;
             centerLine1
                 .attr('x', centerTextX)
-                .attr('y', centerTextY);
+                .attr('y', y1);
 
             centerLine2
                 .attr('x', centerTextX)
-                .attr('y', centerTextY + centerLineHeight);
+                .attr('y', y2);
 
             /** Left-gutter mini badges: one horizontal line (e.g. "BE 1.56R", "E1 0.05 lot"). */
             const appendRrMiniBadge = (lineYpx, lineTexts, bgFill) => {
