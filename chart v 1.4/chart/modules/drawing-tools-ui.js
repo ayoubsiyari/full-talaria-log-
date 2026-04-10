@@ -18444,8 +18444,6 @@ body.light-mode .template-save-dialog .dialog-title {
 
                         riskAmountUSD: drawing.meta.risk.riskAmountUSD,
 
-                        lotSizeAmount: drawing.meta.risk.lotSizeAmount,
-
                         lotSize: drawing.meta.risk.lotSize,
 
                         leverage: drawing.meta.risk.leverage,
@@ -23340,8 +23338,6 @@ body.light-mode .template-save-dialog .dialog-title {
             if (this.pendingChanges.riskPercent !== undefined) drawing.meta.risk.riskPercent = parseFloat(this.pendingChanges.riskPercent);
 
             if (this.pendingChanges.riskAmountUSD !== undefined) drawing.meta.risk.riskAmountUSD = parseFloat(this.pendingChanges.riskAmountUSD);
-
-            if (this.pendingChanges.lotSizeAmount !== undefined) drawing.meta.risk.lotSizeAmount = parseFloat(this.pendingChanges.lotSizeAmount);
 
             if (this.pendingChanges.lotSize !== undefined) drawing.meta.risk.lotSize = parseFloat(this.pendingChanges.lotSize);
 
@@ -29618,12 +29614,6 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
         if (!risk.riskPercent) risk.riskPercent = 1; // Default 1% risk
 
-        if (!Number.isFinite(Number(risk.lotSizeAmount)) || Number(risk.lotSizeAmount) <= 0) {
-
-            risk.lotSizeAmount = 1;
-
-        }
-
         
 
         // Save initialized values back to drawing
@@ -29816,251 +29806,45 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
 
-        const sizingOuter = controlsWrap.append('div')
+        const riskModeRow = createControlRow('Risk Mode');
 
-            .style('grid-column', '1 / -1')
+        const riskModeSelect = riskModeRow.controls.append('select')
 
-            .style('display', 'flex')
+            .attr('class', 'tv-select')
 
-            .style('flex-direction', 'column')
+            .style('width', `${controlsColumnWidth}px`)
 
-            .style('gap', '4px')
-
-            .style('margin-bottom', '2px')
-
-            .style('min-width', '0');
-
-
-
-        sizingOuter.append('label')
-
-            .attr('class', 'order-label order-label--compact')
-
-            .style('margin', '0')
-
-            .text('Position sizing');
-
-
-
-        const sizingCompact = sizingOuter.append('div')
-
-            .attr('class', 'order-risk-compact')
-
-            .style('width', '100%')
-
-            .style('min-width', '0');
-
-
-
-        const tabGroup = sizingCompact.append('div')
-
-            .attr('class', 'order-button-group order-button-group--inline order-button-group--position-mode order-risk-compact__tabs');
-
-
-
-        [['risk-usd', '$'], ['risk-percent', '%'], ['lot-size', '#']].forEach(([mode, label]) => {
-
-            tabGroup.append('button')
-
-                .attr('type', 'button')
-
-                .attr('class', 'position-mode-tab')
-
-                .attr('data-mode', mode)
-
-                .text(label)
-
-                .on('click', () => {
-
-                    risk.riskMode = mode;
-
-                    syncModeTabs();
-
-                    updateBalanceToggleVis();
-
-                    createRiskInput();
-
-                    calculateLotSizeFromRisk();
-
-                    refreshRisk(true);
-
-                });
-
-        });
-
-
-
-        const balanceToggle = sizingCompact.append('div')
-
-            .style('display', 'none')
-
-            .style('gap', '0')
-
-            .style('margin-left', 'auto')
-
-            .style('align-items', 'center')
-
-            .style('flex-wrap', 'nowrap');
-
-
-
-        const syncBalanceTabActive = () => {
-
-            const bt = risk.balanceType === 'initial' ? 'initial' : 'current';
-
-            balanceToggle.selectAll('.balance-source-tab').each(function () {
-
-                const on = this.getAttribute('data-balance') === bt;
-
-                this.classList.toggle('active', on);
-
-                this.style.background = on ? '#334155' : 'transparent';
-
-                this.style.color = on ? '#e2e8f0' : '#94a3b8';
-
-            });
-
-        };
-
-
-
-        balanceToggle.append('button')
-
-            .attr('type', 'button')
-
-            .attr('class', 'balance-source-tab active')
-
-            .attr('data-balance', 'current')
-
-            .style('font-size', '9px')
-
-            .style('padding', '2px 8px')
-
-            .style('border-radius', '4px 0 0 4px')
-
-            .style('border', '1px solid #475569')
-
-            .style('cursor', 'pointer')
-
-            .style('white-space', 'nowrap')
-
-            .text('Current')
-
-            .on('click', () => {
-
-                risk.balanceType = 'current';
-
-                const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
-
-                if (om && Number.isFinite(Number(om.balance))) {
-
-                    risk.accountSize = Number(om.balance);
-
-                    setInputValue(accountInput, risk.accountSize);
-
-                    drawing.setAccountSize?.(risk.accountSize);
-
-                }
-
-                syncBalanceTabActive();
-
-                calculateLotSizeFromRisk();
-
-                refreshRisk(true);
-
-            });
-
-
-
-        balanceToggle.append('button')
-
-            .attr('type', 'button')
-
-            .attr('class', 'balance-source-tab')
-
-            .attr('data-balance', 'initial')
-
-            .style('font-size', '9px')
-
-            .style('padding', '2px 8px')
-
-            .style('border-radius', '0 4px 4px 0')
-
-            .style('background', 'transparent')
-
-            .style('color', '#94a3b8')
-
-            .style('border', '1px solid #475569')
-
-            .style('border-left', 'none')
-
-            .style('cursor', 'pointer')
-
-            .style('white-space', 'nowrap')
-
-            .text('Initial')
-
-            .on('click', () => {
-
-                risk.balanceType = 'initial';
-
-                const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
-
-                if (om && Number.isFinite(Number(om.initialBalance))) {
-
-                    risk.accountSize = Number(om.initialBalance);
-
-                    setInputValue(accountInput, risk.accountSize);
-
-                    drawing.setAccountSize?.(risk.accountSize);
-
-                }
-
-                syncBalanceTabActive();
-
-                calculateLotSizeFromRisk();
-
-                refreshRisk(true);
-
-            });
-
-
-
-        const riskInputHost = sizingCompact.append('div')
-
-            .attr('class', 'order-risk-compact__input')
-
-            .style('flex', '1')
+            .style('max-width', '100%')
 
             .style('min-width', '0')
 
-            .style('display', 'flex');
+            .style('height', '24px')
+
+            .style('text-align', 'center')
+
+            .style('text-align-last', 'center')
+
+            .style('font-size', '10px')
+
+            .html(`
+
+                <option value="risk-usd">Fixed USD</option>
+
+                <option value="risk-percent">% of Account</option>
+
+            `);
 
 
 
-        const syncModeTabs = () => {
+        riskModeSelect.property('value', risk.riskMode);
 
-            const m = risk.riskMode || 'risk-usd';
+        riskModeSelect.on('change', () => {
 
-            tabGroup.selectAll('.position-mode-tab').classed('active', function () {
+            risk.riskMode = riskModeSelect.property('value');
 
-                return this.getAttribute('data-mode') === m;
+            refreshRisk(true);
 
-            });
-
-        };
-
-
-
-        const updateBalanceToggleVis = () => {
-
-            const show = risk.riskMode === 'risk-percent';
-
-            balanceToggle.style('display', show ? 'flex' : 'none');
-
-            if (show) syncBalanceTabActive();
-
-        };
+        });
 
 
 
@@ -30080,23 +29864,11 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
 
+        const riskAmountRow = createControlRow('Risk Amount (USD)');
+
         let riskInput = null;
 
         let activeRiskInputMode = null;
-
-
-
-        const getPipMetrics = () => {
-
-            const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
-
-            const pipSize = (om && Number(om.pipSize) > 0) ? Number(om.pipSize) : 0.0001;
-
-            const pipValue = (om && Number(om.pipValuePerLot) > 0) ? Number(om.pipValuePerLot) : 10;
-
-            return { pipSize, pipValue };
-
-        };
 
 
 
@@ -30110,35 +29882,13 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
             const slDistance = Math.abs(entry - stop);
 
-            const { pipSize, pipValue } = getPipMetrics();
-
 
 
             if (slDistance === 0 || entry === 0) {
 
-                if (state.riskMode !== 'lot-size') {
+                state.lotSize = 0.01;
 
-                    state.lotSize = 0.01;
-
-                }
-
-                lotSizeValue.text(`${(state.lotSize || 0.01).toFixed(2)} Lots`);
-
-                drawing.setLotSize?.(state.lotSize || 0.01);
-
-                return;
-
-            }
-
-
-
-            if (state.riskMode === 'lot-size') {
-
-                const lots = Number(state.lotSizeAmount) > 0 ? Number(state.lotSizeAmount) : 1;
-
-                state.lotSize = Math.max(0.01, lots);
-
-                lotSizeValue.text(`${state.lotSize.toFixed(2)} Lots`);
+                lotSizeValue.text('0.01 Lots');
 
                 drawing.setLotSize?.(state.lotSize);
 
@@ -30156,19 +29906,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
             } else {
 
-                const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
-
-                let accountSize = state.accountSize || 10000;
-
-                if (state.riskMode === 'risk-percent' && state.balanceType === 'initial' && om && Number.isFinite(Number(om.initialBalance))) {
-
-                    accountSize = Number(om.initialBalance);
-
-                } else if (state.riskMode === 'risk-percent' && state.balanceType !== 'initial' && om && Number.isFinite(Number(om.balance))) {
-
-                    accountSize = Number(om.balance);
-
-                }
+                const accountSize = state.accountSize || 10000;
 
                 riskUSD = (accountSize * (state.riskPercent || 1)) / 100;
 
@@ -30176,7 +29914,9 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
 
-            const slPips = slDistance / pipSize;
+            const slPips = slDistance / 0.0001;
+
+            const pipValue = 10;
 
             const calculatedLots = riskUSD / (slPips * pipValue);
 
@@ -30196,209 +29936,41 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
             const state = (drawing.meta && drawing.meta.risk) ? drawing.meta.risk : risk;
 
-            let mode = state.riskMode || 'risk-usd';
-
-            if (mode !== 'risk-usd' && mode !== 'risk-percent' && mode !== 'lot-size') {
-
-                mode = 'risk-usd';
-
-                state.riskMode = mode;
-
-            }
+            const mode = state.riskMode || 'risk-usd';
 
             activeRiskInputMode = mode;
 
 
 
-            riskInputHost.selectAll('*').remove();
-
-
-
-            const wrap = riskInputHost.append('div')
-
-                .attr('class', 'order-input-wrapper order-risk-compact__input')
-
-                .style('display', 'flex')
-
-                .style('gap', '4px')
-
-                .style('align-items', 'center')
-
-                .style('width', '100%')
-
-                .style('min-width', '0');
-
-
-
-            const bump = (inp, delta, min, max, decimals) => {
-
-                let v = Number.parseFloat(inp.property('value'));
-
-                if (!Number.isFinite(v)) v = min != null ? min : 0;
-
-                v += delta;
-
-                if (min != null && v < min) v = min;
-
-                if (max != null && v > max) v = max;
-
-                inp.property('value', this.formatNumericValue(v, decimals));
-
-                return v;
-
-            };
-
-
+            riskAmountRow.controls.selectAll('*').remove();
 
             if (mode === 'risk-usd') {
 
-                wrap.append('span').attr('class', 'order-input-prefix').text('$');
+                riskAmountRow.label.text('Risk Amount (USD)');
 
-                const inp = wrap.append('input')
+                riskInput = createNumberControl(riskAmountRow.controls, state.riskAmountUSD ?? 100, (value) => {
 
-                    .attr('type', 'number')
-
-                    .attr('class', 'order-input order-input--compact')
-
-                    .attr('min', 1)
-
-                    .attr('step', 1)
-
-                    .style('flex', '1')
-
-                    .style('min-width', '0');
-
-                inp.node().__decimals = 0;
-
-                inp.property('value', String(Math.round(state.riskAmountUSD ?? 100)));
-
-                const commit = () => {
-
-                    const v = Number.parseFloat(inp.property('value'));
-
-                    if (!Number.isFinite(v)) return;
-
-                    state.riskAmountUSD = v;
+                    state.riskAmountUSD = value;
 
                     calculateLotSizeFromRisk();
 
                     refreshRisk(true);
 
-                };
-
-                inp.on('input', commit).on('change', commit);
-
-                const sg = wrap.append('span').attr('class', 'input-stepper-group');
-
-                sg.append('button').attr('type', 'button').attr('class', 'input-stepper').text('−')
-
-                    .on('click', () => { bump(inp, -10, 1, null, 0); commit(); });
-
-                sg.append('button').attr('type', 'button').attr('class', 'input-stepper').text('+')
-
-                    .on('click', () => { bump(inp, 10, 1, null, 0); commit(); });
-
-                riskInput = inp;
-
-            } else if (mode === 'risk-percent') {
-
-                const inp = wrap.append('input')
-
-                    .attr('type', 'number')
-
-                    .attr('class', 'order-input order-input--compact')
-
-                    .attr('min', 0.1)
-
-                    .attr('step', 0.1)
-
-                    .style('flex', '1')
-
-                    .style('min-width', '0');
-
-                inp.node().__decimals = 2;
-
-                inp.property('value', this.formatNumericValue(state.riskPercent ?? 1, 2));
-
-                const commit = () => {
-
-                    const v = Number.parseFloat(inp.property('value'));
-
-                    if (!Number.isFinite(v)) return;
-
-                    state.riskPercent = v;
-
-                    calculateLotSizeFromRisk();
-
-                    refreshRisk(true);
-
-                };
-
-                inp.on('input', commit).on('change', commit);
-
-                wrap.append('span').attr('class', 'order-input-suffix').text('%');
-
-                const sg = wrap.append('span').attr('class', 'input-stepper-group');
-
-                sg.append('button').attr('type', 'button').attr('class', 'input-stepper').text('−')
-
-                    .on('click', () => { bump(inp, -0.5, 0.1, null, 2); commit(); });
-
-                sg.append('button').attr('type', 'button').attr('class', 'input-stepper').text('+')
-
-                    .on('click', () => { bump(inp, 0.5, 0.1, null, 2); commit(); });
-
-                riskInput = inp;
+                }, { min: 0, step: 10, decimals: 2 });
 
             } else {
 
-                const inp = wrap.append('input')
+                riskAmountRow.label.text('Risk Percent (%)');
 
-                    .attr('type', 'number')
+                riskInput = createNumberControl(riskAmountRow.controls, state.riskPercent ?? 1, (value) => {
 
-                    .attr('class', 'order-input order-input--compact')
-
-                    .attr('min', 0.01)
-
-                    .attr('step', 0.01)
-
-                    .style('flex', '1')
-
-                    .style('min-width', '0');
-
-                inp.node().__decimals = 2;
-
-                inp.property('value', this.formatNumericValue(state.lotSizeAmount ?? 1, 2));
-
-                const commit = () => {
-
-                    const v = Number.parseFloat(inp.property('value'));
-
-                    if (!Number.isFinite(v)) return;
-
-                    state.lotSizeAmount = Math.max(0.01, v);
+                    state.riskPercent = value;
 
                     calculateLotSizeFromRisk();
 
                     refreshRisk(true);
 
-                };
-
-                inp.on('input', commit).on('change', commit);
-
-                wrap.append('span').attr('class', 'order-input-suffix').text('Lots');
-
-                const sg = wrap.append('span').attr('class', 'input-stepper-group');
-
-                sg.append('button').attr('type', 'button').attr('class', 'input-stepper').text('−')
-
-                    .on('click', () => { bump(inp, -0.1, 0.01, null, 2); commit(); });
-
-                sg.append('button').attr('type', 'button').attr('class', 'input-stepper').text('+')
-
-                    .on('click', () => { bump(inp, 0.1, 0.01, null, 2); commit(); });
-
-                riskInput = inp;
+                }, { min: 0, step: 0.1, decimals: 2 });
 
             }
 
@@ -30668,15 +30240,13 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
 
-            if (state.riskMode !== 'risk-usd' && state.riskMode !== 'risk-percent' && state.riskMode !== 'lot-size') {
+            if (state.riskMode !== 'risk-usd' && state.riskMode !== 'risk-percent') {
 
                 state.riskMode = 'risk-usd';
 
             }
 
-            syncModeTabs();
-
-            updateBalanceToggleVis();
+            riskModeSelect.property('value', state.riskMode);
 
             
 
@@ -30698,13 +30268,9 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
                     setInputValue(riskInput, state.riskAmountUSD);
 
-                } else if (state.riskMode === 'risk-percent') {
-
-                    setInputValue(riskInput, state.riskPercent);
-
                 } else {
 
-                    setInputValue(riskInput, state.lotSizeAmount);
+                    setInputValue(riskInput, state.riskPercent);
 
                 }
 
@@ -30732,45 +30298,15 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
             // Calculate actual risk amount in USD
 
-            const { pipSize, pipValue } = getPipMetrics();
-
             let riskUSD = 0;
 
             if (state.riskMode === 'risk-usd') {
 
                 riskUSD = state.riskAmountUSD || 100;
 
-            } else if (state.riskMode === 'risk-percent') {
-
-                let accountSize = state.accountSize || 10000;
-
-                const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
-
-                if (state.balanceType === 'initial' && om && Number.isFinite(Number(om.initialBalance))) {
-
-                    accountSize = Number(om.initialBalance);
-
-                } else if (state.balanceType !== 'initial' && om && Number.isFinite(Number(om.balance))) {
-
-                    accountSize = Number(om.balance);
-
-                }
-
-                riskUSD = (accountSize * (state.riskPercent || 1)) / 100;
-
             } else {
 
-                const entry = toFiniteNumber(state.entryPrice, drawing.points?.[0]?.y || 0);
-
-                const stop = toFiniteNumber(state.stopPrice, drawing.points?.[1]?.y || entry);
-
-                const slDistance = Math.abs(entry - stop);
-
-                const slPips = pipSize > 0 ? slDistance / pipSize : 0;
-
-                const lots = Number(state.lotSizeAmount) > 0 ? Number(state.lotSizeAmount) : (state.lotSize || 1);
-
-                riskUSD = slPips * pipValue * lots;
+                riskUSD = ((state.accountSize || 10000) * (state.riskPercent || 1)) / 100;
 
             }
 
@@ -30784,9 +30320,9 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
 
-            const stopPips = pipSize > 0 ? Math.abs(entry - stop) / pipSize : 0;
+            const stopPips = Math.abs(entry - stop) / 0.0001;
 
-            const targetPips = pipSize > 0 ? Math.abs(target - entry) / pipSize : 0;
+            const targetPips = Math.abs(target - entry) / 0.0001;
 
             const stopPercent = entry !== 0 ? (Math.abs(stop - entry) / Math.abs(entry)) * 100 : 0;
 

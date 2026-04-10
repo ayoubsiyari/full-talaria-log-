@@ -1297,7 +1297,6 @@ class BaseRiskRewardTool extends BaseDrawing {
             this.meta.risk = {
                 accountSize,
                 lotSize: 0.01,
-                lotSizeAmount: 1,
                 leverage: 1,
                 riskPercent: 1,
                 riskMode: 'risk-usd',
@@ -1305,10 +1304,6 @@ class BaseRiskRewardTool extends BaseDrawing {
             };
         } else if (!persistedAccountSize) {
             this.meta.risk.accountSize = accountSize;
-        }
-
-        if (this.meta.risk && (!Number.isFinite(Number(this.meta.risk.lotSizeAmount)) || Number(this.meta.risk.lotSizeAmount) <= 0)) {
-            this.meta.risk.lotSizeAmount = 1;
         }
 
         if (!Array.isArray(this.points) || this.points.length < 1) {
@@ -1446,15 +1441,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         const slDistance = Math.abs(entry - stop);
         
         if (slDistance === 0 || entry === 0) {
-            if (this.meta.risk.riskMode !== 'lot-size') {
-                this.meta.risk.lotSize = 0.01;
-            }
-            return;
-        }
-
-        if (this.meta.risk.riskMode === 'lot-size') {
-            const lots = Number(this.meta.risk.lotSizeAmount) > 0 ? Number(this.meta.risk.lotSizeAmount) : (this.meta.risk.lotSize || 0.01);
-            this.meta.risk.lotSize = Math.max(0.01, lots);
+            this.meta.risk.lotSize = 0.01;
             return;
         }
         
@@ -1467,10 +1454,9 @@ class BaseRiskRewardTool extends BaseDrawing {
             riskUSD = (accountSize * (this.meta.risk.riskPercent || 1)) / 100;
         }
         
-        const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
-        const pipSize = (om && Number(om.pipSize) > 0) ? Number(om.pipSize) : 0.0001;
-        const pipValue = (om && Number(om.pipValuePerLot) > 0) ? Number(om.pipValuePerLot) : 10;
-        const slPips = slDistance / pipSize;
+        // Calculate lot size using proper pip value formula
+        const slPips = slDistance / 0.0001;
+        const pipValue = 10;
         const calculatedLots = riskUSD / (slPips * pipValue);
         this.meta.risk.lotSize = Math.max(0.01, calculatedLots);
         

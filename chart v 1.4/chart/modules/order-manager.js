@@ -2571,7 +2571,7 @@ class OrderManager {
     applyPositionSizeModeToUI(mode) {
         const m = mode === 'risk-percent' || mode === 'lot-size' ? mode : 'risk-usd';
         this.positionSizeMode = m;
-        document.querySelectorAll('#orderPanel .position-mode-tab').forEach((t) => {
+        document.querySelectorAll('.position-mode-tab').forEach((t) => {
             t.style.cssText = '';
             t.classList.toggle('active', t.dataset.mode === m);
         });
@@ -11436,8 +11436,8 @@ class OrderManager {
             };
         });
         
-        // Position sizing mode tabs (order panel only — RR drawing settings use same classes outside #orderPanel)
-        document.querySelectorAll('#orderPanel .position-mode-tab').forEach(tab => {
+        // Position sizing mode tabs
+        document.querySelectorAll('.position-mode-tab').forEach(tab => {
             tab.onclick = () => {
                 const prevMode = this.positionSizeMode || 'risk-usd';
                 const mode = tab.dataset.mode;
@@ -11447,7 +11447,7 @@ class OrderManager {
                 }
                 
                 // Update tab styling
-                document.querySelectorAll('#orderPanel .position-mode-tab').forEach(t => {
+                document.querySelectorAll('.position-mode-tab').forEach(t => {
                     t.style.cssText = '';
                     t.classList.toggle('active', t === tab);
                 });
@@ -16338,17 +16338,6 @@ class OrderManager {
     }
 
     /**
-     * Second ladder leg when enabling multi-entry (0.1% step from primary, clamped toward TP).
-     * Shared by panel {@link setEntryMode} and RR {@link _buildDefaultTwoLevelMultiEntryFromPrimary}.
-     */
-    _defaultSecondMultiEntryPriceFromPrimary(currentPrice) {
-        if (!Number.isFinite(currentPrice) || currentPrice <= 0) return 0;
-        const offsetDir = (this.orderSide === 'SELL') ? -1 : 1;
-        const rawSecond = currentPrice * (1 + offsetDir * 0.001);
-        return this._clampMultiEntryPriceForReward(rawSecond, [currentPrice]);
-    }
-
-    /**
      * Single vs multi entry UI. Button label is the mode you switch TO when clicked
      * (single default: "Multiple"; multi active: "Single").
      * @param {boolean} isMulti
@@ -16397,7 +16386,13 @@ class OrderManager {
                     price: currentPrice,
                     amount: amt1
                 });
-                const secondPrice = this._defaultSecondMultiEntryPriceFromPrimary(currentPrice);
+                const offsetDir = (this.orderSide === 'SELL') ? -1 : 1;
+                const rawSecond = currentPrice > 0
+                    ? currentPrice * (1 + offsetDir * 0.001)
+                    : 0;
+                const secondPrice = currentPrice > 0
+                    ? this._clampMultiEntryPriceForReward(rawSecond, [currentPrice])
+                    : 0;
                 this.multiEntryLevels.push({
                     id: this.multiEntryIdCounter++,
                     price: secondPrice,
@@ -17925,29 +17920,6 @@ class OrderManager {
         const entry = drawing.points[0].y;
         const sl = drawing.points[1].y;
         const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision() : 5;
-
-        const metaRisk = drawing.meta?.risk;
-        if (metaRisk?.riskMode === 'risk-usd' || metaRisk?.riskMode === 'risk-percent' || metaRisk?.riskMode === 'lot-size') {
-            this.applyPositionSizeModeToUI(metaRisk.riskMode);
-        }
-        if (metaRisk?.riskMode === 'risk-usd') {
-            const v = Number(metaRisk.riskAmountUSD ?? metaRisk.riskAmount);
-            const raUsd = document.getElementById('riskAmountUSD');
-            if (raUsd && Number.isFinite(v)) raUsd.value = String(Math.round(v));
-        } else if (metaRisk?.riskMode === 'risk-percent') {
-            const pct = Number(metaRisk.riskPercent);
-            const rpEl = document.getElementById('riskAmountPercent');
-            if (rpEl && Number.isFinite(pct)) rpEl.value = String(pct);
-        } else if (metaRisk?.riskMode === 'lot-size') {
-            const lots = Number(metaRisk.lotSizeAmount ?? metaRisk.lotSize);
-            const lotEl = document.getElementById('lotSizeAmount');
-            if (lotEl && Number.isFinite(lots) && lots > 0) lotEl.value = String(lots);
-        } else {
-            const riskUsdLegacy = Number(metaRisk?.riskAmountUSD ?? metaRisk?.riskAmount);
-            const raUsd = document.getElementById('riskAmountUSD');
-            if (raUsd && Number.isFinite(riskUsdLegacy)) raUsd.value = String(Math.round(riskUsdLegacy));
-        }
-
         const ep = document.getElementById('orderEntryPrice');
         if (ep) ep.value = entry.toFixed(prec);
         const slp = document.getElementById('slPrice');
@@ -17956,6 +17928,9 @@ class OrderManager {
         const far = isLong ? Math.max(...allT) : Math.min(...allT);
         const tpp = document.getElementById('tpPrice');
         if (tpp) tpp.value = far.toFixed(prec);
+        const riskUsd = drawing.meta?.risk?.riskAmountUSD ?? drawing.meta?.risk?.riskAmount;
+        const ra = document.getElementById('riskAmountUSD');
+        if (ra && Number.isFinite(riskUsd)) ra.value = String(Math.round(riskUsd));
 
         const uniqTp = [...new Set((allT || []).filter(Number.isFinite))];
         if (uniqTp.length <= 1) {
@@ -18011,13 +17986,14 @@ class OrderManager {
             this.multiEntryLevels = [];
         } else {
             this.isMultiEntryMode = true;
+            const nE = uniqE.length;
+            const amtEach = Number.isFinite(riskUsd) && riskUsd > 0 ? Math.max(1, Math.round(riskUsd / nE)) : 40;
             if (!Number.isFinite(this.multiEntryIdCounter)) this.multiEntryIdCounter = 1;
             this.multiEntryLevels = uniqE.map((price) => ({
                 id: this.multiEntryIdCounter++,
                 price: parseFloat(price.toFixed(prec)),
-                amount: 0
+                amount: amtEach
             }));
-            this.equalizeMultiEntryAmounts();
         }
 
         const beLineY = drawing.meta?.rrBreakevenLine?.y;
@@ -18140,10 +18116,34 @@ class OrderManager {
     }
 
     /**
+     * Minimum price spacing for extra ladder legs (chart tick / pip) so new entries sit next to the
+     * previous rung instead of jumping toward TP (avoids overlap and “stuck on TP” lines).
+     * @param {object} [drawing] - optional RR drawing with getPriceStep()
+     * @param {number} [refPrice] - anchor price; same 0.0045*|price| floor as RR addExtraEntry fallback
+     */
+    _riskRewardMultiEntryStepPx(drawing, refPrice) {
+        const pip = Number(this.pipSize) > 0 ? Number(this.pipSize) : 0.0001;
+        let inc = pip;
+        if (drawing && typeof drawing.getPriceStep === 'function') {
+            inc = Math.max(inc, Number(drawing.getPriceStep()) || 0);
+        } else if (typeof window !== 'undefined' && window.chart && Number.isFinite(window.chart.priceIncrement) && window.chart.priceIncrement > 0) {
+            inc = Math.max(inc, window.chart.priceIncrement);
+        }
+        const tickMul = 48;
+        const offsetFrac = 0.0045;
+        const tickPart = inc * tickMul;
+        const fracPart = Number.isFinite(refPrice) && Math.abs(refPrice) > 0
+            ? Math.abs(refPrice) * offsetFrac
+            : 0;
+        return Math.max(tickPart, fracPart, pip * 8, 1e-12);
+    }
+
+    /**
      * Replace multi-entry ladder with Entry1 + one default E2 (same math as first-time R/R entry +).
      * @param {number} currentPrice - primary entry price (Entry1)
+     * @param {object} [drawing] - optional RR drawing for tick-based spacing
      */
-    _buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice) {
+    _buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice, drawing) {
         if (!Number.isFinite(this.multiEntryIdCounter)) this.multiEntryIdCounter = 1;
         const psMode = this.positionSizeMode || 'risk-usd';
         let amt1; let amt2;
@@ -18162,7 +18162,12 @@ class OrderManager {
         this.multiEntryLevels = [
             { id: this.multiEntryIdCounter++, price: currentPrice, amount: amt1 }
         ];
-        const secondPrice = this._defaultSecondMultiEntryPriceFromPrimary(currentPrice);
+        const offsetDir = (this.orderSide === 'SELL') ? -1 : 1;
+        const step = this._riskRewardMultiEntryStepPx(drawing, currentPrice);
+        const rawSecond = currentPrice > 0 ? currentPrice + offsetDir * step : 0;
+        const secondPrice = currentPrice > 0
+            ? this._clampMultiEntryPriceForReward(rawSecond, [currentPrice])
+            : 0;
         this.multiEntryLevels.push({
             id: this.multiEntryIdCounter++,
             price: secondPrice,
@@ -18171,26 +18176,64 @@ class OrderManager {
     }
 
     /**
-     * Risk/reward +: first click enables multi-entry with two levels (same 0.1% E2 as panel Multi);
-     * further clicks use {@link addMultiEntryLevel} like the panel "+" button.
+     * Risk/reward +: first click enables multi-entry with two levels; further clicks append another step
+     * toward TP (same default offset as the first ladder), re-equalizing amounts.
      */
     riskRewardAddEntryFromTool(drawing) {
         this.pushRiskRewardToolToManager(drawing);
         const allE = typeof drawing._allEntryPrices === 'function' ? drawing._allEntryPrices() : [drawing.points[0].y];
         const currentPrice = drawing.points[0].y;
         if (!this.isMultiEntryMode || !this.multiEntryLevels?.length || allE.length <= 1) {
-            this._buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice);
+            this._buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice, drawing);
             // Same as panel "Multi": show multi-entry UI, preview lines, risk summary — not only isMultiEntryMode + rows.
             this.setEntryMode(true);
         } else {
             const priced = (this.multiEntryLevels || []).filter((l) => l && l.price > 0);
             if (!priced.length) {
-                this._buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice);
+                this._buildDefaultTwoLevelMultiEntryFromPrimary(currentPrice, drawing);
                 this.setEntryMode(true);
             } else {
-                this.addMultiEntryLevel();
-                this.updatePreviewLines();
-                this.calculateAdvancedRiskReward();
+                const prec = this.getPricePrecision();
+                const isBuy = this.orderSide === 'BUY';
+                const refPrice = isBuy
+                    ? Math.max(...priced.map((l) => l.price))
+                    : Math.min(...priced.map((l) => l.price));
+                const step = this._riskRewardMultiEntryStepPx(drawing, refPrice);
+                const siblingPrices = priced.map((l) => l.price);
+                const minGap = step * 0.85;
+                const roundP = (p) => parseFloat(parseFloat(p).toFixed(prec));
+
+                const tooCloseToAny = (p) => priced.some((l) => Math.abs(l.price - p) < minGap);
+
+                let nextPrice = NaN;
+                let tryStep = step;
+                for (let attempt = 0; attempt < 8; attempt++) {
+                    const rawNext = refPrice > 0
+                        ? (isBuy ? refPrice + tryStep : refPrice - tryStep)
+                        : 0;
+                    const clamped = refPrice > 0
+                        ? this._clampMultiEntryPriceForReward(rawNext, siblingPrices)
+                        : 0;
+                    const candidate = roundP(clamped);
+                    if (!(candidate > 0) || !Number.isFinite(candidate)) break;
+                    if (!tooCloseToAny(candidate)) {
+                        nextPrice = candidate;
+                        break;
+                    }
+                    tryStep *= 1.35;
+                }
+
+                if (nextPrice > 0 && Number.isFinite(nextPrice)) {
+                    if (!Number.isFinite(this.multiEntryIdCounter)) this.multiEntryIdCounter = 1;
+                    this.multiEntryLevels.push({
+                        id: this.multiEntryIdCounter++,
+                        price: nextPrice,
+                        amount: 0
+                    });
+                    this.equalizeMultiEntryAmounts();
+                    this.updatePreviewLines();
+                    this.calculateAdvancedRiskReward();
+                }
             }
         }
         this.pullRiskRewardToolFromManager(drawing);
