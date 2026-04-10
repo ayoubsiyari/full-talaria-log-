@@ -18139,6 +18139,72 @@ class OrderManager {
     }
 
     /**
+     * When the “step from top rung toward TP” strategy fails (gap to TP smaller than minGap),
+     * place the next leg in the widest gap between two existing entries or between the end rung and TP.
+     * This avoids a silent cap around ~4 rungs on tight R:R boxes with large default step.
+     */
+    _riskRewardMidGapEntryPrice(pricedLevels, drawing, prec) {
+        const pip = Number(this.pipSize) > 0 ? Number(this.pipSize) : 0.0001;
+        let tickMin = pip;
+        if (drawing && typeof drawing.getPriceStep === 'function') {
+            tickMin = Math.max(tickMin, Number(drawing.getPriceStep()) || 0);
+        }
+        const minSep = Math.max(tickMin, pip * 0.5);
+
+        const prices = (pricedLevels || []).map((l) => l.price).filter((p) => Number.isFinite(p) && p > 0);
+        if (prices.length === 0) return NaN;
+
+        const asc = [...prices].sort((a, b) => a - b);
+        const isBuy = this.orderSide === 'BUY';
+
+        let tpFar = parseFloat(document.getElementById('tpPrice')?.value || 0);
+        const mtOn = document.getElementById('multipleTPToggle')?.checked;
+        if (mtOn && this.tpTargets?.length) {
+            const sorted = [...this.tpTargets].sort((a, b) => (isBuy ? a.price - b.price : b.price - a.price));
+            const last = sorted[sorted.length - 1];
+            if (last && Number.isFinite(last.price)) tpFar = last.price;
+        }
+
+        let bestMid = NaN;
+        let bestW = 0;
+
+        for (let i = 0; i < asc.length - 1; i++) {
+            const lo = asc[i];
+            const hi = asc[i + 1];
+            const w = hi - lo;
+            if (w >= minSep * 2 && w > bestW) {
+                bestW = w;
+                bestMid = lo + w / 2;
+            }
+        }
+
+        const loE = asc[0];
+        const hiE = asc[asc.length - 1];
+        if (Number.isFinite(tpFar) && tpFar > 0) {
+            if (isBuy && tpFar > hiE) {
+                const w = tpFar - hiE;
+                if (w >= minSep * 2 && w > bestW) {
+                    bestW = w;
+                    bestMid = hiE + w / 2;
+                }
+            } else if (!isBuy && tpFar < loE) {
+                const w = loE - tpFar;
+                if (w >= minSep * 2 && w > bestW) {
+                    bestW = w;
+                    bestMid = loE - w / 2;
+                }
+            }
+        }
+
+        if (!Number.isFinite(bestMid)) return NaN;
+        const clamped = this._clampMultiEntryPriceForReward(bestMid, prices);
+        const candidate = parseFloat(parseFloat(clamped).toFixed(prec));
+        if (!(candidate > 0)) return NaN;
+        const tooClose = prices.some((p) => Math.abs(p - candidate) < minSep * 0.75);
+        return tooClose ? NaN : candidate;
+    }
+
+    /**
      * Replace multi-entry ladder with Entry1 + one default E2 (same math as first-time R/R entry +).
      * @param {number} currentPrice - primary entry price (Entry1)
      * @param {object} [drawing] - optional RR drawing for tick-based spacing
@@ -18207,7 +18273,7 @@ class OrderManager {
 
                 let nextPrice = NaN;
                 let tryStep = step;
-                for (let attempt = 0; attempt < 8; attempt++) {
+                for (let attempt = 0; attempt < 14; attempt++) {
                     const rawNext = refPrice > 0
                         ? (isBuy ? refPrice + tryStep : refPrice - tryStep)
                         : 0;
@@ -18221,6 +18287,10 @@ class OrderManager {
                         break;
                     }
                     tryStep *= 1.35;
+                }
+
+                if (!(nextPrice > 0 && Number.isFinite(nextPrice))) {
+                    nextPrice = this._riskRewardMidGapEntryPrice(priced, drawing, prec);
                 }
 
                 if (nextPrice > 0 && Number.isFinite(nextPrice)) {
