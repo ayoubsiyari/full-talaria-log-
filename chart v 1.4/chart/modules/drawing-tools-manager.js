@@ -3377,27 +3377,73 @@ class DrawingToolsManager {
         const chart = this.chart;
         const toolType = isLong ? 'long-position' : 'short-position';
         const positionDefaults = this.getPositionRiskDefaults(toolType);
+        const priceStep = chart && chart.priceIncrement ? chart.priceIncrement : 0.0001;
+        const minTicks = Math.max(priceStep * 5, 1e-12);
+        const rewardRatio = positionDefaults.rewardRatio;
 
-        // Calculate a reasonable default size based on visible price range
+        // Fixed pixel leg on the stop side → stable on-screen size across zoom / timeframe.
+        // (Saved stopTicks from a previous tool still uses absolute price — user preference.)
+        const RR_DEFAULT_STOP_LEG_PX = 72;
+        if (
+            !positionDefaults.stopOffset
+            && chart
+            && chart.yScale
+            && typeof chart.yScale === 'function'
+            && typeof chart.yScale.invert === 'function'
+            && Number.isFinite(entry.y)
+        ) {
+            const ys = chart.yScale;
+            const entryPx = ys(entry.y);
+            if (Number.isFinite(entryPx)) {
+                const stopPxDelta = RR_DEFAULT_STOP_LEG_PX;
+                const targetPxDelta = stopPxDelta * rewardRatio;
+                let stopPx;
+                let targetPx;
+                if (isLong) {
+                    stopPx = entryPx + stopPxDelta;
+                    targetPx = entryPx - targetPxDelta;
+                } else {
+                    stopPx = entryPx - stopPxDelta;
+                    targetPx = entryPx + targetPxDelta;
+                }
+                let stopPrice = ys.invert(stopPx);
+                let targetPrice = ys.invert(targetPx);
+                if (isLong) {
+                    if (!Number.isFinite(stopPrice) || stopPrice >= entry.y) stopPrice = entry.y - minTicks;
+                    if (!Number.isFinite(targetPrice) || targetPrice <= entry.y) targetPrice = entry.y + minTicks * rewardRatio;
+                } else {
+                    if (!Number.isFinite(stopPrice) || stopPrice <= entry.y) stopPrice = entry.y + minTicks;
+                    if (!Number.isFinite(targetPrice) || targetPrice >= entry.y) targetPrice = entry.y - minTicks * rewardRatio;
+                }
+                let stopOffset = Math.abs(entry.y - stopPrice);
+                if (stopOffset < minTicks) {
+                    stopOffset = minTicks;
+                    stopPrice = isLong ? entry.y - stopOffset : entry.y + stopOffset;
+                    targetPrice = isLong ? entry.y + stopOffset * rewardRatio : entry.y - stopOffset * rewardRatio;
+                }
+                return [
+                    { x: entry.x, y: entry.y },
+                    { x: entry.x, y: stopPrice },
+                    { x: entry.x, y: targetPrice }
+                ];
+            }
+        }
+
         let stopOffset;
         if (positionDefaults.stopOffset) {
             stopOffset = positionDefaults.stopOffset;
         } else if (chart && chart.yScale) {
             const domain = chart.yScale.domain();
             const priceRange = Math.abs(domain[1] - domain[0]);
-            stopOffset = priceRange * 0.05; // 5% of visible range
+            stopOffset = priceRange * 0.05;
         } else {
-            const priceStep = chart && chart.priceIncrement ? chart.priceIncrement : 0.0001;
-            stopOffset = priceStep * 100; // Fallback to larger default
+            stopOffset = priceStep * 100;
         }
 
-        const priceStep = chart && chart.priceIncrement ? chart.priceIncrement : 0.0001;
-        stopOffset = Math.max(Math.abs(stopOffset), priceStep * 5);
-
-        const targetOffset = stopOffset * positionDefaults.rewardRatio;
+        stopOffset = Math.max(Math.abs(stopOffset), minTicks);
+        const targetOffset = stopOffset * rewardRatio;
         const stopPrice = isLong ? entry.y - stopOffset : entry.y + stopOffset;
         const targetPrice = isLong ? entry.y + targetOffset : entry.y - targetOffset;
-        // [debug removed]
         return [
             { x: entry.x, y: entry.y },
             { x: entry.x, y: stopPrice },
