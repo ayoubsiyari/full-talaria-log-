@@ -17709,6 +17709,9 @@ class OrderManager {
      */
     riskRewardAddBEFromTool(drawing) {
         if (!drawing || !drawing.points || drawing.points.length < 3) return;
+        if (typeof this.openOrderPanel === 'function') {
+            this.openOrderPanel();
+        }
         this.pushRiskRewardToolToManager(drawing);
 
         const enableSL = document.getElementById('enableSL');

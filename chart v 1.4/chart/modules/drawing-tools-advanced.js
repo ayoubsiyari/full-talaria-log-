@@ -2242,7 +2242,9 @@ class BaseRiskRewardTool extends BaseDrawing {
             const plusX = zoneX2 - 12;
             const mkPlus = (lineY, fill, handler) => {
                 const g = this.group.append('g').attr('class', 'rr-plus-btn');
+                // rr-plus-circle: excluded from setupDrawingDrag so d3.drag does not eat clicks (red/green/blue +).
                 g.append('circle')
+                    .attr('class', 'rr-plus-circle')
                     .attr('cx', plusX)
                     .attr('cy', lineY)
                     .attr('r', plusR)
@@ -2250,7 +2252,12 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .attr('stroke', 'rgba(255,255,255,0.85)')
                     .attr('stroke-width', 1)
                     .style('pointer-events', 'all')
-                    .style('cursor', 'pointer');
+                    .style('cursor', 'pointer')
+                    .on('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handler();
+                    });
                 g.append('text')
                     .attr('x', plusX)
                     .attr('y', lineY + 4)
@@ -2260,10 +2267,6 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .attr('font-weight', '700')
                     .style('pointer-events', 'none')
                     .text('+');
-                g.on('click', (e) => {
-                    e.stopPropagation();
-                    handler();
-                });
             };
             mkPlus(targetY, '#16a34a', () => this.addExtraTarget());
             mkPlus(entryY, '#2962FF', () => this.addExtraEntry());
