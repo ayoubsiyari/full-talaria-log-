@@ -3727,7 +3727,7 @@ class DrawingToolsManager {
                 .style('pointer-events', 'none');
             drawing.group.selectAll('.rr-mini-level-badge')
                 .style('pointer-events', 'none');
-            // Multi-entry: P&L / R:R pill on avg entry — draggable for whole-tool move (same as zones).
+            // Multi-entry: P&L / R:R pill on avg (middle) line — draggable for whole-tool move; ladder follows.
             drawing.group.selectAll('.rr-multi-pill-drag rect, .rr-multi-pill-drag text, .rr-multi-pill-drag tspan')
                 .style('pointer-events', 'all')
                 .style('cursor', 'move');

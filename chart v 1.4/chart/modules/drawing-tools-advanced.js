@@ -2259,7 +2259,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             const pnl = 0; // Will be calculated when order is active
             const centerInfoLine1 = `Open P&L: ${pnl.toFixed(0)}, Qty: ${quantity.toFixed(2)}`;
             const centerInfoLine2 = `Risk/Reward Ratio: ${rrRatio}`;
-            // Multi-entry: center pill on E1 row (same as single-entry movement); still shows avg-based R:R in text.
+            // Multi-entry: pill on weighted-avg (middle) line; draggable = whole-tool move so E1/E2/SL/TP follow (avg moves with ladder).
             const centerInfo = this.group.append('g')
                 .attr('class', hasMultiEntry ? 'center-info rr-multi-pill-drag' : 'center-info rr-no-hit')
                 .style('pointer-events', hasMultiEntry ? null : 'none');
@@ -2299,7 +2299,8 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             const centerRectX = zoneCenterX - (centerWidth / 2);
 
-            const centerRectY = entryY - (centerHeight / 2);
+            const centerLineYpx = hasMultiEntry ? avgEntryYpx : entryY;
+            const centerRectY = centerLineYpx - (centerHeight / 2);
 
             const centerInfoFill = this.isLong ? stopLabelFill : targetLabelFill;
 
