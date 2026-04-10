@@ -3362,6 +3362,27 @@ class DrawingToolsManager {
         };
     }
 
+    /**
+     * After on-chart edits to entry/SL/TP (and multi legs), push geometry into the order panel + preview.
+     * Without this, dashed RR levels and #orderEntryPrice / #slPrice / #tpPrice stay out of sync.
+     */
+    _syncRiskRewardDrawingToOrderPanel(drawing) {
+        if (!drawing || (drawing.type !== 'long-position' && drawing.type !== 'short-position')) return;
+        const om = typeof window !== 'undefined' && window.chart && window.chart.orderManager ? window.chart.orderManager : null;
+        if (!om || typeof om.pushRiskRewardToolToManager !== 'function') return;
+        if (typeof drawing.ensureRiskSettings === 'function') {
+            drawing.ensureRiskSettings();
+        }
+        try {
+            om.pushRiskRewardToolToManager(drawing);
+            if (typeof om.calculatePositionFromRisk === 'function') om.calculatePositionFromRisk();
+            if (typeof om.calculateAdvancedRiskReward === 'function') om.calculateAdvancedRiskReward();
+            if (typeof om.updatePreviewLines === 'function') om.updatePreviewLines();
+        } catch (e) {
+            console.warn('RR tool → order panel sync failed:', e);
+        }
+    }
+
     persistPositionToolDefaults(drawing) {
         if (!drawing || (drawing.type !== 'long-position' && drawing.type !== 'short-position')) {
             return;
@@ -3559,6 +3580,9 @@ class DrawingToolsManager {
         this.drawings.push(drawing);
         this.renderDrawing(drawing);
         this.persistPositionToolDefaults(drawing);
+        if (drawing.type === 'long-position' || drawing.type === 'short-position') {
+            this._syncRiskRewardDrawingToOrderPanel(drawing);
+        }
         this.saveDrawings();
         
         // Record for undo/redo
@@ -4899,6 +4923,9 @@ class DrawingToolsManager {
         if (this.chart.broadcastDrawingChange && index > -1) {
             this.chart.broadcastDrawingChange('update', drawing, index);
         }
+        if (drawing.type === 'long-position' || drawing.type === 'short-position') {
+            this._syncRiskRewardDrawingToOrderPanel(drawing);
+        }
         // [debug removed]
     }
 
@@ -4999,6 +5026,9 @@ class DrawingToolsManager {
             if (this.chart.broadcastDrawingChange && index > -1) {
                 this.chart.broadcastDrawingChange('update', drawing, index);
             }
+        }
+        if (drawing && (drawing.type === 'long-position' || drawing.type === 'short-position')) {
+            this._syncRiskRewardDrawingToOrderPanel(drawing);
         }
         // [debug removed]
     }
@@ -5177,6 +5207,17 @@ class DrawingToolsManager {
             }
             this.renderDrawing(this.draggingDrawing);
         }
+
+        const rrToSync = [];
+        if (this.draggingMultiple && this.multiDragStartPositions) {
+            this.multiDragStartPositions.forEach(({ drawing }) => {
+                if (drawing && (drawing.type === 'long-position' || drawing.type === 'short-position')) {
+                    rrToSync.push(drawing);
+                }
+            });
+        } else if (this.draggingDrawing && (this.draggingDrawing.type === 'long-position' || this.draggingDrawing.type === 'short-position')) {
+            rrToSync.push(this.draggingDrawing);
+        }
         
         this.isDragging = false;
         this.draggingDrawing = null;
@@ -5191,6 +5232,7 @@ class DrawingToolsManager {
         if (canvas) canvas.style.cursor = '';
         this.svg.style('cursor', '');
         this.saveDrawings();
+        rrToSync.forEach((d) => this._syncRiskRewardDrawingToOrderPanel(d));
     }
 
     /**
