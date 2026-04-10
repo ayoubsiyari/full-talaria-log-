@@ -1984,23 +1984,11 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         const bodyTopPx = Math.min(riskTop, rewTop);
         const bodyBotPx = Math.max(riskBot, rewBot);
-        // No whole-tool drag across entry-related Ys. If the gap is only around avg, E1/E2 strips sit
-        // under .rr-body-drag and the tool moves instead of the entry handles (broken drag).
+        // No whole-tool drag on the entry row — gap so only the entry hit strip (painted later) sees events.
         const entryRowGapPx = 36;
         const gapHalf = entryRowGapPx / 2;
-        let bandTop;
-        let bandBot;
-        if (hasMultiEntry) {
-            const ys = [entryY, avgEntryYpx];
-            (this.meta.extraEntries || []).forEach((row) => {
-                if (row && Number.isFinite(row.y)) ys.push(scales.yScale(row.y));
-            });
-            bandTop = Math.min(...ys) - gapHalf;
-            bandBot = Math.max(...ys) + gapHalf;
-        } else {
-            bandTop = entryY - gapHalf;
-            bandBot = entryY + gapHalf;
-        }
+        const bandTop = avgEntryYpx - gapHalf;
+        const bandBot = avgEntryYpx + gapHalf;
         const upperBodyH = Math.max(0, bandTop - bodyTopPx);
         const lowerBodyY = bandBot;
         const lowerBodyH = Math.max(0, bodyBotPx - lowerBodyY);
@@ -2019,20 +2007,6 @@ class BaseRiskRewardTool extends BaseDrawing {
         };
         appendBodyDrag(bodyTopPx, upperBodyH);
         appendBodyDrag(lowerBodyY, lowerBodyH);
-
-        // Eat pointer events at weighted-avg Y so d3 whole-tool drag (lines/rects behind) does not
-        // start when grabbing the avg row or left "Avg" badge area (pass-through hits body/SL/TP lines).
-        if (hasMultiEntry) {
-            const shH = 36;
-            this.group.append('rect')
-                .attr('class', 'rr-avg-drag-shield')
-                .attr('x', zoneX1)
-                .attr('y', avgEntryYpx - shH / 2)
-                .attr('width', zoneWidth)
-                .attr('height', shH)
-                .attr('fill', 'rgba(0,0,0,0)')
-                .attr('stroke', 'none');
-        }
 
         // Same as TP/stop visible lines: do not capture pointer-events on the stroke. Otherwise this
         // line competes with whole-tool drag and blocks the entry hit rect / left handles (TP feels
@@ -2168,48 +2142,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             const targetTicks = (Math.abs(targetPrice - entryPrice) / 0.0001).toFixed(1);
             const stopTicks = (Math.abs(stopPrice - entryPrice) / 0.0001).toFixed(1);
 
-            let displayQty = this.meta.risk?.lotSize || 0.01;
-            const hasLadderExtras = (this.meta.extraEntries || []).length > 0;
-            const omQty = typeof window !== 'undefined' ? window.chart?.orderManager : null;
-            if (hasLadderExtras && omQty?.isMultiEntryMode && Array.isArray(omQty.multiEntryLevels)) {
-                const precQ = typeof omQty.getPricePrecision === 'function' ? omQty.getPricePrecision() : 5;
-                const rrp = (p) => (Number.isFinite(p) ? parseFloat(Number(p).toFixed(precQ)) : p);
-                const slQ = rrp(
-                    Number.isFinite(stop.y) ? stop.y : parseFloat(document.getElementById('slPrice')?.value || '') || 0
-                );
-                const psQ = omQty.pipSize || this.getPriceStep();
-                const pvQ = omQty.pipValuePerLot || 10;
-                let sumLots = 0;
-                let counted = 0;
-                omQty.multiEntryLevels.forEach((lv, i) => {
-                    if (!lv) return;
-                    if (i > 0) {
-                        const ex = (this.meta.extraEntries || [])[i - 1];
-                        if (!ex || !Number.isFinite(ex.y)) return;
-                    }
-                    const rowY = i === 0 ? entry.y : (this.meta.extraEntries || [])[i - 1].y;
-                    if (!Number.isFinite(rowY) || rowY <= 0) return;
-                    const legPx = rrp(rowY);
-                    const levelForLots = { ...lv, price: legPx };
-                    if (slQ > 0 && typeof omQty._calcLevelLotSizeNumeric === 'function') {
-                        const n = omQty._calcLevelLotSizeNumeric(levelForLots, slQ, psQ, pvQ);
-                        if (Number.isFinite(n) && n > 0) {
-                            sumLots += n;
-                            counted += 1;
-                        }
-                    }
-                });
-                if (counted > 0) displayQty = sumLots;
-            }
-
-            const omFmtEarly = typeof window !== 'undefined' ? window.chart?.orderManager : null;
-            const avgPriceLabel = hasMultiEntry && Number.isFinite(zoneEntryPrice)
-                ? (typeof omFmtEarly?.formatPrice === 'function'
-                    ? omFmtEarly.formatPrice(zoneEntryPrice)
-                    : zoneEntryPrice.toFixed(
-                        typeof omFmtEarly?.getPricePrecision === 'function' ? omFmtEarly.getPricePrecision() : 5
-                    ))
-                : '';
+            const quantity = this.meta.risk?.lotSize || 0.01;
 
             // Get risk amount from settings (THIS is the amount we're risking)
             let riskUSD = 100; // Default
@@ -2313,10 +2246,8 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             // Center Info Box (TradingView-like red pill with border)
             const pnl = 0; // Will be calculated when order is active
-            const centerInfoLine1 = `Open P&L: ${pnl.toFixed(0)}, Qty: ${displayQty.toFixed(2)}`;
-            const centerInfoLine2 = hasMultiEntry && avgPriceLabel
-                ? `Risk/Reward Ratio: ${rrRatio} · Avg ${avgPriceLabel}`
-                : `Risk/Reward Ratio: ${rrRatio}`;
+            const centerInfoLine1 = `Open P&L: ${pnl.toFixed(0)}, Qty: ${quantity.toFixed(2)}`;
+            const centerInfoLine2 = `Risk/Reward Ratio: ${rrRatio}`;
             const centerInfo = this.group.append('g')
                 .attr('class', 'center-info rr-no-hit')
                 .style('pointer-events', 'none');
@@ -2406,7 +2337,6 @@ class BaseRiskRewardTool extends BaseDrawing {
                 const bx = zoneX1 + 4;
                 const by = lineYpx - bh / 2;
                 g.append('rect')
-                    .attr('class', 'rr-mini-badge-bg')
                     .attr('x', bx)
                     .attr('y', by)
                     .attr('width', bw)
@@ -2470,17 +2400,12 @@ class BaseRiskRewardTool extends BaseDrawing {
                     appendRrMiniBadge(yPix, [`E${i + 1}`, `${lotStr} lot`], entryFill);
                 });
             } else if (hasDrawnExtras) {
-                const fallbackLot = Number.isFinite(displayQty) ? displayQty.toFixed(2) : '—';
+                const fallbackLot = Number.isFinite(quantity) ? quantity.toFixed(2) : '—';
                 appendRrMiniBadge(entryY, ['E1', `${fallbackLot} lot`], entryFill);
                 (this.meta.extraEntries || []).forEach((row, i) => {
                     if (!row || !Number.isFinite(row.y)) return;
                     appendRrMiniBadge(scales.yScale(row.y), [`E${i + 2}`, `${fallbackLot} lot`], entryFill);
                 });
-            }
-
-            const avgFill = 'rgba(71, 85, 105, 0.92)';
-            if (hasMultiEntry && avgPriceLabel) {
-                appendRrMiniBadge(avgEntryYpx, ['Avg', avgPriceLabel], avgFill);
             }
 
             const mtOn = typeof document !== 'undefined' && document.getElementById('multipleTPToggle')?.checked;
