@@ -12743,7 +12743,10 @@ class OrderManager {
         const barRiskSeg = document.getElementById('tpRiskRewardBarRisk');
         const barRewardSeg = document.getElementById('tpRiskRewardBarReward');
         const cfgTP = this.getMarketConfig();
-        const pipTP = Number.isFinite(cfgTP.pipSize) && cfgTP.pipSize > 0 ? cfgTP.pipSize : (Number.isFinite(this.pipSize) && this.pipSize > 0 ? this.pipSize : 0.0001);
+        // Prefer symbol-synced pip (JPY 0.01, etc.) over generic market-type default (forex 0.0001).
+        const pipTP = Number.isFinite(this.pipSize) && this.pipSize > 0
+            ? this.pipSize
+            : (Number.isFinite(cfgTP.pipSize) && cfgTP.pipSize > 0 ? cfgTP.pipSize : 0.0001);
         const balTypeTP = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
         const balTP = balTypeTP === 'current' ? this.balance : this.initialBalance;
 
@@ -12810,7 +12813,9 @@ class OrderManager {
         const modeSL = this.positionSizeMode || 'risk-usd';
         if (slPipsDisplay && slQuantityDisplay) {
             const cfg = this.getMarketConfig();
-            const pip = Number.isFinite(cfg.pipSize) && cfg.pipSize > 0 ? cfg.pipSize : (Number.isFinite(this.pipSize) && this.pipSize > 0 ? this.pipSize : 0.0001);
+            const pip = Number.isFinite(this.pipSize) && this.pipSize > 0
+                ? this.pipSize
+                : (Number.isFinite(cfg.pipSize) && cfg.pipSize > 0 ? cfg.pipSize : 0.0001);
             if (!hasValidSL) {
                 slPipsDisplay.textContent = '—';
                 slQuantityDisplay.textContent = '—';

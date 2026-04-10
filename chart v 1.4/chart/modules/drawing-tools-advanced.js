@@ -2203,8 +2203,9 @@ class BaseRiskRewardTool extends BaseDrawing {
             const formatRrDistFromPx = (distAbs) => {
                 if (!Number.isFinite(distAbs) || distAbs <= 0) return '';
                 const cfg = om?.getMarketConfig?.() || {};
-                const pip = Number.isFinite(cfg.pipSize) && cfg.pipSize > 0 ? cfg.pipSize
-                    : (Number.isFinite(om?.pipSize) && om.pipSize > 0 ? om.pipSize : 0.0001);
+                const pip = Number.isFinite(om?.pipSize) && om.pipSize > 0
+                    ? om.pipSize
+                    : (Number.isFinite(cfg.pipSize) && cfg.pipSize > 0 ? cfg.pipSize : 0.0001);
                 if (cfg.showPips) return `${(distAbs / pip).toFixed(2)} pips`;
                 if (cfg.showTicks) return `${(distAbs / pip).toFixed(2)} pts`;
                 return `${distAbs.toFixed(cfg.symbolPrecision ?? 5)} pts`;
@@ -2213,8 +2214,12 @@ class BaseRiskRewardTool extends BaseDrawing {
             const targetPercent = ((Math.abs(targetPrice - entryPrice) / entryPrice) * 100).toFixed(3);
             const stopPercent = ((Math.abs(stopPrice - entryPrice) / entryPrice) * 100).toFixed(3);
 
-            const targetTicksFb = (Math.abs(targetPrice - entryPrice) / 0.0001).toFixed(1);
-            const stopTicksFb = (Math.abs(stopPrice - entryPrice) / 0.0001).toFixed(1);
+            const cfgForPip = om?.getMarketConfig?.() || {};
+            const effectivePipForFb = Number.isFinite(om?.pipSize) && om.pipSize > 0
+                ? om.pipSize
+                : (Number.isFinite(cfgForPip.pipSize) && cfgForPip.pipSize > 0 ? cfgForPip.pipSize : 0.0001);
+            const targetTicksFb = (Math.abs(targetPrice - entryPrice) / effectivePipForFb).toFixed(1);
+            const stopTicksFb = (Math.abs(stopPrice - entryPrice) / effectivePipForFb).toFixed(1);
 
             let panelOrderQty = parseFloat(document.getElementById('orderQuantity')?.value || '');
             if (!Number.isFinite(panelOrderQty) || panelOrderQty < 0) {
