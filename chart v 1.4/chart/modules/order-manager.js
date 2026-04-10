@@ -9104,6 +9104,57 @@ class OrderManager {
                     box-shadow: 0 0 0 1px rgba(38, 67, 247, 0.22);
                 }
 
+                /* Template preset actions — same segmented “ghost” look as inactive Market/Limit/Stop */
+                .order-preset-action-group {
+                    display: flex;
+                    flex-wrap: nowrap;
+                    align-items: stretch;
+                    gap: 0;
+                    padding: 2px;
+                    box-sizing: border-box;
+                    background: var(--om-seg-bg);
+                    border: 1px solid var(--om-seg-border);
+                    border-radius: 5px;
+                    flex-shrink: 0;
+                }
+                .order-preset-action-btn {
+                    flex: 0 1 auto;
+                    padding: 6px 10px;
+                    border: none;
+                    border-radius: 4px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    letter-spacing: 0.02em;
+                    cursor: pointer;
+                    margin-bottom: 0;
+                    min-width: 0;
+                    background: transparent;
+                    color: var(--om-tab-dim);
+                    -webkit-text-fill-color: var(--om-tab-dim);
+                    transition: background 0.1s ease, color 0.1s ease;
+                    box-shadow: none;
+                    font-family: inherit;
+                }
+                .order-preset-action-btn:hover:not(:disabled) {
+                    color: #6b7280;
+                    -webkit-text-fill-color: #6b7280;
+                    background: transparent;
+                }
+                body.light-mode .order-preset-action-group {
+                    background: var(--om-seg-bg) !important;
+                    border: 1px solid var(--om-seg-border) !important;
+                    border-radius: 5px !important;
+                }
+                body.light-mode .order-preset-action-btn {
+                    color: var(--om-tab-dim) !important;
+                    -webkit-text-fill-color: var(--om-tab-dim) !important;
+                    background: transparent !important;
+                }
+                body.light-mode .order-preset-action-btn:hover:not(:disabled) {
+                    color: #131722 !important;
+                    -webkit-text-fill-color: #131722 !important;
+                }
+
                 /* ── MISC ────────────────────────────────────────────────────────── */
                 .is-hidden { display: none !important; }
             `;
@@ -9174,13 +9225,15 @@ class OrderManager {
 
                 <div id="orderPanelPresetToolbar" class="order-section" style="padding-bottom: 10px; margin-bottom: 2px; border-bottom: 1px solid var(--op-border);">
                     <label class="order-label" for="orderPanelPresetSelect" style="display:block;margin-bottom:6px;">Template preset</label>
-                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                    <div style="display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;">
                         <select id="orderPanelPresetSelect" class="order-select" style="flex:1;min-width:0;">
                             <option value="">— Select —</option>
                         </select>
-                        <button type="button" id="orderPanelPresetLoadBtn" class="order-btn-icon" title="Load template">Load</button>
-                        <button type="button" id="orderPanelPresetSaveBtn" class="order-btn-icon order-btn-icon--accent" title="Save current as template">Save</button>
-                        <button type="button" id="orderPanelPresetDeleteBtn" class="order-btn-icon" title="Delete template">Del</button>
+                        <div class="order-preset-action-group" role="group" aria-label="Template actions">
+                            <button type="button" id="orderPanelPresetLoadBtn" class="order-preset-action-btn" title="Load template">Load</button>
+                            <button type="button" id="orderPanelPresetSaveBtn" class="order-preset-action-btn" title="Save current as template">Save</button>
+                            <button type="button" id="orderPanelPresetDeleteBtn" class="order-preset-action-btn" title="Delete template">Del</button>
+                        </div>
                     </div>
                 </div>
 
