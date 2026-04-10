@@ -2677,6 +2677,25 @@ class OrderManager {
         return grouped;
     }
 
+    /**
+     * Top replay bar (`replayBalance` / `replayEquity` / `replayPnL`) reads these fields on orderManager.
+     */
+    _syncReplayHeaderStatsFromAccount() {
+        const u = (this.openPositions || []).reduce((s, p) => s + (Number.parseFloat(p.unrealizedPnL) || 0), 0);
+        this.unrealizedPnL = u;
+        this.realizedPnL = Number.isFinite(this.initialBalance)
+            ? this.balance - this.initialBalance
+            : 0;
+        this.equity = Number.isFinite(this.balance) ? this.balance + u : this.balance;
+        if (this.orderService) {
+            this.orderService.balance = this.balance;
+            this.orderService.equity = this.equity;
+            if (typeof this.orderService.recomputeSharedMarginState === 'function') {
+                this.orderService.recomputeSharedMarginState();
+            }
+        }
+    }
+
     recomputeAccountFromJournal() {
         const base = Number.parseFloat(this.initialBalance);
         const startingBalance = Number.isFinite(base) ? base : 0;
@@ -2688,15 +2707,7 @@ class OrderManager {
             : 0;
 
         this.balance = startingBalance + realizedPnL;
-        this.equity = this.balance;
-
-        if (this.orderService) {
-            this.orderService.balance = this.balance;
-            this.orderService.equity = this.equity;
-            if (typeof this.orderService.recomputeSharedMarginState === 'function') {
-                this.orderService.recomputeSharedMarginState();
-            }
-        }
+        this._syncReplayHeaderStatsFromAccount();
     }
 
     _computeAdvancedAnalytics() {
@@ -27911,6 +27922,24 @@ class OrderManager {
         // 6. Clear scaled/split trade maps -----------------------------------
         if (this.scaledTrades) this.scaledTrades.clear();
         if (this.splitTrades) this.splitTrades.clear();
+
+        // 6b. Balance / equity — must match pruned journal after replay "Go back"
+        if (selective) {
+            this.recomputeAccountFromJournal();
+            try {
+                this.updatePositions();
+            } catch (e) {
+                console.warn('OrderManager: updatePositions after rewind failed', e);
+            }
+            this._syncReplayHeaderStatsFromAccount();
+            if (typeof window !== 'undefined' && window.propFirmTracker && typeof window.propFirmTracker.updateBalance === 'function') {
+                try {
+                    window.propFirmTracker.updateBalance(this.balance);
+                } catch (e) {
+                    console.warn('OrderManager: propFirmTracker.updateBalance after rewind failed', e);
+                }
+            }
+        }
 
         // 7. Reset panel to fresh state --------------------------------------
         this._resetPanelForNewOrder();
