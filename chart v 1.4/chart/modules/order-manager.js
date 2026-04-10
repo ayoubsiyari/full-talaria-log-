@@ -2528,7 +2528,6 @@ class OrderManager {
         const advBreakevenCard = document.getElementById('advBreakevenCard');
         const advTrailingCard = document.getElementById('advTrailingCard');
         const multipleTPSection = document.getElementById('multipleTPSection');
-        const scalePositionSection = document.getElementById('scalePositionSection');
         if (!advancedOrderToggle) return;
 
         const isEnabled = advancedOrderToggle.checked;
@@ -2538,7 +2537,7 @@ class OrderManager {
         if (advBreakevenCard) advBreakevenCard.style.display = isEnabled ? 'block' : 'none';
         if (advTrailingCard) advTrailingCard.style.display = isEnabled ? 'block' : 'none';
         if (multipleTPSection) multipleTPSection.style.display = isEnabled ? 'block' : 'none';
-        if (scalePositionSection) scalePositionSection.style.display = isEnabled ? 'block' : 'none';
+        /* #scalePositionSection hidden from UI — do not toggle visibility */
 
         if (!isEnabled) {
             const multipleTPToggle = document.getElementById('multipleTPToggle');
@@ -9656,10 +9655,10 @@ class OrderManager {
 
                 <div id="multipleTPSection" style="display:none;"></div>
 
-                <!-- Position Scaling Control (hidden) -->
-                <div class="order-section" id="scalePositionSection" style="display:none; margin-top: 8px; margin-bottom: 8px;">
+                <!-- Position scaling: kept in DOM for presets/engine; not shown in advanced order UI -->
+                <div class="order-section is-hidden" id="scalePositionSection" style="display:none !important; margin:0; padding:0; height:0; overflow:hidden; border:none;" aria-hidden="true">
                     <div class="order-toggle-wrapper">
-                        <input type="checkbox" id="scalePositionCheckbox" class="order-checkbox">
+                        <input type="checkbox" id="scalePositionCheckbox" class="order-checkbox" tabindex="-1">
                         <label for="scalePositionCheckbox" class="order-toggle-label" style="display: flex; align-items: center; gap: 6px;">
                             <span>📊 Scale with existing position</span>
                         </label>
@@ -33031,7 +33030,7 @@ class OrderManager {
         input.type = 'text';
         input.value = defaultName;
         input.autocomplete = 'off';
-        input.placeholder = 'e.g. London breakout';
+        input.placeholder = 'e.g. Template name ';
         input.style.cssText = `
             width: 100%;
             box-sizing: border-box;
