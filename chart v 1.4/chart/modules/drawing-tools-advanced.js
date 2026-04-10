@@ -2328,11 +2328,13 @@ class BaseRiskRewardTool extends BaseDrawing {
             if (omMulti) {
                 om.multiEntryLevels.forEach((lv, i) => {
                     if (!lv) return;
-                    let rowY = entry.y;
+                    // Only E1 until the tool has a real extra entry line (blue +). OM can still hold a
+                    // default/stale second row while extraEntries is empty — do not badge phantom E2+.
                     if (i > 0) {
                         const ex = (this.meta.extraEntries || [])[i - 1];
-                        rowY = ex && Number.isFinite(ex.y) ? ex.y : lv.price;
+                        if (!ex || !Number.isFinite(ex.y)) return;
                     }
+                    const rowY = i === 0 ? entry.y : (this.meta.extraEntries || [])[i - 1].y;
                     if (!Number.isFinite(rowY) || rowY <= 0) return;
                     const yPix = scales.yScale(rowY);
                     const legPx = rrRoundPx(rowY);
