@@ -2265,55 +2265,144 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('x', centerTextX)
                 .attr('y', centerTextY + centerLineHeight);
 
-            (this.meta.extraTargets || []).forEach((row, i) => {
-                if (!row || !Number.isFinite(row.y)) return;
-                const yy = scales.yScale(row.y);
-                this.group.append('text')
-                    .attr('class', 'rr-extra-tag')
-                    .attr('x', zoneX1 + 4)
-                    .attr('y', yy + 4)
-                    .attr('fill', '#86efac')
-                    .attr('font-size', '10px')
-                    .attr('font-weight', '600')
-                    .style('pointer-events', 'none')
-                    .text(`TP${i + 2}`);
-            });
-            (this.meta.extraEntries || []).forEach((row, i) => {
-                if (!row || !Number.isFinite(row.y)) return;
-                const yy = scales.yScale(row.y);
-                this.group.append('text')
-                    .attr('class', 'rr-extra-tag')
-                    .attr('x', zoneX1 + 4)
-                    .attr('y', yy + 4)
-                    .attr('fill', '#93c5fd')
-                    .attr('font-size', '10px')
-                    .attr('font-weight', '600')
-                    .style('pointer-events', 'none')
-                    .text(`E${i + 2}`);
-            });
+            /** Left-gutter mini badges: lots per entry, TP leg profit share, BE setting (rr-no-hit). */
+            const appendRrMiniBadge = (lineYpx, lineTexts, bgFill) => {
+                const parts = (lineTexts || []).filter((x) => x != null && String(x).length > 0);
+                if (!parts.length) return;
+                const padX = 5;
+                const padY = 3;
+                const gap = 2;
+                const g = this.group.append('g').attr('class', 'rr-mini-level-badge rr-no-hit').style('pointer-events', 'none');
+                const measured = [];
+                parts.forEach((txt, idx) => {
+                    const t = g.append('text')
+                        .attr('opacity', 0)
+                        .attr('font-size', idx === 0 ? '10px' : '9px')
+                        .attr('font-weight', idx === 0 ? '700' : '600')
+                        .attr('font-family', labelFontFamily)
+                        .text(String(txt));
+                    const bb = t.node().getBBox();
+                    measured.push({ txt: String(txt), w: bb.width, h: bb.height, idx });
+                    t.remove();
+                });
+                let maxW = 0;
+                let totalH = padY * 2;
+                measured.forEach((s, i) => {
+                    maxW = Math.max(maxW, s.w);
+                    totalH += s.h + (i < measured.length - 1 ? gap : 0);
+                });
+                const bw = maxW + padX * 2;
+                const bx = zoneX1 + 4;
+                const by = lineYpx - totalH / 2;
+                g.append('rect')
+                    .attr('x', bx)
+                    .attr('y', by)
+                    .attr('width', bw)
+                    .attr('height', totalH)
+                    .attr('rx', 4)
+                    .attr('fill', bgFill)
+                    .attr('stroke', 'rgba(255,255,255,0.14)');
+                let ty = by + padY;
+                measured.forEach((s) => {
+                    g.append('text')
+                        .attr('x', bx + padX)
+                        .attr('y', ty)
+                        .attr('dominant-baseline', 'hanging')
+                        .attr('fill', s.idx === 0 ? '#f8fafc' : '#cbd5e1')
+                        .attr('font-size', s.idx === 0 ? '10px' : '9px')
+                        .attr('font-weight', s.idx === 0 ? '700' : '600')
+                        .attr('font-family', labelFontFamily)
+                        .text(s.txt);
+                    ty += s.h + gap;
+                });
+            };
+
+            const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
+            const slForLots = Number.isFinite(stop.y) ? stop.y : parseFloat(document.getElementById('slPrice')?.value || '') || 0;
+            const pipS = om?.pipSize || this.getPriceStep();
+            const pipV = om?.pipValuePerLot || 10;
+            const entryFill = 'rgba(30, 64, 175, 0.92)';
+            const tpInnerFill = 'rgba(22, 101, 52, 0.92)';
+            const beFill = 'rgba(120, 53, 15, 0.92)';
+            const slExtraFill = 'rgba(127, 29, 29, 0.88)';
+
+            const hasDrawnExtras = (this.meta.extraEntries || []).length > 0;
+            const omMulti = om?.isMultiEntryMode && Array.isArray(om.multiEntryLevels) && om.multiEntryLevels.length > 0;
+
+            if (omMulti) {
+                om.multiEntryLevels.forEach((lv, i) => {
+                    if (!lv || !(lv.price > 0)) return;
+                    let rowY = entry.y;
+                    if (i === 0) {
+                        rowY = entry.y;
+                    } else {
+                        const ex = (this.meta.extraEntries || [])[i - 1];
+                        rowY = ex && Number.isFinite(ex.y) ? ex.y : lv.price;
+                    }
+                    const yPix = scales.yScale(rowY);
+                    let lotStr = '—';
+                    if (slForLots > 0 && typeof om._calcLevelLotSize === 'function') {
+                        const s = String(om._calcLevelLotSize(lv, slForLots, pipS, pipV) || '').trim();
+                        if (s) lotStr = s;
+                    } else if (typeof om._calcLevelLotSizeNumeric === 'function' && slForLots > 0) {
+                        const n = om._calcLevelLotSizeNumeric(lv, slForLots, pipS, pipV);
+                        if (Number.isFinite(n) && n > 0) lotStr = n.toFixed(2);
+                    } else if (Number.isFinite(lv.amount) && lv.amount > 0 && om.positionSizeMode === 'lot-size') {
+                        lotStr = String(parseFloat(Number(lv.amount).toFixed(2)));
+                    }
+                    appendRrMiniBadge(yPix, [`E${i + 1}`, `${lotStr} lot`], entryFill);
+                });
+            } else if (hasDrawnExtras) {
+                const fallbackLot = Number.isFinite(quantity) ? quantity.toFixed(2) : '—';
+                appendRrMiniBadge(entryY, ['E1', `${fallbackLot} lot`], entryFill);
+                (this.meta.extraEntries || []).forEach((row, i) => {
+                    if (!row || !Number.isFinite(row.y)) return;
+                    appendRrMiniBadge(scales.yScale(row.y), [`E${i + 2}`, `${fallbackLot} lot`], entryFill);
+                });
+            }
+
+            const mtOn = typeof document !== 'undefined' && document.getElementById('multipleTPToggle')?.checked;
+            if (mtOn && om?.tpTargets?.length > 1 && (this.meta.extraTargets || []).length) {
+                const sortedTp = [...om.tpTargets].sort((a, b) =>
+                    (this.isLong ? a.price - b.price : b.price - a.price));
+                const innerTp = sortedTp.slice(0, -1);
+                (this.meta.extraTargets || []).forEach((row, i) => {
+                    if (!row || !Number.isFinite(row.y)) return;
+                    const yy = scales.yScale(row.y);
+                    const leg = innerTp[i];
+                    const pct = leg ? Number(leg.percentage) : NaN;
+                    const pctStr = Number.isFinite(pct) ? `${Math.round(pct)}%` : '—';
+                    const usd = Number.isFinite(pct) ? Math.round(targetAmount * (pct / 100)) : null;
+                    const sub = usd != null ? `$${usd} · ${pctStr}` : pctStr;
+                    appendRrMiniBadge(yy, [`TP${i + 2}`, sub], tpInnerFill);
+                });
+            } else if ((this.meta.extraTargets || []).length) {
+                (this.meta.extraTargets || []).forEach((row, i) => {
+                    if (!row || !Number.isFinite(row.y)) return;
+                    appendRrMiniBadge(scales.yScale(row.y), [`TP${i + 2}`, '—'], tpInnerFill);
+                });
+            }
+
             (this.meta.extraStops || []).forEach((row, i) => {
                 if (!row || !Number.isFinite(row.y)) return;
-                const yy = scales.yScale(row.y);
-                this.group.append('text')
-                    .attr('class', 'rr-extra-tag')
-                    .attr('x', zoneX1 + 4)
-                    .attr('y', yy + 4)
-                    .attr('fill', '#fca5a5')
-                    .attr('font-size', '10px')
-                    .attr('font-weight', '600')
-                    .style('pointer-events', 'none')
-                    .text(`SL${i + 2}`);
+                appendRrMiniBadge(scales.yScale(row.y), [`SL${i + 2}`], slExtraFill);
             });
+
             if (beLinePx != null) {
-                this.group.append('text')
-                    .attr('class', 'rr-extra-tag')
-                    .attr('x', zoneX1 + 4)
-                    .attr('y', beLinePx + 4)
-                    .attr('fill', '#fcd34d')
-                    .attr('font-size', '10px')
-                    .attr('font-weight', '600')
-                    .style('pointer-events', 'none')
-                    .text('BE');
+                const beMode = om?.breakevenMode || 'rr';
+                const beInput = typeof document !== 'undefined' ? document.getElementById('breakevenPips') : null;
+                const beAmtInput = typeof document !== 'undefined' ? document.getElementById('breakevenAmount') : null;
+                const rawBe = parseFloat(beInput?.value || '0.5');
+                let beSub = '';
+                if (beMode === 'rr') {
+                    beSub = `${Number.isFinite(rawBe) ? rawBe : 0.5}R`;
+                } else if (beMode === 'pips') {
+                    beSub = `${Number.isFinite(rawBe) ? rawBe : 10} pips`;
+                } else {
+                    const a = parseFloat(beAmtInput?.value || '50');
+                    beSub = Number.isFinite(a) ? `$${Math.round(a)}` : '—';
+                }
+                appendRrMiniBadge(beLinePx, ['BE', beSub], beFill);
             }
 
             // Execute button moved to floating toolbar
