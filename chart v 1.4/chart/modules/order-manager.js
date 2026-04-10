@@ -27863,6 +27863,25 @@ class OrderManager {
             if (this.orderService) this.orderService.closedPositions = [];
         }
 
+        // 3b. Trade journal / History & sidebar — same cutoff as closedPositions (replay "Go back")
+        let removedJournalCount = 0;
+        if (selective) {
+            const j0 = (this.tradeJournal || []).length;
+            this.tradeJournal = (this.tradeJournal || []).filter((trade) => {
+                const ct = trade.closeTime ?? trade.exitTime;
+                return ct && Number.isFinite(ct) && ct < cutoffTime;
+            });
+            removedJournalCount = j0 - this.tradeJournal.length;
+            if (removedJournalCount > 0) {
+                this.persistJournal();
+                if (this.orderService && typeof this.orderService.addJournalEntries === 'function') {
+                    try {
+                        this.orderService.addJournalEntries(this.tradeJournal.slice());
+                    } catch (_) { /* optional sync */ }
+                }
+            }
+        }
+
         // 4. Wipe all SVG drawing layers (will be redrawn for kept trades) ---
         if (this.chart?.svg) {
             this._stripOrderDrawingLayersFromChart(this.chart);
@@ -27897,16 +27916,35 @@ class OrderManager {
         this._resetPanelForNewOrder();
         this.updatePositionsPanel();
 
+        // Sidebar Journal tab uses tradeJournal only — refresh without re-entering full panel pass
+        if (selective && removedJournalCount > 0) {
+            const prevLock = this._isUpdatingPanels;
+            this._isUpdatingPanels = true;
+            try {
+                this.updateJournalTab();
+            } finally {
+                this._isUpdatingPanels = prevLock;
+            }
+        }
+
         if (selective) {
             this._preservedClosedForRedraw = preservedClosed;
             const removedCount = removedClosedIds.size + removedOpen.length;
-            if (removedCount > 0) {
-                this.showNotification(
-                    `Cleared ${removedCount} future trade(s); kept ${preservedClosed.length} completed`, 'info');
+            if (removedCount > 0 || removedJournalCount > 0) {
+                let msg;
+                if (removedCount > 0 && removedJournalCount > 0) {
+                    msg = `Cleared ${removedCount} future trade(s); kept ${preservedClosed.length} completed; removed ${removedJournalCount} from journal/history`;
+                } else if (removedCount > 0) {
+                    msg = `Cleared ${removedCount} future trade(s); kept ${preservedClosed.length} completed`;
+                } else {
+                    msg = `Removed ${removedJournalCount} trade(s) from journal/history to match replay`;
+                }
+                this.showNotification(msg, 'info');
             }
             console.log(`🧹 forceCloseAllOrders (selective @ ${cutoffTime}): ` +
                 `kept ${preservedClosed.length} closed + ${preservedOpen.length} open, ` +
-                `removed ${removedClosedIds.size} closed + ${removedOpen.length} open`);
+                `removed ${removedClosedIds.size} closed + ${removedOpen.length} open, ` +
+                `journal −${removedJournalCount} (now ${(this.tradeJournal || []).length})`);
         } else {
             if (hadPositions || hadPending) {
                 this.showNotification('All orders closed & cleared (Go Back)', 'info');
