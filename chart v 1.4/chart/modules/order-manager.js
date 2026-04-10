@@ -245,6 +245,9 @@ class OrderManager {
         
         // Load saved market type
         this.loadMarketType();
+
+        /** localStorage key for named order-panel template presets */
+        this._orderPanelPresetsStorageKey = 'orderPanelPresets';
         
         this.init();
     }
@@ -2512,6 +2515,93 @@ class OrderManager {
         btn.classList.toggle('active', isMulti);
         if (settings) settings.classList.toggle('is-hidden', !isMulti);
         if (single) single.classList.toggle('is-hidden', isMulti);
+    }
+
+    /**
+     * Sync advanced order sections from #advancedOrderToggle (user toggle or preset load).
+     * @param {{ skipPreviewAndCalc?: boolean }} opts
+     */
+    syncAdvancedOrderUI(opts = {}) {
+        const skip = !!opts.skipPreviewAndCalc;
+        const advancedOrderToggle = document.getElementById('advancedOrderToggle');
+        const advancedOptions = document.getElementById('advancedOptions');
+        const advBreakevenCard = document.getElementById('advBreakevenCard');
+        const advTrailingCard = document.getElementById('advTrailingCard');
+        const multipleTPSection = document.getElementById('multipleTPSection');
+        const scalePositionSection = document.getElementById('scalePositionSection');
+        if (!advancedOrderToggle) return;
+
+        const isEnabled = advancedOrderToggle.checked;
+        this.advancedOrderEnabled = isEnabled;
+
+        if (advancedOptions) advancedOptions.style.display = isEnabled ? 'block' : 'none';
+        if (advBreakevenCard) advBreakevenCard.style.display = isEnabled ? 'block' : 'none';
+        if (advTrailingCard) advTrailingCard.style.display = isEnabled ? 'block' : 'none';
+        if (multipleTPSection) multipleTPSection.style.display = isEnabled ? 'block' : 'none';
+        if (scalePositionSection) scalePositionSection.style.display = isEnabled ? 'block' : 'none';
+
+        if (!isEnabled) {
+            const multipleTPToggle = document.getElementById('multipleTPToggle');
+            if (multipleTPToggle) multipleTPToggle.checked = false;
+            this._syncMultiTPButtonState();
+
+            const scalePositionCheckbox = document.getElementById('scalePositionCheckbox');
+            if (scalePositionCheckbox) scalePositionCheckbox.checked = false;
+            this.scaleNextOrder = false;
+
+            const autoBreakevenToggle = document.getElementById('autoBreakevenToggle');
+            if (autoBreakevenToggle) autoBreakevenToggle.checked = false;
+
+            const trailingSLToggle = document.getElementById('trailingSLToggle');
+            if (trailingSLToggle) trailingSLToggle.checked = false;
+
+            this.splitEntries = [];
+            this.splitEntriesEnabled = false;
+        }
+
+        if (!skip) {
+            this.updatePreviewLines();
+            this.calculateAdvancedRiskReward();
+        }
+    }
+
+    /**
+     * Apply position sizing mode to tabs and risk input visibility (shared with preset load).
+     * @param {string} mode
+     */
+    applyPositionSizeModeToUI(mode) {
+        const m = mode === 'risk-percent' || mode === 'lot-size' ? mode : 'risk-usd';
+        this.positionSizeMode = m;
+        document.querySelectorAll('.position-mode-tab').forEach((t) => {
+            t.style.cssText = '';
+            t.classList.toggle('active', t.dataset.mode === m);
+        });
+        const riskUSDInput = document.getElementById('riskUSDInput');
+        const riskPercentInput = document.getElementById('riskPercentInput');
+        const lotSizeInput = document.getElementById('lotSizeInput');
+        const balToggle = document.getElementById('balanceSourceToggle');
+        if (m === 'risk-usd') {
+            riskUSDInput?.classList.remove('is-hidden');
+            riskPercentInput?.classList.add('is-hidden');
+            lotSizeInput?.classList.add('is-hidden');
+            if (balToggle) balToggle.style.display = 'none';
+        } else if (m === 'risk-percent') {
+            riskUSDInput?.classList.add('is-hidden');
+            riskPercentInput?.classList.remove('is-hidden');
+            lotSizeInput?.classList.add('is-hidden');
+            if (balToggle) balToggle.style.display = 'flex';
+        } else {
+            riskUSDInput?.classList.add('is-hidden');
+            riskPercentInput?.classList.add('is-hidden');
+            lotSizeInput?.classList.remove('is-hidden');
+            if (balToggle) balToggle.style.display = 'none';
+        }
+        if (typeof this._syncTpProfitTargetFieldVisibility === 'function') {
+            this._syncTpProfitTargetFieldVisibility();
+        }
+        if (typeof this._syncSlCardSecondaryRows === 'function') {
+            this._syncSlCardSecondaryRows();
+        }
     }
 
     /**
@@ -9082,6 +9172,18 @@ class OrderManager {
                     </div>
                 </div>
 
+                <div id="orderPanelPresetToolbar" class="order-section" style="padding-bottom: 10px; margin-bottom: 2px; border-bottom: 1px solid var(--op-border);">
+                    <label class="order-label" for="orderPanelPresetSelect" style="display:block;margin-bottom:6px;">Template preset</label>
+                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                        <select id="orderPanelPresetSelect" class="order-select" style="flex:1;min-width:0;">
+                            <option value="">— Select —</option>
+                        </select>
+                        <button type="button" id="orderPanelPresetLoadBtn" class="order-btn-icon" title="Load template">Load</button>
+                        <button type="button" id="orderPanelPresetSaveBtn" class="order-btn-icon order-btn-icon--accent" title="Save current as template">Save</button>
+                        <button type="button" id="orderPanelPresetDeleteBtn" class="order-btn-icon" title="Delete template">Del</button>
+                    </div>
+                </div>
+
                 <div class="order-panel__top-row">
                     <div class="order-panel__tab-group">
                         <button id="buyTab" type="button" class="order-tab order-tab--buy active">BUY</button>
@@ -9361,14 +9463,6 @@ class OrderManager {
                         </label>
                         <label for="advancedOrderToggle" class="order-toggle-label">Advanced order</label>
                     </div>
-                </div>
-
-                <!-- Hidden preset toolbar (IDs kept for save/load logic) -->
-                <div id="protectionPresetToolbar" style="display:none;">
-                    <button id="createNewProtectionSetting" type="button">+</button>
-                    <select id="savedProtectionSettings"><option value="">--</option></select>
-                    <button id="loadProtectionSetting" type="button"></button>
-                    <button id="deleteProtectionSetting" type="button"></button>
                 </div>
 
                 <!-- Move to Breakeven -->
@@ -11157,59 +11251,14 @@ class OrderManager {
         
         // Advanced Order Toggle - controls visibility of advanced features
         const advancedOrderToggle = document.getElementById('advancedOrderToggle');
-        const advancedOptions = document.getElementById('advancedOptions');
-        const advBreakevenCard = document.getElementById('advBreakevenCard');
-        const advTrailingCard = document.getElementById('advTrailingCard');
-        const multipleTPSection = document.getElementById('multipleTPSection');
-        const scalePositionSection = document.getElementById('scalePositionSection');
-        
-        // Store initial state flag
-        this.advancedOrderEnabled = advancedOrderToggle?.checked || false;
-        
         const updateAdvancedVisibility = () => {
-            const isEnabled = advancedOrderToggle.checked;
-            this.advancedOrderEnabled = isEnabled;
-            
-            // Toggle visibility of advanced sections (TP and SL stay visible always)
-            if (advancedOptions) advancedOptions.style.display = isEnabled ? 'block' : 'none';
-            if (advBreakevenCard) advBreakevenCard.style.display = isEnabled ? 'block' : 'none';
-            if (advTrailingCard) advTrailingCard.style.display = isEnabled ? 'block' : 'none';
-            if (multipleTPSection) multipleTPSection.style.display = isEnabled ? 'block' : 'none';
-            if (scalePositionSection) scalePositionSection.style.display = isEnabled ? 'block' : 'none';
-            
-            // When disabled, reset/disable the advanced features (keep TP/SL enabled)
-            if (!isEnabled) {
-                // Disable multiple TPs
-                const multipleTPToggle = document.getElementById('multipleTPToggle');
-                if (multipleTPToggle) multipleTPToggle.checked = false;
-                this._syncMultiTPButtonState();
-                
-                // Disable scaling
-                const scalePositionCheckbox = document.getElementById('scalePositionCheckbox');
-                if (scalePositionCheckbox) scalePositionCheckbox.checked = false;
-                
-                // Disable breakeven and trailing
-                const autoBreakevenToggle = document.getElementById('autoBreakevenToggle');
-                if (autoBreakevenToggle) autoBreakevenToggle.checked = false;
-                
-                const trailingSLToggle = document.getElementById('trailingSLToggle');
-                if (trailingSLToggle) trailingSLToggle.checked = false;
-                
-                // Clear split entries
-                this.splitEntries = [];
-                this.splitEntriesEnabled = false;
-            }
-            
-            // Update preview lines
-            this.updatePreviewLines();
-            this.calculateAdvancedRiskReward();
-            
+            this.syncAdvancedOrderUI({});
+            const isEnabled = advancedOrderToggle?.checked || false;
             console.log(`🔧 Advanced Order: ${isEnabled ? 'ENABLED' : 'DISABLED'}`);
         };
-        
         if (advancedOrderToggle) {
+            this.advancedOrderEnabled = advancedOrderToggle.checked || false;
             advancedOrderToggle.onchange = updateAdvancedVisibility;
-            // Initialize visibility on load
             updateAdvancedVisibility();
         }
         
@@ -11691,55 +11740,68 @@ class OrderManager {
             updateBreakevenVisibility();
         }
 
-        // Custom Protection Settings System
-        this.loadSavedProtectionSettings();
-        
-        // Create New Protection Setting (+ button)
-        const createBtn = document.getElementById('createNewProtectionSetting');
-        if (createBtn) {
-            createBtn.onclick = () => {
-                this.openProtectionSettingsModal();
-            };
-        }
-        
-        // Load Protection Setting
-        const loadBtn = document.getElementById('loadProtectionSetting');
-        if (loadBtn) {
-            loadBtn.onclick = () => {
-                const select = document.getElementById('savedProtectionSettings');
-                const settingName = select?.value;
-                if (!settingName) {
-                    this.showNotification('⚠️ Please select a setting to load', 'warning');
+        // Order panel template presets (full form snapshot; storage key orderPanelPresets)
+        this.loadOrderPanelPresetsIntoSelect();
+        const presetSaveBtn = document.getElementById('orderPanelPresetSaveBtn');
+        if (presetSaveBtn) {
+            presetSaveBtn.onclick = () => {
+                const name = typeof window !== 'undefined' && window.prompt
+                    ? window.prompt('Template name', '')
+                    : '';
+                if (name == null) return;
+                const trimmed = String(name).trim();
+                if (!trimmed) {
+                    this.showNotification('Please enter a template name', 'warning');
                     return;
                 }
-                
-                const saved = JSON.parse(userStorage.getItem('protectionSettings') || '[]');
-                const setting = saved.find(s => s.name === settingName);
-                if (setting) {
-                    this.applyProtectionSettings(setting);
-                    this.showNotification(`📥 Protection setting "${settingName}" loaded!`, 'success');
-                }
+                this.saveOrderPanelPreset(trimmed);
             };
         }
-        
-        // Delete Protection Setting
-        const deleteBtn = document.getElementById('deleteProtectionSetting');
-        if (deleteBtn) {
-            deleteBtn.onclick = () => {
-                const select = document.getElementById('savedProtectionSettings');
-                const settingName = select?.value;
-                if (!settingName) {
-                    this.showNotification('⚠️ Please select a setting to delete', 'warning');
+        const presetLoadBtn = document.getElementById('orderPanelPresetLoadBtn');
+        if (presetLoadBtn) {
+            presetLoadBtn.onclick = () => {
+                const select = document.getElementById('orderPanelPresetSelect');
+                const presetName = select?.value;
+                if (!presetName) {
+                    this.showNotification('Select a template to load', 'warning');
                     return;
                 }
-                
-                if (!confirm(`Delete protection setting "${settingName}"?`)) return;
-                
-                let saved = JSON.parse(userStorage.getItem('protectionSettings') || '[]');
-                saved = saved.filter(s => s.name !== settingName);
-                userStorage.setItem('protectionSettings', JSON.stringify(saved));
-                this.loadSavedProtectionSettings();
-                this.showNotification(`🗑️ Protection setting "${settingName}" deleted!`, 'success');
+                const raw = userStorage.getItem(this._orderPanelPresetsStorageKey) || '[]';
+                let saved = [];
+                try {
+                    saved = JSON.parse(raw);
+                } catch (_e) {
+                    saved = [];
+                }
+                const preset = saved.find((p) => p && p.name === presetName);
+                if (!preset) {
+                    this.showNotification('Template not found', 'warning');
+                    return;
+                }
+                this.applyOrderPanelPreset(preset);
+                this.showNotification(`Loaded template "${presetName}"`, 'success');
+            };
+        }
+        const presetDelBtn = document.getElementById('orderPanelPresetDeleteBtn');
+        if (presetDelBtn) {
+            presetDelBtn.onclick = () => {
+                const select = document.getElementById('orderPanelPresetSelect');
+                const presetName = select?.value;
+                if (!presetName) {
+                    this.showNotification('Select a template to delete', 'warning');
+                    return;
+                }
+                if (!confirm(`Delete template "${presetName}"?`)) return;
+                let saved = [];
+                try {
+                    saved = JSON.parse(userStorage.getItem(this._orderPanelPresetsStorageKey) || '[]');
+                } catch (_e) {
+                    saved = [];
+                }
+                saved = saved.filter((p) => p && p.name !== presetName);
+                userStorage.setItem(this._orderPanelPresetsStorageKey, JSON.stringify(saved));
+                this.loadOrderPanelPresetsIntoSelect();
+                this.showNotification(`Deleted template "${presetName}"`, 'success');
             };
         }
         
@@ -32565,6 +32627,244 @@ class OrderManager {
     }
     
     /**
+     * @returns {object}
+     */
+    captureOrderPanelPreset() {
+        const val = (id) => {
+            const el = document.getElementById(id);
+            return el ? el.value : '';
+        };
+        const chk = (id) => document.getElementById(id)?.checked ?? false;
+        const balanceType = document.querySelector('input[name="balanceType"]:checked')?.value || 'current';
+        const activeTypeBtn = document.querySelector('.order-type-btn.active');
+        const orderType = this.orderType || activeTypeBtn?.dataset?.type || 'market';
+
+        const multiLevels = (this.multiEntryLevels || []).map((l) => ({
+            price: l.price,
+            amount: l.amount
+        }));
+
+        return {
+            version: 1,
+            savedAt: Date.now(),
+            marketType: this.marketType,
+            orderSide: this.orderSide === 'SELL' ? 'SELL' : 'BUY',
+            orderType,
+            positionSizeMode: this.positionSizeMode || 'risk-usd',
+            riskAmountUSD: parseFloat(val('riskAmountUSD') || '100') || 0,
+            riskAmountPercent: parseFloat(val('riskAmountPercent') || '1') || 0,
+            lotSizeAmount: parseFloat(val('lotSizeAmount') || '1') || 0,
+            advancedOrderEnabled: chk('advancedOrderToggle'),
+            balanceType,
+            maxRiskPercent: parseFloat(val('maxRiskPercent') || '0') || 0,
+            maxRiskAmount: parseFloat(val('maxRiskAmount') || '0') || 0,
+            scalePosition: chk('scalePositionCheckbox'),
+            enableSL: chk('enableSL'),
+            slPrice: val('slPrice'),
+            enableTP: chk('enableTP'),
+            orderEntryPrice: val('orderEntryPrice'),
+            isMultiEntryMode: !!this.isMultiEntryMode,
+            multiEntryLevels: multiLevels,
+            tpSingle: {
+                tpPrice: val('tpPrice'),
+                tpRRInput: val('tpRRInput'),
+                tpTargetProfitUSD: val('tpTargetProfitUSD'),
+                tpTargetProfitPercent: val('tpTargetProfitPercent')
+            },
+            protection: this.captureProtectionSettings()
+        };
+    }
+
+    /**
+     * Apply a saved order panel template. Legacy entries without `version` but with breakeven/trailing apply as protection-only.
+     * @param {object} data
+     */
+    applyOrderPanelPreset(data) {
+        if (!data || typeof data !== 'object') return;
+        if (!data.version && (data.breakeven || data.trailing || data.multipleTP)) {
+            this.applyProtectionSettings(data);
+            this._syncMultiTPButtonState();
+            this.calculatePositionFromRisk();
+            this.calculateAdvancedRiskReward();
+            this.updatePlaceButtonText();
+            this._updateBreakevenSummary();
+            this._updateTrailingSummary();
+            if (typeof this._applyPrecisionToInputs === 'function') this._applyPrecisionToInputs();
+            this.updatePreviewLines();
+            return;
+        }
+
+        this.isPopulatingOrderPanel = true;
+        try {
+            const adv = document.getElementById('advancedOrderToggle');
+            if (adv) adv.checked = !!data.advancedOrderEnabled;
+            this.syncAdvancedOrderUI({ skipPreviewAndCalc: true });
+
+            if (data.marketType && data.marketType !== this.marketType && typeof this.switchMarketType === 'function') {
+                this.switchMarketType(data.marketType);
+            }
+
+            const buyTab = document.getElementById('buyTab');
+            const sellTab = document.getElementById('sellTab');
+            const placeBtn = document.getElementById('placeOrderButton');
+            const side = data.orderSide === 'SELL' ? 'SELL' : 'BUY';
+            this.orderSide = side;
+            const isBuy = side === 'BUY';
+            if (buyTab && sellTab) {
+                buyTab.classList.toggle('active', isBuy);
+                sellTab.classList.toggle('active', !isBuy);
+                buyTab.style.cssText = '';
+                sellTab.style.cssText = '';
+                if (placeBtn) {
+                    placeBtn.style.background = isBuy
+                        ? 'linear-gradient(135deg, #22c55e, #1a9c4e)'
+                        : 'linear-gradient(135deg, #ef4444, #c93030)';
+                    placeBtn.style.color = '#ffffff';
+                    placeBtn.style.setProperty('-webkit-text-fill-color', '#ffffff');
+                    placeBtn.style.boxShadow = isBuy
+                        ? '0 2px 12px rgba(34,197,94,0.2)'
+                        : '0 2px 12px rgba(239,68,68,0.2)';
+                }
+            }
+
+            this.orderType = data.orderType || 'market';
+            document.querySelectorAll('.order-type-btn').forEach((b) => {
+                b.style.cssText = '';
+                b.classList.toggle('active', b.dataset.type === this.orderType);
+            });
+            if (this.orderType === 'market' && typeof this.updateOrderPanelPrice === 'function') {
+                this.updateOrderPanelPrice();
+            }
+
+            this.applyPositionSizeModeToUI(data.positionSizeMode || 'risk-usd');
+
+            const setVal = (id, v) => {
+                if (v === undefined || v === null) return;
+                const el = document.getElementById(id);
+                if (el) el.value = String(v);
+            };
+            setVal('riskAmountUSD', data.riskAmountUSD);
+            setVal('riskAmountPercent', data.riskAmountPercent);
+            setVal('lotSizeAmount', data.lotSizeAmount);
+
+            if (data.balanceType) {
+                const radio = document.querySelector(`input[name="balanceType"][value="${data.balanceType}"]`);
+                if (radio) radio.checked = true;
+            }
+            setVal('maxRiskPercent', data.maxRiskPercent);
+            setVal('maxRiskAmount', data.maxRiskAmount);
+
+            if (data.isMultiEntryMode && data.multiEntryLevels && data.multiEntryLevels.length > 0) {
+                this.multiEntryIdCounter = 1;
+                this.multiEntryLevels = data.multiEntryLevels.map((row) => ({
+                    id: this.multiEntryIdCounter++,
+                    price: Number(row.price) || 0,
+                    amount: Number(row.amount) || 0
+                }));
+                this.setEntryMode(true);
+            } else {
+                this.multiEntryLevels = [];
+                this.setEntryMode(false);
+                setVal('orderEntryPrice', data.orderEntryPrice);
+            }
+
+            const enableSL = document.getElementById('enableSL');
+            const slInputs = document.getElementById('slInputs');
+            if (enableSL) {
+                enableSL.checked = !!data.enableSL;
+                if (typeof enableSL.onchange === 'function') enableSL.onchange();
+                else if (slInputs) slInputs.style.display = enableSL.checked ? 'flex' : 'none';
+            }
+            setVal('slPrice', data.slPrice);
+
+            const enableTP = document.getElementById('enableTP');
+            const tpCardMain = document.getElementById('tpCardMain');
+            if (enableTP) {
+                enableTP.checked = data.enableTP !== false;
+                if (typeof enableTP.onchange === 'function') enableTP.onchange();
+                else if (tpCardMain) tpCardMain.style.display = enableTP.checked ? 'flex' : 'none';
+            }
+            if (data.tpSingle) {
+                setVal('tpPrice', data.tpSingle.tpPrice);
+                setVal('tpRRInput', data.tpSingle.tpRRInput);
+                setVal('tpTargetProfitUSD', data.tpSingle.tpTargetProfitUSD);
+                setVal('tpTargetProfitPercent', data.tpSingle.tpTargetProfitPercent);
+            }
+
+            const sc = document.getElementById('scalePositionCheckbox');
+            if (sc && data.advancedOrderEnabled) {
+                sc.checked = !!data.scalePosition;
+                this.scaleNextOrder = !!data.scalePosition;
+            }
+
+            if (data.protection) {
+                this.applyProtectionSettings(data.protection);
+            }
+            this._syncMultiTPButtonState();
+        } finally {
+            this.isPopulatingOrderPanel = false;
+        }
+
+        this.calculatePositionFromRisk();
+        this.calculateAdvancedRiskReward();
+        this.updatePlaceButtonText();
+        this._updateBreakevenSummary();
+        this._updateTrailingSummary();
+        if (typeof this._applyPrecisionToInputs === 'function') this._applyPrecisionToInputs();
+        this.updatePreviewLines();
+        if (typeof this.updateScalingCheckboxAvailability === 'function') {
+            this.updateScalingCheckboxAvailability();
+        }
+    }
+
+    loadOrderPanelPresetsIntoSelect() {
+        const select = document.getElementById('orderPanelPresetSelect');
+        if (!select) return;
+        const key = this._orderPanelPresetsStorageKey || 'orderPanelPresets';
+        let saved = [];
+        try {
+            saved = JSON.parse(userStorage.getItem(key) || '[]');
+        } catch (_e) {
+            saved = [];
+        }
+        const current = select.value;
+        select.innerHTML = '<option value="">— Select —</option>';
+        saved.forEach((p) => {
+            if (!p || !p.name) return;
+            const opt = document.createElement('option');
+            opt.value = p.name;
+            opt.textContent = p.name;
+            select.appendChild(opt);
+        });
+        if (current && [...select.options].some((o) => o.value === current)) {
+            select.value = current;
+        }
+    }
+
+    saveOrderPanelPreset(name) {
+        const key = this._orderPanelPresetsStorageKey || 'orderPanelPresets';
+        const preset = { ...this.captureOrderPanelPreset(), name };
+        let saved = [];
+        try {
+            saved = JSON.parse(userStorage.getItem(key) || '[]');
+        } catch (_e) {
+            saved = [];
+        }
+        const idx = saved.findIndex((p) => p && p.name === name);
+        if (idx >= 0) {
+            if (!confirm(`Overwrite template "${name}"?`)) return;
+            saved[idx] = preset;
+        } else {
+            saved.push(preset);
+        }
+        userStorage.setItem(key, JSON.stringify(saved));
+        this.loadOrderPanelPresetsIntoSelect();
+        const sel = document.getElementById('orderPanelPresetSelect');
+        if (sel) sel.value = name;
+        this.showNotification(`Saved template "${name}"`, 'success');
+    }
+
+    /**
      * Capture current protection settings
      */
     captureProtectionSettings() {
@@ -32600,9 +32900,12 @@ class OrderManager {
      * Apply protection settings
      */
     applyProtectionSettings(setting) {
+        if (!setting || typeof setting !== 'object') return;
+        const be = setting.breakeven || {};
+        const tr = setting.trailing || {};
         // Breakeven and Trailing are mutually exclusive; if a preset has both, keep Breakeven only
-        const presetBe = !!setting.breakeven?.enabled;
-        const presetTrail = !!setting.trailing?.enabled;
+        const presetBe = !!be.enabled;
+        const presetTrail = !!tr.enabled;
         let breakevenEnabled = presetBe;
         let trailingEnabled = presetTrail;
         if (breakevenEnabled && trailingEnabled) {
@@ -32613,32 +32916,36 @@ class OrderManager {
         const beToggle = document.getElementById('autoBreakevenToggle');
         if (beToggle) beToggle.checked = breakevenEnabled;
         
-        this.breakevenMode = setting.breakeven.mode;
+        const beMode = be.mode || 'rr';
+        this.breakevenMode = beMode;
         const pipsInput = document.getElementById('breakevenPips');
-        if (pipsInput) pipsInput.value = setting.breakeven.pipsValue;
+        if (pipsInput) pipsInput.value = be.pipsValue != null ? be.pipsValue : 0.5;
         const amountInput = document.getElementById('breakevenAmount');
-        if (amountInput) amountInput.value = setting.breakeven.amountValue;
+        if (amountInput) amountInput.value = be.amountValue != null ? be.amountValue : 50;
         const pipOffset = document.getElementById('breakevenPipOffset');
-        if (pipOffset) pipOffset.value = setting.breakeven.pipOffset;
+        if (pipOffset) pipOffset.value = be.pipOffset != null ? be.pipOffset : 0;
         
         // Apply trailing settings
         const trailToggle = document.getElementById('trailingSLToggle');
         if (trailToggle) trailToggle.checked = trailingEnabled;
         
-        this.trailingActivateMode = setting.trailing.activateMode || 'trail-rr';
-        document.getElementById('trailingActivateRR').value = setting.trailing.rrValue;
-        document.getElementById('trailingActivatePips').value = setting.trailing.pipsValue;
-        document.getElementById('trailingStepSize').value = setting.trailing.stepSize;
+        this.trailingActivateMode = tr.activateMode || 'trail-rr';
+        const trRr = document.getElementById('trailingActivateRR');
+        if (trRr) trRr.value = tr.rrValue != null ? tr.rrValue : 1;
+        const trPips = document.getElementById('trailingActivatePips');
+        if (trPips) trPips.value = tr.pipsValue != null ? tr.pipsValue : 10;
+        const trStep = document.getElementById('trailingStepSize');
+        if (trStep) trStep.value = tr.stepSize != null ? tr.stepSize : 0.5;
         const tLim = document.getElementById('trailingLimitUsd');
-        if (tLim) tLim.value = setting.trailing.limitUsd != null ? String(setting.trailing.limitUsd) : '0';
-        const tUm = setting.trailing.unitMode
-            || (setting.trailing.activateMode === 'trail-pips' ? 'pips' : 'rr');
+        if (tLim) tLim.value = tr.limitUsd != null ? String(tr.limitUsd) : '0';
+        const tUm = tr.unitMode
+            || (tr.activateMode === 'trail-pips' ? 'pips' : 'rr');
         this._setTrailingUnitMode(tUm === 'amount' || tUm === 'pips' || tUm === 'rr' ? tUm : 'rr');
         
         // Update UI to show correct mode tabs and inputs
         const bePipsInput = document.getElementById('breakevenPipsInput');
         const beAmountInput = document.getElementById('breakevenAmountInput');
-        if (setting.breakeven.mode === 'pips') {
+        if (beMode === 'pips') {
             if (bePipsInput) bePipsInput.style.display = 'flex';
             if (beAmountInput) beAmountInput.style.display = 'none';
         } else {
@@ -32650,8 +32957,17 @@ class OrderManager {
         document.querySelectorAll('.breakeven-mode-tab').forEach(t => {
             const tabMode = t.getAttribute('data-mode');
             t.style.cssText = '';
-            t.classList.toggle('active', tabMode === setting.breakeven.mode);
+            t.classList.toggle('active', tabMode === beMode);
         });
+        const _beUnitText = beMode === 'pips' ? 'Pips' : beMode === 'amount' ? '$' : 'R';
+        document.querySelectorAll('[data-be-unit-label]').forEach((el) => { el.textContent = _beUnitText; });
+        document.querySelectorAll('.be-offset-input, .be-offset-label').forEach((el) => {
+            el.style.display = beMode === 'amount' ? 'none' : '';
+        });
+        if (pipsInput) {
+            if (beMode === 'rr') { pipsInput.step = '0.1'; pipsInput.min = '0.1'; }
+            else { pipsInput.step = '1'; pipsInput.min = '1'; }
+        }
         
         // Show/hide settings panels
         const beSettings = document.getElementById('breakevenSettings');
@@ -32696,27 +33012,6 @@ class OrderManager {
         
         // Update preview lines
         this.updatePreviewLines();
-    }
-    
-    /**
-     * Load saved protection settings into dropdown
-     */
-    loadSavedProtectionSettings() {
-        const select = document.getElementById('savedProtectionSettings');
-        if (!select) return;
-        
-        const saved = JSON.parse(userStorage.getItem('protectionSettings') || '[]');
-        
-        // Clear existing options except first one
-        select.innerHTML = '<option value="">-- Select Saved Setting --</option>';
-        
-        // Add saved settings
-        saved.forEach(setting => {
-            const option = document.createElement('option');
-            option.value = setting.name;
-            option.textContent = setting.name;
-            select.appendChild(option);
-        });
     }
     
     /**
@@ -32972,7 +33267,6 @@ class OrderManager {
             }
             
             userStorage.setItem('protectionSettings', JSON.stringify(saved));
-            this.loadSavedProtectionSettings();
             this.showNotification(`💾 Protection setting "${setting.name}" saved!`, 'success');
             modal.remove();
         };
