@@ -17844,9 +17844,10 @@ class OrderManager {
         }
 
         const beLineY = drawing.meta?.rrBreakevenLine?.y;
-        if (Number.isFinite(beLineY)) {
-            const tgl = document.getElementById('autoBreakevenToggle');
-            if (tgl) tgl.checked = true;
+        const beTgl = document.getElementById('autoBreakevenToggle');
+        // Do not turn Auto BE on from drawing meta here — this runs on every TP/entry sync; stale
+        // rrBreakevenLine flipped the panel on and showed BE over E1. Enabling BE is riskRewardAddBEFromTool.
+        if (Number.isFinite(beLineY) && beTgl?.checked) {
             const bes = document.getElementById('breakevenSettings');
             if (bes) bes.classList.remove('is-hidden');
             this._applyBreakevenInputsFromTriggerPrice(beLineY);
