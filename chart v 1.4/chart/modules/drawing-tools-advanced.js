@@ -1944,14 +1944,16 @@ class BaseRiskRewardTool extends BaseDrawing {
         const worstStopPx = scales.yScale(this.getAggregatedStopPrice());
         const bestTargetPx = scales.yScale(this.getAggregatedTargetPrice());
 
-        const riskTop = Math.min(avgEntryYpx, worstStopPx);
-        const riskBot = Math.max(avgEntryYpx, worstStopPx);
+        // Zone split + body-drag gap + solid middle stroke: always E1 (points[0]) — same movement as single-entry.
+        const riskTop = Math.min(entryY, worstStopPx);
+        const riskBot = Math.max(entryY, worstStopPx);
         const riskHeight = riskBot - riskTop;
 
-        const rewTop = Math.min(avgEntryYpx, bestTargetPx);
-        const rewBot = Math.max(avgEntryYpx, bestTargetPx);
+        const rewTop = Math.min(entryY, bestTargetPx);
+        const rewBot = Math.max(entryY, bestTargetPx);
         const rewardHeight = rewBot - rewTop;
 
+        // R:R and edge labels can still reference weighted avg when multi-entry (informational only).
         const risk = Math.max(Math.abs(zoneEntryPrice - stop.y), 0.0000001);
         const reward = Math.abs(target.y - zoneEntryPrice);
         const rrRatio = (reward / risk).toFixed(2);
@@ -1984,22 +1986,11 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         const bodyTopPx = Math.min(riskTop, rewTop);
         const bodyBotPx = Math.max(riskBot, rewBot);
-        // No whole-tool drag across entry-related Ys (E1, E2, avg). Gap only around avg would leave E1/E2 under .rr-body-drag.
+        // Entry-row gap only around E1 (same as single-entry). E2/E3 use their own .rr-extra-drag-hit strips.
         const entryRowGapPx = 36;
         const gapHalf = entryRowGapPx / 2;
-        let bandTop;
-        let bandBot;
-        if (hasMultiEntry) {
-            const ys = [entryY, avgEntryYpx];
-            (this.meta.extraEntries || []).forEach((row) => {
-                if (row && Number.isFinite(row.y)) ys.push(scales.yScale(row.y));
-            });
-            bandTop = Math.min(...ys) - gapHalf;
-            bandBot = Math.max(...ys) + gapHalf;
-        } else {
-            bandTop = entryY - gapHalf;
-            bandBot = entryY + gapHalf;
-        }
+        const bandTop = entryY - gapHalf;
+        const bandBot = entryY + gapHalf;
         const upperBodyH = Math.max(0, bandTop - bodyTopPx);
         const lowerBodyY = bandBot;
         const lowerBodyH = Math.max(0, bodyBotPx - lowerBodyY);
@@ -2019,32 +2010,34 @@ class BaseRiskRewardTool extends BaseDrawing {
         appendBodyDrag(bodyTopPx, upperBodyH);
         appendBodyDrag(lowerBodyY, lowerBodyH);
 
+        // Optional dashed guide at weighted avg (multi-entry only). Solid E1 line is the main boundary — same as single-entry feel.
+        if (hasMultiEntry && Math.abs(avgEntryYpx - entryY) > 0.5) {
+            this.group.append('line')
+                .attr('class', 'rr-extra-line rr-avg-guide')
+                .attr('x1', zoneX1)
+                .attr('y1', avgEntryYpx)
+                .attr('x2', zoneX2)
+                .attr('y2', avgEntryYpx)
+                .attr('stroke', this.style.entryColor || '#787b86')
+                .attr('stroke-width', 1)
+                .attr('stroke-dasharray', dashExtra)
+                .attr('opacity', 0.85)
+                .style('pointer-events', 'none');
+        }
+
         // Same as TP/stop visible lines: do not capture pointer-events on the stroke. Otherwise this
         // line competes with whole-tool drag and blocks the entry hit rect / left handles (TP feels
         // fine because its dashed line uses pointer-events: none).
         this.group.append('line')
-            .attr('class', 'shape-border rr-entry-stroke rr-avg-entry-stroke')
+            .attr('class', 'shape-border rr-entry-stroke')
             .attr('x1', zoneX1)
-            .attr('y1', avgEntryYpx)
+            .attr('y1', entryY)
             .attr('x2', zoneX2)
-            .attr('y2', avgEntryYpx)
+            .attr('y2', entryY)
             .attr('stroke', this.style.entryColor || '#565656ff')
-            .attr('stroke-width', hasMultiEntry ? 2 : 1.5)
+            .attr('stroke-width', 1.5)
             .style('pointer-events', 'none')
             .style('cursor', 'inherit');
-
-        if (hasMultiEntry) {
-            this.group.append('line')
-                .attr('class', 'rr-extra-line rr-extra-entry rr-e1-leg')
-                .attr('x1', zoneX1)
-                .attr('y1', entryY)
-                .attr('x2', zoneX2)
-                .attr('y2', entryY)
-                .attr('stroke', this.style.entryColor || '#2962FF')
-                .attr('stroke-width', 1)
-                .attr('stroke-dasharray', dashExtra)
-                .style('pointer-events', 'none');
-        }
 
         this.group.append('line')
             .attr('x1', zoneX1)
@@ -2236,7 +2229,7 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             // Target / Stop labels: TV-like behavior (wide = edge-snapped, narrow = floated with fixed spacing)
             const targetLabelText = `Target: ${targetPrice.toFixed(5)} (${targetPercent}%) ${targetTicks}, Amount: ${targetAmount}`;
-            const targetSide = targetY <= avgEntryYpx ? 'top' : 'bottom';
+            const targetSide = targetY <= entryY ? 'top' : 'bottom';
             createEdgeLabel({
                 className: 'target-label',
                 text: targetLabelText,
@@ -2246,7 +2239,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             });
 
             const stopLabelText = `Stop: ${stopPrice.toFixed(5)} (${stopPercent}%) ${stopTicks}, Amount: ${stopAmount}`;
-            const stopSide = stopY <= avgEntryYpx ? 'top' : 'bottom';
+            const stopSide = stopY <= entryY ? 'top' : 'bottom';
             createEdgeLabel({
                 className: 'stop-label',
                 text: stopLabelText,
@@ -2259,7 +2252,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             const pnl = 0; // Will be calculated when order is active
             const centerInfoLine1 = `Open P&L: ${pnl.toFixed(0)}, Qty: ${quantity.toFixed(2)}`;
             const centerInfoLine2 = `Risk/Reward Ratio: ${rrRatio}`;
-            // Multi-entry: center pill on avg — make it a whole-tool drag handle (raised above primary entry strip).
+            // Multi-entry: center pill on E1 row (same as single-entry movement); still shows avg-based R:R in text.
             const centerInfo = this.group.append('g')
                 .attr('class', hasMultiEntry ? 'center-info rr-multi-pill-drag' : 'center-info rr-no-hit')
                 .style('pointer-events', hasMultiEntry ? null : 'none');
@@ -2299,7 +2292,7 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             const centerRectX = zoneCenterX - (centerWidth / 2);
 
-            const centerRectY = avgEntryYpx - (centerHeight / 2);
+            const centerRectY = entryY - (centerHeight / 2);
 
             const centerInfoFill = this.isLong ? stopLabelFill : targetLabelFill;
 
@@ -2912,13 +2905,8 @@ class BaseRiskRewardTool extends BaseDrawing {
         const handleStroke = '#2962FF';
         const handleStrokeWidth = 2;
         
-        // Width handle on the same Y as the zone boundary: avg entry when E2+, else E1.
-        const hasLadder = (this.meta.extraEntries || []).length > 0;
-        let cornerY = scales.yScale(this.points[0].y);
-        if (hasLadder) {
-            const wAvg = this._getWeightedAverageEntryPrice();
-            if (Number.isFinite(wAvg)) cornerY = scales.yScale(wAvg);
-        }
+        // Width handle on E1 (same as single-entry zone boundary).
+        const cornerY = scales.yScale(this.points[0].y);
         
         const positions = [
             { role: 'corner-entry-right', x: zoneX2, y: cornerY, cursor: 'ew-resize' }
