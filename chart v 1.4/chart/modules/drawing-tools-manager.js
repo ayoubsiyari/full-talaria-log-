@@ -1825,8 +1825,8 @@ class DrawingToolsManager {
             }
 
             if (drawing) {
+                // Let + buttons handle activation on pointerdown/mousedown (click can be suppressed).
                 if (rawTargetNode && rawTargetNode.closest && rawTargetNode.closest('.rr-plus-btn')) {
-                    event.preventDefault();
                     event.stopPropagation();
                     return;
                 }

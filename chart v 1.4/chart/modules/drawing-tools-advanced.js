@@ -2389,7 +2389,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             const plusX = zoneX2 + plusOutsideGap + plusR;
             const mkPlus = (lineY, fill, handler) => {
                 const g = this.group.append('g').attr('class', 'rr-plus-btn');
-                const onActivate = (e) => {
+                const onClick = (e) => {
                     e.stopPropagation();
                     if (typeof e.preventDefault === 'function') e.preventDefault();
                     handler();
@@ -2403,7 +2403,13 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .attr('stroke', 'none')
                     .style('pointer-events', 'all')
                     .style('cursor', 'pointer')
-                    .on('click', onActivate);
+                    // Stop mousedown bubbling to svg (empty-space → deselect) but do not preventDefault
+                    // or the browser may skip the click that runs the add handler.
+                    .on('mousedown', (e) => {
+                        if (e.button !== 0) return;
+                        e.stopPropagation();
+                    })
+                    .on('click', onClick);
                 g.append('circle')
                     .attr('class', 'rr-plus-visible')
                     .attr('cx', plusX)
