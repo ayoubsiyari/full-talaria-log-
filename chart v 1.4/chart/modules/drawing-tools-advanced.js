@@ -1095,6 +1095,17 @@ class BaseRiskRewardTool extends BaseDrawing {
 
     addExtraStop() {
         if (!Array.isArray(this.points) || this.points.length < 3) return;
+        const om = window.chart?.orderManager;
+        if (om && typeof om.riskRewardAddBEFromTool === 'function') {
+            om.riskRewardAddBEFromTool(this);
+            this._afterRiskRewardOrderManagerSync();
+            const dmStop = this._drawingManager();
+            if (dmStop) {
+                dmStop.renderDrawing(this);
+                dmStop.saveDrawings();
+            }
+            return;
+        }
         this._ensureExtraLevelMeta();
         const step = this.getPriceStep();
         const all = this._allStopPrices();
