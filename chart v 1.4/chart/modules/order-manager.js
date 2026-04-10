@@ -17610,6 +17610,88 @@ class OrderManager {
 
         if (typeof drawing.ensureRiskSettings === 'function') drawing.ensureRiskSettings();
         drawing.meta.updatedAt = Date.now();
+        this._assignBreakevenMetaFromPanel(drawing);
+    }
+
+    /**
+     * Breakeven trigger price for the long/short drawing (same math as BE preview), without mutating panel flags.
+     * When TP is on, uses halfway between anchor and TP so the tool line sits between entry and TP like TP2.
+     */
+    _computeBreakevenTriggerPriceForRiskRewardDrawing() {
+        const beEnabled = document.getElementById('autoBreakevenToggle')?.checked;
+        const slEnabled = document.getElementById('enableSL')?.checked;
+        const tpEnabled = document.getElementById('enableTP')?.checked;
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const tpPrice = parseFloat(document.getElementById('tpPrice')?.value || 0);
+        const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
+        if (!beEnabled || !slEnabled || !(slPrice > 0)) return NaN;
+
+        const beAnchor = this._previewBreakevenAnchorEntry();
+        if (!(beAnchor > 0)) return NaN;
+
+        const riskDistance = Math.abs(beAnchor - slPrice);
+        const beMode = this.breakevenMode || 'rr';
+        let beValue;
+        if (beMode === 'rr') {
+            beValue = parseFloat(document.getElementById('breakevenPips')?.value || 0.5);
+        } else if (beMode === 'pips') {
+            beValue = parseFloat(document.getElementById('breakevenPips')?.value || 10);
+        } else {
+            beValue = parseFloat(document.getElementById('breakevenAmount')?.value || 50);
+        }
+
+        const beLots = this._previewBreakevenAnchorLots();
+
+        // Match “TP2” placement: interior line halfway to main TP when TP exists.
+        if (tpEnabled && tpPrice > 0) {
+            const tpDistance = Math.abs(tpPrice - beAnchor);
+            if (tpDistance < 1e-12) return NaN;
+            const beDistance = tpDistance * 0.5;
+            return this.orderSide === 'BUY'
+                ? beAnchor + beDistance
+                : beAnchor - beDistance;
+        }
+
+        if (beMode === 'rr' && riskDistance > 0) {
+            const profitDistance = beValue * riskDistance;
+            return this.orderSide === 'BUY'
+                ? beAnchor + profitDistance
+                : beAnchor - profitDistance;
+        }
+        if (beMode === 'pips') {
+            const profitPrice = beValue * this.pipSize;
+            return this.orderSide === 'BUY'
+                ? beAnchor + profitPrice
+                : beAnchor - profitPrice;
+        }
+        const denom = (beLots > 0 ? beLots : quantity) * this.pipValuePerLot;
+        if (!(denom > 0)) return NaN;
+        const profitPips = beValue / denom;
+        const profitPrice = profitPips * this.pipSize;
+        return this.orderSide === 'BUY'
+            ? beAnchor + profitPrice
+            : beAnchor - profitPrice;
+    }
+
+    /** Sync drawing.meta.breakevenPrice from panel / preview so the R/R tool can draw a BE line on-chart. */
+    _assignBreakevenMetaFromPanel(drawing) {
+        if (!drawing || !drawing.meta) return;
+        const panel = document.getElementById('orderPanel');
+        if (!panel || !panel.classList.contains('visible')) return;
+
+        if (!document.getElementById('autoBreakevenToggle')?.checked
+            || !document.getElementById('enableSL')?.checked) {
+            drawing.meta.breakevenPrice = null;
+            return;
+        }
+
+        let p = NaN;
+        if (this.previewLines?.be?.targetPrice > 0) {
+            p = this.previewLines.be.targetPrice;
+        } else {
+            p = this._computeBreakevenTriggerPriceForRiskRewardDrawing();
+        }
+        drawing.meta.breakevenPrice = Number.isFinite(p) && p > 0 ? p : null;
     }
 
     /**
@@ -17683,6 +17765,8 @@ class OrderManager {
         if (typeof drawing.ensureRiskSettings === 'function') drawing.ensureRiskSettings();
         this.calculateAdvancedRiskReward();
         if (typeof this.updatePlaceButtonText === 'function') this.updatePlaceButtonText();
+
+        this.pullRiskRewardToolFromManager(drawing);
     }
 
     /**

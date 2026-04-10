@@ -1788,6 +1788,10 @@ class BaseRiskRewardTool extends BaseDrawing {
 
     render(container, scales) {
         this.ensureRiskSettings();
+        const omSync = window.chart?.orderManager;
+        if (omSync && typeof omSync._assignBreakevenMetaFromPanel === 'function') {
+            omSync._assignBreakevenMetaFromPanel(this);
+        }
         if (this.group) {
             this.group.remove();
         }
@@ -2030,6 +2034,21 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .style('pointer-events', 'none');
             // E2+ drag hits appended after primary entry strip (see end of render).
         });
+
+        const bePrice = this.meta.breakevenPrice;
+        if (Number.isFinite(bePrice)) {
+            const byy = scales.yScale(bePrice);
+            this.group.append('line')
+                .attr('class', 'rr-extra-line rr-breakeven-line')
+                .attr('x1', zoneX1)
+                .attr('y1', byy)
+                .attr('x2', zoneX2)
+                .attr('y2', byy)
+                .attr('stroke', '#f59e0b')
+                .attr('stroke-width', 1)
+                .attr('stroke-dasharray', dashExtra)
+                .style('pointer-events', 'none');
+        }
 
         // Recalculate lot size from risk before rendering labels
         this.recalculateLotSizeFromRisk();
@@ -2289,6 +2308,18 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .style('pointer-events', 'none')
                     .text(`SL${i + 2}`);
             });
+            if (Number.isFinite(this.meta.breakevenPrice)) {
+                const yy = scales.yScale(this.meta.breakevenPrice);
+                this.group.append('text')
+                    .attr('class', 'rr-extra-tag')
+                    .attr('x', zoneX1 + 4)
+                    .attr('y', yy + 4)
+                    .attr('fill', '#fbbf24')
+                    .attr('font-size', '10px')
+                    .attr('font-weight', '600')
+                    .style('pointer-events', 'none')
+                    .text('BE');
+            }
 
             // Execute button moved to floating toolbar
         }
