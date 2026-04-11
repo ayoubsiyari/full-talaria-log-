@@ -2161,8 +2161,10 @@ class BaseRiskRewardTool extends BaseDrawing {
             .attr('y2', targetY)
             .style('pointer-events', 'none');
 
-        /** Same wide transparent stroke for every extra level (TP2, E2, BE, SL2) — one code path as TP. */
+        /** Wide transparent stroke for TP/SL/BE extras. Entry E2+ uses a taller strip — mini-badges are vertically nudged (`ENTRY_BADGE_MIN_V_SEP`) and sit off the true price line, so a thin strip only hit the dashed line, not the blue pill. */
         const extraDragHitW = 24;
+        /** Tall enough to cover nudged E2/E3 labels +/− controls while still centered on the leg price. */
+        const extraEntryDragHitW = 96;
         const appendExtraDragHit = (yy, role, hitW = extraDragHitW) => {
             this.group.append('line')
                 .attr('class', 'custom-handle rr-extra-drag-hit')
@@ -3244,7 +3246,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         (this.meta.extraEntries || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
             const yy = scales.yScale(row.y);
-            appendExtraDragHit(yy, `rr-extra-entry-${idx}`);
+            appendExtraDragHit(yy, `rr-extra-entry-${idx}`, extraEntryDragHitW);
         });
 
         // + buttons last in paint order so drag hit rects / lines do not sit on top and eat clicks.
