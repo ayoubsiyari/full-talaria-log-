@@ -2153,6 +2153,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         const showDetails = this.selected;
 
         if (showDetails) {
+            const self = this;
             // Percent / ticks vs weighted avg entry when E2+ (same reference as zone boundary & R:R pill).
             const entryPrice = zoneEntryPrice;
             const stopPrice = stop.y;
@@ -2470,13 +2471,14 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('x', centerTextX)
                 .attr('y', y2);
 
-            /** Left-gutter mini badges: one horizontal line (e.g. "BE 1.56R", "E1 0.05 lot"). */
+            /** Right-edge mini badges: one horizontal line (e.g. "BE 1.56R", "E1 0.05 lot"). */
             const appendRrMiniBadge = (lineYpx, lineTexts, bgFill) => {
                 const parts = (lineTexts || []).filter((x) => x != null && String(x).length > 0);
                 if (!parts.length) return;
                 const line = parts.join(' ');
                 const padX = 6;
                 const padY = 3;
+                const edgePad = 4;
                 const g = this.group.append('g').attr('class', 'rr-mini-level-badge rr-no-hit').style('pointer-events', 'none');
                 const tmp = g.append('text')
                     .attr('x', 0)
@@ -2491,7 +2493,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 tmp.remove();
                 const bw = bb.width + padX * 2;
                 const bh = bb.height + padY * 2;
-                const bx = zoneX1 + 4;
+                const bx = Math.max(zoneX1 + edgePad, zoneX2 - bw - edgePad);
                 const by = lineYpx - bh / 2;
                 g.append('rect')
                     .attr('x', bx)
@@ -2576,10 +2578,117 @@ class BaseRiskRewardTool extends BaseDrawing {
                     ? [...om.tpTargets].sort((a, b) =>
                         (this.isLong ? a.price - b.price : b.price - a.price))
                     : [];
-                (this.meta.extraTargets || []).forEach((row) => {
-                    if (!row || !Number.isFinite(row.y)) return;
-                    const yy = scales.yScale(row.y);
-                    const rp = tpRound(row.y);
+
+                const findOmTpTargetIndex = (priceR) => {
+                    if (!om?.tpTargets?.length) return -1;
+                    for (let ti = 0; ti < om.tpTargets.length; ti++) {
+                        const t = om.tpTargets[ti];
+                        if (!t || !Number.isFinite(t.price)) continue;
+                        if (Math.abs(tpRound(t.price) - priceR) <= epsPx) return ti;
+                    }
+                    return -1;
+                };
+
+                /**
+                 * Multi-TP: mini badge plus [−]/[+] (same ±5 as order panel `adjustTPPercentage`).
+                 */
+                const appendRrTpMiniBadgeWithPctControls = (lineYpx, lineTexts, bgFill, tpTargetIndex) => {
+                    const parts = (lineTexts || []).filter((x) => x != null && String(x).length > 0);
+                    if (!parts.length) return;
+                    const line = parts.join(' ');
+                    const padX = 6;
+                    const padY = 3;
+                    const edgePad = 4;
+                    const ctrlSize = 14;
+                    const cg = 2;
+                    const measure = this.group.append('g').attr('opacity', 0);
+                    const tmp = measure.append('text')
+                        .attr('x', 0)
+                        .attr('y', 0)
+                        .attr('dominant-baseline', 'hanging')
+                        .attr('font-size', '10px')
+                        .attr('font-weight', '600')
+                        .attr('font-family', labelFontFamily)
+                        .text(line);
+                    const bb = tmp.node().getBBox();
+                    measure.remove();
+                    const bw = bb.width + padX * 2;
+                    const bh = bb.height + padY * 2;
+                    const by = lineYpx - bh / 2;
+                    const rightX = zoneX2 - edgePad;
+
+                    const showPct = !!(mtOn && sortedOm.length > 1
+                        && typeof tpTargetIndex === 'number' && tpTargetIndex >= 0
+                        && om && typeof om.adjustTPPercentage === 'function');
+
+                    const controlsW = ctrlSize * 2 + cg;
+                    const totalW = (showPct ? controlsW + cg : 0) + bw;
+                    const leftX = Math.max(zoneX1 + edgePad, rightX - totalW);
+                    const badgeBx = showPct ? (leftX + controlsW + cg) : (rightX - bw);
+                    const cy = by + bh / 2 - ctrlSize / 2;
+
+                    const root = this.group.append('g').attr('class', 'rr-tp-mini-pct-controls');
+
+                    const wirePctClick = (delta) => (event) => {
+                        event.stopPropagation();
+                        if (!om || typeof om.adjustTPPercentage !== 'function') return;
+                        om.adjustTPPercentage(tpTargetIndex, delta);
+                        if (typeof om.syncSelectedRiskRewardDrawingFromPanel === 'function') {
+                            om.syncSelectedRiskRewardDrawingFromPanel();
+                        }
+                        const dmR = self._drawingManager();
+                        if (dmR) dmR.renderDrawing(self);
+                    };
+
+                    if (showPct) {
+                        const mk = (x, sym, delta, stroke, fill) => {
+                            const h = root.append('g')
+                                .attr('transform', `translate(${x},${cy})`)
+                                .style('cursor', 'pointer')
+                                .on('click', wirePctClick(delta));
+                            h.append('rect')
+                                .attr('width', ctrlSize)
+                                .attr('height', ctrlSize)
+                                .attr('rx', 3)
+                                .attr('fill', fill)
+                                .attr('stroke', stroke)
+                                .attr('stroke-width', 1);
+                            h.append('text')
+                                .attr('x', ctrlSize / 2)
+                                .attr('y', ctrlSize / 2)
+                                .attr('dy', '0.35em')
+                                .attr('text-anchor', 'middle')
+                                .attr('fill', stroke)
+                                .attr('font-size', '12px')
+                                .attr('font-weight', '700')
+                                .text(sym);
+                        };
+                        mk(leftX, '−', -5, '#ef4444', 'rgba(239, 68, 68, 0.2)');
+                        mk(leftX + ctrlSize + cg, '+', 5, '#089981', 'rgba(8, 153, 129, 0.2)');
+                    }
+
+                    root.append('rect')
+                        .attr('x', badgeBx)
+                        .attr('y', by)
+                        .attr('width', bw)
+                        .attr('height', bh)
+                        .attr('rx', 4)
+                        .attr('fill', bgFill)
+                        .attr('stroke', 'rgba(255,255,255,0.14)')
+                        .style('pointer-events', 'none');
+                    root.append('text')
+                        .attr('x', badgeBx + padX)
+                        .attr('y', by + padY)
+                        .attr('dominant-baseline', 'hanging')
+                        .attr('fill', '#f1f5f9')
+                        .attr('font-size', '10px')
+                        .attr('font-weight', '600')
+                        .attr('font-family', labelFontFamily)
+                        .style('pointer-events', 'none')
+                        .text(line);
+                };
+
+                const drawOneTpBadge = (yy, rp) => {
                     const si = uniqSorted.findIndex((p) => Math.abs(p - rp) <= epsPx);
                     const tpNum = si >= 0 ? si + 1 : 1;
                     let pctStr = '—';
@@ -2599,8 +2708,32 @@ class BaseRiskRewardTool extends BaseDrawing {
                     const sub = usd != null
                         ? `$${Number(usd).toFixed(2)} · ${pctStr}`
                         : pctStr;
-                    appendRrMiniBadge(yy, [`TP${tpNum}`, sub], tpInnerFill);
+                    const tIdx = findOmTpTargetIndex(rp);
+                    if (sortedOm.length > 1 && tIdx >= 0) {
+                        appendRrTpMiniBadgeWithPctControls(yy, [`TP${tpNum}`, sub], tpInnerFill, tIdx);
+                    } else {
+                        appendRrMiniBadge(yy, [`TP${tpNum}`, sub], tpInnerFill);
+                    }
+                };
+
+                (this.meta.extraTargets || []).forEach((row) => {
+                    if (!row || !Number.isFinite(row.y)) return;
+                    const yy = scales.yScale(row.y);
+                    const rp = tpRound(row.y);
+                    drawOneTpBadge(yy, rp);
                 });
+
+                const extraYRounded = new Set(
+                    (this.meta.extraTargets || [])
+                        .map((r) => (r && Number.isFinite(r.y) ? tpRound(r.y) : null))
+                        .filter((v) => v != null)
+                );
+                if (Number.isFinite(this.points[2]?.y)) {
+                    const rpPrim = tpRound(this.points[2].y);
+                    if (!extraYRounded.has(rpPrim)) {
+                        drawOneTpBadge(scales.yScale(this.points[2].y), rpPrim);
+                    }
+                }
             }
 
             (this.meta.extraStops || []).forEach((row, i) => {
