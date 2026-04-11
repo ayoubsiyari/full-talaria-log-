@@ -15337,6 +15337,32 @@
 
             margin-left: 0;
 
+            cursor: pointer;
+
+        }
+
+
+
+        /* Full-height hit target so clicks work anywhere on the bar, not only on the 3px track */
+
+        .speed-slider-track-container::before {
+
+            content: '';
+
+            position: absolute;
+
+            left: 0;
+
+            right: 0;
+
+            top: 0;
+
+            bottom: 0;
+
+            z-index: 1;
+
+            cursor: pointer;
+
         }
 
 
@@ -15379,6 +15405,8 @@
 
             position: relative;
 
+            z-index: 2;
+
             width: 100%;
 
             height: 3px;
@@ -15387,7 +15415,7 @@
 
             border-radius: 2px;
 
-            cursor: default;
+            cursor: pointer;
 
             transition: background 0.15s ease, height 0.15s ease, box-shadow 0.15s ease;
 
@@ -52152,6 +52180,32 @@ function showIndicatorsMenu() {
 
                 
 
+                const speedTrackContainer = sliderTrack.parentElement;
+
+                function applyReplaySpeedAtClientX(clientX, animateSlider = true) {
+
+                    const index = Math.max(0, Math.min(maxIndex, Math.round(getIndexFromPosition(clientX))));
+
+                    setSpeedByIndex(index, animateSlider);
+
+                }
+
+                
+
+                // Click anywhere on the bar (full-height hit zone) to jump to that tick — not only drag
+
+                if (speedTrackContainer) {
+
+                    speedTrackContainer.addEventListener('click', (e) => {
+
+                        applyReplaySpeedAtClientX(e.clientX, true);
+
+                    });
+
+                }
+
+                
+
                 // Mouse down on thumb
 
                 sliderThumb.addEventListener('mousedown', (e) => {
@@ -52161,20 +52215,6 @@ function showIndicatorsMenu() {
                     sliderThumb.classList.add('dragging');
 
                     e.preventDefault();
-
-                });
-
-                
-
-                // Click on track
-
-                sliderTrack.addEventListener('click', (e) => {
-
-                    if (e.target === sliderThumb) return;
-
-                    const index = Math.max(0, Math.min(maxIndex, Math.round(getIndexFromPosition(e.clientX))));
-
-                    setSpeedByIndex(index);
 
                 });
 
@@ -52226,7 +52266,7 @@ function showIndicatorsMenu() {
 
                     const rawIndex = getIndexFromPosition(e.clientX);
 
-                    const snappedIndex = Math.round(rawIndex);
+                    const snappedIndex = Math.max(0, Math.min(maxIndex, Math.round(rawIndex)));
 
                     
 
@@ -53114,19 +53154,23 @@ function showIndicatorsMenu() {
 
                         
 
-                        // Click on clone track
+                        // Click anywhere on clone bar (full-height hit zone) to jump to tick
 
-                        cloneSliderTrack.addEventListener('click', (e) => {
+                        const cloneSpeedTrackContainer = cloneSliderTrack.parentElement;
 
-                            if (e.target === cloneSliderThumb) return;
+                        if (cloneSpeedTrackContainer) {
 
-                            const index = Math.max(0, Math.min(maxIndex, Math.round(getIndexFromPosition(e.clientX))));
+                            cloneSpeedTrackContainer.addEventListener('click', (e) => {
 
-                            setSpeedFromClone(index);
+                                const index = Math.max(0, Math.min(maxIndex, Math.round(getIndexFromPosition(e.clientX))));
 
-                            e.stopPropagation();
+                                setSpeedFromClone(index);
 
-                        });
+                                e.stopPropagation();
+
+                            });
+
+                        }
 
                         
 
