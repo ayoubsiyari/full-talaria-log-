@@ -52068,7 +52068,7 @@ function showIndicatorsMenu() {
 
             // Set speed by index
 
-            function setSpeedByIndex(index) {
+            function setSpeedByIndex(index, animateSlider = true) {
 
                 index = Math.max(0, Math.min(maxIndex, Math.round(index)));
 
@@ -52088,9 +52088,9 @@ function showIndicatorsMenu() {
 
                 
 
-                // Update slider position with animation
+                // Update slider position (tick-to-tick; optional transition)
 
-                updateSliderPosition(index, true);
+                updateSliderPosition(index, animateSlider);
 
                 
 
@@ -52172,7 +52172,7 @@ function showIndicatorsMenu() {
 
                     if (e.target === sliderThumb) return;
 
-                    const index = Math.round(getIndexFromPosition(e.clientX));
+                    const index = Math.max(0, Math.min(maxIndex, Math.round(getIndexFromPosition(e.clientX))));
 
                     setSpeedByIndex(index);
 
@@ -52180,7 +52180,7 @@ function showIndicatorsMenu() {
 
                 
 
-                // Mouse move
+                // Mouse move — thumb jumps tick-to-tick only (no smooth slide between ticks)
 
                 document.addEventListener('mousemove', (e) => {
 
@@ -52190,33 +52190,13 @@ function showIndicatorsMenu() {
 
                     const rawIndex = getIndexFromPosition(e.clientX);
 
-                    const snappedIndex = Math.round(rawIndex);
+                    const snappedIndex = Math.max(0, Math.min(maxIndex, Math.round(rawIndex)));
 
                     
-
-                    // Smooth position during drag (no transition)
-
-                    const percent = (rawIndex / maxIndex) * 100;
-
-                    sliderThumb.style.transition = 'transform 0.1s, box-shadow 0.15s';
-
-                    sliderFill.style.transition = 'none';
-
-                    sliderThumb.style.left = percent + '%';
-
-                    sliderFill.style.width = percent + '%';
-
-                    
-
-                    // Update display based on nearest snap point
 
                     if (snappedIndex !== currentIndex) {
 
-                        currentIndex = snappedIndex;
-
-                        if (speedValueDisplay) speedValueDisplay.textContent = speedLabels[snappedIndex];
-
-                        if (speedRateDisplay) speedRateDisplay.textContent = speedRates[snappedIndex];
+                        setSpeedByIndex(snappedIndex, false);
 
                     }
 
@@ -53050,6 +53030,8 @@ function showIndicatorsMenu() {
 
                         let cloneSliderDragging = false;
 
+                        let cloneLastSnapIndex = -999;
+
                         
 
                         function getIndexFromPosition(clientX) {
@@ -53067,6 +53049,10 @@ function showIndicatorsMenu() {
                         function setSpeedFromClone(index) {
 
                             index = Math.max(0, Math.min(maxIndex, Math.round(index)));
+
+                            currentIndex = index;
+
+                            if (speedSlider) speedSlider.value = index;
 
                             const speed = speedValues[index];
 
@@ -53116,6 +53102,8 @@ function showIndicatorsMenu() {
 
                             cloneSliderDragging = true;
 
+                            cloneLastSnapIndex = -999;
+
                             cloneSliderThumb.classList.add('dragging');
 
                             e.preventDefault();
@@ -53132,7 +53120,7 @@ function showIndicatorsMenu() {
 
                             if (e.target === cloneSliderThumb) return;
 
-                            const index = Math.round(getIndexFromPosition(e.clientX));
+                            const index = Math.max(0, Math.min(maxIndex, Math.round(getIndexFromPosition(e.clientX))));
 
                             setSpeedFromClone(index);
 
@@ -53152,33 +53140,17 @@ function showIndicatorsMenu() {
 
                             const rawIndex = getIndexFromPosition(e.clientX);
 
-                            const snappedIndex = Math.round(rawIndex);
-
-                            const percent = (rawIndex / maxIndex) * 100;
+                            const snappedIndex = Math.max(0, Math.min(maxIndex, Math.round(rawIndex)));
 
                             
 
-                            // Update both clone and original slider positions
+                            if (snappedIndex !== cloneLastSnapIndex) {
 
-                            if (cloneSliderThumb) cloneSliderThumb.style.left = percent + '%';
+                                cloneLastSnapIndex = snappedIndex;
 
-                            if (cloneSliderFill) cloneSliderFill.style.width = percent + '%';
+                                setSpeedFromClone(snappedIndex);
 
-                            if (originalThumb) originalThumb.style.left = percent + '%';
-
-                            if (originalFill) originalFill.style.width = percent + '%';
-
-                            
-
-                            // Update displays on both
-
-                            if (cloneValueLabel) cloneValueLabel.textContent = speedLabels[snappedIndex];
-
-                            if (cloneTimeLabel) cloneTimeLabel.textContent = speedRates[snappedIndex];
-
-                            if (originalValueLabel) originalValueLabel.textContent = speedLabels[snappedIndex];
-
-                            if (originalTimeLabel) originalTimeLabel.textContent = speedRates[snappedIndex];
+                            }
 
                             
 
