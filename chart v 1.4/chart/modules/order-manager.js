@@ -13875,6 +13875,65 @@ class OrderManager {
         const unit = this.tpDistributionMode === 'percent' ? '%' : this.tpDistributionMode === 'amount' ? '$' : ' lots';
         console.log(`📊 Adjusted TP${targetIndex + 1}: ${currentValue.toFixed(precision)}${unit} → ${newValue.toFixed(precision)}${unit}`);
     }
+
+    /**
+     * +/- on RR multi-entry mini-badges: same steps as panel amount steppers (risk $ ±10, split % ±0.5, lots ±0.1).
+     * Mirrors `_renderMultiEntryRowsInto` input redistribution + `_rebalanceLevelAmountsToTarget`.
+     * @param {number} levelIndex - index in multiEntryLevels (E1 = 0, E2 = 1, …)
+     * @param {number} direction - +1 or -1
+     */
+    adjustMultiEntryLevelAmount(levelIndex, direction) {
+        if (!this.isMultiEntryMode || !this.multiEntryLevels?.length) return;
+        if (this.multiEntryLevels.length <= 1) return;
+        if (levelIndex < 0 || levelIndex >= this.multiEntryLevels.length) return;
+        const dir = direction > 0 ? 1 : direction < 0 ? -1 : 0;
+        if (dir === 0) return;
+
+        const mode = this.positionSizeMode || 'risk-usd';
+        let step;
+        if (mode === 'risk-percent') step = 0.5 * dir;
+        else if (mode === 'lot-size') step = 0.1 * dir;
+        else step = 10 * dir;
+
+        const levels = this.multiEntryLevels;
+        const oldSum = levels.reduce((s, l) => s + (l.amount || 0), 0);
+        const level = levels[levelIndex];
+        const cur = level.amount || 0;
+        let newVal = cur + step;
+
+        if (mode === 'lot-size') {
+            newVal = Math.max(0, newVal);
+            newVal = parseFloat(newVal.toFixed(2));
+        } else if (mode === 'risk-percent') {
+            newVal = Math.max(0, newVal);
+            newVal = parseFloat(newVal.toFixed(1));
+        } else {
+            newVal = Math.max(0, newVal);
+            newVal = Math.round(newVal);
+        }
+
+        if (Math.abs(newVal - cur) < 1e-12) return;
+
+        level.amount = newVal;
+        const remaining = Math.max(0, oldSum - newVal);
+        const others = levels.filter((_, i) => i !== levelIndex);
+        if (others.length > 0) {
+            let each;
+            if (mode === 'lot-size') {
+                each = parseFloat((remaining / others.length).toFixed(2));
+            } else if (mode === 'risk-percent') {
+                each = Math.round((remaining / others.length) * 10) / 10;
+            } else {
+                each = Math.round(remaining / others.length);
+            }
+            others.forEach((l) => { l.amount = each; });
+        }
+
+        this._rebalanceLevelAmountsToTarget();
+        this.renderMultiEntryRows();
+        this.syncMultiEntryToSplitEntries();
+        this.calculatePositionFromRisk();
+    }
     
     /**
      * Validate multiple TP targets

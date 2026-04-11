@@ -1088,6 +1088,56 @@ class BaseRiskRewardTool extends BaseDrawing {
         return (p0 + extras.reduce((s, x) => s + x, 0)) / (1 + extras.length);
     }
 
+    /**
+     * VWAP-style average take-profit price across all TP legs (primary + extras).
+     * When multi-TP is on and panel `tpTargets` align with ladder prices, weights = distribution % (same as mini-badges).
+     * Otherwise falls back to the arithmetic mean of ladder TP prices.
+     */
+    _getWeightedAverageTargetPrice() {
+        const tPrimary = this.points[2]?.y;
+        const extras = (this.meta.extraTargets || []).map((r) => r.y).filter(Number.isFinite);
+        const allPrices = Number.isFinite(tPrimary) ? [tPrimary, ...extras] : extras.slice();
+        if (allPrices.length < 2) return NaN;
+
+        const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
+        const prec = typeof om?.getPricePrecision === 'function' ? om.getPricePrecision() : 5;
+        const rrRoundPx = (p) => (Number.isFinite(p) ? parseFloat(Number(p).toFixed(prec)) : p);
+        const mtOn = typeof document !== 'undefined' && document.getElementById('multipleTPToggle')?.checked;
+
+        const meanFallback = () => allPrices.reduce((s, p) => s + p, 0) / allPrices.length;
+
+        if (mtOn && om?.tpTargets?.length > 1) {
+            const sortedOm = [...om.tpTargets].sort((a, b) =>
+                (this.isLong ? a.price - b.price : b.price - a.price));
+            const refP = sortedOm.find((t) => t && Number.isFinite(t.price))?.price;
+            const epsPx = Math.max(1e-10, (Math.abs(refP) || 1) * 1e-9);
+
+            if (sortedOm.length === allPrices.length) {
+                let sumW = 0;
+                let sumPW = 0;
+                let allMatched = true;
+                for (const py of allPrices) {
+                    const pr = rrRoundPx(py);
+                    const leg = sortedOm.find((t) => t && Number.isFinite(t.price)
+                        && Math.abs(rrRoundPx(t.price) - pr) <= epsPx);
+                    if (!leg || !Number.isFinite(leg.percentage)) {
+                        allMatched = false;
+                        break;
+                    }
+                    const w = Number(leg.percentage);
+                    if (w > 0) {
+                        sumW += w;
+                        sumPW += py * w;
+                    }
+                }
+                if (allMatched && sumW > 1e-9) {
+                    return sumPW / sumW;
+                }
+            }
+        }
+        return meanFallback();
+    }
+
     /** Worst-case stop price for zone shading (furthest into loss). */
     getAggregatedStopPrice() {
         const s = this._allStopPrices();
@@ -1984,6 +2034,13 @@ class BaseRiskRewardTool extends BaseDrawing {
         const worstStopPx = scales.yScale(this.getAggregatedStopPrice());
         const bestTargetPx = scales.yScale(this.getAggregatedTargetPrice());
 
+        const hasMultiTP = (this.meta.extraTargets || []).length > 0;
+        let avgTpPrice = NaN;
+        if (hasMultiTP && typeof this._getWeightedAverageTargetPrice === 'function') {
+            avgTpPrice = this._getWeightedAverageTargetPrice();
+        }
+        const avgTpYpx = Number.isFinite(avgTpPrice) ? scales.yScale(avgTpPrice) : NaN;
+
         // Zone fill split at weighted avg (multi-entry). Drag gap / primary strip stay on E1 (below).
         const riskTop = Math.min(avgEntryYpx, worstStopPx);
         const riskBot = Math.max(avgEntryYpx, worstStopPx);
@@ -2160,6 +2217,19 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('stroke-dasharray', dashExtra)
                 .style('pointer-events', 'none');
         });
+        // Multi-TP: solid line at distribution-weighted average TP (same weights as panel % when aligned).
+        if (hasMultiTP && Number.isFinite(avgTpYpx)) {
+            this.group.append('line')
+                .attr('class', 'rr-avg-tp-zone-edge')
+                .attr('x1', zoneX1)
+                .attr('y1', avgTpYpx)
+                .attr('x2', zoneX2)
+                .attr('y2', avgTpYpx)
+                .attr('stroke', '#059669')
+                .attr('stroke-width', 2)
+                .style('pointer-events', 'none')
+                .style('cursor', 'inherit');
+        }
         (this.meta.extraEntries || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
             const yy = scales.yScale(row.y);
@@ -2554,6 +2624,125 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             const hasDrawnExtras = (this.meta.extraEntries || []).length > 0;
             const omMulti = om?.isMultiEntryMode && Array.isArray(om.multiEntryLevels) && om.multiEntryLevels.length > 0;
+            const showEntryQtyControls = omMulti && om.multiEntryLevels.length > 1
+                && typeof om.adjustMultiEntryLevelAmount === 'function';
+
+            /**
+             * Multi-entry: mini badge plus [−]/[+] (same steps as panel multi-entry amount steppers).
+             */
+            const appendRrEntryMiniBadgeWithQtyControls = (lineYpx, lineTexts, bgFill, entryLevelIndex) => {
+                const parts = (lineTexts || []).filter((x) => x != null && String(x).length > 0);
+                if (!parts.length) return;
+                const line = parts.join(' ');
+                const padX = 6;
+                const padY = 3;
+                const edgePad = 4;
+                const ctrlSize = 14;
+                const cg = 2;
+                const measure = this.group.append('g').attr('opacity', 0);
+                const tmp = measure.append('text')
+                    .attr('x', 0)
+                    .attr('y', 0)
+                    .attr('dominant-baseline', 'hanging')
+                    .attr('font-size', '10px')
+                    .attr('font-weight', '600')
+                    .attr('font-family', labelFontFamily)
+                    .text(line);
+                const bb = tmp.node().getBBox();
+                measure.remove();
+                const bw = bb.width + padX * 2;
+                const bh = bb.height + padY * 2;
+                const by = lineYpx - bh / 2;
+                const rightX = zoneX2 - edgePad;
+
+                const controlsW = ctrlSize * 2 + cg;
+                const totalW = (showEntryQtyControls ? controlsW + cg : 0) + bw;
+                const leftX = Math.max(zoneX1 + edgePad, rightX - totalW);
+                const badgeBx = showEntryQtyControls ? (leftX + controlsW + cg) : (rightX - bw);
+                const cy = by + bh / 2 - ctrlSize / 2;
+
+                const root = this.group.append('g')
+                    .attr('class', 'rr-entry-mini-qty-controls')
+                    .style('pointer-events', 'all');
+
+                const wireEntryQtyClick = (dir) => (event) => {
+                    event.stopPropagation();
+                    if (typeof event.preventDefault === 'function') event.preventDefault();
+                    if (!om || typeof om.adjustMultiEntryLevelAmount !== 'function') return;
+                    om.adjustMultiEntryLevelAmount(entryLevelIndex, dir);
+                    if (typeof om.syncSelectedRiskRewardDrawingFromPanel === 'function') {
+                        om.syncSelectedRiskRewardDrawingFromPanel();
+                    }
+                    const dmR = self._drawingManager();
+                    if (dmR) dmR.renderDrawing(self);
+                };
+
+                if (showEntryQtyControls) {
+                    const hitPad = 2;
+                    const mk = (x, sym, dir, stroke, fill) => {
+                        const h = root.append('g')
+                            .attr('transform', `translate(${x},${cy})`)
+                            .style('cursor', 'pointer');
+                        h.append('rect')
+                            .attr('width', ctrlSize)
+                            .attr('height', ctrlSize)
+                            .attr('rx', 3)
+                            .attr('fill', fill)
+                            .attr('stroke', stroke)
+                            .attr('stroke-width', 1);
+                        h.append('text')
+                            .attr('x', ctrlSize / 2)
+                            .attr('y', ctrlSize / 2)
+                            .attr('dy', '0.35em')
+                            .attr('text-anchor', 'middle')
+                            .attr('fill', stroke)
+                            .attr('font-size', '13px')
+                            .attr('font-weight', '700')
+                            .attr('pointer-events', 'none')
+                            .style('pointer-events', 'none')
+                            .text(sym);
+                        const hitSz = ctrlSize + hitPad * 2;
+                        h.append('rect')
+                            .attr('x', -hitPad)
+                            .attr('y', -hitPad)
+                            .attr('width', hitSz)
+                            .attr('height', hitSz)
+                            .attr('fill', '#000')
+                            .attr('fill-opacity', 0.001)
+                            .attr('pointer-events', 'all')
+                            .style('pointer-events', 'all')
+                            .style('cursor', 'pointer')
+                            .on('mousedown', (e) => {
+                                if (e.button !== 0) return;
+                                e.stopPropagation();
+                                if (typeof e.preventDefault === 'function') e.preventDefault();
+                            })
+                            .on('click', wireEntryQtyClick(dir));
+                    };
+                    mk(leftX, '-', -1, '#ef4444', 'rgba(239, 68, 68, 0.2)');
+                    mk(leftX + ctrlSize + cg, '+', 1, '#089981', 'rgba(8, 153, 129, 0.2)');
+                }
+
+                root.append('rect')
+                    .attr('x', badgeBx)
+                    .attr('y', by)
+                    .attr('width', bw)
+                    .attr('height', bh)
+                    .attr('rx', 4)
+                    .attr('fill', bgFill)
+                    .attr('stroke', 'rgba(255,255,255,0.14)')
+                    .style('pointer-events', 'none');
+                root.append('text')
+                    .attr('x', badgeBx + padX)
+                    .attr('y', by + padY)
+                    .attr('dominant-baseline', 'hanging')
+                    .attr('fill', '#f1f5f9')
+                    .attr('font-size', '10px')
+                    .attr('font-weight', '600')
+                    .attr('font-family', labelFontFamily)
+                    .style('pointer-events', 'none')
+                    .text(line);
+            };
 
             if (omMulti) {
                 om.multiEntryLevels.forEach((lv, i) => {
@@ -2579,7 +2768,11 @@ class BaseRiskRewardTool extends BaseDrawing {
                     } else if (Number.isFinite(lv.amount) && lv.amount > 0 && om.positionSizeMode === 'lot-size') {
                         lotStr = String(parseFloat(Number(lv.amount).toFixed(2)));
                     }
-                    appendRrMiniBadge(yPix, [`E${i + 1}`, `${lotStr} lot`], entryFill);
+                    if (showEntryQtyControls) {
+                        appendRrEntryMiniBadgeWithQtyControls(yPix, [`E${i + 1}`, `${lotStr} lot`], entryFill, i);
+                    } else {
+                        appendRrMiniBadge(yPix, [`E${i + 1}`, `${lotStr} lot`], entryFill);
+                    }
                 });
             } else if (hasDrawnExtras) {
                 const fallbackLot = Number.isFinite(quantity) ? quantity.toFixed(2) : '—';
@@ -2809,6 +3002,14 @@ class BaseRiskRewardTool extends BaseDrawing {
                 appendRrMiniBadge(beLinePx, ['BE', beSub], beFill);
             }
 
+            if (hasMultiTP && Number.isFinite(avgTpYpx) && Number.isFinite(avgTpPrice)) {
+                const avgTpFill = 'rgba(5, 150, 105, 0.92)';
+                const avgTpStr = typeof om?.formatPrice === 'function'
+                    ? om.formatPrice(avgTpPrice)
+                    : String(rrRoundPx(avgTpPrice));
+                appendRrMiniBadge(avgTpYpx, ['Avg TP', avgTpStr], avgTpFill);
+            }
+
             // Execute button moved to floating toolbar
         }
 
@@ -2948,6 +3149,7 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         // Multi-TP % +/− must paint above horizontal `rr-extra-drag-hit` strips (and body drag), or drags steal clicks.
         this.group.selectAll('g.rr-tp-mini-pct-controls').raise();
+        this.group.selectAll('g.rr-entry-mini-qty-controls').raise();
 
         return this.group;
     }
