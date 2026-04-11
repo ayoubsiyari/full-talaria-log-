@@ -2333,7 +2333,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             const compressedGap = 18;
             const wideSnapThreshold = 260;
 
-            const createEdgeLabel = ({ className, text, lineY, fill, side }) => {
+            const createEdgeLabel = ({ className, text, lineY, fill, side, extraEdgeGap = 0 }) => {
                 // Outer group: className only. Inner `rr-no-hit` holds pill + text so drags pass through.
                 const labelOuter = this.group.append('g').attr('class', className);
                 const hitBlock = labelOuter.append('g').attr('class', 'rr-no-hit');
@@ -2354,7 +2354,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 const labelHeight = textBBox.height + (labelPaddingY * 2);
 
                 const hasInnerSpace = zoneWidth >= wideSnapThreshold;
-                const offset = hasInnerSpace ? edgeSnapGap : compressedGap;
+                const offset = (hasInnerSpace ? edgeSnapGap : compressedGap) + (Number.isFinite(extraEdgeGap) ? extraEdgeGap : 0);
                 const rectTop = side === 'top'
                     ? lineY - labelHeight - offset
                     : lineY + offset;
@@ -2434,12 +2434,15 @@ class BaseRiskRewardTool extends BaseDrawing {
             // TP leg (TPn · %) is shown as a separate mini-badge on the line, like other TP levels.
             const targetLabelText = `Target: ${tpPriceStr} (${targetPercent}%) ${tpDistSeg}, Amount: ${targetAmountStrForLabel}`;
             const targetSide = targetY <= avgEntryYpx ? 'top' : 'bottom';
+            // Multi-TP: TP mini-badge sits on the same price line — nudge the Target pill farther from the line so it does not overlap.
+            const targetLabelExtraGap = (mtOnForTargetLabel && om?.tpTargets?.length > 1) ? 22 : 0;
             createEdgeLabel({
                 className: 'target-label',
                 text: targetLabelText,
                 lineY: targetY,
                 fill: targetLabelFill,
-                side: targetSide
+                side: targetSide,
+                extraEdgeGap: targetLabelExtraGap
             });
 
             const stopLabelText = `Stop: ${slPriceStr} (${stopPercent}%) ${slDistSeg}, Amount: ${stopAmountStr}`;
