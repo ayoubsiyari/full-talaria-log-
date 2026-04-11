@@ -9362,11 +9362,18 @@ class OrderManager {
                     height: 26px !important;
                     font-size: 12px !important;
                 }
+                /* RR modal: Entry column full width, Stop Loss below (not beside) */
                 #rrMirrorOrderRoot .order-entry-sl-grid {
-                    gap: 5px !important;
+                    display: flex !important;
+                    flex-direction: column !important;
+                    gap: 8px !important;
+                    width: 100% !important;
+                    grid-template-columns: none !important;
                 }
                 #rrMirrorOrderRoot .order-entry-sl-col {
                     gap: 2px !important;
+                    width: 100% !important;
+                    min-width: 0 !important;
                 }
                 #rrMirrorOrderRoot .order-entry-sl-header {
                     min-height: 18px !important;
