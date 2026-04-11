@@ -2353,8 +2353,27 @@ class BaseRiskRewardTool extends BaseDrawing {
             const tpPriceStr = typeof om?.formatPrice === 'function' ? om.formatPrice(targetPrice) : targetPrice.toFixed(5);
             const slPriceStr = typeof om?.formatPrice === 'function' ? om.formatPrice(stopPrice) : stopPrice.toFixed(5);
 
+            // Primary TP handle is the farthest target; panel `rewardAmount` is sum of all legs. For multi-TP, show
+            // the same per-leg $ as the TP2 (etc.) preview line — not the aggregate — so Amount matches that level.
+            let targetAmountStrForLabel = targetAmountStr;
+            const mtOnForTargetLabel = typeof document !== 'undefined'
+                && document.getElementById('multipleTPToggle')?.checked;
+            if (mtOnForTargetLabel && om?.tpTargets?.length > 1
+                && typeof om.getMultiTpLegProfitUsdForChartBadge === 'function') {
+                const sideEarly = this.isLong ? 'BUY' : 'SELL';
+                const legUsd = om.getMultiTpLegProfitUsdForChartBadge(
+                    this.chart,
+                    sideEarly,
+                    rrRoundPx(targetPrice),
+                    rrPrec
+                );
+                if (legUsd != null && Number.isFinite(legUsd)) {
+                    targetAmountStrForLabel = `$${Number(legUsd).toFixed(2)}`;
+                }
+            }
+
             // Target / Stop labels — same distance + $ readouts as order panel (TP/SL cards + summary)
-            const targetLabelText = `Target: ${tpPriceStr} (${targetPercent}%) ${tpDistSeg}, Amount: ${targetAmountStr}`;
+            const targetLabelText = `Target: ${tpPriceStr} (${targetPercent}%) ${tpDistSeg}, Amount: ${targetAmountStrForLabel}`;
             const targetSide = targetY <= avgEntryYpx ? 'top' : 'bottom';
             createEdgeLabel({
                 className: 'target-label',
