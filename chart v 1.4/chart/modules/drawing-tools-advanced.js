@@ -2818,11 +2818,12 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .text(line);
             };
 
+            // Entry mini-badges: paint in **screen Y** order (larger y = lower on chart first, smaller y last)
+            // so the upper badge is always on top when levels overlap — fixed E1-then-E2 order hid E1 under E2.
             if (omMulti) {
+                const entryBadgeRows = [];
                 om.multiEntryLevels.forEach((lv, i) => {
                     if (!lv) return;
-                    // Only E1 until the tool has a real extra entry line (blue +). OM can still hold a
-                    // default/stale second row while extraEntries is empty — do not badge phantom E2+.
                     if (i > 0) {
                         const ex = (this.meta.extraEntries || [])[i - 1];
                         if (!ex || !Number.isFinite(ex.y)) return;
@@ -2839,6 +2840,10 @@ class BaseRiskRewardTool extends BaseDrawing {
                     if (psm !== 'lot-size' && impliedEntryLots != null && impliedEntryLots > 0) {
                         entryLineParts.push(`${parseFloat(impliedEntryLots.toFixed(2))} lot`);
                     }
+                    entryBadgeRows.push({ i, yPix, entryLineParts });
+                });
+                entryBadgeRows.sort((a, b) => b.yPix - a.yPix);
+                entryBadgeRows.forEach(({ i, yPix, entryLineParts }) => {
                     if (showEntryQtyControls) {
                         appendRrEntryMiniBadgeWithQtyControls(yPix, entryLineParts, entryFill, i);
                     } else {
@@ -2847,11 +2852,16 @@ class BaseRiskRewardTool extends BaseDrawing {
                 });
             } else if (hasDrawnExtras) {
                 const fallbackLot = Number.isFinite(quantity) ? quantity.toFixed(2) : '—';
-                appendRrMiniBadge(entryY, ['E1', `${fallbackLot} lot`], entryFill);
+                const entryBadgeRows = [{ yPix: entryY, lineTexts: ['E1', `${fallbackLot} lot`] }];
                 (this.meta.extraEntries || []).forEach((row, i) => {
                     if (!row || !Number.isFinite(row.y)) return;
-                    appendRrMiniBadge(scales.yScale(row.y), [`E${i + 2}`, `${fallbackLot} lot`], entryFill);
+                    entryBadgeRows.push({
+                        yPix: scales.yScale(row.y),
+                        lineTexts: [`E${i + 2}`, `${fallbackLot} lot`],
+                    });
                 });
+                entryBadgeRows.sort((a, b) => b.yPix - a.yPix);
+                entryBadgeRows.forEach((r) => appendRrMiniBadge(r.yPix, r.lineTexts, entryFill));
             }
 
             // TP mini-badges: label by *price order* (TP1 = first hit for long = lowest TP), matching OM tpTargets sort.
