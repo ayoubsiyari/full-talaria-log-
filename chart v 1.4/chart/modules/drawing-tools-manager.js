@@ -5777,6 +5777,12 @@ class DrawingToolsManager {
                         orderManager.updatePositionsPanel();
                     }
                 }
+
+                const otherRR = this.drawings.filter((d) => d !== drawing
+                    && (d.type === 'long-position' || d.type === 'short-position'));
+                if (otherRR.length === 0 && typeof orderManager.clearRiskRewardToolBreakevenPanelState === 'function') {
+                    orderManager.clearRiskRewardToolBreakevenPanelState();
+                }
             }
             
             this.drawings.splice(index, 1);

@@ -19022,6 +19022,31 @@ class OrderManager {
     /**
      * Risk/reward SL +: enable auto-BE in the panel and draw a draggable BE line on the tool (synced with BE R/pips/$).
      */
+    /**
+     * When the last risk/reward drawing is removed from the chart, turn off panel Auto BE.
+     * Otherwise `pullRiskRewardToolFromManager` rebuilds `rrBreakevenLine` from the still-checked toggle
+     * and the next RR tool shows a BE line the user thought they deleted with the tool.
+     */
+    clearRiskRewardToolBreakevenPanelState() {
+        const beTgl = document.getElementById('autoBreakevenToggle');
+        if (!beTgl) {
+            this.beManuallyPositioned = false;
+            return;
+        }
+        if (!beTgl.checked) {
+            this.beManuallyPositioned = false;
+            return;
+        }
+        this._beTrailMutex = true;
+        beTgl.checked = false;
+        document.getElementById('breakevenSettings')?.classList.add('is-hidden');
+        this._beTrailMutex = false;
+        this.beManuallyPositioned = false;
+        if (typeof this._updateBreakevenSummary === 'function') this._updateBreakevenSummary();
+        if (typeof this.updatePreviewLines === 'function') this.updatePreviewLines();
+        if (typeof this.calculateAdvancedRiskReward === 'function') this.calculateAdvancedRiskReward();
+    }
+
     riskRewardAddBEFromTool(drawing) {
         this.pushRiskRewardToolToManager(drawing);
         const trailingTgl = document.getElementById('trailingSLToggle');
