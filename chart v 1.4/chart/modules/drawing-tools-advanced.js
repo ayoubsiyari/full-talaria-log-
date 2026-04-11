@@ -2730,8 +2730,10 @@ class BaseRiskRewardTool extends BaseDrawing {
         // Large transparent hit circle = full control target (not just the glyph).
         if (this.selected) {
             const plusR = 9;
-            const plusHitR = 20;
-            const plusOutsideGap = 8;
+            // Keep hit disc smaller than before: a 20px radius reached back to ~zoneX2−3 and sat on top of the
+            // right-edge width handle (custom-handle at zoneX2), stealing drags from the small blue ring.
+            const plusHitR = 11;
+            const plusOutsideGap = 12;
             const plusX = zoneX2 + plusOutsideGap + plusR;
             const mkPlus = (lineY, fill, handler) => {
                 const g = this.group.append('g').attr('class', 'rr-plus-btn');
