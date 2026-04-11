@@ -2211,7 +2211,12 @@ class BaseRiskRewardTool extends BaseDrawing {
                 Number.isFinite(stop.y) ? stop.y : parseFloat(document.getElementById('slPrice')?.value || '') || 0
             );
 
-            if (om && typeof om.calculateAdvancedRiskReward === 'function') {
+            // Sync panel + om.tpTargets from drawing so TP $ math matches chart lines (push includes R:R calc).
+            if (om && typeof om.pushRiskRewardToolToManager === 'function') {
+                try {
+                    om.pushRiskRewardToolToManager(this);
+                } catch (_) { /* ignore */ }
+            } else if (om && typeof om.calculateAdvancedRiskReward === 'function') {
                 try {
                     om.calculateAdvancedRiskReward();
                 } catch (_) { /* ignore */ }
@@ -2621,8 +2626,11 @@ class BaseRiskRewardTool extends BaseDrawing {
                     let pctStr = '—';
                     let usd = null;
                     const chartRef = this.chart || (typeof window !== 'undefined' ? window.chart : null);
-                    const openTpM = om && typeof om.getOpenPositionTpMetricsForChartPrice === 'function'
-                        ? om.getOpenPositionTpMetricsForChartPrice(chartRef, sideStr, rp, rrPrec)
+                    const openTpM = om && typeof om.getTpMetricsForRiskToolBadge === 'function'
+                        ? om.getTpMetricsForRiskToolBadge(chartRef, sideStr, rp, rrPrec, {
+                            zoneEntryPrice,
+                            quantity
+                        })
                         : null;
                     if (openTpM && Number.isFinite(openTpM.pnl)) {
                         usd = openTpM.pnl;
