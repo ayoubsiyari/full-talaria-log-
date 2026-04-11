@@ -2632,7 +2632,9 @@ class BaseRiskRewardTool extends BaseDrawing {
                             usd = usdLeg != null ? usdLeg : null;
                         }
                     }
-                    const sub = usd != null ? `$${usd} · ${pctStr}` : pctStr;
+                    const sub = usd != null
+                        ? `$${Number(usd).toFixed(2)} · ${pctStr}`
+                        : pctStr;
                     appendRrMiniBadge(yy, [`TP${tpNum}`, sub], tpInnerFill);
                 });
             }

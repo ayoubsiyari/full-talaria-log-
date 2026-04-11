@@ -23311,7 +23311,7 @@ class OrderManager {
             if (idx < 0) continue;
             const tgt = pos.tpTargets[idx];
             const { pnl } = this._multiTpTargetChartMetrics(pos, tgt, idx, 'open');
-            if (Number.isFinite(pnl)) return Math.round(pnl);
+            if (Number.isFinite(pnl)) return parseFloat(pnl.toFixed(2));
         }
         return null;
     }
@@ -23367,7 +23367,7 @@ class OrderManager {
 
         const partialReward = Math.max(0, this.estimatePnLForPriceLevel(
             sideUpper, entryPx, t, shareQty));
-        return Math.round(partialReward);
+        return parseFloat(partialReward.toFixed(2));
     }
 
     /**
