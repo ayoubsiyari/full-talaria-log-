@@ -5624,9 +5624,8 @@ class DrawingToolsManager {
                 this.history.recordDelete(drawing, index);
             }
             
-            // If this is an executed position tool, cancel any associated orders
+            // Risk/reward drawing deleted: cancel pending / strip visuals tied to this tool’s entry
             if ((drawing.type === 'long-position' || drawing.type === 'short-position') && 
-                drawing.meta?.executed && 
                 window.chart?.orderManager) {
                 const orderManager = window.chart.orderManager;
                 const entryPrice = drawing.points[0]?.y;

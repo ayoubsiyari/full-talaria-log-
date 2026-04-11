@@ -1010,12 +1010,9 @@ class DrawingToolbar {
             <!-- Execute Button (for Risk/Reward tools only) -->
             ${isRiskReward ? `
             <div class="toolbar-item">
-                <button class="toolbar-btn ${drawing.meta?.executed ? 'executed' : ''}" id="tb-execute" title="${drawing.meta?.executed ? 'Order Executed' : 'Execute Order'}" style="${drawing.meta?.executed ? 'color: #22c55e;' : ''}">
+                <button class="toolbar-btn" id="tb-execute" title="Execute Order (prefill panel)">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        ${drawing.meta?.executed ? 
-                            '<polyline points="20 6 9 17 4 12"/>' :
-                            '<text x="2" y="20" font-size="22" font-weight="bold" fill="currentColor" stroke="none">$</text><line x1="17" y1="2" x2="17" y2="12" stroke-width="1.5"/><line x1="12" y1="7" x2="22" y2="7" stroke-width="1.5"/>'
-                        }
+                        <text x="2" y="20" font-size="22" font-weight="bold" fill="currentColor" stroke="none">$</text><line x1="17" y1="2" x2="17" y2="12" stroke-width="1.5"/><line x1="12" y1="7" x2="22" y2="7" stroke-width="1.5"/>
                     </svg>
                 </button>
             </div>
@@ -1724,34 +1721,12 @@ class DrawingToolbar {
         if (executeBtn) {
             executeBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                
-                // Check if already executed
-                if (drawing.meta?.executed) {
-                    return;
-                }
-                
-                // Mark as executed
-                if (!drawing.meta) drawing.meta = {};
-                drawing.meta.executed = true;
-                
-                // Execute the order
                 if (typeof drawing.executeOrder === 'function') {
                     const entry = drawing.points[0];
                     const stop = drawing.points[1];
                     const target = drawing.points[2];
                     drawing.executeOrder(entry, stop, target);
                 }
-                
-                // Update button appearance
-                executeBtn.style.color = '#22c55e';
-                executeBtn.classList.add('executed');
-                executeBtn.title = 'Order Executed';
-                executeBtn.innerHTML = `
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                `;
-                
                 if (this.onUpdate) this.onUpdate(drawing);
             });
         }

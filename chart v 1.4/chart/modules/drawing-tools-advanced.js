@@ -1568,30 +1568,6 @@ class BaseRiskRewardTool extends BaseDrawing {
         const buttonX = entryX + zoneWidth + 15; // Position to the right of zones
         const buttonY = entryY - buttonHeight / 2;
 
-        // Check if already executed
-        if (this.meta.executed) {
-            // Show "Executed" text instead of button
-            this.group.append('rect')
-                .attr('x', buttonX)
-                .attr('y', buttonY)
-                .attr('width', buttonWidth)
-                .attr('height', buttonHeight)
-                .attr('fill', '#4b5563')
-                .attr('rx', 4)
-                .style('opacity', 0.5);
-            
-            this.group.append('text')
-                .attr('x', buttonX + buttonWidth / 2)
-                .attr('y', buttonY + buttonHeight / 2 + 4)
-                .attr('text-anchor', 'middle')
-                .attr('fill', '#ffffff')
-                .attr('font-size', '11px')
-                .attr('font-weight', '700')
-                .style('pointer-events', 'none')
-                .text('✓ Executed');
-            return;
-        }
-
         // Button background
         const btnBg = this.group.append('rect')
             .attr('x', buttonX)
@@ -1621,29 +1597,9 @@ class BaseRiskRewardTool extends BaseDrawing {
             d3.select(this).style('opacity', 0.9);
         });
 
-        // Click handler - can only be clicked once
         btnBg.on('click', (event) => {
             event.stopPropagation();
-            
-            // Mark as executed to prevent double-click
-            if (this.meta.executed) {
-                return;
-            }
-            this.meta.executed = true;
-            
-            // Execute the order
             this.executeOrder(entry, stop, target);
-            
-            // Disable button visually
-            btnBg
-                .attr('fill', '#4b5563')
-                .style('cursor', 'not-allowed')
-                .style('opacity', 0.5);
-            
-            btnText.text('✓ Executed');
-            
-            // Remove hover effects
-            btnBg.on('mouseover', null).on('mouseout', null);
         });
     }
 
@@ -1695,13 +1651,6 @@ class BaseRiskRewardTool extends BaseDrawing {
             self.prefillOrderPanel(orderManager, direction, entryPrice, slPrice, tpPrice, quantity, riskAmount);
             console.log('📋 Order panel pre-filled with position tool values');
         }, 200);
-        
-        // Mark as executed for visual feedback
-        this.meta.executed = true;
-        const dmExec = this._drawingManager();
-        if (dmExec) {
-            dmExec.renderDrawing(this);
-        }
     }
 
     prefillOrderPanel(orderManager, direction, entryPrice, slPrice, tpPrice, quantity, riskAmount) {
