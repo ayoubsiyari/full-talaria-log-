@@ -3100,12 +3100,21 @@ class BaseRiskRewardTool extends BaseDrawing {
         const handleStroke = '#2962FF';
         const handleStrokeWidth = 2;
         
-        // Width handle on E1 (same as single-entry zone boundary).
+        // Right-edge width handles: same horizontal resize at E1 / SL / TP Y so users are not limited
+        // to dragging only at entry height. (Left-side small circles are *price* handles — vertical only.)
         const cornerY = scales.yScale(this.points[0].y);
-        
-        const positions = [
-            { role: 'corner-entry-right', x: zoneX2, y: cornerY, cursor: 'ew-resize' }
-        ];
+        const stopY = scales.yScale(this.points[1].y);
+        const targetY = scales.yScale(this.points[2].y);
+        const rawYs = [cornerY, stopY, targetY];
+        const seenY = new Set();
+        const positions = [];
+        for (const y of rawYs) {
+            if (!Number.isFinite(y)) continue;
+            const key = Math.round(y * 1000) / 1000;
+            if (seenY.has(key)) continue;
+            seenY.add(key);
+            positions.push({ role: 'corner-entry-right', x: zoneX2, y, cursor: 'ew-resize' });
+        }
 
         positions.forEach((pos) => {
             const group = this.group.append('g')
