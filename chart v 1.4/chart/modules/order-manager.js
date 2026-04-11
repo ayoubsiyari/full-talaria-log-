@@ -23285,109 +23285,35 @@ class OrderManager {
     }
 
     /**
-     * RR badges: chart lines use strict file+symbol match; drawings often fail fileId — allow symbol-only.
+     * RR tool mini-badges: same rounded $ as chart TP labels for an open multi-TP position (not reward×%).
      */
-    _positionMatchesChartForRrBadge(pos, chart) {
-        if (!pos || !chart) return false;
-        if (this._positionTickerMatchesChartSymbol(pos, chart)) return true;
-        const pt = this._positionTicker(pos);
-        if (!pt) return false;
-        const cs = chart.currentSymbol ? this._normalizeTicker(chart.currentSymbol) : '';
-        return !!cs && pt === cs;
-    }
-
-    /**
-     * RR tool TP mini-badges: same $ / % as chart TP labels (open position or preview stub).
-     * @param {object} [opts] - zoneEntryPrice + quantity from RR render (weighted avg entry & panel qty)
-     * @returns {{ pnl: number, percentage: number } | null}
-     */
-    getTpMetricsForRiskToolBadge(chart, side, tpPrice, pricePrec = 5, opts = {}) {
-        if (tpPrice == null || !Number.isFinite(Number(tpPrice))) return null;
-        const ch = chart || this.chart;
-        if (!ch) return null;
+    getOpenPositionTpPnLUsdForChartPrice(chart, side, tpPrice, pricePrec = 5) {
+        if (!chart || tpPrice == null || !Number.isFinite(Number(tpPrice))) return null;
         const wantBuy = side === 'BUY' || side === 'buy';
         const roundP = (p) => parseFloat(Number(p).toFixed(pricePrec));
         const t = roundP(tpPrice);
-        const pip = Number(this.pipSize) > 0 ? this.pipSize : 0.0001;
-        const eps = Math.max(pip * 5, Math.abs(t) * 1e-8, 1e-10);
-
-        const tryOpen = () => {
-            const list = Array.isArray(this.openPositions) ? this.openPositions : [];
-            for (const pos of list) {
-                if (!pos || !this._positionMatchesChartForRrBadge(pos, ch)) continue;
-                const isBuy = pos.type === 'BUY';
-                if (wantBuy !== isBuy) continue;
-                if (!pos.tpTargets || !pos.tpTargets.length) continue;
-                let bestIdx = -1;
-                let bestD = Infinity;
-                for (let i = 0; i < pos.tpTargets.length; i++) {
-                    const tt = pos.tpTargets[i];
-                    if (!tt || tt.hit || !Number.isFinite(tt.price)) continue;
-                    const d = Math.abs(roundP(tt.price) - t);
-                    if (d <= eps && d < bestD) {
-                        bestD = d;
-                        bestIdx = i;
-                    }
+        const eps = Math.max(1e-10, Math.abs(t) * 1e-9);
+        const list = Array.isArray(this.openPositions) ? this.openPositions : [];
+        for (const pos of list) {
+            if (!pos || !this._positionTickerMatchesChartSymbol(pos, chart)) continue;
+            const isBuy = pos.type === 'BUY';
+            if (wantBuy !== isBuy) continue;
+            if (!pos.tpTargets || !pos.tpTargets.length) continue;
+            let idx = -1;
+            for (let i = 0; i < pos.tpTargets.length; i++) {
+                const tt = pos.tpTargets[i];
+                if (!tt || tt.hit || !Number.isFinite(tt.price)) continue;
+                if (Math.abs(roundP(tt.price) - t) <= eps) {
+                    idx = i;
+                    break;
                 }
-                if (bestIdx < 0) continue;
-                const tgt = pos.tpTargets[bestIdx];
-                const { pnl } = this._multiTpTargetChartMetrics(pos, tgt, bestIdx, 'open');
-                if (!Number.isFinite(pnl)) continue;
-                const pct = Number(tgt.percentage);
-                return {
-                    pnl: Math.round(pnl),
-                    percentage: Number.isFinite(pct) ? pct : 0
-                };
             }
-            return null;
-        };
-
-        const fromOpen = tryOpen();
-        if (fromOpen) return fromOpen;
-
-        const zoneEntryPrice = opts.zoneEntryPrice;
-        const totalQty = opts.quantity;
-        if (!this.tpTargets || this.tpTargets.length < 1) return null;
-        let bestIdx = -1;
-        let bestD = Infinity;
-        for (let i = 0; i < this.tpTargets.length; i++) {
-            const tt = this.tpTargets[i];
-            if (!tt || !Number.isFinite(tt.price)) continue;
-            const d = Math.abs(roundP(tt.price) - t);
-            if (d <= eps && d < bestD) {
-                bestD = d;
-                bestIdx = i;
-            }
+            if (idx < 0) continue;
+            const tgt = pos.tpTargets[idx];
+            const { pnl } = this._multiTpTargetChartMetrics(pos, tgt, idx, 'open');
+            if (Number.isFinite(pnl)) return Math.round(pnl);
         }
-        if (bestIdx < 0) return null;
-        const tgt = this.tpTargets[bestIdx];
-        const entry = Number.isFinite(zoneEntryPrice)
-            ? zoneEntryPrice
-            : parseFloat(document.getElementById('orderEntryPrice')?.value || '') || 0;
-        const qty = Number.isFinite(totalQty) && totalQty > 0
-            ? totalQty
-            : parseFloat(document.getElementById('orderQuantity')?.value || '') || 0;
-        if (!(entry > 0) || !(qty > 0)) return null;
-        const refPos = Array.isArray(this.openPositions)
-            ? this.openPositions.find((p) => p && this._positionMatchesChartForRrBadge(p, ch))
-            : null;
-        const stub = {
-            type: wantBuy ? 'BUY' : 'SELL',
-            openPrice: entry,
-            quantity: qty,
-            originalQuantity: qty,
-            tpTargets: this.tpTargets,
-            isSplitEntry: false,
-            ticker: this._getSymbol(),
-            instrument_settings: refPos?.instrument_settings || null
-        };
-        const { pnl } = this._multiTpTargetChartMetrics(stub, tgt, bestIdx, 'pending');
-        if (!Number.isFinite(pnl)) return null;
-        const pct = Number(tgt.percentage);
-        return {
-            pnl: Math.round(pnl),
-            percentage: Number.isFinite(pct) ? pct : 0
-        };
+        return null;
     }
     
     /**

@@ -2211,12 +2211,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 Number.isFinite(stop.y) ? stop.y : parseFloat(document.getElementById('slPrice')?.value || '') || 0
             );
 
-            // Sync panel + om.tpTargets from drawing so TP $ math matches chart lines (push includes R:R calc).
-            if (om && typeof om.pushRiskRewardToolToManager === 'function') {
-                try {
-                    om.pushRiskRewardToolToManager(this);
-                } catch (_) { /* ignore */ }
-            } else if (om && typeof om.calculateAdvancedRiskReward === 'function') {
+            if (om && typeof om.calculateAdvancedRiskReward === 'function') {
                 try {
                     om.calculateAdvancedRiskReward();
                 } catch (_) { /* ignore */ }
@@ -2625,25 +2620,18 @@ class BaseRiskRewardTool extends BaseDrawing {
                     const tpNum = si >= 0 ? si + 1 : 1;
                     let pctStr = '—';
                     let usd = null;
-                    const chartRef = this.chart || (typeof window !== 'undefined' ? window.chart : null);
-                    const openTpM = om && typeof om.getTpMetricsForRiskToolBadge === 'function'
-                        ? om.getTpMetricsForRiskToolBadge(chartRef, sideStr, rp, rrPrec, {
-                            zoneEntryPrice,
-                            quantity
-                        })
-                        : null;
-                    if (openTpM && Number.isFinite(openTpM.pnl)) {
-                        usd = openTpM.pnl;
-                        pctStr = Number.isFinite(openTpM.percentage)
-                            ? `${Math.round(openTpM.percentage)}%`
-                            : '—';
-                    } else if (sortedOm.length > 1) {
+                    if (sortedOm.length > 1) {
                         const leg = sortedOm.find((t) => t && Number.isFinite(t.price)
                             && Math.abs(tpRound(t.price) - rp) <= epsPx);
                         if (leg && Number.isFinite(leg.percentage)) {
                             const pct = Number(leg.percentage);
                             pctStr = `${Math.round(pct)}%`;
-                            usd = Math.round(targetRewardUsdForBadges * (pct / 100));
+                            const fromOpen = om && typeof om.getOpenPositionTpPnLUsdForChartPrice === 'function'
+                                ? om.getOpenPositionTpPnLUsdForChartPrice(this.chart, sideStr, rp, rrPrec)
+                                : null;
+                            usd = fromOpen != null
+                                ? fromOpen
+                                : Math.round(targetRewardUsdForBadges * (pct / 100));
                         }
                     }
                     const sub = usd != null ? `$${usd} · ${pctStr}` : pctStr;
