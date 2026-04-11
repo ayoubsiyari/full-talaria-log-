@@ -2468,12 +2468,12 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .text(centerInfoLine2);
 
             const centerTextBBox = centerTextNode.node().getBBox();
-            const centerPaddingX = 12;
-            const centerPaddingY = 6;
+            const centerPaddingX = 16;
+            const centerPaddingY = 9;
             const centerWidth = centerTextBBox.width + (centerPaddingX * 2);
             const centerHeight = centerTextBBox.height + (centerPaddingY * 2);
 
-            primaryEntryHitHeight = Math.max(56, centerHeight + 20);
+            primaryEntryHitHeight = Math.max(56, centerHeight + 24);
 
             const centerRectX = zoneCenterX - (centerWidth / 2);
 
