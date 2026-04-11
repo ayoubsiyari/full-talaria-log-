@@ -23315,7 +23315,61 @@ class OrderManager {
         }
         return null;
     }
-    
+
+    /**
+     * RR tool TP mini-badges: pending/draft uses same per-leg $ as chart labels (`_formatMultiTpInfoText`);
+     * open positions delegate to {@link getOpenPositionTpPnLUsdForChartPrice}.
+     */
+    getMultiTpLegProfitUsdForChartBadge(chart, side, tpPrice, pricePrec = 5) {
+        const openUsd = this.getOpenPositionTpPnLUsdForChartPrice(chart, side, tpPrice, pricePrec);
+        if (openUsd != null) return openUsd;
+
+        if (typeof document !== 'undefined' && !document.getElementById('multipleTPToggle')?.checked) {
+            return null;
+        }
+        if (!this.tpTargets || this.tpTargets.length === 0) return null;
+
+        const roundP = (p) => parseFloat(Number(p).toFixed(pricePrec));
+        const t = roundP(Number(tpPrice));
+        if (!Number.isFinite(t)) return null;
+        const eps = Math.max(1e-10, Math.abs(t) * 1e-9);
+
+        let idx = -1;
+        for (let i = 0; i < this.tpTargets.length; i++) {
+            const tt = this.tpTargets[i];
+            if (!tt || tt.hit || !Number.isFinite(tt.price)) continue;
+            if (Math.abs(roundP(tt.price) - t) <= eps) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx < 0) return null;
+
+        const entryPx = this._getReferenceEntryForOrderMath();
+        const qty = parseFloat(document.getElementById('orderQuantity')?.value || 0);
+        if (!(entryPx > 0) || !(qty > 0)) return null;
+
+        const sideUpper = String(side || this.orderSide || 'BUY').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
+        const ePcts = this._computeEffectiveTPPercentages(entryPx, qty, sideUpper);
+        const ePct = ePcts[idx] || 0;
+        if (!(ePct > 0)) return null;
+
+        const shareQty = qty * (ePct / 100);
+        if (!(shareQty > 0)) return null;
+
+        let priceDiff;
+        if (sideUpper === 'BUY') {
+            priceDiff = t - entryPx;
+        } else {
+            priceDiff = entryPx - t;
+        }
+        if (!(priceDiff > 0)) return null;
+
+        const partialReward = Math.max(0, this.estimatePnLForPriceLevel(
+            sideUpper, entryPx, t, shareQty));
+        return Math.round(partialReward);
+    }
+
     /**
      * Close position at specific price (for SL/TP hits)
      */

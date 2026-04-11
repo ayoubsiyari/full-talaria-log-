@@ -2626,12 +2626,10 @@ class BaseRiskRewardTool extends BaseDrawing {
                         if (leg && Number.isFinite(leg.percentage)) {
                             const pct = Number(leg.percentage);
                             pctStr = `${Math.round(pct)}%`;
-                            const fromOpen = om && typeof om.getOpenPositionTpPnLUsdForChartPrice === 'function'
-                                ? om.getOpenPositionTpPnLUsdForChartPrice(this.chart, sideStr, rp, rrPrec)
+                            const usdLeg = om && typeof om.getMultiTpLegProfitUsdForChartBadge === 'function'
+                                ? om.getMultiTpLegProfitUsdForChartBadge(this.chart, sideStr, rp, rrPrec)
                                 : null;
-                            usd = fromOpen != null
-                                ? fromOpen
-                                : Math.round(targetRewardUsdForBadges * (pct / 100));
+                            usd = usdLeg != null ? usdLeg : null;
                         }
                     }
                     const sub = usd != null ? `$${usd} · ${pctStr}` : pctStr;
