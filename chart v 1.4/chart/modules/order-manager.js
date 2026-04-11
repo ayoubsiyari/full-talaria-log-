@@ -18455,6 +18455,19 @@ class OrderManager {
             this.beManuallyPositioned = true;
         }
 
+        // R:R modal reads the same hidden #orderQuantity as TP profit math — must be filled after prices/risk sync.
+        const enSl = document.getElementById('enableSL');
+        if (enSl) {
+            enSl.checked = true;
+            const slInputs = document.getElementById('slInputs');
+            if (slInputs) slInputs.style.display = 'flex';
+        }
+        const enTp = document.getElementById('enableTP');
+        if (enTp) enTp.checked = true;
+
+        this.calculatePositionFromRisk();
+        this.calculateAdvancedRiskReward();
+
         if (document.getElementById('rrSettingsMultiEntryRows')) {
             this.renderMultiEntryRows();
         }

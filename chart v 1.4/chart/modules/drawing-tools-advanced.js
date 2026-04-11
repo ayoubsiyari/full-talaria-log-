@@ -2243,8 +2243,8 @@ class BaseRiskRewardTool extends BaseDrawing {
             const stopTicksFb = (Math.abs(stopPrice - entryPrice) / effectivePipForFb).toFixed(1);
 
             let panelOrderQty = parseFloat(document.getElementById('orderQuantity')?.value || '');
-            if (!Number.isFinite(panelOrderQty) || panelOrderQty < 0) {
-                panelOrderQty = this.meta.risk?.lotSize || 0.01;
+            if (!Number.isFinite(panelOrderQty) || panelOrderQty <= 0) {
+                panelOrderQty = Number(this.meta.risk?.lotSize) || 0.01;
             }
             const quantity = panelOrderQty;
 
@@ -2329,16 +2329,21 @@ class BaseRiskRewardTool extends BaseDrawing {
                 ? slDistPanel
                 : (formatRrDistFromPx(Math.abs(stopPrice - entryPrice)) || stopTicksFb);
 
+            const fallbackRewardUsd = Math.round(riskUSD * parseFloat(rrRatio));
             let targetAmountStr = parsePanelSummaryAmount(document.getElementById('rewardAmount'));
-            if (targetAmountStr == null) {
-                targetAmountStr = `$${Math.round(riskUSD * parseFloat(rrRatio))}`;
+            const rewNumFromPanel = targetAmountStr != null
+                ? parseFloat(String(targetAmountStr).replace(/[^0-9.-]+/g, ''))
+                : NaN;
+            if (targetAmountStr == null || !Number.isFinite(rewNumFromPanel)
+                || (rewNumFromPanel === 0 && !String(targetAmountStr).includes('∞'))) {
+                targetAmountStr = `$${fallbackRewardUsd}`;
             }
             let stopAmountStr = parsePanelSummaryAmount(document.getElementById('riskAmount'));
             if (stopAmountStr == null) {
                 stopAmountStr = `$${Math.round(riskUSD)}`;
             }
 
-            let targetRewardUsdForBadges = Math.round(riskUSD * parseFloat(rrRatio));
+            let targetRewardUsdForBadges = fallbackRewardUsd;
             const rewNum = parseFloat(String(targetAmountStr).replace(/[^0-9.-]+/g, ''));
             if (Number.isFinite(rewNum) && targetAmountStr && !String(targetAmountStr).includes('∞')) {
                 targetRewardUsdForBadges = rewNum;
