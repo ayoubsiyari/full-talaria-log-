@@ -15337,7 +15337,7 @@
 
             margin-left: 0;
 
-            cursor: pointer;
+            cursor: default;
 
         }
 
@@ -16208,6 +16208,186 @@
             overflow: visible;
 
             margin-left: 8px;
+
+        }
+
+
+
+        /* Tick / Candle: segmented toggle (replaces dropdown) */
+
+        .replay-playback-mode-settings.replay-playback-mode-toggle {
+
+            flex-direction: row;
+
+            align-items: stretch;
+
+            justify-content: center;
+
+            gap: 0;
+
+            padding: 0;
+
+            border-radius: 6px;
+
+            border: 1px solid var(--sp-ui-border, rgba(78, 91, 126, 0.55));
+
+            background: rgba(255, 255, 255, 0.04);
+
+            overflow: hidden;
+
+        }
+
+
+
+        .replay-toolbar .replay-playback-mode-toggle .replay-mode-option,
+
+        #speedSliderClone .replay-playback-mode-toggle .replay-mode-option {
+
+            flex: 1 1 50%;
+
+            min-width: 44px;
+
+            height: 24px;
+
+            margin: 0;
+
+            border: none;
+
+            border-radius: 0;
+
+            background: transparent;
+
+            color: var(--sp-text-muted, #a0aec0);
+
+            padding: 0 8px;
+
+            display: inline-flex;
+
+            align-items: center;
+
+            justify-content: center;
+
+            font-size: 11px;
+
+            font-weight: 600;
+
+            font-family: inherit;
+
+            text-transform: capitalize;
+
+            letter-spacing: 0;
+
+            line-height: 1;
+
+            cursor: pointer;
+
+            box-shadow: none !important;
+
+            transition: background 0.15s ease, color 0.15s ease;
+
+        }
+
+
+
+        .replay-toolbar .replay-playback-mode-toggle .replay-mode-option + .replay-mode-option,
+
+        #speedSliderClone .replay-playback-mode-toggle .replay-mode-option + .replay-mode-option {
+
+            border-left: 1px solid var(--sp-ui-border, rgba(78, 91, 126, 0.45));
+
+        }
+
+
+
+        .replay-toolbar .replay-playback-mode-toggle .replay-mode-option:hover,
+
+        #speedSliderClone .replay-playback-mode-toggle .replay-mode-option:hover {
+
+            background: rgba(255, 255, 255, 0.08);
+
+            color: #ffffff;
+
+        }
+
+
+
+        .replay-toolbar .replay-playback-mode-toggle .replay-mode-option.replay-selected,
+
+        #speedSliderClone .replay-playback-mode-toggle .replay-mode-option.replay-selected {
+
+            background: rgba(var(--sp-accent-rgb), 0.35);
+
+            color: var(--sp-text-active, #ffffff);
+
+        }
+
+
+
+        .replay-toolbar .replay-playback-mode-toggle .replay-mode-option:focus-visible,
+
+        #speedSliderClone .replay-playback-mode-toggle .replay-mode-option:focus-visible {
+
+            outline: 2px solid rgba(var(--sp-accent-rgb), 0.65);
+
+            outline-offset: -2px;
+
+            z-index: 1;
+
+        }
+
+
+
+        body.light-mode .replay-toolbar .replay-playback-mode-toggle,
+
+        body.light-mode #speedSliderClone .replay-playback-mode-toggle {
+
+            border-color: #e0e3eb;
+
+            background: rgba(255, 255, 255, 0.92);
+
+        }
+
+
+
+        body.light-mode .replay-toolbar .replay-playback-mode-toggle .replay-mode-option,
+
+        body.light-mode #speedSliderClone .replay-playback-mode-toggle .replay-mode-option {
+
+            color: #64748b;
+
+        }
+
+
+
+        body.light-mode .replay-toolbar .replay-playback-mode-toggle .replay-mode-option + .replay-mode-option,
+
+        body.light-mode #speedSliderClone .replay-playback-mode-toggle .replay-mode-option + .replay-mode-option {
+
+            border-left-color: #e0e3eb;
+
+        }
+
+
+
+        body.light-mode .replay-toolbar .replay-playback-mode-toggle .replay-mode-option:hover,
+
+        body.light-mode #speedSliderClone .replay-playback-mode-toggle .replay-mode-option:hover {
+
+            background: rgba(var(--sp-accent-rgb), 0.08);
+
+            color: #1e293b;
+
+        }
+
+
+
+        body.light-mode .replay-toolbar .replay-playback-mode-toggle .replay-mode-option.replay-selected,
+
+        body.light-mode #speedSliderClone .replay-playback-mode-toggle .replay-mode-option.replay-selected {
+
+            background: rgba(var(--sp-accent-rgb), 0.18);
+
+            color: var(--sp-accent);
 
         }
 
@@ -40135,33 +40315,13 @@
 
 
 
-                    <!-- Replay playback mode dropdown -->
+                    <!-- Replay playback mode: Tick / Candle segmented toggle -->
 
-                    <div class="replay-playback-mode-settings" title="Replay Playback Mode">
+                    <div class="replay-playback-mode-settings replay-playback-mode-toggle" title="Replay Playback Mode" role="group" aria-label="Replay Playback Mode">
 
-                        <button type="button" class="replay-mode-trigger" aria-label="Replay Playback Mode" aria-haspopup="true" aria-expanded="false">
+                        <button type="button" class="replay-mode-option replay-selected" data-mode="tick" aria-pressed="true">Tick</button>
 
-                            <span class="replay-mode-current-label">Tick</span>
-
-                        </button>
-
-                        <button type="button" class="replay-mode-dropdown-arrow" aria-label="Open Replay Playback Mode menu">
-
-                            <svg viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-
-                                <polyline points="2,2 6,6 10,2" stroke-linecap="round" stroke-linejoin="round"/>
-
-                            </svg>
-
-                        </button>
-
-                        <div class="replay-mode-dropdown" role="menu" aria-label="Replay Playback Mode options">
-
-                            <button type="button" class="replay-mode-option replay-selected" data-mode="tick" aria-pressed="true">Tick</button>
-
-                            <button type="button" class="replay-mode-option" data-mode="candle" aria-pressed="false">Candle</button>
-
-                        </div>
+                        <button type="button" class="replay-mode-option" data-mode="candle" aria-pressed="false">Candle</button>
 
                         <select id="replayPlaybackMode" title="Replay Playback Mode" aria-label="Replay Playback Mode" style="display:none;">
 

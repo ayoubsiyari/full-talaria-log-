@@ -411,7 +411,9 @@ class ReplaySystem {
 
     syncPlaybackModeControls() {
         const mode = this.getPlaybackMode();
-        const modeSelects = document.querySelectorAll('#replayPlaybackMode, #replayPlaybackModeClone');
+        const modeSelects = document.querySelectorAll(
+            '#replayPlaybackMode, #replayPlaybackModeClone, #replayPlaybackModeFloatingClone'
+        );
         modeSelects.forEach(select => {
             if (select && select.value !== mode) {
                 select.value = mode;
