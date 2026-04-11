@@ -5287,6 +5287,15 @@ class DrawingToolsManager {
         if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
             this.chart.updateSVGPointerEvents();
         }
+
+        const omSel = this.chart?.orderManager;
+        if (omSel && typeof omSel.syncOrderPanelFromSelectedRiskRewardTool === 'function'
+            && this.selectedDrawings?.length === 1) {
+            const only = this.selectedDrawings[0];
+            if (only && (only.type === 'long-position' || only.type === 'short-position')) {
+                omSel.syncOrderPanelFromSelectedRiskRewardTool();
+            }
+        }
     }
 
     /**

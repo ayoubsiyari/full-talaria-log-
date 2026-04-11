@@ -11287,6 +11287,12 @@ class OrderManager {
 
         this.updateOrderPanelPrice();
 
+        // Selected R/R tool: open flow resets multi-TP / multi-entry and entry from market — re-apply tool state.
+        const rrSelectedOpen = !this.editingPendingOrderId ? this._getSelectedRiskRewardDrawing() : null;
+        if (rrSelectedOpen) {
+            this.pushRiskRewardToolToManager(rrSelectedOpen);
+        }
+
         // Perform initial calculations and setup after panel is visible
         setTimeout(() => {
             this.syncDefaultTargetsToEntry();
@@ -11393,9 +11399,29 @@ class OrderManager {
         const isVisible = panel.classList.contains('visible');
         if (!isVisible) {
             this.toggleOrderPanel();
+        } else {
+            this.syncOrderPanelFromSelectedRiskRewardTool();
         }
     }
-    
+
+    /**
+     * When the order drawer is already open, selecting a different R/R tool should refresh panel inputs.
+     */
+    syncOrderPanelFromSelectedRiskRewardTool() {
+        const panel = document.getElementById('orderPanel');
+        if (!panel || !panel.classList.contains('visible')) return;
+        if (this.editingPendingOrderId) return;
+        const d = this._getSelectedRiskRewardDrawing();
+        if (!d) return;
+        this.pushRiskRewardToolToManager(d);
+        requestAnimationFrame(() => {
+            this.updatePreviewLines();
+            if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
+                try { this.chart.updateSVGPointerEvents(); } catch (_e) { /* ignore */ }
+            }
+        });
+    }
+
     /**
      * Update order panel UI based on current market type
      */
@@ -18681,6 +18707,17 @@ class OrderManager {
     }
 
     /**
+     * Active long/short R/R drawing (for syncing the order panel when the tool is selected).
+     */
+    _getSelectedRiskRewardDrawing() {
+        const dm = this.chart?.drawingManager;
+        const d = dm?.selectedDrawing;
+        if (!d || (d.type !== 'long-position' && d.type !== 'short-position')) return null;
+        if (!d.points || d.points.length < 3) return null;
+        return d;
+    }
+
+    /**
      * Push long/short position tool geometry into the same inputs + tpTargets / multiEntryLevels
      * structures used by the order panel (for shared + / drag math).
      */
@@ -18766,11 +18803,42 @@ class OrderManager {
             if (tpSingleView) tpSingleView.classList.add('is-hidden');
             const sorted = [...uniqTp].sort((a, b) => (isLong ? a - b : b - a));
             const n = sorted.length;
+            const sortedPrices = sorted.map((p) => parseFloat(Number(p).toFixed(prec)));
             const share = parseFloat((100 / n).toFixed(1));
+            const epsTp = Math.max(1e-10, Math.abs(sortedPrices[0] || 1) * 1e-9);
+            const prevSortedTp = Array.isArray(this.tpTargets) && this.tpTargets.length === n
+                ? [...this.tpTargets].sort((a, b) => (isLong ? a.price - b.price : b.price - a.price))
+                : null;
+            let preservedPct = null;
+            let preservedIds = null;
+            if (prevSortedTp && prevSortedTp.length === n) {
+                let ok = true;
+                for (let i = 0; i < n; i++) {
+                    const t = prevSortedTp[i];
+                    if (!t || !Number.isFinite(t.price)) {
+                        ok = false;
+                        break;
+                    }
+                    if (Math.abs(parseFloat(Number(t.price).toFixed(prec)) - sortedPrices[i]) > epsTp) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (ok) {
+                    preservedPct = prevSortedTp.map((t) => (
+                        t.percentage != null && Number.isFinite(t.percentage)
+                            ? parseFloat(Number(t.percentage).toFixed(1))
+                            : null
+                    ));
+                    preservedIds = prevSortedTp.map((t) => t.id);
+                }
+            }
             this.tpTargets = sorted.map((price, i) => ({
-                id: Date.now() + i,
-                price: parseFloat(price.toFixed(prec)),
-                percentage: i === n - 1 ? parseFloat((100 - share * (n - 1)).toFixed(1)) : share
+                id: preservedIds != null && preservedIds[i] != null ? preservedIds[i] : (Date.now() + i),
+                price: sortedPrices[i],
+                percentage: preservedPct != null && preservedPct[i] != null && Number.isFinite(preservedPct[i])
+                    ? preservedPct[i]
+                    : (i === n - 1 ? parseFloat((100 - share * (n - 1)).toFixed(1)) : share)
             }));
             const numTPInput = document.getElementById('numTPTargets');
             if (numTPInput) numTPInput.value = String(n);
@@ -18788,10 +18856,9 @@ class OrderManager {
             uniqE.push(p);
         }
         if (uniqE.length <= 1) {
-            this.isMultiEntryMode = false;
             this.multiEntryLevels = [];
+            this.setEntryMode(false);
         } else {
-            this.isMultiEntryMode = true;
             const nE = uniqE.length;
             const amtEach = Number.isFinite(riskUsd) && riskUsd > 0 ? Math.max(1, Math.round(riskUsd / nE)) : 40;
             if (!Number.isFinite(this.multiEntryIdCounter)) this.multiEntryIdCounter = 1;
@@ -18821,6 +18888,7 @@ class OrderManager {
             if (typeof this._rebalanceLevelAmountsToTarget === 'function') {
                 this._rebalanceLevelAmountsToTarget();
             }
+            this.setEntryMode(true);
         }
 
         const beLineY = drawing.meta?.rrBreakevenLine?.y;
@@ -18844,13 +18912,27 @@ class OrderManager {
         const enTp = document.getElementById('enableTP');
         if (enTp) enTp.checked = true;
 
+        const buyTab = document.getElementById('buyTab');
+        const sellTab = document.getElementById('sellTab');
+        const placeBtn = document.getElementById('placeOrderButton');
+        if (buyTab && sellTab) {
+            buyTab.classList.toggle('active', isLong);
+            sellTab.classList.toggle('active', !isLong);
+            buyTab.style.cssText = '';
+            sellTab.style.cssText = '';
+        }
+        if (placeBtn) {
+            placeBtn.classList.toggle('sell-mode', !isLong);
+            placeBtn.style.background = isLong
+                ? 'linear-gradient(135deg, #22c55e, #1a9c4e)'
+                : 'linear-gradient(135deg, #ef4444, #c93030)';
+        }
+
         this.calculatePositionFromRisk();
         this.calculateAdvancedRiskReward();
 
-        if (document.getElementById('rrSettingsMultiEntryRows')) {
-            this.renderMultiEntryRows();
-        }
-        if (document.getElementById('rrSettingsMultipleTPList') && this.tpTargets && this.tpTargets.length > 1) {
+        this.renderMultiEntryRows();
+        if (this.tpTargets && this.tpTargets.length > 1) {
             this.renderTPTargets();
         }
     }
