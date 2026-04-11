@@ -43347,6 +43347,55 @@
 
 
 
+            // Order panel is fixed on body (outside chartWrapper). Only skip deselect when the
+            // selection is exclusively long/short risk–reward tools (sync with order panel).
+
+            var orderPanelEl = document.getElementById('orderPanel');
+
+            var orderBackdropEl = document.getElementById('orderPanelBackdrop');
+
+            var orderButtonsWrap = document.getElementById('orderButtons');
+
+            var hitOrderUi = (orderPanelEl && orderPanelEl.contains(e.target))
+
+                || (orderBackdropEl && orderBackdropEl.contains(e.target))
+
+                || (orderButtonsWrap && orderButtonsWrap.contains(e.target));
+
+            if (hitOrderUi) {
+
+                var cOrd = window.chart || window.mainChart;
+
+                var dmOrd = cOrd && cOrd.drawingManager;
+
+                var selOrd = dmOrd && dmOrd.selectedDrawings && dmOrd.selectedDrawings.length
+
+                    ? dmOrd.selectedDrawings
+
+                    : (dmOrd && dmOrd.selectedDrawing ? [dmOrd.selectedDrawing] : []);
+
+                var onlyRR = false;
+
+                if (selOrd.length) {
+
+                    onlyRR = true;
+
+                    for (var si = 0; si < selOrd.length; si++) {
+
+                        var typ = selOrd[si] && selOrd[si].type;
+
+                        if (typ !== 'long-position' && typ !== 'short-position') { onlyRR = false; break; }
+
+                    }
+
+                }
+
+                if (onlyRR) return;
+
+            }
+
+
+
             // Ignore clicks inside the floating drawing toolbar
 
             var dtb = document.querySelector('.drawing-toolbar');
