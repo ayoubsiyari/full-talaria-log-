@@ -1619,6 +1619,11 @@ class BaseRiskRewardTool extends BaseDrawing {
             return;
         }
 
+        // Panel may be in "Make new order" state after a pending order — calculations/preview are gated until then.
+        if (typeof orderManager.exitOrderPlacedAwaitingReset === 'function') {
+            orderManager.exitOrderPlacedAwaitingReset();
+        }
+
         // Ensure risk settings are calculated
         this.ensureRiskSettings();
 

@@ -11499,6 +11499,22 @@ class OrderManager {
     }
 
     /**
+     * After place: panel shows "Make new order" and `_orderPlacedAwaitingReset` blocks calculations/preview.
+     * Risk/Reward "Execute" (and similar) must clear that gate before prefilling so a new draft works.
+     * Mirrors the reset portion of the place button's "Make new order" branch.
+     */
+    exitOrderPlacedAwaitingReset() {
+        if (!this._orderPlacedAwaitingReset) return;
+        this._orderPlacedAwaitingReset = false;
+        const placeBtn = document.getElementById('placeOrderButton');
+        if (placeBtn) placeBtn.style.background = '';
+        this.clearPendingOrderEditingState();
+        this.tpManuallyPositioned = false;
+        this.slManuallyPositioned = false;
+        this._resetMultiEntryStateForNewOrder();
+    }
+
+    /**
      * Start editing an existing pending order from sidebar
      */
     editPendingOrder(orderId) {
