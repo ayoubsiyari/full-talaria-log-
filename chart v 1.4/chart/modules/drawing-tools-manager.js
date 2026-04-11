@@ -4585,11 +4585,13 @@ class DrawingToolsManager {
         }
 
         const halfExtra = 26;
-        // Match `extraEntryDragHitW` in BaseRiskRewardTool.render — E2+ pills are nudged vertically off the line.
+        // Match `extraTpDragHitW` / `extraEntryDragHitW` in BaseRiskRewardTool.render.
+        const halfExtraTp = 48;
+        // Match `extraEntryDragHitW` — E2+ pills are nudged vertically off the line.
         const halfExtraEntry = 48;
         (drawing.meta?.extraTargets || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
-            pushHit(`rr-extra-target-${idx}`, chart.yScale(row.y), halfExtra, x2Full);
+            pushHit(`rr-extra-target-${idx}`, chart.yScale(row.y), halfExtraTp, x2Full);
         });
         (drawing.meta?.extraEntries || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;

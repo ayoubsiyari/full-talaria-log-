@@ -2161,8 +2161,10 @@ class BaseRiskRewardTool extends BaseDrawing {
             .attr('y2', targetY)
             .style('pointer-events', 'none');
 
-        /** Wide transparent stroke for TP/SL/BE extras. Entry E2+ uses a taller strip — mini-badges are vertically nudged (`ENTRY_BADGE_MIN_V_SEP`) and sit off the true price line, so a thin strip only hit the dashed line, not the blue pill. */
+        /** Wide transparent stroke for SL/BE extras. */
         const extraDragHitW = 24;
+        /** Inner TP levels (TP2, …): tall strip + TP pill must not sit on a blocking group — see `rr-tp-mini-pct-controls` pointer-events. */
+        const extraTpDragHitW = 96;
         /** Tall enough to cover nudged E2/E3 labels +/− controls while still centered on the leg price. */
         const extraEntryDragHitW = 96;
         const appendExtraDragHit = (yy, role, hitW = extraDragHitW) => {
@@ -2959,7 +2961,8 @@ class BaseRiskRewardTool extends BaseDrawing {
 
                     const root = this.group.append('g')
                         .attr('class', 'rr-tp-mini-pct-controls')
-                        .style('pointer-events', 'all');
+                        // Let drags hit `rr-extra-drag-hit` under the TP pill; [−]/[+/× keep their own pointer-events.
+                        .style('pointer-events', 'none');
 
                     const wirePctClick = (delta) => (event) => {
                         event.stopPropagation();
@@ -3241,7 +3244,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         (this.meta.extraTargets || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
             const yy = scales.yScale(row.y);
-            appendExtraDragHit(yy, `rr-extra-target-${idx}`);
+            appendExtraDragHit(yy, `rr-extra-target-${idx}`, extraTpDragHitW);
         });
         (this.meta.extraEntries || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
