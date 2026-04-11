@@ -2344,8 +2344,8 @@ class BaseRiskRewardTool extends BaseDrawing {
                 const hitPad = 2;
                 const showInlineTpPct = Number.isFinite(inlineTpPctIndex) && inlineTpPctIndex >= 0
                     && om && typeof om.adjustTPPercentage === 'function';
-                const controlsW = ctrlSize * 2 + cg;
-                const extraForControls = showInlineTpPct ? (cg + controlsW) : 0;
+                const controlsRowW = ctrlSize * 3 + cg * 2;
+                const extraForControls = showInlineTpPct ? (cg + controlsRowW) : 0;
 
                 const textNode = hitBlock.append('text')
                     .attr('x', 0)
@@ -2401,7 +2401,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                         if (dmR) dmR.renderDrawing(self);
                     };
                     const cy = rectTop + (labelHeight / 2) - (ctrlSize / 2);
-                    const leftX = rectX + labelWidth - labelPaddingX - controlsW;
+                    const leftX = rectX + labelWidth - labelPaddingX - controlsRowW;
                     const ctrlRoot = labelOuter.append('g')
                         .attr('class', 'rr-tp-mini-pct-controls')
                         .style('pointer-events', 'all');
@@ -2445,8 +2445,64 @@ class BaseRiskRewardTool extends BaseDrawing {
                             })
                             .on('click', wirePctClick(delta));
                     };
+                    const wireInlineTpRemove = (event) => {
+                        event.stopPropagation();
+                        if (typeof event.preventDefault === 'function') event.preventDefault();
+                        if (!om || typeof om.pushRiskRewardToolToManager !== 'function'
+                            || typeof om.removeTPTarget !== 'function') return;
+                        om.pushRiskRewardToolToManager(self);
+                        const t = om.tpTargets && om.tpTargets[tpTargetIndex];
+                        if (!t || t.id == null) return;
+                        om.removeTPTarget(t.id);
+                        if (typeof om.syncSelectedRiskRewardDrawingFromPanel === 'function') {
+                            om.syncSelectedRiskRewardDrawingFromPanel();
+                        }
+                        const dmR = self._drawingManager();
+                        if (dmR) dmR.renderDrawing(self);
+                    };
+                    const mkDel = (x, onClick) => {
+                        const h = ctrlRoot.append('g')
+                            .attr('transform', `translate(${x},${cy})`)
+                            .style('cursor', 'pointer');
+                        h.append('rect')
+                            .attr('width', ctrlSize)
+                            .attr('height', ctrlSize)
+                            .attr('rx', 3)
+                            .attr('fill', 'rgba(148, 163, 184, 0.18)')
+                            .attr('stroke', '#94a3b8')
+                            .attr('stroke-width', 1);
+                        h.append('text')
+                            .attr('x', ctrlSize / 2)
+                            .attr('y', ctrlSize / 2)
+                            .attr('dy', '0.35em')
+                            .attr('text-anchor', 'middle')
+                            .attr('fill', '#e2e8f0')
+                            .attr('font-size', '12px')
+                            .attr('font-weight', '700')
+                            .attr('pointer-events', 'none')
+                            .style('pointer-events', 'none')
+                            .text('×');
+                        const hitSz = ctrlSize + hitPad * 2;
+                        h.append('rect')
+                            .attr('x', -hitPad)
+                            .attr('y', -hitPad)
+                            .attr('width', hitSz)
+                            .attr('height', hitSz)
+                            .attr('fill', '#000')
+                            .attr('fill-opacity', 0.001)
+                            .attr('pointer-events', 'all')
+                            .style('pointer-events', 'all')
+                            .style('cursor', 'pointer')
+                            .on('mousedown', (e) => {
+                                if (e.button !== 0) return;
+                                e.stopPropagation();
+                                if (typeof e.preventDefault === 'function') e.preventDefault();
+                            })
+                            .on('click', onClick);
+                    };
                     mk(leftX, '-', -5, '#ef4444', 'rgba(239, 68, 68, 0.2)');
                     mk(leftX + ctrlSize + cg, '+', 5, '#089981', 'rgba(8, 153, 129, 0.2)');
+                    mkDel(leftX + 2 * (ctrlSize + cg), wireInlineTpRemove);
                 }
             };
 
@@ -2787,7 +2843,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 const by = lineYpx - bh / 2;
                 const rightX = zoneX2 - edgePad;
 
-                const controlsW = ctrlSize * 2 + cg;
+                const controlsW = ctrlSize * 3 + cg * 2;
                 const totalW = (showEntryQtyControls ? controlsW + cg : 0) + bw;
                 const leftX = Math.max(zoneX1 + edgePad, rightX - totalW);
                 const badgeBx = showEntryQtyControls ? (leftX + controlsW + cg) : (rightX - bw);
@@ -2851,8 +2907,64 @@ class BaseRiskRewardTool extends BaseDrawing {
                             })
                             .on('click', wireEntryQtyClick(dir));
                     };
+                    const wireEntryRemove = (event) => {
+                        event.stopPropagation();
+                        if (typeof event.preventDefault === 'function') event.preventDefault();
+                        if (!om || typeof om.pushRiskRewardToolToManager !== 'function'
+                            || typeof om.removeMultiEntryLevel !== 'function') return;
+                        om.pushRiskRewardToolToManager(self);
+                        const lv = om.multiEntryLevels && om.multiEntryLevels[entryLevelIndex];
+                        if (!lv || lv.id == null) return;
+                        om.removeMultiEntryLevel(lv.id);
+                        if (typeof om.syncSelectedRiskRewardDrawingFromPanel === 'function') {
+                            om.syncSelectedRiskRewardDrawingFromPanel();
+                        }
+                        const dmR = self._drawingManager();
+                        if (dmR) dmR.renderDrawing(self);
+                    };
+                    const mkDel = (x, onClick) => {
+                        const h = root.append('g')
+                            .attr('transform', `translate(${x},${cy})`)
+                            .style('cursor', 'pointer');
+                        h.append('rect')
+                            .attr('width', ctrlSize)
+                            .attr('height', ctrlSize)
+                            .attr('rx', 3)
+                            .attr('fill', 'rgba(148, 163, 184, 0.18)')
+                            .attr('stroke', '#94a3b8')
+                            .attr('stroke-width', 1);
+                        h.append('text')
+                            .attr('x', ctrlSize / 2)
+                            .attr('y', ctrlSize / 2)
+                            .attr('dy', '0.35em')
+                            .attr('text-anchor', 'middle')
+                            .attr('fill', '#e2e8f0')
+                            .attr('font-size', '12px')
+                            .attr('font-weight', '700')
+                            .attr('pointer-events', 'none')
+                            .style('pointer-events', 'none')
+                            .text('×');
+                        const hitSz = ctrlSize + hitPad * 2;
+                        h.append('rect')
+                            .attr('x', -hitPad)
+                            .attr('y', -hitPad)
+                            .attr('width', hitSz)
+                            .attr('height', hitSz)
+                            .attr('fill', '#000')
+                            .attr('fill-opacity', 0.001)
+                            .attr('pointer-events', 'all')
+                            .style('pointer-events', 'all')
+                            .style('cursor', 'pointer')
+                            .on('mousedown', (e) => {
+                                if (e.button !== 0) return;
+                                e.stopPropagation();
+                                if (typeof e.preventDefault === 'function') e.preventDefault();
+                            })
+                            .on('click', onClick);
+                    };
                     mk(leftX, '-', -1, '#ef4444', 'rgba(239, 68, 68, 0.2)');
                     mk(leftX + ctrlSize + cg, '+', 1, '#089981', 'rgba(8, 153, 129, 0.2)');
+                    mkDel(leftX + 2 * (ctrlSize + cg), wireEntryRemove);
                 }
 
                 root.append('rect')
@@ -2964,7 +3076,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                         && typeof tpTargetIndex === 'number' && tpTargetIndex >= 0
                         && om && typeof om.adjustTPPercentage === 'function');
 
-                    const controlsW = ctrlSize * 2 + cg;
+                    const controlsW = ctrlSize * 3 + cg * 2;
                     const totalW = (showPct ? controlsW + cg : 0) + bw;
                     const leftX = Math.max(zoneX1 + edgePad, rightX - totalW);
                     const badgeBx = showPct ? (leftX + controlsW + cg) : (rightX - bw);
@@ -3028,8 +3140,64 @@ class BaseRiskRewardTool extends BaseDrawing {
                                 })
                                 .on('click', wirePctClick(delta));
                         };
+                        const wireTpRemove = (event) => {
+                            event.stopPropagation();
+                            if (typeof event.preventDefault === 'function') event.preventDefault();
+                            if (!om || typeof om.pushRiskRewardToolToManager !== 'function'
+                                || typeof om.removeTPTarget !== 'function') return;
+                            om.pushRiskRewardToolToManager(self);
+                            const t = om.tpTargets && om.tpTargets[tpTargetIndex];
+                            if (!t || t.id == null) return;
+                            om.removeTPTarget(t.id);
+                            if (typeof om.syncSelectedRiskRewardDrawingFromPanel === 'function') {
+                                om.syncSelectedRiskRewardDrawingFromPanel();
+                            }
+                            const dmR = self._drawingManager();
+                            if (dmR) dmR.renderDrawing(self);
+                        };
+                        const mkDel = (x, onClick) => {
+                            const h = root.append('g')
+                                .attr('transform', `translate(${x},${cy})`)
+                                .style('cursor', 'pointer');
+                            h.append('rect')
+                                .attr('width', ctrlSize)
+                                .attr('height', ctrlSize)
+                                .attr('rx', 3)
+                                .attr('fill', 'rgba(148, 163, 184, 0.18)')
+                                .attr('stroke', '#94a3b8')
+                                .attr('stroke-width', 1);
+                            h.append('text')
+                                .attr('x', ctrlSize / 2)
+                                .attr('y', ctrlSize / 2)
+                                .attr('dy', '0.35em')
+                                .attr('text-anchor', 'middle')
+                                .attr('fill', '#e2e8f0')
+                                .attr('font-size', '12px')
+                                .attr('font-weight', '700')
+                                .attr('pointer-events', 'none')
+                                .style('pointer-events', 'none')
+                                .text('×');
+                            const hitSz = ctrlSize + hitPad * 2;
+                            h.append('rect')
+                                .attr('x', -hitPad)
+                                .attr('y', -hitPad)
+                                .attr('width', hitSz)
+                                .attr('height', hitSz)
+                                .attr('fill', '#000')
+                                .attr('fill-opacity', 0.001)
+                                .attr('pointer-events', 'all')
+                                .style('pointer-events', 'all')
+                                .style('cursor', 'pointer')
+                                .on('mousedown', (e) => {
+                                    if (e.button !== 0) return;
+                                    e.stopPropagation();
+                                    if (typeof e.preventDefault === 'function') e.preventDefault();
+                                })
+                                .on('click', onClick);
+                        };
                         mk(leftX, '-', -5, '#ef4444', 'rgba(239, 68, 68, 0.2)');
                         mk(leftX + ctrlSize + cg, '+', 5, '#089981', 'rgba(8, 153, 129, 0.2)');
+                        mkDel(leftX + 2 * (ctrlSize + cg), wireTpRemove);
                     }
 
                     root.append('rect')
@@ -3063,7 +3231,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                     const edgePad = 4;
                     const hitPad = 2;
                     const rightX = zoneX2 - edgePad;
-                    const controlsW = ctrlSize * 2 + cg;
+                    const controlsW = ctrlSize * 3 + cg * 2;
                     const leftX = Math.max(zoneX1 + edgePad, rightX - controlsW);
                     const cy = lineYpx - ctrlSize / 2;
 
@@ -3123,8 +3291,64 @@ class BaseRiskRewardTool extends BaseDrawing {
                             })
                             .on('click', wirePctClick(delta));
                     };
+                    const wireTpOnlyRemove = (event) => {
+                        event.stopPropagation();
+                        if (typeof event.preventDefault === 'function') event.preventDefault();
+                        if (!om || typeof om.pushRiskRewardToolToManager !== 'function'
+                            || typeof om.removeTPTarget !== 'function') return;
+                        om.pushRiskRewardToolToManager(self);
+                        const t = om.tpTargets && om.tpTargets[tpTargetIndex];
+                        if (!t || t.id == null) return;
+                        om.removeTPTarget(t.id);
+                        if (typeof om.syncSelectedRiskRewardDrawingFromPanel === 'function') {
+                            om.syncSelectedRiskRewardDrawingFromPanel();
+                        }
+                        const dmR = self._drawingManager();
+                        if (dmR) dmR.renderDrawing(self);
+                    };
+                    const mkDel = (x, onClick) => {
+                        const h = root.append('g')
+                            .attr('transform', `translate(${x},${cy})`)
+                            .style('cursor', 'pointer');
+                        h.append('rect')
+                            .attr('width', ctrlSize)
+                            .attr('height', ctrlSize)
+                            .attr('rx', 3)
+                            .attr('fill', 'rgba(148, 163, 184, 0.18)')
+                            .attr('stroke', '#94a3b8')
+                            .attr('stroke-width', 1);
+                        h.append('text')
+                            .attr('x', ctrlSize / 2)
+                            .attr('y', ctrlSize / 2)
+                            .attr('dy', '0.35em')
+                            .attr('text-anchor', 'middle')
+                            .attr('fill', '#e2e8f0')
+                            .attr('font-size', '12px')
+                            .attr('font-weight', '700')
+                            .attr('pointer-events', 'none')
+                            .style('pointer-events', 'none')
+                            .text('×');
+                        const hitSz = ctrlSize + hitPad * 2;
+                        h.append('rect')
+                            .attr('x', -hitPad)
+                            .attr('y', -hitPad)
+                            .attr('width', hitSz)
+                            .attr('height', hitSz)
+                            .attr('fill', '#000')
+                            .attr('fill-opacity', 0.001)
+                            .attr('pointer-events', 'all')
+                            .style('pointer-events', 'all')
+                            .style('cursor', 'pointer')
+                            .on('mousedown', (e) => {
+                                if (e.button !== 0) return;
+                                e.stopPropagation();
+                                if (typeof e.preventDefault === 'function') e.preventDefault();
+                            })
+                            .on('click', onClick);
+                    };
                     mk(leftX, '-', -5, '#ef4444', 'rgba(239, 68, 68, 0.2)');
                     mk(leftX + ctrlSize + cg, '+', 5, '#089981', 'rgba(8, 153, 129, 0.2)');
+                    mkDel(leftX + 2 * (ctrlSize + cg), wireTpOnlyRemove);
                 };
 
                 if (rrPrimaryTpIdxForControls >= 0 && mtOn && sortedOm.length > 1 && !useInlineTpPctOnTargetLabel) {
