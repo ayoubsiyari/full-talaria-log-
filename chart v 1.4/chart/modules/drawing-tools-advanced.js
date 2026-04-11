@@ -2820,6 +2820,27 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             // Entry mini-badges: paint in **screen Y** order (larger y = lower on chart first, smaller y last)
             // so the upper badge is always on top when levels overlap — fixed E1-then-E2 order hid E1 under E2.
+            // When two legs are very close in px, **nudge** upper badge centers upward so both labels stay readable
+            // (otherwise opaque rects stack and look like both disappeared).
+            const ENTRY_BADGE_MIN_V_SEP = 24;
+            const applyEntryBadgeVerticalSpread = (rows) => {
+                if (!rows || rows.length < 2) {
+                    if (rows && rows[0]) rows[0].displayY = rows[0].yPix;
+                    return;
+                }
+                rows.sort((a, b) => b.yPix - a.yPix);
+                rows[0].displayY = rows[0].yPix;
+                for (let j = 1; j < rows.length; j++) {
+                    const prev = rows[j - 1];
+                    const cur = rows[j];
+                    const prevY = prev.displayY;
+                    if (prevY - cur.yPix < ENTRY_BADGE_MIN_V_SEP) {
+                        cur.displayY = prevY - ENTRY_BADGE_MIN_V_SEP;
+                    } else {
+                        cur.displayY = cur.yPix;
+                    }
+                }
+            };
             if (omMulti) {
                 const entryBadgeRows = [];
                 om.multiEntryLevels.forEach((lv, i) => {
@@ -2842,12 +2863,13 @@ class BaseRiskRewardTool extends BaseDrawing {
                     }
                     entryBadgeRows.push({ i, yPix, entryLineParts });
                 });
-                entryBadgeRows.sort((a, b) => b.yPix - a.yPix);
-                entryBadgeRows.forEach(({ i, yPix, entryLineParts }) => {
+                applyEntryBadgeVerticalSpread(entryBadgeRows);
+                entryBadgeRows.forEach(({ i, yPix, displayY, entryLineParts }) => {
+                    const lineY = Number.isFinite(displayY) ? displayY : yPix;
                     if (showEntryQtyControls) {
-                        appendRrEntryMiniBadgeWithQtyControls(yPix, entryLineParts, entryFill, i);
+                        appendRrEntryMiniBadgeWithQtyControls(lineY, entryLineParts, entryFill, i);
                     } else {
-                        appendRrMiniBadge(yPix, entryLineParts, entryFill);
+                        appendRrMiniBadge(lineY, entryLineParts, entryFill);
                     }
                 });
             } else if (hasDrawnExtras) {
@@ -2860,8 +2882,11 @@ class BaseRiskRewardTool extends BaseDrawing {
                         lineTexts: [`E${i + 2}`, `${fallbackLot} lot`],
                     });
                 });
-                entryBadgeRows.sort((a, b) => b.yPix - a.yPix);
-                entryBadgeRows.forEach((r) => appendRrMiniBadge(r.yPix, r.lineTexts, entryFill));
+                applyEntryBadgeVerticalSpread(entryBadgeRows);
+                entryBadgeRows.forEach((r) => {
+                    const lineY = Number.isFinite(r.displayY) ? r.displayY : r.yPix;
+                    appendRrMiniBadge(lineY, r.lineTexts, entryFill);
+                });
             }
 
             // TP mini-badges: label by *price order* (TP1 = first hit for long = lowest TP), matching OM tpTargets sort.
@@ -3289,7 +3314,10 @@ class BaseRiskRewardTool extends BaseDrawing {
             if (!pill.empty()) pill.raise();
         }
 
-        // Multi-TP % +/− must paint above horizontal `rr-extra-drag-hit` strips (and body drag), or drags steal clicks.
+        // Right-edge labels must sit above transparent drag strips (`rr-primary-entry-drag-hit`, `rr-extra-drag-hit`),
+        // otherwise badges look missing / unclickable. `rr-mini-level-badge` (fallback E1/E2, SL, BE, Avg TP) was not
+        // raised before — only TP/entry qty groups were.
+        this.group.selectAll('g.rr-mini-level-badge').raise();
         this.group.selectAll('g.rr-tp-mini-pct-controls').raise();
         this.group.selectAll('g.rr-entry-mini-qty-controls').raise();
 
