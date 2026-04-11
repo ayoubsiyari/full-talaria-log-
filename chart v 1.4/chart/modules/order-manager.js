@@ -9247,15 +9247,6 @@ class OrderManager {
                     margin-bottom: 0;
                     padding-bottom: 0;
                 }
-                /* RR Inputs tab: hide Profit Target card (edit TP on chart or main order panel) */
-                #rrMirror_tpSection {
-                    display: none !important;
-                }
-                #rrMirrorOrderRoot .order-section--entry-sl {
-                    border-bottom: none;
-                    margin-bottom: 0;
-                    padding-bottom: 0;
-                }
                 #rrMirrorOrderRoot .order-section.order-tp-card--compact {
                     padding-bottom: 0;
                     margin-bottom: 0;
@@ -9336,8 +9327,9 @@ class OrderManager {
                     border-left: 1px solid var(--om-b) !important;
                 }
 
-                /* RR settings modal — denser layout (same components as order panel, tighter chrome) */
+                /* RR Inputs tab: hide entire mirrored “Place order (linked)” block (risk/entry/SL/TP — edit on chart or main panel) */
                 #rrMirrorOrderRoot {
+                    display: none !important;
                     padding: 8px 10px 10px !important;
                     border-radius: 6px !important;
                     max-width: min(100%, 380px) !important;
