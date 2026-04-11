@@ -9781,8 +9781,8 @@ class OrderManager {
                                         <input type="number" id="maxRiskAmount" value="0" step="1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
                                         <span class="order-input-suffix">USD</span>
                                         <span class="input-stepper-group">
-                                        <button type="button" class="input-stepper" data-target="maxRiskAmount" data-step="-10">−</button>
-                                        <button type="button" class="input-stepper" data-target="maxRiskAmount" data-step="+10">+</button>
+                                        <button type="button" class="input-stepper" data-target="maxRiskAmount" data-step="-5">−</button>
+                                        <button type="button" class="input-stepper" data-target="maxRiskAmount" data-step="+5">+</button>
                                         </span>
                                     </div>
                                 </div>
@@ -9807,8 +9807,8 @@ class OrderManager {
                             <span class="order-input-prefix">$</span>
                             <input type="number" id="riskAmountUSD" value="100" min="1" step="1" class="order-input order-input--compact" style="flex: 1; min-width: 0;">
                             <span class="input-stepper-group">
-                            <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="-10">−</button>
-                            <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="+10">+</button>
+                            <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="-5">−</button>
+                            <button type="button" class="input-stepper" data-target="riskAmountUSD" data-step="+5">+</button>
                             </span>
                         </div>
                         <div id="riskPercentInput" class="order-input-wrapper order-risk-compact__input is-hidden" style="display: flex; gap: 4px; align-items: center;">
@@ -13907,7 +13907,7 @@ class OrderManager {
     }
 
     /**
-     * +/- on RR multi-entry mini-badges: same steps as panel amount steppers (risk $ ±10, split % ±0.5, lots ±0.1).
+     * +/- on RR multi-entry mini-badges: same steps as panel amount steppers (risk $ ±5, split % ±0.5, lots ±0.1).
      * Mirrors `_renderMultiEntryRowsInto` input redistribution + `_rebalanceLevelAmountsToTarget`.
      * @param {number} levelIndex - index in multiEntryLevels (E1 = 0, E2 = 1, …)
      * @param {number} direction - +1 or -1
@@ -13923,7 +13923,7 @@ class OrderManager {
         let step;
         if (mode === 'risk-percent') step = 0.5 * dir;
         else if (mode === 'lot-size') step = 0.1 * dir;
-        else step = 10 * dir;
+        else step = 5 * dir;
 
         const levels = this.multiEntryLevels;
         const oldSum = levels.reduce((s, l) => s + (l.amount || 0), 0);

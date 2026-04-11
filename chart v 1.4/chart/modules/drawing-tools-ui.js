@@ -29802,8 +29802,8 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
         <span class="order-input-prefix">$</span>
         <input type="number" id="rrMirror_riskAmountUSD" class="order-input order-input--compact" min="1" step="1" style="flex:1;min-width:0;" />
         <span class="input-stepper-group">
-          <button type="button" class="input-stepper" data-target="rrMirror_riskAmountUSD" data-step="-10">−</button>
-          <button type="button" class="input-stepper" data-target="rrMirror_riskAmountUSD" data-step="+10">+</button>
+          <button type="button" class="input-stepper" data-target="rrMirror_riskAmountUSD" data-step="-5">−</button>
+          <button type="button" class="input-stepper" data-target="rrMirror_riskAmountUSD" data-step="+5">+</button>
         </span>
       </div>
       <div id="rrMirror_riskPercentInput" class="order-input-wrapper order-risk-compact__input is-hidden" style="display:flex;gap:4px;align-items:center;flex:1;min-width:0;">
