@@ -9247,6 +9247,15 @@ class OrderManager {
                     margin-bottom: 0;
                     padding-bottom: 0;
                 }
+                /* RR Inputs tab: hide Profit Target card (edit TP on chart or main order panel) */
+                #rrMirror_tpSection {
+                    display: none !important;
+                }
+                #rrMirrorOrderRoot .order-section--entry-sl {
+                    border-bottom: none;
+                    margin-bottom: 0;
+                    padding-bottom: 0;
+                }
                 #rrMirrorOrderRoot .order-section.order-tp-card--compact {
                     padding-bottom: 0;
                     margin-bottom: 0;
