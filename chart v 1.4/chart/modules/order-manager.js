@@ -23283,6 +23283,38 @@ class OrderManager {
         }
         return { pnl, lots };
     }
+
+    /**
+     * RR tool mini-badges: same rounded $ as chart TP labels for an open multi-TP position (not reward×%).
+     */
+    getOpenPositionTpPnLUsdForChartPrice(chart, side, tpPrice, pricePrec = 5) {
+        if (!chart || tpPrice == null || !Number.isFinite(Number(tpPrice))) return null;
+        const wantBuy = side === 'BUY' || side === 'buy';
+        const roundP = (p) => parseFloat(Number(p).toFixed(pricePrec));
+        const t = roundP(tpPrice);
+        const eps = Math.max(1e-10, Math.abs(t) * 1e-9);
+        const list = Array.isArray(this.openPositions) ? this.openPositions : [];
+        for (const pos of list) {
+            if (!pos || !this._positionTickerMatchesChartSymbol(pos, chart)) continue;
+            const isBuy = pos.type === 'BUY';
+            if (wantBuy !== isBuy) continue;
+            if (!pos.tpTargets || !pos.tpTargets.length) continue;
+            let idx = -1;
+            for (let i = 0; i < pos.tpTargets.length; i++) {
+                const tt = pos.tpTargets[i];
+                if (!tt || tt.hit || !Number.isFinite(tt.price)) continue;
+                if (Math.abs(roundP(tt.price) - t) <= eps) {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx < 0) continue;
+            const tgt = pos.tpTargets[idx];
+            const { pnl } = this._multiTpTargetChartMetrics(pos, tgt, idx, 'open');
+            if (Number.isFinite(pnl)) return Math.round(pnl);
+        }
+        return null;
+    }
     
     /**
      * Close position at specific price (for SL/TP hits)
