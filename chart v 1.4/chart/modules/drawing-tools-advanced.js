@@ -3597,6 +3597,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         });
 
         group.selectAll('.rr-extra-handle-group').remove();
+        const zoneX2Right = Number.isFinite(this.lastRenderMeta?.zoneX2) ? this.lastRenderMeta.zoneX2 : null;
         const appendExtraHandle = (yy, role) => {
             const g = group.append('g')
                 .attr('class', 'rr-extra-handle-group')
@@ -3611,6 +3612,23 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('stroke-width', handleStrokeWidth)
                 .style('pointer-events', 'none')
                 .style('opacity', this.selected ? 1 : 0);
+            // Rings were visual-only; without hit targets, TP2/SL2/BE relied on a thin line strip for drags.
+            const mkPointHit = (cx) => {
+                g.append('circle')
+                    .attr('class', 'custom-handle rr-extra-drag-hit')
+                    .attr('data-handle-role', role)
+                    .attr('cx', cx)
+                    .attr('cy', yy)
+                    .attr('r', hitRadius)
+                    .attr('fill', 'rgba(0, 0, 0, 0.02)')
+                    .attr('stroke', 'none')
+                    .style('pointer-events', this.selected ? 'all' : 'none')
+                    .style('cursor', 'ns-resize');
+            };
+            mkPointHit(entryX);
+            if (zoneX2Right != null && Math.abs(zoneX2Right - entryX) > 2) {
+                mkPointHit(zoneX2Right);
+            }
             this.handles.push(g);
         };
         (this.meta.extraTargets || []).forEach((row, idx) => {

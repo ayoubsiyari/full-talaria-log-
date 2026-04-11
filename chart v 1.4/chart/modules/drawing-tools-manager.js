@@ -4700,7 +4700,9 @@ class DrawingToolsManager {
                         self.resizingHandleRole = handleRole || null;
                         self.startHandleDrag(drawing, index, event);
                     }
-                    d3.select(this).style('cursor', 'ew-resize');
+                    const rrPriceHandle = (drawing.type === 'long-position' || drawing.type === 'short-position')
+                        && !isNaN(index) && index >= 0 && index <= 2;
+                    d3.select(this).style('cursor', rrPriceHandle ? 'ns-resize' : 'ew-resize');
                 })
                 .on('drag', function(event) {
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) self.chart.updateCrosshair(event.sourceEvent);
