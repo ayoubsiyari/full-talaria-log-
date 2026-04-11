@@ -12124,8 +12124,12 @@ class OrderManager {
             if (btn.dataset.stepMode === 'pip') {
                 const mult = parseFloat(btn.dataset.step);
                 if (!Number.isFinite(mult)) return;
-                const pip = Number(this.pipSize) > 0 ? Number(this.pipSize) : 0.0001;
-                step = mult * pip;
+                // Match native input `step` from _applyPrecisionToInputs (one increment in the
+                // smallest displayed decimal). Using pipSize here moved 10× the step on 5-digit FX
+                // (one "pip" vs one point), so +/− felt like large jumps instead of 1-by-1.
+                const prec = this.getPricePrecision();
+                const tick = Math.pow(10, -prec);
+                step = mult * tick;
             } else {
                 step = parseFloat(btn.dataset.step);
                 if (!Number.isFinite(step)) return;
