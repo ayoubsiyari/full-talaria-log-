@@ -2393,7 +2393,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 side: stopSide
             });
 
-            // Center Info Box — mirror order panel: #orderQuantity, tpRRInput / $reward÷$risk, mark P&L via OM engine
+            // Center Info Box — qty + R:R (panel-aligned); optional avg entry when multi-entry
             const parseMoneyReadout = (el) => {
                 const t = el?.textContent?.trim() ?? '';
                 if (!t || t === '—' || t === '∞' || t === '--') return null;
@@ -2421,22 +2421,13 @@ class BaseRiskRewardTool extends BaseDrawing {
             }
 
             const sideStr = this.isLong ? 'BUY' : 'SELL';
-            const markPx = this.chart?.resolveEffectiveCurrentPrice?.(this.chart?.data);
-            // P&L at weighted avg entry × total qty (same $ as summing each leg; matches “avg of two entries”).
-            let openPnlUsd = 0;
-            if (om && Number.isFinite(markPx) && markPx > 0
-                && Number.isFinite(zoneEntryPrice) && quantity > 0
-                && typeof om.estimatePnLForPriceLevel === 'function') {
-                openPnlUsd = om.estimatePnLForPriceLevel(sideStr, zoneEntryPrice, markPx, quantity);
-            }
-            const pnlStr = `${openPnlUsd >= 0 ? '' : '-'}$${Math.abs(openPnlUsd).toFixed(2)}`;
             const avgEntryStr = typeof om?.formatPrice === 'function'
                 ? om.formatPrice(zoneEntryPrice)
                 : (Number.isFinite(zoneEntryPrice) ? zoneEntryPrice.toFixed(rrPrec) : '—');
             const centerInfoLine0 = hasMultiEntry && Number.isFinite(zoneEntryPrice)
                 ? `Avg entry: ${avgEntryStr}`
                 : null;
-            const centerInfoLine1 = `Open P&L: ${pnlStr}, Qty: ${quantity.toFixed(2)}`;
+            const centerInfoLine1 = `Qty: ${quantity.toFixed(2)}`;
             const centerInfoLine2 = `Risk/Reward Ratio: ${panelRRLabel}`;
             // Multi-entry: pill on weighted-avg (middle) line; draggable = whole-tool move so E1/E2/SL/TP follow (avg moves with ladder).
             const centerInfo = this.group.append('g')
