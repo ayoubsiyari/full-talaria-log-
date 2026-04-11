@@ -446,6 +446,58 @@ class DrawingSettingsPanel {
 
 }
 
+/* Long/Short position Inputs: match mirrored order panel width & avoid tall empty chrome */
+
+.tv-settings-modal.tv-settings-modal--rr-inputs {
+
+    min-width: 0;
+
+    width: fit-content;
+
+    max-width: min(92vw, 428px);
+
+}
+
+.tv-settings-modal.tv-settings-modal--rr-inputs .tv-settings-body {
+
+    flex: 0 1 auto;
+
+}
+
+.tv-settings-modal.tv-settings-modal--rr-inputs .tv-collapsible-tabs-container {
+
+    flex: 0 1 auto;
+
+}
+
+.tv-settings-modal.tv-settings-modal--rr-inputs .tv-settings-content {
+
+    flex: 0 1 auto;
+
+    padding: 8px 10px 6px;
+
+    max-height: min(78vh, calc(100vh - 140px));
+
+}
+
+.tv-settings-modal.tv-settings-modal--rr-inputs .tv-collapsible-tabs-top {
+
+    padding: 4px 6px;
+
+}
+
+.tv-settings-modal.tv-settings-modal--rr-inputs .tv-modal-header {
+
+    padding: 6px 10px;
+
+}
+
+.tv-settings-modal.tv-settings-modal--rr-inputs .tv-modal-footer {
+
+    padding: 8px 10px;
+
+}
+
 
 
 .tv-settings-modal * {
@@ -5032,6 +5084,12 @@ body.light-mode .template-save-dialog .dialog-title {
         // All shapes now use compact accordion-style modal
 
         modal.className = 'tv-settings-modal compact';
+
+        if (drawing.type === 'long-position' || drawing.type === 'short-position') {
+
+            modal.classList.add('tv-settings-modal--rr-inputs');
+
+        }
 
 
 
