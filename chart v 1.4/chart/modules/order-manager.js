@@ -18847,14 +18847,9 @@ class OrderManager {
         const allE = typeof drawing._allEntryPrices === 'function' ? drawing._allEntryPrices() : [entry];
         // Keep primary first (points[0] then extraEntries). Price-sorting made E2 the new points[0] for
         // longs and shifted the R/R zone boundary to the wrong line.
-        const seenE = new Set();
-        const uniqE = [];
-        for (const p of allE || []) {
-            if (!Number.isFinite(p)) continue;
-            if (seenE.has(p)) continue;
-            seenE.add(p);
-            uniqE.push(p);
-        }
+        // Do **not** dedupe by price: when E1/E2 overlap, both legs can round to the same float / display
+        // price; Set-dedup collapsed uniqE to one row, cleared multi-entry, and removed E2 from the tool.
+        const uniqE = (allE || []).filter((p) => Number.isFinite(p));
         if (uniqE.length <= 1) {
             this.multiEntryLevels = [];
             this.setEntryMode(false);
@@ -18864,6 +18859,7 @@ class OrderManager {
             if (!Number.isFinite(this.multiEntryIdCounter)) this.multiEntryIdCounter = 1;
             const prev = Array.isArray(this.multiEntryLevels) ? this.multiEntryLevels : [];
             const eps = Math.max(1e-10, (Math.abs(uniqE[0]) || 1) * 1e-9);
+            const usedPrevLevelIds = new Set();
             this.multiEntryLevels = uniqE.map((price, i) => {
                 const priceFixed = parseFloat(price.toFixed(prec));
                 let id;
@@ -18873,12 +18869,15 @@ class OrderManager {
                     && Math.abs(parseFloat(Number(prevI.price).toFixed(prec)) - priceFixed) <= eps) {
                     id = prevI.id;
                     amount = prevI.amount ?? amtEach;
+                    if (id != null) usedPrevLevelIds.add(id);
                 } else {
                     const byPrice = prev.find((l) => l && Number.isFinite(l.price)
-                        && Math.abs(parseFloat(Number(l.price).toFixed(prec)) - priceFixed) <= eps);
+                        && Math.abs(parseFloat(Number(l.price).toFixed(prec)) - priceFixed) <= eps
+                        && (l.id == null || !usedPrevLevelIds.has(l.id)));
                     if (byPrice) {
                         id = byPrice.id;
                         amount = byPrice.amount ?? amtEach;
+                        if (id != null) usedPrevLevelIds.add(id);
                     } else {
                         id = this.multiEntryIdCounter++;
                     }
