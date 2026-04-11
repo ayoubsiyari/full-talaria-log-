@@ -9327,6 +9327,160 @@ class OrderManager {
                     border-left: 1px solid var(--om-b) !important;
                 }
 
+                /* RR settings modal — denser layout (same components as order panel, tighter chrome) */
+                #rrMirrorOrderRoot {
+                    padding: 6px 8px 8px !important;
+                    border-radius: 6px !important;
+                }
+                #rrMirrorOrderRoot > .order-label:first-child {
+                    font-size: 10px !important;
+                    margin-bottom: 6px !important;
+                    letter-spacing: 0.04em;
+                }
+                #rrMirrorOrderRoot .order-section {
+                    padding-bottom: 6px !important;
+                    margin-bottom: 0 !important;
+                }
+                #rrMirrorOrderRoot .order-risk-compact {
+                    gap: 4px !important;
+                }
+                #rrMirrorOrderRoot .order-button-group--position-mode .position-mode-tab,
+                #rrMirrorOrderRoot .order-button-group--inline .position-mode-tab {
+                    font-size: 8px !important;
+                    padding: 2px 5px !important;
+                }
+                #rrMirrorOrderRoot .order-input-wrapper:has(.order-input--compact) {
+                    padding: 0 4px !important;
+                    min-height: 0 !important;
+                }
+                #rrMirrorOrderRoot .order-input.order-input--compact {
+                    padding: 3px 5px !important;
+                    font-size: 10px !important;
+                }
+                #rrMirrorOrderRoot .input-stepper {
+                    width: 22px !important;
+                    height: 26px !important;
+                    font-size: 12px !important;
+                }
+                #rrMirrorOrderRoot .order-entry-sl-grid {
+                    gap: 5px !important;
+                }
+                #rrMirrorOrderRoot .order-entry-sl-col {
+                    gap: 2px !important;
+                }
+                #rrMirrorOrderRoot .order-entry-sl-header {
+                    min-height: 18px !important;
+                }
+                #rrMirrorOrderRoot .order-label--compact {
+                    font-size: 9px !important;
+                }
+                #rrMirrorOrderRoot .order-input--entry-sl {
+                    font-size: 11px !important;
+                    font-weight: 600 !important;
+                    padding: 5px 7px !important;
+                    border-radius: 4px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-toggle--compact {
+                    font-size: 8px !important;
+                    padding: 0 5px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-columns {
+                    margin-bottom: 2px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-col-label {
+                    font-size: 7px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-row {
+                    padding: 3px 0 !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-row-input {
+                    font-size: 10px !important;
+                    padding: 3px 5px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-row-info {
+                    font-size: 9px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-summary--inline {
+                    margin-top: 4px !important;
+                    padding-top: 4px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-summary-row {
+                    padding: 1px 0 !important;
+                    font-size: 10px !important;
+                }
+                #rrMirrorOrderRoot .order-tp-card--compact {
+                    padding: 6px 8px !important;
+                    border-radius: 6px !important;
+                }
+                #rrMirrorOrderRoot .order-tp-card__header--compact {
+                    margin-bottom: 4px !important;
+                }
+                #rrMirrorOrderRoot .order-tp-card__title {
+                    font-size: 10px !important;
+                }
+                #rrMirrorOrderRoot .order-tp-single__row {
+                    gap: 4px !important;
+                }
+                #rrMirrorOrderRoot .order-tp-single__field {
+                    gap: 2px !important;
+                }
+                #rrMirrorOrderRoot .order-tp-col-label {
+                    font-size: 7px !important;
+                }
+                #rrMirrorOrderRoot .order-input--tp-inline {
+                    font-size: 10px !important;
+                    padding: 4px 6px !important;
+                    border-radius: 4px !important;
+                }
+                #rrMirrorOrderRoot .order-tp-multi__cols {
+                    padding: 0 0 2px !important;
+                }
+                #rrMirrorOrderRoot .order-tp-multi__rows {
+                    max-height: 112px !important;
+                    gap: 3px !important;
+                }
+                #rrMirrorOrderRoot .order-tp-multi__row input {
+                    font-size: 10px !important;
+                    padding: 4px 4px !important;
+                }
+                #rrMirrorOrderRoot .order-tp-multi__blend {
+                    margin-top: 4px !important;
+                    padding-top: 4px !important;
+                    font-size: 10px !important;
+                }
+                #rrMirrorOrderRoot .order-entry-sl-enable .order-checkbox {
+                    width: 12px !important;
+                    height: 12px !important;
+                }
+                #rrMirrorOrderRoot #rrSettingsMultiEntryRows.multi-entry-rows--scroll {
+                    max-height: 100px !important;
+                }
+
+                /* Long/short tool — Inputs tab summary + position info (tighter vertical rhythm) */
+                .settings-section.risk-reward-settings {
+                    margin-top: 8px !important;
+                }
+                .settings-section.risk-reward-settings .rr-inputs-section-title {
+                    margin-bottom: 6px !important;
+                    font-size: 10px !important;
+                    letter-spacing: 0.05em !important;
+                }
+                .settings-section.risk-reward-settings .tv-prop-row {
+                    min-height: 22px !important;
+                    gap: 8px !important;
+                }
+                .settings-section.risk-reward-settings .tv-prop-label {
+                    font-size: 10px !important;
+                }
+                .settings-section.risk-reward-settings .rr-inputs-position-info {
+                    padding-top: 8px !important;
+                    margin-top: 8px !important;
+                    gap: 4px !important;
+                }
+                .settings-section.risk-reward-settings .rr-inputs-position-info > div:first-of-type {
+                    font-size: 10px !important;
+                }
+
                 /* RR mirror — light theme (modal is outside .order-panel; mirror vars must match panel) */
                 body.light-mode #rrMirrorOrderRoot {
                     --om-bg: #f7f8fa !important;

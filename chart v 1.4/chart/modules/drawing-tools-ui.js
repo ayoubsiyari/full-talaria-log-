@@ -29601,7 +29601,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
             .attr('class', 'settings-section risk-reward-settings')
 
-            .style('margin-top', '16px');
+            .style('margin-top', '8px');
 
 
 
@@ -29609,9 +29609,11 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
         section.append('div')
 
+            .attr('class', 'rr-inputs-section-title')
+
             .text(title)
 
-            .style('font-size', '12px')
+            .style('font-size', '10px')
 
             .style('font-weight', '600')
 
@@ -29621,23 +29623,25 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
             .style('text-transform', 'uppercase')
 
-            .style('margin-bottom', '12px');
+            .style('margin-bottom', '6px');
 
 
 
         const summarySection = section.append('div')
 
+            .attr('class', 'rr-inputs-summary')
+
             .style('border-bottom', '1px solid #363a45')
 
-            .style('padding-bottom', '12px')
+            .style('padding-bottom', '8px')
 
-            .style('margin-bottom', '12px')
+            .style('margin-bottom', '8px')
 
             .style('display', 'flex')
 
             .style('flex-direction', 'column')
 
-            .style('gap', '8px');
+            .style('gap', '4px');
 
 
 
@@ -29647,7 +29651,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
             .style('color', '#787b86')
 
-            .style('font-size', '11px')
+            .style('font-size', '10px')
 
             .style('font-weight', '600')
 
@@ -29663,7 +29667,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
             .style('flex-direction', 'column')
 
-            .style('gap', '6px');
+            .style('gap', '4px');
 
 
 
@@ -29677,9 +29681,9 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
                 .style('align-items', 'center')
 
-                .style('gap', '12px')
+                .style('gap', '8px')
 
-                .style('min-height', '30px')
+                .style('min-height', '22px')
 
                 .style('padding', '0');
 
@@ -29707,7 +29711,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
                 .style('color', valueColor)
 
-                .style('font-size', '11px')
+                .style('font-size', '10px')
 
                 .style('font-weight', '500');
 
@@ -29723,7 +29727,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
         const mirrorHtml = `
 <div id="rrMirrorOrderRoot" class="rr-mirror-order">
-  <label class="order-label" style="display:block;margin-bottom:8px;">Place order (linked)</label>
+  <label class="order-label" style="display:block;margin-bottom:4px;">Place order (linked)</label>
 
   <div class="order-section order-section--risk-row">
     <div class="order-risk-compact">
@@ -29780,9 +29784,9 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
               <span class="multi-entry-col-label" id="rrSettingsMultiEntryAmountColLabel">Risk ($)</span>
               <span></span>
             </div>
-            <div class="multi-entry-rows multi-entry-rows--scroll" id="rrSettingsMultiEntryRows" style="max-height:140px;"></div>
+            <div class="multi-entry-rows multi-entry-rows--scroll" id="rrSettingsMultiEntryRows" style="max-height:100px;"></div>
           </div>
-          <div class="multi-entry-summary multi-entry-summary--inline" style="margin-top:8px;">
+          <div class="multi-entry-summary multi-entry-summary--inline" style="margin-top:4px;">
             <div class="multi-entry-summary-row">
               <span class="multi-entry-summary-label">Avg</span>
               <span class="multi-entry-summary-value" id="rrMirror_multiEntryAvgPrice">—</span>
@@ -29868,19 +29872,19 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
         const infoSection = section.append('div')
 
-            .attr('class', 'risk-position-info')
+            .attr('class', 'risk-position-info rr-inputs-position-info')
 
             .style('border-top', '1px solid #363a45')
 
-            .style('padding-top', '12px')
+            .style('padding-top', '8px')
 
-            .style('margin-top', '12px')
+            .style('margin-top', '8px')
 
             .style('display', 'flex')
 
             .style('flex-direction', 'column')
 
-            .style('gap', '8px');
+            .style('gap', '4px');
 
 
 
@@ -29890,7 +29894,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
             .style('color', '#787b86')
 
-            .style('font-size', '11px')
+            .style('font-size', '10px')
 
             .style('font-weight', '600')
 
@@ -29906,7 +29910,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
             .style('flex-direction', 'column')
 
-            .style('gap', '6px');
+            .style('gap', '4px');
 
 
 
