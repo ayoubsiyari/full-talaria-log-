@@ -9453,7 +9453,124 @@ class OrderManager {
                     height: 12px !important;
                 }
                 #rrMirrorOrderRoot #rrSettingsMultiEntryRows.multi-entry-rows--scroll {
-                    max-height: 100px !important;
+                    max-height: 72px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-rows--scroll {
+                    max-height: 72px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-container--inline {
+                    border-radius: 4px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-container--inline .multi-entry-columns {
+                    padding: 2px 4px 1px !important;
+                    gap: 3px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-row {
+                    padding: 2px 4px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-row-inputs {
+                    grid-template-columns: minmax(0, 1.1fr) minmax(72px, 0.95fr) 20px !important;
+                    gap: 3px !important;
+                    align-items: stretch !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-row-input {
+                    padding: 2px 4px !important;
+                    font-size: 9px !important;
+                    border-radius: 3px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-amount-wrap {
+                    border-radius: 3px !important;
+                    min-height: 0 !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-amount-prefix {
+                    padding: 0 0 0 4px !important;
+                    font-size: 8px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-amount-input {
+                    padding: 2px 4px !important;
+                    font-size: 9px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-delete-btn {
+                    width: 18px !important;
+                    height: 18px !important;
+                    font-size: 12px !important;
+                    line-height: 1 !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-row-info {
+                    padding: 1px 0 0 !important;
+                    gap: 6px !important;
+                    font-size: 7px !important;
+                    line-height: 1.15 !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-add-row {
+                    padding: 2px 4px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-container--inline .multi-entry-add-text {
+                    font-size: 8px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-summary--inline {
+                    display: flex !important;
+                    flex-direction: row !important;
+                    flex-wrap: wrap !important;
+                    align-items: center !important;
+                    gap: 10px 14px !important;
+                    margin-top: 2px !important;
+                    padding: 3px 6px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-summary--inline .multi-entry-summary-row {
+                    padding: 0 !important;
+                    display: inline-flex !important;
+                    align-items: baseline !important;
+                    gap: 4px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-summary--inline .multi-entry-summary-label {
+                    font-size: 8px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-summary--inline .multi-entry-summary-value {
+                    font-size: 9px !important;
+                }
+                #rrMirrorOrderRoot .input-stepper {
+                    width: 20px !important;
+                    height: 22px !important;
+                    font-size: 11px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-row-inputs .input-stepper {
+                    width: 18px !important;
+                    height: 22px !important;
+                    font-size: 10px !important;
+                }
+                #rrMirrorOrderRoot .multi-entry-amount-wrap .input-stepper {
+                    width: 18px !important;
+                    height: 22px !important;
+                    font-size: 10px !important;
+                }
+                #rrMirrorOrderRoot .order-tp-multi__rows {
+                    max-height: 80px !important;
+                }
+                #rrMirrorOrderRoot .order-tp-multi__row {
+                    gap: 2px !important;
+                }
+                #rrMirrorOrderRoot .order-tp-multi__row-del {
+                    flex: 0 0 18px !important;
+                    width: 18px !important;
+                    height: 18px !important;
+                    font-size: 11px !important;
+                    line-height: 1 !important;
+                }
+                #rrMirrorOrderRoot .order-tp-multi__add {
+                    padding: 2px 4px !important;
+                    min-height: 0 !important;
+                }
+                #rrMirrorOrderRoot .order-tp-multi__add-icon {
+                    font-size: 10px !important;
+                }
+                #rrMirrorOrderRoot .order-tp-multi__blend {
+                    margin-top: 2px !important;
+                    padding-top: 3px !important;
+                    font-size: 9px !important;
+                }
+                #rrMirrorOrderRoot .order-tp-card__main {
+                    gap: 0 !important;
                 }
 
                 /* Long/short tool — Inputs tab summary + position info (tighter vertical rhythm) */
@@ -9466,8 +9583,8 @@ class OrderManager {
                     letter-spacing: 0.05em !important;
                 }
                 .settings-section.risk-reward-settings .tv-prop-row {
-                    min-height: 22px !important;
-                    gap: 8px !important;
+                    min-height: 20px !important;
+                    gap: 6px !important;
                 }
                 .settings-section.risk-reward-settings .tv-prop-label {
                     font-size: 10px !important;
@@ -18751,26 +18868,44 @@ class OrderManager {
     }
 
     /**
-     * Minimum price spacing for extra ladder legs (chart tick / pip) so new entries sit next to the
-     * previous rung instead of jumping toward TP (avoids overlap and “stuck on TP” lines).
+     * Price spacing for the next ladder leg toward TP/away from cluster.
+     * Uses pip/tick distance only — a %-of-price term (previously 0.45%) dominated and placed E2 at the far TP.
+     * Also caps vs remaining distance to the far TP so one click does not land on the TP line.
      * @param {object} [drawing] - optional RR drawing with getPriceStep()
-     * @param {number} [refPrice] - anchor price; same 0.0045*|price| floor as RR addExtraEntry fallback
+     * @param {number} [refPrice] - anchor rung (highest entry BUY / lowest SELL) or primary entry when seeding two levels
      */
     _riskRewardMultiEntryStepPx(drawing, refPrice) {
         const pip = Number(this.pipSize) > 0 ? Number(this.pipSize) : 0.0001;
-        let inc = pip;
+        let tick = pip;
         if (drawing && typeof drawing.getPriceStep === 'function') {
-            inc = Math.max(inc, Number(drawing.getPriceStep()) || 0);
+            tick = Math.max(tick, Number(drawing.getPriceStep()) || 0);
         } else if (typeof window !== 'undefined' && window.chart && Number.isFinite(window.chart.priceIncrement) && window.chart.priceIncrement > 0) {
-            inc = Math.max(inc, window.chart.priceIncrement);
+            tick = Math.max(tick, window.chart.priceIncrement);
         }
-        const tickMul = 48;
-        const offsetFrac = 0.0045;
-        const tickPart = inc * tickMul;
-        const fracPart = Number.isFinite(refPrice) && Math.abs(refPrice) > 0
-            ? Math.abs(refPrice) * offsetFrac
-            : 0;
-        return Math.max(tickPart, fracPart, pip * 8, 1e-12);
+        const minLegTicks = 12;
+        const maxLegTicks = 40;
+        let step = tick * minLegTicks;
+        step = Math.min(step, tick * maxLegTicks);
+        step = Math.max(step, pip * minLegTicks, 1e-12);
+
+        let tpFar = parseFloat(document.getElementById('tpPrice')?.value || 0);
+        const mtOn = document.getElementById('multipleTPToggle')?.checked;
+        if (mtOn && this.tpTargets?.length) {
+            const isLong = this.orderSide === 'BUY';
+            const sorted = [...this.tpTargets].sort((a, b) => (isLong ? a.price - b.price : b.price - a.price));
+            const last = sorted[sorted.length - 1];
+            if (last && Number.isFinite(last.price)) tpFar = last.price;
+        }
+        if (Number.isFinite(refPrice) && refPrice > 0 && Number.isFinite(tpFar) && tpFar > 0) {
+            if (this.orderSide === 'BUY' && tpFar > refPrice) {
+                const room = tpFar - refPrice;
+                step = Math.min(step, Math.max(pip * 6, room * 0.28));
+            } else if (this.orderSide === 'SELL' && tpFar < refPrice) {
+                const room = refPrice - tpFar;
+                step = Math.min(step, Math.max(pip * 6, room * 0.28));
+            }
+        }
+        return Math.max(step, pip * 6, 1e-12);
     }
 
     /**

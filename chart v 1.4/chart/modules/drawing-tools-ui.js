@@ -29784,7 +29784,7 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
               <span class="multi-entry-col-label" id="rrSettingsMultiEntryAmountColLabel">Risk ($)</span>
               <span></span>
             </div>
-            <div class="multi-entry-rows multi-entry-rows--scroll" id="rrSettingsMultiEntryRows" style="max-height:100px;"></div>
+            <div class="multi-entry-rows multi-entry-rows--scroll" id="rrSettingsMultiEntryRows" style="max-height:72px;"></div>
           </div>
           <div class="multi-entry-summary multi-entry-summary--inline" style="margin-top:4px;">
             <div class="multi-entry-summary-row">
