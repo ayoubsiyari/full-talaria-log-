@@ -2230,7 +2230,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('x2', zoneX2)
                 .attr('y2', avgTpYpx)
                 .attr('stroke', '#e8a060')
-                .attr('stroke-width', 2)
+                .attr('stroke-width', 0.5)
                 .style('pointer-events', 'none')
                 .style('cursor', 'inherit');
         }

@@ -18991,9 +18991,6 @@ class OrderManager {
         overlay.querySelectorAll('.rr-sl-plus-trail-unit').forEach((b) => {
             const on = b.getAttribute('data-trail-unit') === mode;
             b.classList.toggle('active', on);
-            b.style.cssText = on
-                ? 'padding:4px 10px;border-radius:6px;border:1px solid #3b82f6;background:rgba(59,130,246,0.22);color:#93c5fd;cursor:pointer;font-size:11px;font-weight:600;'
-                : 'padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:#94a3b8;cursor:pointer;font-size:11px;';
         });
         this._updateTrailingInlineUnits();
     }
@@ -19002,41 +18999,35 @@ class OrderManager {
         if (document.getElementById('rrSlPlusModalOverlay')) return;
         const overlay = document.createElement('div');
         overlay.id = 'rrSlPlusModalOverlay';
-        overlay.style.cssText = 'display:none;position:fixed;inset:0;z-index:100020;background:rgba(15,23,42,0.55);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+        overlay.style.cssText = 'display:none;position:fixed;inset:0;z-index:100020;background:rgba(8,11,17,0.65);align-items:center;justify-content:center;padding:12px;box-sizing:border-box;font-family:\'DM Sans\',system-ui,sans-serif;';
         overlay.innerHTML = `
-<div class="rr-sl-plus-card" style="background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:18px 20px;max-width:440px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,0.45);color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif;font-size:13px;">
-  <div style="font-weight:700;font-size:15px;margin-bottom:6px;">Stop line</div>
-  <p style="margin:0 0 14px;color:#94a3b8;font-size:12px;line-height:1.45;">Choose breakeven or trailing stop — same controls as Advanced order.</p>
-  <div style="display:flex;gap:8px;margin-bottom:14px;">
-    <button type="button" id="rrSlPlusModeBe" style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid #3b82f6;background:#2563eb;color:#fff;font-weight:600;cursor:pointer;">Breakeven</button>
-    <button type="button" id="rrSlPlusModeTr" style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#cbd5e1;font-weight:600;cursor:pointer;">Trailing SL</button>
+<div class="order-adv-card rr-sl-plus-modal-surface" style="max-width:248px;width:100%;margin:0;padding:8px 10px;box-shadow:0 12px 40px rgba(0,0,0,0.5);--om-bg:#080b11;--om-panel2:#141a22;--om-b:#1a2030;--om-b2:#242e3e;--om-tx:#c8cfd8;--om-dim:#5e6a7a;--om-muted:#333e50;--om-seg-bg:#080b11;--om-seg-border:#1a2030;--om-ot-gold:#C9A84C;--om-ot-gold-bg:rgba(201,168,76,0.10);">
+  <div style="display:flex;gap:4px;margin-bottom:6px;">
+    <button type="button" id="rrSlPlusModeBe" class="multi-entry-toggle multi-entry-toggle--compact active" style="flex:1;">BE</button>
+    <button type="button" id="rrSlPlusModeTr" class="multi-entry-toggle multi-entry-toggle--compact" style="flex:1;">TR</button>
   </div>
-  <div id="rrSlPlusBeDesc" style="font-size:12px;color:#94a3b8;margin-bottom:12px;line-height:1.45;">
-    Enables <strong style="color:#e2e8f0;">Move to Breakeven</strong> and draws the trigger line on the tool. Drag the line to adjust the trigger price.
-  </div>
-  <div id="rrSlPlusTrFields" style="display:none;">
-    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">
-      <span style="font-size:10px;color:#94a3b8;margin-right:4px;">Units</span>
-      <button type="button" class="rr-sl-plus-trail-unit" data-trail-unit="rr" title="R">R</button>
-      <button type="button" class="rr-sl-plus-trail-unit" data-trail-unit="pips">Pips</button>
-      <button type="button" class="rr-sl-plus-trail-unit" data-trail-unit="amount">$</button>
+  <div id="rrSlPlusTrFields" class="is-hidden">
+    <div class="trailing-unit-row" style="display:flex;gap:4px;margin:0 0 6px;flex-wrap:wrap;align-items:center;">
+      <span style="font-size:9px;color:var(--om-dim);text-transform:uppercase;letter-spacing:0.04em;">Units</span>
+      <button type="button" class="rr-sl-plus-trail-unit trailing-unit-tab" data-trail-unit="rr">R</button>
+      <button type="button" class="rr-sl-plus-trail-unit trailing-unit-tab" data-trail-unit="pips">Pips</button>
+      <button type="button" class="rr-sl-plus-trail-unit trailing-unit-tab" data-trail-unit="amount">$</button>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px;line-height:1.6;">
+    <div class="order-adv-card__body" style="margin-top:0;">
       <span>After</span>
-      <input type="number" id="rrSlPlus_trAct" min="0.1" step="0.1" style="width:76px;padding:5px 8px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;">
-      <span data-trailing-unit-label>R</span>
+      <input type="number" id="rrSlPlus_trAct" class="adv-inline-input" min="0.1" step="0.1">
+      <span class="adv-inline-unit" data-trailing-unit-label>R</span>
       <span>trail</span>
-      <input type="number" id="rrSlPlus_trStep" min="0.1" step="0.1" style="width:76px;padding:5px 8px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;">
-      <span data-trailing-unit-label>R</span>
+      <input type="number" id="rrSlPlus_trStep" class="adv-inline-input" min="0.1" step="0.1">
+      <span class="adv-inline-unit" data-trailing-unit-label>R</span>
       <span>every</span>
-      <input type="number" id="rrSlPlus_trEvery" min="0.01" step="0.01" style="width:76px;padding:5px 8px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;">
-      <span data-trailing-unit-label>R</span>
+      <input type="number" id="rrSlPlus_trEvery" class="adv-inline-input" min="0.01" step="0.01">
+      <span class="adv-inline-unit" data-trailing-unit-label>R</span>
     </div>
-    <p style="font-size:11px;color:#64748b;margin:0 0 4px;">Applied to the order panel (Trailing Stop Loss). Breakeven is turned off — they cannot both be on.</p>
   </div>
-  <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
-    <button type="button" id="rrSlPlusCancel" style="padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:#cbd5e1;cursor:pointer;">Cancel</button>
-    <button type="button" id="rrSlPlusApply" style="padding:8px 16px;border-radius:8px;border:none;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer;">Apply</button>
+  <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:8px;">
+    <button type="button" id="rrSlPlusCancel" class="multi-entry-toggle multi-entry-toggle--compact">Cancel</button>
+    <button type="button" id="rrSlPlusApply" class="multi-entry-toggle multi-entry-toggle--compact active">Apply</button>
   </div>
 </div>`;
         document.body.appendChild(overlay);
@@ -19044,19 +19035,14 @@ class OrderManager {
         const setMode = (tr) => {
             const beBtn = overlay.querySelector('#rrSlPlusModeBe');
             const trBtn = overlay.querySelector('#rrSlPlusModeTr');
-            const beDesc = overlay.querySelector('#rrSlPlusBeDesc');
             const trFields = overlay.querySelector('#rrSlPlusTrFields');
             overlay._rrSlPlusTrailMode = !!tr;
-            if (tr) {
-                beBtn.style.cssText = 'flex:1;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#cbd5e1;font-weight:600;cursor:pointer;';
-                trBtn.style.cssText = 'flex:1;padding:8px 10px;border-radius:8px;border:1px solid #3b82f6;background:#2563eb;color:#fff;font-weight:600;cursor:pointer;';
-                beDesc.style.display = 'none';
-                trFields.style.display = 'block';
-            } else {
-                trBtn.style.cssText = 'flex:1;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#cbd5e1;font-weight:600;cursor:pointer;';
-                beBtn.style.cssText = 'flex:1;padding:8px 10px;border-radius:8px;border:1px solid #3b82f6;background:#2563eb;color:#fff;font-weight:600;cursor:pointer;';
-                beDesc.style.display = 'block';
-                trFields.style.display = 'none';
+            if (beBtn && trBtn) {
+                beBtn.classList.toggle('active', !tr);
+                trBtn.classList.toggle('active', !!tr);
+            }
+            if (trFields) {
+                trFields.classList.toggle('is-hidden', !tr);
             }
         };
 
