@@ -2595,25 +2595,42 @@ class BaseRiskRewardTool extends BaseDrawing {
                 });
             }
 
+            // TP mini-badges: label by *price order* (TP1 = first hit for long = lowest TP), matching OM tpTargets sort.
+            // Primary handle is the farthest TP (points[2]); extras are inner levels — use TP1…TP(n-1), not TP2… .
             const mtOn = typeof document !== 'undefined' && document.getElementById('multipleTPToggle')?.checked;
-            if (mtOn && om?.tpTargets?.length > 1 && (this.meta.extraTargets || []).length) {
-                const sortedTp = [...om.tpTargets].sort((a, b) =>
-                    (this.isLong ? a.price - b.price : b.price - a.price));
-                const innerTp = sortedTp.slice(0, -1);
-                (this.meta.extraTargets || []).forEach((row, i) => {
+            if ((this.meta.extraTargets || []).length) {
+                const tpRound = (p) => (Number.isFinite(p) ? parseFloat(Number(p).toFixed(rrPrec)) : p);
+                const allTpPrices = [];
+                if (Number.isFinite(this.points[2]?.y)) allTpPrices.push(this.points[2].y);
+                (this.meta.extraTargets || []).forEach((r) => {
+                    if (r && Number.isFinite(r.y)) allTpPrices.push(r.y);
+                });
+                const uniqSorted = [...new Set(allTpPrices.map(tpRound))].sort((a, b) =>
+                    (this.isLong ? a - b : b - a));
+                const epsPx = Math.max(1e-10, (Math.abs(uniqSorted[0]) || 1) * 1e-9);
+                const sortedOm = (mtOn && om?.tpTargets?.length > 1)
+                    ? [...om.tpTargets].sort((a, b) =>
+                        (this.isLong ? a.price - b.price : b.price - a.price))
+                    : [];
+                (this.meta.extraTargets || []).forEach((row) => {
                     if (!row || !Number.isFinite(row.y)) return;
                     const yy = scales.yScale(row.y);
-                    const leg = innerTp[i];
-                    const pct = leg ? Number(leg.percentage) : NaN;
-                    const pctStr = Number.isFinite(pct) ? `${Math.round(pct)}%` : '—';
-                    const usd = Number.isFinite(pct) ? Math.round(targetRewardUsdForBadges * (pct / 100)) : null;
+                    const rp = tpRound(row.y);
+                    const si = uniqSorted.findIndex((p) => Math.abs(p - rp) <= epsPx);
+                    const tpNum = si >= 0 ? si + 1 : 1;
+                    let pctStr = '—';
+                    let usd = null;
+                    if (sortedOm.length > 1) {
+                        const leg = sortedOm.find((t) => t && Number.isFinite(t.price)
+                            && Math.abs(tpRound(t.price) - rp) <= epsPx);
+                        if (leg && Number.isFinite(leg.percentage)) {
+                            const pct = Number(leg.percentage);
+                            pctStr = `${Math.round(pct)}%`;
+                            usd = Math.round(targetRewardUsdForBadges * (pct / 100));
+                        }
+                    }
                     const sub = usd != null ? `$${usd} · ${pctStr}` : pctStr;
-                    appendRrMiniBadge(yy, [`TP${i + 2}`, sub], tpInnerFill);
-                });
-            } else if ((this.meta.extraTargets || []).length) {
-                (this.meta.extraTargets || []).forEach((row, i) => {
-                    if (!row || !Number.isFinite(row.y)) return;
-                    appendRrMiniBadge(scales.yScale(row.y), [`TP${i + 2}`, '—'], tpInnerFill);
+                    appendRrMiniBadge(yy, [`TP${tpNum}`, sub], tpInnerFill);
                 });
             }
 

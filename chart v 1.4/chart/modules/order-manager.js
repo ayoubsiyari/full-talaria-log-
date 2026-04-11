@@ -15147,10 +15147,19 @@ class OrderManager {
         if (tpEnabled && multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
             // Draw full lines for targets that have a price set
             const tpColors = ['#089981', '#089981', '#089981', '#089981', '#089981'];
+            const isBuyPv = (this.orderSide || 'BUY') === 'BUY';
+            const previewTpRank = new Map();
+            [...this.tpTargets.entries()]
+                .map(([i, t]) => ({ i, p: Number(t && t.price) }))
+                .filter((x) => x.p > 0 && Number.isFinite(x.p))
+                .sort((a, b) => (isBuyPv ? a.p - b.p : b.p - a.p))
+                .forEach((x, rank) => {
+                    previewTpRank.set(x.i, rank + 1);
+                });
             this.tpTargets.forEach((target, index) => {
                 if (target.price > 0) {
                     const color = tpColors[Math.min(index, tpColors.length - 1)];
-                    const label = `TP${index + 1}`;
+                    const label = `TP${previewTpRank.get(index) ?? index + 1}`;
                     
                     const tpLine = this.drawPreviewLine(target.price, color, label, null, true, index, target.id);
                     if (tpLine) {
@@ -30459,7 +30468,17 @@ class OrderManager {
         if (order.tpTargets && Array.isArray(order.tpTargets) && order.tpTargets.length > 0) {
             const nonHitTargets = order.tpTargets.filter((t, i) => this._tpTargetStillActiveOnChart(order, t, i));
             console.log(`  🎯 Drawing ${nonHitTargets.length} TP lines for order #${order.id} (${order.tpTargets.length - nonHitTargets.length} hit)`);
-            
+            // TP1 = first hit at price for long (lowest TP); labels follow price order, not raw array order.
+            const isBuyTp = order.type === 'BUY' || order.side === 'BUY';
+            const rankByArrayIndex = new Map();
+            [...order.tpTargets.entries()]
+                .map(([i, t]) => ({ i, p: Number(t && t.price) }))
+                .filter((x) => Number.isFinite(x.p))
+                .sort((a, b) => (isBuyTp ? a.p - b.p : b.p - a.p))
+                .forEach((x, rank) => {
+                    rankByArrayIndex.set(x.i, rank + 1);
+                });
+
             order.tpTargets.forEach((target, index) => {
                 if (this._tpTargetStillActiveOnChart(order, target, index)) {
                     const { pnl: tpPnL } = this._multiTpTargetChartMetrics(order, target, index, 'open');
@@ -30484,7 +30503,7 @@ class OrderManager {
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize');
                     
-                    const tpLabelStr = `TP${index + 1}`;
+                    const tpLabelStr = `TP${rankByArrayIndex.get(index) ?? index + 1}`;
                     const tpLabelText = chart.svg.append('text')
                         .attr('class', `tp-label-text tp-${order.id} tp-target-${tpKey}`)
                         .attr('fill', '#ffffff')
