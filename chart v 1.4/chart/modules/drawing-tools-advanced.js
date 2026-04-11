@@ -2333,15 +2333,24 @@ class BaseRiskRewardTool extends BaseDrawing {
             const compressedGap = 18;
             const wideSnapThreshold = 260;
 
-            const createEdgeLabel = ({ className, text, lineY, fill, side }) => {
-                // rr-no-hit: setupDrawingInteraction sets all `text` to pointer-events:all — exclude these labels
-                // so the primary entry .custom-handle rect receives drags (see drawing-tools-manager).
-                const labelGroup = this.group.append('g').attr('class', `${className} rr-no-hit`);
+            const createEdgeLabel = ({ className, text, lineY, fill, side, inlineTpPctIndex = -1 }) => {
+                // Outer group: className only. Inner `rr-no-hit` holds pill + text so drags pass through;
+                // optional [−]/[+] sit in a sibling `.rr-tp-mini-pct-controls` (see drawing-tools-manager).
+                const labelOuter = this.group.append('g').attr('class', className);
+                const hitBlock = labelOuter.append('g').attr('class', 'rr-no-hit');
 
-                const textNode = labelGroup.append('text')
+                const ctrlSize = 14;
+                const cg = 2;
+                const hitPad = 2;
+                const showInlineTpPct = Number.isFinite(inlineTpPctIndex) && inlineTpPctIndex >= 0
+                    && om && typeof om.adjustTPPercentage === 'function';
+                const controlsW = ctrlSize * 2 + cg;
+                const extraForControls = showInlineTpPct ? (cg + controlsW) : 0;
+
+                const textNode = hitBlock.append('text')
                     .attr('x', 0)
                     .attr('y', 0)
-                    .attr('text-anchor', 'middle')
+                    .attr('text-anchor', showInlineTpPct ? 'start' : 'middle')
                     .attr('dominant-baseline', 'hanging')
                     .attr('fill', labelTextColor)
                     .attr('font-size', `${labelFontSize}px`)
@@ -2350,8 +2359,11 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .text(text);
 
                 const textBBox = textNode.node().getBBox();
-                const labelWidth = textBBox.width + (labelPaddingX * 2);
-                const labelHeight = textBBox.height + (labelPaddingY * 2);
+                const labelWidth = textBBox.width + (labelPaddingX * 2) + extraForControls;
+                let labelHeight = textBBox.height + (labelPaddingY * 2);
+                if (showInlineTpPct) {
+                    labelHeight = Math.max(labelHeight, ctrlSize + labelPaddingY * 2);
+                }
 
                 const hasInnerSpace = zoneWidth >= wideSnapThreshold;
                 const offset = hasInnerSpace ? edgeSnapGap : compressedGap;
@@ -2361,7 +2373,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 const centeredRectX = (zoneX1 + (zoneWidth / 2)) - (labelWidth / 2);
                 const rectX = centeredRectX;
 
-                labelGroup.insert('rect', 'text')
+                hitBlock.insert('rect', 'text')
                     .attr('x', rectX)
                     .attr('y', rectTop)
                     .attr('width', labelWidth)
@@ -2371,9 +2383,71 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .style('pointer-events', 'none');
 
                 textNode
-                    .attr('x', rectX + (labelWidth / 2))
+                    .attr('x', showInlineTpPct ? (rectX + labelPaddingX) : (rectX + (labelWidth / 2)))
                     .attr('y', rectTop + labelPaddingY)
                     .style('pointer-events', 'none');
+
+                if (showInlineTpPct) {
+                    const tpTargetIndex = inlineTpPctIndex;
+                    const wirePctClick = (delta) => (event) => {
+                        event.stopPropagation();
+                        if (typeof event.preventDefault === 'function') event.preventDefault();
+                        if (!om || typeof om.adjustTPPercentage !== 'function') return;
+                        om.adjustTPPercentage(tpTargetIndex, delta);
+                        if (typeof om.syncSelectedRiskRewardDrawingFromPanel === 'function') {
+                            om.syncSelectedRiskRewardDrawingFromPanel();
+                        }
+                        const dmR = self._drawingManager();
+                        if (dmR) dmR.renderDrawing(self);
+                    };
+                    const cy = rectTop + (labelHeight / 2) - (ctrlSize / 2);
+                    const leftX = rectX + labelWidth - labelPaddingX - controlsW;
+                    const ctrlRoot = labelOuter.append('g')
+                        .attr('class', 'rr-tp-mini-pct-controls')
+                        .style('pointer-events', 'all');
+                    const mk = (x, sym, delta, stroke, fillCol) => {
+                        const h = ctrlRoot.append('g')
+                            .attr('transform', `translate(${x},${cy})`)
+                            .style('cursor', 'pointer');
+                        h.append('rect')
+                            .attr('width', ctrlSize)
+                            .attr('height', ctrlSize)
+                            .attr('rx', 3)
+                            .attr('fill', fillCol)
+                            .attr('stroke', stroke)
+                            .attr('stroke-width', 1);
+                        h.append('text')
+                            .attr('x', ctrlSize / 2)
+                            .attr('y', ctrlSize / 2)
+                            .attr('dy', '0.35em')
+                            .attr('text-anchor', 'middle')
+                            .attr('fill', stroke)
+                            .attr('font-size', '13px')
+                            .attr('font-weight', '700')
+                            .attr('pointer-events', 'none')
+                            .style('pointer-events', 'none')
+                            .text(sym);
+                        const hitSz = ctrlSize + hitPad * 2;
+                        h.append('rect')
+                            .attr('x', -hitPad)
+                            .attr('y', -hitPad)
+                            .attr('width', hitSz)
+                            .attr('height', hitSz)
+                            .attr('fill', '#000')
+                            .attr('fill-opacity', 0.001)
+                            .attr('pointer-events', 'all')
+                            .style('pointer-events', 'all')
+                            .style('cursor', 'pointer')
+                            .on('mousedown', (e) => {
+                                if (e.button !== 0) return;
+                                e.stopPropagation();
+                                if (typeof e.preventDefault === 'function') e.preventDefault();
+                            })
+                            .on('click', wirePctClick(delta));
+                    };
+                    mk(leftX, '-', -5, '#ef4444', 'rgba(239, 68, 68, 0.2)');
+                    mk(leftX + ctrlSize + cg, '+', 5, '#089981', 'rgba(8, 153, 129, 0.2)');
+                }
             };
 
             const targetLabelFill = '#22c55e';
@@ -2448,6 +2522,12 @@ class BaseRiskRewardTool extends BaseDrawing {
                 }
             }
 
+            const useInlineTpPctOnTargetLabel = rrPrimaryTpIdxForControls >= 0
+                && mtOnEarly
+                && hasExtraTpDraw
+                && (om?.tpTargets?.length > 1)
+                && typeof om?.adjustTPPercentage === 'function';
+
             // Primary TP handle is the farthest target; panel `rewardAmount` is sum of all legs. For multi-TP, show
             // the same per-leg $ as the TP2 (etc.) preview line — not the aggregate — so Amount matches that level.
             let targetAmountStrForLabel = targetAmountStr;
@@ -2475,7 +2555,8 @@ class BaseRiskRewardTool extends BaseDrawing {
                 text: targetLabelText,
                 lineY: targetY,
                 fill: targetLabelFill,
-                side: targetSide
+                side: targetSide,
+                inlineTpPctIndex: useInlineTpPctOnTargetLabel ? rrPrimaryTpIdxForControls : -1
             });
 
             const stopLabelText = `Stop: ${slPriceStr} (${stopPercent}%) ${slDistSeg}, Amount: ${stopAmountStr}`;
@@ -3046,7 +3127,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                     mk(leftX + ctrlSize + cg, '+', 5, '#089981', 'rgba(8, 153, 129, 0.2)');
                 };
 
-                if (rrPrimaryTpIdxForControls >= 0 && mtOn && sortedOm.length > 1) {
+                if (rrPrimaryTpIdxForControls >= 0 && mtOn && sortedOm.length > 1 && !useInlineTpPctOnTargetLabel) {
                     appendRrTpPctControlsOnly(targetY, rrPrimaryTpIdxForControls);
                 }
 
