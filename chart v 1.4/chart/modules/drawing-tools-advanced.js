@@ -2411,6 +2411,43 @@ class BaseRiskRewardTool extends BaseDrawing {
             const tpPriceStr = typeof om?.formatPrice === 'function' ? om.formatPrice(targetPrice) : targetPrice.toFixed(5);
             const slPriceStr = typeof om?.formatPrice === 'function' ? om.formatPrice(stopPrice) : stopPrice.toFixed(5);
 
+            /** Merge primary TP# + % into center Target label (avoid duplicate TP mini-badge on same line). */
+            let rrPrimaryTpMergeSuffix = '';
+            let rrPrimaryTpIdxForControls = -1;
+            const hasExtraTpDraw = (this.meta.extraTargets || []).length > 0;
+            const mtOnEarly = typeof document !== 'undefined' && document.getElementById('multipleTPToggle')?.checked;
+            if (mtOnEarly && hasExtraTpDraw && om?.tpTargets?.length > 1) {
+                const tpRoundEarly = (p) => (Number.isFinite(p) ? parseFloat(Number(p).toFixed(rrPrec)) : p);
+                const allTp = [];
+                if (Number.isFinite(this.points[2]?.y)) allTp.push(this.points[2].y);
+                (this.meta.extraTargets || []).forEach((r) => {
+                    if (r && Number.isFinite(r.y)) allTp.push(r.y);
+                });
+                const uniqS = [...new Set(allTp.map(tpRoundEarly))].sort((a, b) =>
+                    (this.isLong ? a - b : b - a));
+                const epsE = Math.max(1e-10, (Math.abs(uniqS[0]) || 1) * 1e-9);
+                const rpT = tpRoundEarly(targetPrice);
+                const si = uniqS.findIndex((p) => Math.abs(p - rpT) <= epsE);
+                const tpN = si >= 0 ? si + 1 : uniqS.length;
+                const sortedOmEarly = [...om.tpTargets].sort((a, b) =>
+                    (this.isLong ? a.price - b.price : b.price - a.price));
+                const leg = sortedOmEarly.find((t) => t && Number.isFinite(t.price)
+                    && Math.abs(tpRoundEarly(t.price) - rpT) <= epsE);
+                if (leg && Number.isFinite(leg.percentage)) {
+                    rrPrimaryTpMergeSuffix = ` · TP${tpN} · ${Math.round(Number(leg.percentage))}%`;
+                } else {
+                    rrPrimaryTpMergeSuffix = ` · TP${tpN}`;
+                }
+                for (let ti = 0; ti < om.tpTargets.length; ti++) {
+                    const t = om.tpTargets[ti];
+                    if (!t || !Number.isFinite(t.price)) continue;
+                    if (Math.abs(tpRoundEarly(t.price) - rpT) <= epsE) {
+                        rrPrimaryTpIdxForControls = ti;
+                        break;
+                    }
+                }
+            }
+
             // Primary TP handle is the farthest target; panel `rewardAmount` is sum of all legs. For multi-TP, show
             // the same per-leg $ as the TP2 (etc.) preview line — not the aggregate — so Amount matches that level.
             let targetAmountStrForLabel = targetAmountStr;
@@ -2431,7 +2468,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             }
 
             // Target / Stop labels — same distance + $ readouts as order panel (TP/SL cards + summary)
-            const targetLabelText = `Target: ${tpPriceStr} (${targetPercent}%) ${tpDistSeg}, Amount: ${targetAmountStrForLabel}`;
+            const targetLabelText = `Target: ${tpPriceStr} (${targetPercent}%) ${tpDistSeg}, Amount: ${targetAmountStrForLabel}${rrPrimaryTpMergeSuffix}`;
             const targetSide = targetY <= avgEntryYpx ? 'top' : 'bottom';
             createEdgeLabel({
                 className: 'target-label',
@@ -2935,6 +2972,84 @@ class BaseRiskRewardTool extends BaseDrawing {
                         .text(line);
                 };
 
+                /** Only [−]/[+] for primary TP when label text is merged into center Target (no second TP badge). */
+                const appendRrTpPctControlsOnly = (lineYpx, tpTargetIndex) => {
+                    if (!mtOn || sortedOm.length <= 1 || tpTargetIndex < 0 || typeof om?.adjustTPPercentage !== 'function') {
+                        return;
+                    }
+                    const ctrlSize = 14;
+                    const cg = 2;
+                    const edgePad = 4;
+                    const hitPad = 2;
+                    const rightX = zoneX2 - edgePad;
+                    const controlsW = ctrlSize * 2 + cg;
+                    const leftX = Math.max(zoneX1 + edgePad, rightX - controlsW);
+                    const cy = lineYpx - ctrlSize / 2;
+
+                    const root = this.group.append('g')
+                        .attr('class', 'rr-tp-mini-pct-controls')
+                        .style('pointer-events', 'all');
+
+                    const wirePctClick = (delta) => (event) => {
+                        event.stopPropagation();
+                        if (typeof event.preventDefault === 'function') event.preventDefault();
+                        if (!om || typeof om.adjustTPPercentage !== 'function') return;
+                        om.adjustTPPercentage(tpTargetIndex, delta);
+                        if (typeof om.syncSelectedRiskRewardDrawingFromPanel === 'function') {
+                            om.syncSelectedRiskRewardDrawingFromPanel();
+                        }
+                        const dmR = self._drawingManager();
+                        if (dmR) dmR.renderDrawing(self);
+                    };
+
+                    const mk = (x, sym, delta, stroke, fill) => {
+                        const h = root.append('g')
+                            .attr('transform', `translate(${x},${cy})`)
+                            .style('cursor', 'pointer');
+                        h.append('rect')
+                            .attr('width', ctrlSize)
+                            .attr('height', ctrlSize)
+                            .attr('rx', 3)
+                            .attr('fill', fill)
+                            .attr('stroke', stroke)
+                            .attr('stroke-width', 1);
+                        h.append('text')
+                            .attr('x', ctrlSize / 2)
+                            .attr('y', ctrlSize / 2)
+                            .attr('dy', '0.35em')
+                            .attr('text-anchor', 'middle')
+                            .attr('fill', stroke)
+                            .attr('font-size', '13px')
+                            .attr('font-weight', '700')
+                            .attr('pointer-events', 'none')
+                            .style('pointer-events', 'none')
+                            .text(sym);
+                        const hitSz = ctrlSize + hitPad * 2;
+                        h.append('rect')
+                            .attr('x', -hitPad)
+                            .attr('y', -hitPad)
+                            .attr('width', hitSz)
+                            .attr('height', hitSz)
+                            .attr('fill', '#000')
+                            .attr('fill-opacity', 0.001)
+                            .attr('pointer-events', 'all')
+                            .style('pointer-events', 'all')
+                            .style('cursor', 'pointer')
+                            .on('mousedown', (e) => {
+                                if (e.button !== 0) return;
+                                e.stopPropagation();
+                                if (typeof e.preventDefault === 'function') e.preventDefault();
+                            })
+                            .on('click', wirePctClick(delta));
+                    };
+                    mk(leftX, '-', -5, '#ef4444', 'rgba(239, 68, 68, 0.2)');
+                    mk(leftX + ctrlSize + cg, '+', 5, '#089981', 'rgba(8, 153, 129, 0.2)');
+                };
+
+                if (rrPrimaryTpIdxForControls >= 0 && mtOn && sortedOm.length > 1) {
+                    appendRrTpPctControlsOnly(targetY, rrPrimaryTpIdxForControls);
+                }
+
                 const drawOneTpBadge = (yy, rp) => {
                     const si = uniqSorted.findIndex((p) => Math.abs(p - rp) <= epsPx);
                     const tpNum = si >= 0 ? si + 1 : 1;
@@ -2978,7 +3093,10 @@ class BaseRiskRewardTool extends BaseDrawing {
                 if (Number.isFinite(this.points[2]?.y)) {
                     const rpPrim = tpRound(this.points[2].y);
                     if (!extraYRounded.has(rpPrim)) {
-                        drawOneTpBadge(scales.yScale(this.points[2].y), rpPrim);
+                        const skipMergedPrimary = mtOnEarly && hasExtraTpDraw && om?.tpTargets?.length > 1;
+                        if (!skipMergedPrimary) {
+                            drawOneTpBadge(scales.yScale(this.points[2].y), rpPrim);
+                        }
                     }
                 }
             }
