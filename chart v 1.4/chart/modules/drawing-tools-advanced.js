@@ -3100,12 +3100,24 @@ class BaseRiskRewardTool extends BaseDrawing {
         const handleStroke = '#2962FF';
         const handleStrokeWidth = 2;
         
-        // Right-edge width handles: same horizontal resize at E1 / SL / TP Y so users are not limited
-        // to dragging only at entry height. (Left-side small circles are *price* handles — vertical only.)
-        const cornerY = scales.yScale(this.points[0].y);
+        // Right-edge width handles (ew-resize). Left-side blue rings are price-only (vertical).
+        // Multi-entry: single width handle on the weighted *avg entry* line (middle), not on E1 — avoids
+        // a misleading handle when the ladder has many legs. Single-entry: keep handles at E1 / SL / TP when distinct.
+        const hasMultiEntry = (this.meta.extraEntries || []).length > 0;
+        let midLineY;
+        if (hasMultiEntry && typeof this._getWeightedAverageEntryPrice === 'function') {
+            const wAvg = this._getWeightedAverageEntryPrice();
+            midLineY = Number.isFinite(wAvg)
+                ? scales.yScale(wAvg)
+                : scales.yScale(this.points[0].y);
+        } else {
+            midLineY = scales.yScale(this.points[0].y);
+        }
         const stopY = scales.yScale(this.points[1].y);
         const targetY = scales.yScale(this.points[2].y);
-        const rawYs = [cornerY, stopY, targetY];
+        const rawYs = hasMultiEntry
+            ? [midLineY]
+            : [midLineY, stopY, targetY];
         const seenY = new Set();
         const positions = [];
         for (const y of rawYs) {
