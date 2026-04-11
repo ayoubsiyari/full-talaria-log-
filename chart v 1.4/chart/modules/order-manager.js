@@ -18795,11 +18795,32 @@ class OrderManager {
             const nE = uniqE.length;
             const amtEach = Number.isFinite(riskUsd) && riskUsd > 0 ? Math.max(1, Math.round(riskUsd / nE)) : 40;
             if (!Number.isFinite(this.multiEntryIdCounter)) this.multiEntryIdCounter = 1;
-            this.multiEntryLevels = uniqE.map((price) => ({
-                id: this.multiEntryIdCounter++,
-                price: parseFloat(price.toFixed(prec)),
-                amount: amtEach
-            }));
+            const prev = Array.isArray(this.multiEntryLevels) ? this.multiEntryLevels : [];
+            const eps = Math.max(1e-10, (Math.abs(uniqE[0]) || 1) * 1e-9);
+            this.multiEntryLevels = uniqE.map((price, i) => {
+                const priceFixed = parseFloat(price.toFixed(prec));
+                let id;
+                let amount = amtEach;
+                const prevI = prev[i];
+                if (prevI && Number.isFinite(prevI.price)
+                    && Math.abs(parseFloat(Number(prevI.price).toFixed(prec)) - priceFixed) <= eps) {
+                    id = prevI.id;
+                    amount = prevI.amount ?? amtEach;
+                } else {
+                    const byPrice = prev.find((l) => l && Number.isFinite(l.price)
+                        && Math.abs(parseFloat(Number(l.price).toFixed(prec)) - priceFixed) <= eps);
+                    if (byPrice) {
+                        id = byPrice.id;
+                        amount = byPrice.amount ?? amtEach;
+                    } else {
+                        id = this.multiEntryIdCounter++;
+                    }
+                }
+                return { id, price: priceFixed, amount };
+            });
+            if (typeof this._rebalanceLevelAmountsToTarget === 'function') {
+                this._rebalanceLevelAmountsToTarget();
+            }
         }
 
         const beLineY = drawing.meta?.rrBreakevenLine?.y;

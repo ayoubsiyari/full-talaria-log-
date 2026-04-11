@@ -2225,7 +2225,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('y1', avgTpYpx)
                 .attr('x2', zoneX2)
                 .attr('y2', avgTpYpx)
-                .attr('stroke', '#059669')
+                .attr('stroke', '#e8a060')
                 .attr('stroke-width', 2)
                 .style('pointer-events', 'none')
                 .style('cursor', 'inherit');
@@ -2617,6 +2617,16 @@ class BaseRiskRewardTool extends BaseDrawing {
             // update the drawing every frame while multiEntryLevels can lag or differ in float noise → lots jitter.
             const pipS = om?.pipSize || this.getPriceStep();
             const pipV = om?.pipValuePerLot || 10;
+            /** Same value as order panel amount column ($ / split % / lots per leg), not implied lots from SL distance. */
+            const formatMultiEntryAmountForBadge = (lv) => {
+                if (!lv) return '—';
+                const psm = om?.positionSizeMode || 'risk-usd';
+                const a = Number(lv.amount);
+                if (!Number.isFinite(a)) return '—';
+                if (psm === 'risk-usd') return `$${Math.round(a)}`;
+                if (psm === 'risk-percent') return `${a.toFixed(1)}%`;
+                return `${a.toFixed(2)} lot`;
+            };
             const entryFill = 'rgba(30, 64, 175, 0.92)';
             const tpInnerFill = 'rgba(22, 101, 52, 0.92)';
             const beFill = 'rgba(120, 53, 15, 0.92)';
@@ -2756,22 +2766,11 @@ class BaseRiskRewardTool extends BaseDrawing {
                     const rowY = i === 0 ? entry.y : (this.meta.extraEntries || [])[i - 1].y;
                     if (!Number.isFinite(rowY) || rowY <= 0) return;
                     const yPix = scales.yScale(rowY);
-                    const legPx = rrRoundPx(rowY);
-                    const levelForLots = { ...lv, price: legPx };
-                    let lotStr = '—';
-                    if (slFromDrawing > 0 && typeof om._calcLevelLotSize === 'function') {
-                        const s = String(om._calcLevelLotSize(levelForLots, slFromDrawing, pipS, pipV) || '').trim();
-                        if (s) lotStr = s;
-                    } else if (typeof om._calcLevelLotSizeNumeric === 'function' && slFromDrawing > 0) {
-                        const n = om._calcLevelLotSizeNumeric(levelForLots, slFromDrawing, pipS, pipV);
-                        if (Number.isFinite(n) && n > 0) lotStr = n.toFixed(2);
-                    } else if (Number.isFinite(lv.amount) && lv.amount > 0 && om.positionSizeMode === 'lot-size') {
-                        lotStr = String(parseFloat(Number(lv.amount).toFixed(2)));
-                    }
+                    const amtLine = formatMultiEntryAmountForBadge(lv);
                     if (showEntryQtyControls) {
-                        appendRrEntryMiniBadgeWithQtyControls(yPix, [`E${i + 1}`, `${lotStr} lot`], entryFill, i);
+                        appendRrEntryMiniBadgeWithQtyControls(yPix, [`E${i + 1}`, amtLine], entryFill, i);
                     } else {
-                        appendRrMiniBadge(yPix, [`E${i + 1}`, `${lotStr} lot`], entryFill);
+                        appendRrMiniBadge(yPix, [`E${i + 1}`, amtLine], entryFill);
                     }
                 });
             } else if (hasDrawnExtras) {
@@ -3003,11 +3002,9 @@ class BaseRiskRewardTool extends BaseDrawing {
             }
 
             if (hasMultiTP && Number.isFinite(avgTpYpx) && Number.isFinite(avgTpPrice)) {
-                const avgTpFill = 'rgba(5, 150, 105, 0.92)';
-                const avgTpStr = typeof om?.formatPrice === 'function'
-                    ? om.formatPrice(avgTpPrice)
-                    : String(rrRoundPx(avgTpPrice));
-                appendRrMiniBadge(avgTpYpx, ['Avg TP', avgTpStr], avgTpFill);
+                const avgTpFill = 'rgba(240, 170, 120, 0.92)';
+                const lotStr = Number.isFinite(quantity) && quantity > 0 ? quantity.toFixed(2) : '—';
+                appendRrMiniBadge(avgTpYpx, ['Avg TP', `${lotStr} lot`], avgTpFill);
             }
 
             // Execute button moved to floating toolbar
