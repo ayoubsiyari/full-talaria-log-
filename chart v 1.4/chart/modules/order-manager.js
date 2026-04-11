@@ -23766,6 +23766,92 @@ class OrderManager {
     }
 
     /**
+     * RR tool TP mini-badges: slice lots at this TP for an open multi-TP position (same as chart / Avg TP notion).
+     */
+    getOpenPositionTpLotsForChartPrice(chart, side, tpPrice, pricePrec = 5) {
+        if (!chart || tpPrice == null || !Number.isFinite(Number(tpPrice))) return null;
+        const wantBuy = side === 'BUY' || side === 'buy';
+        const roundP = (p) => parseFloat(Number(p).toFixed(pricePrec));
+        const t = roundP(tpPrice);
+        const eps = Math.max(1e-10, Math.abs(t) * 1e-9);
+        const list = Array.isArray(this.openPositions) ? this.openPositions : [];
+        for (const pos of list) {
+            if (!pos || !this._positionTickerMatchesChartSymbol(pos, chart)) continue;
+            const isBuy = pos.type === 'BUY';
+            if (wantBuy !== isBuy) continue;
+            if (!pos.tpTargets || !pos.tpTargets.length) continue;
+            let idx = -1;
+            for (let i = 0; i < pos.tpTargets.length; i++) {
+                const tt = pos.tpTargets[i];
+                if (!tt || tt.hit || !Number.isFinite(tt.price)) continue;
+                if (Math.abs(roundP(tt.price) - t) <= eps) {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx < 0) continue;
+            const tgt = pos.tpTargets[idx];
+            const { lots } = this._multiTpTargetChartMetrics(pos, tgt, idx, 'open');
+            if (Number.isFinite(lots) && lots > 0) return lots;
+        }
+        return null;
+    }
+
+    /**
+     * RR tool TP mini-badges: per-leg share lots (open position or draft panel math), aligned with {@link getMultiTpLegProfitUsdForChartBadge}.
+     */
+    getMultiTpLegShareLotsForChartBadge(chart, side, tpPrice, pricePrec = 5) {
+        const openLots = this.getOpenPositionTpLotsForChartPrice(chart, side, tpPrice, pricePrec);
+        if (openLots != null && Number.isFinite(openLots) && openLots > 0) return openLots;
+
+        if (typeof document !== 'undefined' && !document.getElementById('multipleTPToggle')?.checked) {
+            return null;
+        }
+        if (!this.tpTargets || this.tpTargets.length === 0) return null;
+
+        const roundP = (p) => parseFloat(Number(p).toFixed(pricePrec));
+        const t = roundP(Number(tpPrice));
+        if (!Number.isFinite(t)) return null;
+        const eps = Math.max(1e-10, Math.abs(t) * 1e-9);
+
+        let idx = -1;
+        for (let i = 0; i < this.tpTargets.length; i++) {
+            const tt = this.tpTargets[i];
+            if (!tt || tt.hit || !Number.isFinite(tt.price)) continue;
+            if (Math.abs(roundP(tt.price) - t) <= eps) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx < 0) return null;
+
+        const entryPx = this._getReferenceEntryForOrderMath();
+        const qty = parseFloat(document.getElementById('orderQuantity')?.value || 0);
+        if (!(entryPx > 0) || !(qty > 0)) return null;
+
+        const sideUpper = String(side || this.orderSide || 'BUY').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
+        const ePcts = this._computeEffectiveTPPercentages(entryPx, qty, sideUpper);
+        const ePct = ePcts[idx] || 0;
+        if (!(ePct > 0)) return null;
+
+        const shareQty = qty * (ePct / 100);
+        return shareQty > 0 ? shareQty : null;
+    }
+
+    /**
+     * RR tool entry mini-badges: implied lots for one multi-entry row (same formula as order panel row info).
+     */
+    getMultiEntryLegImpliedLotsForChartBadge(levelIndex) {
+        if (!this.isMultiEntryMode || !Array.isArray(this.multiEntryLevels)) return null;
+        const level = this.multiEntryLevels[levelIndex];
+        if (!level) return null;
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const lots = this._calcLevelLotSizeNumeric(level, slPrice, this.pipSize, this.pipValuePerLot);
+        if (!Number.isFinite(lots) || lots <= 0) return null;
+        return lots;
+    }
+
+    /**
      * RR tool TP mini-badges: pending/draft uses same per-leg $ as chart labels (`_formatMultiTpInfoText`);
      * open positions delegate to {@link getOpenPositionTpPnLUsdForChartPrice}.
      */

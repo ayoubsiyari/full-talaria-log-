@@ -2831,10 +2831,18 @@ class BaseRiskRewardTool extends BaseDrawing {
                     if (!Number.isFinite(rowY) || rowY <= 0) return;
                     const yPix = scales.yScale(rowY);
                     const amtLine = formatMultiEntryAmountForBadge(lv);
+                    const psm = om?.positionSizeMode || 'risk-usd';
+                    const impliedEntryLots = om && typeof om.getMultiEntryLegImpliedLotsForChartBadge === 'function'
+                        ? om.getMultiEntryLegImpliedLotsForChartBadge(i)
+                        : null;
+                    const entryLineParts = [`E${i + 1}`, amtLine];
+                    if (psm !== 'lot-size' && impliedEntryLots != null && impliedEntryLots > 0) {
+                        entryLineParts.push(`${parseFloat(impliedEntryLots.toFixed(2))} lot`);
+                    }
                     if (showEntryQtyControls) {
-                        appendRrEntryMiniBadgeWithQtyControls(yPix, [`E${i + 1}`, amtLine], entryFill, i);
+                        appendRrEntryMiniBadgeWithQtyControls(yPix, entryLineParts, entryFill, i);
                     } else {
-                        appendRrMiniBadge(yPix, [`E${i + 1}`, amtLine], entryFill);
+                        appendRrMiniBadge(yPix, entryLineParts, entryFill);
                     }
                 });
             } else if (hasDrawnExtras) {
@@ -3068,9 +3076,16 @@ class BaseRiskRewardTool extends BaseDrawing {
                             usd = usdLeg != null ? usdLeg : null;
                         }
                     }
-                    const sub = usd != null
-                        ? `$${Number(usd).toFixed(2)} · ${pctStr}`
-                        : pctStr;
+                    const lotsLeg = om && typeof om.getMultiTpLegShareLotsForChartBadge === 'function'
+                        ? om.getMultiTpLegShareLotsForChartBadge(this.chart, sideStr, rp, rrPrec)
+                        : null;
+                    const subParts = [];
+                    if (usd != null) subParts.push(`$${Number(usd).toFixed(2)}`);
+                    if (pctStr !== '—') subParts.push(pctStr);
+                    if (lotsLeg != null && Number.isFinite(lotsLeg) && lotsLeg > 0) {
+                        subParts.push(`${parseFloat(lotsLeg.toFixed(2))} lot`);
+                    }
+                    const sub = subParts.length ? subParts.join(' · ') : '—';
                     const tIdx = findOmTpTargetIndex(rp);
                     if (sortedOm.length > 1 && tIdx >= 0) {
                         appendRrTpMiniBadgeWithPctControls(yy, [`TP${tpNum}`, sub], tpInnerFill, tIdx);
