@@ -1817,13 +1817,42 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (tgs.length > 1 && typeof orderManager.renderTPTargets === 'function') {
             const prec = typeof orderManager.getPricePrecision === 'function' ? orderManager.getPricePrecision() : 5;
             const sortedTp = [...tgs].sort((a, b) => (this.isLong ? a - b : b - a));
+            const sortedPrices = sortedTp.map((p) => parseFloat(Number(p).toFixed(prec)));
+            const eps = Math.max(1e-10, Math.abs(sortedPrices[0] || 1) * 1e-9);
             const share = parseFloat((100 / sortedTp.length).toFixed(1));
+
+            // Keep panel % splits when re-prefilling from the same RR setup (Execute was resetting to equal shares).
+            const prevSorted = Array.isArray(orderManager.tpTargets) && orderManager.tpTargets.length === sortedTp.length
+                ? [...orderManager.tpTargets].sort((a, b) =>
+                    (this.isLong ? a.price - b.price : b.price - a.price))
+                : null;
+            let preservedPct = null;
+            if (prevSorted && prevSorted.length === sortedTp.length) {
+                let ok = true;
+                for (let i = 0; i < sortedPrices.length; i++) {
+                    const t = prevSorted[i];
+                    if (!t || !Number.isFinite(t.price) || t.percentage == null) {
+                        ok = false;
+                        break;
+                    }
+                    if (Math.abs(parseFloat(Number(t.price).toFixed(prec)) - sortedPrices[i]) > eps) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (ok) {
+                    preservedPct = prevSorted.map((t) => parseFloat(Number(t.percentage).toFixed(1)));
+                }
+            }
+
             orderManager.tpTargets = sortedTp.map((price, i) => ({
                 id: i + 1,
-                price: parseFloat(price.toFixed(prec)),
-                percentage: i === sortedTp.length - 1
-                    ? parseFloat((100 - share * (sortedTp.length - 1)).toFixed(1))
-                    : share
+                price: sortedPrices[i],
+                percentage: preservedPct != null && Number.isFinite(preservedPct[i])
+                    ? preservedPct[i]
+                    : (i === sortedTp.length - 1
+                        ? parseFloat((100 - share * (sortedTp.length - 1)).toFixed(1))
+                        : share)
             }));
             const multipleTPToggle = document.getElementById('multipleTPToggle');
             const multipleTPSettings = document.getElementById('multipleTPSettings');
@@ -2633,6 +2662,7 @@ class BaseRiskRewardTool extends BaseDrawing {
 
                     const wirePctClick = (delta) => (event) => {
                         event.stopPropagation();
+                        if (typeof event.preventDefault === 'function') event.preventDefault();
                         if (!om || typeof om.adjustTPPercentage !== 'function') return;
                         om.adjustTPPercentage(tpTargetIndex, delta);
                         if (typeof om.syncSelectedRiskRewardDrawingFromPanel === 'function') {
@@ -2643,11 +2673,11 @@ class BaseRiskRewardTool extends BaseDrawing {
                     };
 
                     if (showPct) {
+                        const hitPad = 2;
                         const mk = (x, sym, delta, stroke, fill) => {
                             const h = root.append('g')
                                 .attr('transform', `translate(${x},${cy})`)
-                                .style('cursor', 'pointer')
-                                .on('click', wirePctClick(delta));
+                                .style('cursor', 'pointer');
                             h.append('rect')
                                 .attr('width', ctrlSize)
                                 .attr('height', ctrlSize)
@@ -2661,11 +2691,30 @@ class BaseRiskRewardTool extends BaseDrawing {
                                 .attr('dy', '0.35em')
                                 .attr('text-anchor', 'middle')
                                 .attr('fill', stroke)
-                                .attr('font-size', '12px')
+                                .attr('font-size', '13px')
                                 .attr('font-weight', '700')
+                                .attr('pointer-events', 'none')
+                                .style('pointer-events', 'none')
                                 .text(sym);
+                            const hitSz = ctrlSize + hitPad * 2;
+                            h.append('rect')
+                                .attr('x', -hitPad)
+                                .attr('y', -hitPad)
+                                .attr('width', hitSz)
+                                .attr('height', hitSz)
+                                .attr('fill', '#000')
+                                .attr('fill-opacity', 0.001)
+                                .attr('pointer-events', 'all')
+                                .style('pointer-events', 'all')
+                                .style('cursor', 'pointer')
+                                .on('mousedown', (e) => {
+                                    if (e.button !== 0) return;
+                                    e.stopPropagation();
+                                    if (typeof e.preventDefault === 'function') e.preventDefault();
+                                })
+                                .on('click', wirePctClick(delta));
                         };
-                        mk(leftX, '−', -5, '#ef4444', 'rgba(239, 68, 68, 0.2)');
+                        mk(leftX, '-', -5, '#ef4444', 'rgba(239, 68, 68, 0.2)');
                         mk(leftX + ctrlSize + cg, '+', 5, '#089981', 'rgba(8, 153, 129, 0.2)');
                     }
 

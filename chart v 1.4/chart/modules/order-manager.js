@@ -13898,16 +13898,8 @@ class OrderManager {
             return errors;
         }
         
-        // Auto-redistribute percentages equally among priced targets so the
-        // user doesn't have to manually fix rounding after adding/removing TPs.
-        if (this.tpDistributionMode === 'percent' && pricedTargets.length > 0) {
-            const equalPct = Math.round(100 / pricedTargets.length);
-            pricedTargets.forEach((t, i) => {
-                t.percentage = (i === pricedTargets.length - 1)
-                    ? 100 - equalPct * (pricedTargets.length - 1)
-                    : equalPct;
-            });
-        }
+        // Do not mutate percentages here — panel / RR +/- set explicit splits; overwriting with equal
+        // shares broke user-adjusted multi-TP % on place order.
         
         // Check total based on distribution mode (only priced targets)
         const totalValue = pricedTargets.reduce((sum, t) => sum + (t.percentage || 0), 0);
