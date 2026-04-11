@@ -1195,6 +1195,10 @@ class BaseRiskRewardTool extends BaseDrawing {
     addExtraStop() {
         if (!Array.isArray(this.points) || this.points.length < 3) return;
         const om = window.chart?.orderManager;
+        if (om && typeof om.showRiskRewardSlPlusDialog === 'function') {
+            om.showRiskRewardSlPlusDialog(this);
+            return;
+        }
         if (om && typeof om.riskRewardAddBEFromTool === 'function') {
             om.riskRewardAddBEFromTool(this);
             this._afterRiskRewardOrderManagerSync();

@@ -18939,6 +18939,15 @@ class OrderManager {
      */
     riskRewardAddBEFromTool(drawing) {
         this.pushRiskRewardToolToManager(drawing);
+        const trailingTgl = document.getElementById('trailingSLToggle');
+        if (trailingTgl?.checked) {
+            this._beTrailMutex = true;
+            trailingTgl.checked = false;
+            document.getElementById('trailingSLSettings')?.classList.add('is-hidden');
+            this.stopTrailingSL();
+            this._updateTrailingSummary();
+            this._beTrailMutex = false;
+        }
         const tgl = document.getElementById('autoBreakevenToggle');
         if (tgl) tgl.checked = true;
         const bes = document.getElementById('breakevenSettings');
@@ -18949,6 +18958,208 @@ class OrderManager {
         this.updatePreviewLines();
         this.calculateAdvancedRiskReward();
         this.pullRiskRewardToolFromManager(drawing);
+    }
+
+    /**
+     * SL + on RR tool: trailing stop — sync panel inputs, enable trailing, disable BE / BE line on drawing.
+     */
+    riskRewardAddTrailFromTool(drawing) {
+        this.pushRiskRewardToolToManager(drawing);
+        const beTgl = document.getElementById('autoBreakevenToggle');
+        if (beTgl?.checked) {
+            this._beTrailMutex = true;
+            beTgl.checked = false;
+            document.getElementById('breakevenSettings')?.classList.add('is-hidden');
+            this._updateBreakevenSummary();
+            this._beTrailMutex = false;
+        }
+        if (drawing?.meta?.rrBreakevenLine) delete drawing.meta.rrBreakevenLine;
+
+        const trTgl = document.getElementById('trailingSLToggle');
+        if (trTgl) trTgl.checked = true;
+        document.getElementById('trailingSLSettings')?.classList.remove('is-hidden');
+        this.initializeTrailingSL();
+        this._updateTrailingSummary();
+        this.updatePreviewLines();
+        this.calculateAdvancedRiskReward();
+        this.pullRiskRewardToolFromManager(drawing);
+    }
+
+    _syncRrSlPlusModalTrailTabStyles(overlay) {
+        if (!overlay) return;
+        const mode = this.trailingUnitMode || 'rr';
+        overlay.querySelectorAll('.rr-sl-plus-trail-unit').forEach((b) => {
+            const on = b.getAttribute('data-trail-unit') === mode;
+            b.classList.toggle('active', on);
+            b.style.cssText = on
+                ? 'padding:4px 10px;border-radius:6px;border:1px solid #3b82f6;background:rgba(59,130,246,0.22);color:#93c5fd;cursor:pointer;font-size:11px;font-weight:600;'
+                : 'padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:#94a3b8;cursor:pointer;font-size:11px;';
+        });
+        this._updateTrailingInlineUnits();
+    }
+
+    _ensureRiskRewardSlPlusModal() {
+        if (document.getElementById('rrSlPlusModalOverlay')) return;
+        const overlay = document.createElement('div');
+        overlay.id = 'rrSlPlusModalOverlay';
+        overlay.style.cssText = 'display:none;position:fixed;inset:0;z-index:100020;background:rgba(15,23,42,0.55);align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+        overlay.innerHTML = `
+<div class="rr-sl-plus-card" style="background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:18px 20px;max-width:440px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,0.45);color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif;font-size:13px;">
+  <div style="font-weight:700;font-size:15px;margin-bottom:6px;">Stop line</div>
+  <p style="margin:0 0 14px;color:#94a3b8;font-size:12px;line-height:1.45;">Choose breakeven or trailing stop — same controls as Advanced order.</p>
+  <div style="display:flex;gap:8px;margin-bottom:14px;">
+    <button type="button" id="rrSlPlusModeBe" style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid #3b82f6;background:#2563eb;color:#fff;font-weight:600;cursor:pointer;">Breakeven</button>
+    <button type="button" id="rrSlPlusModeTr" style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#cbd5e1;font-weight:600;cursor:pointer;">Trailing SL</button>
+  </div>
+  <div id="rrSlPlusBeDesc" style="font-size:12px;color:#94a3b8;margin-bottom:12px;line-height:1.45;">
+    Enables <strong style="color:#e2e8f0;">Move to Breakeven</strong> and draws the trigger line on the tool. Drag the line to adjust the trigger price.
+  </div>
+  <div id="rrSlPlusTrFields" style="display:none;">
+    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">
+      <span style="font-size:10px;color:#94a3b8;margin-right:4px;">Units</span>
+      <button type="button" class="rr-sl-plus-trail-unit" data-trail-unit="rr" title="R">R</button>
+      <button type="button" class="rr-sl-plus-trail-unit" data-trail-unit="pips">Pips</button>
+      <button type="button" class="rr-sl-plus-trail-unit" data-trail-unit="amount">$</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px;line-height:1.6;">
+      <span>After</span>
+      <input type="number" id="rrSlPlus_trAct" min="0.1" step="0.1" style="width:76px;padding:5px 8px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;">
+      <span data-trailing-unit-label>R</span>
+      <span>trail</span>
+      <input type="number" id="rrSlPlus_trStep" min="0.1" step="0.1" style="width:76px;padding:5px 8px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;">
+      <span data-trailing-unit-label>R</span>
+      <span>every</span>
+      <input type="number" id="rrSlPlus_trEvery" min="0.01" step="0.01" style="width:76px;padding:5px 8px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;">
+      <span data-trailing-unit-label>R</span>
+    </div>
+    <p style="font-size:11px;color:#64748b;margin:0 0 4px;">Applied to the order panel (Trailing Stop Loss). Breakeven is turned off — they cannot both be on.</p>
+  </div>
+  <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
+    <button type="button" id="rrSlPlusCancel" style="padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:#cbd5e1;cursor:pointer;">Cancel</button>
+    <button type="button" id="rrSlPlusApply" style="padding:8px 16px;border-radius:8px;border:none;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer;">Apply</button>
+  </div>
+</div>`;
+        document.body.appendChild(overlay);
+
+        const setMode = (tr) => {
+            const beBtn = overlay.querySelector('#rrSlPlusModeBe');
+            const trBtn = overlay.querySelector('#rrSlPlusModeTr');
+            const beDesc = overlay.querySelector('#rrSlPlusBeDesc');
+            const trFields = overlay.querySelector('#rrSlPlusTrFields');
+            overlay._rrSlPlusTrailMode = !!tr;
+            if (tr) {
+                beBtn.style.cssText = 'flex:1;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#cbd5e1;font-weight:600;cursor:pointer;';
+                trBtn.style.cssText = 'flex:1;padding:8px 10px;border-radius:8px;border:1px solid #3b82f6;background:#2563eb;color:#fff;font-weight:600;cursor:pointer;';
+                beDesc.style.display = 'none';
+                trFields.style.display = 'block';
+            } else {
+                trBtn.style.cssText = 'flex:1;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#cbd5e1;font-weight:600;cursor:pointer;';
+                beBtn.style.cssText = 'flex:1;padding:8px 10px;border-radius:8px;border:1px solid #3b82f6;background:#2563eb;color:#fff;font-weight:600;cursor:pointer;';
+                beDesc.style.display = 'block';
+                trFields.style.display = 'none';
+            }
+        };
+
+        overlay.querySelector('#rrSlPlusModeBe').onclick = () => setMode(false);
+        overlay.querySelector('#rrSlPlusModeTr').onclick = () => setMode(true);
+        overlay.addEventListener('click', (e) => {
+            const tab = e.target.closest('.rr-sl-plus-trail-unit');
+            if (!tab || !overlay.contains(tab)) return;
+            const m = tab.getAttribute('data-trail-unit');
+            if (m) {
+                this._setTrailingUnitMode(m);
+                this._syncRrSlPlusModalTrailTabStyles(overlay);
+            }
+        });
+        overlay.querySelector('#rrSlPlusCancel').onclick = () => this._closeRiskRewardSlPlusDialog();
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) this._closeRiskRewardSlPlusDialog();
+        });
+        overlay.querySelector('#rrSlPlusApply').onclick = () => this._applyRiskRewardSlPlusDialog();
+        document.addEventListener('keydown', this._rrSlPlusModalEscHandler = (ev) => {
+            if (ev.key !== 'Escape') return;
+            const o = document.getElementById('rrSlPlusModalOverlay');
+            if (o && o.style.display === 'flex') this._closeRiskRewardSlPlusDialog();
+        });
+    }
+
+    _closeRiskRewardSlPlusDialog() {
+        const o = document.getElementById('rrSlPlusModalOverlay');
+        if (o) {
+            o.style.display = 'none';
+            o._drawing = null;
+        }
+    }
+
+    _applyRiskRewardSlPlusDialog() {
+        const overlay = document.getElementById('rrSlPlusModalOverlay');
+        const drawing = overlay?._drawing;
+        if (!drawing) {
+            this._closeRiskRewardSlPlusDialog();
+            return;
+        }
+        const advTgl = document.getElementById('advancedOrderToggle');
+        if (advTgl && !advTgl.checked) {
+            advTgl.checked = true;
+            advTgl.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        const dm = typeof window !== 'undefined' ? window.chart?.drawingManager : null;
+        const trail = overlay._rrSlPlusTrailMode === true;
+        if (!trail) {
+            this.riskRewardAddBEFromTool(drawing);
+        } else {
+            const a = document.getElementById('rrSlPlus_trAct');
+            const s = document.getElementById('rrSlPlus_trStep');
+            const ev = document.getElementById('rrSlPlus_trEvery');
+            const pa = document.getElementById('trailingActivateRR');
+            const ps = document.getElementById('trailingStepSize');
+            const pe = document.getElementById('trailingActivatePips');
+            if (pa && a) pa.value = a.value;
+            if (ps && s) ps.value = s.value;
+            if (pe && ev) pe.value = ev.value;
+            this.riskRewardAddTrailFromTool(drawing);
+        }
+        if (typeof drawing._afterRiskRewardOrderManagerSync === 'function') {
+            drawing._afterRiskRewardOrderManagerSync();
+        } else if (typeof drawing.ensureRiskSettings === 'function') {
+            drawing.ensureRiskSettings();
+        }
+        if (dm && typeof dm.renderDrawing === 'function') dm.renderDrawing(drawing);
+        if (dm && typeof dm.saveDrawings === 'function') dm.saveDrawings();
+        const sp = dm?.settingsPanel;
+        if (sp && typeof sp.refreshRiskRewardMirror === 'function') sp.refreshRiskRewardMirror();
+        this._closeRiskRewardSlPlusDialog();
+    }
+
+    /**
+     * Risk/reward SL +: open chooser (Breakeven vs Trailing) before changing the tool.
+     */
+    showRiskRewardSlPlusDialog(drawing) {
+        if (!drawing) return;
+        this._ensureRiskRewardSlPlusModal();
+        const overlay = document.getElementById('rrSlPlusModalOverlay');
+        overlay._drawing = drawing;
+
+        const act = document.getElementById('trailingActivateRR');
+        const step = document.getElementById('trailingStepSize');
+        const every = document.getElementById('trailingActivatePips');
+        const ma = overlay.querySelector('#rrSlPlus_trAct');
+        const ms = overlay.querySelector('#rrSlPlus_trStep');
+        const me = overlay.querySelector('#rrSlPlus_trEvery');
+        if (ma && act) ma.value = act.value;
+        if (ms && step) ms.value = step.value;
+        if (me && every) me.value = every.value;
+
+        this._syncRrSlPlusModalTrailTabStyles(overlay);
+
+        const trOn = document.getElementById('trailingSLToggle')?.checked;
+        const beOn = document.getElementById('autoBreakevenToggle')?.checked;
+        let startTr = trOn && !beOn;
+        if (!trOn && !beOn) startTr = false;
+        overlay.querySelector('#rrSlPlusModeBe').click();
+        if (startTr) overlay.querySelector('#rrSlPlusModeTr').click();
+
+        overlay.style.display = 'flex';
     }
 
     /** Drag BE line on the risk/reward tool — updates breakeven inputs like dragging the chart BE preview. */
