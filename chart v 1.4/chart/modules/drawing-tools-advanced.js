@@ -1192,11 +1192,11 @@ class BaseRiskRewardTool extends BaseDrawing {
         }
     }
 
-    addExtraStop() {
+    addExtraStop(clickEvent) {
         if (!Array.isArray(this.points) || this.points.length < 3) return;
         const om = window.chart?.orderManager;
         if (om && typeof om.showRiskRewardSlPlusDialog === 'function') {
-            om.showRiskRewardSlPlusDialog(this);
+            om.showRiskRewardSlPlusDialog(this, clickEvent);
             return;
         }
         if (om && typeof om.riskRewardAddBEFromTool === 'function') {
@@ -3095,7 +3095,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 const onClick = (e) => {
                     e.stopPropagation();
                     if (typeof e.preventDefault === 'function') e.preventDefault();
-                    handler();
+                    handler(e);
                 };
                 // Paint visible glyph first; put the hit target LAST so it sits on top. Relying on
                 // pointer-events:none on text/circle is flaky in SVG — without a top hit layer,
@@ -3140,7 +3140,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             };
             mkPlus(targetY, '#16a34a', () => this.addExtraTarget());
             mkPlus(entryY, '#2962FF', () => this.addExtraEntry());
-            mkPlus(stopY, '#ef4444', () => this.addExtraStop());
+            mkPlus(stopY, '#ef4444', (e) => this.addExtraStop(e));
         }
 
         if (this.selected && hasMultiEntry) {

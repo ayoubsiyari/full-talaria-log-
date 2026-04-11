@@ -18999,9 +18999,9 @@ class OrderManager {
         if (document.getElementById('rrSlPlusModalOverlay')) return;
         const overlay = document.createElement('div');
         overlay.id = 'rrSlPlusModalOverlay';
-        overlay.style.cssText = 'display:none;position:fixed;inset:0;z-index:100020;background:rgba(8,11,17,0.65);align-items:center;justify-content:center;padding:12px;box-sizing:border-box;font-family:\'DM Sans\',system-ui,sans-serif;';
+        overlay.style.cssText = 'display:none;position:fixed;inset:0;z-index:100020;padding:0;box-sizing:border-box;font-family:\'DM Sans\',system-ui,sans-serif;pointer-events:none;background:transparent;';
         overlay.innerHTML = `
-<div class="order-adv-card rr-sl-plus-modal-surface" style="max-width:248px;width:100%;margin:0;padding:8px 10px;box-shadow:0 12px 40px rgba(0,0,0,0.5);--om-bg:#080b11;--om-panel2:#141a22;--om-b:#1a2030;--om-b2:#242e3e;--om-tx:#c8cfd8;--om-dim:#5e6a7a;--om-muted:#333e50;--om-seg-bg:#080b11;--om-seg-border:#1a2030;--om-ot-gold:#C9A84C;--om-ot-gold-bg:rgba(201,168,76,0.10);">
+<div class="order-adv-card rr-sl-plus-modal-surface" style="position:fixed;z-index:100021;max-width:248px;width:max-content;margin:0;padding:8px 10px;pointer-events:auto;box-shadow:0 12px 40px rgba(0,0,0,0.5);--om-bg:#080b11;--om-panel2:#141a22;--om-b:#1a2030;--om-b2:#242e3e;--om-tx:#c8cfd8;--om-dim:#5e6a7a;--om-muted:#333e50;--om-seg-bg:#080b11;--om-seg-border:#1a2030;--om-ot-gold:#C9A84C;--om-ot-gold-bg:rgba(201,168,76,0.10);">
   <div style="display:flex;gap:4px;margin-bottom:6px;">
     <button type="button" id="rrSlPlusModeBe" class="multi-entry-toggle multi-entry-toggle--compact active" style="flex:1;">BE</button>
     <button type="button" id="rrSlPlusModeTr" class="multi-entry-toggle multi-entry-toggle--compact" style="flex:1;">TR</button>
@@ -19044,6 +19044,7 @@ class OrderManager {
             if (trFields) {
                 trFields.classList.toggle('is-hidden', !tr);
             }
+            requestAnimationFrame(() => this._positionRrSlPlusModal(overlay));
         };
 
         overlay.querySelector('#rrSlPlusModeBe').onclick = () => setMode(false);
@@ -19058,22 +19059,69 @@ class OrderManager {
             }
         });
         overlay.querySelector('#rrSlPlusCancel').onclick = () => this._closeRiskRewardSlPlusDialog();
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) this._closeRiskRewardSlPlusDialog();
-        });
         overlay.querySelector('#rrSlPlusApply').onclick = () => this._applyRiskRewardSlPlusDialog();
         document.addEventListener('keydown', this._rrSlPlusModalEscHandler = (ev) => {
             if (ev.key !== 'Escape') return;
             const o = document.getElementById('rrSlPlusModalOverlay');
-            if (o && o.style.display === 'flex') this._closeRiskRewardSlPlusDialog();
+            if (o && o.style.display !== 'none') this._closeRiskRewardSlPlusDialog();
         });
+    }
+
+    /**
+     * Popover anchor: SL+ hit circle (viewport coords). Repositions when BE/TR toggles change height.
+     */
+    _positionRrSlPlusModal(overlay) {
+        const card = overlay?.querySelector?.('.rr-sl-plus-modal-surface');
+        if (!card) return;
+        const anchor = overlay._rrSlPlusAnchorRect;
+        if (!anchor || !Number.isFinite(anchor.width) || anchor.width <= 0) {
+            card.style.left = '50%';
+            card.style.top = '50%';
+            card.style.transform = 'translate(-50%, -50%)';
+            card.style.right = 'auto';
+            card.style.bottom = 'auto';
+            return;
+        }
+        card.style.transform = 'none';
+        const pad = 8;
+        const gap = 8;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const cr = card.getBoundingClientRect();
+        const w = cr.width;
+        const h = cr.height;
+        let left = anchor.right + gap;
+        let top = anchor.top + anchor.height / 2 - h / 2;
+        if (left + w > vw - pad) {
+            left = anchor.left - w - gap;
+        }
+        if (left < pad) left = pad;
+        if (top < pad) top = pad;
+        if (top + h > vh - pad) top = Math.max(pad, vh - h - pad);
+        card.style.left = `${Math.round(left)}px`;
+        card.style.top = `${Math.round(top)}px`;
+        card.style.right = 'auto';
+        card.style.bottom = 'auto';
     }
 
     _closeRiskRewardSlPlusDialog() {
         const o = document.getElementById('rrSlPlusModalOverlay');
         if (o) {
+            if (o._rrSlPlusOutsideClose) {
+                document.removeEventListener('mousedown', o._rrSlPlusOutsideClose, true);
+                o._rrSlPlusOutsideClose = null;
+            }
             o.style.display = 'none';
             o._drawing = null;
+            o._rrSlPlusAnchorRect = null;
+            const card = o.querySelector('.rr-sl-plus-modal-surface');
+            if (card) {
+                card.style.left = '';
+                card.style.top = '';
+                card.style.transform = '';
+                card.style.right = '';
+                card.style.bottom = '';
+            }
         }
     }
 
@@ -19118,13 +19166,29 @@ class OrderManager {
     }
 
     /**
-     * Risk/reward SL +: open chooser (Breakeven vs Trailing) before changing the tool.
+     * Risk/reward SL +: open chooser (Breakeven vs Trailing) next to the SL+ control.
+     * @param {MouseEvent} [anchorEvent] - click from the + hit target (`currentTarget` = circle)
      */
-    showRiskRewardSlPlusDialog(drawing) {
+    showRiskRewardSlPlusDialog(drawing, anchorEvent) {
         if (!drawing) return;
         this._ensureRiskRewardSlPlusModal();
         const overlay = document.getElementById('rrSlPlusModalOverlay');
         overlay._drawing = drawing;
+
+        const t = anchorEvent?.currentTarget;
+        if (t && typeof t.getBoundingClientRect === 'function') {
+            const r = t.getBoundingClientRect();
+            overlay._rrSlPlusAnchorRect = {
+                left: r.left,
+                top: r.top,
+                right: r.right,
+                bottom: r.bottom,
+                width: r.width,
+                height: r.height
+            };
+        } else {
+            overlay._rrSlPlusAnchorRect = null;
+        }
 
         const act = document.getElementById('trailingActivateRR');
         const step = document.getElementById('trailingStepSize');
@@ -19145,7 +19209,25 @@ class OrderManager {
         overlay.querySelector('#rrSlPlusModeBe').click();
         if (startTr) overlay.querySelector('#rrSlPlusModeTr').click();
 
-        overlay.style.display = 'flex';
+        overlay.style.display = 'block';
+        overlay.style.pointerEvents = 'none';
+
+        requestAnimationFrame(() => {
+            this._positionRrSlPlusModal(overlay);
+            if (overlay._rrSlPlusOutsideClose) {
+                document.removeEventListener('mousedown', overlay._rrSlPlusOutsideClose, true);
+                overlay._rrSlPlusOutsideClose = null;
+            }
+            const outside = (ev) => {
+                const card = overlay.querySelector('.rr-sl-plus-modal-surface');
+                if (card && card.contains(ev.target)) return;
+                this._closeRiskRewardSlPlusDialog();
+            };
+            setTimeout(() => {
+                document.addEventListener('mousedown', outside, true);
+                overlay._rrSlPlusOutsideClose = outside;
+            }, 0);
+        });
     }
 
     /** Drag BE line on the risk/reward tool — updates breakeven inputs like dragging the chart BE preview. */
