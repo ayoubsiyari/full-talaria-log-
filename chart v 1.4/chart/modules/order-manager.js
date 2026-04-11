@@ -9329,8 +9329,11 @@ class OrderManager {
 
                 /* RR settings modal — denser layout (same components as order panel, tighter chrome) */
                 #rrMirrorOrderRoot {
-                    padding: 6px 8px 8px !important;
+                    padding: 8px 10px 10px !important;
                     border-radius: 6px !important;
+                    max-width: min(100%, 380px) !important;
+                    margin-left: 0 !important;
+                    margin-right: auto !important;
                 }
                 #rrMirrorOrderRoot > .order-label:first-child {
                     font-size: 10px !important;
@@ -9354,8 +9357,9 @@ class OrderManager {
                     min-height: 0 !important;
                 }
                 #rrMirrorOrderRoot .order-input.order-input--compact {
-                    padding: 3px 5px !important;
+                    padding: 4px 6px !important;
                     font-size: 10px !important;
+                    line-height: 1.25 !important;
                 }
                 #rrMirrorOrderRoot .input-stepper {
                     width: 22px !important;
@@ -9384,8 +9388,9 @@ class OrderManager {
                 #rrMirrorOrderRoot .order-input--entry-sl {
                     font-size: 11px !important;
                     font-weight: 600 !important;
-                    padding: 5px 7px !important;
+                    padding: 5px 8px !important;
                     border-radius: 4px !important;
+                    line-height: 1.3 !important;
                 }
                 #rrMirrorOrderRoot .multi-entry-toggle--compact {
                     font-size: 8px !important;
@@ -9443,7 +9448,7 @@ class OrderManager {
                     padding: 0 0 2px !important;
                 }
                 #rrMirrorOrderRoot .order-tp-multi__rows {
-                    max-height: 112px !important;
+                    max-height: 120px !important;
                     gap: 3px !important;
                 }
                 #rrMirrorOrderRoot .order-tp-multi__row input {
@@ -9460,10 +9465,10 @@ class OrderManager {
                     height: 12px !important;
                 }
                 #rrMirrorOrderRoot #rrSettingsMultiEntryRows.multi-entry-rows--scroll {
-                    max-height: 72px !important;
+                    max-height: 104px !important;
                 }
                 #rrMirrorOrderRoot .multi-entry-rows--scroll {
-                    max-height: 72px !important;
+                    max-height: 104px !important;
                 }
                 #rrMirrorOrderRoot .multi-entry-container--inline {
                     border-radius: 4px !important;
@@ -9481,9 +9486,10 @@ class OrderManager {
                     align-items: stretch !important;
                 }
                 #rrMirrorOrderRoot .multi-entry-row-input {
-                    padding: 2px 4px !important;
-                    font-size: 9px !important;
+                    padding: 3px 5px !important;
+                    font-size: 10px !important;
                     border-radius: 3px !important;
+                    line-height: 1.25 !important;
                 }
                 #rrMirrorOrderRoot .multi-entry-amount-wrap {
                     border-radius: 3px !important;
@@ -9494,8 +9500,8 @@ class OrderManager {
                     font-size: 8px !important;
                 }
                 #rrMirrorOrderRoot .multi-entry-amount-input {
-                    padding: 2px 4px !important;
-                    font-size: 9px !important;
+                    padding: 3px 4px !important;
+                    font-size: 10px !important;
                 }
                 #rrMirrorOrderRoot .multi-entry-delete-btn {
                     width: 18px !important;
@@ -9504,10 +9510,10 @@ class OrderManager {
                     line-height: 1 !important;
                 }
                 #rrMirrorOrderRoot .multi-entry-row-info {
-                    padding: 1px 0 0 !important;
+                    padding: 2px 0 0 !important;
                     gap: 6px !important;
-                    font-size: 7px !important;
-                    line-height: 1.15 !important;
+                    font-size: 8px !important;
+                    line-height: 1.2 !important;
                 }
                 #rrMirrorOrderRoot .multi-entry-add-row {
                     padding: 2px 4px !important;
@@ -9537,22 +9543,19 @@ class OrderManager {
                     font-size: 9px !important;
                 }
                 #rrMirrorOrderRoot .input-stepper {
-                    width: 20px !important;
-                    height: 22px !important;
+                    width: 22px !important;
+                    height: 26px !important;
                     font-size: 11px !important;
                 }
                 #rrMirrorOrderRoot .multi-entry-row-inputs .input-stepper {
                     width: 18px !important;
-                    height: 22px !important;
+                    height: 26px !important;
                     font-size: 10px !important;
                 }
                 #rrMirrorOrderRoot .multi-entry-amount-wrap .input-stepper {
                     width: 18px !important;
-                    height: 22px !important;
+                    height: 26px !important;
                     font-size: 10px !important;
-                }
-                #rrMirrorOrderRoot .order-tp-multi__rows {
-                    max-height: 80px !important;
                 }
                 #rrMirrorOrderRoot .order-tp-multi__row {
                     gap: 2px !important;
