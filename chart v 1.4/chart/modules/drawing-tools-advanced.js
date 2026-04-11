@@ -2627,7 +2627,9 @@ class BaseRiskRewardTool extends BaseDrawing {
                     const badgeBx = showPct ? (leftX + controlsW + cg) : (rightX - bw);
                     const cy = by + bh / 2 - ctrlSize / 2;
 
-                    const root = this.group.append('g').attr('class', 'rr-tp-mini-pct-controls');
+                    const root = this.group.append('g')
+                        .attr('class', 'rr-tp-mini-pct-controls')
+                        .style('pointer-events', 'all');
 
                     const wirePctClick = (delta) => (event) => {
                         event.stopPropagation();
@@ -2894,6 +2896,9 @@ class BaseRiskRewardTool extends BaseDrawing {
             const pill = this.group.select('g.center-info.rr-multi-pill-drag');
             if (!pill.empty()) pill.raise();
         }
+
+        // Multi-TP % +/− must paint above horizontal `rr-extra-drag-hit` strips (and body drag), or drags steal clicks.
+        this.group.selectAll('g.rr-tp-mini-pct-controls').raise();
 
         return this.group;
     }
