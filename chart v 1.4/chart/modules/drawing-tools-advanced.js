@@ -2620,18 +2620,22 @@ class BaseRiskRewardTool extends BaseDrawing {
                     const tpNum = si >= 0 ? si + 1 : 1;
                     let pctStr = '—';
                     let usd = null;
-                    if (sortedOm.length > 1) {
+                    const chartRef = this.chart || (typeof window !== 'undefined' ? window.chart : null);
+                    const openTpM = om && typeof om.getOpenPositionTpMetricsForChartPrice === 'function'
+                        ? om.getOpenPositionTpMetricsForChartPrice(chartRef, sideStr, rp, rrPrec)
+                        : null;
+                    if (openTpM && Number.isFinite(openTpM.pnl)) {
+                        usd = openTpM.pnl;
+                        pctStr = Number.isFinite(openTpM.percentage)
+                            ? `${Math.round(openTpM.percentage)}%`
+                            : '—';
+                    } else if (sortedOm.length > 1) {
                         const leg = sortedOm.find((t) => t && Number.isFinite(t.price)
                             && Math.abs(tpRound(t.price) - rp) <= epsPx);
                         if (leg && Number.isFinite(leg.percentage)) {
                             const pct = Number(leg.percentage);
                             pctStr = `${Math.round(pct)}%`;
-                            const fromOpen = om && typeof om.getOpenPositionTpPnLUsdForChartPrice === 'function'
-                                ? om.getOpenPositionTpPnLUsdForChartPrice(this.chart, sideStr, rp, rrPrec)
-                                : null;
-                            usd = fromOpen != null
-                                ? fromOpen
-                                : Math.round(targetRewardUsdForBadges * (pct / 100));
+                            usd = Math.round(targetRewardUsdForBadges * (pct / 100));
                         }
                     }
                     const sub = usd != null ? `$${usd} · ${pctStr}` : pctStr;

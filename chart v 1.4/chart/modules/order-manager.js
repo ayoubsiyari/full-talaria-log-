@@ -23285,33 +23285,46 @@ class OrderManager {
     }
 
     /**
-     * RR tool mini-badges: same rounded $ as chart TP labels for an open multi-TP position (not reward×%).
+     * RR tool mini-badges: same rounded $ and % as chart TP labels for an open multi-TP position.
+     * Uses the same _multiTpTargetChartMetrics path as drawSLTPLines. Pip-tolerant price match so
+     * drawing ↔ position float noise does not force a fallback to reward×%.
+     * @returns {{ pnl: number, percentage: number } | null}
      */
-    getOpenPositionTpPnLUsdForChartPrice(chart, side, tpPrice, pricePrec = 5) {
-        if (!chart || tpPrice == null || !Number.isFinite(Number(tpPrice))) return null;
+    getOpenPositionTpMetricsForChartPrice(chart, side, tpPrice, pricePrec = 5) {
+        if (tpPrice == null || !Number.isFinite(Number(tpPrice))) return null;
+        const ch = chart || this.chart;
+        if (!ch) return null;
         const wantBuy = side === 'BUY' || side === 'buy';
         const roundP = (p) => parseFloat(Number(p).toFixed(pricePrec));
         const t = roundP(tpPrice);
-        const eps = Math.max(1e-10, Math.abs(t) * 1e-9);
+        const pip = Number(this.pipSize) > 0 ? this.pipSize : 0.0001;
+        const eps = Math.max(pip * 5, Math.abs(t) * 1e-8, 1e-10);
         const list = Array.isArray(this.openPositions) ? this.openPositions : [];
         for (const pos of list) {
-            if (!pos || !this._positionTickerMatchesChartSymbol(pos, chart)) continue;
+            if (!pos || !this._positionTickerMatchesChartSymbol(pos, ch)) continue;
             const isBuy = pos.type === 'BUY';
             if (wantBuy !== isBuy) continue;
             if (!pos.tpTargets || !pos.tpTargets.length) continue;
-            let idx = -1;
+            let bestIdx = -1;
+            let bestD = Infinity;
             for (let i = 0; i < pos.tpTargets.length; i++) {
                 const tt = pos.tpTargets[i];
                 if (!tt || tt.hit || !Number.isFinite(tt.price)) continue;
-                if (Math.abs(roundP(tt.price) - t) <= eps) {
-                    idx = i;
-                    break;
+                const d = Math.abs(roundP(tt.price) - t);
+                if (d <= eps && d < bestD) {
+                    bestD = d;
+                    bestIdx = i;
                 }
             }
-            if (idx < 0) continue;
-            const tgt = pos.tpTargets[idx];
-            const { pnl } = this._multiTpTargetChartMetrics(pos, tgt, idx, 'open');
-            if (Number.isFinite(pnl)) return Math.round(pnl);
+            if (bestIdx < 0) continue;
+            const tgt = pos.tpTargets[bestIdx];
+            const { pnl } = this._multiTpTargetChartMetrics(pos, tgt, bestIdx, 'open');
+            if (!Number.isFinite(pnl)) continue;
+            const pct = Number(tgt.percentage);
+            return {
+                pnl: Math.round(pnl),
+                percentage: Number.isFinite(pct) ? pct : 0
+            };
         }
         return null;
     }
