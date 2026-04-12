@@ -2,7 +2,7 @@
 
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, func
 
 from models import db, StrategyPost, PostLike, PostComment, UserFollow, Strategy, User
 from routes.strategy_routes import _strategy_dict
@@ -38,7 +38,7 @@ def can_view_strategy_post(viewer_id, post):
     vis = (post.visibility or 'public')
     if vis is None or (isinstance(vis, str) and not vis.strip()):
         vis = 'public'
-    vis = str(vis).lower()
+    vis = str(vis).strip().lower()
     if vis not in _ALLOWED_VISIBILITY:
         vis = 'public'
     author_id = post.user_id
@@ -91,11 +91,17 @@ def get_feed():
         else:
             friends_authors = StrategyPost.user_id == user_id
 
-        public_vis = or_(StrategyPost.visibility == 'public', StrategyPost.visibility.is_(None))
+        # Normalize visibility for SQL (handles whitespace, casing, legacy empty strings)
+        vis_norm = func.lower(func.trim(StrategyPost.visibility))
+        public_vis = or_(
+            StrategyPost.visibility.is_(None),
+            vis_norm == 'public',
+            vis_norm == '',
+        )
         visibility_clause = or_(
             public_vis,
-            and_(StrategyPost.visibility == 'private', StrategyPost.user_id == user_id),
-            and_(StrategyPost.visibility == 'friends', friends_authors),
+            and_(vis_norm == 'private', StrategyPost.user_id == user_id),
+            and_(vis_norm == 'friends', friends_authors),
         )
 
         q = StrategyPost.query.filter(visibility_clause)
@@ -157,7 +163,8 @@ def create_post():
         if not strat:
             return jsonify({'success': False, 'error': 'Strategy not found'}), 404
 
-        vis = (data.get('visibility') or 'public').lower()
+        vis = data.get('visibility') or 'public'
+        vis = str(vis).strip().lower() if isinstance(vis, str) else 'public'
         if vis not in _ALLOWED_VISIBILITY:
             vis = 'public'
 

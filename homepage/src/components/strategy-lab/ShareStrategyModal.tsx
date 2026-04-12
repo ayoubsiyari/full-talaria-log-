@@ -102,12 +102,14 @@ export default function ShareStrategyModal({
             onChange={(e) => setVisibility(e.target.value)}
             className="w-full rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] px-3 py-2 text-[var(--sl-text)]"
           >
-            <option value="public">Public — everyone signed in</option>
-            <option value="friends">Friends — mutual follows only</option>
-            <option value="private">Private — only you (hidden from others&apos; feeds)</option>
+            <option value="public">Public — any logged-in user sees this in the feed</option>
+            <option value="friends">Friends — only people you mutually follow</option>
+            <option value="private">Private — only you (others never see it in the feed)</option>
           </select>
           <p className="mt-2 text-xs text-[var(--sl-text-muted)]">
-            Friends: both users must follow each other. Private posts only you see in the feed.
+            To test with another account, choose{" "}
+            <strong className="text-[var(--sl-text-sec)]">Public</strong>. &quot;Friends&quot; hides the post from everyone
+            except you and users who follow you and whom you follow back.
           </p>
         </div>
         {err && <p className="mb-2 text-sm text-[var(--sl-red)]">{err}</p>}
