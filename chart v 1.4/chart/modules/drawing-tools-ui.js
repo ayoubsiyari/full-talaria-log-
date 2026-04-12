@@ -32287,6 +32287,15 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
         const drawingToRestore = this.currentDrawing;
 
+        try {
+            const dm = this.drawingManager
+                || (typeof window !== 'undefined' && window.chart && window.chart.drawingManager)
+                || (typeof window !== 'undefined' && window.drawingManager);
+            if (dm && typeof dm.suppressNextCanvasBackgroundClick === 'function') {
+                dm.suppressNextCanvasBackgroundClick();
+            }
+        } catch (_e) { /* ignore */ }
+
         
 
         // Remove click outside handler

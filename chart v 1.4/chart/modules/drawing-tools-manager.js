@@ -86,6 +86,8 @@ class DrawingToolsManager {
 
         this._hoverHandleBoundDrawingId = null;
         this._hoverHandleBoundGroupNode = null;
+        /** After closing drawing settings (Apply/Close), ignore one stray canvas click so selection is not cleared. */
+        this._suppressNextCanvasBgClick = false;
         
         // Style persistence - remember last used style per tool type
         this.savedToolStyles = this.loadSavedToolStyles();
@@ -359,6 +361,15 @@ class DrawingToolsManager {
             },
             true
         );
+    }
+
+    /**
+     * Call when the drawing settings modal closes (Apply / Cancel / Close). Prevents the next
+     * click on the chart from running the "empty canvas" deselect path — common after the modal
+     * is removed and the event hits the canvas (e.g. after choosing BE options and clicking Apply).
+     */
+    suppressNextCanvasBackgroundClick() {
+        this._suppressNextCanvasBgClick = true;
     }
 
     scheduleRenderDrawing(drawing) {
@@ -1137,6 +1148,10 @@ class DrawingToolsManager {
             const onClick = (event) => {
                 if (suppressNextCanvasClick) {
                     suppressNextCanvasClick = false;
+                    return;
+                }
+                if (this._suppressNextCanvasBgClick) {
+                    this._suppressNextCanvasBgClick = false;
                     return;
                 }
 
