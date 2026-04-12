@@ -90,9 +90,13 @@ export default function ShareStrategyModal({ strategyId, onClose, onPosted }) {
             onChange={(e) => setVisibility(e.target.value)}
             className="w-full rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] px-3 py-2 text-[var(--sl-text)]"
           >
-            <option value="public">Public</option>
-            <option value="friends">Friends</option>
+            <option value="public">Public — everyone signed in</option>
+            <option value="friends">Friends — mutual follows only</option>
+            <option value="private">Private — only you (not in others&apos; feeds)</option>
           </select>
+          <p className="mt-2 text-xs text-[var(--sl-text-muted)]">
+            Friends: both you and the other person must follow each other. Private posts still appear in your own feed.
+          </p>
         </div>
         {err && <p className="mb-2 text-sm text-[var(--sl-red)]">{err}</p>}
         <div className="flex justify-end gap-2">

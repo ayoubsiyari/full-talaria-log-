@@ -2,6 +2,7 @@
 
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from sqlalchemy import or_, and_
 
 from models import db, StrategyPost, PostLike, PostComment, UserFollow, Strategy, User
 from routes.strategy_routes import _strategy_dict
@@ -9,9 +10,48 @@ from routes.strategy_routes import _strategy_dict
 
 feed_bp = Blueprint('feed', __name__)
 
+_ALLOWED_VISIBILITY = frozenset({'public', 'friends', 'private'})
+
 
 def _uid():
     return int(get_jwt_identity())
+
+
+def _mutual_friend_ids(user_id):
+    """User IDs with mutual follow (A follows B and B follows A)."""
+    rows_a = UserFollow.query.filter_by(follower_id=user_id).all()
+    i_follow = {r.following_id for r in rows_a}
+    rows_b = UserFollow.query.filter_by(following_id=user_id).all()
+    follow_me = {r.follower_id for r in rows_b}
+    return i_follow & follow_me
+
+
+def can_view_strategy_post(viewer_id, post):
+    """
+    Who may see or interact with a feed post:
+    - public: any logged-in user
+    - friends: author + users who mutually follow the author
+    - private: author only (not shown to others in the community feed)
+    """
+    if not post:
+        return False
+    vis = (post.visibility or 'public')
+    if vis is None or (isinstance(vis, str) and not vis.strip()):
+        vis = 'public'
+    vis = str(vis).lower()
+    if vis not in _ALLOWED_VISIBILITY:
+        vis = 'public'
+    author_id = post.user_id
+    if vis == 'public':
+        return True
+    if vis == 'private':
+        return viewer_id == author_id
+    if vis == 'friends':
+        if viewer_id == author_id:
+            return True
+        mutual = _mutual_friend_ids(viewer_id)
+        return author_id in mutual
+    return viewer_id == author_id
 
 
 def _comment_replies(parent_comment_id):
@@ -29,14 +69,36 @@ def _comment_replies(parent_comment_id):
 @feed_bp.route('/feed', methods=['GET'])
 @jwt_required()
 def get_feed():
-    """Paginated feed: all public posts or following-only with ?following=1"""
+    """
+    Paginated community feed with visibility:
+    - public: visible to everyone
+    - friends: author + users who mutually follow the author (both directions)
+    - private: author only (others never see it here)
+    Optional ?following=1 limits to people you follow (still respects visibility).
+    """
     try:
         user_id = _uid()
         page = int(request.args.get('page', 1))
         per_page = min(int(request.args.get('per_page', 20)), 50)
         following_only = request.args.get('following') in ('1', 'true', 'yes')
 
-        q = StrategyPost.query.filter(StrategyPost.visibility == 'public')
+        mutual_ids = _mutual_friend_ids(user_id)
+        if mutual_ids:
+            friends_authors = or_(
+                StrategyPost.user_id == user_id,
+                StrategyPost.user_id.in_(list(mutual_ids)),
+            )
+        else:
+            friends_authors = StrategyPost.user_id == user_id
+
+        public_vis = or_(StrategyPost.visibility == 'public', StrategyPost.visibility.is_(None))
+        visibility_clause = or_(
+            public_vis,
+            and_(StrategyPost.visibility == 'private', StrategyPost.user_id == user_id),
+            and_(StrategyPost.visibility == 'friends', friends_authors),
+        )
+
+        q = StrategyPost.query.filter(visibility_clause)
         if following_only:
             ids = [r.following_id for r in UserFollow.query.filter_by(follower_id=user_id).all()]
             if not ids:
@@ -95,12 +157,16 @@ def create_post():
         if not strat:
             return jsonify({'success': False, 'error': 'Strategy not found'}), 404
 
+        vis = (data.get('visibility') or 'public').lower()
+        if vis not in _ALLOWED_VISIBILITY:
+            vis = 'public'
+
         post = StrategyPost(
             user_id=user_id,
             strategy_id=sid,
             caption=data.get('caption'),
             images=data.get('images') or [],
-            visibility=data.get('visibility', 'public'),
+            visibility=vis,
             include_description=bool(data.get('include_description', True)),
             include_conditions=bool(data.get('include_conditions', True)),
             include_variables=bool(data.get('include_variables', True)),
@@ -140,6 +206,8 @@ def like_post(post_id):
         p = StrategyPost.query.get(post_id)
         if not p:
             return jsonify({'success': False, 'error': 'Post not found'}), 404
+        if not can_view_strategy_post(user_id, p):
+            return jsonify({'success': False, 'error': 'Forbidden'}), 403
 
         existing = PostLike.query.filter_by(post_id=post_id, user_id=user_id).first()
         if request.method == 'POST':
@@ -161,9 +229,12 @@ def like_post(post_id):
 @jwt_required()
 def post_comments(post_id):
     try:
+        user_id = _uid()
         p = StrategyPost.query.get(post_id)
         if not p:
             return jsonify({'success': False, 'error': 'Post not found'}), 404
+        if not can_view_strategy_post(user_id, p):
+            return jsonify({'success': False, 'error': 'Forbidden'}), 403
 
         if request.method == 'GET':
             rows = PostComment.query.filter_by(post_id=post_id, parent_id=None).order_by(PostComment.created_at.asc()).all()
@@ -179,7 +250,6 @@ def post_comments(post_id):
                 })
             return jsonify({'success': True, 'comments': out}), 200
 
-        user_id = _uid()
         data = request.get_json() or {}
         body = (data.get('body') or '').strip()
         if not body:

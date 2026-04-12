@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { JOURNAL_API_BASE } from "@/lib/journalApi";
 import StrategyWizard from "./StrategyWizard";
 import ShareStrategyModal from "./ShareStrategyModal";
+import PostCard from "@/components/ui/post-card";
 import { emptyDraft, definitionFromDraft, draftFromApi } from "@/strategyLab/defaults";
 import { Plus, Trash2, Share2, BarChart3, Copy } from "lucide-react";
 
@@ -339,28 +340,19 @@ export default function StrategiesLabPage() {
         )}
 
         {tab === "feed" && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-semibold">Community feed</h2>
+          <div className="flex flex-col items-center gap-6">
+            <div className="w-full max-w-[30rem] text-left">
+              <h2 className="text-lg font-semibold">Community feed</h2>
+              <p className="mt-1 text-xs text-[var(--sl-text-muted)]">
+                Public for everyone; friends-only when you mutually follow the author; private only in your feed.
+              </p>
+            </div>
             {feedPosts.map((p) => (
-              <article key={p.id} className="rounded-xl border border-[var(--sl-border)] bg-[var(--sl-card)] p-4">
-                <div className="mb-2 text-sm text-[var(--sl-text-muted)]">
-                  {p.author?.name} · {p.created_at}
-                </div>
-                <div className="font-semibold">{p.strategy?.name}</div>
-                <p className="mt-2 text-sm text-[var(--sl-text-sec)]">{p.caption}</p>
-                <div className="mt-3 flex gap-3 text-sm">
-                  <button
-                    type="button"
-                    onClick={() => likePost(p.id, p.liked_by_me)}
-                    className={p.liked_by_me ? "text-[var(--sl-red)]" : ""}
-                  >
-                    ♥ {p.likes_count}
-                  </button>
-                  <span>💬 {p.comments_count}</span>
-                </div>
-              </article>
+              <PostCard key={p.id} post={p} onLike={likePost} />
             ))}
-            {!feedPosts.length && <p className="text-[var(--sl-text-muted)]">No posts yet.</p>}
+            {!feedPosts.length && (
+              <p className="w-full max-w-[30rem] text-center text-[var(--sl-text-muted)]">No posts yet.</p>
+            )}
           </div>
         )}
 
