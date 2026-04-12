@@ -2,12 +2,14 @@ import React from 'react';
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import GeneralInfoStep from './GeneralInfoStep';
 import StrategyFlowStep from './StrategyFlowStep';
+import VariablesStep from './VariablesStep';
 import ReviewStep from './ReviewStep';
 
 const STEPS = [
   { id: 1, title: 'General Info' },
   { id: 2, title: 'Strategy Flow' },
-  { id: 3, title: 'Review' },
+  { id: 3, title: 'Variables' },
+  { id: 4, title: 'Review' },
 ];
 
 export default function StrategyWizard({ draft, setDraft, step, setStep, onSubmit, onBack, saving, isEdit }) {
@@ -18,7 +20,7 @@ export default function StrategyWizard({ draft, setDraft, step, setStep, onSubmi
 
   const goNext = () => {
     if (!canNext()) return;
-    setStep((s) => Math.min(3, s + 1));
+    setStep((s) => Math.min(4, s + 1));
   };
 
   const goPrev = () => {
@@ -29,7 +31,7 @@ export default function StrategyWizard({ draft, setDraft, step, setStep, onSubmi
     <div className="flex min-h-[calc(100vh-120px)] flex-col pb-24">
       {/* Stepper */}
       <div className="sticky top-0 z-10 border-b border-[var(--sl-border)] bg-[var(--sl-sidebar)] px-4 py-4">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-2">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-1 sm:gap-2">
           {STEPS.map((s) => (
             <button
               key={s.id}
@@ -53,7 +55,8 @@ export default function StrategyWizard({ draft, setDraft, step, setStep, onSubmi
       <div className="flex-1 overflow-auto">
         {step === 1 && <GeneralInfoStep draft={draft} setDraft={setDraft} />}
         {step === 2 && <StrategyFlowStep draft={draft} setDraft={setDraft} />}
-        {step === 3 && <ReviewStep draft={draft} />}
+        {step === 3 && <VariablesStep draft={draft} setDraft={setDraft} />}
+        {step === 4 && <ReviewStep draft={draft} />}
       </div>
 
       {/* Sticky bottom bar */}
@@ -67,14 +70,14 @@ export default function StrategyWizard({ draft, setDraft, step, setStep, onSubmi
             <ChevronLeft size={18} /> Back
           </button>
           <div className="flex gap-1">
-            {[1, 2, 3].map((d) => (
+            {[1, 2, 3, 4].map((d) => (
               <span
                 key={d}
                 className={`h-2 w-2 rounded-full ${step === d ? 'bg-[var(--sl-accent)]' : 'bg-[var(--sl-border)]'}`}
               />
             ))}
           </div>
-          {step < 3 ? (
+          {step < 4 ? (
             <button
               type="button"
               disabled={step === 1 && !canNext()}
