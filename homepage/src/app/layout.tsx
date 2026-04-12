@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import Script from "next/script";
 import "./globals.css";
+import "@/styles/strategy-lab.css";
 import { LanguageProvider } from "./LanguageProvider";
 import CookieConsent from "./CookieConsent";
 
@@ -32,6 +33,10 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl" className="dark" suppressHydrationWarning>
       <head>
+        <link
+          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:wght@400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-2S8BJ30FJE"
           strategy="afterInteractive"

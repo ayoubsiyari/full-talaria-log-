@@ -165,7 +165,7 @@ export default function BootcampPage() {
       isArabic
         ? {
             nav: { backHome: "العودة للرئيسية" },
-            tabs: { bootcamp: "المنتورشيب", journal: "الجورنال", backtest: "باكتست" },
+            tabs: { bootcamp: "المنتورشيب", journal: "الجورنال", backtest: "باكتست", strategiesLab: "استراتيجيات" },
             header: {
               a: "",
               b: "المنتورشيب",
@@ -239,7 +239,7 @@ export default function BootcampPage() {
           }
         : {
             nav: { backHome: "Back Home" },
-            tabs: { bootcamp: "Mentorship", journal: "Journal", backtest: "Backtest" },
+            tabs: { bootcamp: "Mentorship", journal: "Journal", backtest: "Backtest", strategiesLab: "Strategies Lab" },
             header: {
               a: "Trading",
               b: "Mentorship",
@@ -484,6 +484,11 @@ export default function BootcampPage() {
             <Link href="/backtest">
               <Button className="rounded-full text-sm sm:text-base px-4 py-3 sm:px-8 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all">
                 {t.tabs.backtest}
+              </Button>
+            </Link>
+            <Link href="/strategies-lab">
+              <Button className="rounded-full text-sm sm:text-base px-4 py-3 sm:px-8 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all">
+                {t.tabs.strategiesLab}
               </Button>
             </Link>
             {/* NinjaTrader tab hidden for now

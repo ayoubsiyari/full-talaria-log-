@@ -257,18 +257,24 @@ export default function Sidebar() {
             </NavLink>
           )}
 
-          {/* Strategy Builder */}
+          {/* Strategies Lab (main site — outside journal SPA) */}
           {isCollapsed ? (
-            <Tooltip content="Strategy Builder" position="right">
-              <NavLink to="/strategy-builder" className={({ isActive }) => `${isActive ? 'bg-cyan-500/12 border-l-[3px] border-cyan-400 text-cyan-50' : 'text-cyan-100/55'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-cyan-500/10 hover:text-cyan-50 transition-all duration-300`}>
+            <Tooltip content="Strategies Lab" position="right">
+              <a
+                href="/strategies-lab/"
+                className="text-cyan-100/55 flex items-center justify-center px-2 py-2 rounded-lg hover:bg-cyan-500/10 hover:text-cyan-50 transition-all duration-300"
+              >
                 <ClipboardList className="h-5 w-5" />
-              </NavLink>
+              </a>
             </Tooltip>
           ) : (
-            <NavLink to="/strategy-builder" className={({ isActive }) => `${isActive ? 'bg-cyan-500/12 border-l-[3px] border-cyan-400 text-cyan-50' : 'text-cyan-100/55'} flex items-center px-3 py-2 rounded-lg hover:bg-cyan-500/10 hover:text-cyan-50 hover:translate-x-1 transition-all duration-300`}>
+            <a
+              href="/strategies-lab/"
+              className="text-cyan-100/55 flex items-center px-3 py-2 rounded-lg hover:bg-cyan-500/10 hover:text-cyan-50 hover:translate-x-1 transition-all duration-300"
+            >
               <ClipboardList className="h-5 w-5" />
-              <span className="font-medium ml-3">Strategy Builder</span>
-            </NavLink>
+              <span className="font-medium ml-3">Strategies Lab</span>
+            </a>
           )}
 
           {/* Notes */}

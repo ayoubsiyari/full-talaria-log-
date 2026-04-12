@@ -24,7 +24,6 @@ import Trades    from './pages/Trades';
 import Settings  from './pages/Settings';
 import Learn     from './pages/Learn';
 import Notes from './pages/Notes';
-import StrategiesLab from './pages/StrategiesLab';
 
 import SymbolAnalysis from './pages/analytics/SymbolAnalysis';
 import ExitAnalysisPage from './pages/analytics/ExitAnalysis';
@@ -86,7 +85,17 @@ import FeatureDisabled from './components/FeatureDisabled';
 import FeatureFlagManager from './components/FeatureFlagManager';
 import { isFeatureEnabled, logFeatureFlags } from './config/featureFlags';
 
-
+/** Strategies Lab is served from the main site at /strategies-lab/ (Next homepage), not inside /journal/. */
+function StrategiesLabRedirect() {
+  useEffect(() => {
+    window.location.replace('/strategies-lab/');
+  }, []);
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center text-cyan-200">
+      Opening Strategies Lab…
+    </div>
+  );
+}
 
 /**
  * Layout that wraps all "protected" pages (i.e. those that should show the Sidebar).
@@ -175,7 +184,7 @@ function LayoutWithSidebar() {
                 <FeatureDisabled featureName="Strategy Builder" />
               }>
                 <SubscriptionGuard feature="Strategy Builder">
-                  <StrategiesLab />
+                  <StrategiesLabRedirect />
                 </SubscriptionGuard>
               </ProtectedRoute>
             } />

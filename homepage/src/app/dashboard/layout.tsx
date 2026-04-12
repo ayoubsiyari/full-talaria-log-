@@ -42,6 +42,7 @@ export default function DashboardLayout({
         sessions: "الجلسات",
         journal: "سجل التداول",
         backtest: "باكتيست",
+        strategiesLab: "المختبر",
         admin: "لوحة الإدارة",
         logout: "تسجيل الخروج",
       }
@@ -49,6 +50,7 @@ export default function DashboardLayout({
         sessions: "Sessions",
         journal: "Journal",
         backtest: "Backtest",
+        strategiesLab: "Strategies Lab",
         admin: "Admin",
         logout: "Logout",
       };
@@ -86,6 +88,7 @@ export default function DashboardLayout({
                 label: nav.backtest,
                 href: "/chart/index.html",
               },
+              { label: nav.strategiesLab, href: "/strategies-lab/" },
               { label: nav.journal, href: "/journal/dashboard" },
             ].map((item) => (
               <a
