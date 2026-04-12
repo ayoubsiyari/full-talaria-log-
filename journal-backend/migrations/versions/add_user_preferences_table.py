@@ -7,6 +7,7 @@ Create Date: 2026-02-27 11:50:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 from sqlalchemy.dialects.sqlite import JSON
 
 
@@ -18,7 +19,9 @@ depends_on = None
 
 
 def upgrade():
-    # Create user_preferences table
+    bind = op.get_bind()
+    if inspect(bind).has_table('user_preferences'):
+        return
     op.create_table(
         'user_preferences',
         sa.Column('id', sa.Integer(), nullable=False),

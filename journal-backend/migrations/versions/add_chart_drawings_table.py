@@ -7,6 +7,7 @@ Create Date: 2026-02-27 11:15:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 from sqlalchemy.dialects.sqlite import JSON
 
 
@@ -18,7 +19,9 @@ depends_on = None
 
 
 def upgrade():
-    # Create chart_drawings table
+    bind = op.get_bind()
+    if inspect(bind).has_table('chart_drawings'):
+        return
     op.create_table(
         'chart_drawings',
         sa.Column('id', sa.Integer(), nullable=False),
