@@ -4157,7 +4157,7 @@ class DrawingToolsManager {
             ? '.anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .resize-handle-hit, .resize-handle-group'
             : isVolumeProfileType
                 ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group'
-                : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-avg-zone-edge), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
+                : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-avg-zone-edge), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-primary-leg-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
         const dragElements = drawing.group.selectAll(dragSelector);
         const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : 4;
         
@@ -4584,6 +4584,16 @@ class DrawingToolsManager {
             pushHit('rr-primary-entry', chart.yScale(p0.y), primaryHalfH, x2NoPlus);
         }
 
+        const primaryLegHalfH = 26;
+        const p1 = drawing.points && drawing.points[1];
+        if (p1 && Number.isFinite(p1.y)) {
+            pushHit('rr-primary-stop', chart.yScale(p1.y), primaryLegHalfH, x2Full);
+        }
+        const p2 = drawing.points && drawing.points[2];
+        if (p2 && Number.isFinite(p2.y)) {
+            pushHit('rr-primary-tp', chart.yScale(p2.y), primaryLegHalfH, x2Full);
+        }
+
         const halfExtra = 26;
         // Match `extraTpDragHitW` / `extraEntryDragHitW` in BaseRiskRewardTool.render.
         const halfExtraTp = 48;
@@ -4916,6 +4926,8 @@ class DrawingToolsManager {
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         const hr = handleRole;
         const verticalRr = hr === 'rr-primary-entry'
+            || hr === 'rr-primary-stop'
+            || hr === 'rr-primary-tp'
             || hr === 'rr-be-line'
             || (typeof hr === 'string' && hr.startsWith('rr-extra-'));
         const cursor = verticalRr ? 'ns-resize' : 'ew-resize';

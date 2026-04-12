@@ -3233,6 +3233,32 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('stroke', 'none')
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
+
+            // Primary SL / farthest TP: same full-zone drag as entry — left resize dots alone are easy to miss.
+            const legStripH = 52;
+            const legW = Math.max(1, zoneX2 - zoneX1);
+            this.group.append('rect')
+                .attr('class', 'custom-handle rr-primary-leg-drag-hit')
+                .attr('data-handle-role', 'rr-primary-stop')
+                .attr('x', zoneX1)
+                .attr('y', stopY - legStripH / 2)
+                .attr('width', legW)
+                .attr('height', legStripH)
+                .attr('fill', 'rgba(0, 0, 0, 0.02)')
+                .attr('stroke', 'none')
+                .style('pointer-events', 'all')
+                .style('cursor', 'ns-resize');
+            this.group.append('rect')
+                .attr('class', 'custom-handle rr-primary-leg-drag-hit')
+                .attr('data-handle-role', 'rr-primary-tp')
+                .attr('x', zoneX1)
+                .attr('y', targetY - legStripH / 2)
+                .attr('width', legW)
+                .attr('height', legStripH)
+                .attr('fill', 'rgba(0, 0, 0, 0.02)')
+                .attr('stroke', 'none')
+                .style('pointer-events', 'all')
+                .style('cursor', 'ns-resize');
         }
 
         (this.meta.extraStops || []).forEach((row, idx) => {
@@ -3322,7 +3348,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         }
 
         // Keep full-width TP/SL/E drag slabs above zone / body-drag / labels so the entire line is grabbable.
-        this.group.selectAll('.rr-extra-drag-hit').raise();
+        this.group.selectAll('.rr-extra-drag-hit, .rr-primary-leg-drag-hit').raise();
 
         // Right-edge labels must sit above transparent drag strips (`rr-primary-entry-drag-hit`, `rr-extra-drag-hit`),
         // otherwise badges look missing / unclickable. `rr-mini-level-badge` (fallback E1/E2, SL, BE, Avg TP) was not
@@ -3395,6 +3421,28 @@ class BaseRiskRewardTool extends BaseDrawing {
                 return this.applyPrimaryEntryLineDragY(py, context);
             }
             return false;
+        }
+
+        if (handleRole === 'rr-primary-stop') {
+            const py = context.point?.y ?? context.dataPoint?.y;
+            if (Number.isFinite(py)) {
+                this.setStopPrice(py);
+                return true;
+            }
+            return false;
+        }
+
+        if (handleRole === 'rr-primary-tp') {
+            const py = context.point?.y ?? context.dataPoint?.y;
+            if (!Number.isFinite(py)) return false;
+            const om = window.chart?.orderManager;
+            if (om && typeof om.riskRewardSyncPrimaryTpDragFromTool === 'function') {
+                om.riskRewardSyncPrimaryTpDragFromTool(this, py);
+                this._afterRiskRewardOrderManagerSync();
+            } else {
+                this.setTargetPrice(py);
+            }
+            return true;
         }
 
         if (handleRole === 'rr-be-line') {
