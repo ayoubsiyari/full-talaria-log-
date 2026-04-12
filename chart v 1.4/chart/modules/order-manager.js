@@ -4240,6 +4240,21 @@ class OrderManager {
             }
         }
         trade = viewTrade;
+
+        const preN = trade.preTradeNotes || {};
+        const postN = trade.postTradeNotes || {};
+        const preStratVars = this._getTradePreStrategyVars(trade);
+        const postStratVars = this._getTradePostStrategyVars(trade);
+        const hasPreSection =
+            !!(preN.reason && String(preN.reason).trim()) ||
+            !!(preN.setup && String(preN.setup).trim()) ||
+            !!(preN.tags && String(preN.tags).trim()) ||
+            !!(preStratVars && preStratVars.length);
+        const hasPostSection =
+            !!(postN.reason && String(postN.reason).trim()) ||
+            !!(postN.setup && String(postN.setup).trim()) ||
+            !!(postN.tags && String(postN.tags).trim()) ||
+            !!(postStratVars && postStratVars.length);
         
         // Remove existing modal if any
         const existingModal = document.getElementById('tradeDetailsModal');
@@ -4837,7 +4852,7 @@ class OrderManager {
                 </div>
             ` : ''}
             
-            ${trade.preTradeNotes ? `
+            ${hasPreSection ? `
                 <div style="margin-bottom: 24px;">
                     <div style="
                         background: rgba(30,41,59,0.3);
@@ -4849,24 +4864,32 @@ class OrderManager {
                         <h4 style="color: #cbd5e1; font-size: 12px; margin: 0 0 16px 0; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
                             Pre-Trade Notes
                         </h4>
-                        ${trade.preTradeNotes.reason ? `
+                        ${preN.reason ? `
                             <div style="margin-bottom: 16px;">
                                 <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px; font-weight: 500;">Why taking this trade</div>
-                                <div style="color: #e5e7eb; font-size: 13px; line-height: 1.6;">${trade.preTradeNotes.reason}</div>
+                                <div style="color: #e5e7eb; font-size: 13px; line-height: 1.6;">${this._escapeHtml(preN.reason)}</div>
                             </div>
                         ` : ''}
-                        ${trade.preTradeNotes.setup ? `
+                        ${preN.setup ? `
                             <div style="margin-bottom: 16px;">
                                 <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px; font-weight: 500;">Setup/Strategy</div>
-                                <div style="color: #e5e7eb; font-size: 13px; line-height: 1.6;">${trade.preTradeNotes.setup}</div>
+                                <div style="color: #e5e7eb; font-size: 13px; line-height: 1.6;">${this._escapeHtml(preN.setup)}</div>
                             </div>
                         ` : ''}
-                        ${trade.preTradeNotes.tags ? `
+                        ${preStratVars && preStratVars.length ? `
+                            <div style="margin-bottom: 16px;">
+                                <div style="color: #94a3b8; font-size: 11px; margin-bottom: 8px; font-weight: 500;">Playbook variables (PRE)</div>
+                                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                                    ${this._htmlStrategyVariableChips(preStratVars)}
+                                </div>
+                            </div>
+                        ` : ''}
+                        ${preN.tags ? `
                             <div>
                                 <div style="color: #94a3b8; font-size: 11px; margin-bottom: 8px; font-weight: 500;">Tags</div>
                                 <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                                    ${trade.preTradeNotes.tags.split(',').map(tag => 
-                                        `<span style="background: rgba(148,163,184,0.2); color: #e5e7eb; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 500; border: 1px solid rgba(148,163,184,0.3);">${tag.trim()}</span>`
+                                    ${preN.tags.split(',').map((tag) =>
+                                        `<span style="background: rgba(148,163,184,0.2); color: #e5e7eb; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 500; border: 1px solid rgba(148,163,184,0.3);">${this._escapeHtml(tag.trim())}</span>`
                                     ).join('')}
                                 </div>
                             </div>
@@ -4875,7 +4898,7 @@ class OrderManager {
                 </div>
             ` : ''}
             
-            ${trade.postTradeNotes ? `
+            ${hasPostSection ? `
                 <div style="margin-bottom: 24px;">
                     <div style="
                         background: rgba(30,41,59,0.3);
@@ -4887,24 +4910,32 @@ class OrderManager {
                         <h4 style="color: #cbd5e1; font-size: 12px; margin: 0 0 16px 0; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
                             Post-Trade Analysis
                         </h4>
-                        ${trade.postTradeNotes.reason ? `
+                        ${postN.reason ? `
                             <div style="margin-bottom: 16px;">
                                 <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px; font-weight: 500;">Lessons learned</div>
-                                <div style="color: #e5e7eb; font-size: 13px; line-height: 1.6;">${trade.postTradeNotes.reason}</div>
+                                <div style="color: #e5e7eb; font-size: 13px; line-height: 1.6;">${this._escapeHtml(postN.reason)}</div>
                             </div>
                         ` : ''}
-                        ${trade.postTradeNotes.setup ? `
+                        ${postN.setup ? `
                             <div style="margin-bottom: 16px;">
                                 <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px; font-weight: 500;">What could be improved</div>
-                                <div style="color: #e5e7eb; font-size: 13px; line-height: 1.6;">${trade.postTradeNotes.setup}</div>
+                                <div style="color: #e5e7eb; font-size: 13px; line-height: 1.6;">${this._escapeHtml(postN.setup)}</div>
                             </div>
                         ` : ''}
-                        ${trade.postTradeNotes.tags ? `
+                        ${postStratVars && postStratVars.length ? `
+                            <div style="margin-bottom: 16px;">
+                                <div style="color: #94a3b8; font-size: 11px; margin-bottom: 8px; font-weight: 500;">Playbook variables (POST)</div>
+                                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                                    ${this._htmlStrategyVariableChips(postStratVars)}
+                                </div>
+                            </div>
+                        ` : ''}
+                        ${postN.tags ? `
                             <div>
                                 <div style="color: #94a3b8; font-size: 11px; margin-bottom: 8px; font-weight: 500;">Tags</div>
                                 <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                                    ${trade.postTradeNotes.tags.split(',').map(tag => 
-                                        `<span style="background: rgba(148,163,184,0.2); color: #e5e7eb; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 500; border: 1px solid rgba(148,163,184,0.3);">${tag.trim()}</span>`
+                                    ${postN.tags.split(',').map((tag) =>
+                                        `<span style="background: rgba(148,163,184,0.2); color: #e5e7eb; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 500; border: 1px solid rgba(148,163,184,0.3);">${this._escapeHtml(tag.trim())}</span>`
                                     ).join('')}
                                 </div>
                             </div>
@@ -5033,7 +5064,7 @@ class OrderManager {
             
             <!-- Action Buttons -->
             <div style="display: flex; gap: 12px; margin-bottom: 0;">
-                ${!trade.preTradeNotes || !trade.postTradeNotes ? `
+                ${!hasPreSection || !hasPostSection ? `
                     <button id="addNotesBtn" style="
                         flex: 1;
                         padding: 14px;
@@ -5046,11 +5077,11 @@ class OrderManager {
                         cursor: pointer;
                         transition: all 0.2s;
                     " onmouseover="this.style.background='rgba(30,41,59,0.7)'; this.style.borderColor='rgba(148,163,184,0.5)';" onmouseout="this.style.background='rgba(30,41,59,0.5)'; this.style.borderColor='rgba(148,163,184,0.3)';">
-                        ${!trade.preTradeNotes && !trade.postTradeNotes ? 'Add Notes' : 'Add Missing Notes'}
+                        ${!hasPreSection && !hasPostSection ? 'Add Notes' : 'Add Missing Notes'}
                     </button>
                 ` : ''}
                 <button id="backToJournal" style="
-                    ${!trade.preTradeNotes || !trade.postTradeNotes ? 'flex: 1;' : 'width: 100%;'}
+                    ${!hasPreSection || !hasPostSection ? 'flex: 1;' : 'width: 100%;'}
                     padding: 14px;
                     background: rgba(148,163,184,0.15);
                     color: #e5e7eb;
@@ -5081,10 +5112,9 @@ class OrderManager {
         if (addNotesBtn) {
             addNotesBtn.onclick = () => {
                 modal.remove();
-                // Determine which type of note to add
-                if (!trade.preTradeNotes) {
+                if (!hasPreSection) {
                     this.showPreTradeNoteModal(trade);
-                } else if (!trade.postTradeNotes) {
+                } else if (!hasPostSection) {
                     this.showPostTradeNoteModal(trade);
                 }
             };
@@ -6015,6 +6045,46 @@ class OrderManager {
                 });
         });
         return out.join(', ');
+    }
+
+    _escapeHtml(str) {
+        if (str == null) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    /** PRE snapshot on a persisted trade (snake_case or camelCase). */
+    _getTradePreStrategyVars(trade) {
+        if (!trade) return null;
+        const v = trade.strategy_variables != null ? trade.strategy_variables : trade.strategyVariables;
+        return Array.isArray(v) && v.length ? v : null;
+    }
+
+    /** POST snapshot on a persisted trade. */
+    _getTradePostStrategyVars(trade) {
+        if (!trade) return null;
+        const v = trade.post_strategy_variables != null ? trade.post_strategy_variables : trade.postStrategyVariables;
+        return Array.isArray(v) && v.length ? v : null;
+    }
+
+    /** Chip HTML for analytics-friendly variable rows (name: value). */
+    _htmlStrategyVariableChips(vars) {
+        if (!Array.isArray(vars) || !vars.length) return '';
+        const chip =
+            'background: rgba(148,163,184,0.2); color: #e5e7eb; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 500; border: 1px solid rgba(148,163,184,0.3);';
+        return vars
+            .map((v) => {
+                const name = String(v.name || v.id || '').trim();
+                const val = String(v.value != null ? v.value : '').trim();
+                const label = val ? `${name}: ${val}` : name;
+                if (!label) return '';
+                return `<span style="${chip}">${this._escapeHtml(label)}</span>`;
+            })
+            .filter(Boolean)
+            .join('');
     }
     
     /**
