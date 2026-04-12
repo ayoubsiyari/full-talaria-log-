@@ -2585,15 +2585,15 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('x', centerTextX)
                 .attr('y', y2);
 
-            /** Right-edge mini badges: one horizontal line (e.g. "BE 1.56R", "E1 0.05 lot"). */
-            const appendRrMiniBadge = (lineYpx, lineTexts, bgFill) => {
+            /** Right-edge mini badges: one horizontal line (e.g. "BE 1.56R", "E1 0.05 lot"). Optional handleRole = same drag as price line. */
+            const appendRrMiniBadge = (lineYpx, lineTexts, bgFill, handleRole = null) => {
                 const parts = (lineTexts || []).filter((x) => x != null && String(x).length > 0);
                 if (!parts.length) return;
                 const line = parts.join(' ');
                 const padX = 6;
                 const padY = 3;
                 const edgePad = 4;
-                const g = this.group.append('g').attr('class', 'rr-mini-level-badge rr-no-hit').style('pointer-events', 'none');
+                const g = this.group.append('g').attr('class', 'rr-mini-level-badge').style('pointer-events', 'none');
                 const tmp = g.append('text')
                     .attr('x', 0)
                     .attr('y', 0)
@@ -2626,6 +2626,18 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .attr('font-weight', '600')
                     .attr('font-family', labelFontFamily)
                     .text(line);
+                if (this.selected && handleRole) {
+                    g.append('rect')
+                        .attr('class', 'custom-handle rr-mini-badge-drag-hit')
+                        .attr('data-handle-role', handleRole)
+                        .attr('x', bx)
+                        .attr('y', by)
+                        .attr('width', bw)
+                        .attr('height', bh)
+                        .attr('rx', 4)
+                        .attr('fill', 'transparent')
+                        .style('cursor', 'ns-resize');
+                }
             };
 
             // SL/leg prices must come from the drawing (points), not panel-only OM rows: whole-tool moves
@@ -2825,6 +2837,21 @@ class BaseRiskRewardTool extends BaseDrawing {
                     .attr('font-family', labelFontFamily)
                     .style('pointer-events', 'none')
                     .text(line);
+                if (this.selected) {
+                    const er = entryLevelIndex === 0
+                        ? 'rr-primary-entry'
+                        : `rr-extra-entry-${entryLevelIndex - 1}`;
+                    root.append('rect')
+                        .attr('class', 'custom-handle rr-mini-badge-drag-hit')
+                        .attr('data-handle-role', er)
+                        .attr('x', badgeBx)
+                        .attr('y', by)
+                        .attr('width', bw)
+                        .attr('height', bh)
+                        .attr('rx', 4)
+                        .attr('fill', 'transparent')
+                        .style('cursor', 'ns-resize');
+                }
             };
 
             // Entry mini-badges: paint in **screen Y** order (larger y = lower on chart first, smaller y last)
@@ -2875,10 +2902,11 @@ class BaseRiskRewardTool extends BaseDrawing {
                 applyEntryBadgeVerticalSpread(entryBadgeRows);
                 entryBadgeRows.forEach(({ i, yPix, displayY, entryLineParts }) => {
                     const lineY = Number.isFinite(displayY) ? displayY : yPix;
+                    const entryRole = i === 0 ? 'rr-primary-entry' : `rr-extra-entry-${i - 1}`;
                     if (showEntryQtyControls) {
                         appendRrEntryMiniBadgeWithQtyControls(lineY, entryLineParts, entryFill, i);
                     } else {
-                        appendRrMiniBadge(lineY, entryLineParts, entryFill);
+                        appendRrMiniBadge(lineY, entryLineParts, entryFill, entryRole);
                     }
                 });
             } else if (hasDrawnExtras) {
@@ -2892,9 +2920,10 @@ class BaseRiskRewardTool extends BaseDrawing {
                     });
                 });
                 applyEntryBadgeVerticalSpread(entryBadgeRows);
-                entryBadgeRows.forEach((r) => {
+                entryBadgeRows.forEach((r, idx) => {
                     const lineY = Number.isFinite(r.displayY) ? r.displayY : r.yPix;
-                    appendRrMiniBadge(lineY, r.lineTexts, entryFill);
+                    const entryRole = idx === 0 ? 'rr-primary-entry' : `rr-extra-entry-${idx - 1}`;
+                    appendRrMiniBadge(lineY, r.lineTexts, entryFill, entryRole);
                 });
             }
 
@@ -2926,10 +2955,25 @@ class BaseRiskRewardTool extends BaseDrawing {
                     return -1;
                 };
 
+                const epsPrice = Math.max(1e-10, (Math.abs(uniqSorted[0] || 1)) * 1e-9);
+                const tpRoleForRp = (priceR) => {
+                    const pr = tpRound(priceR);
+                    if (Number.isFinite(this.points[2]?.y) && Math.abs(tpRound(this.points[2].y) - pr) <= epsPrice) {
+                        return 'rr-primary-tp';
+                    }
+                    const extras = this.meta.extraTargets || [];
+                    for (let ti = 0; ti < extras.length; ti++) {
+                        const row = extras[ti];
+                        if (!row || !Number.isFinite(row.y)) continue;
+                        if (Math.abs(tpRound(row.y) - pr) <= epsPrice) return `rr-extra-target-${ti}`;
+                    }
+                    return 'rr-primary-tp';
+                };
+
                 /**
                  * Multi-TP: mini badge plus [−]/[+] (same ±5 as order panel `adjustTPPercentage`).
                  */
-                const appendRrTpMiniBadgeWithPctControls = (lineYpx, lineTexts, bgFill, tpTargetIndex) => {
+                const appendRrTpMiniBadgeWithPctControls = (lineYpx, lineTexts, bgFill, tpTargetIndex, handleRole = null) => {
                     const parts = (lineTexts || []).filter((x) => x != null && String(x).length > 0);
                     if (!parts.length) return;
                     const line = parts.join(' ');
@@ -3102,6 +3146,18 @@ class BaseRiskRewardTool extends BaseDrawing {
                         .attr('font-family', labelFontFamily)
                         .style('pointer-events', 'none')
                         .text(line);
+                    if (this.selected && handleRole) {
+                        root.append('rect')
+                            .attr('class', 'custom-handle rr-mini-badge-drag-hit')
+                            .attr('data-handle-role', handleRole)
+                            .attr('x', badgeBx)
+                            .attr('y', by)
+                            .attr('width', bw)
+                            .attr('height', bh)
+                            .attr('rx', 4)
+                            .attr('fill', 'transparent')
+                            .style('cursor', 'ns-resize');
+                    }
                 };
 
                 const drawOneTpBadge = (yy, rp) => {
@@ -3132,10 +3188,11 @@ class BaseRiskRewardTool extends BaseDrawing {
                     }
                     const sub = subParts.length ? subParts.join(' · ') : '—';
                     const tIdx = findOmTpTargetIndex(rp);
+                    const hr = tpRoleForRp(rp);
                     if (sortedOm.length > 1 && tIdx >= 0) {
-                        appendRrTpMiniBadgeWithPctControls(yy, [`TP${tpNum}`, sub], tpInnerFill, tIdx);
+                        appendRrTpMiniBadgeWithPctControls(yy, [`TP${tpNum}`, sub], tpInnerFill, tIdx, hr);
                     } else {
-                        appendRrMiniBadge(yy, [`TP${tpNum}`, sub], tpInnerFill);
+                        appendRrMiniBadge(yy, [`TP${tpNum}`, sub], tpInnerFill, hr);
                     }
                 };
 
@@ -3161,7 +3218,7 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             (this.meta.extraStops || []).forEach((row, i) => {
                 if (!row || !Number.isFinite(row.y)) return;
-                appendRrMiniBadge(scales.yScale(row.y), [`SL${i + 2}`], slExtraFill);
+                appendRrMiniBadge(scales.yScale(row.y), [`SL${i + 2}`], slExtraFill, `rr-extra-stop-${i}`);
             });
 
             if (beLinePx != null) {
@@ -3178,13 +3235,13 @@ class BaseRiskRewardTool extends BaseDrawing {
                     const a = parseFloat(beAmtInput?.value || '50');
                     beSub = Number.isFinite(a) ? `$${Math.round(a)}` : '—';
                 }
-                appendRrMiniBadge(beLinePx, ['BE', beSub], beFill);
+                appendRrMiniBadge(beLinePx, ['BE', beSub], beFill, 'rr-be-line');
             }
 
             if (hasMultiTP && Number.isFinite(avgTpYpx) && Number.isFinite(avgTpPrice)) {
                 const avgTpFill = 'rgba(240, 170, 120, 0.92)';
                 const lotStr = Number.isFinite(quantity) && quantity > 0 ? quantity.toFixed(2) : '—';
-                appendRrMiniBadge(avgTpYpx, ['Avg TP', `${lotStr} lot`], avgTpFill);
+                appendRrMiniBadge(avgTpYpx, ['Avg TP', `${lotStr} lot`], avgTpFill, null);
             }
 
             // Execute button moved to floating toolbar
