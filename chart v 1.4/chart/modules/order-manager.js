@@ -5776,6 +5776,30 @@ class OrderManager {
         }, 250);
         this.showNotification('✅ PDF report opened. Choose "Save as PDF" in print dialog.', 'success');
     }
+
+    /**
+     * Playbook label from backtest session (Strategies Lab selection or preset slug).
+     * Drives analytics "Playbook" and default trade setup / strategy field.
+     */
+    _getSessionDefaultTradeSetup() {
+        try {
+            const sess = this.chart?.backtestingSession || {};
+            const label = sess.playbook_display;
+            if (label && String(label).trim()) return String(label).trim();
+            const slug = String(sess.playbook || '').trim();
+            const preset = {
+                scalping: 'Scalping Strategy',
+                swing: 'Swing Trading',
+                breakout: 'Breakout Strategy',
+                momentum: 'Momentum Trading',
+                reversal: 'Reversal Strategy'
+            };
+            if (slug && preset[slug]) return preset[slug];
+            return 'General';
+        } catch (e) {
+            return 'General';
+        }
+    }
     
     /**
      * Create and show trade journal modal
@@ -5997,6 +6021,13 @@ class OrderManager {
         
         modal.appendChild(modalContent);
         document.body.appendChild(modal);
+
+        const defaultSetup = this._getSessionDefaultTradeSetup();
+        const tradeSetupEl = document.getElementById('tradeSetup');
+        if (tradeSetupEl) {
+            const existing = order.journalEntry?.preTradeNotes?.setup;
+            tradeSetupEl.value = (existing && String(existing).trim()) ? String(existing).trim() : defaultSetup;
+        }
         
         // Event listeners
         document.getElementById('saveTradeNote').onclick = async () => {
@@ -6268,6 +6299,13 @@ class OrderManager {
         // Resolve ticker from the order first so background/synced trades are attributed correctly.
         const symbol = order.ticker || order.symbol || this._getActiveTicker();
         const instrumentSettings = order.instrument_settings || this._getActiveInstrumentSettings();
+
+        const defaultSetup = this._getSessionDefaultTradeSetup();
+        const userPre = order.journalEntry?.preTradeNotes;
+        const setupStr = (userPre && userPre.setup && String(userPre.setup).trim())
+            ? String(userPre.setup).trim()
+            : defaultSetup;
+        const mergedPreNotes = userPre ? { ...userPre, setup: setupStr } : { setup: setupStr };
         
         let journalEntry = {
             // Basic Trade Info
@@ -6275,6 +6313,7 @@ class OrderManager {
             symbol: symbol,
             ticker: symbol,
             direction: order.type, // BUY or SELL
+            setup: setupStr,
             
             // Timing
             entryTime: order.openTime,
@@ -6334,7 +6373,7 @@ class OrderManager {
             holdingTimeDays: parseFloat(holdingTimeDays),
             
             // Notes
-            preTradeNotes: order.journalEntry?.preTradeNotes || null,
+            preTradeNotes: mergedPreNotes,
             postTradeNotes: postTradeNotes,
             
             // Screenshots
@@ -22166,6 +22205,7 @@ class OrderManager {
                 postTradeNotes: {},
                 tags: [],
                 rulesFollowed: null,
+                setup: (position.preTradeNotes && position.preTradeNotes.setup) || this._getSessionDefaultTradeSetup(),
                 isScaledTrade: false
             };
             
@@ -24368,6 +24408,7 @@ class OrderManager {
                     month: monthNames[firstOpenDate.getMonth()],
                     year: firstOpenDate.getFullYear(),
                     preTradeNotes: firstEntry.preTradeNotes || {},
+                    setup: (firstEntry.preTradeNotes && firstEntry.preTradeNotes.setup) || this._getSessionDefaultTradeSetup(),
                     postTradeNotes: {},
                     tags: [],
                     rulesFollowed: null,
@@ -24515,6 +24556,7 @@ class OrderManager {
                     month: monthNames[firstOpenDate.getMonth()],
                     year: firstOpenDate.getFullYear(),
                     preTradeNotes: firstEntry.preTradeNotes || {},
+                    setup: (firstEntry.preTradeNotes && firstEntry.preTradeNotes.setup) || this._getSessionDefaultTradeSetup(),
                     postTradeNotes: {},
                     tags: [],
                     rulesFollowed: null,
@@ -24627,6 +24669,7 @@ class OrderManager {
                     month: monthNames[openDate.getMonth()],
                     year: openDate.getFullYear(),
                     preTradeNotes: position.preTradeNotes || {},
+                    setup: (position.preTradeNotes && position.preTradeNotes.setup) || this._getSessionDefaultTradeSetup(),
                     postTradeNotes: {},
                     tags: [],
                     rulesFollowed: null,
@@ -35890,6 +35933,7 @@ class OrderManager {
             month: monthNames[firstOpenDate.getMonth()],
             year: firstOpenDate.getFullYear(),
             preTradeNotes: firstEntry.preTradeNotes || null,
+            setup: (firstEntry.preTradeNotes && firstEntry.preTradeNotes.setup) || this._getSessionDefaultTradeSetup(),
             postTradeNotes: null,
             tags: [],
             rulesFollowed: null,

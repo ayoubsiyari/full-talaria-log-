@@ -253,7 +253,7 @@ export default function BacktestSessions() {
           <table className="w-full border-collapse">
             <thead>
               <tr className="border-b border-white/10">
-                {["Name", "Symbol", "Type", "Start Balance", "Date Range", "Created", "Actions"].map((h) => (
+                {["Name", "Symbol", "Strategy", "Type", "Start Balance", "Date Range", "Created", "Actions"].map((h) => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase text-white/40">{h}</th>
                 ))}
               </tr>
@@ -261,11 +261,11 @@ export default function BacktestSessions() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-16 text-white/40">Loading sessions...</td>
+                  <td colSpan={8} className="text-center py-16 text-white/40">Loading sessions...</td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-16">
+                  <td colSpan={8} className="text-center py-16">
                     <div className="text-4xl mb-3">⚠️</div>
                     <h3 className="font-semibold text-white/80 mb-1">Failed to load sessions</h3>
                     <p className="text-sm text-red-300/80">{error}</p>
@@ -273,7 +273,7 @@ export default function BacktestSessions() {
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-16">
+                  <td colSpan={8} className="text-center py-16">
                     <div className="text-4xl mb-3">📊</div>
                     <h3 className="font-semibold text-white/80 mb-1">No Sessions Yet</h3>
                     <p className="text-sm text-white/40">Create your first backtest session to get started</p>
@@ -302,6 +302,13 @@ export default function BacktestSessions() {
                     <td className="px-4 py-4">
                       <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium">
                         {s.symbol || "N/A"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 max-w-[200px]">
+                      <span className="text-xs text-white/70 line-clamp-2" title={String((s.config as { playbook_display?: string })?.playbook_display ?? "")}>
+                        {(s.config as { playbook_display?: string } | undefined)?.playbook_display?.trim()
+                          || (s.config as { playbook?: string } | undefined)?.playbook
+                          || "—"}
                       </span>
                     </td>
                     <td className="px-4 py-4">

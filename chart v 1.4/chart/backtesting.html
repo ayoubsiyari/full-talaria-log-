@@ -271,16 +271,12 @@
                         </div>
 
                         <div class="form-group">
-                            <label>Playbook</label>
+                            <label>Playbook / strategy</label>
                             <select id="playbook" name="playbook">
                                 <option value="">Select playbook...</option>
-                                <option value="scalping">Scalping Strategy</option>
-                                <option value="swing">Swing Trading</option>
-                                <option value="breakout">Breakout Strategy</option>
-                                <option value="momentum">Momentum Trading</option>
-                                <option value="reversal">Reversal Strategy</option>
                             </select>
-                            <a href="#" class="link" style="margin-top: 8px; display: inline-block;">Create new playbook</a>
+                            <div class="helper-text" style="margin-top:6px;">Choose a strategy you built in Strategies Lab, or a quick label. This appears in Backtest Analytics → Playbook.</div>
+                            <a href="/strategies-lab/" target="_blank" rel="noopener" class="link" style="margin-top: 8px; display: inline-block;">Open Strategies Lab</a>
                         </div>
 
                         <div class="form-group">
@@ -1770,11 +1766,27 @@
                     protectionPreset = presets.find(p => p.name === selectedPresetName);
                 }
 
+                var playbookSel = document.getElementById('playbook');
+                var rawPlaybook = playbookSel ? playbookSel.value : '';
+                var playbookOpt = playbookSel && playbookSel.selectedOptions && playbookSel.selectedOptions[0];
+                var playbook_display = 'General';
+                var strategy_id = null;
+                if (!rawPlaybook) {
+                    playbook_display = 'General';
+                } else if (rawPlaybook.indexOf('strategy:') === 0) {
+                    strategy_id = parseInt(rawPlaybook.split(':')[1], 10);
+                    playbook_display = (playbookOpt && playbookOpt.getAttribute('data-label')) || (playbookOpt && playbookOpt.textContent && playbookOpt.textContent.trim()) || 'Strategy';
+                } else {
+                    playbook_display = (playbookOpt && playbookOpt.getAttribute('data-label')) || rawPlaybook;
+                }
+
                 const formData = {
                     type: 'standard', // Distinguish from prop firm mode
                     sessionName: document.getElementById('sessionName').value,
                     description: document.getElementById('description').value,
-                    playbook: document.getElementById('playbook').value,
+                    playbook: rawPlaybook,
+                    playbook_display: playbook_display,
+                    strategy_id: strategy_id,
                     fileId: selectedFileId,
                     fileName: selectedFileName,
                     // Store all selected files for symbol switching
@@ -2053,6 +2065,79 @@
         });
 
         // Note: Session history saving is already handled in the main submit handler above
+    </script>
+    <script>
+    (function () {
+        var PRESETS = [
+            { value: 'scalping', label: 'Scalping Strategy' },
+            { value: 'swing', label: 'Swing Trading' },
+            { value: 'breakout', label: 'Breakout Strategy' },
+            { value: 'momentum', label: 'Momentum Trading' },
+            { value: 'reversal', label: 'Reversal Strategy' }
+        ];
+        function rebuildPlaybookSelect(strategies) {
+            var sel = document.getElementById('playbook');
+            if (!sel) return;
+            sel.innerHTML = '';
+            var o0 = document.createElement('option');
+            o0.value = '';
+            o0.textContent = 'Select playbook...';
+            sel.appendChild(o0);
+            var gUser = document.createElement('optgroup');
+            gUser.label = 'Your strategies (Strategies Lab)';
+            if (strategies && strategies.length) {
+                strategies.forEach(function (s) {
+                    var opt = document.createElement('option');
+                    opt.value = 'strategy:' + s.id;
+                    opt.setAttribute('data-label', s.name);
+                    opt.textContent = s.name;
+                    gUser.appendChild(opt);
+                });
+            } else {
+                var dis = document.createElement('option');
+                dis.disabled = true;
+                dis.textContent = 'No saved strategies — use Strategies Lab to create one';
+                gUser.appendChild(dis);
+            }
+            sel.appendChild(gUser);
+            var gPreset = document.createElement('optgroup');
+            gPreset.label = 'Quick labels';
+            PRESETS.forEach(function (p) {
+                var opt = document.createElement('option');
+                opt.value = p.value;
+                opt.setAttribute('data-label', p.label);
+                opt.textContent = p.label;
+                gPreset.appendChild(opt);
+            });
+            sel.appendChild(gPreset);
+        }
+        function loadPlaybookStrategies() {
+            var token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+            if (!token) {
+                rebuildPlaybookSelect([]);
+                return;
+            }
+            fetch('/journal/api/strategies', {
+                credentials: 'include',
+                headers: { 'Authorization': 'Bearer ' + token }
+            })
+                .then(function (res) {
+                    if (!res.ok) throw new Error('strategies');
+                    return res.json();
+                })
+                .then(function (data) {
+                    rebuildPlaybookSelect(data.strategies || []);
+                })
+                .catch(function () {
+                    rebuildPlaybookSelect([]);
+                });
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', loadPlaybookStrategies);
+        } else {
+            loadPlaybookStrategies();
+        }
+    })();
     </script>
 </body>
 </html>
