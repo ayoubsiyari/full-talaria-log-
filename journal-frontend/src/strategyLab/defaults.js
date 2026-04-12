@@ -19,6 +19,7 @@ export function emptyDraft() {
   return {
     name: '',
     description: '',
+    cover_image: '',
     instrument: '',
     style: '',
     direction: 'both',
@@ -36,6 +37,7 @@ export function definitionFromDraft(d) {
     timeframe: d.timeframe || '',
     conditions: d.conditions || [],
     variables: d.variables || [],
+    cover_image: typeof d.cover_image === 'string' ? d.cover_image : '',
   };
 }
 
@@ -44,6 +46,7 @@ export function draftFromApi(strategy) {
   return {
     name: strategy.name || '',
     description: strategy.description || '',
+    cover_image: typeof def.cover_image === 'string' ? def.cover_image : '',
     instrument: def.instrument || '',
     style: def.style || '',
     direction: def.direction || 'both',

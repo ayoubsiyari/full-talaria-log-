@@ -1,6 +1,8 @@
 "use client";
 
-import React from 'react';
+import React, { useRef, useState } from 'react';
+import { ImagePlus, Trash2 } from 'lucide-react';
+import { compressCoverImageFile } from '@/strategyLab/coverImage';
 
 const INSTRUMENTS = [
   { id: 'es', label: 'ES Futures' },
@@ -83,6 +85,27 @@ export default function GeneralInfoStep({
     (v: string) =>
       setDraft((d) => ({ ...d, [key]: v }));
 
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [imgBusy, setImgBusy] = useState(false);
+  const coverImage = typeof draft.cover_image === 'string' ? draft.cover_image : '';
+
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    setImgBusy(true);
+    try {
+      const dataUrl = await compressCoverImageFile(f);
+      setDraft((d) => ({ ...d, cover_image: dataUrl }));
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Could not process image');
+    } finally {
+      setImgBusy(false);
+    }
+  };
+
+  const clearCover = () => setDraft((d) => ({ ...d, cover_image: '' }));
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-6">
       <h2 className="mb-6 text-xl font-bold text-[var(--sl-text)]" style={{ fontFamily: 'Outfit, sans-serif' }}>
@@ -112,6 +135,55 @@ export default function GeneralInfoStep({
           className="min-h-[120px] w-full resize-y rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] px-3 py-2.5 text-[var(--sl-text)] placeholder:text-[var(--sl-text-faint)] focus:border-[var(--sl-accent)] focus:outline-none"
         />
       </div>
+
+      <div className="mb-6">
+        <label className="font-mono-label mb-2 block text-[11px] font-bold uppercase text-[var(--sl-text-sec)]">
+          Strategy image <span className="font-normal normal-case text-[var(--sl-text-muted)]">(optional)</span>
+        </label>
+        <p className="mb-3 text-xs text-[var(--sl-text-muted)]">
+          Shown on your community posts. Images are resized and compressed in the browser before saving.
+        </p>
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPickFile} />
+        {coverImage ? (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+            <img
+              src={coverImage}
+              alt=""
+              className="h-40 max-w-full rounded-xl border border-[var(--sl-border)] object-cover sm:h-36 sm:w-56"
+            />
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={imgBusy}
+                onClick={() => fileRef.current?.click()}
+                className="inline-flex items-center gap-2 rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] px-3 py-2 text-sm hover:bg-[var(--sl-card)] disabled:opacity-50"
+              >
+                <ImagePlus size={16} />
+                {imgBusy ? 'Processing…' : 'Replace image'}
+              </button>
+              <button
+                type="button"
+                onClick={clearCover}
+                className="inline-flex items-center gap-2 rounded-lg border border-[var(--sl-border)] px-3 py-2 text-sm text-[var(--sl-red)] hover:bg-[var(--sl-red)]/10"
+              >
+                <Trash2 size={16} />
+                Remove
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            disabled={imgBusy}
+            onClick={() => fileRef.current?.click()}
+            className="inline-flex items-center gap-2 rounded-lg border border-dashed border-[var(--sl-border)] bg-[var(--sl-input)]/60 px-4 py-3 text-sm text-[var(--sl-text-sec)] hover:border-[var(--sl-accent)] hover:text-[var(--sl-text)] disabled:opacity-50"
+          >
+            <ImagePlus size={18} />
+            {imgBusy ? 'Processing…' : 'Upload image'}
+          </button>
+        )}
+      </div>
+
       <ToggleRow label="Instrument" options={INSTRUMENTS} value={String(draft.instrument ?? '')} onChange={set('instrument')} />
       <ToggleRow label="Style" options={STYLES} value={String(draft.style ?? '')} onChange={set('style')} />
       <ToggleRow label="Direction" options={DIRECTIONS} value={String(draft.direction ?? 'both')} onChange={set('direction')} />

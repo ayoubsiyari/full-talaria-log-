@@ -2,6 +2,30 @@
 
 MAX_NAME_LEN = 100
 MAX_DESC_LEN = 5000
+# Max length of data-URL string stored in JSON (client compresses before send).
+MAX_COVER_IMAGE_LEN = 800_000
+
+
+def _sanitize_cover_image(val):
+    """Allow only safe data-URL images (no SVG) for strategy_definition.cover_image."""
+    if not isinstance(val, str) or not val.strip():
+        return ''
+    val = val.strip()
+    if len(val) > MAX_COVER_IMAGE_LEN:
+        return ''
+    if not val.startswith('data:image/'):
+        return ''
+    allowed_prefixes = (
+        'data:image/jpeg',
+        'data:image/jpg',
+        'data:image/png',
+        'data:image/webp',
+        'data:image/gif',
+    )
+    low = val[:32].lower()
+    if not any(low.startswith(p) for p in allowed_prefixes):
+        return ''
+    return val
 
 
 def default_strategy_definition():
@@ -12,6 +36,7 @@ def default_strategy_definition():
         'timeframe': '',
         'conditions': [],
         'variables': [],
+        'cover_image': '',
     }
 
 
@@ -50,6 +75,7 @@ def merge_definition_from_legacy(strategy_row):
                     'ctype': 'yesno',
                     'options': [],
                 })
+    out['cover_image'] = _sanitize_cover_image(out.get('cover_image'))
     return out
 
 
@@ -94,6 +120,7 @@ def normalize_strategy_payload(data):
     # Merge defaults
     base = default_strategy_definition()
     base.update(defn)
+    base['cover_image'] = _sanitize_cover_image(base.get('cover_image'))
 
     return {
         'name': name,

@@ -42,6 +42,12 @@ export default function PostCard({ post, onLike, onOpenComments }) {
   const title = post.strategy?.name || 'Strategy';
   const caption = post.caption || '';
   const visibility = post.visibility && post.visibility !== 'public' ? post.visibility : null;
+  const coverFromStrategy =
+    typeof post.strategy?.strategy_definition?.cover_image === 'string'
+      ? post.strategy.strategy_definition.cover_image
+      : '';
+  const heroSrc =
+    coverFromStrategy && coverFromStrategy.startsWith('data:image/') ? coverFromStrategy : DEFAULT_POST_IMAGE;
 
   const handleLike = useCallback(() => {
     onLike?.(post.id, liked);
@@ -115,7 +121,7 @@ export default function PostCard({ post, onLike, onOpenComments }) {
           ) : null}
         </div>
         <img
-          src={DEFAULT_POST_IMAGE}
+          src={heroSrc}
           alt=""
           className="max-h-56 w-full rounded-xl object-cover"
           loading="lazy"

@@ -238,11 +238,21 @@ export default function StrategiesLab() {
                     key={s.id}
                     className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--sl-border)] bg-[var(--sl-card)] p-4"
                   >
-                    <div>
-                      <div className="font-semibold">{s.name}</div>
-                      <div className="text-xs text-[var(--sl-text-muted)]">
-                        {(s.strategy_definition?.instrument || '') +
-                          (s.strategy_definition?.timeframe ? ` · ${s.strategy_definition.timeframe}` : '')}
+                    <div className="flex min-w-0 items-center gap-3">
+                      {typeof s.strategy_definition?.cover_image === 'string' &&
+                      s.strategy_definition.cover_image.startsWith('data:image/') ? (
+                        <img
+                          src={s.strategy_definition.cover_image}
+                          alt=""
+                          className="h-12 w-12 shrink-0 rounded-lg border border-[var(--sl-border)] object-cover"
+                        />
+                      ) : null}
+                      <div className="min-w-0">
+                        <div className="font-semibold">{s.name}</div>
+                        <div className="text-xs text-[var(--sl-text-muted)]">
+                          {(s.strategy_definition?.instrument || '') +
+                            (s.strategy_definition?.timeframe ? ` · ${s.strategy_definition.timeframe}` : '')}
+                        </div>
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
