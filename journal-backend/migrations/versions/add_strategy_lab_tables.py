@@ -183,7 +183,7 @@ def upgrade():
                 'variables': [],
             })
             if dialect == 'postgresql':
-                op.execute(
+                bind.execute(
                     sa.text(
                         "INSERT INTO strategy_templates "
                         "(title, definition, template_type, status, clone_count, rating_sum, rating_count, creator_user_id, source_strategy_id, category, difficulty) "
@@ -192,7 +192,7 @@ def upgrade():
                     {'d': seed_def},
                 )
             else:
-                op.execute(
+                bind.execute(
                     sa.text(
                         "INSERT INTO strategy_templates "
                         "(title, definition, template_type, status, clone_count, rating_sum, rating_count, creator_user_id, source_strategy_id, category, difficulty) "
