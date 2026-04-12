@@ -1,7 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ImagePlus, Trash2 } from 'lucide-react';
 import { compressCoverImageFile } from '../../strategyLab/coverImage';
-import { FOREX_INSTRUMENTS, FUTURES_INSTRUMENTS, normalizeInstrumentId } from '../../strategyLab/instruments';
+import {
+  FOREX_INSTRUMENTS,
+  COMMODITY_CFD_INSTRUMENTS,
+  FUTURES_INSTRUMENTS,
+  normalizeInstrumentId,
+} from '../../strategyLab/instruments';
 
 const STYLES = [
   { id: 'scalping', label: 'Scalping' },
@@ -168,11 +173,18 @@ export default function GeneralInfoStep({ draft, setDraft }) {
           Instrument
         </div>
         <p className="mb-3 text-xs text-[var(--sl-text-muted)]">
-          Forex pairs and futures use the same symbols as the Talaria chart registry.
+          Symbols match the chart instrument registry: currency pairs, then CFD commodities, then futures.
         </p>
         <ToggleRow
           label="Forex pairs"
           options={FOREX_INSTRUMENTS}
+          value={instrumentValue}
+          onChange={set('instrument')}
+          wrapperClassName="mb-3"
+        />
+        <ToggleRow
+          label="Commodities (CFD)"
+          options={COMMODITY_CFD_INSTRUMENTS}
           value={instrumentValue}
           onChange={set('instrument')}
           wrapperClassName="mb-3"

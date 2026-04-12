@@ -1,6 +1,6 @@
 /**
- * Strategy builder instrument options — aligned with chart `INSTRUMENT_REGISTRY`
- * (chart v1.4 `market-calculations.js`): forex pairs + futures.
+ * Strategy builder instruments — aligned with chart `INSTRUMENT_REGISTRY`
+ * (`chart v1.4/chart/modules/market-calculations.js`).
  */
 
 export type InstrumentOption = { id: string; label: string };
@@ -10,10 +10,6 @@ export const FOREX_INSTRUMENTS: InstrumentOption[] = [
   { id: 'GBPUSD', label: 'GBP/USD' },
   { id: 'AUDUSD', label: 'AUD/USD' },
   { id: 'NZDUSD', label: 'NZD/USD' },
-  { id: 'XAUUSD', label: 'XAU/USD' },
-  { id: 'XAGUSD', label: 'XAG/USD' },
-  { id: 'XTIUSD', label: 'XTI/USD' },
-  { id: 'XNGUSD', label: 'XNG/USD' },
   { id: 'USDJPY', label: 'USD/JPY' },
   { id: 'USDCAD', label: 'USD/CAD' },
   { id: 'USDCHF', label: 'USD/CHF' },
@@ -38,6 +34,13 @@ export const FOREX_INSTRUMENTS: InstrumentOption[] = [
   { id: 'CADCHF', label: 'CAD/CHF' },
   { id: 'NZDCAD', label: 'NZD/CAD' },
   { id: 'NZDCHF', label: 'NZD/CHF' },
+];
+
+export const COMMODITY_CFD_INSTRUMENTS: InstrumentOption[] = [
+  { id: 'XAUUSD', label: 'XAU/USD' },
+  { id: 'XAGUSD', label: 'XAG/USD' },
+  { id: 'XTIUSD', label: 'XTI/USD' },
+  { id: 'XNGUSD', label: 'XNG/USD' },
 ];
 
 export const FUTURES_INSTRUMENTS: InstrumentOption[] = [
@@ -88,10 +91,9 @@ export function normalizeInstrumentId(raw: unknown): string {
 }
 
 const INSTRUMENT_LABEL: Record<string, string> = Object.fromEntries(
-  [...FOREX_INSTRUMENTS, ...FUTURES_INSTRUMENTS].map((o) => [o.id, o.label])
+  [...FOREX_INSTRUMENTS, ...COMMODITY_CFD_INSTRUMENTS, ...FUTURES_INSTRUMENTS].map((o) => [o.id, o.label])
 );
 
-/** Human-readable label for review / feed (falls back to raw id). */
 export function formatInstrumentLabel(raw: unknown): string {
   const id = normalizeInstrumentId(raw);
   if (!id) return '';

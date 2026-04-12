@@ -1,17 +1,18 @@
 /**
- * Strategy builder instrument options — aligned with chart `INSTRUMENT_REGISTRY`
- * (chart v1.4 `market-calculations.js`): forex pairs + futures.
+ * Strategy builder instruments — aligned with chart `INSTRUMENT_REGISTRY`
+ * (`chart v1.4/chart/modules/market-calculations.js`).
+ *
+ * Forex row: **currency pairs only** (what the dataset/registry treats as FX crosses).
+ * Commodities: metals & energy symbols that are stored as forex-type specs in the registry.
+ * Futures: CME/CBOT/COMEX/NYMEX from the same registry.
  */
 
+/** Currency pairs only (registry forex block, excluding XAU/XAG/XTI/XNG). */
 export const FOREX_INSTRUMENTS = [
   { id: 'EURUSD', label: 'EUR/USD' },
   { id: 'GBPUSD', label: 'GBP/USD' },
   { id: 'AUDUSD', label: 'AUD/USD' },
   { id: 'NZDUSD', label: 'NZD/USD' },
-  { id: 'XAUUSD', label: 'XAU/USD' },
-  { id: 'XAGUSD', label: 'XAG/USD' },
-  { id: 'XTIUSD', label: 'XTI/USD' },
-  { id: 'XNGUSD', label: 'XNG/USD' },
   { id: 'USDJPY', label: 'USD/JPY' },
   { id: 'USDCAD', label: 'USD/CAD' },
   { id: 'USDCHF', label: 'USD/CHF' },
@@ -36,6 +37,14 @@ export const FOREX_INSTRUMENTS = [
   { id: 'CADCHF', label: 'CAD/CHF' },
   { id: 'NZDCAD', label: 'NZD/CAD' },
   { id: 'NZDCHF', label: 'NZD/CHF' },
+];
+
+/** Metals & energy in registry (forex-type specs; not currency pairs). */
+export const COMMODITY_CFD_INSTRUMENTS = [
+  { id: 'XAUUSD', label: 'XAU/USD' },
+  { id: 'XAGUSD', label: 'XAG/USD' },
+  { id: 'XTIUSD', label: 'XTI/USD' },
+  { id: 'XNGUSD', label: 'XNG/USD' },
 ];
 
 /** CME / CBOT / COMEX / NYMEX futures from registry (compact ticker labels). */
@@ -76,7 +85,6 @@ export const FUTURES_INSTRUMENTS = [
 export const LEGACY_INSTRUMENT_MAP = {
   es: 'ES',
   nq: 'NQ',
-  /** Old generic "Stocks" chip → default to a liquid pair until user re-selects. */
   stocks: 'EURUSD',
   forex: 'EURUSD',
 };
@@ -89,7 +97,7 @@ export function normalizeInstrumentId(raw) {
 }
 
 const _INSTRUMENT_LABEL = Object.fromEntries(
-  [...FOREX_INSTRUMENTS, ...FUTURES_INSTRUMENTS].map((o) => [o.id, o.label])
+  [...FOREX_INSTRUMENTS, ...COMMODITY_CFD_INSTRUMENTS, ...FUTURES_INSTRUMENTS].map((o) => [o.id, o.label])
 );
 
 /** Human-readable label for review / feed (falls back to raw id). */
