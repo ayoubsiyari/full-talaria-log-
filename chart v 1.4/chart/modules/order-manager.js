@@ -5818,21 +5818,28 @@ class OrderManager {
     }
 
     /**
-     * Renders PRE strategy variables below Advanced order (inputs collected at place time).
+     * Post-trade variable definitions (Strategies Lab), filtered to POST — filled at exit in the close modal.
      */
-    _renderStrategyVariablesPanel() {
-        const section = document.getElementById('orderStrategyVariablesSection');
-        const mount = document.getElementById('orderStrategyVariablesMount');
-        if (!section || !mount) return;
-
-        const defs = this._getPreTradeVariableDefs();
-        if (!defs.length) {
-            section.style.display = 'none';
-            mount.innerHTML = '';
-            return;
+    _getPostTradeVariableDefs() {
+        try {
+            const sess = this.chart?.backtestingSession || {};
+            const raw = sess.strategy_variables;
+            const list = Array.isArray(raw) ? raw : (sess.strategy_definition?.variables || []);
+            return list.filter(
+                (v) => v && v.type === 'variable' && v.timing === 'post'
+            );
+        } catch (e) {
+            return [];
         }
+    }
 
-        section.style.display = 'block';
+    /**
+     * Renders variable rows into a mount (shared PRE/POST lab shape).
+     */
+    _renderStrategyLabVariableRowsIntoMount(mount, defs, inputClass) {
+        if (!mount) return;
+        mount.innerHTML = '';
+        if (!defs || !defs.length) return;
         const frag = document.createDocumentFragment();
         defs.forEach((v) => {
             const id = String(v.id || v.name || '').trim() || `var_${Math.random().toString(36).slice(2, 9)}`;
@@ -5846,7 +5853,7 @@ class OrderManager {
 
             if (v.vtype === 'multi') {
                 const sel = document.createElement('select');
-                sel.className = 'order-input order-strategy-var-input';
+                sel.className = `order-input ${inputClass}`;
                 sel.setAttribute('data-var-id', id);
                 sel.style.cssText = 'width:100%;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#e2e8f0;font-size:13px;';
                 const opts = Array.isArray(v.options) && v.options.length ? v.options : ['—'];
@@ -5859,7 +5866,7 @@ class OrderManager {
                 row.appendChild(sel);
             } else {
                 const sel = document.createElement('select');
-                sel.className = 'order-input order-strategy-var-input';
+                sel.className = `order-input ${inputClass}`;
                 sel.setAttribute('data-var-id', id);
                 sel.setAttribute('data-yesno', '1');
                 sel.style.cssText = 'width:100%;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#e2e8f0;font-size:13px;';
@@ -5883,18 +5890,35 @@ class OrderManager {
             }
             frag.appendChild(row);
         });
-        mount.innerHTML = '';
         mount.appendChild(frag);
     }
 
     /**
-     * Read PRE variable values from the order panel mount (journal + analytics).
-     * @returns {Array|null} Same shape as stored on order.strategyVariables
+     * Renders PRE strategy variables below Advanced order (inputs collected at place time).
      */
-    _buildStrategyVariableValuesFromMount(mount) {
-        if (!mount) return null;
-        const inputs = mount.querySelectorAll('.order-strategy-var-input');
+    _renderStrategyVariablesPanel() {
+        const section = document.getElementById('orderStrategyVariablesSection');
+        const mount = document.getElementById('orderStrategyVariablesMount');
+        if (!section || !mount) return;
+
         const defs = this._getPreTradeVariableDefs();
+        if (!defs.length) {
+            section.style.display = 'none';
+            mount.innerHTML = '';
+            return;
+        }
+
+        section.style.display = 'block';
+        this._renderStrategyLabVariableRowsIntoMount(mount, defs, 'order-strategy-var-input');
+    }
+
+    /**
+     * Read variable values from a mount (class + defs list for labels/types).
+     * @returns {Array|null} Snapshot for strategyVariables / post_strategy_variables
+     */
+    _buildStrategyVariableValuesFromMount(mount, inputClass, defs) {
+        if (!mount) return null;
+        const inputs = mount.querySelectorAll(`.${inputClass}`);
         const values = [];
         inputs.forEach((el) => {
             const id = el.getAttribute('data-var-id') || '';
@@ -5911,10 +5935,18 @@ class OrderManager {
         return values.length ? values : null;
     }
 
+    /**
+     * Read PRE variable values from the order panel mount (journal + analytics).
+     * @returns {Array|null} Same shape as stored on order.strategyVariables
+     */
+    _buildPreTradeVariableValuesFromOrderMount(mount) {
+        return this._buildStrategyVariableValuesFromMount(mount, 'order-strategy-var-input', this._getPreTradeVariableDefs());
+    }
+
     /** Copy snapshot from panel onto order before register when inputs still reflect the user’s choices. */
     _applyPreTradeVariablesFromOrderPanel(order) {
         if (!order) return;
-        const snap = this._buildStrategyVariableValuesFromMount(
+        const snap = this._buildPreTradeVariableValuesFromOrderMount(
             document.getElementById('orderStrategyVariablesMount')
         );
         if (snap && snap.length) order.strategyVariables = snap;
@@ -5928,7 +5960,7 @@ class OrderManager {
         if (!order) return order;
         const mount = document.getElementById('orderStrategyVariablesMount');
         if (!mount) return order;
-        const fromDom = this._buildStrategyVariableValuesFromMount(mount);
+        const fromDom = this._buildPreTradeVariableValuesFromOrderMount(mount);
         if (fromDom && fromDom.length) {
             order.strategyVariables = fromDom;
         } else if (!order.strategyVariables || !order.strategyVariables.length) {
@@ -6171,6 +6203,14 @@ class OrderManager {
 
             <div id="strategyVarsJournalAnchor" style="display: none; margin-bottom: 16px;"></div>
             
+            ${isClosing ? `
+            <div id="closeModalPostStrategyVariablesSection" style="display:none;margin-bottom:16px;">
+                <div style="font-size:11px;color:#787b86;margin-bottom:6px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Post-trade variables</div>
+                <p style="font-size:10px;color:#64748b;margin:0 0 10px;line-height:1.35;">From your Strategies Lab playbook (POST). Values are saved when you complete this exit.</p>
+                <div id="closeModalPostStrategyVariablesMount" class="order-strategy-vars__mount"></div>
+            </div>
+            ` : ''}
+            
             <!-- Journal Fields -->
             <div style="margin-bottom: 16px;">
                 <label style="display: block; color: #787b86; font-size: 12px; margin-bottom: 6px;">
@@ -6259,15 +6299,39 @@ class OrderManager {
             });
         }
 
+        if (isClosing) {
+            const postDefs = this._getPostTradeVariableDefs();
+            const postSection = document.getElementById('closeModalPostStrategyVariablesSection');
+            const postMount = document.getElementById('closeModalPostStrategyVariablesMount');
+            if (postSection && postMount && postDefs.length) {
+                postSection.style.display = 'block';
+                this._renderStrategyLabVariableRowsIntoMount(postMount, postDefs, 'order-post-strategy-var-input');
+            }
+        }
+
         // Event listeners
         document.getElementById('saveTradeNote').onclick = async () => {
             const reason = document.getElementById('tradeReason').value;
             const setup = document.getElementById('tradeSetup').value;
-            const tags = document.getElementById('tradeTags').value;
+            let tags = document.getElementById('tradeTags').value;
             
             if (isClosing) {
-                // Save post-trade notes
-                await this.saveTradeToJournal(order, closeData, { reason, setup, tags });
+                const postMount = document.getElementById('closeModalPostStrategyVariablesMount');
+                const postStrategyVariables = this._buildStrategyVariableValuesFromMount(
+                    postMount,
+                    'order-post-strategy-var-input',
+                    this._getPostTradeVariableDefs()
+                );
+                const postVarTags = this._formatStrategyVariablesAsTags(postStrategyVariables);
+                tags = this._mergeCommaSeparatedTags(tags, postVarTags);
+                await this.saveTradeToJournal(order, closeData, {
+                    reason,
+                    setup,
+                    tags,
+                    postStrategyVariables: postStrategyVariables && postStrategyVariables.length
+                        ? postStrategyVariables
+                        : null
+                });
             } else {
                 // Save pre-trade notes to order
                 order.journalEntry = {
@@ -6464,6 +6528,9 @@ class OrderManager {
                 journalEntry.postTradeNotes = postTradeNotes;
                 journalEntry.tags = postTradeNotes.tags || [];
                 journalEntry.rulesFollowed = postTradeNotes.reason === 'rules-followed';
+                if (postTradeNotes.postStrategyVariables != null) {
+                    journalEntry.post_strategy_variables = postTradeNotes.postStrategyVariables;
+                }
             }
             
             const upsert = this.upsertJournalEntry(journalEntry);
@@ -6545,6 +6612,7 @@ class OrderManager {
             direction: order.type, // BUY or SELL
             setup: setupStr,
             strategy_variables: order.strategyVariables || null,
+            post_strategy_variables: postTradeNotes?.postStrategyVariables || null,
             
             // Timing
             entryTime: order.openTime,
@@ -22477,6 +22545,7 @@ class OrderManager {
                 rulesFollowed: null,
                 setup: (position.preTradeNotes && position.preTradeNotes.setup) || this._getSessionDefaultTradeSetup(),
                 strategy_variables: position.strategyVariables || null,
+                post_strategy_variables: null,
                 isScaledTrade: false
             };
             
@@ -24683,6 +24752,7 @@ class OrderManager {
                     preTradeNotes: firstEntry.preTradeNotes || {},
                     setup: (firstEntry.preTradeNotes && firstEntry.preTradeNotes.setup) || this._getSessionDefaultTradeSetup(),
                     strategy_variables: firstEntry.strategyVariables || null,
+                    post_strategy_variables: null,
                     postTradeNotes: {},
                     tags: [],
                     rulesFollowed: null,
@@ -24832,6 +24902,7 @@ class OrderManager {
                     preTradeNotes: firstEntry.preTradeNotes || {},
                     setup: (firstEntry.preTradeNotes && firstEntry.preTradeNotes.setup) || this._getSessionDefaultTradeSetup(),
                     strategy_variables: firstEntry.strategyVariables || null,
+                    post_strategy_variables: null,
                     postTradeNotes: {},
                     tags: [],
                     rulesFollowed: null,
@@ -24946,6 +25017,7 @@ class OrderManager {
                     preTradeNotes: position.preTradeNotes || {},
                     setup: (position.preTradeNotes && position.preTradeNotes.setup) || this._getSessionDefaultTradeSetup(),
                     strategy_variables: position.strategyVariables || null,
+                    post_strategy_variables: null,
                     postTradeNotes: {},
                     tags: [],
                     rulesFollowed: null,
@@ -36212,6 +36284,7 @@ class OrderManager {
             preTradeNotes: firstEntry.preTradeNotes || null,
             setup: (firstEntry.preTradeNotes && firstEntry.preTradeNotes.setup) || this._getSessionDefaultTradeSetup(),
             strategy_variables: firstEntry.strategyVariables || null,
+            post_strategy_variables: null,
             postTradeNotes: null,
             tags: [],
             rulesFollowed: null,
