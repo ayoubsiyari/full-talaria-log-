@@ -4577,14 +4577,14 @@ class DrawingToolsManager {
 
         const hasExtraEntries = (drawing.meta?.extraEntries || []).length > 0;
         // Match .rr-primary-entry-drag-hit vertical extent (see BaseRiskRewardTool.render).
-        const primaryHalfH = hasExtraEntries ? 18 : 16;
+        const primaryHalfH = hasExtraEntries ? 10 : 9;
 
         const p0 = drawing.points && drawing.points[0];
         if (p0 && Number.isFinite(p0.y)) {
             pushHit('rr-primary-entry', chart.yScale(p0.y), primaryHalfH, x2NoPlus);
         }
 
-        const primaryLegHalfH = 15;
+        const primaryLegHalfH = 8;
         const p1 = drawing.points && drawing.points[1];
         if (p1 && Number.isFinite(p1.y)) {
             pushHit('rr-primary-stop', chart.yScale(p1.y), primaryLegHalfH, x2Full);
@@ -4594,9 +4594,9 @@ class DrawingToolsManager {
             pushHit('rr-primary-tp', chart.yScale(p2.y), primaryLegHalfH, x2Full);
         }
 
-        const halfExtra = 7;
-        const halfExtraTp = 22;
-        const halfExtraEntry = 22;
+        const halfExtra = 4;
+        const halfExtraTp = 12;
+        const halfExtraEntry = 12;
         (drawing.meta?.extraTargets || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
             pushHit(`rr-extra-target-${idx}`, chart.yScale(row.y), halfExtraTp, x2Full);
