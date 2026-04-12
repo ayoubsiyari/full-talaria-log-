@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { JOURNAL_API_BASE } from "@/lib/journalApi";
-import { formatInstrumentLabel } from "@/strategyLab/instruments";
+import { formatInstrumentsSummaryFromDef } from "@/strategyLab/instruments";
 
 function authHeaders() {
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -39,6 +39,7 @@ export default function FeedStrategyDetailModal({
   const isOwner = uid != null && authorId != null && uid === Number(authorId);
 
   const def = (strategy?.strategy_definition as Record<string, unknown>) || {};
+  const instrumentSummary = formatInstrumentsSummaryFromDef(def);
   const conditions = Array.isArray(def.conditions) ? (def.conditions as { type?: string; id?: string; name?: string }[]) : [];
   const variables = Array.isArray(def.variables) ? (def.variables as { id?: string; name?: string; category?: string }[]) : [];
 
@@ -117,8 +118,8 @@ export default function FeedStrategyDetailModal({
         ) : null}
 
         <section className="mb-4 flex flex-wrap gap-2 text-xs text-[var(--sl-text-sec)]">
-          {def.instrument ? (
-            <span className="rounded-md bg-[var(--sl-input)] px-2 py-1">{formatInstrumentLabel(def.instrument)}</span>
+          {instrumentSummary ? (
+            <span className="rounded-md bg-[var(--sl-input)] px-2 py-1">{instrumentSummary}</span>
           ) : null}
           {def.style ? <span className="rounded-md bg-[var(--sl-input)] px-2 py-1">{String(def.style)}</span> : null}
           {def.timeframe ? <span className="rounded-md bg-[var(--sl-input)] px-2 py-1">{String(def.timeframe)}</span> : null}

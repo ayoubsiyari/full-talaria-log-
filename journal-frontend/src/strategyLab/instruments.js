@@ -106,3 +106,40 @@ export function formatInstrumentLabel(raw) {
   if (!id) return '';
   return _INSTRUMENT_LABEL[id] || id;
 }
+
+/**
+ * Build a deduped list of registry ids from `instruments[]` and optional legacy `instrument` string.
+ */
+export function normalizeInstrumentList(rawList, legacySingle) {
+  const out = [];
+  const seen = new Set();
+  const push = (raw) => {
+    const n = normalizeInstrumentId(raw);
+    if (!n || seen.has(n)) return;
+    seen.add(n);
+    out.push(n);
+  };
+  if (Array.isArray(rawList)) {
+    rawList.forEach(push);
+  }
+  if (legacySingle != null && legacySingle !== '') {
+    push(legacySingle);
+  }
+  return out;
+}
+
+/** Comma-separated labels from draft (`instruments` + legacy `instrument`). */
+export function formatInstrumentsLine(draft) {
+  if (!draft || typeof draft !== 'object') return '';
+  const ids = normalizeInstrumentList(draft.instruments, draft.instrument);
+  if (!ids.length) return '';
+  return ids.map((id) => formatInstrumentLabel(id)).join(', ');
+}
+
+/** Strategy definition blob (API): instruments array + legacy instrument field. */
+export function formatInstrumentsSummaryFromDef(def) {
+  if (!def || typeof def !== 'object') return '';
+  const ids = normalizeInstrumentList(def.instruments, def.instrument);
+  if (!ids.length) return '';
+  return ids.map((id) => formatInstrumentLabel(id)).join(' · ');
+}

@@ -7,6 +7,7 @@ import ShareStrategyModal from "./ShareStrategyModal";
 import PostCard from "@/components/ui/post-card";
 import FeedStrategyDetailModal from "./FeedStrategyDetailModal";
 import { emptyDraft, definitionFromDraft, draftFromApi } from "@/strategyLab/defaults";
+import { formatInstrumentsSummaryFromDef } from "@/strategyLab/instruments";
 import { Plus, Trash2, Share2, BarChart3, Copy } from "lucide-react";
 
 function authHeaders() {
@@ -259,10 +260,9 @@ export default function StrategiesLabPage() {
                       <div className="min-w-0">
                         <div className="font-semibold">{s.name}</div>
                         <div className="text-xs text-[var(--sl-text-muted)]">
-                          {(s.strategy_definition?.instrument || "") +
-                            (s.strategy_definition?.timeframe
-                              ? ` · ${s.strategy_definition.timeframe}`
-                              : "")}
+                          {[formatInstrumentsSummaryFromDef(s.strategy_definition), s.strategy_definition?.timeframe]
+                            .filter(Boolean)
+                            .join(" · ")}
                         </div>
                       </div>
                     </div>

@@ -99,3 +99,35 @@ export function formatInstrumentLabel(raw: unknown): string {
   if (!id) return '';
   return INSTRUMENT_LABEL[id] || id;
 }
+
+export function normalizeInstrumentList(rawList: unknown, legacySingle: unknown): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (raw: unknown) => {
+    const n = normalizeInstrumentId(raw);
+    if (!n || seen.has(n)) return;
+    seen.add(n);
+    out.push(n);
+  };
+  if (Array.isArray(rawList)) {
+    rawList.forEach(push);
+  }
+  if (legacySingle != null && legacySingle !== '') {
+    push(legacySingle);
+  }
+  return out;
+}
+
+export function formatInstrumentsLine(draft: { instruments?: unknown; instrument?: unknown } | null | undefined): string {
+  if (!draft || typeof draft !== 'object') return '';
+  const ids = normalizeInstrumentList(draft.instruments, draft.instrument);
+  if (!ids.length) return '';
+  return ids.map((id) => formatInstrumentLabel(id)).join(', ');
+}
+
+export function formatInstrumentsSummaryFromDef(def: Record<string, unknown> | null | undefined): string {
+  if (!def || typeof def !== 'object') return '';
+  const ids = normalizeInstrumentList(def.instruments, def.instrument);
+  if (!ids.length) return '';
+  return ids.map((id) => formatInstrumentLabel(id)).join(' · ');
+}

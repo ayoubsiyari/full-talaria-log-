@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ImagePlus, Trash2 } from 'lucide-react';
 import { compressCoverImageFile } from '@/strategyLab/coverImage';
 import {
@@ -8,6 +8,7 @@ import {
   COMMODITY_CFD_INSTRUMENTS,
   FUTURES_INSTRUMENTS,
   normalizeInstrumentId,
+  normalizeInstrumentList,
 } from '@/strategyLab/instruments';
 
 const STYLES = [
@@ -74,6 +75,45 @@ function ToggleRow({
   );
 }
 
+function MultiToggleRow({
+  label,
+  options,
+  selectedIds,
+  onToggle,
+  wrapperClassName = 'mb-5',
+}: {
+  label: string;
+  options: ToggleOpt[];
+  selectedIds: string[];
+  onToggle: (id: string) => void;
+  wrapperClassName?: string;
+}) {
+  const selected = new Set(selectedIds || []);
+  return (
+    <div className={wrapperClassName}>
+      <div className="font-mono-label mb-2 text-[11px] font-bold uppercase tracking-wide text-[var(--sl-text-sec)]">
+        {label}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {options.map((opt) => (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => onToggle(opt.id)}
+            className={`rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+              selected.has(opt.id)
+                ? 'border-[var(--sl-accent)] bg-[rgba(38,67,247,0.2)] text-[var(--sl-accent-light)] shadow-[0_0_12px_rgba(38,67,247,0.25)]'
+                : 'border-[var(--sl-border)] bg-[var(--sl-input)] text-[var(--sl-text)] hover:border-[var(--sl-text-muted)]'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function GeneralInfoStep({
   draft,
   setDraft,
@@ -90,18 +130,21 @@ export default function GeneralInfoStep({
   const [imgBusy, setImgBusy] = useState(false);
   const coverImage = typeof draft.cover_image === 'string' ? draft.cover_image : '';
 
-  const instrumentValue = normalizeInstrumentId(
-    draft.instrument != null && draft.instrument !== '' ? String(draft.instrument) : ''
-  );
+  const selectedInstrumentIds = normalizeInstrumentList(draft.instruments, draft.instrument);
 
-  useEffect(() => {
+  const toggleInstrument = (rawId: string) => {
+    const id = normalizeInstrumentId(rawId);
+    if (!id) return;
     setDraft((d) => {
-      const raw = d.instrument != null && d.instrument !== '' ? String(d.instrument) : '';
-      const n = normalizeInstrumentId(raw);
-      if (n === raw) return d;
-      return { ...d, instrument: n };
+      let next = normalizeInstrumentList(d.instruments, d.instrument);
+      if (next.includes(id)) {
+        next = next.filter((x) => x !== id);
+      } else {
+        next = [...next, id];
+      }
+      return { ...d, instruments: next, instrument: undefined };
     });
-  }, [draft.instrument, setDraft]);
+  };
 
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -203,23 +246,28 @@ export default function GeneralInfoStep({
           Instrument
         </div>
         <p className="mb-3 text-xs text-[var(--sl-text-muted)]">
-          Symbols match the chart instrument registry: currency pairs, then CFD commodities, then futures.
+          Select one or more symbols (same registry as the chart). Currency pairs, CFD commodities, then futures.
         </p>
-        <ToggleRow
+        <MultiToggleRow
           label="Forex pairs"
           options={FOREX_INSTRUMENTS}
-          value={instrumentValue}
-          onChange={set('instrument')}
+          selectedIds={selectedInstrumentIds}
+          onToggle={toggleInstrument}
           wrapperClassName="mb-3"
         />
-        <ToggleRow
+        <MultiToggleRow
           label="Commodities (CFD)"
           options={COMMODITY_CFD_INSTRUMENTS}
-          value={instrumentValue}
-          onChange={set('instrument')}
+          selectedIds={selectedInstrumentIds}
+          onToggle={toggleInstrument}
           wrapperClassName="mb-3"
         />
-        <ToggleRow label="Futures" options={FUTURES_INSTRUMENTS} value={instrumentValue} onChange={set('instrument')} />
+        <MultiToggleRow
+          label="Futures"
+          options={FUTURES_INSTRUMENTS}
+          selectedIds={selectedInstrumentIds}
+          onToggle={toggleInstrument}
+        />
       </div>
       <ToggleRow label="Style" options={STYLES} value={String(draft.style ?? '')} onChange={set('style')} />
       <ToggleRow label="Direction" options={DIRECTIONS} value={String(draft.direction ?? 'both')} onChange={set('direction')} />

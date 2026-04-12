@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ImagePlus, Trash2 } from 'lucide-react';
 import { compressCoverImageFile } from '../../strategyLab/coverImage';
 import {
@@ -6,6 +6,7 @@ import {
   COMMODITY_CFD_INSTRUMENTS,
   FUTURES_INSTRUMENTS,
   normalizeInstrumentId,
+  normalizeInstrumentList,
 } from '../../strategyLab/instruments';
 
 const STYLES = [
@@ -56,6 +57,33 @@ function ToggleRow({ label, options, value, onChange, name, wrapperClassName = '
   );
 }
 
+function MultiToggleRow({ label, options, selectedIds, onToggle, wrapperClassName = 'mb-5' }) {
+  const selected = new Set(selectedIds || []);
+  return (
+    <div className={wrapperClassName}>
+      <div className="font-mono-label mb-2 text-[11px] font-bold uppercase tracking-wide text-[var(--sl-text-sec)]">
+        {label}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {options.map((opt) => (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => onToggle(opt.id)}
+            className={`rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+              selected.has(opt.id)
+                ? 'border-[var(--sl-accent)] bg-[rgba(38,67,247,0.2)] text-[var(--sl-accent-light)] shadow-[0_0_12px_rgba(38,67,247,0.25)]'
+                : 'border-[var(--sl-border)] bg-[var(--sl-input)] text-[var(--sl-text)] hover:border-[var(--sl-text-muted)]'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function GeneralInfoStep({ draft, setDraft }) {
   const set = (key) => (v) => setDraft((d) => ({ ...d, [key]: v }));
   const fileRef = useRef(null);
@@ -80,15 +108,21 @@ export default function GeneralInfoStep({ draft, setDraft }) {
 
   const clearCover = () => setDraft((d) => ({ ...d, cover_image: '' }));
 
-  const instrumentValue = normalizeInstrumentId(draft.instrument);
+  const selectedInstrumentIds = normalizeInstrumentList(draft.instruments, draft.instrument);
 
-  useEffect(() => {
+  const toggleInstrument = (rawId) => {
+    const id = normalizeInstrumentId(rawId);
+    if (!id) return;
     setDraft((d) => {
-      const n = normalizeInstrumentId(d.instrument);
-      if (n === d.instrument) return d;
-      return { ...d, instrument: n };
+      let next = normalizeInstrumentList(d.instruments, d.instrument);
+      if (next.includes(id)) {
+        next = next.filter((x) => x !== id);
+      } else {
+        next = [...next, id];
+      }
+      return { ...d, instruments: next, instrument: undefined };
     });
-  }, [draft.instrument, setDraft]);
+  };
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6">
@@ -173,23 +207,23 @@ export default function GeneralInfoStep({ draft, setDraft }) {
           Instrument
         </div>
         <p className="mb-3 text-xs text-[var(--sl-text-muted)]">
-          Symbols match the chart instrument registry: currency pairs, then CFD commodities, then futures.
+          Select one or more symbols (same registry as the chart). Currency pairs, CFD commodities, then futures.
         </p>
-        <ToggleRow
+        <MultiToggleRow
           label="Forex pairs"
           options={FOREX_INSTRUMENTS}
-          value={instrumentValue}
-          onChange={set('instrument')}
+          selectedIds={selectedInstrumentIds}
+          onToggle={toggleInstrument}
           wrapperClassName="mb-3"
         />
-        <ToggleRow
+        <MultiToggleRow
           label="Commodities (CFD)"
           options={COMMODITY_CFD_INSTRUMENTS}
-          value={instrumentValue}
-          onChange={set('instrument')}
+          selectedIds={selectedInstrumentIds}
+          onToggle={toggleInstrument}
           wrapperClassName="mb-3"
         />
-        <ToggleRow label="Futures" options={FUTURES_INSTRUMENTS} value={instrumentValue} onChange={set('instrument')} />
+        <MultiToggleRow label="Futures" options={FUTURES_INSTRUMENTS} selectedIds={selectedInstrumentIds} onToggle={toggleInstrument} />
       </div>
       <ToggleRow label="Style" options={STYLES} value={draft.style} onChange={set('style')} />
       <ToggleRow label="Direction" options={DIRECTIONS} value={draft.direction} onChange={set('direction')} />

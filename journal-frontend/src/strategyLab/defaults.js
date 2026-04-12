@@ -1,4 +1,4 @@
-import { normalizeInstrumentId } from './instruments';
+import { normalizeInstrumentList } from './instruments';
 
 export const SL_COLORS = {
   orderFlow: { color: '#06b6d4', bg: 'rgba(6,182,212,0.12)', bd: '#06b6d4' },
@@ -22,7 +22,7 @@ export function emptyDraft() {
     name: '',
     description: '',
     cover_image: '',
-    instrument: '',
+    instruments: [],
     style: '',
     direction: 'both',
     timeframe: '',
@@ -32,8 +32,11 @@ export function emptyDraft() {
 }
 
 export function definitionFromDraft(d) {
+  const instruments = normalizeInstrumentList(d.instruments, d.instrument);
   return {
-    instrument: d.instrument || '',
+    instruments,
+    /** First symbol for older clients / quick display */
+    instrument: instruments[0] || '',
     style: d.style || '',
     direction: d.direction || 'both',
     timeframe: d.timeframe || '',
@@ -49,7 +52,7 @@ export function draftFromApi(strategy) {
     name: strategy.name || '',
     description: strategy.description || '',
     cover_image: typeof def.cover_image === 'string' ? def.cover_image : '',
-    instrument: normalizeInstrumentId(def.instrument || ''),
+    instruments: normalizeInstrumentList(def.instruments, def.instrument),
     style: def.style || '',
     direction: def.direction || 'both',
     timeframe: def.timeframe || '',

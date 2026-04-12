@@ -331,9 +331,10 @@ class Strategy(db.Model):
     entry_rules = db.Column(JSON, nullable=False, default=list)
     exit_rules = db.Column(JSON, nullable=False, default=list)
     risk_management = db.Column(JSON, nullable=False, default=dict)
-    # Strategy Builder v2: instrument, style, direction, timeframe, conditions, variables
+    # Strategy Builder v2: instruments[], instrument (legacy primary), style, …
     strategy_definition = db.Column(JSON, nullable=False, default=lambda: {
         'instrument': '',
+        'instruments': [],
         'style': '',
         'direction': 'both',
         'timeframe': '',

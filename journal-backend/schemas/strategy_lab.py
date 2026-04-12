@@ -31,6 +31,7 @@ def _sanitize_cover_image(val):
 def default_strategy_definition():
     return {
         'instrument': '',
+        'instruments': [],
         'style': '',
         'direction': 'both',
         'timeframe': '',
@@ -106,7 +107,7 @@ def normalize_strategy_payload(data):
     if defn is None:
         defn = default_strategy_definition()
         # Allow flat metadata
-        for key in ('instrument', 'style', 'direction', 'timeframe'):
+        for key in ('instrument', 'instruments', 'style', 'direction', 'timeframe'):
             if data.get(key) is not None:
                 defn[key] = data[key]
         if data.get('conditions') is not None:
