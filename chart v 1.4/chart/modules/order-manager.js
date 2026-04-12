@@ -5888,12 +5888,11 @@ class OrderManager {
     }
 
     /**
-     * Snapshot values from the strategy variable panel onto the order (journal + analytics).
+     * Read PRE variable values from the order panel mount (journal + analytics).
+     * @returns {Array|null} Same shape as stored on order.strategyVariables
      */
-    attachStrategyVariablesToOrder(order) {
-        if (!order) return order;
-        const mount = document.getElementById('orderStrategyVariablesMount');
-        if (!mount) return order;
+    _buildStrategyVariableValuesFromMount(mount) {
+        if (!mount) return null;
         const inputs = mount.querySelectorAll('.order-strategy-var-input');
         const defs = this._getPreTradeVariableDefs();
         const values = [];
@@ -5909,7 +5908,32 @@ class OrderManager {
                 value: el.value != null ? String(el.value) : ''
             });
         });
-        order.strategyVariables = values.length ? values : null;
+        return values.length ? values : null;
+    }
+
+    /** Copy snapshot from panel onto order before register when inputs still reflect the user’s choices. */
+    _applyPreTradeVariablesFromOrderPanel(order) {
+        if (!order) return;
+        const snap = this._buildStrategyVariableValuesFromMount(
+            document.getElementById('orderStrategyVariablesMount')
+        );
+        if (snap && snap.length) order.strategyVariables = snap;
+    }
+
+    /**
+     * Snapshot values from the strategy variable panel onto the order (journal + analytics).
+     * If the mount has no inputs (e.g. panel reset), keeps any strategyVariables already set on the order.
+     */
+    attachStrategyVariablesToOrder(order) {
+        if (!order) return order;
+        const mount = document.getElementById('orderStrategyVariablesMount');
+        if (!mount) return order;
+        const fromDom = this._buildStrategyVariableValuesFromMount(mount);
+        if (fromDom && fromDom.length) {
+            order.strategyVariables = fromDom;
+        } else if (!order.strategyVariables || !order.strategyVariables.length) {
+            order.strategyVariables = null;
+        }
         return order;
     }
 
@@ -5925,6 +5949,40 @@ class OrderManager {
             })
             .filter(Boolean)
             .join(', ');
+    }
+
+    /**
+     * Resolve PRE variable snapshot for modals (open position or pre-built close journal entry).
+     */
+    _getOrderStrategyVariablesArray(order) {
+        if (!order) return null;
+        if (Array.isArray(order.strategyVariables) && order.strategyVariables.length) {
+            return order.strategyVariables;
+        }
+        const fromPending = order.pendingJournalEntry?.strategy_variables;
+        if (Array.isArray(fromPending) && fromPending.length) return fromPending;
+        return null;
+    }
+
+    /** Dedupe case-insensitively; keeps first casing. */
+    _mergeCommaSeparatedTags(...parts) {
+        const seen = new Set();
+        const out = [];
+        parts.forEach((p) => {
+            if (p == null || !String(p).trim()) return;
+            String(p)
+                .split(',')
+                .map((t) => t.trim())
+                .filter(Boolean)
+                .forEach((t) => {
+                    const key = t.toLowerCase();
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        out.push(t);
+                    }
+                });
+        });
+        return out.join(', ');
     }
     
     /**
@@ -6157,15 +6215,16 @@ class OrderManager {
             tradeSetupEl.value = (existing && String(existing).trim()) ? String(existing).trim() : defaultSetup;
         }
 
-        const varTags = this._formatStrategyVariablesAsTags(order.strategyVariables);
+        const strategyVarsSnapshot = this._getOrderStrategyVariablesArray(order);
+        const varTags = this._formatStrategyVariablesAsTags(strategyVarsSnapshot);
         const tradeTagsEl = document.getElementById('tradeTags');
         if (tradeTagsEl) {
-            const existingTags = order.journalEntry?.preTradeNotes?.tags;
-            if (existingTags && String(existingTags).trim()) {
-                tradeTagsEl.value = String(existingTags).trim();
-            } else if (varTags) {
-                tradeTagsEl.value = varTags;
-            }
+            const userSavedTags = this._mergeCommaSeparatedTags(
+                order.journalEntry?.preTradeNotes?.tags,
+                order.preTradeNotes?.tags
+            );
+            const mergedTags = this._mergeCommaSeparatedTags(userSavedTags, varTags);
+            if (mergedTags) tradeTagsEl.value = mergedTags;
         }
 
         const reasonEl = document.getElementById('tradeReason');
@@ -6175,7 +6234,7 @@ class OrderManager {
         }
 
         const anchor = document.getElementById('strategyVarsJournalAnchor');
-        if (anchor && Array.isArray(order.strategyVariables) && order.strategyVariables.length > 0) {
+        if (anchor && Array.isArray(strategyVarsSnapshot) && strategyVarsSnapshot.length > 0) {
             anchor.style.display = 'block';
             anchor.textContent = '';
             const title = document.createElement('div');
@@ -6183,7 +6242,7 @@ class OrderManager {
                 'font-size:11px;color:#787b86;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em;';
             title.textContent = isClosing ? 'Pre-trade variables (at entry)' : 'Pre-trade variables';
             anchor.appendChild(title);
-            order.strategyVariables.forEach((sv) => {
+            strategyVarsSnapshot.forEach((sv) => {
                 const row = document.createElement('div');
                 row.style.cssText =
                     'display:flex;justify-content:space-between;align-items:flex-start;gap:10px;font-size:12px;margin-bottom:6px;padding:10px 12px;background:rgba(124,58,237,0.08);border-radius:8px;border:1px solid rgba(255,255,255,0.08);';
@@ -20836,6 +20895,7 @@ class OrderManager {
                             t._noTriggerBeforeTick = guardTick;
                         });
                     }
+                    this._applyPreTradeVariablesFromOrderPanel(order);
                     if (this.orderService) {
                         this.orderService.registerOpenOrder(order);
                     } else {
@@ -21228,6 +21288,8 @@ class OrderManager {
             _tpNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick
         };
 
+        this._applyPreTradeVariablesFromOrderPanel(order);
+
         if (order.tpTargets && order.tpTargets.length > 0) {
             const guardTick = this._getCurrentTickSnapshot().tick;
             order.tpTargets.forEach(t => {
@@ -21398,6 +21460,8 @@ class OrderManager {
             // Store scaling intent for when order executes
             scaleWithExisting: this.scaleNextOrder
         };
+
+        this._applyPreTradeVariablesFromOrderPanel(pendingOrder);
         
         // Reset scaling flag after storing
         if (this.scaleNextOrder) {
@@ -21469,6 +21533,8 @@ class OrderManager {
             // Store scaling intent for when order executes
             scaleWithExisting: this.scaleNextOrder
         };
+
+        this._applyPreTradeVariablesFromOrderPanel(pendingOrder);
 
         if (this.orderService) {
             this.orderService.registerPendingOrder(pendingOrder);
@@ -21661,6 +21727,8 @@ class OrderManager {
                 createdFromTool: true,
                 toolType: toolData.toolType
             };
+
+            this._applyPreTradeVariablesFromOrderPanel(order);
             
             // ═══ POSITION SCALING ═══
             if (this.enablePositionScaling && this.scaleNextOrder) {
@@ -21803,6 +21871,8 @@ class OrderManager {
             stopLoss: slPrice > 0 ? slPrice : null,
             takeProfit: tpPrice > 0 ? tpPrice : null
         };
+
+        this._applyPreTradeVariablesFromOrderPanel(order);
         
         if (this.orderService) {
             this.orderService.registerOpenOrder(order);
@@ -21890,6 +21960,8 @@ class OrderManager {
             stopLoss: slPrice > 0 ? slPrice : null,
             takeProfit: tpPrice > 0 ? tpPrice : null
         };
+
+        this._applyPreTradeVariablesFromOrderPanel(order);
         
         if (this.orderService) {
             this.orderService.registerOpenOrder(order);
@@ -21960,6 +22032,8 @@ class OrderManager {
             stopLoss: defaultSL,
             takeProfit: defaultTP
         };
+
+        this._applyPreTradeVariablesFromOrderPanel(order);
         
         if (this.orderService) {
             this.orderService.registerOpenOrder(order);
@@ -22019,6 +22093,8 @@ class OrderManager {
             stopLoss: defaultSL,
             takeProfit: defaultTP
         };
+
+        this._applyPreTradeVariablesFromOrderPanel(order);
         
         if (this.orderService) {
             this.orderService.registerOpenOrder(order);
@@ -22127,6 +22203,8 @@ class OrderManager {
             stopLoss: defaultSL,
             takeProfit: defaultTP
         };
+
+        this._applyPreTradeVariablesFromOrderPanel(order);
         
         if (this.orderService) {
             this.orderService.registerOpenOrder(order);
@@ -22178,6 +22256,8 @@ class OrderManager {
             stopLoss: defaultSL,
             takeProfit: defaultTP
         };
+
+        this._applyPreTradeVariablesFromOrderPanel(order);
         
         this.attachStrategyVariablesToOrder(order);
         this.openPositions.push(order);
@@ -22975,7 +23055,8 @@ class OrderManager {
             _slNoTriggerBeforeTime: currentCandle.t,
             _slNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick,
             _tpNoTriggerBeforeTime: currentCandle.t,
-            _tpNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick
+            _tpNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick,
+            strategyVariables: pendingOrder.strategyVariables || null
         };
 
         // Guard multi-TP targets against triggering on the fill candle
@@ -26516,7 +26597,8 @@ class OrderManager {
             splitTotal: 2,
             isSplitEntry: true,
             sizingMode: po.sizingMode,
-            scaleWithExisting: po.scaleWithExisting
+            scaleWithExisting: po.scaleWithExisting,
+            strategyVariables: po.strategyVariables || null
         };
 
         // Auto-detect order type for each leg
