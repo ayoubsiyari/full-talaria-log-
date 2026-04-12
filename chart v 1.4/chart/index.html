@@ -43161,7 +43161,7 @@
 
     <script defer src="modules/preferences-init.js?v=20260404"></script>
 
-    <script defer src="modules/drawing-tools-manager.js?v=2026040135"></script>
+    <script defer src="modules/drawing-tools-manager.js?v=2026040136"></script>
 
     <script defer src="modules/favorites-manager.js?v=20260404"></script>
 
@@ -58470,7 +58470,7 @@ P['objecttree']={
 
                 var dm=c&&c.drawingManager;
 
-                if(dm&&typeof dm.deselectAll==='function') dm.deselectAll();
+                if(dm&&typeof dm.deselectAll==='function') dm.deselectAll({ forSelectionChange: true });
 
                 if(dm&&typeof dm.selectDrawing==='function') dm.selectDrawing(d);
 
@@ -58488,7 +58488,7 @@ P['objecttree']={
 
                     var dm=c&&c.drawingManager;
 
-                    if(dm&&typeof dm.deselectAll==='function') dm.deselectAll();
+                    if(dm&&typeof dm.deselectAll==='function') dm.deselectAll({ forSelectionChange: true });
 
                     if(dm&&typeof dm.selectDrawing==='function') dm.selectDrawing(d);
 

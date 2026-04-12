@@ -262,7 +262,7 @@ class DrawingToolsManager {
                     this._directResizeUpHandler = null;
 
                     if (!drawing.selected || (this.selectedDrawings.length !== 1 || this.selectedDrawings[0] !== drawing)) {
-                        this.deselectAll();
+                        this.deselectAll({ forSelectionChange: true });
                         drawing.select();
                         this.selectedDrawing = drawing;
                         this.selectedDrawings = [drawing];
@@ -356,7 +356,7 @@ class DrawingToolsManager {
                     if (!ch || ch === hitChart) continue;
                     const dm = ch.drawingManager;
                     if (!dm || !dm.selectedDrawings || dm.selectedDrawings.length === 0) continue;
-                    dm.deselectAll();
+                    dm.deselectAll({ fromCanvasBackground: true });
                 }
             },
             true
@@ -1171,7 +1171,7 @@ class DrawingToolsManager {
                 
                 if (!event.ctrlKey && this.selectedDrawings.length > 0 && !this.isRectSelecting) {
                     // [debug removed]
-                    this.deselectAll();
+                    this.deselectAll({ fromCanvasBackground: true });
                 }
             };
             canvas.addEventListener('click', onClick);
@@ -1233,7 +1233,7 @@ class DrawingToolsManager {
         }
 
         this.currentTool = toolName;
-        this.deselectAll();
+        this.deselectAll({ forSelectionChange: true });
         this.drawingState.reset();
         this.isDraggingFirstTwo = false;  // Reset drag state for multi-point tools
         this.dragFirstTwoStart = null;
@@ -1885,7 +1885,7 @@ class DrawingToolsManager {
                     event.stopPropagation();
                     if (!rrD.selected
                         || (this.selectedDrawings.length !== 1 || this.selectedDrawings[0] !== rrD)) {
-                        this.deselectAll();
+                        this.deselectAll({ forSelectionChange: true });
                         rrD.select();
                         this.selectedDrawing = rrD;
                         this.selectedDrawings = [rrD];
@@ -1910,7 +1910,7 @@ class DrawingToolsManager {
                     event.stopPropagation();
 
                     if (!drawing.selected || (this.selectedDrawings.length !== 1 || this.selectedDrawings[0] !== drawing)) {
-                        this.deselectAll();
+                        this.deselectAll({ forSelectionChange: true });
                         drawing.select();
                         this.selectedDrawing = drawing;
                         this.selectedDrawings = [drawing];
@@ -2020,7 +2020,7 @@ class DrawingToolsManager {
             } else {
                 // Clicked on empty space - deselect all (unless Shift is held)
                 if (!event.shiftKey) {
-                    this.deselectAll();
+                    this.deselectAll({ fromCanvasBackground: true });
                 }
                 // Ensure SVG is transparent so canvas can receive panning events
                 this.svg.style('pointer-events', 'none');
@@ -2783,7 +2783,7 @@ class DrawingToolsManager {
         } else {
             // Right-click on empty canvas: deselect all selected drawings then show chart menu
             if (this.selectedDrawings.length > 0) {
-                this.deselectAll();
+                this.deselectAll({ fromCanvasBackground: true });
             }
             if (this.chart && typeof this.chart.showChartContextMenu === 'function') {
                 this.chart.showChartContextMenu(event.clientX, event.clientY, event.offsetX, event.offsetY);
@@ -5300,7 +5300,7 @@ class DrawingToolsManager {
                 return;
             }
             // Single selection - deselect all others
-            this.deselectAll();
+            this.deselectAll({ forSelectionChange: true });
             drawing.select();
             this.selectedDrawing = drawing;
             this.selectedDrawings = [drawing];
@@ -5365,10 +5365,30 @@ class DrawingToolsManager {
         }
     }
 
+    /** @returns {boolean} */
+    _isRiskRewardDrawing(d) {
+        return !!(d && (d.type === 'long-position' || d.type === 'short-position'));
+    }
+
     /**
-     * Deselect all drawings
+     * Deselect all drawings.
+     * Risk/reward tools only clear when the user clicks empty chart space (`fromCanvasBackground`)
+     * or when selection is intentionally replaced (`forSelectionChange`), e.g. another drawing or tool.
+     *
+     * @param {{ fromCanvasBackground?: boolean, forSelectionChange?: boolean }} [options]
      */
-    deselectAll() {
+    deselectAll(options = {}) {
+        const fromCanvasBackground = options.fromCanvasBackground === true;
+        const forSelectionChange = options.forSelectionChange === true;
+        const selected = this.selectedDrawings || [];
+        if (
+            selected.some((d) => this._isRiskRewardDrawing(d)) &&
+            !fromCanvasBackground &&
+            !forSelectionChange
+        ) {
+            return;
+        }
+
         // Before deselecting, remove any empty image tools that were never uploaded
         const emptyImageTools = this.selectedDrawings.filter(d => 
             d.type === 'image' && 
@@ -7058,7 +7078,7 @@ class DrawingToolsManager {
         });
         
         // Deselect all first
-        this.deselectAll();
+        this.deselectAll({ forSelectionChange: true });
         
         // Select all drawings within rectangle
         selectedDrawings.forEach(drawing => {
