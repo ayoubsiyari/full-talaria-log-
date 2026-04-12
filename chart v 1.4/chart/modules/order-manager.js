@@ -19379,7 +19379,9 @@ class OrderManager {
         } else if (typeof window !== 'undefined' && window.chart && Number.isFinite(window.chart.priceIncrement) && window.chart.priceIncrement > 0) {
             tick = Math.max(tick, window.chart.priceIncrement);
         }
-        const minLegTicks = 12;
+        // Default gap for the next entry rung (E2, E3, …): keep comfortably separated from the prior leg.
+        // Was easy to read as “too tight” when the TP cap used a low tick floor and a small fraction of room.
+        const minLegTicks = 20;
         const maxLegTicks = 40;
         let step = tick * minLegTicks;
         step = Math.min(step, tick * maxLegTicks);
@@ -19396,13 +19398,13 @@ class OrderManager {
         if (Number.isFinite(refPrice) && refPrice > 0 && Number.isFinite(tpFar) && tpFar > 0) {
             if (this.orderSide === 'BUY' && tpFar > refPrice) {
                 const room = tpFar - refPrice;
-                step = Math.min(step, Math.max(pip * 6, room * 0.28));
+                step = Math.min(step, Math.max(pip * 12, room * 0.38));
             } else if (this.orderSide === 'SELL' && tpFar < refPrice) {
                 const room = refPrice - tpFar;
-                step = Math.min(step, Math.max(pip * 6, room * 0.28));
+                step = Math.min(step, Math.max(pip * 12, room * 0.38));
             }
         }
-        return Math.max(step, pip * 6, 1e-12);
+        return Math.max(step, pip * 12, 1e-12);
     }
 
     /**

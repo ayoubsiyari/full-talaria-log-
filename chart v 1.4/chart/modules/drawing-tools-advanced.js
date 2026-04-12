@@ -936,7 +936,8 @@ class DatePriceRangeTool extends BaseDrawing {
 // ============================================================================
 /** Default spacing for a new ladder entry from primary (tool “+” / panel): toward reward (above E1 long / below E1 short). Pip/tick-based only — %-of-price was placing E2 at TP. */
 const RR_EXTRA_ENTRY_OFFSET_FRAC = 0.00002;
-const RR_EXTRA_ENTRY_MIN_TICK_MULT = 16;
+/** Match order-manager default ladder step when OM does not seed multi-entry (tool-only fallback). */
+const RR_EXTRA_ENTRY_MIN_TICK_MULT = 20;
 
 class BaseRiskRewardTool extends BaseDrawing {
     constructor(type, points = [], style = {}) {
@@ -2648,7 +2649,9 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             const hasDrawnExtras = (this.meta.extraEntries || []).length > 0;
             const omMulti = om?.isMultiEntryMode && Array.isArray(om.multiEntryLevels) && om.multiEntryLevels.length > 0;
-            const showEntryQtyControls = omMulti && om.multiEntryLevels.length > 1
+            /** Only show E1/E2+ mini-badges when there is a real ladder (2+ rungs). One OM row = single entry — no "E1" label. */
+            const omMultiEntryLadder = omMulti && om.multiEntryLevels.length > 1;
+            const showEntryQtyControls = omMultiEntryLadder
                 && typeof om.adjustMultiEntryLevelAmount === 'function';
 
             /**
@@ -2847,7 +2850,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                     }
                 }
             };
-            if (omMulti) {
+            if (omMultiEntryLadder) {
                 const entryBadgeRows = [];
                 om.multiEntryLevels.forEach((lv, i) => {
                     if (!lv) return;
