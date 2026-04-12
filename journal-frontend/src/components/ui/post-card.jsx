@@ -107,7 +107,8 @@ export default function PostCard({ post, onLike, onOpenComments, onOpenStrategy,
           : undefined
       }
       className={cn(
-        'w-full rounded-3xl border p-4 transition-shadow',
+        'flex h-full min-w-0 flex-col rounded-3xl border transition-shadow',
+        isGrid ? 'p-3' : 'p-4',
         !isGrid && 'max-w-[30rem]',
         'border-[var(--sl-border)] bg-[var(--sl-card)]',
         'shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] hover:shadow-[0_28px_55px_-10px_rgba(38,67,247,0.12)]',
@@ -115,120 +116,214 @@ export default function PostCard({ post, onLike, onOpenComments, onOpenStrategy,
       )}
     >
       {/* Header */}
-      <div className="card-header flex items-start justify-between gap-4">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
+      <div className="card-header flex min-w-0 items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <img
             src={avatarUrlFor(authorName)}
             alt=""
             width={40}
             height={40}
-            className="h-9 w-9 shrink-0 rounded-full object-cover ring-2 ring-[var(--sl-border)]"
+            className={cn('shrink-0 rounded-full object-cover ring-2 ring-[var(--sl-border)]', isGrid ? 'h-8 w-8' : 'h-9 w-9')}
           />
-          <div className="min-w-0">
-            <h3 className="text-[15px] font-semibold leading-tight text-[var(--sl-text)]">
+          <div className="min-w-0 flex-1">
+            <h3
+              className={cn(
+                'truncate font-semibold leading-tight text-[var(--sl-text)]',
+                isGrid ? 'text-[13px]' : 'text-[15px]'
+              )}
+            >
               {authorName}
-              <span className="mt-0.5 flex flex-wrap items-center gap-2 text-sm font-normal opacity-70">
-                <small className="text-[var(--sl-text-sec)]">{handle}</small>
-                <span className="text-[var(--sl-text-muted)]">·</span>
-                <small className="text-[var(--sl-text-muted)]">{timeAgo}</small>
-                {visBadge && (
-                  <span className="rounded-md bg-[var(--sl-input)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--sl-text-sec)]">
-                    {visBadge}
-                  </span>
-                )}
-              </span>
             </h3>
+            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] font-normal text-[var(--sl-text-muted)]">
+              <span className="truncate text-[var(--sl-text-sec)]">{handle}</span>
+              <span className="text-[var(--sl-text-muted)]">·</span>
+              <span className="shrink-0">{timeAgo}</span>
+              {visBadge && (
+                <span className="rounded bg-[var(--sl-input)] px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-[var(--sl-text-sec)]">
+                  {visBadge}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Content */}
-      <div className="mt-4 flex flex-col gap-4">
-        <div>
-          <p className="text-base font-semibold text-[var(--sl-text)]">{title}</p>
+      <div className={cn('mt-3 flex min-h-0 flex-1 flex-col gap-2', !isGrid && 'gap-4')}>
+        <div className="min-w-0">
+          <p
+            className={cn(
+              'font-semibold leading-snug text-[var(--sl-text)]',
+              isGrid ? 'line-clamp-2 text-sm' : 'text-base'
+            )}
+          >
+            {title}
+          </p>
           {caption ? (
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--sl-text-sec)]">
+            <p
+              className={cn(
+                'mt-1.5 text-[var(--sl-text-sec)]',
+                isGrid ? 'line-clamp-2 text-xs leading-relaxed' : 'whitespace-pre-wrap text-sm leading-relaxed'
+              )}
+            >
               {caption}
             </p>
           ) : null}
         </div>
-        <img
-          src={heroSrc}
-          alt=""
-          className={cn('w-full rounded-xl object-cover', isGrid ? 'max-h-36' : 'max-h-56')}
-          loading="lazy"
-        />
+        <div
+          className={cn(
+            'relative w-full overflow-hidden rounded-xl bg-black/20',
+            isGrid ? 'aspect-[16/10]' : ''
+          )}
+        >
+          <img
+            src={heroSrc}
+            alt=""
+            className={cn(
+              'rounded-xl object-cover',
+              isGrid ? 'absolute inset-0 h-full w-full object-center' : 'max-h-56 w-full'
+            )}
+            loading="lazy"
+          />
+        </div>
       </div>
 
-      {/* Actions */}
-      <div className="mt-4 flex justify-evenly gap-1 border-t border-[var(--sl-border)] pt-3">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleLike();
-          }}
-          className="flex grow items-center justify-center gap-2 rounded-xl px-3 py-2 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)]"
-        >
-          <Heart
-            className={cn(
-              'h-5 w-5 shrink-0',
-              liked ? 'fill-[var(--sl-red)] text-[var(--sl-red)]' : 'text-[var(--sl-text-sec)]'
-            )}
-            strokeWidth={2}
-          />
-          <span className="hidden font-medium text-[14px] opacity-90 sm:inline">
-            {liked ? 'Liked' : 'Like'} ({post.likes_count ?? 0})
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenComments?.(post);
-          }}
-          className="flex grow items-center justify-center gap-2 rounded-xl px-3 py-2 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)]"
-        >
-          <MessageCircle className="h-5 w-5 shrink-0" strokeWidth={2} />
-          <span className="hidden font-medium text-[14px] opacity-90 sm:inline">
-            Comments ({post.comments_count ?? 0})
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleBookmark();
-          }}
-          className="flex grow items-center justify-center gap-2 rounded-xl px-3 py-2 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)]"
-          aria-pressed={bookmarked}
-        >
-          <Bookmark
-            className={cn(
-              'h-5 w-5 shrink-0',
-              bookmarked ? 'fill-[var(--sl-cyan)] text-[var(--sl-cyan)]' : 'text-[var(--sl-text-sec)]'
-            )}
-            strokeWidth={2}
-          />
-          <span className="hidden font-medium text-[14px] opacity-90 sm:inline">
-            {bookmarked ? 'Saved' : 'Save'}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleShare();
-          }}
-          className="flex grow items-center justify-center gap-2 rounded-xl px-3 py-2 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)]"
-        >
-          <Send className="h-5 w-5 shrink-0" strokeWidth={2} />
-          <span className="hidden font-medium text-[14px] opacity-90 sm:inline">Share</span>
-        </button>
-      </div>
+      {/* Actions — grid cards use a fixed 4-col layout (never viewport-based text) */}
+      {isGrid ? (
+        <div className="mt-3 grid grid-cols-4 gap-0.5 border-t border-[var(--sl-border)] pt-2.5">
+          <button
+            type="button"
+            title={liked ? 'Unlike' : 'Like'}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleLike();
+            }}
+            className="flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)]"
+          >
+            <Heart
+              className={cn(
+                'h-4 w-4 shrink-0',
+                liked ? 'fill-[var(--sl-red)] text-[var(--sl-red)]' : 'text-[var(--sl-text-sec)]'
+              )}
+              strokeWidth={2}
+            />
+            <span className="max-w-full truncate text-center text-[10px] font-medium tabular-nums leading-none text-[var(--sl-text-muted)]">
+              {post.likes_count ?? 0}
+            </span>
+          </button>
+          <button
+            type="button"
+            title="Comments"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenComments?.(post);
+            }}
+            className="flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)]"
+          >
+            <MessageCircle className="h-4 w-4 shrink-0 text-[var(--sl-text-sec)]" strokeWidth={2} />
+            <span className="max-w-full truncate text-center text-[10px] font-medium tabular-nums leading-none text-[var(--sl-text-muted)]">
+              {post.comments_count ?? 0}
+            </span>
+          </button>
+          <button
+            type="button"
+            title={bookmarked ? 'Remove save' : 'Save'}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleBookmark();
+            }}
+            className="flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)]"
+            aria-pressed={bookmarked}
+          >
+            <Bookmark
+              className={cn(
+                'h-4 w-4 shrink-0',
+                bookmarked ? 'fill-[var(--sl-cyan)] text-[var(--sl-cyan)]' : 'text-[var(--sl-text-sec)]'
+              )}
+              strokeWidth={2}
+            />
+            <span className="text-center text-[9px] font-medium leading-none text-[var(--sl-text-muted)]">Save</span>
+          </button>
+          <button
+            type="button"
+            title="Share"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleShare();
+            }}
+            className="flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)]"
+          >
+            <Send className="h-4 w-4 shrink-0 text-[var(--sl-text-sec)]" strokeWidth={2} />
+            <span className="text-center text-[9px] font-medium leading-none text-[var(--sl-text-muted)]">Share</span>
+          </button>
+        </div>
+      ) : (
+        <div className="mt-4 flex flex-wrap justify-center gap-1 border-t border-[var(--sl-border)] pt-3 sm:flex-nowrap sm:justify-evenly">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleLike();
+            }}
+            className="flex min-h-[44px] min-w-[44px] flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-2 rounded-xl px-2 py-2 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)] sm:basis-auto sm:px-3"
+          >
+            <Heart
+              className={cn(
+                'h-5 w-5 shrink-0',
+                liked ? 'fill-[var(--sl-red)] text-[var(--sl-red)]' : 'text-[var(--sl-text-sec)]'
+              )}
+              strokeWidth={2}
+            />
+            <span className="hidden font-medium text-[14px] opacity-90 sm:inline">
+              {liked ? 'Liked' : 'Like'} ({post.likes_count ?? 0})
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenComments?.(post);
+            }}
+            className="flex min-h-[44px] min-w-[44px] flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-2 rounded-xl px-2 py-2 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)] sm:basis-auto sm:px-3"
+          >
+            <MessageCircle className="h-5 w-5 shrink-0" strokeWidth={2} />
+            <span className="hidden font-medium text-[14px] opacity-90 sm:inline">
+              Comments ({post.comments_count ?? 0})
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleBookmark();
+            }}
+            className="flex min-h-[44px] min-w-[44px] flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-2 rounded-xl px-2 py-2 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)] sm:basis-auto sm:px-3"
+            aria-pressed={bookmarked}
+          >
+            <Bookmark
+              className={cn(
+                'h-5 w-5 shrink-0',
+                bookmarked ? 'fill-[var(--sl-cyan)] text-[var(--sl-cyan)]' : 'text-[var(--sl-text-sec)]'
+              )}
+              strokeWidth={2}
+            />
+            <span className="hidden font-medium text-[14px] opacity-90 sm:inline">
+              {bookmarked ? 'Saved' : 'Save'}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleShare();
+            }}
+            className="flex min-h-[44px] min-w-[44px] flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-2 rounded-xl px-2 py-2 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)] sm:basis-auto sm:px-3"
+          >
+            <Send className="h-5 w-5 shrink-0" strokeWidth={2} />
+            <span className="hidden font-medium text-[14px] opacity-90 sm:inline">Share</span>
+          </button>
+        </div>
+      )}
     </article>
   );
 }

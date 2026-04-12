@@ -341,7 +341,7 @@ export default function StrategiesLab() {
                 strategy details and analytics (owner only for journal stats).
               </p>
             </div>
-            <div className="mx-auto grid w-full max-w-[100rem] grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="mx-auto grid w-full max-w-[100rem] grid-cols-1 items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {feedPosts.map((p) => (
                 <PostCard
                   key={p.id}
