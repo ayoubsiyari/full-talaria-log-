@@ -106,7 +106,7 @@ export default function StrategyWizard({
           ) : (
             <button
               type="button"
-              disabled={saving || !(draft.name || '').trim()}
+              disabled={saving || !String(draft.name ?? '').trim()}
               onClick={onSubmit}
               className="rounded-lg bg-[var(--sl-green)] px-5 py-2 text-sm font-semibold text-white disabled:opacity-40"
             >
