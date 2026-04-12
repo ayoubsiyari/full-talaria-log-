@@ -19154,7 +19154,13 @@ class OrderManager {
             if (trFields) {
                 trFields.classList.toggle('is-hidden', !tr);
             }
-            requestAnimationFrame(() => this._positionRrSlPlusModal(overlay));
+            requestAnimationFrame(() => {
+                this._positionRrSlPlusModal(overlay);
+                const dm = typeof window !== 'undefined' ? window.chart?.drawingManager : null;
+                if (dm && typeof dm.suppressNextCanvasBackgroundClick === 'function') {
+                    dm.suppressNextCanvasBackgroundClick();
+                }
+            });
         };
 
         overlay.querySelector('#rrSlPlusModeBe').onclick = () => setMode(false);
@@ -19215,6 +19221,10 @@ class OrderManager {
     }
 
     _closeRiskRewardSlPlusDialog() {
+        const dm = typeof window !== 'undefined' ? window.chart?.drawingManager : null;
+        if (dm && typeof dm.suppressNextCanvasBackgroundClick === 'function') {
+            dm.suppressNextCanvasBackgroundClick();
+        }
         const o = document.getElementById('rrSlPlusModalOverlay');
         if (o) {
             if (o._rrSlPlusOutsideClose) {
