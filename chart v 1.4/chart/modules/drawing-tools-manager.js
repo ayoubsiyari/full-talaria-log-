@@ -4914,8 +4914,13 @@ class DrawingToolsManager {
         this.customHandleRole = handleRole;
 
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
-        if (canvas) canvas.style.cursor = 'ew-resize';
-        this.svg.style('cursor', 'ew-resize');
+        const hr = handleRole;
+        const verticalRr = hr === 'rr-primary-entry'
+            || hr === 'rr-be-line'
+            || (typeof hr === 'string' && hr.startsWith('rr-extra-'));
+        const cursor = verticalRr ? 'ns-resize' : 'ew-resize';
+        if (canvas) canvas.style.cursor = cursor;
+        this.svg.style('cursor', cursor);
         this.customHandlePointIndex = pointIndex; // Store point index for arc/curve
         this.customHandleStart = this.collectHandleContext(event);
         // Capture state for undo
