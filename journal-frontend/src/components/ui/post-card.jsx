@@ -24,6 +24,15 @@ function handleFromName(name) {
   return s ? `@${s}` : '@user';
 }
 
+/** public = all accounts (default, no chip). guest = visitors too. friends = mutual. private = author. */
+function visibilityBadgeLabel(vis) {
+  const v = String(vis || 'public').trim().toLowerCase();
+  if (v === 'guest') return 'Public';
+  if (v === 'friends') return 'Mutual';
+  if (v === 'private') return 'Private';
+  return null;
+}
+
 /**
  * @param {Object} props
  * @param {Object} props.post — feed item from GET /feed
@@ -41,7 +50,7 @@ export default function PostCard({ post, onLike, onOpenComments }) {
   const liked = !!post.liked_by_me;
   const title = post.strategy?.name || 'Strategy';
   const caption = post.caption || '';
-  const visibility = post.visibility && post.visibility !== 'public' ? post.visibility : null;
+  const visBadge = visibilityBadgeLabel(post.visibility);
   const coverFromStrategy =
     typeof post.strategy?.strategy_definition?.cover_image === 'string'
       ? post.strategy.strategy_definition.cover_image
@@ -99,9 +108,9 @@ export default function PostCard({ post, onLike, onOpenComments }) {
                 <small className="text-[var(--sl-text-sec)]">{handle}</small>
                 <span className="text-[var(--sl-text-muted)]">·</span>
                 <small className="text-[var(--sl-text-muted)]">{timeAgo}</small>
-                {visibility && (
+                {visBadge && (
                   <span className="rounded-md bg-[var(--sl-input)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--sl-text-sec)]">
-                    {visibility}
+                    {visBadge}
                   </span>
                 )}
               </span>

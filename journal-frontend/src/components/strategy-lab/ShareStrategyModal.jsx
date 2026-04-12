@@ -90,13 +90,15 @@ export default function ShareStrategyModal({ strategyId, onClose, onPosted }) {
             onChange={(e) => setVisibility(e.target.value)}
             className="w-full rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] px-3 py-2 text-[var(--sl-text)]"
           >
-            <option value="public">Public — any logged-in user sees this in the feed</option>
-            <option value="friends">Friends — only people you mutually follow</option>
-            <option value="private">Private — only you (others never see it in the feed)</option>
+            <option value="public">Friends — everyone with an account (logged-in)</option>
+            <option value="guest">Public — visitors without an account can see this too</option>
+            <option value="friends">Mutual follows only — you and the other person follow each other</option>
+            <option value="private">Private — only you</option>
           </select>
           <p className="mt-2 text-xs text-[var(--sl-text-muted)]">
-            To test with another account, choose <strong className="text-[var(--sl-text-sec)]">Public</strong>. &quot;Friends&quot;
-            hides the post from everyone except you and users who follow you <em>and</em> whom you follow back.
+            <strong className="text-[var(--sl-text-sec)]">Friends</strong> = whole community (any logged-in user).{' '}
+            <strong className="text-[var(--sl-text-sec)]">Public</strong> = same, plus shown on the public explore feed for
+            visitors. <strong className="text-[var(--sl-text-sec)]">Mutual</strong> = narrow audience.
           </p>
         </div>
         {err && <p className="mb-2 text-sm text-[var(--sl-red)]">{err}</p>}

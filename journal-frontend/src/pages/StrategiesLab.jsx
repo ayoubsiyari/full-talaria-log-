@@ -334,8 +334,8 @@ export default function StrategiesLab() {
             <div className="w-full max-w-[30rem] text-left">
               <h2 className="text-lg font-semibold">Community feed</h2>
               <p className="mt-1 text-xs text-[var(--sl-text-muted)]">
-                Shows public posts for everyone; friends-only posts when you mutually follow the author; private posts
-                only in your own feed.
+                &quot;Friends&quot; posts are for any logged-in user. &quot;Public&quot; posts also appear to visitors on
+                the explore feed. &quot;Mutual&quot; is only for people you follow who follow you back.
               </p>
             </div>
             {feedPosts.map((p) => (

@@ -354,7 +354,8 @@ export default function StrategiesLabPage() {
             <div className="w-full max-w-[30rem] text-left">
               <h2 className="text-lg font-semibold">Community feed</h2>
               <p className="mt-1 text-xs text-[var(--sl-text-muted)]">
-                Public for everyone; friends-only when you mutually follow the author; private only in your feed.
+                &quot;Friends&quot; = any logged-in user. &quot;Public&quot; = same plus visitors on explore. &quot;Mutual&quot;
+                = you both follow each other.
               </p>
             </div>
             {feedPosts.map((p) => (
