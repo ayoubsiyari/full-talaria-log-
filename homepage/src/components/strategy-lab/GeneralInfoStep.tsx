@@ -1,15 +1,9 @@
 "use client";
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ImagePlus, Trash2 } from 'lucide-react';
 import { compressCoverImageFile } from '@/strategyLab/coverImage';
-
-const INSTRUMENTS = [
-  { id: 'es', label: 'ES Futures' },
-  { id: 'nq', label: 'NQ Futures' },
-  { id: 'stocks', label: 'Stocks' },
-  { id: 'forex', label: 'Forex' },
-];
+import { FOREX_INSTRUMENTS, FUTURES_INSTRUMENTS, normalizeInstrumentId } from '@/strategyLab/instruments';
 
 const STYLES = [
   { id: 'scalping', label: 'Scalping' },
@@ -40,15 +34,17 @@ function ToggleRow({
   value,
   onChange,
   name,
+  wrapperClassName = 'mb-5',
 }: {
   label: string;
   options: ToggleOpt[];
   value: string;
   onChange: (id: string) => void;
   name?: string;
+  wrapperClassName?: string;
 }) {
   return (
-    <div className="mb-5">
+    <div className={wrapperClassName}>
       <div className="font-mono-label mb-2 text-[11px] font-bold uppercase tracking-wide text-[var(--sl-text-sec)]">
         {label}
       </div>
@@ -88,6 +84,19 @@ export default function GeneralInfoStep({
   const fileRef = useRef<HTMLInputElement>(null);
   const [imgBusy, setImgBusy] = useState(false);
   const coverImage = typeof draft.cover_image === 'string' ? draft.cover_image : '';
+
+  const instrumentValue = normalizeInstrumentId(
+    draft.instrument != null && draft.instrument !== '' ? String(draft.instrument) : ''
+  );
+
+  useEffect(() => {
+    setDraft((d) => {
+      const raw = d.instrument != null && d.instrument !== '' ? String(d.instrument) : '';
+      const n = normalizeInstrumentId(raw);
+      if (n === raw) return d;
+      return { ...d, instrument: n };
+    });
+  }, [draft.instrument, setDraft]);
 
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -184,7 +193,22 @@ export default function GeneralInfoStep({
         )}
       </div>
 
-      <ToggleRow label="Instrument" options={INSTRUMENTS} value={String(draft.instrument ?? '')} onChange={set('instrument')} />
+      <div className="mb-5">
+        <div className="font-mono-label mb-2 text-[11px] font-bold uppercase tracking-wide text-[var(--sl-text-sec)]">
+          Instrument
+        </div>
+        <p className="mb-3 text-xs text-[var(--sl-text-muted)]">
+          Forex pairs and futures use the same symbols as the Talaria chart registry.
+        </p>
+        <ToggleRow
+          label="Forex pairs"
+          options={FOREX_INSTRUMENTS}
+          value={instrumentValue}
+          onChange={set('instrument')}
+          wrapperClassName="mb-3"
+        />
+        <ToggleRow label="Futures" options={FUTURES_INSTRUMENTS} value={instrumentValue} onChange={set('instrument')} />
+      </div>
       <ToggleRow label="Style" options={STYLES} value={String(draft.style ?? '')} onChange={set('style')} />
       <ToggleRow label="Direction" options={DIRECTIONS} value={String(draft.direction ?? 'both')} onChange={set('direction')} />
       <ToggleRow label="Timeframe" options={TIMEFRAMES} value={String(draft.timeframe ?? '')} onChange={set('timeframe')} />

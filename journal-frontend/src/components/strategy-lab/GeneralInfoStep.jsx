@@ -1,13 +1,7 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ImagePlus, Trash2 } from 'lucide-react';
 import { compressCoverImageFile } from '../../strategyLab/coverImage';
-
-const INSTRUMENTS = [
-  { id: 'es', label: 'ES Futures' },
-  { id: 'nq', label: 'NQ Futures' },
-  { id: 'stocks', label: 'Stocks' },
-  { id: 'forex', label: 'Forex' },
-];
+import { FOREX_INSTRUMENTS, FUTURES_INSTRUMENTS, normalizeInstrumentId } from '../../strategyLab/instruments';
 
 const STYLES = [
   { id: 'scalping', label: 'Scalping' },
@@ -30,9 +24,9 @@ const TIMEFRAMES = [
   { id: 'daily', label: 'Daily' },
 ];
 
-function ToggleRow({ label, options, value, onChange, name }) {
+function ToggleRow({ label, options, value, onChange, name, wrapperClassName = 'mb-5' }) {
   return (
-    <div className="mb-5">
+    <div className={wrapperClassName}>
       <div className="font-mono-label mb-2 text-[11px] font-bold uppercase tracking-wide text-[var(--sl-text-sec)]">
         {label}
       </div>
@@ -80,6 +74,16 @@ export default function GeneralInfoStep({ draft, setDraft }) {
   };
 
   const clearCover = () => setDraft((d) => ({ ...d, cover_image: '' }));
+
+  const instrumentValue = normalizeInstrumentId(draft.instrument);
+
+  useEffect(() => {
+    setDraft((d) => {
+      const n = normalizeInstrumentId(d.instrument);
+      if (n === d.instrument) return d;
+      return { ...d, instrument: n };
+    });
+  }, [draft.instrument, setDraft]);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6">
@@ -159,7 +163,22 @@ export default function GeneralInfoStep({ draft, setDraft }) {
         )}
       </div>
 
-      <ToggleRow label="Instrument" options={INSTRUMENTS} value={draft.instrument} onChange={set('instrument')} />
+      <div className="mb-5">
+        <div className="font-mono-label mb-2 text-[11px] font-bold uppercase tracking-wide text-[var(--sl-text-sec)]">
+          Instrument
+        </div>
+        <p className="mb-3 text-xs text-[var(--sl-text-muted)]">
+          Forex pairs and futures use the same symbols as the Talaria chart registry.
+        </p>
+        <ToggleRow
+          label="Forex pairs"
+          options={FOREX_INSTRUMENTS}
+          value={instrumentValue}
+          onChange={set('instrument')}
+          wrapperClassName="mb-3"
+        />
+        <ToggleRow label="Futures" options={FUTURES_INSTRUMENTS} value={instrumentValue} onChange={set('instrument')} />
+      </div>
       <ToggleRow label="Style" options={STYLES} value={draft.style} onChange={set('style')} />
       <ToggleRow label="Direction" options={DIRECTIONS} value={draft.direction} onChange={set('direction')} />
       <ToggleRow label="Timeframe" options={TIMEFRAMES} value={draft.timeframe} onChange={set('timeframe')} />

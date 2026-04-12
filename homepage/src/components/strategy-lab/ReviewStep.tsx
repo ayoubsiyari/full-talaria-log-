@@ -1,6 +1,7 @@
 "use client";
 
 import React from 'react';
+import { formatInstrumentLabel } from '@/strategyLab/instruments';
 
 type FlowNode = Record<string, unknown> & { type?: string; id?: string };
 
@@ -29,7 +30,7 @@ export default function ReviewStep({ draft }: { draft: Record<string, unknown> }
           </div>
           <div>
             <div className="font-mono-label text-[10px] font-bold uppercase text-[var(--sl-text-muted)]">Instrument</div>
-            <div className="text-[var(--sl-text)]">{String(draft.instrument ?? '—')}</div>
+            <div className="text-[var(--sl-text)]">{formatInstrumentLabel(draft.instrument) || '—'}</div>
           </div>
           <div>
             <div className="font-mono-label text-[10px] font-bold uppercase text-[var(--sl-text-muted)]">Style</div>

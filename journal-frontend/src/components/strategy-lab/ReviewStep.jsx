@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatInstrumentLabel } from '../../strategyLab/instruments';
 
 function countConditions(conditions) {
   return (conditions || []).filter((c) => c.type === 'condition').length;
@@ -25,7 +26,7 @@ export default function ReviewStep({ draft }) {
           </div>
           <div>
             <div className="font-mono-label text-[10px] font-bold uppercase text-[var(--sl-text-muted)]">Instrument</div>
-            <div className="text-[var(--sl-text)]">{draft.instrument || '—'}</div>
+            <div className="text-[var(--sl-text)]">{formatInstrumentLabel(draft.instrument) || '—'}</div>
           </div>
           <div>
             <div className="font-mono-label text-[10px] font-bold uppercase text-[var(--sl-text-muted)]">Style</div>

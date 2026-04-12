@@ -1,3 +1,5 @@
+import { normalizeInstrumentId } from './instruments';
+
 export const SL_COLORS = {
   orderFlow: { color: '#06b6d4', bg: 'rgba(6,182,212,0.12)', bd: '#06b6d4' },
   priceAction: { color: '#f97316', bg: 'rgba(249,115,22,0.12)', bd: '#f97316' },
@@ -47,7 +49,7 @@ export function draftFromApi(strategy) {
     name: strategy.name || '',
     description: strategy.description || '',
     cover_image: typeof def.cover_image === 'string' ? def.cover_image : '',
-    instrument: def.instrument || '',
+    instrument: normalizeInstrumentId(def.instrument || ''),
     style: def.style || '',
     direction: def.direction || 'both',
     timeframe: def.timeframe || '',
