@@ -5912,6 +5912,20 @@ class OrderManager {
         order.strategyVariables = values.length ? values : null;
         return order;
     }
+
+    /** Comma-separated tags line for journal modal from strategy variable snapshot. */
+    _formatStrategyVariablesAsTags(vars) {
+        if (!Array.isArray(vars) || vars.length === 0) return '';
+        return vars
+            .map((v) => {
+                const name = String(v.name || v.id || '').trim();
+                const val = String(v.value != null ? v.value : '').trim();
+                if (!name && !val) return '';
+                return val ? `${name}: ${val}` : name;
+            })
+            .filter(Boolean)
+            .join(', ');
+    }
     
     /**
      * Create and show trade journal modal
@@ -6096,6 +6110,8 @@ class OrderManager {
                     ` : ''}
                 </div>
             </div>
+
+            <div id="strategyVarsJournalAnchor" style="display: none; margin-bottom: 16px;"></div>
             
             <!-- Journal Fields -->
             <div style="margin-bottom: 16px;">
@@ -6140,7 +6156,50 @@ class OrderManager {
             const existing = order.journalEntry?.preTradeNotes?.setup;
             tradeSetupEl.value = (existing && String(existing).trim()) ? String(existing).trim() : defaultSetup;
         }
-        
+
+        const varTags = this._formatStrategyVariablesAsTags(order.strategyVariables);
+        const tradeTagsEl = document.getElementById('tradeTags');
+        if (tradeTagsEl) {
+            const existingTags = order.journalEntry?.preTradeNotes?.tags;
+            if (existingTags && String(existingTags).trim()) {
+                tradeTagsEl.value = String(existingTags).trim();
+            } else if (varTags) {
+                tradeTagsEl.value = varTags;
+            }
+        }
+
+        const reasonEl = document.getElementById('tradeReason');
+        if (reasonEl && !isClosing && varTags && !order.journalEntry?.preTradeNotes?.reason) {
+            const base = 'Setup, strategy, confluence factors...';
+            reasonEl.placeholder = `Pre-trade checklist: ${varTags}\n\n${base}`;
+        }
+
+        const anchor = document.getElementById('strategyVarsJournalAnchor');
+        if (anchor && Array.isArray(order.strategyVariables) && order.strategyVariables.length > 0) {
+            anchor.style.display = 'block';
+            anchor.textContent = '';
+            const title = document.createElement('div');
+            title.style.cssText =
+                'font-size:11px;color:#787b86;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em;';
+            title.textContent = isClosing ? 'Pre-trade variables (at entry)' : 'Pre-trade variables';
+            anchor.appendChild(title);
+            order.strategyVariables.forEach((sv) => {
+                const row = document.createElement('div');
+                row.style.cssText =
+                    'display:flex;justify-content:space-between;align-items:flex-start;gap:10px;font-size:12px;margin-bottom:6px;padding:10px 12px;background:rgba(124,58,237,0.08);border-radius:8px;border:1px solid rgba(255,255,255,0.08);';
+                const nl = document.createElement('span');
+                nl.style.cssText = 'color:#94a3b8;flex:1;min-width:0;';
+                nl.textContent = String(sv.name || sv.id || 'Variable');
+                const vl = document.createElement('span');
+                vl.style.cssText = 'color:#e5e7eb;font-weight:600;text-align:right;';
+                const raw = sv.value != null && String(sv.value).trim() !== '' ? String(sv.value) : '—';
+                vl.textContent = raw;
+                row.appendChild(nl);
+                row.appendChild(vl);
+                anchor.appendChild(row);
+            });
+        }
+
         // Event listeners
         document.getElementById('saveTradeNote').onclick = async () => {
             const reason = document.getElementById('tradeReason').value;
