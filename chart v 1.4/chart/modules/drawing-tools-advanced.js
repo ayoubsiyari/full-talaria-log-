@@ -2167,17 +2167,19 @@ class BaseRiskRewardTool extends BaseDrawing {
         const extraTpDragHitW = 96;
         /** Tall enough to cover nudged E2/E3 labels +/− controls while still centered on the leg price. */
         const extraEntryDragHitW = 96;
+        // Full-width rect (not a thick stroke on <line>) so the whole horizontal band hits — transparent
+        // strokes often miss the middle of the line in SVG, so users could only grab endpoints / small nodes.
         const appendExtraDragHit = (yy, role, hitW = extraDragHitW) => {
-            this.group.append('line')
+            const w = Math.max(1, zoneX2 - zoneX1);
+            this.group.append('rect')
                 .attr('class', 'custom-handle rr-extra-drag-hit')
                 .attr('data-handle-role', role)
-                .attr('x1', zoneX1)
-                .attr('y1', yy)
-                .attr('x2', zoneX2)
-                .attr('y2', yy)
-                .attr('stroke', 'transparent')
-                .attr('stroke-width', hitW)
-                // `all`: same reliable hits as primary entry rect; `stroke` alone misses on some browsers.
+                .attr('x', zoneX1)
+                .attr('y', yy - hitW / 2)
+                .attr('width', w)
+                .attr('height', hitW)
+                .attr('fill', 'rgba(0, 0, 0, 0.02)')
+                .attr('stroke', 'none')
                 .style('pointer-events', this.selected ? 'all' : 'none')
                 .style('cursor', 'ns-resize');
         };
@@ -3318,6 +3320,9 @@ class BaseRiskRewardTool extends BaseDrawing {
             const pill = this.group.select('g.center-info.rr-multi-pill-drag');
             if (!pill.empty()) pill.raise();
         }
+
+        // Keep full-width TP/SL/E drag slabs above zone / body-drag / labels so the entire line is grabbable.
+        this.group.selectAll('.rr-extra-drag-hit').raise();
 
         // Right-edge labels must sit above transparent drag strips (`rr-primary-entry-drag-hit`, `rr-extra-drag-hit`),
         // otherwise badges look missing / unclickable. `rr-mini-level-badge` (fallback E1/E2, SL, BE, Avg TP) was not
