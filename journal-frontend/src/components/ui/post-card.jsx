@@ -38,8 +38,10 @@ function visibilityBadgeLabel(vis) {
  * @param {Object} props.post — feed item from GET /feed
  * @param {(postId: number, currentlyLiked: boolean) => void} props.onLike
  * @param {(post: object) => void} [props.onOpenComments]
+ * @param {(post: object) => void} [props.onOpenStrategy] — click card to open detail (action buttons stop propagation)
+ * @param {'default' | 'grid'} [props.variant]
  */
-export default function PostCard({ post, onLike, onOpenComments }) {
+export default function PostCard({ post, onLike, onOpenComments, onOpenStrategy, variant = 'default' }) {
   const [bookmarked, setBookmarked] = useState(false);
 
   const authorName = post.author?.name || 'Trader';
@@ -66,6 +68,10 @@ export default function PostCard({ post, onLike, onOpenComments }) {
     setBookmarked((prev) => !prev);
   }, []);
 
+  const openStrategy = useCallback(() => {
+    onOpenStrategy?.(post);
+  }, [onOpenStrategy, post]);
+
   const handleShare = useCallback(async () => {
     const shareData = {
       title: title,
@@ -83,12 +89,29 @@ export default function PostCard({ post, onLike, onOpenComments }) {
     }
   }, [title, caption]);
 
+  const isGrid = variant === 'grid';
+
   return (
     <article
+      role={onOpenStrategy ? 'button' : undefined}
+      tabIndex={onOpenStrategy ? 0 : undefined}
+      onClick={onOpenStrategy ? openStrategy : undefined}
+      onKeyDown={
+        onOpenStrategy
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openStrategy();
+              }
+            }
+          : undefined
+      }
       className={cn(
-        'w-full max-w-[30rem] rounded-3xl border p-4 transition-shadow',
+        'w-full rounded-3xl border p-4 transition-shadow',
+        !isGrid && 'max-w-[30rem]',
         'border-[var(--sl-border)] bg-[var(--sl-card)]',
-        'shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] hover:shadow-[0_28px_55px_-10px_rgba(38,67,247,0.12)]'
+        'shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] hover:shadow-[0_28px_55px_-10px_rgba(38,67,247,0.12)]',
+        onOpenStrategy && 'cursor-pointer select-none outline-none hover:border-[var(--sl-accent)]/40 focus-visible:ring-2 focus-visible:ring-[var(--sl-accent)]'
       )}
     >
       {/* Header */}
@@ -132,7 +155,7 @@ export default function PostCard({ post, onLike, onOpenComments }) {
         <img
           src={heroSrc}
           alt=""
-          className="max-h-56 w-full rounded-xl object-cover"
+          className={cn('w-full rounded-xl object-cover', isGrid ? 'max-h-36' : 'max-h-56')}
           loading="lazy"
         />
       </div>
@@ -141,7 +164,10 @@ export default function PostCard({ post, onLike, onOpenComments }) {
       <div className="mt-4 flex justify-evenly gap-1 border-t border-[var(--sl-border)] pt-3">
         <button
           type="button"
-          onClick={handleLike}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleLike();
+          }}
           className="flex grow items-center justify-center gap-2 rounded-xl px-3 py-2 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)]"
         >
           <Heart
@@ -158,7 +184,10 @@ export default function PostCard({ post, onLike, onOpenComments }) {
 
         <button
           type="button"
-          onClick={() => onOpenComments?.(post)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenComments?.(post);
+          }}
           className="flex grow items-center justify-center gap-2 rounded-xl px-3 py-2 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)]"
         >
           <MessageCircle className="h-5 w-5 shrink-0" strokeWidth={2} />
@@ -169,7 +198,10 @@ export default function PostCard({ post, onLike, onOpenComments }) {
 
         <button
           type="button"
-          onClick={handleBookmark}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleBookmark();
+          }}
           className="flex grow items-center justify-center gap-2 rounded-xl px-3 py-2 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)]"
           aria-pressed={bookmarked}
         >
@@ -187,7 +219,10 @@ export default function PostCard({ post, onLike, onOpenComments }) {
 
         <button
           type="button"
-          onClick={handleShare}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleShare();
+          }}
           className="flex grow items-center justify-center gap-2 rounded-xl px-3 py-2 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)]"
         >
           <Send className="h-5 w-5 shrink-0" strokeWidth={2} />

@@ -36,20 +36,27 @@ export type FeedPost = {
   liked_by_me?: boolean;
   likes_count?: number;
   comments_count?: number;
-  author?: { name?: string | null } | null;
+  author?: { id?: number; name?: string | null } | null;
   strategy?: {
+    id?: number;
     name?: string | null;
-    strategy_definition?: { cover_image?: string | null } | null;
+    description?: string | null;
+    strategy_definition?: { cover_image?: string | null } | Record<string, unknown> | null;
   } | null;
+  include_description?: boolean;
+  include_conditions?: boolean;
+  include_variables?: boolean;
 };
 
 type PostCardProps = {
   post: FeedPost;
   onLike?: (postId: number, currentlyLiked: boolean) => void;
   onOpenComments?: (post: FeedPost) => void;
+  onOpenStrategy?: (post: FeedPost) => void;
+  variant?: "default" | "grid";
 };
 
-export default function PostCard({ post, onLike, onOpenComments }: PostCardProps) {
+export default function PostCard({ post, onLike, onOpenComments, onOpenStrategy, variant = "default" }: PostCardProps) {
   const [bookmarked, setBookmarked] = useState(false);
 
   const authorName = post.author?.name || "Trader";
@@ -76,6 +83,10 @@ export default function PostCard({ post, onLike, onOpenComments }: PostCardProps
     setBookmarked((prev) => !prev);
   }, []);
 
+  const openStrategy = useCallback(() => {
+    onOpenStrategy?.(post);
+  }, [onOpenStrategy, post]);
+
   const handleShare = useCallback(async () => {
     const shareData = {
       title,
@@ -93,12 +104,30 @@ export default function PostCard({ post, onLike, onOpenComments }: PostCardProps
     }
   }, [title, caption]);
 
+  const isGrid = variant === "grid";
+
   return (
     <article
+      role={onOpenStrategy ? "button" : undefined}
+      tabIndex={onOpenStrategy ? 0 : undefined}
+      onClick={onOpenStrategy ? openStrategy : undefined}
+      onKeyDown={
+        onOpenStrategy
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                openStrategy();
+              }
+            }
+          : undefined
+      }
       className={cn(
-        "w-full max-w-[30rem] rounded-3xl border p-4 transition-shadow",
+        "w-full rounded-3xl border p-4 transition-shadow",
+        !isGrid && "max-w-[30rem]",
         "border-[var(--sl-border)] bg-[var(--sl-card)]",
-        "shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] hover:shadow-[0_28px_55px_-10px_rgba(38,67,247,0.12)]"
+        "shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] hover:shadow-[0_28px_55px_-10px_rgba(38,67,247,0.12)]",
+        onOpenStrategy &&
+          "cursor-pointer select-none outline-none hover:border-[var(--sl-accent)]/40 focus-visible:ring-2 focus-visible:ring-[var(--sl-accent)]"
       )}
     >
       <div className="card-header flex items-start justify-between gap-4">
@@ -140,7 +169,7 @@ export default function PostCard({ post, onLike, onOpenComments }: PostCardProps
         <img
           src={heroSrc}
           alt=""
-          className="max-h-56 w-full rounded-xl object-cover"
+          className={cn("w-full rounded-xl object-cover", isGrid ? "max-h-36" : "max-h-56")}
           loading="lazy"
         />
       </div>
@@ -148,7 +177,10 @@ export default function PostCard({ post, onLike, onOpenComments }: PostCardProps
       <div className="mt-4 flex justify-evenly gap-1 border-t border-[var(--sl-border)] pt-3">
         <button
           type="button"
-          onClick={handleLike}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleLike();
+          }}
           className="flex grow items-center justify-center gap-2 rounded-xl px-3 py-2 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)]"
         >
           <Heart
@@ -165,7 +197,10 @@ export default function PostCard({ post, onLike, onOpenComments }: PostCardProps
 
         <button
           type="button"
-          onClick={() => onOpenComments?.(post)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenComments?.(post);
+          }}
           className="flex grow items-center justify-center gap-2 rounded-xl px-3 py-2 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)]"
         >
           <MessageCircle className="h-5 w-5 shrink-0" strokeWidth={2} />
@@ -176,7 +211,10 @@ export default function PostCard({ post, onLike, onOpenComments }: PostCardProps
 
         <button
           type="button"
-          onClick={handleBookmark}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleBookmark();
+          }}
           className="flex grow items-center justify-center gap-2 rounded-xl px-3 py-2 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)]"
           aria-pressed={bookmarked}
         >
@@ -194,7 +232,10 @@ export default function PostCard({ post, onLike, onOpenComments }: PostCardProps
 
         <button
           type="button"
-          onClick={handleShare}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleShare();
+          }}
           className="flex grow items-center justify-center gap-2 rounded-xl px-3 py-2 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)]"
         >
           <Send className="h-5 w-5 shrink-0" strokeWidth={2} />

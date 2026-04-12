@@ -5,6 +5,7 @@ import { JOURNAL_API_BASE } from "@/lib/journalApi";
 import StrategyWizard from "./StrategyWizard";
 import ShareStrategyModal from "./ShareStrategyModal";
 import PostCard from "@/components/ui/post-card";
+import FeedStrategyDetailModal from "./FeedStrategyDetailModal";
 import { emptyDraft, definitionFromDraft, draftFromApi } from "@/strategyLab/defaults";
 import { Plus, Trash2, Share2, BarChart3, Copy } from "lucide-react";
 
@@ -27,6 +28,7 @@ export default function StrategiesLabPage() {
   const [perfId, setPerfId] = useState<number | null>(null);
 
   const [feedPosts, setFeedPosts] = useState<any[]>([]);
+  const [feedDetailPost, setFeedDetailPost] = useState<any | null>(null);
   const [templates, setTemplates] = useState<any[]>([]);
 
   const loadStrategies = useCallback(async () => {
@@ -350,19 +352,28 @@ export default function StrategiesLabPage() {
         )}
 
         {tab === "feed" && (
-          <div className="flex flex-col items-center gap-6">
-            <div className="w-full max-w-[30rem] text-left">
+          <div className="w-full">
+            <div className="mx-auto mb-6 w-full max-w-6xl px-0 text-left">
               <h2 className="text-lg font-semibold">Community feed</h2>
               <p className="mt-1 text-xs text-[var(--sl-text-muted)]">
                 &quot;Friends&quot; = any logged-in user. &quot;Public&quot; = same plus visitors on explore. &quot;Mutual&quot;
-                = you both follow each other.
+                = you both follow each other. Click a card for strategy details; journal analytics show for your own
+                strategies only.
               </p>
             </div>
-            {feedPosts.map((p) => (
-              <PostCard key={p.id} post={p} onLike={likePost} />
-            ))}
+            <div className="mx-auto grid w-full max-w-[100rem] grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {feedPosts.map((p) => (
+                <PostCard
+                  key={p.id}
+                  post={p}
+                  onLike={likePost}
+                  variant="grid"
+                  onOpenStrategy={setFeedDetailPost}
+                />
+              ))}
+            </div>
             {!feedPosts.length && (
-              <p className="w-full max-w-[30rem] text-center text-[var(--sl-text-muted)]">No posts yet.</p>
+              <p className="mx-auto mt-8 w-full max-w-6xl text-center text-[var(--sl-text-muted)]">No posts yet.</p>
             )}
           </div>
         )}
@@ -401,6 +412,9 @@ export default function StrategiesLabPage() {
           onClose={() => setShareId(null)}
           onPosted={() => loadFeed()}
         />
+      )}
+      {feedDetailPost && (
+        <FeedStrategyDetailModal post={feedDetailPost} onClose={() => setFeedDetailPost(null)} />
       )}
     </div>
   );

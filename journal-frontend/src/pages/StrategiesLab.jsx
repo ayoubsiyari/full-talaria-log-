@@ -4,6 +4,7 @@ import '../styles/strategy-lab.css';
 import StrategyWizard from '../components/strategy-lab/StrategyWizard';
 import ShareStrategyModal from '../components/strategy-lab/ShareStrategyModal';
 import PostCard from '../components/ui/post-card';
+import FeedStrategyDetailModal from '../components/strategy-lab/FeedStrategyDetailModal';
 import { emptyDraft, definitionFromDraft, draftFromApi } from '../strategyLab/defaults';
 import { Plus, Trash2, Share2, BarChart3, Copy } from 'lucide-react';
 
@@ -26,6 +27,7 @@ export default function StrategiesLab() {
   const [perfId, setPerfId] = useState(null);
 
   const [feedPosts, setFeedPosts] = useState([]);
+  const [feedDetailPost, setFeedDetailPost] = useState(null);
   const [templates, setTemplates] = useState([]);
 
   const loadStrategies = useCallback(async () => {
@@ -330,19 +332,28 @@ export default function StrategiesLab() {
         )}
 
         {tab === 'feed' && (
-          <div className="flex flex-col items-center gap-6">
-            <div className="w-full max-w-[30rem] text-left">
+          <div className="w-full">
+            <div className="mx-auto mb-6 w-full max-w-6xl px-0 text-left">
               <h2 className="text-lg font-semibold">Community feed</h2>
               <p className="mt-1 text-xs text-[var(--sl-text-muted)]">
                 &quot;Friends&quot; posts are for any logged-in user. &quot;Public&quot; posts also appear to visitors on
-                the explore feed. &quot;Mutual&quot; is only for people you follow who follow you back.
+                the explore feed. &quot;Mutual&quot; is only for people you follow who follow you back. Click a card for
+                strategy details and analytics (owner only for journal stats).
               </p>
             </div>
-            {feedPosts.map((p) => (
-              <PostCard key={p.id} post={p} onLike={likePost} />
-            ))}
+            <div className="mx-auto grid w-full max-w-[100rem] grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {feedPosts.map((p) => (
+                <PostCard
+                  key={p.id}
+                  post={p}
+                  onLike={likePost}
+                  variant="grid"
+                  onOpenStrategy={setFeedDetailPost}
+                />
+              ))}
+            </div>
             {!feedPosts.length && (
-              <p className="w-full max-w-[30rem] text-center text-[var(--sl-text-muted)]">No posts yet.</p>
+              <p className="mx-auto mt-8 w-full max-w-6xl text-center text-[var(--sl-text-muted)]">No posts yet.</p>
             )}
           </div>
         )}
@@ -379,6 +390,9 @@ export default function StrategiesLab() {
           onClose={() => setShareId(null)}
           onPosted={() => loadFeed()}
         />
+      )}
+      {feedDetailPost && (
+        <FeedStrategyDetailModal post={feedDetailPost} onClose={() => setFeedDetailPost(null)} />
       )}
     </div>
   );
