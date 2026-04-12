@@ -260,6 +260,7 @@ class JournalEntry(db.Model):
     # Every JournalEntry belongs to a user and profile
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     profile_id = db.Column(db.Integer, db.ForeignKey('journal_profiles.id'), nullable=False)
+    strategy_id = db.Column(db.Integer, db.ForeignKey('strategies.id'), nullable=True)
 
     symbol = db.Column(db.String(20), nullable=False)
     direction = db.Column(db.String(10), nullable=False)
@@ -314,6 +315,12 @@ class JournalEntry(db.Model):
     # Back‐reference so you can do: some_entry.profile
     profile = db.relationship('Profile', back_populates='journal_entries')
 
+    strategy_ref = db.relationship(
+        'Strategy',
+        foreign_keys=[strategy_id],
+        backref=db.backref('linked_journal_entries', lazy=True),
+    )
+
 
 class Strategy(db.Model):
     __tablename__ = 'strategies'
@@ -324,11 +331,102 @@ class Strategy(db.Model):
     entry_rules = db.Column(JSON, nullable=False, default=list)
     exit_rules = db.Column(JSON, nullable=False, default=list)
     risk_management = db.Column(JSON, nullable=False, default=dict)
+    # Strategy Builder v2: instrument, style, direction, timeframe, conditions, variables
+    strategy_definition = db.Column(JSON, nullable=False, default=lambda: {
+        'instrument': '',
+        'style': '',
+        'direction': 'both',
+        'timeframe': '',
+        'conditions': [],
+        'variables': [],
+    })
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Back-reference so you can do: some_strategy.user
     user = db.relationship('User', back_populates='strategies')
+
+
+class StrategyPost(db.Model):
+    __tablename__ = 'strategy_posts'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    strategy_id = db.Column(db.Integer, db.ForeignKey('strategies.id'), nullable=False)
+    caption = db.Column(db.Text, nullable=True)
+    images = db.Column(JSON, nullable=False, default=list)
+    visibility = db.Column(db.String(20), nullable=False, default='public')
+    include_description = db.Column(db.Boolean, nullable=False, default=True)
+    include_conditions = db.Column(db.Boolean, nullable=False, default=True)
+    include_variables = db.Column(db.Boolean, nullable=False, default=True)
+    include_stats = db.Column(db.Boolean, nullable=False, default=False)
+    include_heatmap = db.Column(db.Boolean, nullable=False, default=False)
+    include_trades = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref=db.backref('strategy_posts', lazy=True))
+    strategy = db.relationship('Strategy', backref=db.backref('posts', lazy=True))
+
+
+class PostLike(db.Model):
+    __tablename__ = 'post_likes'
+    id = db.Column(db.Integer, primary_key=True)
+    post_id = db.Column(db.Integer, db.ForeignKey('strategy_posts.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    post = db.relationship('StrategyPost', backref=db.backref('likes', lazy=True, cascade='all, delete-orphan'))
+    user = db.relationship('User', backref=db.backref('post_likes', lazy=True))
+
+    __table_args__ = (db.UniqueConstraint('post_id', 'user_id', name='uq_post_like_user'),)
+
+
+class PostComment(db.Model):
+    __tablename__ = 'post_comments'
+    id = db.Column(db.Integer, primary_key=True)
+    post_id = db.Column(db.Integer, db.ForeignKey('strategy_posts.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    parent_id = db.Column(db.Integer, db.ForeignKey('post_comments.id'), nullable=True)
+    body = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    post = db.relationship('StrategyPost', backref=db.backref('comments', lazy=True, cascade='all, delete-orphan'))
+    user = db.relationship('User', backref=db.backref('post_comments', lazy=True))
+    parent = db.relationship(
+        'PostComment',
+        remote_side=[id],
+        foreign_keys=[parent_id],
+        backref=db.backref('replies', lazy=True),
+    )
+
+
+class UserFollow(db.Model):
+    __tablename__ = 'user_follows'
+    id = db.Column(db.Integer, primary_key=True)
+    follower_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    following_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint('follower_id', 'following_id', name='uq_follow'),)
+
+
+class StrategyTemplate(db.Model):
+    __tablename__ = 'strategy_templates'
+    id = db.Column(db.Integer, primary_key=True)
+    source_strategy_id = db.Column(db.Integer, db.ForeignKey('strategies.id'), nullable=True)
+    creator_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    title = db.Column(db.String(200), nullable=False)
+    definition = db.Column(JSON, nullable=False)
+    category = db.Column(db.String(80), nullable=True)
+    difficulty = db.Column(db.String(40), nullable=True)
+    template_type = db.Column(db.String(20), nullable=False, default='community')
+    status = db.Column(db.String(20), nullable=False, default='published')
+    clone_count = db.Column(db.Integer, nullable=False, default=0)
+    rating_sum = db.Column(db.Integer, nullable=False, default=0)
+    rating_count = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    source_strategy = db.relationship('Strategy', foreign_keys=[source_strategy_id])
+    creator = db.relationship('User', foreign_keys=[creator_user_id])
 
 
 class FeatureFlags(db.Model):

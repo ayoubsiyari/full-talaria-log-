@@ -1,0 +1,25 @@
+/* Strategy Lab — design tokens from spec */
+:root[data-strategy-lab='true'],
+.strategies-lab-root {
+  --sl-bg: #06060b;
+  --sl-sidebar: #0c0c14;
+  --sl-card: #141420;
+  --sl-input: #1a1a26;
+  --sl-border: #222234;
+  --sl-accent: #2643f7;
+  --sl-accent-light: #4a6aff;
+  --sl-green: #22c55e;
+  --sl-red: #ef4444;
+  --sl-purple: #a855f7;
+  --sl-orange: #f97316;
+  --sl-cyan: #06b6d4;
+  --sl-text: #eaeaf2;
+  --sl-text-sec: #9494ad;
+  --sl-text-muted: #5c5c78;
+  --sl-text-faint: #3a3a50;
+  font-family: 'Outfit', system-ui, sans-serif;
+}
+
+.strategies-lab-root .font-mono-label {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}

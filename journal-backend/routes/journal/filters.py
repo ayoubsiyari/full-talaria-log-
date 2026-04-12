@@ -263,6 +263,7 @@ def serialize_entry(entry):
         'rr': entry.rr,
         'notes': entry.notes,
         'strategy': entry.strategy,
+        'strategy_id': getattr(entry, 'strategy_id', None),
         'setup': entry.setup,
         'commission': entry.commission,
         'slippage': entry.slippage,

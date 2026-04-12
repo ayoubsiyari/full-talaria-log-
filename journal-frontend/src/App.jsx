@@ -24,7 +24,7 @@ import Trades    from './pages/Trades';
 import Settings  from './pages/Settings';
 import Learn     from './pages/Learn';
 import Notes from './pages/Notes';
-import StrategyBuilder from './pages/StrategyBuilder';
+import StrategiesLab from './pages/StrategiesLab';
 
 import SymbolAnalysis from './pages/analytics/SymbolAnalysis';
 import ExitAnalysisPage from './pages/analytics/ExitAnalysis';
@@ -175,7 +175,7 @@ function LayoutWithSidebar() {
                 <FeatureDisabled featureName="Strategy Builder" />
               }>
                 <SubscriptionGuard feature="Strategy Builder">
-                  <StrategyBuilder />
+                  <StrategiesLab />
                 </SubscriptionGuard>
               </ProtectedRoute>
             } />

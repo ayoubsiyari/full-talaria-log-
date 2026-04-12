@@ -15,6 +15,8 @@ from routes.journal import journal_bp
 from routes.profile_routes import profile_bp
 from routes.admin_routes import admin_bp  # <-- your new admin routes
 from routes.strategy_routes import strategy_bp
+from routes.feed_routes import feed_bp
+from routes.template_routes import template_bp
 from routes.feature_flags_routes import feature_flags_bp
 from routes.subscription_routes import subscription_bp
 from routes.chart_routes import chart_bp
@@ -65,6 +67,8 @@ app.register_blueprint(journal_bp, url_prefix='/api/journal')
 app.register_blueprint(profile_bp, url_prefix='/api/profile')
 app.register_blueprint(admin_bp,   url_prefix='/api/admin')   # ← register admin
 app.register_blueprint(strategy_bp, url_prefix='/api')
+app.register_blueprint(feed_bp, url_prefix='/api')
+app.register_blueprint(template_bp, url_prefix='/api')
 app.register_blueprint(feature_flags_bp, url_prefix='/api') # Strategy routes
 app.register_blueprint(subscription_bp, url_prefix='/api/subscriptions')  # Subscription management
 app.register_blueprint(chart_bp, url_prefix='/api/chart')  # Chart drawings

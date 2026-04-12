@@ -170,6 +170,7 @@ def add_entry():
             rr=(float(data['rr']) if data.get('rr') is not None else None),
             notes=data.get('notes'),
             strategy=data.get('strategy'),
+            strategy_id=data.get('strategy_id'),
             setup=data.get('setup'),
             commission=commission,
             slippage=slippage,
@@ -284,6 +285,8 @@ def update_entry(id):
             entry.notes = data['notes']
         if 'strategy' in data:
             entry.strategy = data['strategy']
+        if 'strategy_id' in data:
+            entry.strategy_id = data['strategy_id']
         if 'setup' in data:
             entry.setup = data['setup']
         if 'commission' in data:
