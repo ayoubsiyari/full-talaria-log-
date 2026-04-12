@@ -4576,15 +4576,15 @@ class DrawingToolsManager {
         };
 
         const hasExtraEntries = (drawing.meta?.extraEntries || []).length > 0;
-        // Match .rr-primary-entry-drag-hit vertical extent when E2+ exists (see BaseRiskRewardTool.render).
-        const primaryHalfH = hasExtraEntries ? 30 : 36;
+        // Match .rr-primary-entry-drag-hit vertical extent (see BaseRiskRewardTool.render).
+        const primaryHalfH = hasExtraEntries ? 18 : 16;
 
         const p0 = drawing.points && drawing.points[0];
         if (p0 && Number.isFinite(p0.y)) {
             pushHit('rr-primary-entry', chart.yScale(p0.y), primaryHalfH, x2NoPlus);
         }
 
-        const primaryLegHalfH = 26;
+        const primaryLegHalfH = 15;
         const p1 = drawing.points && drawing.points[1];
         if (p1 && Number.isFinite(p1.y)) {
             pushHit('rr-primary-stop', chart.yScale(p1.y), primaryLegHalfH, x2Full);
@@ -4594,11 +4594,9 @@ class DrawingToolsManager {
             pushHit('rr-primary-tp', chart.yScale(p2.y), primaryLegHalfH, x2Full);
         }
 
-        const halfExtra = 26;
-        // Match `extraTpDragHitW` / `extraEntryDragHitW` in BaseRiskRewardTool.render.
-        const halfExtraTp = 48;
-        // Match `extraEntryDragHitW` — E2+ pills are nudged vertically off the line.
-        const halfExtraEntry = 48;
+        const halfExtra = 7;
+        const halfExtraTp = 22;
+        const halfExtraEntry = 22;
         (drawing.meta?.extraTargets || []).forEach((row, idx) => {
             if (!row || !Number.isFinite(row.y)) return;
             pushHit(`rr-extra-target-${idx}`, chart.yScale(row.y), halfExtraTp, x2Full);

@@ -1946,8 +1946,8 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         if (this.points.length < 3) return;
 
-        /** Vertical hit for primary entry drag — widened to cover .center-info pill when selected. */
-        let primaryEntryHitHeight = 48;
+        /** Vertical hit for primary entry drag — sized to cover .center-info pill when selected (kept tighter than before). */
+        let primaryEntryHitHeight = 32;
 
         this.group = container.append('g')
             .attr('class', `drawing risk-reward ${this.meta.orientation}`)
@@ -2161,12 +2161,12 @@ class BaseRiskRewardTool extends BaseDrawing {
             .attr('y2', targetY)
             .style('pointer-events', 'none');
 
-        /** Wide transparent stroke for SL/BE extras. */
-        const extraDragHitW = 24;
-        /** Inner TP levels (TP2, …): tall strip + TP pill must not sit on a blocking group — see `rr-tp-mini-pct-controls` pointer-events. */
-        const extraTpDragHitW = 96;
-        /** Tall enough to cover nudged E2/E3 labels +/− controls while still centered on the leg price. */
-        const extraEntryDragHitW = 96;
+        /** Full-width drag strip height for extra SL / BE (tighter vertical grab). */
+        const extraDragHitW = 14;
+        /** Inner TP levels (TP2, …): strip around line + room for mini controls — narrower than before. */
+        const extraTpDragHitW = 44;
+        /** E2/E3 entry legs: strip around line + nudged labels — narrower than before. */
+        const extraEntryDragHitW = 44;
         // Full-width rect (not a thick stroke on <line>) so the whole horizontal band hits — transparent
         // strokes often miss the middle of the line in SVG, so users could only grab endpoints / small nodes.
         const appendExtraDragHit = (yy, role, hitW = extraDragHitW) => {
@@ -2541,7 +2541,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             const centerWidth = centerTextBBox.width + (centerPaddingX * 2);
             const centerHeight = centerTextBBox.height + (centerPaddingY * 2);
 
-            primaryEntryHitHeight = Math.max(56, centerHeight + 24);
+            primaryEntryHitHeight = Math.max(40, centerHeight + 10);
 
             const centerRectX = zoneCenterX - (centerWidth / 2);
 
@@ -3217,10 +3217,9 @@ class BaseRiskRewardTool extends BaseDrawing {
             // + buttons sit past zoneX2; primary entry strip can use full zone width.
             const entryDragX2 = zoneX2;
             const hasExtraEntries = (this.meta.extraEntries || []).length > 0;
-            // With E2+, keep a generous vertical strip (was capped at 52px, which made primary hard to grab).
             const hitH = hasExtraEntries
-                ? Math.max(52, Math.min(primaryEntryHitHeight, 80))
-                : Math.max(48, primaryEntryHitHeight);
+                ? Math.max(36, Math.min(primaryEntryHitHeight, 52))
+                : Math.max(32, primaryEntryHitHeight);
             const hitW = Math.max(1, entryDragX2 - zoneX1);
             this.group.append('rect')
                 .attr('class', 'custom-handle rr-primary-entry-drag-hit')
@@ -3235,7 +3234,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .style('cursor', 'ns-resize');
 
             // Primary SL / farthest TP: same full-zone drag as entry — left resize dots alone are easy to miss.
-            const legStripH = 52;
+            const legStripH = 30;
             const legW = Math.max(1, zoneX2 - zoneX1);
             this.group.append('rect')
                 .attr('class', 'custom-handle rr-primary-leg-drag-hit')
@@ -3575,8 +3574,8 @@ class BaseRiskRewardTool extends BaseDrawing {
     // Match default drawing handle visuals (same size/style as other tools)
     createHandles(group, scales) {
         const handleRadius = 3;
-        const hitRadius = 12;
-        const entryLineHitRadius = 22;
+        const hitRadius = 8;
+        const entryLineHitRadius = 14;
         const handleStroke = '#2962FF';
         const handleStrokeWidth = 2;
         
