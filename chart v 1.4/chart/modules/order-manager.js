@@ -5800,6 +5800,118 @@ class OrderManager {
             return 'General';
         }
     }
+
+    /**
+     * Pre-trade variable definitions from session (Strategies Lab), filtered to PRE only.
+     */
+    _getPreTradeVariableDefs() {
+        try {
+            const sess = this.chart?.backtestingSession || {};
+            const raw = sess.strategy_variables;
+            const list = Array.isArray(raw) ? raw : (sess.strategy_definition?.variables || []);
+            return list.filter(
+                (v) => v && v.type === 'variable' && v.timing === 'pre'
+            );
+        } catch (e) {
+            return [];
+        }
+    }
+
+    /**
+     * Renders PRE strategy variables below Advanced order (inputs collected at place time).
+     */
+    _renderStrategyVariablesPanel() {
+        const section = document.getElementById('orderStrategyVariablesSection');
+        const mount = document.getElementById('orderStrategyVariablesMount');
+        if (!section || !mount) return;
+
+        const defs = this._getPreTradeVariableDefs();
+        if (!defs.length) {
+            section.style.display = 'none';
+            mount.innerHTML = '';
+            return;
+        }
+
+        section.style.display = 'block';
+        const frag = document.createDocumentFragment();
+        defs.forEach((v) => {
+            const id = String(v.id || v.name || '').trim() || `var_${Math.random().toString(36).slice(2, 9)}`;
+            const row = document.createElement('div');
+            row.className = 'order-strategy-var-row';
+            row.style.cssText = 'margin-bottom:12px;';
+            const lab = document.createElement('label');
+            lab.style.cssText = 'font-size:11px;color:#94a3b8;display:block;margin-bottom:6px;font-weight:600;';
+            lab.textContent = v.name || 'Variable';
+            row.appendChild(lab);
+
+            if (v.vtype === 'multi') {
+                const sel = document.createElement('select');
+                sel.className = 'order-input order-strategy-var-input';
+                sel.setAttribute('data-var-id', id);
+                sel.style.cssText = 'width:100%;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#e2e8f0;font-size:13px;';
+                const opts = Array.isArray(v.options) && v.options.length ? v.options : ['—'];
+                opts.forEach((opt) => {
+                    const o = document.createElement('option');
+                    o.value = String(opt);
+                    o.textContent = String(opt);
+                    sel.appendChild(o);
+                });
+                row.appendChild(sel);
+            } else {
+                const sel = document.createElement('select');
+                sel.className = 'order-input order-strategy-var-input';
+                sel.setAttribute('data-var-id', id);
+                sel.setAttribute('data-yesno', '1');
+                sel.style.cssText = 'width:100%;padding:8px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:#e2e8f0;font-size:13px;';
+                const empty = document.createElement('option');
+                empty.value = '';
+                empty.textContent = '—';
+                sel.appendChild(empty);
+                ['yes', 'no'].forEach((val) => {
+                    const o = document.createElement('option');
+                    o.value = val;
+                    o.textContent = val === 'yes' ? 'Yes' : 'No';
+                    sel.appendChild(o);
+                });
+                row.appendChild(sel);
+            }
+            if (v.note && String(v.note).trim()) {
+                const hint = document.createElement('div');
+                hint.style.cssText = 'font-size:10px;color:#64748b;margin-top:4px;line-height:1.35;';
+                hint.textContent = String(v.note);
+                row.appendChild(hint);
+            }
+            frag.appendChild(row);
+        });
+        mount.innerHTML = '';
+        mount.appendChild(frag);
+    }
+
+    /**
+     * Snapshot values from the strategy variable panel onto the order (journal + analytics).
+     */
+    attachStrategyVariablesToOrder(order) {
+        if (!order) return order;
+        const mount = document.getElementById('orderStrategyVariablesMount');
+        if (!mount) return order;
+        const inputs = mount.querySelectorAll('.order-strategy-var-input');
+        const defs = this._getPreTradeVariableDefs();
+        const values = [];
+        inputs.forEach((el) => {
+            const id = el.getAttribute('data-var-id') || '';
+            const def = defs.find((d) => String(d.id || d.name || '') === id) || null;
+            const name = def && def.name ? def.name : id;
+            const vtype = def && def.vtype === 'multi' ? 'multi' : 'yesno';
+            values.push({
+                id,
+                name,
+                vtype,
+                value: el.value != null ? String(el.value) : ''
+            });
+        });
+        order.strategyVariables = values.length ? values : null;
+        return order;
+    }
     
     /**
      * Create and show trade journal modal
@@ -6314,6 +6426,7 @@ class OrderManager {
             ticker: symbol,
             direction: order.type, // BUY or SELL
             setup: setupStr,
+            strategy_variables: order.strategyVariables || null,
             
             // Timing
             entryTime: order.openTime,
@@ -10129,6 +10242,13 @@ class OrderManager {
                     </div>
                 </div>
 
+                <!-- Strategies Lab: pre-trade variables (filled before placing order) -->
+                <div class="order-section order-strategy-vars" id="orderStrategyVariablesSection" style="display:none;">
+                    <div class="order-label" style="margin-bottom:4px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.06em;">Pre-trade variables</div>
+                    <p style="font-size:10px;color:#64748b;margin:0 0 10px;line-height:1.35;">From your Strategies Lab playbook (PRE). Values are saved with each trade.</p>
+                    <div id="orderStrategyVariablesMount" class="order-strategy-vars__mount"></div>
+                </div>
+
                 <div id="multipleTPSection" style="display:none;"></div>
 
                 <!-- Position scaling: kept in DOM for presets/engine; not shown in advanced order UI -->
@@ -11300,6 +11420,7 @@ class OrderManager {
 
         // Refresh header badge (symbol + market type) every time the drawer opens
         this.updateOrderPanel();
+        this._renderStrategyVariablesPanel();
 
         // Reset TP/SL positioning flags and values for new order
         this.tpManuallyPositioned = false;
@@ -12779,6 +12900,7 @@ class OrderManager {
         this._syncTpProfitTargetFieldVisibility();
         this._syncSlCardSecondaryRows();
         this.updatePlaceButtonText();
+        this._renderStrategyVariablesPanel();
     }
     
     /**
@@ -20658,6 +20780,7 @@ class OrderManager {
                     if (this.orderService) {
                         this.orderService.registerOpenOrder(order);
                     } else {
+                        this.attachStrategyVariablesToOrder(order);
                         this.openPositions.push(order);
                         this.orders.push(order);
                     }
@@ -21109,6 +21232,7 @@ class OrderManager {
             if (this.orderService) {
                 this.orderService.registerOpenOrder(order);
             } else {
+                this.attachStrategyVariablesToOrder(order);
                 this.openPositions.push(order);
                 this.orders.push(order);
             }
@@ -21489,6 +21613,7 @@ class OrderManager {
             if (this.orderService) {
                 this.orderService.registerOpenOrder(order);
             } else {
+                this.attachStrategyVariablesToOrder(order);
                 this.openPositions.push(order);
                 this.orders.push(order);
             }
@@ -21623,6 +21748,7 @@ class OrderManager {
         if (this.orderService) {
             this.orderService.registerOpenOrder(order);
         } else {
+            this.attachStrategyVariablesToOrder(order);
             this.openPositions.push(order);
             this.orders.push(order);
         }
@@ -21712,6 +21838,7 @@ class OrderManager {
             if (this.orderService) {
                 this.orderService.registerOpenOrder(order);
             } else {
+                this.attachStrategyVariablesToOrder(order);
                 this.openPositions.push(order);
                 this.orders.push(order);
             }
@@ -21781,6 +21908,7 @@ class OrderManager {
             if (this.orderService) {
                 this.orderService.registerOpenOrder(order);
             } else {
+                this.attachStrategyVariablesToOrder(order);
                 this.openPositions.push(order);
                 this.orders.push(order);
             }
@@ -21836,6 +21964,7 @@ class OrderManager {
         if (this.orderService) {
             this.orderService.registerOpenOrder(order);
         } else {
+            this.attachStrategyVariablesToOrder(order);
             this.openPositions.push(order);
             this.orders.push(order);
         }
@@ -21943,6 +22072,7 @@ class OrderManager {
         if (this.orderService) {
             this.orderService.registerOpenOrder(order);
         } else {
+            this.attachStrategyVariablesToOrder(order);
             this.openPositions.push(order);
             this.orders.push(order);
         }
@@ -21990,6 +22120,7 @@ class OrderManager {
             takeProfit: defaultTP
         };
         
+        this.attachStrategyVariablesToOrder(order);
         this.openPositions.push(order);
         this.orders.push(order);
         
@@ -22206,6 +22337,7 @@ class OrderManager {
                 tags: [],
                 rulesFollowed: null,
                 setup: (position.preTradeNotes && position.preTradeNotes.setup) || this._getSessionDefaultTradeSetup(),
+                strategy_variables: position.strategyVariables || null,
                 isScaledTrade: false
             };
             
@@ -22822,6 +22954,7 @@ class OrderManager {
         if (this.orderService) {
             this.orderService.registerOpenOrder(order);
         } else {
+            this.attachStrategyVariablesToOrder(order);
             this.openPositions.push(order);
             this.orders.push(order);
         }
@@ -24409,6 +24542,7 @@ class OrderManager {
                     year: firstOpenDate.getFullYear(),
                     preTradeNotes: firstEntry.preTradeNotes || {},
                     setup: (firstEntry.preTradeNotes && firstEntry.preTradeNotes.setup) || this._getSessionDefaultTradeSetup(),
+                    strategy_variables: firstEntry.strategyVariables || null,
                     postTradeNotes: {},
                     tags: [],
                     rulesFollowed: null,
@@ -24557,6 +24691,7 @@ class OrderManager {
                     year: firstOpenDate.getFullYear(),
                     preTradeNotes: firstEntry.preTradeNotes || {},
                     setup: (firstEntry.preTradeNotes && firstEntry.preTradeNotes.setup) || this._getSessionDefaultTradeSetup(),
+                    strategy_variables: firstEntry.strategyVariables || null,
                     postTradeNotes: {},
                     tags: [],
                     rulesFollowed: null,
@@ -24670,6 +24805,7 @@ class OrderManager {
                     year: openDate.getFullYear(),
                     preTradeNotes: position.preTradeNotes || {},
                     setup: (position.preTradeNotes && position.preTradeNotes.setup) || this._getSessionDefaultTradeSetup(),
+                    strategy_variables: position.strategyVariables || null,
                     postTradeNotes: {},
                     tags: [],
                     rulesFollowed: null,
@@ -35934,6 +36070,7 @@ class OrderManager {
             year: firstOpenDate.getFullYear(),
             preTradeNotes: firstEntry.preTradeNotes || null,
             setup: (firstEntry.preTradeNotes && firstEntry.preTradeNotes.setup) || this._getSessionDefaultTradeSetup(),
+            strategy_variables: firstEntry.strategyVariables || null,
             postTradeNotes: null,
             tags: [],
             rulesFollowed: null,

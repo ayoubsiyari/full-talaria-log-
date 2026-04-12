@@ -252,6 +252,9 @@ class OrderService {
         if (!order.sourceFileId && this.chart && this.chart.currentFileId != null && String(this.chart.currentFileId) !== '') {
             order.sourceFileId = String(this.chart.currentFileId);
         }
+        if (this.chart && this.chart.orderManager && typeof this.chart.orderManager.attachStrategyVariablesToOrder === 'function') {
+            this.chart.orderManager.attachStrategyVariablesToOrder(order);
+        }
         this.pendingOrders.push(order);
         this.orders.push(order);
         this.emit('order:pending', order);
@@ -282,6 +285,9 @@ class OrderService {
         if (!Array.isArray(order.post_exit_bar_close_r)) order.post_exit_bar_close_r = [];
         if (!Array.isArray(order.post_exit_bar_high_r)) order.post_exit_bar_high_r = [];
         if (!Array.isArray(order.post_exit_bar_low_r)) order.post_exit_bar_low_r = [];
+        if (this.chart && this.chart.orderManager && typeof this.chart.orderManager.attachStrategyVariablesToOrder === 'function') {
+            this.chart.orderManager.attachStrategyVariablesToOrder(order);
+        }
         this.openPositions.push(order);
         this.orders.push(order);
         this.recomputeSharedMarginState();

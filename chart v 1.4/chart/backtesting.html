@@ -1780,6 +1780,14 @@
                     playbook_display = (playbookOpt && playbookOpt.getAttribute('data-label')) || rawPlaybook;
                 }
 
+                var strategy_variables = [];
+                if (strategy_id && window.__strategiesLabStrategies && window.__strategiesLabStrategies.length) {
+                    var stFound = window.__strategiesLabStrategies.find(function (x) { return x.id === strategy_id; });
+                    if (stFound && stFound.strategy_definition && Array.isArray(stFound.strategy_definition.variables)) {
+                        strategy_variables = stFound.strategy_definition.variables;
+                    }
+                }
+
                 const formData = {
                     type: 'standard', // Distinguish from prop firm mode
                     sessionName: document.getElementById('sessionName').value,
@@ -1787,6 +1795,7 @@
                     playbook: rawPlaybook,
                     playbook_display: playbook_display,
                     strategy_id: strategy_id,
+                    strategy_variables: strategy_variables,
                     fileId: selectedFileId,
                     fileName: selectedFileName,
                     // Store all selected files for symbol switching
@@ -2076,6 +2085,7 @@
             { value: 'reversal', label: 'Reversal Strategy' }
         ];
         function rebuildPlaybookSelect(strategies) {
+            window.__strategiesLabStrategies = strategies || [];
             var sel = document.getElementById('playbook');
             if (!sel) return;
             sel.innerHTML = '';
