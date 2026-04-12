@@ -1947,7 +1947,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (this.points.length < 3) return;
 
         /** Vertical hit for primary entry drag — sized to cover .center-info pill when selected (kept tighter than before). */
-        let primaryEntryHitHeight = 32;
+        let primaryEntryHitHeight = 22;
 
         this.group = container.append('g')
             .attr('class', `drawing risk-reward ${this.meta.orientation}`)
@@ -2162,11 +2162,11 @@ class BaseRiskRewardTool extends BaseDrawing {
             .style('pointer-events', 'none');
 
         /** Full-width drag strip height for extra SL / BE (tighter vertical grab). */
-        const extraDragHitW = 14;
-        /** Inner TP levels (TP2, …): strip around line + room for mini controls — narrower than before. */
-        const extraTpDragHitW = 44;
-        /** E2/E3 entry legs: strip around line + nudged labels — narrower than before. */
-        const extraEntryDragHitW = 44;
+        const extraDragHitW = 9;
+        /** Inner TP levels (TP2, …): strip + mini controls — keep slightly wider than extra SL. */
+        const extraTpDragHitW = 28;
+        /** E2/E3 entry legs: strip + nudged labels — keep slightly wider than extra SL. */
+        const extraEntryDragHitW = 28;
         // Full-width rect (not a thick stroke on <line>) so the whole horizontal band hits — transparent
         // strokes often miss the middle of the line in SVG, so users could only grab endpoints / small nodes.
         const appendExtraDragHit = (yy, role, hitW = extraDragHitW) => {
