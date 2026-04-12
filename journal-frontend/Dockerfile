@@ -2,7 +2,8 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY package.json package-lock.json .npmrc ./
+# .npmrc sets legacy-peer-deps (react-scripts vs typescript peer conflict)
 RUN npm install && rm -f node_modules/papaparse/papaparse.min.js && \
     node -e "\
     const fs=require('fs'),p='node_modules/react-scripts/config/webpack.config.js';\
