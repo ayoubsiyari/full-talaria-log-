@@ -203,12 +203,16 @@ export default function PostCard({ post, onLike, onOpenComments, onOpenStrategy,
         <div className="mt-3 grid grid-cols-4 gap-0.5 border-t border-[var(--sl-border)] pt-2.5">
           <button
             type="button"
-            title={liked ? "Unlike" : "Like"}
+            disabled={!onLike}
+            title={!onLike ? "Sign in to like" : liked ? "Unlike" : "Like"}
             onClick={(e) => {
               e.stopPropagation();
               handleLike();
             }}
-            className="flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)]"
+            className={cn(
+              "flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)]",
+              !onLike && "cursor-not-allowed opacity-50 hover:bg-transparent"
+            )}
           >
             <Heart
               className={cn(
@@ -271,11 +275,16 @@ export default function PostCard({ post, onLike, onOpenComments, onOpenStrategy,
         <div className="mt-4 flex flex-wrap justify-center gap-1 border-t border-[var(--sl-border)] pt-3 sm:flex-nowrap sm:justify-evenly">
           <button
             type="button"
+            disabled={!onLike}
+            title={!onLike ? "Sign in to like" : undefined}
             onClick={(e) => {
               e.stopPropagation();
               handleLike();
             }}
-            className="flex min-h-[44px] min-w-[44px] flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-2 rounded-xl px-2 py-2 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)] sm:basis-auto sm:px-3"
+            className={cn(
+              "flex min-h-[44px] min-w-[44px] flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-2 rounded-xl px-2 py-2 text-[var(--sl-text)] transition hover:bg-[var(--sl-input)] sm:basis-auto sm:px-3",
+              !onLike && "cursor-not-allowed opacity-50 hover:bg-transparent"
+            )}
           >
             <Heart
               className={cn(

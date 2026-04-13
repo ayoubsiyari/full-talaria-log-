@@ -36,19 +36,37 @@ def _tpl_dict(t, strategy_snapshot=None):
     return out
 
 
+def _published_templates_list():
+    """Query published templates (same filters as list_templates)."""
+    q = StrategyTemplate.query.filter(StrategyTemplate.status == 'published')
+    cat = request.args.get('category')
+    if cat:
+        q = q.filter(StrategyTemplate.category == cat)
+    ttype = request.args.get('type')
+    if ttype:
+        q = q.filter(StrategyTemplate.template_type == ttype)
+    return q.order_by(StrategyTemplate.clone_count.desc()).limit(100).all()
+
+
+@template_bp.route('/templates/public', methods=['GET'])
+def list_templates_public():
+    """Browse published templates without authentication (read-only; use for visitors)."""
+    try:
+        items = _published_templates_list()
+        return jsonify({
+            'success': True,
+            'templates': [_tpl_dict(t) for t in items],
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @template_bp.route('/templates', methods=['GET'])
 @jwt_required()
 def list_templates():
     """Browse published templates (official + community)."""
     try:
-        q = StrategyTemplate.query.filter(StrategyTemplate.status == 'published')
-        cat = request.args.get('category')
-        if cat:
-            q = q.filter(StrategyTemplate.category == cat)
-        ttype = request.args.get('type')
-        if ttype:
-            q = q.filter(StrategyTemplate.template_type == ttype)
-        items = q.order_by(StrategyTemplate.clone_count.desc()).limit(100).all()
+        items = _published_templates_list()
         return jsonify({
             'success': True,
             'templates': [_tpl_dict(t) for t in items],

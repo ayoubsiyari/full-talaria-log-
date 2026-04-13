@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { JOURNAL_API_BASE } from "@/lib/journalApi";
 import StrategyWizard from "./StrategyWizard";
 import ShareStrategyModal from "./ShareStrategyModal";
@@ -10,13 +11,32 @@ import { emptyDraft, definitionFromDraft, draftFromApi } from "@/strategyLab/def
 import { formatMarketsAndInstrumentsSummary } from "@/strategyLab/instruments";
 import { Plus, Trash2, Share2, BarChart3, Copy } from "lucide-react";
 
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("token");
+}
+
+function loginUrlWithNext() {
+  return `/login/?next=${encodeURIComponent("/strategies-lab/")}`;
+}
+
 function authHeaders() {
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const token = getToken();
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } as Record<string, string>;
 }
 
+/** Optional auth: omit invalid Bearer when logged out so public endpoints do not receive "Bearer null". */
+function fetchHeadersJson() {
+  const token = getToken();
+  const h: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) h.Authorization = `Bearer ${token}`;
+  return h;
+}
+
 export default function StrategiesLabPage() {
-  const [tab, setTab] = useState("builder");
+  const [tab, setTab] = useState<"builder" | "feed" | "templates">(() =>
+    typeof window !== "undefined" && localStorage.getItem("token") ? "builder" : "feed"
+  );
   const [builderView, setBuilderView] = useState("list");
   const [strategies, setStrategies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,8 +53,12 @@ export default function StrategiesLabPage() {
   const [templates, setTemplates] = useState<any[]>([]);
 
   const loadStrategies = useCallback(async () => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-    if (!token) return;
+    const token = getToken();
+    if (!token) {
+      setStrategies([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(`${JOURNAL_API_BASE}/strategies`, { headers: authHeaders() });
@@ -47,9 +71,11 @@ export default function StrategiesLabPage() {
     }
   }, []);
 
+  /** Logged-in: full community feed. Visitors: read-only explore (posts with visibility = guest). */
   const loadFeed = useCallback(async () => {
     try {
-      const res = await fetch(`${JOURNAL_API_BASE}/feed`, { headers: authHeaders() });
+      const path = getToken() ? "/feed" : "/feed/explore";
+      const res = await fetch(`${JOURNAL_API_BASE}${path}`, { headers: fetchHeadersJson() });
       const data = await res.json();
       if (data.success) setFeedPosts(data.posts || []);
     } catch (e) {
@@ -59,7 +85,8 @@ export default function StrategiesLabPage() {
 
   const loadTemplates = useCallback(async () => {
     try {
-      const res = await fetch(`${JOURNAL_API_BASE}/templates`, { headers: authHeaders() });
+      const path = getToken() ? "/templates" : "/templates/public";
+      const res = await fetch(`${JOURNAL_API_BASE}${path}`, { headers: fetchHeadersJson() });
       const data = await res.json();
       if (data.success) setTemplates(data.templates || []);
     } catch (e) {
@@ -77,6 +104,10 @@ export default function StrategiesLabPage() {
   }, [tab, loadFeed, loadTemplates]);
 
   const startNew = () => {
+    if (!getToken()) {
+      window.location.href = loginUrlWithNext();
+      return;
+    }
     setEditingId(null);
     setDraft(emptyDraft() as Record<string, unknown>);
     setWizardStep(1);
@@ -84,6 +115,10 @@ export default function StrategiesLabPage() {
   };
 
   const editStrategy = async (id: number) => {
+    if (!getToken()) {
+      window.location.href = loginUrlWithNext();
+      return;
+    }
     try {
       const res = await fetch(`${JOURNAL_API_BASE}/strategies/${id}`, { headers: authHeaders() });
       const data = await res.json();
@@ -98,6 +133,10 @@ export default function StrategiesLabPage() {
   };
 
   const saveStrategy = async () => {
+    if (!getToken()) {
+      window.location.href = loginUrlWithNext();
+      return;
+    }
     if (!String(draft.name ?? "").trim()) return;
     setSaving(true);
     try {
@@ -170,6 +209,10 @@ export default function StrategiesLabPage() {
   };
 
   const likePost = async (postId: number, liked: boolean) => {
+    if (!getToken()) {
+      window.location.href = loginUrlWithNext();
+      return;
+    }
     try {
       const method = liked ? "DELETE" : "POST";
       await fetch(`${JOURNAL_API_BASE}/posts/${postId}/like`, { method, headers: authHeaders() });
@@ -180,6 +223,10 @@ export default function StrategiesLabPage() {
   };
 
   const cloneTemplate = async (tid: number) => {
+    if (!getToken()) {
+      window.location.href = loginUrlWithNext();
+      return;
+    }
     try {
       const res = await fetch(`${JOURNAL_API_BASE}/templates/${tid}/clone`, {
         method: "POST",
@@ -197,6 +244,8 @@ export default function StrategiesLabPage() {
     }
   };
 
+  const isAuthed = !!getToken();
+
   return (
     <div
       className="strategies-lab-root min-h-screen bg-[var(--sl-bg)] text-[var(--sl-text)]"
@@ -208,7 +257,7 @@ export default function StrategiesLabPage() {
             Strategies Lab
           </h1>
           <nav className="flex gap-1">
-            {["builder", "feed", "templates"].map((t) => (
+            {(["builder", "feed", "templates"] as const).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -227,7 +276,23 @@ export default function StrategiesLabPage() {
       </div>
 
       <div className="mx-auto max-w-6xl px-4 py-6">
-        {tab === "builder" && builderView === "list" && (
+        {tab === "builder" && builderView === "list" && !isAuthed && (
+          <div className="rounded-xl border border-[var(--sl-border)] bg-[var(--sl-card)] px-6 py-12 text-center">
+            <h2 className="text-lg font-semibold text-[var(--sl-text)]">Build and save strategies</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm text-[var(--sl-text-sec)]">
+              Visitors can browse the public feed and template library. Sign in to create strategies, save them to your
+              journal, and post to the community.
+            </p>
+            <Link
+              href="/login/?next=/strategies-lab/"
+              className="mt-6 inline-flex items-center justify-center rounded-lg bg-[var(--sl-accent)] px-5 py-2.5 text-sm font-medium text-white"
+            >
+              Sign in to continue
+            </Link>
+          </div>
+        )}
+
+        {tab === "builder" && builderView === "list" && isAuthed && (
           <div>
             <div className="mb-6 flex items-center justify-between">
               <h2 className="text-lg font-semibold">Your strategies</h2>
@@ -334,7 +399,7 @@ export default function StrategiesLabPage() {
           </div>
         )}
 
-        {tab === "builder" && builderView === "wizard" && (
+        {tab === "builder" && builderView === "wizard" && isAuthed && (
           <StrategyWizard
             draft={draft}
             setDraft={setDraft}
@@ -357,9 +422,20 @@ export default function StrategiesLabPage() {
             <div className="mx-auto mb-6 w-full max-w-6xl px-0 text-left">
               <h2 className="text-lg font-semibold">Community feed</h2>
               <p className="mt-1 text-xs text-[var(--sl-text-muted)]">
-                &quot;Friends&quot; = any logged-in user. &quot;Public&quot; = same plus visitors on explore. &quot;Mutual&quot;
-                = you both follow each other. Click a card for strategy details; journal analytics show for your own
-                strategies only.
+                {isAuthed ? (
+                  <>
+                    &quot;Friends&quot; = any logged-in user. &quot;Guest&quot; posts also appear on the public explore
+                    view for visitors. &quot;Mutual&quot; = you both follow each other. Click a card for details.
+                  </>
+                ) : (
+                  <>
+                    You&apos;re viewing the public explore feed (posts authors marked for visitors).{" "}
+                    <Link href="/login/?next=/strategies-lab/" className="text-[var(--sl-accent-light)] underline">
+                      Sign in
+                    </Link>{" "}
+                    for the full community feed, likes, and comments.
+                  </>
+                )}
               </p>
             </div>
             <div className="mx-auto grid w-full max-w-[100rem] grid-cols-1 items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -367,21 +443,34 @@ export default function StrategiesLabPage() {
                 <PostCard
                   key={p.id}
                   post={p}
-                  onLike={likePost}
+                  onLike={isAuthed ? likePost : undefined}
                   variant="grid"
                   onOpenStrategy={setFeedDetailPost}
                 />
               ))}
             </div>
             {!feedPosts.length && (
-              <p className="mx-auto mt-8 w-full max-w-6xl text-center text-[var(--sl-text-muted)]">No posts yet.</p>
+              <p className="mx-auto mt-8 w-full max-w-6xl text-center text-[var(--sl-text-muted)]">
+                {isAuthed
+                  ? "No posts yet."
+                  : "No public posts yet. When members share with “Public (explore)”, they appear here."}
+              </p>
             )}
           </div>
         )}
 
         {tab === "templates" && (
           <div>
-            <h2 className="mb-4 text-lg font-semibold">Template library</h2>
+            <h2 className="mb-2 text-lg font-semibold">Template library</h2>
+            {!isAuthed && (
+              <p className="mb-4 text-xs text-[var(--sl-text-muted)]">
+                Browse published templates below.{" "}
+                <Link href="/login/?next=/strategies-lab/" className="text-[var(--sl-accent-light)] underline">
+                  Sign in
+                </Link>{" "}
+                to copy a template into your strategies.
+              </p>
+            )}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {templates.map((t) => (
                 <div key={t.id} className="rounded-xl border border-[var(--sl-border)] bg-[var(--sl-card)] p-4">
@@ -390,13 +479,22 @@ export default function StrategiesLabPage() {
                     {t.category} · {t.template_type}
                     {t.rating_avg != null ? ` · ★ ${t.rating_avg}` : ""}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => cloneTemplate(t.id)}
-                    className="mt-3 rounded-lg bg-[var(--sl-green)] px-3 py-1.5 text-sm text-white"
-                  >
-                    Use template
-                  </button>
+                  {isAuthed ? (
+                    <button
+                      type="button"
+                      onClick={() => cloneTemplate(t.id)}
+                      className="mt-3 rounded-lg bg-[var(--sl-green)] px-3 py-1.5 text-sm text-white"
+                    >
+                      Use template
+                    </button>
+                  ) : (
+                    <Link
+                      href="/login/?next=/strategies-lab/"
+                      className="mt-3 inline-block rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] px-3 py-1.5 text-sm text-[var(--sl-text)] hover:bg-[var(--sl-card)]"
+                    >
+                      Sign in to use
+                    </Link>
+                  )}
                 </div>
               ))}
             </div>
@@ -407,7 +505,7 @@ export default function StrategiesLabPage() {
         )}
       </div>
 
-      {shareId && (
+      {shareId && isAuthed && (
         <ShareStrategyModal
           strategyId={shareId}
           strategy={strategies.find((s) => s.id === shareId) ?? null}
