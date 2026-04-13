@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { formatInstrumentsLine } from '@/strategyLab/instruments';
+import { formatInstrumentsLine, formatMarketCategoriesLine } from '@/strategyLab/instruments';
 
 type FlowNode = Record<string, unknown> & { type?: string; id?: string };
 
@@ -29,7 +29,11 @@ export default function ReviewStep({ draft }: { draft: Record<string, unknown> }
             <div className="text-[var(--sl-text)]">{String(draft.name ?? '—')}</div>
           </div>
           <div>
-            <div className="font-mono-label text-[10px] font-bold uppercase text-[var(--sl-text-muted)]">Instruments</div>
+            <div className="font-mono-label text-[10px] font-bold uppercase text-[var(--sl-text-muted)]">Markets</div>
+            <div className="text-[var(--sl-text)]">{formatMarketCategoriesLine(draft.market_categories) || '—'}</div>
+          </div>
+          <div>
+            <div className="font-mono-label text-[10px] font-bold uppercase text-[var(--sl-text-muted)]">Symbols</div>
             <div className="text-[var(--sl-text)]">{formatInstrumentsLine(draft) || '—'}</div>
           </div>
           <div>

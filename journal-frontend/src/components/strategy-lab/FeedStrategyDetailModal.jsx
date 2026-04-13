@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { API_BASE_URL } from '../../config';
-import { formatInstrumentsSummaryFromDef } from '../../strategyLab/instruments';
+import { formatMarketsAndInstrumentsSummary } from '../../strategyLab/instruments';
 
 function authHeaders() {
   const token = localStorage.getItem('token');
@@ -32,7 +32,7 @@ export default function FeedStrategyDetailModal({ post, onClose }) {
   const isOwner = uid != null && authorId != null && Number(uid) === Number(authorId);
 
   const def = strategy?.strategy_definition || {};
-  const instrumentSummary = formatInstrumentsSummaryFromDef(def);
+  const marketsAndSymbolsSummary = formatMarketsAndInstrumentsSummary(def);
   const conditions = Array.isArray(def.conditions) ? def.conditions : [];
   const variables = Array.isArray(def.variables) ? def.variables : [];
 
@@ -107,8 +107,8 @@ export default function FeedStrategyDetailModal({ post, onClose }) {
         ) : null}
 
         <section className="mb-4 flex flex-wrap gap-2 text-xs text-[var(--sl-text-sec)]">
-          {instrumentSummary ? (
-            <span className="rounded-md bg-[var(--sl-input)] px-2 py-1">{instrumentSummary}</span>
+          {marketsAndSymbolsSummary ? (
+            <span className="rounded-md bg-[var(--sl-input)] px-2 py-1">{marketsAndSymbolsSummary}</span>
           ) : null}
           {def.style ? <span className="rounded-md bg-[var(--sl-input)] px-2 py-1">{def.style}</span> : null}
           {def.timeframe ? <span className="rounded-md bg-[var(--sl-input)] px-2 py-1">{def.timeframe}</span> : null}

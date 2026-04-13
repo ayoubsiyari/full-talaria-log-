@@ -335,6 +335,7 @@ class Strategy(db.Model):
     strategy_definition = db.Column(JSON, nullable=False, default=lambda: {
         'instrument': '',
         'instruments': [],
+        'market_categories': [],
         'style': '',
         'direction': 'both',
         'timeframe': '',

@@ -81,6 +81,56 @@ export const FUTURES_INSTRUMENTS = [
   { id: 'ZS', label: 'ZS' },
 ];
 
+/** Crypto (registry `type: crypto`) — linear USDT, spot USD, inverse. */
+export const CRYPTO_INSTRUMENTS = [
+  { id: 'BTCUSDT', label: 'BTC/USDT' },
+  { id: 'ETHUSDT', label: 'ETH/USDT' },
+  { id: 'SOLUSDT', label: 'SOL/USDT' },
+  { id: 'BNBUSDT', label: 'BNB/USDT' },
+  { id: 'XRPUSDT', label: 'XRP/USDT' },
+  { id: 'ADAUSDT', label: 'ADA/USDT' },
+  { id: 'DOGEUSDT', label: 'DOGE/USDT' },
+  { id: 'LTCUSDT', label: 'LTC/USDT' },
+  { id: 'LINKUSDT', label: 'LINK/USDT' },
+  { id: 'DOTUSDT', label: 'DOT/USDT' },
+  { id: 'AVAXUSDT', label: 'AVAX/USDT' },
+  { id: 'MATICUSDT', label: 'MATIC/USDT' },
+  { id: 'BTCUSD', label: 'BTC/USD' },
+  { id: 'ETHUSD', label: 'ETH/USD' },
+  { id: 'SOLUSD', label: 'SOL/USD' },
+  { id: 'XBTUSD', label: 'XBT/USD' },
+  { id: 'ETHUSD_I', label: 'ETH/USD (inv.)' },
+];
+
+/** High-level market buckets (General Info). */
+export const MARKET_CATEGORY_OPTIONS = [
+  { id: 'forex', label: 'Forex' },
+  { id: 'futures', label: 'Futures' },
+  { id: 'crypto', label: 'Crypto' },
+];
+
+const VALID_MARKET_CATEGORY = new Set(['forex', 'futures', 'crypto']);
+
+export function normalizeMarketCategories(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const x of raw) {
+    const id = String(x).toLowerCase();
+    if (!VALID_MARKET_CATEGORY.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+export function formatMarketCategoriesLine(cats) {
+  const n = normalizeMarketCategories(cats);
+  if (!n.length) return '';
+  const labels = { forex: 'Forex', futures: 'Futures', crypto: 'Crypto' };
+  return n.map((id) => labels[id] || id).join(', ');
+}
+
 /** Maps legacy coarse instrument ids to registry symbols. */
 export const LEGACY_INSTRUMENT_MAP = {
   es: 'ES',
@@ -97,7 +147,10 @@ export function normalizeInstrumentId(raw) {
 }
 
 const _INSTRUMENT_LABEL = Object.fromEntries(
-  [...FOREX_INSTRUMENTS, ...COMMODITY_CFD_INSTRUMENTS, ...FUTURES_INSTRUMENTS].map((o) => [o.id, o.label])
+  [...FOREX_INSTRUMENTS, ...COMMODITY_CFD_INSTRUMENTS, ...FUTURES_INSTRUMENTS, ...CRYPTO_INSTRUMENTS].map((o) => [
+    o.id,
+    o.label,
+  ])
 );
 
 /** Human-readable label for review / feed (falls back to raw id). */
@@ -142,4 +195,15 @@ export function formatInstrumentsSummaryFromDef(def) {
   const ids = normalizeInstrumentList(def.instruments, def.instrument);
   if (!ids.length) return '';
   return ids.map((id) => formatInstrumentLabel(id)).join(' · ');
+}
+
+/** Markets (forex/futures/crypto) + optional specific symbols for feed / list subtitles. */
+export function formatMarketsAndInstrumentsSummary(def) {
+  if (!def || typeof def !== 'object') return '';
+  const parts = [];
+  const mc = formatMarketCategoriesLine(def.market_categories);
+  if (mc) parts.push(mc);
+  const syms = formatInstrumentsSummaryFromDef(def);
+  if (syms) parts.push(syms);
+  return parts.join(' · ');
 }

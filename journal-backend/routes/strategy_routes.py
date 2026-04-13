@@ -125,7 +125,7 @@ def update_strategy(strategy_id):
             merged['strategy_definition'] = data.get('strategy_definition') or data.get('strategyDefinition')
         else:
             sd = dict(merge_definition_from_legacy(strategy))
-            for k in ('instrument', 'instruments', 'style', 'direction', 'timeframe', 'conditions', 'variables'):
+            for k in ('instrument', 'instruments', 'market_categories', 'style', 'direction', 'timeframe', 'conditions', 'variables'):
                 if k in data:
                     sd[k] = data[k]
             merged['strategy_definition'] = sd

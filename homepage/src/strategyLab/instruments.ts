@@ -76,6 +76,54 @@ export const FUTURES_INSTRUMENTS: InstrumentOption[] = [
   { id: 'ZS', label: 'ZS' },
 ];
 
+export const CRYPTO_INSTRUMENTS: InstrumentOption[] = [
+  { id: 'BTCUSDT', label: 'BTC/USDT' },
+  { id: 'ETHUSDT', label: 'ETH/USDT' },
+  { id: 'SOLUSDT', label: 'SOL/USDT' },
+  { id: 'BNBUSDT', label: 'BNB/USDT' },
+  { id: 'XRPUSDT', label: 'XRP/USDT' },
+  { id: 'ADAUSDT', label: 'ADA/USDT' },
+  { id: 'DOGEUSDT', label: 'DOGE/USDT' },
+  { id: 'LTCUSDT', label: 'LTC/USDT' },
+  { id: 'LINKUSDT', label: 'LINK/USDT' },
+  { id: 'DOTUSDT', label: 'DOT/USDT' },
+  { id: 'AVAXUSDT', label: 'AVAX/USDT' },
+  { id: 'MATICUSDT', label: 'MATIC/USDT' },
+  { id: 'BTCUSD', label: 'BTC/USD' },
+  { id: 'ETHUSD', label: 'ETH/USD' },
+  { id: 'SOLUSD', label: 'SOL/USD' },
+  { id: 'XBTUSD', label: 'XBT/USD' },
+  { id: 'ETHUSD_I', label: 'ETH/USD (inv.)' },
+];
+
+export const MARKET_CATEGORY_OPTIONS: InstrumentOption[] = [
+  { id: 'forex', label: 'Forex' },
+  { id: 'futures', label: 'Futures' },
+  { id: 'crypto', label: 'Crypto' },
+];
+
+const VALID_MARKET_CATEGORY = new Set(['forex', 'futures', 'crypto']);
+
+export function normalizeMarketCategories(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const x of raw) {
+    const id = String(x).toLowerCase();
+    if (!VALID_MARKET_CATEGORY.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+export function formatMarketCategoriesLine(cats: unknown): string {
+  const n = normalizeMarketCategories(cats);
+  if (!n.length) return '';
+  const labels: Record<string, string> = { forex: 'Forex', futures: 'Futures', crypto: 'Crypto' };
+  return n.map((id) => labels[id] || id).join(', ');
+}
+
 const LEGACY_INSTRUMENT_MAP: Record<string, string> = {
   es: 'ES',
   nq: 'NQ',
@@ -91,7 +139,10 @@ export function normalizeInstrumentId(raw: unknown): string {
 }
 
 const INSTRUMENT_LABEL: Record<string, string> = Object.fromEntries(
-  [...FOREX_INSTRUMENTS, ...COMMODITY_CFD_INSTRUMENTS, ...FUTURES_INSTRUMENTS].map((o) => [o.id, o.label])
+  [...FOREX_INSTRUMENTS, ...COMMODITY_CFD_INSTRUMENTS, ...FUTURES_INSTRUMENTS, ...CRYPTO_INSTRUMENTS].map((o) => [
+    o.id,
+    o.label,
+  ])
 );
 
 export function formatInstrumentLabel(raw: unknown): string {
@@ -130,4 +181,14 @@ export function formatInstrumentsSummaryFromDef(def: Record<string, unknown> | n
   const ids = normalizeInstrumentList(def.instruments, def.instrument);
   if (!ids.length) return '';
   return ids.map((id) => formatInstrumentLabel(id)).join(' · ');
+}
+
+export function formatMarketsAndInstrumentsSummary(def: Record<string, unknown> | null | undefined): string {
+  if (!def || typeof def !== 'object') return '';
+  const parts: string[] = [];
+  const mc = formatMarketCategoriesLine(def.market_categories);
+  if (mc) parts.push(mc);
+  const syms = formatInstrumentsSummaryFromDef(def);
+  if (syms) parts.push(syms);
+  return parts.join(' · ');
 }

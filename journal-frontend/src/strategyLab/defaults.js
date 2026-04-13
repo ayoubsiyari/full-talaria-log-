@@ -1,4 +1,4 @@
-import { normalizeInstrumentList } from './instruments';
+import { normalizeInstrumentList, normalizeMarketCategories } from './instruments';
 
 export const SL_COLORS = {
   orderFlow: { color: '#06b6d4', bg: 'rgba(6,182,212,0.12)', bd: '#06b6d4' },
@@ -23,6 +23,7 @@ export function emptyDraft() {
     description: '',
     cover_image: '',
     instruments: [],
+    market_categories: [],
     style: '',
     direction: 'both',
     timeframe: '',
@@ -33,8 +34,10 @@ export function emptyDraft() {
 
 export function definitionFromDraft(d) {
   const instruments = normalizeInstrumentList(d.instruments, d.instrument);
+  const market_categories = normalizeMarketCategories(d.market_categories);
   return {
     instruments,
+    market_categories,
     /** First symbol for older clients / quick display */
     instrument: instruments[0] || '',
     style: d.style || '',
@@ -53,6 +56,7 @@ export function draftFromApi(strategy) {
     description: strategy.description || '',
     cover_image: typeof def.cover_image === 'string' ? def.cover_image : '',
     instruments: normalizeInstrumentList(def.instruments, def.instrument),
+    market_categories: normalizeMarketCategories(def.market_categories),
     style: def.style || '',
     direction: def.direction || 'both',
     timeframe: def.timeframe || '',

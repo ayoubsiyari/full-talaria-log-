@@ -7,8 +7,11 @@ import {
   FOREX_INSTRUMENTS,
   COMMODITY_CFD_INSTRUMENTS,
   FUTURES_INSTRUMENTS,
+  CRYPTO_INSTRUMENTS,
+  MARKET_CATEGORY_OPTIONS,
   normalizeInstrumentId,
   normalizeInstrumentList,
+  normalizeMarketCategories,
   formatInstrumentLabel,
 } from '@/strategyLab/instruments';
 
@@ -76,16 +79,51 @@ function ToggleRow({
   );
 }
 
-function InstrumentMultiSelect({
+function MarketCategoriesRow({
   selectedIds,
   onToggle,
 }: {
   selectedIds: string[];
   onToggle: (id: string) => void;
 }) {
+  const selected = new Set(selectedIds || []);
+  return (
+    <div className="flex flex-wrap gap-2">
+      {MARKET_CATEGORY_OPTIONS.map((opt) => (
+        <button
+          key={opt.id}
+          type="button"
+          onClick={() => onToggle(opt.id)}
+          className={`rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+            selected.has(opt.id)
+              ? 'border-[var(--sl-accent)] bg-[rgba(38,67,247,0.2)] text-[var(--sl-accent-light)] shadow-[0_0_12px_rgba(38,67,247,0.25)]'
+              : 'border-[var(--sl-border)] bg-[var(--sl-input)] text-[var(--sl-text)] hover:border-[var(--sl-text-muted)]'
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function InstrumentMultiSelect({
+  selectedIds,
+  onToggle,
+  marketCategories,
+}: {
+  selectedIds: string[];
+  onToggle: (id: string) => void;
+  marketCategories: string[];
+}) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const selected = new Set(selectedIds || []);
+  const cats = normalizeMarketCategories(marketCategories);
+  const showAll = cats.length === 0;
+  const showForex = showAll || cats.includes('forex');
+  const showFutures = showAll || cats.includes('futures');
+  const showCrypto = showAll || cats.includes('crypto');
 
   useEffect(() => {
     if (!open) return;
@@ -147,9 +185,14 @@ function InstrumentMultiSelect({
           role="listbox"
         >
           <div className="max-h-[min(70vh,420px)] overflow-y-auto">
-            <Section title="Forex pairs" options={FOREX_INSTRUMENTS} />
-            <Section title="Commodities (CFD)" options={COMMODITY_CFD_INSTRUMENTS} />
-            <Section title="Futures" options={FUTURES_INSTRUMENTS} />
+            {showForex ? (
+              <>
+                <Section title="Forex pairs" options={FOREX_INSTRUMENTS} />
+                <Section title="Commodities (CFD)" options={COMMODITY_CFD_INSTRUMENTS} />
+              </>
+            ) : null}
+            {showFutures ? <Section title="Futures" options={FUTURES_INSTRUMENTS} /> : null}
+            {showCrypto ? <Section title="Crypto" options={CRYPTO_INSTRUMENTS} /> : null}
           </div>
         </div>
       )}
@@ -174,6 +217,17 @@ export default function GeneralInfoStep({
   const coverImage = typeof draft.cover_image === 'string' ? draft.cover_image : '';
 
   const selectedInstrumentIds = normalizeInstrumentList(draft.instruments, draft.instrument);
+  const selectedMarketCategories = normalizeMarketCategories(draft.market_categories);
+
+  const toggleMarketCategory = (rawId: string) => {
+    const id = String(rawId).toLowerCase();
+    if (!['forex', 'futures', 'crypto'].includes(id)) return;
+    setDraft((d) => {
+      const cur = normalizeMarketCategories(d.market_categories);
+      const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+      return { ...d, market_categories: next };
+    });
+  };
 
   const toggleInstrument = (rawId: string) => {
     const id = normalizeInstrumentId(rawId);
@@ -286,12 +340,24 @@ export default function GeneralInfoStep({
 
       <div className="mb-5">
         <div className="font-mono-label mb-2 text-[11px] font-bold uppercase tracking-wide text-[var(--sl-text-sec)]">
-          Instrument
+          Markets
+        </div>
+        <p className="mb-2 text-xs text-[var(--sl-text-muted)]">
+          General focus: Forex, Futures, and/or Crypto. Selected markets limit which symbol groups appear below; leave all
+          off to show every group.
+        </p>
+        <MarketCategoriesRow selectedIds={selectedMarketCategories} onToggle={toggleMarketCategory} />
+        <div className="font-mono-label mb-2 mt-5 text-[11px] font-bold uppercase tracking-wide text-[var(--sl-text-sec)]">
+          Symbols
         </div>
         <p className="mb-3 text-xs text-[var(--sl-text-muted)]">
-          Same registry as the chart — open the menu to pick one or more symbols (forex, CFD commodities, futures).
+          Specific instruments from the chart registry — multi-select in the menu.
         </p>
-        <InstrumentMultiSelect selectedIds={selectedInstrumentIds} onToggle={toggleInstrument} />
+        <InstrumentMultiSelect
+          selectedIds={selectedInstrumentIds}
+          onToggle={toggleInstrument}
+          marketCategories={selectedMarketCategories}
+        />
       </div>
       <ToggleRow label="Style" options={STYLES} value={String(draft.style ?? '')} onChange={set('style')} />
       <ToggleRow label="Direction" options={DIRECTIONS} value={String(draft.direction ?? 'both')} onChange={set('direction')} />

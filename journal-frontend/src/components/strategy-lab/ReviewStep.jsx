@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatInstrumentsLine } from '../../strategyLab/instruments';
+import { formatInstrumentsLine, formatMarketCategoriesLine } from '../../strategyLab/instruments';
 
 function countConditions(conditions) {
   return (conditions || []).filter((c) => c.type === 'condition').length;
@@ -25,7 +25,11 @@ export default function ReviewStep({ draft }) {
             <div className="text-[var(--sl-text)]">{draft.name || '—'}</div>
           </div>
           <div>
-            <div className="font-mono-label text-[10px] font-bold uppercase text-[var(--sl-text-muted)]">Instruments</div>
+            <div className="font-mono-label text-[10px] font-bold uppercase text-[var(--sl-text-muted)]">Markets</div>
+            <div className="text-[var(--sl-text)]">{formatMarketCategoriesLine(draft.market_categories) || '—'}</div>
+          </div>
+          <div>
+            <div className="font-mono-label text-[10px] font-bold uppercase text-[var(--sl-text-muted)]">Symbols</div>
             <div className="text-[var(--sl-text)]">{formatInstrumentsLine(draft) || '—'}</div>
           </div>
           <div>
