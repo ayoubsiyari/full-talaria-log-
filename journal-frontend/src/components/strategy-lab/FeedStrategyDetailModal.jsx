@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { API_BASE_URL } from '../../config';
 import { formatMarketsAndInstrumentsSummary } from '../../strategyLab/instruments';
+import ConditionReferenceUrlBlock from './ConditionReferenceUrlBlock';
 
 function authHeaders() {
   const token = localStorage.getItem('token');
@@ -123,7 +124,8 @@ export default function FeedStrategyDetailModal({ post, onClose }) {
                 .filter((c) => c && c.type === 'condition')
                 .map((c) => (
                   <li key={c.id || c.name} className="rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)]/40 px-3 py-2">
-                    {c.name || '—'}
+                    <div className="font-medium text-[var(--sl-text)]">{c.name || '—'}</div>
+                    <ConditionReferenceUrlBlock value={c.reference_url ?? c.referenceUrl} readOnly compact />
                   </li>
                 ))}
             </ul>

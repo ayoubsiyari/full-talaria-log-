@@ -11,6 +11,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Trash2, Diamond, ChevronDown, ChevronRight, Copy, ArrowDown } from 'lucide-react';
 import { newId } from '../../strategyLab/ids';
 import { SL_COLORS } from '../../strategyLab/defaults';
+import ConditionReferenceUrlBlock from './ConditionReferenceUrlBlock';
 
 function SortableRow({ id, children, className }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -144,6 +145,7 @@ export default function StrategyFlowStep({ draft, setDraft }) {
         note: '',
         ctype: 'yesno',
         options: [],
+        reference_url: '',
       };
       conds.splice(insertAt, 0, node);
       return { ...d, conditions: conds };
@@ -288,6 +290,10 @@ export default function StrategyFlowStep({ draft, setDraft }) {
           placeholder="Context, timeframe, or what counts as a pass…"
           rows={2}
           className="mt-2 w-full resize-none bg-transparent text-[11px] italic text-[var(--sl-text-sec)] placeholder:text-[var(--sl-text-faint)] focus:outline-none"
+        />
+        <ConditionReferenceUrlBlock
+          value={c.reference_url ?? c.referenceUrl}
+          onChange={(next) => updateCond(c.id, { reference_url: next })}
         />
         {c.ctype === 'multi' && (
           <div className="mt-2 flex flex-wrap gap-1">

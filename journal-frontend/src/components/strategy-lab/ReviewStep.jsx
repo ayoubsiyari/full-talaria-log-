@@ -1,6 +1,7 @@
 import React from 'react';
 import { Printer } from 'lucide-react';
 import { formatInstrumentsLine, formatMarketCategoriesLine } from '../../strategyLab/instruments';
+import ConditionReferenceUrlBlock from './ConditionReferenceUrlBlock';
 
 function countConditions(conditions) {
   return (conditions || []).filter((c) => c.type === 'condition').length;
@@ -83,6 +84,7 @@ export default function ReviewStep({ draft }) {
                     <div className="font-semibold text-[var(--sl-text)]">{c.name}</div>
                     {c.note ? <div className="mt-1 text-[11px] italic text-[var(--sl-text-muted)]">{c.note}</div> : null}
                     <div className="mt-1 text-[10px] text-[var(--sl-text-faint)]">{c.ctype}</div>
+                    <ConditionReferenceUrlBlock value={c.reference_url ?? c.referenceUrl} readOnly compact />
                   </li>
                 );
               }
