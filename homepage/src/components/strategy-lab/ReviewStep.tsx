@@ -1,32 +1,43 @@
+// @ts-nocheck
 "use client";
 
 import React from 'react';
+import { Printer } from 'lucide-react';
 import { formatInstrumentsLine, formatMarketCategoriesLine } from '@/strategyLab/instruments';
 
-type FlowNode = Record<string, unknown> & { type?: string; id?: string };
-
-function countConditions(conditions: FlowNode[]) {
+function countConditions(conditions) {
   return (conditions || []).filter((c) => c.type === 'condition').length;
 }
 
-function countVariables(variables: FlowNode[], timing: string) {
+function countVariables(variables, timing) {
   return (variables || []).filter((v) => v.type === 'variable' && v.timing === timing).length;
 }
 
-export default function ReviewStep({ draft }: { draft: Record<string, unknown> }) {
-  const conds = (Array.isArray(draft.conditions) ? draft.conditions : []) as FlowNode[];
-  const vars = (Array.isArray(draft.variables) ? draft.variables : []) as FlowNode[];
+export default function ReviewStep({ draft }) {
+  const conds = draft.conditions || [];
+  const vars = draft.variables || [];
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6">
-      <h2 className="mb-6 text-xl font-bold text-[var(--sl-text)]" style={{ fontFamily: 'Outfit, sans-serif' }}>
-        Review
-      </h2>
-      <div className="mb-8 rounded-xl border border-[var(--sl-border)] bg-[var(--sl-card)] p-6">
+    <div className="strategy-spec-sheet mx-auto max-w-5xl px-4 py-6">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <h2 className="text-xl font-bold text-[var(--sl-text)]" style={{ fontFamily: 'Outfit, sans-serif' }}>
+          Review
+        </h2>
+        <button
+          type="button"
+          data-strategy-lab-hide-print="true"
+          onClick={() => window.print()}
+          className="strategy-lab-no-print inline-flex items-center gap-2 rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] px-3 py-2 text-sm text-[var(--sl-text)] hover:bg-[var(--sl-card)]"
+        >
+          <Printer size={16} />
+          Print spec
+        </button>
+      </div>
+      <div className="spec-card mb-8 rounded-xl border border-[var(--sl-border)] bg-[var(--sl-card)] p-6">
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <div className="font-mono-label text-[10px] font-bold uppercase text-[var(--sl-text-muted)]">Name</div>
-            <div className="text-[var(--sl-text)]">{String(draft.name ?? '—')}</div>
+            <div className="text-[var(--sl-text)]">{draft.name || '—'}</div>
           </div>
           <div>
             <div className="font-mono-label text-[10px] font-bold uppercase text-[var(--sl-text-muted)]">Markets</div>
@@ -38,25 +49,25 @@ export default function ReviewStep({ draft }: { draft: Record<string, unknown> }
           </div>
           <div>
             <div className="font-mono-label text-[10px] font-bold uppercase text-[var(--sl-text-muted)]">Style</div>
-            <div className="text-[var(--sl-text)]">{String(draft.style ?? '—')}</div>
+            <div className="text-[var(--sl-text)]">{draft.style || '—'}</div>
           </div>
           <div>
             <div className="font-mono-label text-[10px] font-bold uppercase text-[var(--sl-text-muted)]">Direction</div>
-            <div className="text-[var(--sl-text)]">{String(draft.direction ?? '—')}</div>
+            <div className="text-[var(--sl-text)]">{draft.direction || '—'}</div>
           </div>
           <div>
             <div className="font-mono-label text-[10px] font-bold uppercase text-[var(--sl-text-muted)]">Timeframe</div>
-            <div className="text-[var(--sl-text)]">{String(draft.timeframe ?? '—')}</div>
+            <div className="text-[var(--sl-text)]">{draft.timeframe || '—'}</div>
           </div>
         </div>
         <div className="mt-4 border-t border-[var(--sl-border)] pt-4">
           <div className="font-mono-label mb-1 text-[10px] font-bold uppercase text-[var(--sl-text-muted)]">Description</div>
-          <p className="whitespace-pre-wrap text-sm text-[var(--sl-text-sec)]">{String(draft.description ?? '—')}</p>
+          <p className="whitespace-pre-wrap text-sm text-[var(--sl-text-sec)]">{draft.description || '—'}</p>
         </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-[var(--sl-border)] bg-[rgba(20,20,32,0.6)] p-4">
+        <div className="spec-card rounded-xl border border-[var(--sl-border)] bg-[rgba(20,20,32,0.6)] p-4">
           <h3 className="mb-3 font-mono-label text-[12px] font-bold uppercase text-[var(--sl-accent-light)]">
             Conditions ({countConditions(conds)})
           </h3>
@@ -64,23 +75,17 @@ export default function ReviewStep({ draft }: { draft: Record<string, unknown> }
             {conds.map((c) => {
               if (c.type === 'category') {
                 return (
-                  <li
-                    key={String(c.id)}
-                    className="font-mono-label text-[11px] font-bold uppercase"
-                    style={{ color: String(c.color ?? '#fff') }}
-                  >
-                    {String(c.label ?? '')}
+                  <li key={c.id} className="font-mono-label text-[11px] font-bold uppercase" style={{ color: c.color }}>
+                    {c.label}
                   </li>
                 );
               }
               if (c.type === 'condition') {
                 return (
-                  <li key={String(c.id)} className="rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] p-3 text-sm">
-                    <div className="font-semibold text-[var(--sl-text)]">{String(c.name ?? '')}</div>
-                    {c.note ? (
-                      <div className="mt-1 text-[11px] italic text-[var(--sl-text-muted)]">{String(c.note)}</div>
-                    ) : null}
-                    <div className="mt-1 text-[10px] text-[var(--sl-text-faint)]">{String(c.ctype ?? '')}</div>
+                  <li key={c.id} className="rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] p-3 text-sm">
+                    <div className="font-semibold text-[var(--sl-text)]">{c.name}</div>
+                    {c.note ? <div className="mt-1 text-[11px] italic text-[var(--sl-text-muted)]">{c.note}</div> : null}
+                    <div className="mt-1 text-[10px] text-[var(--sl-text-faint)]">{c.ctype}</div>
                   </li>
                 );
               }
@@ -88,7 +93,7 @@ export default function ReviewStep({ draft }: { draft: Record<string, unknown> }
             })}
           </ul>
         </div>
-        <div className="rounded-xl border border-[var(--sl-border)] bg-[rgba(20,20,32,0.6)] p-4">
+        <div className="spec-card rounded-xl border border-[var(--sl-border)] bg-[rgba(20,20,32,0.6)] p-4">
           <h3 className="mb-3 font-mono-label text-[12px] font-bold uppercase text-[var(--sl-green)]">
             Variables — Pre ({countVariables(vars, 'pre')})
           </h3>
@@ -96,9 +101,9 @@ export default function ReviewStep({ draft }: { draft: Record<string, unknown> }
             {vars
               .filter((v) => v.type === 'variable' && v.timing === 'pre')
               .map((v) => (
-                <li key={String(v.id)} className="rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] p-2 text-sm">
+                <li key={v.id} className="rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] p-2 text-sm">
                   <span className="font-mono-label mr-2 text-[9px] text-[var(--sl-green)]">PRE</span>
-                  {String(v.name ?? '')}
+                  {v.name}
                 </li>
               ))}
           </ul>
@@ -109,9 +114,9 @@ export default function ReviewStep({ draft }: { draft: Record<string, unknown> }
             {vars
               .filter((v) => v.type === 'variable' && v.timing === 'post')
               .map((v) => (
-                <li key={String(v.id)} className="rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] p-2 text-sm">
+                <li key={v.id} className="rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] p-2 text-sm">
                   <span className="font-mono-label mr-2 text-[9px] text-[var(--sl-purple)]">POST</span>
-                  {String(v.name ?? '')}
+                  {v.name}
                 </li>
               ))}
           </ul>

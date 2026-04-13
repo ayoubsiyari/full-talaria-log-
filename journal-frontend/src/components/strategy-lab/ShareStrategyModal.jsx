@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import { API_BASE_URL } from '../../config';
+import { validateStrategyForShare } from '../../strategyLab/shareValidation';
 
-export default function ShareStrategyModal({ strategyId, onClose, onPosted }) {
+export default function ShareStrategyModal({ strategyId, strategy, onClose, onPosted }) {
   const [caption, setCaption] = useState('');
   const [include_description, setIncludeDescription] = useState(true);
   const [include_conditions, setIncludeConditions] = useState(true);
@@ -14,7 +15,13 @@ export default function ShareStrategyModal({ strategyId, onClose, onPosted }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
 
+  const shareGate = useMemo(() => validateStrategyForShare(strategy), [strategy]);
+
   const submit = async () => {
+    if (!shareGate.ok) {
+      setErr(shareGate.reason);
+      return;
+    }
     setLoading(true);
     setErr(null);
     try {
@@ -101,6 +108,9 @@ export default function ShareStrategyModal({ strategyId, onClose, onPosted }) {
             visitors. <strong className="text-[var(--sl-text-sec)]">Mutual</strong> = narrow audience.
           </p>
         </div>
+        {!shareGate.ok && (
+          <p className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100/90">{shareGate.reason}</p>
+        )}
         {err && <p className="mb-2 text-sm text-[var(--sl-red)]">{err}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg border border-[var(--sl-border)] px-4 py-2 text-sm">
@@ -108,7 +118,7 @@ export default function ShareStrategyModal({ strategyId, onClose, onPosted }) {
           </button>
           <button
             type="button"
-            disabled={loading}
+            disabled={loading || !shareGate.ok}
             onClick={submit}
             className="rounded-lg bg-[var(--sl-accent)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >

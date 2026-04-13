@@ -170,11 +170,12 @@ export default function VariablesStep({ draft, setDraft }) {
         Variables
       </h2>
       <div className="flex min-w-0 flex-col rounded-xl border border-[var(--sl-border)] bg-[var(--sl-card)] p-4">
-        <div className="mb-3 rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] p-3 text-xs text-[var(--sl-text-sec)]">
-          <span className="font-mono-label font-bold text-[var(--sl-green)]">PRE</span> — tagged at entry. Filterable in
-          analytics.
+        <div className="mb-3 rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] p-3 text-xs leading-relaxed text-[var(--sl-text-sec)]">
+          <span className="font-mono-label font-bold text-[var(--sl-green)]">PRE</span> — capture context{" "}
+          <em>before</em> you take the trade (bias, news, session). These fields filter charts and cohorts in analytics.
           <br />
-          <span className="font-mono-label font-bold text-[var(--sl-purple)]">POST</span> — after close. For self-review.
+          <span className="font-mono-label font-bold text-[var(--sl-purple)]">POST</span> — reflect <em>after</em> exit
+          (execution quality, emotions). Use for journaling, not for entry gating.
         </div>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-lg font-semibold text-[var(--sl-text)]" style={{ fontFamily: 'Outfit, sans-serif' }}>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Printer } from 'lucide-react';
 import { formatInstrumentsLine, formatMarketCategoriesLine } from '../../strategyLab/instruments';
 
 function countConditions(conditions) {
@@ -14,11 +15,22 @@ export default function ReviewStep({ draft }) {
   const vars = draft.variables || [];
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6">
-      <h2 className="mb-6 text-xl font-bold text-[var(--sl-text)]" style={{ fontFamily: 'Outfit, sans-serif' }}>
-        Review
-      </h2>
-      <div className="mb-8 rounded-xl border border-[var(--sl-border)] bg-[var(--sl-card)] p-6">
+    <div className="strategy-spec-sheet mx-auto max-w-5xl px-4 py-6">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <h2 className="text-xl font-bold text-[var(--sl-text)]" style={{ fontFamily: 'Outfit, sans-serif' }}>
+          Review
+        </h2>
+        <button
+          type="button"
+          data-strategy-lab-hide-print="true"
+          onClick={() => window.print()}
+          className="strategy-lab-no-print inline-flex items-center gap-2 rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] px-3 py-2 text-sm text-[var(--sl-text)] hover:bg-[var(--sl-card)]"
+        >
+          <Printer size={16} />
+          Print spec
+        </button>
+      </div>
+      <div className="spec-card mb-8 rounded-xl border border-[var(--sl-border)] bg-[var(--sl-card)] p-6">
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <div className="font-mono-label text-[10px] font-bold uppercase text-[var(--sl-text-muted)]">Name</div>
@@ -52,7 +64,7 @@ export default function ReviewStep({ draft }) {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-[var(--sl-border)] bg-[rgba(20,20,32,0.6)] p-4">
+        <div className="spec-card rounded-xl border border-[var(--sl-border)] bg-[rgba(20,20,32,0.6)] p-4">
           <h3 className="mb-3 font-mono-label text-[12px] font-bold uppercase text-[var(--sl-accent-light)]">
             Conditions ({countConditions(conds)})
           </h3>
@@ -78,7 +90,7 @@ export default function ReviewStep({ draft }) {
             })}
           </ul>
         </div>
-        <div className="rounded-xl border border-[var(--sl-border)] bg-[rgba(20,20,32,0.6)] p-4">
+        <div className="spec-card rounded-xl border border-[var(--sl-border)] bg-[rgba(20,20,32,0.6)] p-4">
           <h3 className="mb-3 font-mono-label text-[12px] font-bold uppercase text-[var(--sl-green)]">
             Variables — Pre ({countVariables(vars, 'pre')})
           </h3>

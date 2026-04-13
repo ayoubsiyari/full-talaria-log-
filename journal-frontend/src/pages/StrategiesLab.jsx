@@ -324,6 +324,7 @@ export default function StrategiesLab() {
             setStep={setWizardStep}
             saving={saving}
             isEdit={!!editingId}
+            autosaveKey={editingId != null ? String(editingId) : 'new'}
             onSubmit={saveStrategy}
             onBack={() => {
               setBuilderView('list');
@@ -389,6 +390,7 @@ export default function StrategiesLab() {
       {shareId && (
         <ShareStrategyModal
           strategyId={shareId}
+          strategy={strategies.find((s) => s.id === shareId) ?? null}
           onClose={() => setShareId(null)}
           onPosted={() => loadFeed()}
         />

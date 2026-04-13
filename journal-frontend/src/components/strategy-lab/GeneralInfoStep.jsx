@@ -104,6 +104,15 @@ function InstrumentMultiSelect({ selectedIds, onToggle, marketCategories }) {
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
   const labels = selectedIds.map((id) => formatInstrumentLabel(id)).filter(Boolean);
   let summary = 'Select instruments…';
   if (labels.length === 1) summary = labels[0];
@@ -138,7 +147,7 @@ function InstrumentMultiSelect({ selectedIds, onToggle, marketCategories }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between gap-2 rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] px-3 py-2.5 text-left text-sm text-[var(--sl-text)] hover:border-[var(--sl-text-muted)] focus:border-[var(--sl-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--sl-accent)]"
+        className="flex w-full items-center justify-between gap-2 rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] px-3 py-2.5 text-left text-sm text-[var(--sl-text)] hover:border-[var(--sl-text-muted)] focus:border-[var(--sl-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--sl-accent)] focus:ring-offset-2 focus:ring-offset-[var(--sl-sidebar)]"
         aria-expanded={open}
         aria-haspopup="listbox"
       >

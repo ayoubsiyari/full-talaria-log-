@@ -1,7 +1,6 @@
 // @ts-nocheck
 "use client";
-
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -11,7 +10,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Trash2, Diamond } from 'lucide-react';
+import { GripVertical, Trash2, Diamond, ChevronDown, ChevronRight, Copy } from 'lucide-react';
 import { newId } from '@/strategyLab/ids';
 import { SL_COLORS } from '@/strategyLab/defaults';
 
@@ -81,7 +80,12 @@ function flattenConditionsByCategory(conditions) {
 }
 
 export default function StrategyFlowStep({ draft, setDraft }) {
+  const [collapsed, setCollapsed] = useState({});
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  const toggleCategoryCollapsed = (catId) => {
+    setCollapsed((prev) => ({ ...prev, [catId]: !prev[catId] }));
+  };
 
   const conditionIds = useMemo(() => draft.conditions.map((c) => c.id), [draft.conditions]);
 
@@ -170,6 +174,57 @@ export default function StrategyFlowStep({ draft, setDraft }) {
     });
   };
 
+  const duplicateCondition = (c) => {
+    if (c.type !== 'condition') return;
+    setDraft((d) => {
+      const conds = [...d.conditions];
+      const idx = conds.findIndex((x) => x.id === c.id);
+      if (idx < 0) return d;
+      const copy = {
+        ...c,
+        id: newId('cond'),
+        name: c.name && c.name !== 'New condition' ? `${c.name} (copy)` : 'Copy of condition',
+        note: c.note || '',
+      };
+      conds.splice(idx + 1, 0, copy);
+      return { ...d, conditions: flattenConditionsByCategory(conds) };
+    });
+  };
+
+  const duplicateCategory = (categoryId) => {
+    setDraft((d) => {
+      const conds = [...d.conditions];
+      const catIdx = conds.findIndex((x) => x.type === 'category' && x.id === categoryId);
+      if (catIdx < 0) return d;
+      const oldCat = conds[catIdx];
+      const newCatId = newId('cat');
+      const newCat = {
+        type: 'category',
+        id: newCatId,
+        label: oldCat.label && oldCat.label !== 'NEW CATEGORY' ? `${oldCat.label} (copy)` : 'NEW CATEGORY (copy)',
+        color: oldCat.color,
+        bg: oldCat.bg,
+        bd: oldCat.bd,
+      };
+      let insertAt = catIdx + 1;
+      while (insertAt < conds.length && conds[insertAt].type === 'condition' && conds[insertAt].catId === categoryId) {
+        insertAt++;
+      }
+      const slice = conds.filter((x) => x.type === 'condition' && x.catId === categoryId);
+      const newConds = [newCat];
+      for (const oc of slice) {
+        newConds.push({
+          ...oc,
+          id: newId('cond'),
+          catId: newCatId,
+          name: oc.name && oc.name !== 'New condition' ? `${oc.name} (copy)` : 'New condition',
+        });
+      }
+      conds.splice(insertAt, 0, ...newConds);
+      return { ...d, conditions: flattenConditionsByCategory(conds) };
+    });
+  };
+
   const categoriesInOrder = useMemo(
     () => draft.conditions.filter((c) => c.type === 'category'),
     [draft.conditions]
@@ -186,21 +241,22 @@ export default function StrategyFlowStep({ draft, setDraft }) {
     return map;
   }, [draft.conditions, categoriesInOrder]);
 
-  const renderConditionCard = (c, idxInGroup, groupLen) => (
+  const renderConditionCard = (c, idxInGroup, groupLen, globalIndex) => (
     <SortableRow id={c.id} key={c.id} className="mb-2">
       <div className="rounded-lg border border-[var(--sl-border)] bg-[var(--sl-input)] p-3">
         <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="font-mono-label shrink-0 text-[10px] font-bold text-[var(--sl-text-muted)]">#{globalIndex}</span>
             <Diamond className="shrink-0 text-[var(--sl-accent)]" size={18} />
             <input
               type="text"
               value={c.name}
               onChange={(e) => updateCond(c.id, { name: e.target.value })}
               className="min-w-0 flex-1 bg-transparent font-semibold text-[var(--sl-text)] focus:outline-none"
-              placeholder="Condition name"
+              placeholder="e.g. Liquidity sweep, FVG fill, BOS"
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             <TypeBadge type={c.ctype} />
             <select
               value={c.ctype}
@@ -215,7 +271,15 @@ export default function StrategyFlowStep({ draft, setDraft }) {
               <option value="yesno">yes / no</option>
               <option value="multi">multi</option>
             </select>
-            <button type="button" onClick={() => removeCond(c.id, 'condition')} className="text-[var(--sl-red)]">
+            <button
+              type="button"
+              title="Duplicate condition"
+              onClick={() => duplicateCondition(c)}
+              className="rounded p-1 text-[var(--sl-text-muted)] hover:bg-[var(--sl-card)] hover:text-[var(--sl-accent-light)]"
+            >
+              <Copy size={16} />
+            </button>
+            <button type="button" title="Remove" onClick={() => removeCond(c.id, 'condition')} className="text-[var(--sl-red)]">
               <Trash2 size={16} />
             </button>
           </div>
@@ -223,7 +287,7 @@ export default function StrategyFlowStep({ draft, setDraft }) {
         <textarea
           value={c.note || ''}
           onChange={(e) => updateCond(c.id, { note: e.target.value })}
-          placeholder="Add a note…"
+          placeholder="Context, timeframe, or what counts as a pass…"
           rows={2}
           className="mt-2 w-full resize-none bg-transparent text-[11px] italic text-[var(--sl-text-sec)] placeholder:text-[var(--sl-text-faint)] focus:outline-none"
         />
@@ -306,61 +370,95 @@ export default function StrategyFlowStep({ draft, setDraft }) {
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onCondDragEnd}>
                 <SortableContext items={conditionIds} strategy={verticalListSortingStrategy}>
                   <div className="flex flex-col gap-5">
-                    {categoriesInOrder.map((cat) => {
-                      const conds = conditionsByCategory.get(cat.id) || [];
-                      return (
-                        <div
-                          key={cat.id}
-                          className="rounded-xl border border-[var(--sl-border)] bg-[var(--sl-bg)]/80 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-                        >
-                          <SortableRow id={cat.id} className="mb-3">
-                            <div>
-                              <div
-                                className="flex items-center justify-between rounded-lg border px-3 py-2"
-                                style={{ borderColor: cat.bd, background: cat.bg }}
-                              >
-                                <span
-                                  className="font-mono-label text-[11px] font-bold uppercase"
-                                  style={{ color: cat.color }}
+                    {(() => {
+                      let globalCondIndex = 0;
+                      return categoriesInOrder.map((cat) => {
+                        const conds = conditionsByCategory.get(cat.id) || [];
+                        const isCollapsed = !!collapsed[cat.id];
+                        return (
+                          <div
+                            key={cat.id}
+                            className="rounded-xl border border-[var(--sl-border)] bg-[var(--sl-bg)]/80 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                          >
+                            <SortableRow id={cat.id} className="mb-3">
+                              <div>
+                                <div
+                                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2"
+                                  style={{ borderColor: cat.bd, background: cat.bg }}
                                 >
-                                  {cat.label}
-                                </span>
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <button
+                                      type="button"
+                                      title={isCollapsed ? 'Expand' : 'Collapse'}
+                                      onClick={() => toggleCategoryCollapsed(cat.id)}
+                                      className="rounded p-0.5 text-[var(--sl-text-muted)] hover:bg-black/10 hover:text-[var(--sl-text)]"
+                                    >
+                                      {isCollapsed ? <ChevronRight size={18} /> : <ChevronDown size={18} />}
+                                    </button>
+                                    <span
+                                      className="font-mono-label truncate text-[11px] font-bold uppercase"
+                                      style={{ color: cat.color }}
+                                    >
+                                      {cat.label}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      title="Duplicate category"
+                                      onClick={() => duplicateCategory(cat.id)}
+                                      className="rounded p-1 text-[var(--sl-text-muted)] hover:bg-black/10 hover:text-[var(--sl-accent-light)]"
+                                    >
+                                      <Copy size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Delete category"
+                                      onClick={() => removeCond(cat.id, 'category')}
+                                      className="text-[var(--sl-red)] hover:opacity-90"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                </div>
+                                <input
+                                  type="text"
+                                  value={cat.label}
+                                  onChange={(e) => updateCond(cat.id, { label: e.target.value })}
+                                  className="mt-2 w-full bg-transparent text-xs text-[var(--sl-text-muted)] focus:outline-none"
+                                  placeholder="Category label"
+                                />
+                              </div>
+                            </SortableRow>
+
+                            {!isCollapsed && (
+                              <>
+                                <div className="ml-1 border-l-2 border-[var(--sl-accent)]/30 pl-3">
+                                  {conds.length === 0 ? (
+                                    <p className="mb-2 text-[11px] italic text-[var(--sl-text-muted)]">
+                                      No conditions in this category yet.
+                                    </p>
+                                  ) : (
+                                    conds.map((c, i) => {
+                                      globalCondIndex += 1;
+                                      return renderConditionCard(c, i, conds.length, globalCondIndex);
+                                    })
+                                  )}
+                                </div>
+
                                 <button
                                   type="button"
-                                  onClick={() => removeCond(cat.id, 'category')}
-                                  className="text-[var(--sl-red)] hover:opacity-90"
+                                  onClick={() => addConditionToCategory(cat.id)}
+                                  className="mt-3 w-full rounded-lg border border-dashed border-[var(--sl-accent)]/50 bg-[rgba(38,67,247,0.08)] py-2 text-sm font-medium text-[var(--sl-accent-light)] transition hover:bg-[rgba(38,67,247,0.15)]"
                                 >
-                                  <Trash2 size={14} />
+                                  + Condition in “{cat.label || 'category'}”
                                 </button>
-                              </div>
-                              <input
-                                type="text"
-                                value={cat.label}
-                                onChange={(e) => updateCond(cat.id, { label: e.target.value })}
-                                className="mt-2 w-full bg-transparent text-xs text-[var(--sl-text-muted)] focus:outline-none"
-                                placeholder="Category label"
-                              />
-                            </div>
-                          </SortableRow>
-
-                          <div className="ml-1 border-l-2 border-[var(--sl-accent)]/30 pl-3">
-                            {conds.length === 0 ? (
-                              <p className="mb-2 text-[11px] italic text-[var(--sl-text-muted)]">No conditions in this category yet.</p>
-                            ) : (
-                              conds.map((c, i) => renderConditionCard(c, i, conds.length))
+                              </>
                             )}
                           </div>
-
-                          <button
-                            type="button"
-                            onClick={() => addConditionToCategory(cat.id)}
-                            className="mt-3 w-full rounded-lg border border-dashed border-[var(--sl-accent)]/50 bg-[rgba(38,67,247,0.08)] py-2 text-sm font-medium text-[var(--sl-accent-light)] transition hover:bg-[rgba(38,67,247,0.15)]"
-                          >
-                            + Condition in “{cat.label || 'category'}”
-                          </button>
-                        </div>
-                      );
-                    })}
+                        );
+                      });
+                    })()}
                   </div>
                 </SortableContext>
               </DndContext>

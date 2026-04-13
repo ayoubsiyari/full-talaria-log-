@@ -1,15 +1,18 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import { JOURNAL_API_BASE } from '@/lib/journalApi';
+import { validateStrategyForShare } from '@/strategyLab/shareValidation';
 
 export default function ShareStrategyModal({
   strategyId,
+  strategy,
   onClose,
   onPosted,
 }: {
   strategyId: number;
+  strategy?: Record<string, unknown> | null;
   onClose: () => void;
   onPosted?: () => void;
 }) {
@@ -24,7 +27,13 @@ export default function ShareStrategyModal({
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  const shareGate = useMemo(() => validateStrategyForShare(strategy ?? null), [strategy]);
+
   const submit = async () => {
+    if (!shareGate.ok) {
+      setErr(shareGate.reason ?? 'Cannot post');
+      return;
+    }
     setLoading(true);
     setErr(null);
     try {
@@ -113,6 +122,11 @@ export default function ShareStrategyModal({
             visitors. <strong className="text-[var(--sl-text-sec)]">Mutual</strong> = narrow audience.
           </p>
         </div>
+        {!shareGate.ok && (
+          <p className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100/90">
+            {shareGate.reason}
+          </p>
+        )}
         {err && <p className="mb-2 text-sm text-[var(--sl-red)]">{err}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg border border-[var(--sl-border)] px-4 py-2 text-sm">
@@ -120,7 +134,7 @@ export default function ShareStrategyModal({
           </button>
           <button
             type="button"
-            disabled={loading}
+            disabled={loading || !shareGate.ok}
             onClick={submit}
             className="rounded-lg bg-[var(--sl-accent)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
