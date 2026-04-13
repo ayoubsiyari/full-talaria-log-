@@ -821,20 +821,45 @@ async function handleFormSubmit(e) {
     
     console.log('🚀 Form submitted');
     
-    // Check if using new multi-select (from propfirm-backtest.html)
+    // Multi-select + instrument table (aligned with standard backtesting.html)
     let selectedSymbols = [];
     let primaryFileId, primaryFileName;
-    
+    let instrumentRows = [];
+
     if (typeof selectedFilesArray !== 'undefined' && selectedFilesArray.length > 0) {
-        // Use new multi-select array
         console.log('📊 Using multi-file selection:', selectedFilesArray);
-        selectedSymbols = selectedFilesArray.map(f => ({
-            fileId: f.id,
-            symbolName: f.name.replace(/\.(csv|CSV)$/, ''),
-            fileName: f.name
+        if (typeof collectInstrumentConfigs !== 'function') {
+            alert('Instrument configuration is not ready. Please refresh the page.');
+            return;
+        }
+        instrumentRows = collectInstrumentConfigs();
+        if (instrumentRows.length === 0) {
+            alert('Please select at least one data file');
+            return;
+        }
+        if (instrumentRows.length > 10) {
+            alert('Maximum 10 instruments per session.');
+            return;
+        }
+        if (instrumentRows.some(row => !row.fileId)) {
+            alert('Missing data file for one or more instruments.');
+            return;
+        }
+        if (instrumentRows.some(row => !Number.isFinite(row.pip_size) || row.pip_size <= 0)) {
+            alert('Invalid pip size detected. Please use a positive number (e.g. 0.0001).');
+            return;
+        }
+        if (instrumentRows.some(row => !Number.isFinite(row.pip_value_per_lot) || row.pip_value_per_lot <= 0)) {
+            alert('Invalid pip value detected. Please use a positive number.');
+            return;
+        }
+        selectedSymbols = instrumentRows.map(row => ({
+            fileId: row.fileId,
+            symbolName: row.ticker,
+            fileName: row.fileName
         }));
-        primaryFileId = selectedFilesArray[0].id;
-        primaryFileName = selectedFilesArray[0].name;
+        primaryFileId = instrumentRows[0].fileId;
+        primaryFileName = instrumentRows[0].fileName;
     } else {
         // Fallback to old single select
         const select = document.getElementById('symbolSelect');
@@ -864,6 +889,7 @@ async function handleFormSubmit(e) {
         }];
         primaryFileId = select.value;
         primaryFileName = fileName;
+        instrumentRows = [];
     }
     
     if (selectedSymbols.length === 0) {
@@ -884,10 +910,17 @@ async function handleFormSubmit(e) {
     }
     
     // Create files array for symbol switching
-    const filesForSwitching = typeof selectedFilesArray !== 'undefined' 
-        ? selectedFilesArray 
+    const filesForSwitching = typeof selectedFilesArray !== 'undefined' && selectedFilesArray.length > 0
+        ? selectedFilesArray
         : selectedSymbols.map(s => ({ id: s.fileId, name: s.fileName }));
-    
+
+    const instrumentsMap = instrumentRows.length > 0
+        ? instrumentRows.reduce((acc, row) => {
+            acc[row.ticker] = row;
+            return acc;
+        }, {})
+        : null;
+
     // Collect form data
     const formData = {
         type: 'propfirm',
@@ -896,6 +929,7 @@ async function handleFormSubmit(e) {
         projectName: document.getElementById('projectName').value,
         balance: parseFloat(document.getElementById('balance').value),
         symbols: selectedSymbols,
+        ...(instrumentsMap ? { instruments: instrumentsMap } : {}),
         files: filesForSwitching, // For symbol switching on chart
         activeFileIndex: 0,
         fileId: primaryFileId, // Primary file for loading

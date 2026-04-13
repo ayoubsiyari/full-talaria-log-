@@ -147,6 +147,30 @@
                             </div>
                         </div>
 
+                        <!-- Instruments: same per-pair controls as standard backtesting -->
+                        <div class="form-card form-card-full">
+                            <h3>Instruments</h3>
+                            <div class="helper-text" style="margin-bottom: 10px;">One row per selected dataset. Configure spread, commission, and pip settings per instrument (max 10).</div>
+                            <div class="instrument-table-wrap">
+                                <table class="instrument-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Pair / ticker</th>
+                                            <th>Spread (pips)</th>
+                                            <th>Commission / lot / side</th>
+                                            <th>Pip size</th>
+                                            <th>Pip value / lot</th>
+                                            <th>Contract</th>
+                                            <th>Min lot</th>
+                                            <th>Lot step</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="instrumentTableBody"></tbody>
+                                </table>
+                            </div>
+                            <div id="instrumentTableHint" class="helper-text" style="margin-top:8px;">Select datasets above to populate instrument rows.</div>
+                        </div>
+
                         <!-- Testing Period Card -->
                         <div class="form-card">
                             <h3>Testing Period</h3>
@@ -504,6 +528,108 @@
         // Selected files array
         let selectedFilesArray = [];
         let availableFilesCache = [];
+
+        function cleanPairName(rawName) {
+            if (!rawName) return 'Unknown';
+            let name = String(rawName).replace(/^.*[\/\\]/, '').replace(/\.csv$/i, '');
+            name = name.replace(/^\d{8}_\d{6}_/, '');
+            const currencies = ['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','HKD','SGD','SEK','NOK','DKK','ZAR','TRY','MXN','BTC','ETH','XAU','XAG'];
+            const pairMatch = name.match(/([a-zA-Z]{6})/);
+            if (pairMatch) {
+                const pair = pairMatch[1].toUpperCase();
+                const base = pair.substring(0, 3);
+                const quote = pair.substring(3, 6);
+                if (currencies.includes(base) || currencies.includes(quote)) {
+                    return base + '/' + quote;
+                }
+            }
+            const indexMatch = name.match(/([a-zA-Z]{3,5})/);
+            if (indexMatch) return indexMatch[1].toUpperCase();
+            return name.replace(/[-_]/g, ' ').trim() || rawName;
+        }
+
+        function formatRowCount(count) {
+            if (!count) return '';
+            if (count >= 1000000) return (count / 1000000).toFixed(1) + 'M';
+            if (count >= 1000) return (count / 1000).toFixed(0) + 'K';
+            return count.toString();
+        }
+
+        function defaultInstrumentConfigFor(file) {
+            const cached = availableFilesCache.find(function (x) { return String(x.id) === String(file.id); });
+            const meta = cached || file;
+            const raw = meta.original_name || meta.name || meta.filename || file.name || '';
+            const ticker = cleanPairName(raw).replace('/', '');
+            const isJPY = ticker.endsWith('JPY');
+            return {
+                ticker: ticker || 'UNKNOWN',
+                fileId: file.id,
+                fileName: meta.original_name || meta.name || meta.filename || file.name || raw,
+                spread_pips: 1.0,
+                commission_per_lot_per_side: 3.5,
+                pip_size: isJPY ? 0.01 : 0.0001,
+                pip_value_per_lot: isJPY ? 7 : 10,
+                contract_size: 100000,
+                min_lot_size: 0.01,
+                lot_step: 0.01
+            };
+        }
+
+        function parseDecimalInput(raw, fallback) {
+            const normalized = String(raw ?? '')
+                .trim()
+                .replace(/\s+/g, '')
+                .replace(',', '.');
+            const value = parseFloat(normalized);
+            return Number.isFinite(value) ? value : fallback;
+        }
+
+        function rebuildInstrumentTable() {
+            const body = document.getElementById('instrumentTableBody');
+            const hint = document.getElementById('instrumentTableHint');
+            if (!body) return;
+            if (selectedFilesArray.length === 0) {
+                body.innerHTML = '';
+                if (hint) hint.textContent = 'Select datasets above to populate instrument rows.';
+                return;
+            }
+            if (hint) hint.textContent = selectedFilesArray.length + ' instrument(s) selected.';
+            body.innerHTML = selectedFilesArray.map(function (file, idx) {
+                const d = defaultInstrumentConfigFor(file);
+                return (
+                    '<tr>' +
+                    '<td style="padding:8px;"><input class="instrument-input" id="inst_' + idx + '_ticker" value="' + String(d.ticker).replace(/"/g, '&quot;') + '"></td>' +
+                    '<td style="padding:8px;"><input class="instrument-input" type="text" inputmode="decimal" id="inst_' + idx + '_spread" value="' + d.spread_pips + '"></td>' +
+                    '<td style="padding:8px;"><input class="instrument-input" type="text" inputmode="decimal" id="inst_' + idx + '_commission" value="' + d.commission_per_lot_per_side + '"></td>' +
+                    '<td style="padding:8px;"><input class="instrument-input" type="text" inputmode="decimal" id="inst_' + idx + '_pipSize" value="' + d.pip_size + '"></td>' +
+                    '<td style="padding:8px;"><input class="instrument-input" type="text" inputmode="decimal" id="inst_' + idx + '_pipValue" value="' + d.pip_value_per_lot + '"></td>' +
+                    '<td style="padding:8px;"><input class="instrument-input" type="number" step="1" min="1" id="inst_' + idx + '_contract" value="' + d.contract_size + '"></td>' +
+                    '<td style="padding:8px;"><input class="instrument-input" type="text" inputmode="decimal" id="inst_' + idx + '_minLot" value="' + d.min_lot_size + '"></td>' +
+                    '<td style="padding:8px;"><input class="instrument-input" type="text" inputmode="decimal" id="inst_' + idx + '_lotStep" value="' + d.lot_step + '"></td>' +
+                    '</tr>'
+                );
+            }).join('');
+        }
+
+        function collectInstrumentConfigs() {
+            return selectedFilesArray.map(function (file, idx) {
+                const tickerEl = document.getElementById('inst_' + idx + '_ticker');
+                const ticker = String(tickerEl && tickerEl.value ? tickerEl.value : '').toUpperCase().replace('/', '');
+                const defaults = defaultInstrumentConfigFor(file);
+                return {
+                    ticker: ticker || defaults.ticker,
+                    fileId: file.id,
+                    fileName: defaults.fileName,
+                    spread_pips: parseDecimalInput(document.getElementById('inst_' + idx + '_spread') && document.getElementById('inst_' + idx + '_spread').value, defaults.spread_pips),
+                    commission_per_lot_per_side: parseDecimalInput(document.getElementById('inst_' + idx + '_commission') && document.getElementById('inst_' + idx + '_commission').value, defaults.commission_per_lot_per_side),
+                    pip_size: parseDecimalInput(document.getElementById('inst_' + idx + '_pipSize') && document.getElementById('inst_' + idx + '_pipSize').value, defaults.pip_size),
+                    pip_value_per_lot: parseDecimalInput(document.getElementById('inst_' + idx + '_pipValue') && document.getElementById('inst_' + idx + '_pipValue').value, defaults.pip_value_per_lot),
+                    contract_size: parseDecimalInput(document.getElementById('inst_' + idx + '_contract') && document.getElementById('inst_' + idx + '_contract').value, defaults.contract_size),
+                    min_lot_size: parseDecimalInput(document.getElementById('inst_' + idx + '_minLot') && document.getElementById('inst_' + idx + '_minLot').value, defaults.min_lot_size),
+                    lot_step: parseDecimalInput(document.getElementById('inst_' + idx + '_lotStep') && document.getElementById('inst_' + idx + '_lotStep').value, defaults.lot_step)
+                };
+            });
+        }
         
         // Initialize file dropdown when DOM is ready
         function initFileDropdown() {
@@ -570,38 +696,59 @@
             
             if (selectedFilesArray.length === 0) {
                 container.innerHTML = '<span style="color: rgba(255,255,255,0.22); font-size: 12px;" id="noFilesText">No files selected</span>';
+                rebuildInstrumentTable();
                 return;
             }
             
-            container.innerHTML = selectedFilesArray.map(file => `
-                <span style="display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2)); border: 1px solid rgba(59, 130, 246, 0.3); padding: 4px 10px; border-radius: 16px; font-size: 12px; color: #fff;">
-                    ${file.name}
-                    <button type="button" onclick="removeSelectedFile('${file.id}')" style="background: none; border: none; color: #94a3b8; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">&times;</button>
-                </span>
-            `).join('');
+            container.innerHTML = selectedFilesArray.map(function (file) {
+                const cached = availableFilesCache.find(function (x) { return String(x.id) === String(file.id); });
+                const raw = cached ? (cached.original_name || cached.name || cached.filename) : file.name;
+                const pair = cleanPairName(raw || '');
+                const label = pair || raw || file.name;
+                return (
+                    '<span style="display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2)); border: 1px solid rgba(59, 130, 246, 0.3); padding: 4px 10px; border-radius: 16px; font-size: 12px; color: #fff;">' +
+                    label +
+                    '<button type="button" onclick="removeSelectedFile(\'' + String(file.id).replace(/'/g, "\\'") + '\')" style="background: none; border: none; color: #94a3b8; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">&times;</button>' +
+                    '</span>'
+                );
+            }).join('');
             
-            // Load date range from first selected file
             if (selectedFilesArray.length > 0) {
                 loadDateRangeFromFile(selectedFilesArray[0].id);
             }
+            rebuildInstrumentTable();
         }
         
-        // Update file list checkboxes
+        // Update file list checkboxes (pair labels like standard backtest)
         function updateFileListUI() {
             const fileList = document.getElementById('fileList');
             if (availableFilesCache.length === 0) return;
-            
-            fileList.innerHTML = availableFilesCache.map(file => {
-                const isSelected = selectedFilesArray.some(f => f.id === file.id);
-                const fileName = file.original_name || file.name || file.filename || file.symbol || `File ${file.id}`;
-                return `
-                    <label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; border-radius: 6px; transition: background 0.15s; ${isSelected ? 'background: rgba(59, 130, 246, 0.15);' : ''}" 
-                           onmouseover="this.style.background='rgba(59, 130, 246, 0.1)'" 
-                           onmouseout="this.style.background='${isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent'}'">
-                        <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleFileSelection('${file.id}', '${fileName.replace(/'/g, "\\'")}')" style="accent-color: #3b82f6; width: 16px; height: 16px;">
-                        <span style="color: #e5e7eb; font-size: 13px;">${fileName}</span>
-                    </label>
-                `;
+
+            const pairCounts = {};
+            availableFilesCache.forEach(function (file) {
+                const raw = file.original_name || file.name || file.filename || '';
+                const pair = cleanPairName(raw);
+                pairCounts[pair] = (pairCounts[pair] || 0) + 1;
+            });
+
+            fileList.innerHTML = availableFilesCache.map(function (file) {
+                const isSelected = selectedFilesArray.some(function (f) { return f.id === file.id; });
+                const rawName = file.original_name || file.name || file.filename || file.symbol || ('File ' + file.id);
+                const pairName = cleanPairName(rawName);
+                const rows = file.row_count ? formatRowCount(file.row_count) : '';
+                const hasDupes = pairCounts[pairName] > 1;
+                const displayName = hasDupes && rows ? pairName + ' (' + rows + ')' : pairName;
+                const safeToggle = rawName.replace(/'/g, "\\'");
+                return (
+                    '<label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; border-radius: 6px; transition: background 0.15s; ' + (isSelected ? 'background: rgba(59, 130, 246, 0.15);' : '') + '" ' +
+                    'onmouseover="this.style.background=\'rgba(59, 130, 246, 0.1)\'" ' +
+                    'onmouseout="this.style.background=\'' + (isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent') + '\'">' +
+                    '<input type="checkbox" ' + (isSelected ? 'checked' : '') + ' onchange="toggleFileSelection(\'' + file.id + '\', \'' + safeToggle + '\')" style="accent-color: #3b82f6; width: 16px; height: 16px;">' +
+                    '<div style="flex:1;display:flex;justify-content:space-between;align-items:center;">' +
+                    '<span style="color: #e5e7eb; font-size: 14px; font-weight: 600;">' + displayName + '</span>' +
+                    '<span style="color: #64748b; font-size: 11px;">' + (rows ? rows + ' candles' : '') + '</span>' +
+                    '</div></label>'
+                );
             }).join('');
         }
         

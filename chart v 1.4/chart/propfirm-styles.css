@@ -169,3 +169,50 @@ input:checked + .toggle-slider:before { transform: translateX(16px); background:
     color: rgba(255,255,255,0.38);
     margin: 0;
 }
+
+/* Instrument table (aligned with standard backtesting.html) */
+.instrument-table-wrap {
+    overflow-x: auto;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.02);
+}
+.instrument-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 820px;
+}
+.instrument-table thead th {
+    text-align: left;
+    padding: 9px 8px;
+    color: rgba(255,255,255,0.45);
+    font-size: 12px;
+    font-weight: 600;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.02);
+}
+.instrument-table tbody td {
+    padding: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.instrument-table tbody tr:last-child td {
+    border-bottom: none;
+}
+.instrument-input {
+    width: 100%;
+    padding: 8px 11px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    color: #e2e8f0;
+    font-size: 13px;
+    font-family: inherit;
+    transition: border-color 0.15s, background 0.15s;
+    -webkit-appearance: none;
+    appearance: none;
+}
+.instrument-input:focus {
+    outline: none;
+    border-color: rgba(59,130,246,0.4);
+    background: rgba(255,255,255,0.06);
+}

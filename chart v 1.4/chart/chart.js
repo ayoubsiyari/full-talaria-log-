@@ -702,6 +702,17 @@ class Chart {
         return normalized;
     }
 
+    /**
+     * Personal and prop-firm sessions should use the same smart-window / replay data path as standard backtest.
+     * Prop sessions may briefly have no startDate until the UI loads file bounds — still treat as backtest style.
+     */
+    _isSessionBacktestStyle(session) {
+        if (!session || typeof session !== 'object') return false;
+        if (session.startDate) return true;
+        const t = session.type;
+        return t === 'propfirm' || t === 'standard';
+    }
+
     getPrimarySessionFileId(session) {
         if (!session) return null;
         if (session.fileId) return session.fileId;
@@ -1037,7 +1048,7 @@ class Chart {
      * Build query string for GET /file/{id}/smart (shared by fetch + prefetch).
      */
     _buildSmartWindowParams(fileId, timeframe, session, anchor, windowRange = null) {
-        const isBacktest = session && session.startDate;
+        const isBacktest = this._isSessionBacktestStyle(session);
         if (!anchor) anchor = isBacktest ? 'start' : 'end';
 
         let backtestBatch = Number(this.BACKTEST_SMART_INITIAL_LIMIT);
@@ -1280,7 +1291,7 @@ class Chart {
                     return false;
                 }
             }
-            const isBacktestSession = !!(session && session.startDate);
+            const isBacktestSession = this._isSessionBacktestStyle(session);
             const requestTimeframe = isBacktestSession ? '1m' : (this.currentTimeframe || '1m');
             const params = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
 
@@ -1491,7 +1502,7 @@ class Chart {
             const replayTs = replay && Number.isFinite(Number(replay.replayTimestamp))
                 ? Number(replay.replayTimestamp) : null;
 
-            const isBacktest = !!(session && session.startDate);
+            const isBacktest = this._isSessionBacktestStyle(session);
             const requestTimeframe = isBacktest ? '1m' : (this.currentTimeframe || '1m');
             const params = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
 
