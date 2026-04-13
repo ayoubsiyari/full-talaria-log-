@@ -3263,13 +3263,19 @@ class OrderManager {
             console.warn('Could not load position scaling setting from localStorage:', e);
         }
         
-        // Get balance from backtesting session
+        // Get balance from backtesting session (prop firm uses `balance`, standard backtest uses `startBalance`)
         const session = this.chart.backtestingSession;
-        if (session && session.startBalance) {
-            this.balance = parseFloat(session.startBalance);
-            this.initialBalance = this.balance;
-            this.equity = this.balance;
-            console.log(`💰 Starting balance: $${this.balance} | Initial: $${this.initialBalance}`);
+        const rawStart = session && (session.startBalance ?? session.balance);
+        if (session && rawStart !== undefined && rawStart !== null && rawStart !== '') {
+            const pb = parseFloat(rawStart);
+            if (Number.isFinite(pb) && pb > 0) {
+                this.balance = pb;
+                this.initialBalance = pb;
+                this.equity = pb;
+                console.log(`💰 Starting balance: $${this.balance} | Initial: $${this.initialBalance}`);
+            } else {
+                console.log(`⚠️ Invalid session balance, using default: $${this.balance}`);
+            }
         } else {
             console.log(`⚠️ No backtesting session found, using default balance: $${this.balance}`);
         }

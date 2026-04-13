@@ -67,9 +67,10 @@ class OrderService {
 
     loadSessionState(session) {
         if (!session) return;
-        if (session.startBalance) {
-            const startBalance = parseFloat(session.startBalance);
-            if (Number.isFinite(startBalance)) {
+        const raw = session.startBalance ?? session.balance;
+        if (raw !== undefined && raw !== null && raw !== '') {
+            const startBalance = parseFloat(raw);
+            if (Number.isFinite(startBalance) && startBalance > 0) {
                 this.balance = startBalance;
                 this.initialBalance = startBalance;
                 this.equity = startBalance;

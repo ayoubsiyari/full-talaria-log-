@@ -699,6 +699,13 @@ class Chart {
         normalized.margin_call_level = Number.parseFloat(normalized.margin_call_level || normalized.marginCallLevel || 100);
         normalized.stop_out_level = Number.parseFloat(normalized.stop_out_level || normalized.stopOutLevel || 50);
 
+        // Prop firm wizard saves `balance`; personal backtest saves `startBalance`. Unify for P&L + order account.
+        const rawStart = normalized.startBalance ?? normalized.start_balance ?? normalized.balance;
+        const parsedStart = Number.parseFloat(rawStart);
+        if (Number.isFinite(parsedStart) && parsedStart > 0) {
+            normalized.startBalance = parsedStart;
+        }
+
         return normalized;
     }
 

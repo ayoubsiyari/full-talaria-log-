@@ -41,7 +41,8 @@ class PropFirmTracker {
                 this.sessionData = JSON.parse(session);
                 
                 if (this.sessionData.type === 'propfirm') {
-                    this.startBalance = this.sessionData.balance || 10000;
+                    const sb = Number.parseFloat(this.sessionData.startBalance ?? this.sessionData.balance);
+                    this.startBalance = Number.isFinite(sb) && sb > 0 ? sb : 10000;
                     this.currentBalance = this.startBalance;
                     this.peakBalance = this.startBalance;
                     
