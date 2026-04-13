@@ -716,9 +716,52 @@ function initPropFirmTracker() {
             console.log('⚠️ Not a prop firm session or session not found');
             return;
         }
-        
+
+        const om = window.chart && window.chart.orderManager;
+        const DEFAULT_OM_START = 10000;
+        let sessionStartFromStorage = NaN;
+        try {
+            const raw = userStorage.getItem('backtestingSession');
+            if (raw) {
+                const s = JSON.parse(raw);
+                sessionStartFromStorage = Number.parseFloat(s.startBalance ?? s.balance);
+            }
+        } catch (e) {}
+        const omInit = om ? om.initialBalance : NaN;
+        // Timed sync can run before checkBacktestingMode() finishes — OM may still be at default $10k while
+        // localStorage has the real challenge size. Do not copy that default onto the tracker.
+        const sessionNotAppliedToOmYet =
+            Number.isFinite(omInit) && omInit === DEFAULT_OM_START &&
+            Number.isFinite(sessionStartFromStorage) && sessionStartFromStorage > 0 &&
+            Math.abs(sessionStartFromStorage - omInit) > 0.01;
+
+        if (om && Number.isFinite(omInit) && omInit > 0 && !sessionNotAppliedToOmYet) {
+            window.propFirmTracker.startBalance = omInit;
+            const md = window.propFirmTracker.sessionData.maxDailyLoss || {};
+            const mt = window.propFirmTracker.sessionData.maxTotalLoss || {};
+            const mdd = Number(md.dollar);
+            const mtd = Number(mt.dollar);
+            window.propFirmTracker.rules.maxDailyLossUsd = Number.isFinite(mdd)
+                ? mdd
+                : (omInit * window.propFirmTracker.rules.maxDailyLoss / 100);
+            window.propFirmTracker.rules.maxTotalLossUsd = Number.isFinite(mtd)
+                ? mtd
+                : (omInit * window.propFirmTracker.rules.maxTotalLoss / 100);
+        }
+
+        if (!om) {
+            return;
+        }
+
+        if (sessionNotAppliedToOmYet) {
+            window.propFirmTracker.currentBalance = window.propFirmTracker.startBalance;
+            window.propFirmTracker.peakBalance = window.propFirmTracker.startBalance;
+            window.propFirmTracker.updateUI();
+            return;
+        }
+
         // Sync balance
-        if (window.chart && window.chart.orderManager) {
+        {
             const orderBalance = window.chart.orderManager.balance;
             
             // IMPORTANT: Don't override start balance - it should stay as configured

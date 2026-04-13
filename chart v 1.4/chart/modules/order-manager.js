@@ -3334,6 +3334,39 @@ class OrderManager {
         // Initialize order sounds
         this.initOrderSounds();
     }
+
+    /**
+     * Apply starting balance from chart.backtestingSession after async session load.
+     * The constructor runs before checkBacktestingMode() resolves, so balance would otherwise stay at the default.
+     */
+    applySessionStartingBalance() {
+        const session = this.chart && this.chart.backtestingSession;
+        if (!session) return;
+        const rawStart = session.startBalance ?? session.balance;
+        if (rawStart === undefined || rawStart === null || rawStart === '') return;
+        const pb = parseFloat(rawStart);
+        if (!Number.isFinite(pb) || pb <= 0) return;
+        this.initialBalance = pb;
+        this.balance = pb;
+        this.equity = pb;
+        if (this.orderService) {
+            this.orderService.initialBalance = pb;
+            this.orderService.balance = pb;
+            this.orderService.equity = pb;
+        }
+        if (typeof this.recomputeAccountFromJournal === 'function') {
+            this.recomputeAccountFromJournal();
+        }
+        if (typeof this._syncReplayHeaderStatsFromAccount === 'function') {
+            this._syncReplayHeaderStatsFromAccount();
+        }
+        if (typeof this.updatePositionsPanel === 'function') {
+            try {
+                this.updatePositionsPanel();
+            } catch (e) {}
+        }
+        console.log(`💰 Applied session starting balance: $${pb.toLocaleString(undefined, { maximumFractionDigits: 2 })}`);
+    }
     
     /**
      * Load saved market type from localStorage

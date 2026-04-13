@@ -832,6 +832,19 @@ class Chart {
                 this.backtestingSession = this.normalizeBacktestingSession(session);
                 this.isPropFirmMode = isPropFirm;
 
+                try {
+                    userStorage.setItem('backtestingSession', JSON.stringify(this.backtestingSession));
+                } catch (e) {}
+
+                if (this.orderManager && typeof this.orderManager.applySessionStartingBalance === 'function') {
+                    this.orderManager.applySessionStartingBalance();
+                }
+                if (typeof window.syncPropFirmTracker === 'function') {
+                    try {
+                        window.syncPropFirmTracker();
+                    } catch (e) {}
+                }
+
                 if (!this.activeTradingSessionId) {
                     try {
                         this.activeTradingSessionId = userStorage.getItem('active_trading_session_id');
