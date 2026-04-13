@@ -4,11 +4,35 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import or_, and_, func
 
-from models import db, StrategyPost, PostLike, PostComment, UserFollow, Strategy, User
+from models import db, StrategyPost, PostLike, PostComment, UserFollow, Strategy, User, JournalEntry
 from routes.strategy_routes import _strategy_dict
 
 
 feed_bp = Blueprint('feed', __name__)
+
+
+def _stats_preview_for_strategy(strategy_id, owner_user_id, strategy_name):
+    """
+    Win rate + trade count for feed cards when the author opted into include_stats on the post.
+    Matches journal logic in strategy_performance (same trade scope).
+    """
+    name = strategy_name or ''
+    q = JournalEntry.query.filter_by(user_id=owner_user_id).filter(
+        or_(
+            JournalEntry.strategy_id == strategy_id,
+            JournalEntry.strategy == name,
+        )
+    )
+    trades = q.all()
+    n = len(trades)
+    if n == 0:
+        return {'win_rate': None, 'total_trades': 0}
+    wins = [t for t in trades if (t.pnl or 0) > 0]
+    win_rate = len(wins) / n
+    return {
+        'win_rate': round(win_rate, 4),
+        'total_trades': n,
+    }
 
 # public  = any logged-in user (community / "friends" in the product sense)
 # guest   = also listed for visitors without an account (GET /feed/explore)
@@ -67,6 +91,10 @@ def _serialize_post_row(p, viewer_id):
     liked = False
     if viewer_id is not None:
         liked = PostLike.query.filter_by(post_id=p.id, user_id=viewer_id).first() is not None
+    stats_preview = None
+    if p.include_stats and strat:
+        stats_preview = _stats_preview_for_strategy(strat.id, p.user_id, strat.name)
+
     return {
         'id': p.id,
         'caption': p.caption,
@@ -83,6 +111,7 @@ def _serialize_post_row(p, viewer_id):
         'liked_by_me': liked,
         'author': {'id': author.id, 'name': author.name} if author else None,
         'strategy': _strategy_dict(strat, include_legacy=False) if strat else None,
+        'stats_preview': stats_preview,
     }
 
 

@@ -5,8 +5,8 @@ import Link from "next/link";
 import { JOURNAL_API_BASE } from "@/lib/journalApi";
 import StrategyWizard from "./StrategyWizard";
 import ShareStrategyModal from "./ShareStrategyModal";
-import PostCard from "@/components/ui/post-card";
 import FeedStrategyDetailModal from "./FeedStrategyDetailModal";
+import CommunityFeedView from "./CommunityFeedView";
 import { emptyDraft, definitionFromDraft, draftFromApi } from "@/strategyLab/defaults";
 import { formatMarketsAndInstrumentsSummary } from "@/strategyLab/instruments";
 import { Plus, Trash2, Share2, BarChart3, Copy } from "lucide-react";
@@ -418,45 +418,12 @@ export default function StrategiesLabPage() {
         )}
 
         {tab === "feed" && (
-          <div className="w-full">
-            <div className="mx-auto mb-6 w-full max-w-6xl px-0 text-left">
-              <h2 className="text-lg font-semibold">Community feed</h2>
-              <p className="mt-1 text-xs text-[var(--sl-text-muted)]">
-                {isAuthed ? (
-                  <>
-                    &quot;Friends&quot; = any logged-in user. &quot;Guest&quot; posts also appear on the public explore
-                    view for visitors. &quot;Mutual&quot; = you both follow each other. Click a card for details.
-                  </>
-                ) : (
-                  <>
-                    You&apos;re viewing the public explore feed (posts authors marked for visitors).{" "}
-                    <Link href="/login/?next=/strategies-lab/" className="text-[var(--sl-accent-light)] underline">
-                      Sign in
-                    </Link>{" "}
-                    for the full community feed, likes, and comments.
-                  </>
-                )}
-              </p>
-            </div>
-            <div className="mx-auto grid w-full max-w-[100rem] grid-cols-1 items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {feedPosts.map((p) => (
-                <PostCard
-                  key={p.id}
-                  post={p}
-                  onLike={isAuthed ? likePost : undefined}
-                  variant="grid"
-                  onOpenStrategy={setFeedDetailPost}
-                />
-              ))}
-            </div>
-            {!feedPosts.length && (
-              <p className="mx-auto mt-8 w-full max-w-6xl text-center text-[var(--sl-text-muted)]">
-                {isAuthed
-                  ? "No posts yet."
-                  : "No public posts yet. When members share with “Public (explore)”, they appear here."}
-              </p>
-            )}
-          </div>
+          <CommunityFeedView
+            posts={feedPosts}
+            isAuthed={isAuthed}
+            onLike={likePost}
+            onOpenStrategy={setFeedDetailPost}
+          />
         )}
 
         {tab === "templates" && (

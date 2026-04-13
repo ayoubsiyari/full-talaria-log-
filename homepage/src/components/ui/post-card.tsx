@@ -46,6 +46,12 @@ export type FeedPost = {
   include_description?: boolean;
   include_conditions?: boolean;
   include_variables?: boolean;
+  include_stats?: boolean;
+  /** Present when author opted into stats on the post (server-computed from their journal trades). */
+  stats_preview?: {
+    win_rate: number | null;
+    total_trades: number;
+  } | null;
 };
 
 type PostCardProps = {
@@ -105,6 +111,24 @@ export default function PostCard({ post, onLike, onOpenComments, onOpenStrategy,
   }, [title, caption]);
 
   const isGrid = variant === "grid";
+
+  const statsLine = (() => {
+    if (post.include_stats === false) {
+      return { kind: "hidden" as const };
+    }
+    const sp = post.stats_preview;
+    if (!sp) {
+      return { kind: "empty" as const };
+    }
+    const n = sp.total_trades ?? 0;
+    if (n === 0) {
+      return { kind: "notrade" as const };
+    }
+    if (sp.win_rate == null) {
+      return { kind: "na" as const, trades: n };
+    }
+    return { kind: "rate" as const, pct: sp.win_rate * 100, trades: n };
+  })();
 
   return (
     <article
@@ -196,6 +220,33 @@ export default function PostCard({ post, onLike, onOpenComments, onOpenStrategy,
             )}
             loading="lazy"
           />
+          {isGrid && (
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent px-2 pb-2 pt-8">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono-label text-[10px] font-bold uppercase tracking-wide text-white/70">
+                  Performance
+                </span>
+                {statsLine.kind === "hidden" && (
+                  <span className="text-[10px] text-white/55">Stats not shared</span>
+                )}
+                {statsLine.kind === "empty" && (
+                  <span className="text-[10px] text-white/55">—</span>
+                )}
+                {statsLine.kind === "notrade" && (
+                  <span className="text-[10px] text-amber-200/90">No trades yet</span>
+                )}
+                {statsLine.kind === "na" && (
+                  <span className="text-[10px] text-white/80">{statsLine.trades} trades</span>
+                )}
+                {statsLine.kind === "rate" && (
+                  <span className="tabular-nums text-[11px] font-semibold text-[var(--sl-green)]">
+                    {statsLine.pct.toFixed(1)}% win rate
+                    <span className="ml-1.5 font-normal text-white/75">· {statsLine.trades} trades</span>
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
