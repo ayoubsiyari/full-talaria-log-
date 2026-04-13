@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
-import { Search, SlidersHorizontal, Sparkles } from "lucide-react";
+import { Search, SlidersHorizontal } from "lucide-react";
 import PostCard, { type FeedPost } from "@/components/ui/post-card";
 
 type SortKey = "newest" | "popular";
@@ -73,10 +73,6 @@ export default function CommunityFeedView({ posts, isAuthed, onLike, onOpenStrat
         />
         <div className="relative flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-2xl">
-            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[var(--sl-border)] bg-[var(--sl-card)]/80 px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-[var(--sl-accent-light)]">
-              <Sparkles className="h-3.5 w-3.5" />
-              Live from the community
-            </div>
             <h2 className="text-2xl font-bold tracking-tight text-[var(--sl-text)] sm:text-3xl" style={{ fontFamily: "Outfit, sans-serif" }}>
               Community feed
             </h2>
