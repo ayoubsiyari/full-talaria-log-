@@ -85,6 +85,14 @@
                 <div class="full-panel">
                     <form id="propfirmForm">
                       <div class="form-grid">
+                        <!-- Simulation presets -->
+                        <div class="form-card form-card-full simulation-preset-section">
+                            <h3>Simulation preset</h3>
+                            <p class="helper-text" style="margin-bottom:12px;">Choose a rule template, then adjust symbols and details below. Custom leaves your fields as-is.</p>
+                            <div id="simulationPresetGrid" class="simulation-preset-grid" role="list"></div>
+                            <input type="hidden" id="simulationPresetId" name="simulationPresetId" value="custom" />
+                            <input type="hidden" id="simulationPresetLabel" name="simulationPresetLabel" value="Custom configuration" />
+                        </div>
                         <!-- General Card -->
                         <div class="form-card form-card-full">
                             <h3>General</h3>
@@ -448,6 +456,7 @@
         </div>
     </div>
 
+    <script src="propfirm-presets.js"></script>
     <script src="propfirm-script.js"></script>
     <script>
         console.log('🔥 Prop Firm Backtest - Script loaded');

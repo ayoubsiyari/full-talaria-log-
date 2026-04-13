@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, Play, Trash2, BarChart3, Trophy, X } from "lucide-react";
+import { Plus, Play, Trash2, BarChart3, Trophy, X, Shield } from "lucide-react";
 import { LanguageToggle } from "@/components/LanguageToggle";
 
 interface Session {
@@ -114,6 +114,10 @@ export default function BacktestSessions() {
 
   function openSessionAnalytics(session: Session) {
     window.location.href = `/backtest/analytics?sessionId=${encodeURIComponent(String(session.id))}`;
+  }
+
+  function openChallengeOverview(session: Session) {
+    window.location.href = `/backtest/challenge?sessionId=${encodeURIComponent(String(session.id))}`;
   }
 
   async function deleteSession(id: number) {
@@ -331,7 +335,17 @@ export default function BacktestSessions() {
                       {s.created_at ? new Date(s.created_at).toLocaleDateString() : "-"}
                     </td>
                     <td className="px-4 py-4">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {s.session_type === "propfirm" ? (
+                          <button
+                            onClick={() => openChallengeOverview(s)}
+                            className="flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-200 hover:bg-amber-500/20 transition"
+                            title="Challenge rules and compliance"
+                          >
+                            <Shield className="w-3.5 h-3.5" />
+                            Challenge
+                          </button>
+                        ) : null}
                         <button
                           onClick={() => openSessionAnalytics(s)}
                           className="flex items-center gap-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-semibold text-blue-300 hover:bg-blue-500/20 transition"
@@ -362,9 +376,9 @@ export default function BacktestSessions() {
         <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => e.target === e.currentTarget && setModalOpen(false)}>
           <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/95 backdrop-blur-xl p-10 max-w-[650px] w-full shadow-2xl">
             <h2 className="text-2xl font-semibold text-white mb-2">
-              Choose Session Type
+              Choose session type
             </h2>
-            <p className="text-white/50 text-sm mb-6">Select the type of backtesting session you want to create</p>
+            <p className="text-white/50 text-sm mb-6">Personal backtests, or prop-style simulations with preset rule packs and a compliance overview</p>
             <div className="grid grid-cols-2 gap-4">
               <button
                 onClick={() => goToBacktest("personal")}
@@ -379,8 +393,8 @@ export default function BacktestSessions() {
                 className="rounded-2xl border-2 border-white/10 bg-white/[0.03] p-8 text-center hover:border-amber-500/40 hover:bg-amber-500/[0.06] hover:-translate-y-1 transition-all group"
               >
                 <Trophy className="w-12 h-12 mx-auto mb-3 text-amber-400 group-hover:text-amber-300 transition" />
-                <div className="font-semibold text-white/90 mb-1">Prop Firm Mode</div>
-                <div className="text-xs text-white/40">Practice with industry-standard prop firm challenge rules</div>
+                <div className="font-semibold text-white/90 mb-1">Prop simulations</div>
+                <div className="text-xs text-white/40">Pick a preset rule set, then review compliance on the challenge dashboard</div>
               </button>
             </div>
           </div>

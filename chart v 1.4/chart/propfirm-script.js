@@ -228,6 +228,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadAvailableFiles();
     setupPresetButtons();
     setupFormHandlers();
+    initSimulationPresetGrid();
     loadProtectionPresets();
     console.log('✅ Initialization complete');
 });
@@ -452,6 +453,92 @@ function setupPresetButtons() {
         };
         profitPresets.appendChild(btn);
     });
+}
+
+function initSimulationPresetGrid() {
+    var grid = document.getElementById('simulationPresetGrid');
+    var list = typeof window.PROPFIRM_SIMULATION_PRESETS !== 'undefined' ? window.PROPFIRM_SIMULATION_PRESETS : null;
+    if (!grid || !list || !list.length) {
+        return;
+    }
+
+    grid.innerHTML = '';
+    list.forEach(function (preset) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'simulation-preset-card';
+        btn.setAttribute('data-preset-id', preset.id);
+        btn.setAttribute('role', 'listitem');
+        btn.innerHTML = '<h4>' + String(preset.title || preset.id) + '</h4><p>' + String(preset.description || '') + '</p>';
+        btn.addEventListener('click', function () {
+            applySimulationPreset(preset.id);
+        });
+        grid.appendChild(btn);
+    });
+
+    applySimulationPreset('custom');
+}
+
+function applySimulationPreset(presetId) {
+    var idEl = document.getElementById('simulationPresetId');
+    var labelEl = document.getElementById('simulationPresetLabel');
+    var preset = typeof window.getPropfirmPresetById === 'function'
+        ? window.getPropfirmPresetById(presetId)
+        : null;
+
+    if (!preset) {
+        preset = { id: 'custom', title: 'Custom configuration', rules: null };
+    }
+
+    if (idEl) idEl.value = preset.id;
+    if (labelEl) labelEl.value = preset.title || preset.id;
+
+    document.querySelectorAll('.simulation-preset-card').forEach(function (el) {
+        el.classList.toggle('selected', el.getAttribute('data-preset-id') === preset.id);
+    });
+
+    if (!preset.rules) {
+        return;
+    }
+
+    var r = preset.rules;
+    var balanceEl = document.getElementById('balance');
+    var profitEl = document.getElementById('profitTarget');
+    var dailyPct = document.getElementById('maxDailyLossPercent');
+    var totalPct = document.getElementById('maxTotalLossPercent');
+    var minDaysEl = document.getElementById('minTradingDays');
+    var disableMinEl = document.getElementById('disableMinDays');
+    var levSlider = document.getElementById('leverageSlider');
+    var levVal = document.getElementById('leverageValue');
+
+    if (balanceEl && typeof r.balance === 'number') {
+        balanceEl.value = String(r.balance);
+    }
+    if (profitEl && typeof r.profitTarget === 'number') {
+        profitEl.value = String(r.profitTarget);
+    }
+    if (dailyPct && typeof r.maxDailyLossPercent === 'number') {
+        dailyPct.value = String(r.maxDailyLossPercent);
+    }
+    if (totalPct && typeof r.maxTotalLossPercent === 'number') {
+        totalPct.value = String(r.maxTotalLossPercent);
+    }
+    if (minDaysEl && typeof r.minTradingDays === 'number') {
+        minDaysEl.value = String(r.minTradingDays);
+    }
+    if (disableMinEl && typeof r.disableMinDays === 'boolean') {
+        disableMinEl.checked = r.disableMinDays;
+        if (minDaysEl) minDaysEl.disabled = r.disableMinDays;
+    }
+    if (levSlider && levVal && typeof r.leverage === 'number') {
+        var lv = Math.max(1, Math.min(125, Math.round(r.leverage)));
+        levSlider.value = String(lv);
+        levVal.value = String(lv);
+    }
+
+    if (typeof updateLossLimits === 'function') {
+        updateLossLimits();
+    }
 }
 
 // Setup form handlers
@@ -804,6 +891,8 @@ async function handleFormSubmit(e) {
     // Collect form data
     const formData = {
         type: 'propfirm',
+        simulationPresetId: (document.getElementById('simulationPresetId') && document.getElementById('simulationPresetId').value) || 'custom',
+        simulationPresetLabel: (document.getElementById('simulationPresetLabel') && document.getElementById('simulationPresetLabel').value) || 'Custom configuration',
         projectName: document.getElementById('projectName').value,
         balance: parseFloat(document.getElementById('balance').value),
         symbols: selectedSymbols,
@@ -871,19 +960,17 @@ async function handleFormSubmit(e) {
     } catch (e) {}
     
     console.log('✅ Prop firm challenge created:', formData);
-    console.log('📊 Redirecting to chart with fileId:', primaryFileId);
+    console.log('📊 Redirecting to challenge overview, session:', sessionId);
     
     // Check if we're in an iframe
     const isInIframe = window.self !== window.top;
-    const targetUrl = `index.html?mode=propfirm&sessionId=${encodeURIComponent(String(sessionId))}&fileId=${primaryFileId}`;
+    const targetUrl = '/backtest/challenge?sessionId=' + encodeURIComponent(String(sessionId));
     
     if (isInIframe) {
-        // If in iframe (opened from sessions.html), redirect parent window
-        console.log('📱 Running in iframe, redirecting parent window to prop firm mode');
+        console.log('📱 Running in iframe, redirecting parent window to challenge overview');
         window.top.location.href = targetUrl;
     } else {
-        // If standalone page, redirect normally
-        console.log('🚀 Redirecting to prop firm chart mode');
+        console.log('🚀 Redirecting to challenge overview');
         window.location.href = targetUrl;
     }
 }

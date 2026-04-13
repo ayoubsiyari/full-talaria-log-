@@ -2670,6 +2670,7 @@ class TradingSessionStateUpdateIn(BaseModel):
     chartSettings: dict | None = None
     toolDefaults: dict | None = None
     indicators: list | None = None
+    propfirm_challenge: dict | None = None
 
 class AdminDatasetSettingsIn(BaseModel):
     display_name: str | None = None
@@ -4425,6 +4426,7 @@ async def get_trading_session_state(session_id: int, request: Request):
                 "chartSettings": state.get("chartSettings") if isinstance(state.get("chartSettings"), dict) else {},
                 "toolDefaults": state.get("toolDefaults") if isinstance(state.get("toolDefaults"), dict) else {},
                 "indicators": state.get("indicators") if isinstance(state.get("indicators"), list) else [],
+                "propfirm_challenge": state.get("propfirm_challenge") if isinstance(state.get("propfirm_challenge"), dict) else {},
                 "updated_at": st.updated_at.isoformat() if st.updated_at else None,
             }
         }
@@ -4467,6 +4469,8 @@ async def patch_trading_session_state(session_id: int, payload: TradingSessionSt
             state["toolDefaults"] = payload.toolDefaults
         if payload.indicators is not None:
             state["indicators"] = payload.indicators
+        if payload.propfirm_challenge is not None:
+            state["propfirm_challenge"] = payload.propfirm_challenge
 
         st.state_json = json.dumps(state, separators=(",", ":"))
         db.commit()

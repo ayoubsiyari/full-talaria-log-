@@ -43175,7 +43175,7 @@
 
     <script defer src="modules/timeframe-favorites.js?v=20260404"></script>
 
-    <script defer src="modules/propfirm-tracker.js?v=20260404"></script>
+    <script defer src="modules/propfirm-tracker.js?v=20260413"></script>
 
     <script defer src="modules/compare-overlay.js?v=20260404"></script>
 
@@ -44836,123 +44836,9 @@
 
         function updateChallengeProgressCompact() {
 
-            if (!window.propFirmTargets) return;
+            if (typeof window.syncPropFirmTracker === 'function') {
 
-            
-
-            const targets = window.propFirmTargets;
-
-            
-
-            // Trading Days
-
-            const tradingDays = 1; // Calculate from order history
-
-            const tradingDaysPercent = Math.min((tradingDays / targets.minTradingDays) * 100, 100);
-
-            
-
-            document.getElementById('challengeTradingDaysDropdown').textContent = `${tradingDays}/${targets.minTradingDays}`;
-
-            document.getElementById('challengeTradingDaysBar').style.width = tradingDaysPercent + '%';
-
-            
-
-            // Update status badge
-
-            let completedTasks = tradingDays >= targets.minTradingDays ? 1 : 0;
-
-            
-
-            // Profit Target
-
-            const currentBalance = targets.startBalance; // Get from chart/order manager
-
-            const profitPercent = ((currentBalance - targets.startBalance) / targets.startBalance) * 100;
-
-            const profitProgress = Math.min((profitPercent / targets.profitTarget) * 100, 100);
-
-            
-
-            document.getElementById('challengeProfitDropdown').textContent = 
-
-                `${profitPercent.toFixed(2)}% / ${targets.profitTarget}%`;
-
-            document.getElementById('challengeProfitBar').style.width = Math.max(0, profitProgress) + '%';
-
-            
-
-            if (profitPercent >= targets.profitTarget) completedTasks++;
-
-            
-
-            // Max Daily Loss
-
-            const dailyLoss = 0; // Calculate from today's trades
-
-            const dailyLossPercent = Math.abs(dailyLoss);
-
-            const dailyLossProgress = Math.min((dailyLossPercent / targets.maxDailyLoss) * 100, 100);
-
-            
-
-            document.getElementById('challengeDailyLossDropdown').textContent = 
-
-                `${dailyLossPercent.toFixed(2)}% / ${targets.maxDailyLoss}%`;
-
-            document.getElementById('challengeDailyLossBar').style.width = dailyLossProgress + '%';
-
-            
-
-            if (dailyLossPercent < targets.maxDailyLoss) completedTasks++;
-
-            
-
-            // Max Total Loss
-
-            const totalLoss = profitPercent < 0 ? Math.abs(profitPercent) : 0;
-
-            const totalLossProgress = Math.min((totalLoss / targets.maxTotalLoss) * 100, 100);
-
-            
-
-            document.getElementById('challengeTotalLossDropdown').textContent = 
-
-                `${totalLoss.toFixed(2)}% / ${targets.maxTotalLoss}%`;
-
-            document.getElementById('challengeTotalLossBar').style.width = totalLossProgress + '%';
-
-            
-
-            if (totalLoss < targets.maxTotalLoss) completedTasks++;
-
-            
-
-            // Update badge
-
-            const badgeEl = document.getElementById('challengeStatusBadge');
-
-            if (badgeEl) {
-
-                badgeEl.textContent = `${completedTasks}/4`;
-
-                
-
-                // Change color based on progress
-
-                if (completedTasks === 4) {
-
-                    badgeEl.style.background = '#22c55e';
-
-                } else if (completedTasks >= 2) {
-
-                    badgeEl.style.background = '#f59e0b';
-
-                } else {
-
-                    badgeEl.style.background = '#ef4444';
-
-                }
+                window.syncPropFirmTracker();
 
             }
 

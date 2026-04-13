@@ -128,3 +128,44 @@ input:checked + .toggle-slider:before { transform: translateX(16px); background:
 .modal-content::-webkit-scrollbar { width: 3px; }
 .modal-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 16px; }
+
+/* Simulation preset cards */
+.simulation-preset-section { padding-bottom: 8px; }
+.simulation-preset-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+}
+.simulation-preset-card {
+    text-align: left;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, transform 0.12s;
+    font-family: inherit;
+    color: inherit;
+}
+.simulation-preset-card:hover {
+    border-color: rgba(245, 158, 11, 0.35);
+    background: rgba(245, 158, 11, 0.06);
+}
+.simulation-preset-card.selected {
+    border-color: rgba(245, 158, 11, 0.55);
+    background: rgba(245, 158, 11, 0.1);
+    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.15);
+}
+.simulation-preset-card h4 {
+    font-size: 13px;
+    font-weight: 600;
+    color: #f8fafc;
+    margin: 0 0 6px 0;
+    letter-spacing: -0.01em;
+}
+.simulation-preset-card p {
+    font-size: 11px;
+    line-height: 1.45;
+    color: rgba(255,255,255,0.38);
+    margin: 0;
+}
