@@ -8,7 +8,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Trash2, Diamond, ChevronDown, ChevronRight, Copy } from 'lucide-react';
+import { GripVertical, Trash2, Diamond, ChevronDown, ChevronRight, Copy, ArrowDown } from 'lucide-react';
 import { newId } from '../../strategyLab/ids';
 import { SL_COLORS } from '../../strategyLab/defaults';
 
@@ -315,10 +315,16 @@ export default function StrategyFlowStep({ draft, setDraft }) {
         )}
       </div>
       {idxInGroup < groupLen - 1 && (
-        <div className="ml-6 flex items-center gap-1 py-1 text-[var(--sl-green)]">
-          <span className="h-6 w-px bg-[var(--sl-green)]" />
-          <span className="text-[10px] font-bold">YES</span>
-          <span className="h-6 w-px bg-[var(--sl-green)]" />
+        <div
+          className="ml-6 flex flex-col items-center py-1 text-[var(--sl-green)]"
+          role="presentation"
+          aria-hidden
+        >
+          <span className="h-3 w-[2px] shrink-0 rounded-full bg-[var(--sl-green)]/85" />
+          <div className="-my-px flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[var(--sl-green)]/45 bg-[rgba(34,197,94,0.12)] shadow-[0_0_14px_rgba(34,197,94,0.18)]">
+            <ArrowDown className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+          </div>
+          <span className="h-3 w-[2px] shrink-0 rounded-full bg-[var(--sl-green)]/85" />
         </div>
       )}
     </SortableRow>
