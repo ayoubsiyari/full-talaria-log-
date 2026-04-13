@@ -33,4 +33,4 @@ Avoid introducing:
 ## When adding dependencies
 
 - Prefer **widely used, maintained** packages; check recent releases and issue activity.
-- For Python, consider running **`pip-audit -r requirements.txt`** before release (see `scripts/verify-dependencies.sh`).
+- Before release, run **`./scripts/verify-dependencies.sh`** (npm audit, pip-audit, bandit when tools are installed). CI runs the same checks via **`.github/workflows/security.yml`** (plus Gitleaks for committed secrets).

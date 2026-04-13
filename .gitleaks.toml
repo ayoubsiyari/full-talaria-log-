@@ -1,0 +1,14 @@
+# Gitleaks — reduce false positives for example files and generated locks.
+# Docs: https://github.com/gitleaks/gitleaks
+
+title = "talaria"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Example env, lockfiles, and security config templates"
+paths = [
+  '''\.env\.example$''',
+  '''package-lock\.json$''',
+]
