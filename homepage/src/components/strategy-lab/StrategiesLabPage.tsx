@@ -7,6 +7,7 @@ import StrategyWizard from "./StrategyWizard";
 import ShareStrategyModal from "./ShareStrategyModal";
 import FeedStrategyDetailModal from "./FeedStrategyDetailModal";
 import CommunityFeedView from "./CommunityFeedView";
+import StrategyPerformanceDashboard from "./StrategyPerformanceDashboard";
 import { emptyDraft, definitionFromDraft, draftFromApi } from "@/strategyLab/defaults";
 import { formatMarketsAndInstrumentsSummary } from "@/strategyLab/instruments";
 import { Plus, Trash2, Share2, BarChart3, Copy } from "lucide-react";
@@ -380,21 +381,15 @@ export default function StrategiesLabPage() {
                 )}
               </ul>
             )}
-            {perf && perfId && (
-              <div className="mt-8 rounded-xl border border-[var(--sl-border)] bg-[var(--sl-card)] p-4">
-                <h3 className="mb-2 font-semibold">Performance (strategy #{perfId})</h3>
-                <pre className="text-xs text-[var(--sl-text-sec)]">{JSON.stringify(perf, null, 2)}</pre>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPerf(null);
-                    setPerfId(null);
-                  }}
-                  className="mt-2 text-sm text-[var(--sl-accent)]"
-                >
-                  Close
-                </button>
-              </div>
+            {perf && perfId != null && (
+              <StrategyPerformanceDashboard
+                strategyId={perfId}
+                performance={perf as Record<string, unknown>}
+                onClose={() => {
+                  setPerf(null);
+                  setPerfId(null);
+                }}
+              />
             )}
           </div>
         )}
