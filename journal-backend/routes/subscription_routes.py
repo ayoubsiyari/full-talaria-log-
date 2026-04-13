@@ -13,6 +13,8 @@ import os
 import json
 import re
 
+from security_redirects import append_checkout_session_placeholder, is_allowed_stripe_redirect_url
+
 try:
     import stripe
     STRIPE_AVAILABLE = True
@@ -1349,8 +1351,18 @@ def create_checkout_session():
         data = request.get_json() or {}
         plan_id = data.get('plan_id')
         coupon_code = _sanitize_coupon_code(data.get('coupon_code', ''))
-        success_url = data.get('success_url', os.environ.get('FRONTEND_URL', 'http://localhost:3001') + '/subscription/success')
-        cancel_url = data.get('cancel_url', os.environ.get('FRONTEND_URL', 'http://localhost:3001') + '/pricing')
+        default_base = (
+            os.environ.get('FRONTEND_URL')
+            or current_app.config.get('FRONTEND_URL')
+            or 'http://localhost:3001'
+        ).rstrip('/')
+        success_url = data.get('success_url') or f'{default_base}/subscription/success'
+        cancel_url = data.get('cancel_url') or f'{default_base}/pricing'
+
+        if not is_allowed_stripe_redirect_url(success_url, current_app):
+            return jsonify({'error': 'Invalid or disallowed success_url'}), 400
+        if not is_allowed_stripe_redirect_url(cancel_url, current_app):
+            return jsonify({'error': 'Invalid or disallowed cancel_url'}), 400
 
         if not plan_id:
             return jsonify({'error': 'Plan ID is required'}), 400
@@ -1399,7 +1411,7 @@ def create_checkout_session():
                 'quantity': 1,
             }],
             'mode': 'subscription',
-            'success_url': success_url + '?session_id={CHECKOUT_SESSION_ID}',
+            'success_url': append_checkout_session_placeholder(success_url),
             'cancel_url': cancel_url,
             'metadata': {
                 'user_id': user.id,
@@ -1469,8 +1481,16 @@ def create_portal_session():
             return jsonify({'error': 'No subscription found'}), 400
         
         data = request.get_json() or {}
-        return_url = data.get('return_url', os.environ.get('FRONTEND_URL', 'http://localhost:3001') + '/settings')
-        
+        default_base = (
+            os.environ.get('FRONTEND_URL')
+            or current_app.config.get('FRONTEND_URL')
+            or 'http://localhost:3001'
+        ).rstrip('/')
+        return_url = data.get('return_url') or f'{default_base}/settings'
+
+        if not is_allowed_stripe_redirect_url(return_url, current_app):
+            return jsonify({'error': 'Invalid or disallowed return_url'}), 400
+
         session = stripe.billing_portal.Session.create(
             customer=user.stripe_customer_id,
             return_url=return_url

@@ -112,12 +112,10 @@ def debug_verify_token():
         return jsonify({
             "status": "valid",
             "decoded": decoded,
-            "secret_used": secret
         })
     except pyjwt.InvalidSignatureError:
         return jsonify({
             "status": "invalid_signature",
-            "secret_used": secret
         })
     except Exception as e:
         return jsonify({
@@ -130,6 +128,20 @@ def log_request_info():
     if app.config.get('DEBUG'):
         app.logger.debug('Headers: %s', request.headers)
         app.logger.debug('Body: %s', request.get_data())
+
+
+@app.after_request
+def add_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
+    response.headers['Content-Security-Policy'] = "default-src 'none'; frame-ancestors 'none'"
+    proto = request.headers.get('X-Forwarded-Proto', '')
+    if request.is_secure or proto.lower() == 'https':
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    return response
+
 
 # Add a catch-all route to handle OPTIONS for all paths
 @app.route('/<path:path>', methods=['OPTIONS'])

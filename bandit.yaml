@@ -1,0 +1,16 @@
+# Bandit config — https://bandit.readthedocs.io/en/latest/config.html
+# Run: bandit -c bandit.yaml -r journal-backend "chart v 1.4/chart" -ll -ii
+
+exclude_dirs:
+  - venv
+  - .venv
+  - migrations
+  - __pycache__
+  - node_modules
+  - instance
+
+skips:
+  # assert_used — acceptable in tests and defensive checks
+  - B101
+  # Binding 0.0.0.0 is intentional for Docker / LAN dev servers (mitigate with firewall / reverse proxy)
+  - B104

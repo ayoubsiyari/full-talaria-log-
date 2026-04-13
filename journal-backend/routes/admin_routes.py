@@ -1486,9 +1486,12 @@ def send_bulk_email():
 # ══════════════════════════════════════════════════════════════════════════════
 
 def run_shell_command(cmd, timeout=5):
-    """Run a shell command and return output."""
+    """Run a shell pipeline and return stdout (admin-only monitoring; commands are static or from a fixed allowlist)."""
     try:
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+        # shell=True required for pipes/redirects in monitoring commands; not user-controlled input.
+        result = subprocess.run(
+            cmd, shell=True, capture_output=True, text=True, timeout=timeout  # nosec B602
+        )
         return result.stdout.strip()
     except Exception as e:
         return f"Error: {str(e)}"

@@ -5,10 +5,54 @@ from datetime import timedelta
 # Load environment variables from .env file
 load_dotenv()
 
+_WEAK_SECRET_MARKERS = frozenset({
+    'your-super-secret-key-change-this-in-production',
+    'your-jwt-secret-key-change-this-in-production',
+    'dev-secret-change-me',
+    'jwt-secret-change-me',
+})
+
+
+def _is_weak_secret(value: str) -> bool:
+    if not value:
+        return True
+    if value in _WEAK_SECRET_MARKERS:
+        return True
+    return len(value) < 32
+
+
+def assert_production_security(app):
+    """Fail fast in production if secrets or database are left in a dangerous default state."""
+    if os.environ.get('DISABLE_PROD_SECURITY_CHECK', '').strip().lower() in ('1', 'true', 'yes', 'on'):
+        print('⚠️  DISABLE_PROD_SECURITY_CHECK is set — production security assertions skipped')
+        return
+    if app.config.get('ENV') != 'production':
+        return
+    sk = app.config.get('SECRET_KEY') or ''
+    jk = app.config.get('JWT_SECRET_KEY') or ''
+    if _is_weak_secret(sk):
+        raise RuntimeError(
+            'Production requires SECRET_KEY: set a random value of at least 32 characters '
+            '(not a placeholder). Or set DISABLE_PROD_SECURITY_CHECK=1 only for emergencies.'
+        )
+    if _is_weak_secret(jk):
+        raise RuntimeError(
+            'Production requires JWT_SECRET_KEY: set a random value of at least 32 characters '
+            '(not a placeholder). Or set DISABLE_PROD_SECURITY_CHECK=1 only for emergencies.'
+        )
+    uri = app.config.get('SQLALCHEMY_DATABASE_URI') or ''
+    if not uri.startswith(('postgresql://', 'postgresql+psycopg2://', 'postgres://')):
+        raise RuntimeError(
+            'Production requires PostgreSQL (DATABASE_URL must start with postgresql:// or postgres://). '
+            'Or set DISABLE_PROD_SECURITY_CHECK=1 only for emergencies.'
+        )
+
+
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', 'your-super-secret-key-change-this-in-production')
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'your-jwt-secret-key-change-this-in-production')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3001')
     
     # Default to SQLite, will be overridden in production
     instance_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'instance'))
@@ -46,4 +90,6 @@ def init_prod_config(app):
     # File upload settings
     app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_CONTENT_LENGTH', 16 * 1024 * 1024))  # 16MB max file size
     app.config['UPLOAD_FOLDER'] = os.environ.get('UPLOAD_FOLDER', 'uploads')
+
+    assert_production_security(app)
 
