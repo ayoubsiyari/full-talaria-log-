@@ -1,10 +1,94 @@
-import React, { useEffect, useState } from 'react';
-import { ExternalLink, ImageIcon } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ExternalLink, ImageIcon, Upload } from 'lucide-react';
 
-/** Returns normalized https? URL or null. */
+/** Max pasted data-URL length (chars) to keep JSON payloads and UI responsive. */
+const MAX_DATA_URL_CHARS = 12 * 1024 * 1024;
+
+/** Reject raw uploads above this (before compression). */
+const MAX_UPLOAD_FILE_BYTES = 20 * 1024 * 1024;
+
+/** Long edge cap after resize (screenshots stay readable, size drops a lot). */
+const MAX_IMAGE_EDGE_PX = 1920;
+
+function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not read this image.'));
+    };
+    img.src = url;
+  });
+}
+
+/**
+ * Downscale + JPEG-encode so the result fits under MAX_DATA_URL_CHARS.
+ * Always outputs data:image/jpeg;base64,... (smaller than typical PNG for UI screenshots).
+ */
+export async function compressImageFileToDataUrl(file) {
+  if (file.size > MAX_UPLOAD_FILE_BYTES) {
+    throw new Error(`File too large (max ${Math.round(MAX_UPLOAD_FILE_BYTES / 1024 / 1024)}MB before compression).`);
+  }
+  if (!/^image\/(jpeg|png)$/i.test(file.type)) {
+    throw new Error('Use a JPG or PNG file.');
+  }
+
+  const img = await loadImageFromFile(file);
+  let w = img.naturalWidth;
+  let h = img.naturalHeight;
+  if (!w || !h) throw new Error('Invalid image dimensions.');
+
+  const maxDim = MAX_IMAGE_EDGE_PX;
+  if (w > maxDim || h > maxDim) {
+    const s = maxDim / Math.max(w, h);
+    w = Math.round(w * s);
+    h = Math.round(h * s);
+  }
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Could not process image in this browser.');
+
+  const qualities = [0.85, 0.72, 0.58, 0.45, 0.32, 0.22];
+
+  function tryEncode(cw, ch) {
+    canvas.width = cw;
+    canvas.height = ch;
+    ctx.drawImage(img, 0, 0, cw, ch);
+    for (let i = 0; i < qualities.length; i++) {
+      const dataUrl = canvas.toDataURL('image/jpeg', qualities[i]);
+      if (dataUrl.length <= MAX_DATA_URL_CHARS) return dataUrl;
+    }
+    return null;
+  }
+
+  let cw = w;
+  let ch = h;
+  for (let attempt = 0; attempt < 14; attempt++) {
+    const out = tryEncode(cw, ch);
+    if (out) return out;
+    cw = Math.max(320, Math.round(cw * 0.82));
+    ch = Math.max(240, Math.round(ch * 0.82));
+  }
+  throw new Error('Image is still too large after compression. Try a smaller or simpler image.');
+}
+
+/**
+ * Returns a usable reference string: https? URL, or data:image/...;base64,... (e.g. chart export).
+ */
 export function normalizeReferenceUrl(raw) {
   const t = typeof raw === 'string' ? raw.trim() : '';
   if (!t) return null;
+  // Inline PNG/JPEG/WebP/SVG etc. from chart "copy image" / export
+  if (/^data:image\/[^;]+;base64,/i.test(t)) {
+    if (t.length > MAX_DATA_URL_CHARS) return null;
+    return t;
+  }
   try {
     const href = /^https?:\/\//i.test(t) ? t : `https://${t}`;
     const u = new URL(href);
@@ -22,10 +106,29 @@ export function normalizeReferenceUrl(raw) {
 export default function ConditionReferenceUrlBlock({ value, onChange, compact, readOnly }) {
   const safe = normalizeReferenceUrl(value);
   const [imgFailed, setImgFailed] = useState(false);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     setImgFailed(false);
   }, [value]);
+
+  async function handleFileChange(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadError(null);
+    setUploadBusy(true);
+    try {
+      const dataUrl = await compressImageFileToDataUrl(file);
+      onChange(dataUrl);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Upload failed.');
+    } finally {
+      setUploadBusy(false);
+    }
+  }
 
   if (readOnly) {
     if (!String(value || '').trim()) return null;
@@ -77,14 +180,39 @@ export default function ConditionReferenceUrlBlock({ value, onChange, compact, r
         <span className="text-[10px] text-[var(--sl-text-faint)]">optional</span>
       </div>
       <input
-        type="url"
-        inputMode="url"
-        autoComplete="url"
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="https://… (image URL or any page)"
-        className="w-full rounded-md border border-[var(--sl-border)] bg-[var(--sl-card)] px-2 py-1.5 text-[11px] text-[var(--sl-text)] placeholder:text-[var(--sl-text-faint)] focus:outline-none focus:ring-1 focus:ring-[var(--sl-accent)]"
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+        className="hidden"
+        disabled={uploadBusy}
+        onChange={handleFileChange}
       />
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+        <input
+          type="text"
+          inputMode="url"
+          autoComplete="off"
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="https://… or paste data:image/… from chart"
+          className="min-w-0 flex-1 rounded-md border border-[var(--sl-border)] bg-[var(--sl-card)] px-2 py-1.5 text-[11px] text-[var(--sl-text)] placeholder:text-[var(--sl-text-faint)] focus:outline-none focus:ring-1 focus:ring-[var(--sl-accent)]"
+        />
+        <button
+          type="button"
+          disabled={uploadBusy}
+          onClick={() => fileInputRef.current?.click()}
+          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-[var(--sl-border)] bg-[var(--sl-input)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--sl-text)] hover:bg-[var(--sl-card)] disabled:opacity-50"
+        >
+          <Upload size={14} aria-hidden />
+          {uploadBusy ? 'Compressing…' : 'Upload JPG/PNG'}
+        </button>
+      </div>
+      {uploadError ? (
+        <p className="mt-1 text-[10px] text-[var(--sl-orange)]">{uploadError}</p>
+      ) : null}
+      <p className="mt-1 text-[10px] text-[var(--sl-text-faint)]">
+        Uploads are resized and saved as compressed JPEG (max ~12MB stored).
+      </p>
       {safe ? (
         <div className="mt-2 overflow-hidden rounded-md border border-[var(--sl-border)] bg-[var(--sl-bg)]">
           {!imgFailed ? (
@@ -123,7 +251,10 @@ export default function ConditionReferenceUrlBlock({ value, onChange, compact, r
           ) : null}
         </div>
       ) : value && String(value).trim() ? (
-        <p className="mt-1 text-[10px] text-[var(--sl-orange)]">Enter a valid http(s) URL.</p>
+        <p className="mt-1 text-[10px] text-[var(--sl-orange)]">
+          Enter a valid https URL, or a data:image/…;base64,… paste from the chart (max ~12MB), or use
+          Upload.
+        </p>
       ) : null}
     </div>
   );
