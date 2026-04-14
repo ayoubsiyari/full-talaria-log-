@@ -32,6 +32,19 @@ const INDICATOR_DEFINITIONS = {
             { id: 'fillColor', label: 'Fill Color (RGBA)', type: 'text', default: 'rgba(41,98,255,0.1)' }
         ]
     },
+    envelope: {
+        name: 'SMA Envelope',
+        type: 'overlay',
+        params: [
+            { id: 'period', label: 'SMA length', type: 'number', default: 20, min: 1 },
+            { id: 'percent', label: 'Band %', type: 'number', default: 2.5, min: 0.1, step: 0.1 },
+            { id: 'upperColor', label: 'Upper band', type: 'color', default: '#2962ff' },
+            { id: 'middleColor', label: 'Middle (SMA)', type: 'color', default: '#787b86' },
+            { id: 'lowerColor', label: 'Lower band', type: 'color', default: '#2962ff' },
+            { id: 'fillColor', label: 'Fill (RGBA)', type: 'text', default: 'rgba(41,98,255,0.08)' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4 }
+        ]
+    },
     rsi: {
         name: 'Relative Strength Index',
         type: 'separate',
@@ -435,6 +448,57 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 2 },
             { id: 'color', label: 'Line color', type: 'color', default: '#78909c' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    stochrsi: {
+        name: 'Stochastic RSI',
+        type: 'separate',
+        params: [
+            { id: 'rsiPeriod', label: 'RSI length', type: 'number', default: 14, min: 2 },
+            { id: 'stochLen', label: 'Stoch lookback', type: 'number', default: 14, min: 2 },
+            { id: 'smoothK', label: '%K smoothing', type: 'number', default: 3, min: 1 },
+            { id: 'smoothD', label: '%D smoothing', type: 'number', default: 3, min: 1 },
+            { id: 'kColor', label: '%K color', type: 'color', default: '#2962ff' },
+            { id: 'dColor', label: '%D color', type: 'color', default: '#f23645' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    massindex: {
+        name: 'Mass Index',
+        type: 'separate',
+        params: [
+            { id: 'emaPeriod', label: 'EMA length', type: 'number', default: 9, min: 2 },
+            { id: 'sumPeriod', label: 'Sum length', type: 'number', default: 25, min: 2 },
+            { id: 'color', label: 'Line color', type: 'color', default: '#00bcd4' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    coppock: {
+        name: 'Coppock Curve',
+        type: 'separate',
+        params: [
+            { id: 'wmaPeriod', label: 'WMA length', type: 'number', default: 10, min: 2 },
+            { id: 'color', label: 'Line color', type: 'color', default: '#8e24aa' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    rvi: {
+        name: 'Relative Vigor Index',
+        type: 'separate',
+        params: [
+            { id: 'period', label: 'Smoothing length', type: 'number', default: 10, min: 2 },
+            { id: 'color', label: 'Line color', type: 'color', default: '#ffa726' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    elderray: {
+        name: 'Elder Ray (Bull / Bear power)',
+        type: 'separate',
+        params: [
+            { id: 'period', label: 'EMA length', type: 'number', default: 13, min: 2 },
+            { id: 'bullColor', label: 'Bull power', type: 'color', default: '#26a69a' },
+            { id: 'bearColor', label: 'Bear power', type: 'color', default: '#ef5350' },
             { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
         ]
     },
@@ -1151,9 +1215,10 @@ function createIndicatorSelectionMenu(chartInstance) {
             name: 'Technicals',
             icon: '',
             indicators: [
-                'sma', 'ema', 'wma', 'dema', 'tema', 'hma', 'bb', 'vwap', 'donchian', 'keltner', 'psar', 'supertrend', 'stddev',
+                'sma', 'ema', 'wma', 'dema', 'tema', 'hma', 'bb', 'envelope', 'vwap', 'donchian', 'keltner', 'psar', 'supertrend', 'stddev',
                 'roc', 'mom',
-                'rsi', 'macd', 'ppo', 'stoch', 'atr', 'cci', 'adx', 'willr', 'mfi', 'aroon', 'cmf', 'trix', 'ao', 'uo', 'vortex', 'dpo',
+                'rsi', 'macd', 'ppo', 'stoch', 'stochrsi', 'atr', 'cci', 'adx', 'willr', 'mfi', 'aroon', 'cmf', 'trix', 'ao', 'uo', 'vortex', 'dpo',
+                'massindex', 'coppock', 'rvi', 'elderray',
                 'obv', 'adr', 'volume'
             ]
         },

@@ -114,6 +114,25 @@
         }
         return out;
     }
+
+    /** Weighted MA on a nullable numeric series (null until full window). */
+    function rollingWmaNullable(arr, period) {
+        const p = Math.max(2, period | 0);
+        const denom = (p * (p + 1)) / 2;
+        const out = arr.map(function() { return null; });
+        for (let i = 0; i < arr.length; i++) {
+            if (i < p - 1) continue;
+            let sum = 0;
+            let ok = true;
+            for (let j = 0; j < p; j++) {
+                const v = arr[i - j];
+                if (v === null || v === undefined || isNaN(v)) { ok = false; break; }
+                sum += v * (p - j);
+            }
+            if (ok) out[i] = sum / denom;
+        }
+        return out;
+    }
     
     // Bollinger Bands
     function calculateBollingerBands(data, period, stdDev) {
@@ -1779,6 +1798,130 @@
         return out;
     }
 
+    /** Stochastic RSI — %K / %D in 0–100 panel (same shape as Stochastic). */
+    function calculateStochRSI(data, rsiPeriod, stochLen, smoothK, smoothD) {
+        const rp = Math.max(2, rsiPeriod | 0);
+        const sl = Math.max(2, stochLen | 0);
+        const sk = Math.max(1, smoothK | 0);
+        const sd = Math.max(1, smoothD | 0);
+        const rsi = calculateRSI(data, rp);
+        const raw = data.map(function() { return null; });
+        for (let i = 0; i < data.length; i++) {
+            let lo = Infinity;
+            let hi = -Infinity;
+            let ok = true;
+            for (let j = 0; j < sl; j++) {
+                const idx = i - j;
+                if (idx < 0) { ok = false; break; }
+                const v = rsi[idx];
+                if (v === null || v === undefined || isNaN(v)) { ok = false; break; }
+                lo = Math.min(lo, v);
+                hi = Math.max(hi, v);
+            }
+            if (!ok) continue;
+            const rv = rsi[i];
+            if (rv === null || rv === undefined || isNaN(rv)) continue;
+            raw[i] = hi === lo ? 50 : ((rv - lo) / (hi - lo)) * 100;
+        }
+        const k = rollingSmaNullable(raw, sk);
+        const d = rollingSmaNullable(k, sd);
+        return { k: k, d: d };
+    }
+
+    /** Mass Index — sum of EMA(H−L ratio) over sumPeriod (reversal squeeze indicator). */
+    function calculateMassIndex(data, emaPeriod, sumPeriod) {
+        const ep = Math.max(2, emaPeriod | 0);
+        const sp = Math.max(2, sumPeriod | 0);
+        const rangeSeries = data.map(function(d) {
+            const r = d.h - d.l;
+            return { h: r, l: r, c: r, o: r, v: d.v, t: d.t };
+        });
+        const ema1 = calculateEMA(rangeSeries, ep, 'c');
+        const doubleInput = data.map(function(d, i) {
+            const v = ema1[i];
+            const x = v != null && !isNaN(v) ? v : 0;
+            return { h: x, l: x, c: x, o: x, v: d.v, t: d.t };
+        });
+        const ema2 = calculateEMA(doubleInput, ep, 'c');
+        const ratio = data.map(function(_, i) {
+            if (ema1[i] == null || ema2[i] == null || ema2[i] === 0) return null;
+            return ema1[i] / ema2[i];
+        });
+        const out = data.map(function() { return null; });
+        for (let i = 0; i < data.length; i++) {
+            if (i < sp - 1) continue;
+            let s = 0;
+            let ok = true;
+            for (let j = 0; j < sp; j++) {
+                const r = ratio[i - j];
+                if (r === null || r === undefined || isNaN(r)) { ok = false; break; }
+                s += r;
+            }
+            if (ok) out[i] = s;
+        }
+        return out;
+    }
+
+    /** Coppock curve — WMA of ROC(11)+ROC(14). */
+    function calculateCoppock(data, wmaPeriod) {
+        const wp = Math.max(2, wmaPeriod | 0);
+        const roc11 = calculateROC(data, 11);
+        const roc14 = calculateROC(data, 14);
+        const sum = data.map(function(_, i) {
+            if (roc11[i] == null || roc14[i] == null) return null;
+            return roc11[i] + roc14[i];
+        });
+        return rollingWmaNullable(sum, wp);
+    }
+
+    /** Relative Vigor Index — smoothed ratio of weighted (C−O) vs (H−L). */
+    function calculateRVI(data, period) {
+        const p = Math.max(2, period | 0);
+        const ratio = data.map(function() { return null; });
+        for (let i = 3; i < data.length; i++) {
+            const c = data[i].c, o = data[i].o, h = data[i].h, l = data[i].l;
+            const c1 = data[i - 1].c, o1 = data[i - 1].o, h1 = data[i - 1].h, l1 = data[i - 1].l;
+            const c2 = data[i - 2].c, o2 = data[i - 2].o, h2 = data[i - 2].h, l2 = data[i - 2].l;
+            const c3 = data[i - 3].c, o3 = data[i - 3].o, h3 = data[i - 3].h, l3 = data[i - 3].l;
+            const num = ((c - o) + 2 * (c1 - o1) + 2 * (c2 - o2) + (c3 - o3)) / 6;
+            const den = ((h - l) + 2 * (h1 - l1) + 2 * (h2 - l2) + (h3 - l3)) / 6;
+            if (!den) ratio[i] = null;
+            else ratio[i] = num / den;
+        }
+        return rollingSmaNullable(ratio, p);
+    }
+
+    /** Elder Ray — bull power (H−EMA), bear power (L−EMA). */
+    function calculateElderRay(data, period) {
+        const p = Math.max(2, period | 0);
+        const ema = calculateEMA(data, p, 'c');
+        const bull = data.map(function(d, i) {
+            return ema[i] == null ? null : d.h - ema[i];
+        });
+        const bear = data.map(function(d, i) {
+            return ema[i] == null ? null : d.l - ema[i];
+        });
+        return { bull: bull, bear: bear };
+    }
+
+    /** SMA envelope — % distance from SMA(close). */
+    function calculateEnvelope(data, period, percent) {
+        const mid = calculateSMA(data, Math.max(1, period), 'c');
+        const pct = Math.max(0.01, percent) / 100;
+        const upper = [];
+        const lower = [];
+        for (let i = 0; i < data.length; i++) {
+            if (mid[i] == null) {
+                upper.push(null);
+                lower.push(null);
+            } else {
+                upper.push(mid[i] * (1 + pct));
+                lower.push(mid[i] * (1 - pct));
+            }
+        }
+        return { upper: upper, middle: mid, lower: lower };
+    }
+
     // ===== Chart Integration =====
     
     Chart.prototype.initIndicators = function() {
@@ -1847,6 +1990,20 @@
                 indicator.style.lineWidth = 1;
                 indicator.name = 'BB(' + indicator.params.period + ',' + indicator.params.stdDev + ')';
                 this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params.period, indicator.params.stdDev);
+                break;
+
+            case 'envelope':
+            case 'smaenvelope':
+                indicator.params.period = params.period || 20;
+                indicator.params.percent = params.percent != null ? params.percent : 2.5;
+                indicator.style.upperColor = params.upperColor || '#2962ff';
+                indicator.style.middleColor = params.middleColor || '#787b86';
+                indicator.style.lowerColor = params.lowerColor || '#2962ff';
+                indicator.style.fillColor = params.fillColor || 'rgba(41, 98, 255, 0.05)';
+                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 1;
+                indicator.overlay = true;
+                indicator.name = 'Envelope(' + indicator.params.period + ',' + indicator.params.percent + '%)';
+                this.indicators.data[indicator.id] = calculateEnvelope(this.data, indicator.params.period, indicator.params.percent);
                 break;
                 
             case 'vwap':
@@ -2310,6 +2467,67 @@
                 this.indicators.data[indicator.id] = calculateDPO(this.data, indicator.params.period);
                 break;
 
+            case 'stochrsi':
+                indicator.params.rsiPeriod = params.rsiPeriod != null ? params.rsiPeriod : 14;
+                indicator.params.stochLen = params.stochLen != null ? params.stochLen : 14;
+                indicator.params.smoothK = params.smoothK != null ? params.smoothK : 3;
+                indicator.params.smoothD = params.smoothD != null ? params.smoothD : 3;
+                indicator.style.kColor = params.kColor || '#2962ff';
+                indicator.style.dColor = params.dColor || '#f23645';
+                indicator.style.lineWidth = params.lineWidth || 2;
+                indicator.overlay = false;
+                indicator.name = 'Stoch RSI(' + indicator.params.rsiPeriod + ',' + indicator.params.stochLen + ')';
+                this.indicators.data[indicator.id] = calculateStochRSI(
+                    this.data,
+                    indicator.params.rsiPeriod,
+                    indicator.params.stochLen,
+                    indicator.params.smoothK,
+                    indicator.params.smoothD
+                );
+                break;
+
+            case 'massindex':
+                indicator.params.emaPeriod = params.emaPeriod != null ? params.emaPeriod : 9;
+                indicator.params.sumPeriod = params.sumPeriod != null ? params.sumPeriod : 25;
+                indicator.style.color = params.color || '#00bcd4';
+                indicator.style.lineWidth = params.lineWidth || 2;
+                indicator.overlay = false;
+                indicator.name = 'Mass Index(' + indicator.params.emaPeriod + ',' + indicator.params.sumPeriod + ')';
+                this.indicators.data[indicator.id] = calculateMassIndex(
+                    this.data,
+                    indicator.params.emaPeriod,
+                    indicator.params.sumPeriod
+                );
+                break;
+
+            case 'coppock':
+                indicator.params.wmaPeriod = params.wmaPeriod != null ? params.wmaPeriod : 10;
+                indicator.style.color = params.color || '#8e24aa';
+                indicator.style.lineWidth = params.lineWidth || 2;
+                indicator.overlay = false;
+                indicator.name = 'Coppock(' + indicator.params.wmaPeriod + ')';
+                this.indicators.data[indicator.id] = calculateCoppock(this.data, indicator.params.wmaPeriod);
+                break;
+
+            case 'rvi':
+                indicator.params.period = params.period || 10;
+                indicator.style.color = params.color || '#ffa726';
+                indicator.style.lineWidth = params.lineWidth || 2;
+                indicator.overlay = false;
+                indicator.name = 'RVI(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateRVI(this.data, indicator.params.period);
+                break;
+
+            case 'elderray':
+                indicator.params.period = params.period || 13;
+                indicator.style.bullColor = params.bullColor || '#26a69a';
+                indicator.style.bearColor = params.bearColor || '#ef5350';
+                indicator.style.lineWidth = params.lineWidth || 2;
+                indicator.overlay = false;
+                indicator.name = 'Elder Ray(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateElderRay(this.data, indicator.params.period);
+                break;
+
             case 'ictpd':
                 indicator.style.upperColor = params.upperColor || '#2962ff';
                 indicator.style.middleColor = params.middleColor || '#787b86';
@@ -2637,10 +2855,18 @@
         if (newParams.bearColor !== undefined) indicator.style.bearColor = newParams.bearColor;
         if (newParams.plusColor !== undefined) indicator.style.plusColor = newParams.plusColor;
         if (newParams.minusColor !== undefined) indicator.style.minusColor = newParams.minusColor;
+        if (newParams.bullColor !== undefined) indicator.style.bullColor = newParams.bullColor;
+        if (newParams.bearColor !== undefined) indicator.style.bearColor = newParams.bearColor;
         if (newParams.minutes !== undefined) indicator.params.minutes = newParams.minutes;
         if (newParams.period1 !== undefined) indicator.params.period1 = newParams.period1;
         if (newParams.period2 !== undefined) indicator.params.period2 = newParams.period2;
         if (newParams.period3 !== undefined) indicator.params.period3 = newParams.period3;
+        if (newParams.rsiPeriod !== undefined) indicator.params.rsiPeriod = newParams.rsiPeriod;
+        if (newParams.stochLen !== undefined) indicator.params.stochLen = newParams.stochLen;
+        if (newParams.percent !== undefined) indicator.params.percent = newParams.percent;
+        if (newParams.emaPeriod !== undefined) indicator.params.emaPeriod = newParams.emaPeriod;
+        if (newParams.sumPeriod !== undefined) indicator.params.sumPeriod = newParams.sumPeriod;
+        if (newParams.wmaPeriod !== undefined) indicator.params.wmaPeriod = newParams.wmaPeriod;
         if (newParams.rangeStart !== undefined) indicator.params.rangeStart = newParams.rangeStart;
         if (newParams.rangeEnd !== undefined) indicator.params.rangeEnd = newParams.rangeEnd;
         if (newParams.lookback !== undefined) indicator.params.lookback = newParams.lookback;
@@ -2706,6 +2932,11 @@
             case 'bollinger':
                 indicator.name = 'BB(' + indicator.params.period + ',' + indicator.params.stdDev + ')';
                 this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params.period, indicator.params.stdDev);
+                break;
+            case 'envelope':
+            case 'smaenvelope':
+                indicator.name = 'Envelope(' + indicator.params.period + ',' + indicator.params.percent + '%)';
+                this.indicators.data[indicator.id] = calculateEnvelope(this.data, indicator.params.period, indicator.params.percent);
                 break;
             case 'vwap':
                 this.indicators.data[indicator.id] = calculateVWAP(this.data);
@@ -2980,6 +3211,36 @@
                 indicator.name = 'DPO(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateDPO(this.data, indicator.params.period);
                 break;
+            case 'stochrsi':
+                indicator.name = 'Stoch RSI(' + indicator.params.rsiPeriod + ',' + indicator.params.stochLen + ')';
+                this.indicators.data[indicator.id] = calculateStochRSI(
+                    this.data,
+                    indicator.params.rsiPeriod,
+                    indicator.params.stochLen,
+                    indicator.params.smoothK,
+                    indicator.params.smoothD
+                );
+                break;
+            case 'massindex':
+                indicator.name = 'Mass Index(' + indicator.params.emaPeriod + ',' + indicator.params.sumPeriod + ')';
+                this.indicators.data[indicator.id] = calculateMassIndex(
+                    this.data,
+                    indicator.params.emaPeriod,
+                    indicator.params.sumPeriod
+                );
+                break;
+            case 'coppock':
+                indicator.name = 'Coppock(' + indicator.params.wmaPeriod + ')';
+                this.indicators.data[indicator.id] = calculateCoppock(this.data, indicator.params.wmaPeriod);
+                break;
+            case 'rvi':
+                indicator.name = 'RVI(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateRVI(this.data, indicator.params.period);
+                break;
+            case 'elderray':
+                indicator.name = 'Elder Ray(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateElderRay(this.data, indicator.params.period);
+                break;
             case 'ictpd':
                 indicator.name = 'ICT Prev Day PD';
                 this.indicators.data[indicator.id] = calculateIctPrevDayPD(this.data);
@@ -3062,6 +3323,10 @@
                 case 'bb':
                 case 'bollinger':
                     this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params.period, indicator.params.stdDev);
+                    break;
+                case 'envelope':
+                case 'smaenvelope':
+                    this.indicators.data[indicator.id] = calculateEnvelope(this.data, indicator.params.period, indicator.params.percent);
                     break;
                 case 'vwap':
                     this.indicators.data[indicator.id] = calculateVWAP(this.data);
@@ -3229,6 +3494,35 @@
                     break;
                 case 'dpo':
                     this.indicators.data[indicator.id] = calculateDPO(this.data, indicator.params.period);
+                    break;
+                case 'envelope':
+                case 'smaenvelope':
+                    this.indicators.data[indicator.id] = calculateEnvelope(this.data, indicator.params.period, indicator.params.percent);
+                    break;
+                case 'stochrsi':
+                    this.indicators.data[indicator.id] = calculateStochRSI(
+                        this.data,
+                        indicator.params.rsiPeriod,
+                        indicator.params.stochLen,
+                        indicator.params.smoothK,
+                        indicator.params.smoothD
+                    );
+                    break;
+                case 'massindex':
+                    this.indicators.data[indicator.id] = calculateMassIndex(
+                        this.data,
+                        indicator.params.emaPeriod,
+                        indicator.params.sumPeriod
+                    );
+                    break;
+                case 'coppock':
+                    this.indicators.data[indicator.id] = calculateCoppock(this.data, indicator.params.wmaPeriod);
+                    break;
+                case 'rvi':
+                    this.indicators.data[indicator.id] = calculateRVI(this.data, indicator.params.period);
+                    break;
+                case 'elderray':
+                    this.indicators.data[indicator.id] = calculateElderRay(this.data, indicator.params.period);
                     break;
                 case 'ictpd':
                     this.indicators.data[indicator.id] = calculateIctPrevDayPD(this.data);
@@ -3538,6 +3832,8 @@
 
             // Draw based on type
             if (indicator.type === 'bb' || indicator.type === 'bollinger') {
+                this.drawBollingerBands(data, indicator.style, startIndex, endIndex);
+            } else if (indicator.type === 'envelope' || indicator.type === 'smaenvelope') {
                 this.drawBollingerBands(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'donchian' || indicator.type === 'keltner') {
                 this.drawBollingerBands(data, indicator.style, startIndex, endIndex);
@@ -4035,6 +4331,9 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         } else if (indicator.type === 'stoch' || indicator.type === 'stochastic') {
             this._renderStochPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
+        } else if (indicator.type === 'stochrsi') {
+            this._renderStochPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
         } else if (indicator.type === 'adx') {
             this._renderADXPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
@@ -4049,6 +4348,9 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             return;
         } else if (indicator.type === 'vortex') {
             this._renderVortexPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
+        } else if (indicator.type === 'elderray') {
+            this._renderElderRayPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
         } else if (indicator.type === 'uo') {
             this._renderUltimateOscillatorPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
@@ -4188,7 +4490,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
                 }
             });
             ctx.textAlign = 'left';
-        } else if (indicator.type === 'cmf' || indicator.type === 'trix') {
+        } else if (indicator.type === 'cmf' || indicator.type === 'trix' || indicator.type === 'rvi') {
             const zy = scaleY(0);
             if (zy !== null && zy > indTop && zy < indBottom) {
                 ctx.strokeStyle = 'rgba(255,255,255,0.18)';
@@ -5514,6 +5816,57 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }
         indicator._displayColor = indicator.style.plusColor || '#00e676';
         indicator._displayLabel = 'VI';
+    };
+
+    Chart.prototype._renderElderRayPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
+        if (!data || !data.bull || !data.bear) return;
+        const a = data.bull;
+        const b = data.bear;
+        let min = Infinity;
+        let max = -Infinity;
+        for (let i = visibleStart; i < visibleEnd; i++) {
+            if (a[i] != null && !isNaN(a[i])) {
+                min = Math.min(min, a[i]);
+                max = Math.max(max, a[i]);
+            }
+            if (b[i] != null && !isNaN(b[i])) {
+                min = Math.min(min, b[i]);
+                max = Math.max(max, b[i]);
+            }
+        }
+        if (min === Infinity) return;
+        const range = max - min || 1;
+        min -= range * 0.08;
+        max += range * 0.08;
+        if (min > 0) min = Math.min(min, 0);
+        if (max < 0) max = Math.max(max, 0);
+        indicator._panelBaseMin = min;
+        indicator._panelBaseMax = max;
+        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        min = dom.min;
+        max = dom.max;
+        const vSpan = Math.max(1e-12, max - min);
+        const scaleY = function(val) {
+            if (val === null || val === undefined) return null;
+            const y = panelBottom - 5 - ((val - min) / vSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
+        const zy = scaleY(0);
+        if (zy !== null && zy > panelTop && zy < panelBottom) {
+            ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(m.l, zy);
+            ctx.lineTo(this.w - m.r, zy);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+        this._drawPanelLine(ctx, m, a, indicator.style.bullColor || '#26a69a', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+        this._drawPanelLine(ctx, m, b, indicator.style.bearColor || '#ef5350', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+        indicator._displayColor = indicator.style.bullColor || '#26a69a';
+        indicator._displayLabel = 'Elder Ray';
     };
 
     Chart.prototype._renderUltimateOscillatorPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
