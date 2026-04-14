@@ -688,17 +688,30 @@
         // NY timezone offset (fallback when Intl is unavailable)
         const nyOffset = params.nyOffset !== undefined ? params.nyOffset : -5;
         
-        const getNyYmd = function(ms) {
+        /** Reuse formatters — creating Intl per bar was extremely slow on large histories. */
+        let fmtNyYmd = null;
+        let fmtNyHm = null;
+        try {
+            fmtNyYmd = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
+            fmtNyHm = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false });
+        } catch (e) {
+            fmtNyYmd = null;
+            fmtNyHm = null;
+        }
+        
+        const getNyYmdCached = function(ms) {
+            if (!fmtNyYmd) return null;
             try {
-                return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+                return fmtNyYmd.format(new Date(ms));
             } catch (e) {
                 return null;
             }
         };
         
-        const getNyDecimalHours = function(ms) {
+        const getNyDecimalHoursCached = function(ms) {
+            if (!fmtNyHm) return null;
             try {
-                const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(ms));
+                const parts = fmtNyHm.formatToParts(new Date(ms));
                 const hp = parts.find(function(p) { return p.type === 'hour'; });
                 const mp = parts.find(function(p) { return p.type === 'minute'; });
                 if (!hp || !mp) return null;
@@ -717,7 +730,7 @@
             let nyHours = utcHours + nyOffset;
             if (nyHours < 0) nyHours += 24;
             if (nyHours >= 24) nyHours -= 24;
-            const dec = getNyDecimalHours(date.getTime());
+            const dec = getNyDecimalHoursCached(date.getTime());
             const fallback = nyHours + (utcMinutes / 60);
             const decimal = (dec != null && Number.isFinite(dec)) ? dec : fallback;
             return { hours: nyHours, minutes: utcMinutes, decimal: decimal };
@@ -737,22 +750,22 @@
         const sessionOrder = ['cbdr', 'asia', 'london', 'nyam', 'londonClose'];
         const activeBoxes = {};
         let lastDate = null;
+        let lastNyYmd = null;
         
         for (let i = 0; i < data.length; i++) {
             const date = new Date(data[i].t);
             const nyTime = toNYTime(date);
+            const yCur = getNyYmdCached(data[i].t);
             
-            // NY calendar day change = true midnight in America/New_York (not "any bar after 11pm")
+            // NY calendar day change (one formatted date compare per bar; cached formatter)
             if (params.showNYMidnight !== false && i > 0 && lastDate) {
-                const yPrev = getNyYmd(lastDate.getTime());
-                const yCur = getNyYmd(data[i].t);
-                if (yPrev && yCur && yCur !== yPrev) {
+                if (yCur && lastNyYmd && yCur !== lastNyYmd) {
                     result.nyMidnight.push({
                         index: i,
                         price: data[i].o,
                         time: data[i].t
                     });
-                } else if (!yPrev || !yCur) {
+                } else if (!yCur || !lastNyYmd) {
                     const lastNYTime = toNYTime(lastDate);
                     if (lastNYTime.decimal > 22.5 && nyTime.decimal < 1.5) {
                         result.nyMidnight.push({
@@ -764,21 +777,16 @@
                 }
             }
             
-            // NY session "close" (default 17:00 NY) — first bar of the fix window, same NY day
-            if (params.showNYClose !== false && i > 0) {
+            if (params.showNYClose !== false && i > 0 && lastNyYmd && yCur && lastNyYmd === yCur) {
                 const closeDec = parseTime(params.nyCloseTime != null ? params.nyCloseTime : '17:00');
-                const dPrev = getNyYmd(data[i - 1].t);
-                const dCur = getNyYmd(data[i].t);
-                if (dPrev && dCur && dPrev === dCur) {
-                    const pDec = getNyDecimalHours(data[i - 1].t);
-                    const cDec = getNyDecimalHours(data[i].t);
-                    if (pDec != null && cDec != null && pDec < closeDec && cDec >= closeDec) {
-                        result.nyClose.push({
-                            index: i,
-                            price: data[i].o,
-                            time: data[i].t
-                        });
-                    }
+                const pDec = getNyDecimalHoursCached(data[i - 1].t);
+                const cDec = getNyDecimalHoursCached(data[i].t);
+                if (pDec != null && cDec != null && pDec < closeDec && cDec >= closeDec) {
+                    result.nyClose.push({
+                        index: i,
+                        price: data[i].o,
+                        time: data[i].t
+                    });
                 }
             }
             
@@ -823,6 +831,7 @@
             });
             
             lastDate = date;
+            lastNyYmd = yCur;
         }
         
         // Close any remaining active boxes
@@ -5134,6 +5143,26 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
     };
     
     const self = this;
+    const n = self.data ? self.data.length : 0;
+    const visEnd = (endIndex != null && endIndex !== undefined) ? Math.min(endIndex, n) : n;
+    const visStart = Math.max(0, startIndex != null && startIndex !== undefined ? startIndex : 0);
+    const visBuf = 96;
+    const dataLastIdx = n ? n - 1 : 0;
+    const midSorted = (data.nyMidnight || []).slice().sort(function(a, b) { return a.index - b.index; });
+    const horizEndIndex = function(fromIdx) {
+        for (let k = 0; k < midSorted.length; k++) {
+            if (midSorted[k].index > fromIdx) {
+                return Math.max(fromIdx, midSorted[k].index - 1);
+            }
+        }
+        return dataLastIdx;
+    };
+    const prec = self._symbolPrecision != null ? self._symbolPrecision : (self.pricePrecision != null ? self.pricePrecision : 5);
+    const segInView = function(i0, i1) {
+        const lo = Math.min(i0, i1);
+        const hi = Math.max(i0, i1);
+        return hi >= visStart - visBuf && lo <= visEnd + visBuf;
+    };
     
     if (hasBoxes) {
     const boxes = data.boxes.slice().sort(function(a, b) {
@@ -5145,6 +5174,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
     ctx.imageSmoothingEnabled = true;
     
     boxes.forEach(function(box) {
+        if (box.endIndex < visStart - visBuf || box.startIndex > visEnd + visBuf) return;
         const x1 = self.dataIndexToPixel(box.startIndex);
         const x2 = self.dataIndexToPixel(box.endIndex);
         const yTop = self.yScale(box.high);
@@ -5243,26 +5273,15 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
     ctx.restore();
     }
     
-    const dataLastIdx = (self.data && self.data.length) ? self.data.length - 1 : 0;
-    const midSorted = (data.nyMidnight || []).slice().sort(function(a, b) { return a.index - b.index; });
-    const horizEndIndex = function(fromIdx) {
-        for (let k = 0; k < midSorted.length; k++) {
-            if (midSorted[k].index > fromIdx) {
-                return Math.max(fromIdx, midSorted[k].index - 1);
-            }
-        }
-        return dataLastIdx;
-    };
-    const prec = self._symbolPrecision != null ? self._symbolPrecision : (self.pricePrecision != null ? self.pricePrecision : 5);
-    
     // NY Close (e.g. 17:00 fix) — draw under midnight so verticals stay readable
     if (data.showNYClose && data.nyClose && data.nyClose.length > 0) {
         const closeRaw = data.nyCloseColor || '#c9a227';
         const closeStroke = colorToRgba(closeRaw, 0.36);
         data.nyClose.forEach(function(nc) {
+            const endIx = horizEndIndex(nc.index);
+            if (!segInView(nc.index, endIx)) return;
             const x = self.dataIndexToPixel(nc.index);
             const y = self.yScale(nc.price);
-            const endIx = horizEndIndex(nc.index);
             const x2 = self.dataIndexToPixel(endIx);
             const xDraw1 = Math.max(x, m.l);
             const xDraw2 = Math.min(x2, self.w - m.r);
@@ -5312,9 +5331,10 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         const nyStroke = colorToRgba(nyRaw, 0.38);
         
         data.nyMidnight.forEach(function(midnight) {
+            const endIx = horizEndIndex(midnight.index);
+            if (!segInView(midnight.index, endIx)) return;
             const x = self.dataIndexToPixel(midnight.index);
             const y = self.yScale(midnight.price);
-            const endIx = horizEndIndex(midnight.index);
             const x2 = self.dataIndexToPixel(endIx);
             const xDraw1 = Math.max(x, m.l);
             const xDraw2 = Math.min(x2, self.w - m.r);
