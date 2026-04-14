@@ -27,6 +27,37 @@ import urllib.error
 import urllib.request
 
 import math
+
+# Chart directory — load FINNHUB_API_KEY from .env here when the env var is missing or blank (e.g. misconfigured Compose).
+_CHART_DIR = Path(__file__).resolve().parent
+
+
+def _load_finnhub_from_dotenv_files() -> None:
+    if (os.getenv("FINNHUB_API_KEY") or "").strip():
+        return
+    for name in (".env", ".env.local"):
+        path = _CHART_DIR / name
+        if not path.is_file():
+            continue
+        try:
+            raw = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for line in raw.splitlines():
+            trimmed = line.strip()
+            if not trimmed or trimmed.startswith("#"):
+                continue
+            m = re.match(r"^FINNHUB_API_KEY\s*=\s*(.*)$", trimmed)
+            if not m:
+                continue
+            val = m.group(1).strip().strip('"').strip("'")
+            if val:
+                os.environ["FINNHUB_API_KEY"] = val
+            return
+
+
+_load_finnhub_from_dotenv_files()
+
 from analytics_engine import (
     normalize_trades,
     filter_by_instrument,
@@ -2556,7 +2587,10 @@ def api_finnhub_economic_calendar(
     if not key:
         raise HTTPException(
             status_code=503,
-            detail="FINNHUB_API_KEY is not set on the chart API server",
+            detail=(
+                "FINNHUB_API_KEY is not set. Add it to chart/.env next to api_server.py "
+                "(FINNHUB_API_KEY=...) or pass it into the trading-chart container, then restart the API."
+            ),
         )
     upstream = (
         "https://finnhub.io/api/v1/calendar/economic"
@@ -2575,7 +2609,10 @@ def api_finnhub_news(
     if not key:
         raise HTTPException(
             status_code=503,
-            detail="FINNHUB_API_KEY is not set on the chart API server",
+            detail=(
+                "FINNHUB_API_KEY is not set. Add it to chart/.env next to api_server.py "
+                "(FINNHUB_API_KEY=...) or pass it into the trading-chart container, then restart the API."
+            ),
         )
     q = f"category={quote(category, safe='')}&token={quote(key, safe='')}"
     if minId is not None and str(minId).strip() != "":

@@ -79,7 +79,10 @@ services:
       TILE_CDN_BASE_URL: ${TILE_CDN_BASE_URL:-}
       TILE_CDN_REDIRECT: ${TILE_CDN_REDIRECT:-false}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
-      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+    # Optional: inject FINNHUB (and other keys) from chart/.env — required:false so compose works if file is missing.
+    env_file:
+      - path: "./chart v 1.4/chart/.env"
+        required: false
     depends_on:
       db:
         condition: service_healthy
