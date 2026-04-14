@@ -32698,6 +32698,8 @@
 
     <style>
 
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
+
         /* Prop Firm Challenge Result Modals */
 
         .challenge-modal-overlay {
@@ -33030,6 +33032,141 @@
 
             background: rgba(255, 255, 255, 0.15);
 
+        }
+
+        /* Challenge passed only — clean product UI, no decorative SVG icons */
+        #challengePassedModal.challenge-modal-overlay {
+            background: rgba(2, 5, 8, 0.92);
+        }
+
+        #challengePassedModal .challenge-modal--passed {
+            font-family: 'DM Sans', system-ui, sans-serif;
+            background: linear-gradient(165deg, #0f1419 0%, #0a0e14 55%, #06090d 100%);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            border-radius: 18px;
+            padding: 0;
+            max-width: 420px;
+            width: 92%;
+            text-align: center;
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+        }
+
+        #challengePassedModal .challenge-passed-topbar {
+            height: 3px;
+            background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.5), rgba(52, 211, 153, 0.7), rgba(16, 185, 129, 0.5), transparent);
+            border-radius: 18px 18px 0 0;
+        }
+
+        #challengePassedModal .challenge-passed-hero {
+            padding: 1.75rem 1.5rem 0.5rem;
+        }
+
+        #challengePassedModal .challenge-passed-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 1rem;
+            border-radius: 50%;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.28);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            line-height: 1;
+        }
+
+        #challengePassedModal .challenge-passed-kicker {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.11em;
+            text-transform: uppercase;
+            color: #34d399;
+            margin-bottom: 0.35rem;
+        }
+
+        #challengePassedModal .challenge-modal--passed .challenge-modal-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #f8fafc;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.5rem;
+        }
+
+        #challengePassedModal .challenge-modal--passed .challenge-modal-subtitle {
+            font-size: 0.875rem;
+            color: #94a3b8;
+            margin-bottom: 0;
+            line-height: 1.55;
+        }
+
+        #challengePassedModal .challenge-modal--passed .challenge-modal-stats {
+            margin: 1.25rem 1.25rem 1.35rem;
+            padding: 0.25rem 1rem;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 12px;
+            text-align: left;
+        }
+
+        #challengePassedModal .challenge-modal--passed .challenge-modal-stat {
+            padding: 0.85rem 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        #challengePassedModal .challenge-modal--passed .challenge-modal-stat:last-child {
+            border-bottom: none;
+        }
+
+        #challengePassedModal .challenge-modal--passed .challenge-modal-stat-label {
+            font-size: 13px;
+            color: #64748b;
+            font-weight: 500;
+        }
+
+        #challengePassedModal .challenge-modal--passed .challenge-modal-stat-value {
+            font-family: 'JetBrains Mono', ui-monospace, monospace;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        #challengePassedModal .challenge-modal--passed .challenge-modal-buttons {
+            padding: 0 1.25rem 1.5rem;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: stretch;
+        }
+
+        #challengePassedModal .challenge-modal--passed .challenge-modal-btn {
+            cursor: pointer;
+            min-width: 0;
+            flex: 1 1 140px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 12px 16px;
+        }
+
+        #challengePassedModal .challenge-modal--passed .challenge-modal-btn-success {
+            background: linear-gradient(135deg, #059669, #047857);
+            color: #fff;
+            border: none;
+            box-shadow: 0 4px 20px rgba(16, 185, 129, 0.25);
+        }
+
+        #challengePassedModal .challenge-modal--passed .challenge-modal-btn-success:hover {
+            filter: brightness(1.06);
+            box-shadow: 0 6px 24px rgba(16, 185, 129, 0.35);
+        }
+
+        #challengePassedModal .challenge-modal--passed .challenge-modal-btn-secondary {
+            background: transparent;
+            color: #cbd5e1;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+        }
+
+        #challengePassedModal .challenge-modal--passed .challenge-modal-btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.22);
         }
 
     </style>
@@ -36195,25 +36332,31 @@
 
     <div id="challengePassedModal" class="challenge-modal-overlay">
 
-        <div class="challenge-modal">
+        <div class="challenge-modal challenge-modal--passed">
 
-            <div class="challenge-modal-icon success">🎉</div>
+            <div class="challenge-passed-topbar" aria-hidden="true"></div>
 
-            <div class="challenge-modal-title">Congratulations!</div>
+            <div class="challenge-passed-hero">
 
-            <div class="challenge-modal-subtitle">
+                <div class="challenge-passed-icon" aria-hidden="true">🎉</div>
 
-                You've successfully reached your profit target!
+                <p class="challenge-passed-kicker">Challenge passed</p>
+
+                <div class="challenge-modal-title">Congratulations!</div>
+
+                <div class="challenge-modal-subtitle">
+
+                    You've successfully reached your profit target!
+
+                </div>
 
             </div>
-
-            
 
             <div class="challenge-modal-stats">
 
                 <div class="challenge-modal-stat">
 
-                    <span class="challenge-modal-stat-label">Final Balance</span>
+                    <span class="challenge-modal-stat-label">Final balance</span>
 
                     <span class="challenge-modal-stat-value" id="challengePassedBalance">$11,000.00</span>
 
@@ -36221,7 +36364,7 @@
 
                 <div class="challenge-modal-stat">
 
-                    <span class="challenge-modal-stat-label">Total Profit</span>
+                    <span class="challenge-modal-stat-label">Total profit</span>
 
                     <span class="challenge-modal-stat-value positive" id="challengePassedProfit">+$1,000.00 (+10.00%)</span>
 
@@ -36229,7 +36372,7 @@
 
                 <div class="challenge-modal-stat">
 
-                    <span class="challenge-modal-stat-label">Target Required</span>
+                    <span class="challenge-modal-stat-label">Target required</span>
 
                     <span class="challenge-modal-stat-value positive" id="challengePassedTarget">10.00%</span>
 
@@ -36237,7 +36380,7 @@
 
                 <div class="challenge-modal-stat">
 
-                    <span class="challenge-modal-stat-label">Trading Days</span>
+                    <span class="challenge-modal-stat-label">Trading days</span>
 
                     <span class="challenge-modal-stat-value" id="challengePassedDays">5</span>
 
@@ -36245,19 +36388,17 @@
 
             </div>
 
-            
-
             <div class="challenge-modal-buttons">
 
-                <button class="challenge-modal-btn challenge-modal-btn-success" onclick="continueTrading()">
+                <button type="button" class="challenge-modal-btn challenge-modal-btn-success" onclick="continueTrading()">
 
-                    Continue Trading
+                    Continue trading
 
                 </button>
 
-                <button class="challenge-modal-btn challenge-modal-btn-secondary" onclick="exitToSessionDashboard()">
+                <button type="button" class="challenge-modal-btn challenge-modal-btn-secondary" onclick="exitToSessionDashboard()">
 
-                    Exit to Dashboard
+                    Exit to dashboard
 
                 </button>
 
