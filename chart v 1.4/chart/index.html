@@ -8841,68 +8841,12 @@
 
 
 
-        /* Tooltip for indicators button only */
+        /* Indicators: no ::after tooltip (avoids layout jitter; native title/aria-label only) */
 
-        #indicatorsBtn {
-
-            position: relative;
-
-        }
-
-
-
-        #indicatorsBtn::after {
-
-            content: attr(data-tooltip);
-
-            position: absolute;
-
-            top: auto;
-
-            bottom: calc(100% + 6px);
-
-            left: 50%;
-
-            transform: translateX(-50%);
-
-            background: #050028;
-
-            color: #ffffff;
-
-            padding: 6px 10px;
-
-            border-radius: 4px;
-
-            font-size: 11px;
-
-            white-space: nowrap;
-
-            opacity: 0;
-
-            pointer-events: none;
-
-            transition: opacity 0.2s;
-
-            border: 1px solid #363a45;
-
-            z-index: 1000;
-
-            max-width: min(280px, calc(100vw - 32px));
-
-            overflow: hidden;
-
-            text-overflow: ellipsis;
-
-            display: block;
-
-        }
-
-
-
+        #indicatorsBtn::after,
         #indicatorsBtn:hover::after {
-
-            opacity: 1;
-
+            display: none !important;
+            content: none !important;
         }
 
 
@@ -32454,8 +32398,6 @@
 
         #cursorTool::after,
 
-        #indicatorsBtn::after,
-
         #chartTypeBtn::after,
 
         #rulerTool::after,
@@ -32494,19 +32436,6 @@
 
             padding: 6px 12px !important;
 
-        }
-
-        /* Indicators button: keep tooltip above the control (late override) so overflow/scrollbars do not jitter the toolbar */
-        #indicatorsBtn::after {
-            top: auto !important;
-            bottom: calc(100% + 6px) !important;
-            left: 50% !important;
-            right: auto !important;
-            transform: translateX(-50%) !important;
-            max-width: min(280px, calc(100vw - 32px)) !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
-            display: block !important;
         }
 
 
@@ -37551,7 +37480,7 @@
 
                 <!-- Indicators Button (moved from sidebar) -->
 
-                <button class="toolbar-icon-btn" id="indicatorsBtn" data-tooltip="Indicators" aria-label="Indicators">
+                <button class="toolbar-icon-btn" id="indicatorsBtn" aria-label="Indicators">
 
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
 
