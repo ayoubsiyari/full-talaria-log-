@@ -698,11 +698,14 @@
         
         const getNyDecimalHours = function(ms) {
             try {
-                const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ms));
+                const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(ms));
                 const hp = parts.find(function(p) { return p.type === 'hour'; });
                 const mp = parts.find(function(p) { return p.type === 'minute'; });
                 if (!hp || !mp) return null;
-                return parseInt(hp.value, 10) + parseInt(mp.value, 10) / 60;
+                const h = parseInt(hp.value, 10);
+                const mi = parseInt(mp.value, 10);
+                if (!Number.isFinite(h) || !Number.isFinite(mi)) return null;
+                return h + mi / 60;
             } catch (e) {
                 return null;
             }
@@ -715,7 +718,9 @@
             if (nyHours < 0) nyHours += 24;
             if (nyHours >= 24) nyHours -= 24;
             const dec = getNyDecimalHours(date.getTime());
-            return { hours: nyHours, minutes: utcMinutes, decimal: dec != null ? dec : nyHours + (utcMinutes / 60) };
+            const fallback = nyHours + (utcMinutes / 60);
+            const decimal = (dec != null && Number.isFinite(dec)) ? dec : fallback;
+            return { hours: nyHours, minutes: utcMinutes, decimal: decimal };
         };
         
         // Check if time is in session (handles overnight)
@@ -5070,7 +5075,11 @@ Chart.prototype.drawSessions = function(data, style, startIndex = 0, endIndex = 
 
 // Draw ICT Kill Zones indicator - session boxes with high/low boundaries
 Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) {
-    if (!data || !data.boxes || data.boxes.length === 0) return;
+    if (!data) return;
+    const hasBoxes = data.boxes && data.boxes.length > 0;
+    const hasMidnight = data.showNYMidnight !== false && data.nyMidnight && data.nyMidnight.length > 0;
+    const hasNyClose = data.showNYClose !== false && data.nyClose && data.nyClose.length > 0;
+    if (!hasBoxes && !hasMidnight && !hasNyClose) return;
     
     const ctx = this.ctx;
     const m = this.margin;
@@ -5124,12 +5133,14 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         }
     };
     
+    const self = this;
+    
+    if (hasBoxes) {
     const boxes = data.boxes.slice().sort(function(a, b) {
         if (a.startIndex !== b.startIndex) return a.startIndex - b.startIndex;
         return (a.endIndex || 0) - (b.endIndex || 0);
     });
     
-    const self = this;
     ctx.save();
     ctx.imageSmoothingEnabled = true;
     
@@ -5230,6 +5241,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
     });
     
     ctx.restore();
+    }
     
     const dataLastIdx = (self.data && self.data.length) ? self.data.length - 1 : 0;
     const midSorted = (data.nyMidnight || []).slice().sort(function(a, b) { return a.index - b.index; });
