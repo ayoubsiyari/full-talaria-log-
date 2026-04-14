@@ -325,6 +325,46 @@ const INDICATOR_DEFINITIONS = {
             { id: 'bearColor', label: 'Bear Color', type: 'color', default: '#ef5350' },
             { id: 'lineWidth', label: 'Dot Size (rel.)', type: 'number', default: 2, min: 1, max: 6 }
         ]
+    },
+    custom: {
+        name: 'Custom (sandboxed JS)',
+        type: 'overlay',
+        params: [
+            { id: 'name', label: 'Name', type: 'text', default: 'Custom' },
+            {
+                id: 'placement',
+                label: 'Placement',
+                type: 'select',
+                options: [
+                    { value: 'overlay', label: 'On price chart' },
+                    { value: 'panel', label: 'Separate panel' }
+                ],
+                default: 'overlay'
+            },
+            {
+                id: 'script',
+                label: 'Script (define compute(bars, params) — not Pine)',
+                type: 'textarea',
+                default:
+                    'function compute(bars, params) {\n' +
+                    '  const c = bars.close;\n' +
+                    '  const n = c.length;\n' +
+                    '  const p = params.period != null ? params.period : 20;\n' +
+                    '  const out = new Array(n).fill(null);\n' +
+                    '  let s = 0;\n' +
+                    '  for (let i = 0; i < n; i++) {\n' +
+                    '    s += c[i];\n' +
+                    '    if (i >= p) s -= c[i - p];\n' +
+                    '    if (i >= p - 1) out[i] = s / p;\n' +
+                    '  }\n' +
+                    '  return {\n' +
+                    '    overlay: true,\n' +
+                    "    plots: [{ type: 'line', values: out, color: '#2962ff', name: 'SMA' }]\n" +
+                    '  };\n' +
+                    '}'
+            },
+            { id: 'period', label: 'Example param (params.period)', type: 'number', default: 20, min: 1 }
+        ]
     }
 };
 
@@ -931,6 +971,11 @@ function createIndicatorSelectionMenu(chartInstance) {
             name: 'Sessions',
             icon: '',
             indicators: ['sessions', 'killzones']
+        },
+        script: {
+            name: 'Custom',
+            icon: '',
+            indicators: ['custom']
         }
     };
 
@@ -1118,6 +1163,8 @@ function createIndicatorSelectionMenu(chartInstance) {
     sidebar.appendChild(createCategoryItem(null, 'BUILT-IN', true));
     sidebar.appendChild(createCategoryItem('technicals', categories.technicals));
     sidebar.appendChild(createCategoryItem('sessions', categories.sessions));
+    sidebar.appendChild(createCategoryItem(null, 'SCRIPT', true));
+    sidebar.appendChild(createCategoryItem('script', categories.script));
     sidebar.appendChild(createCategoryItem(null, 'PERSONAL', true));
     sidebar.appendChild(createCategoryItem('favorites', categories.favorites));
 
@@ -1200,6 +1247,10 @@ function createIndicatorSelectionMenu(chartInstance) {
         item.onclick = () => {
             console.log('📊 Indicator clicked:', key, def.name);
             closeMenu();
+            if (key === 'custom') {
+                createIndicatorSettingsPanel(chartInstance, 'custom');
+                return;
+            }
             const defaultParams = {};
             const defaultStyle = {};
             def.params.forEach(param => {
@@ -1337,6 +1388,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
 
     const panel = document.createElement('div');
     panel.id = 'indicatorSettingsPanel';
+    const isCustomPanel = indicatorType === 'custom';
     panel.style.cssText = `
         position: fixed;
         top: 50%;
@@ -1347,8 +1399,9 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         border-radius: 10px;
         box-shadow: 0 24px 64px rgba(0,0,0,0.65);
         z-index: 10000;
-        min-width: 360px;
-        max-width: 460px;
+        min-width: ${isCustomPanel ? '480px' : '360px'};
+        max-width: ${isCustomPanel ? '640px' : '460px'};
+        width: ${isCustomPanel ? 'min(92vw, 600px)' : 'auto'};
         max-height: 80vh;
         padding: 22px;
         display: flex;
@@ -1378,6 +1431,15 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     const initialParams = existingIndicator ? existingIndicator.params : {};
     const initialStyle = existingIndicator ? existingIndicator.style : {};
     const allParams = { ...initialParams, ...initialStyle };
+    if (indicatorType === 'custom' && existingIndicator && existingIndicator.params) {
+        if (allParams.placement === undefined || allParams.placement === '') {
+            allParams.placement = existingIndicator.params.separatePanel ? 'panel' : 'overlay';
+        }
+        const cp = existingIndicator.params.customParams;
+        if ((allParams.period === undefined || allParams.period === '') && cp && cp.period != null) {
+            allParams.period = cp.period;
+        }
+    }
 
     const colorControls = [];
     const closeAllPalettes = () => {
@@ -1427,6 +1489,49 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             input.className = 'tv-native-checkbox';
             input.checked = currentValue !== false;
             input.style.cursor = 'pointer';
+            input.setAttribute('data-param-id', param.id);
+            input.setAttribute('data-param-type', param.type);
+            wrapper.appendChild(input);
+        } else if (param.type === 'select' && Array.isArray(param.options)) {
+            input = document.createElement('select');
+            input.className = 'settings-input';
+            input.style.width = '100%';
+            input.style.maxWidth = '100%';
+            input.style.padding = '8px 10px';
+            input.style.borderRadius = '6px';
+            input.style.cursor = 'pointer';
+            input.style.background = 'var(--sp-ui-surface-bg, #1e2740)';
+            input.style.color = 'var(--sp-text, #d1d4dc)';
+            input.style.border = '1px solid var(--sp-ui-border, rgba(42,46,57,0.55))';
+            param.options.forEach(opt => {
+                const o = document.createElement('option');
+                o.value = opt.value;
+                o.textContent = opt.label;
+                if (String(opt.value) === String(currentValue != null ? currentValue : param.default)) {
+                    o.selected = true;
+                }
+                input.appendChild(o);
+            });
+            input.setAttribute('data-param-id', param.id);
+            input.setAttribute('data-param-type', param.type);
+            wrapper.appendChild(input);
+        } else if (param.type === 'textarea') {
+            input = document.createElement('textarea');
+            input.className = 'settings-input';
+            input.rows = 16;
+            input.value = currentValue != null ? currentValue : (param.default || '');
+            input.style.width = '100%';
+            input.style.boxSizing = 'border-box';
+            input.style.fontFamily = 'ui-monospace, Menlo, Consolas, monospace';
+            input.style.fontSize = '11px';
+            input.style.lineHeight = '1.35';
+            input.style.padding = '10px';
+            input.style.borderRadius = '6px';
+            input.style.resize = 'vertical';
+            input.style.minHeight = '220px';
+            input.style.background = 'var(--sp-ui-surface-bg, #1e2740)';
+            input.style.color = 'var(--sp-text, #d1d4dc)';
+            input.style.border = '1px solid var(--sp-ui-border, rgba(42,46,57,0.55))';
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
             wrapper.appendChild(input);
@@ -1541,7 +1646,16 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         if (existingIndicator) {
             // Edit existing indicator
             const mergedParams = { ...newParams, ...newStyle };
-            if (typeof targetChart.updateIndicator === 'function') {
+            if (indicatorType === 'custom' && typeof targetChart.updateIndicator === 'function') {
+                const p = { ...mergedParams };
+                p.customParams = { period: p.period };
+                delete p.period;
+                p.separatePanel = p.placement === 'panel';
+                p.overlay = p.placement !== 'panel';
+                delete p.placement;
+                targetChart.updateIndicator(existingIndicator.id, p);
+                console.log(`✅ Updated ${existingIndicator.name} on panel ${targetChart.panelIndex || 'main'}`);
+            } else if (typeof targetChart.updateIndicator === 'function') {
                 targetChart.updateIndicator(existingIndicator.id, mergedParams);
                 console.log(`✅ Updated ${existingIndicator.name} on panel ${targetChart.panelIndex || 'main'}`);
             } else if (typeof targetChart.editIndicator === 'function') {
@@ -1549,7 +1663,20 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             }
         } else {
             // Add new indicator
-            targetChart.addIndicator(indicatorType, { ...newParams, ...newStyle });
+            if (indicatorType === 'custom') {
+                const raw = { ...newParams, ...newStyle };
+                const payload = {
+                    name: raw.name,
+                    script: raw.script,
+                    customParams: { period: raw.period },
+                    separatePanel: raw.placement === 'panel',
+                    overlay: raw.placement !== 'panel',
+                    customApiVersion: (typeof window.TalariaCustomIndicators !== 'undefined' && window.TalariaCustomIndicators.API_VERSION) || 1
+                };
+                targetChart.addIndicator('custom', payload);
+            } else {
+                targetChart.addIndicator(indicatorType, { ...newParams, ...newStyle });
+            }
         }
 
         // Also close the indicator selection menu if it's open
