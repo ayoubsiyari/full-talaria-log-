@@ -950,6 +950,158 @@
         }
         return { boxes: boxes.length > maxBoxes ? boxes.slice(-maxBoxes) : boxes };
     }
+
+    /**
+     * Premium/discount vs previous completed session window (UTC), e.g. NY 13:00–21:00.
+     * Looks back up to maxLookbackDays for the last day that had bars in that session (weekends).
+     */
+    function calculateIctSessionPrevDayPD(data, params) {
+        const sm = _ictParseHmToMinutes(params.rangeStart != null ? params.rangeStart : '13:00');
+        const em = _ictParseHmToMinutes(params.rangeEnd != null ? params.rangeEnd : '21:00');
+        const maxLookback = Math.min(14, Math.max(1, Math.floor(params.maxLookbackDays != null ? params.maxLookbackDays : 6)));
+        const n = data.length;
+        const dayStats = {};
+        for (let i = 0; i < n; i++) {
+            const dk = new Date(data[i].t).toISOString().slice(0, 10);
+            const minute = _ictUtcDayMinute(data[i].t);
+            if (!_ictMinuteInSession(minute, sm, em)) {
+                continue;
+            }
+            if (!dayStats[dk]) {
+                dayStats[dk] = { sh: -Infinity, sl: Infinity, has: false };
+            }
+            const s = dayStats[dk];
+            s.sh = Math.max(s.sh, data[i].h);
+            s.sl = Math.min(s.sl, data[i].l);
+            s.has = true;
+        }
+        function findPrevSessionStats(dk) {
+            let d = new Date(dk + 'T12:00:00.000Z');
+            for (let b = 0; b < maxLookback; b++) {
+                d.setUTCDate(d.getUTCDate() - 1);
+                const key = d.toISOString().slice(0, 10);
+                const st = dayStats[key];
+                if (st && st.has && st.sh > -Infinity && st.sl < Infinity) {
+                    return st;
+                }
+            }
+            return null;
+        }
+        const upper = new Array(n).fill(null);
+        const lower = new Array(n).fill(null);
+        const middle = new Array(n).fill(null);
+        for (let i = 0; i < n; i++) {
+            const dk = new Date(data[i].t).toISOString().slice(0, 10);
+            const st = findPrevSessionStats(dk);
+            if (st) {
+                upper[i] = st.sh;
+                lower[i] = st.sl;
+                middle[i] = (st.sh + st.sl) / 2;
+            }
+        }
+        return { upper: upper, lower: lower, middle: middle };
+    }
+
+    function _ictSwingHigh(data, i, w) {
+        const h = data[i].h;
+        for (let k = 1; k <= w; k++) {
+            if (data[i - k].h >= h || data[i + k].h >= h) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function _ictSwingLow(data, i, w) {
+        const low = data[i].l;
+        for (let k = 1; k <= w; k++) {
+            if (data[i - k].l <= low || data[i + k].l <= low) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function _ictClusterPrices1D(points, tolPct, minTouches) {
+        if (points.length < minTouches) {
+            return [];
+        }
+        const sorted = points.slice().sort(function(a, b) {
+            return a.price - b.price;
+        });
+        const clusters = [];
+        let cur = [sorted[0]];
+        for (let i = 1; i < sorted.length; i++) {
+            const mean = cur.reduce(function(s, p) {
+                return s + p.price;
+            }, 0) / cur.length;
+            const tol = Math.max(mean * (tolPct / 100), mean * 1e-10);
+            if (Math.abs(sorted[i].price - mean) <= tol) {
+                cur.push(sorted[i]);
+            } else {
+                if (cur.length >= minTouches) {
+                    clusters.push(cur);
+                }
+                cur = [sorted[i]];
+            }
+        }
+        if (cur.length >= minTouches) {
+            clusters.push(cur);
+        }
+        return clusters;
+    }
+
+    /**
+     * Equal highs / equal lows from clustered swing points (fractal width w each side).
+     */
+    function calculateLiquidityEqualLevels(data, params) {
+        const w = Math.max(1, Math.floor(params.fractalWidth != null ? params.fractalWidth : 2));
+        const tolPct = params.tolerancePct != null ? params.tolerancePct : 0.03;
+        const minTouches = Math.max(2, Math.floor(params.minTouches != null ? params.minTouches : 2));
+        const maxSeg = Math.min(200, Math.max(8, params.maxSegments != null ? params.maxSegments : 80));
+        const extendBars = Math.max(0, Math.floor(params.extendBars != null ? params.extendBars : 12));
+        const n = data.length;
+        const highs = [];
+        const lows = [];
+        let i = w;
+        for (; i < n - w; i++) {
+            if (_ictSwingHigh(data, i, w)) {
+                highs.push({ idx: i, price: data[i].h });
+            }
+            if (_ictSwingLow(data, i, w)) {
+                lows.push({ idx: i, price: data[i].l });
+            }
+        }
+        const ch = _ictClusterPrices1D(highs, tolPct, minTouches);
+        const cl = _ictClusterPrices1D(lows, tolPct, minTouches);
+        const segments = [];
+        ch.forEach(function(cluster) {
+            const idxs = cluster.map(function(p) {
+                return p.idx;
+            });
+            const i0 = Math.min.apply(null, idxs);
+            const i1 = Math.min(n - 1, Math.max.apply(null, idxs) + extendBars);
+            const price = cluster.reduce(function(s, p) {
+                return s + p.price;
+            }, 0) / cluster.length;
+            segments.push({ kind: 'high', price: price, startIndex: i0, endIndex: i1 });
+        });
+        cl.forEach(function(cluster) {
+            const idxs = cluster.map(function(p) {
+                return p.idx;
+            });
+            const i0 = Math.min.apply(null, idxs);
+            const i1 = Math.min(n - 1, Math.max.apply(null, idxs) + extendBars);
+            const price = cluster.reduce(function(s, p) {
+                return s + p.price;
+            }, 0) / cluster.length;
+            segments.push({ kind: 'low', price: price, startIndex: i0, endIndex: i1 });
+        });
+        segments.sort(function(a, b) {
+            return a.startIndex - b.startIndex;
+        });
+        return { segments: segments.length > maxSeg ? segments.slice(0, maxSeg) : segments };
+    }
     
     // CCI (Commodity Channel Index)
     function calculateCCI(data, period) {
@@ -2221,6 +2373,45 @@
                 });
                 break;
 
+            case 'ictsesspd':
+                indicator.params.rangeStart = params.rangeStart || '13:00';
+                indicator.params.rangeEnd = params.rangeEnd || '21:00';
+                indicator.params.maxLookbackDays = params.maxLookbackDays != null ? params.maxLookbackDays : 6;
+                indicator.style.upperColor = params.upperColor || '#00e676';
+                indicator.style.middleColor = params.middleColor || '#787b86';
+                indicator.style.lowerColor = params.lowerColor || '#f23645';
+                indicator.style.fillColor = params.fillColor || 'rgba(0, 230, 118, 0.05)';
+                indicator.style.lineWidth = params.lineWidth || 1;
+                indicator.overlay = true;
+                indicator.name = 'ICT Session PD';
+                this.indicators.data[indicator.id] = calculateIctSessionPrevDayPD(this.data, {
+                    rangeStart: indicator.params.rangeStart,
+                    rangeEnd: indicator.params.rangeEnd,
+                    maxLookbackDays: indicator.params.maxLookbackDays
+                });
+                break;
+
+            case 'ictliquidity':
+                indicator.params.fractalWidth = params.fractalWidth != null ? params.fractalWidth : 2;
+                indicator.params.tolerancePct = params.tolerancePct != null ? params.tolerancePct : 0.03;
+                indicator.params.minTouches = params.minTouches != null ? params.minTouches : 2;
+                indicator.params.maxSegments = params.maxSegments != null ? params.maxSegments : 80;
+                indicator.params.extendBars = params.extendBars != null ? params.extendBars : 12;
+                indicator.style.highColor = params.highColor || '#f23645';
+                indicator.style.lowColor = params.lowColor || '#2962ff';
+                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 1;
+                indicator.overlay = true;
+                indicator.isLiquidityEq = true;
+                indicator.name = 'ICT Equal L/H Liquidity';
+                this.indicators.data[indicator.id] = calculateLiquidityEqualLevels(this.data, {
+                    fractalWidth: indicator.params.fractalWidth,
+                    tolerancePct: indicator.params.tolerancePct,
+                    minTouches: indicator.params.minTouches,
+                    maxSegments: indicator.params.maxSegments,
+                    extendBars: indicator.params.extendBars
+                });
+                break;
+
             case 'custom': {
                 const TC = global.TalariaCustomIndicators;
                 if (!TC) {
@@ -2458,6 +2649,13 @@
         if (newParams.extendBars !== undefined) indicator.params.extendBars = newParams.extendBars;
         if (newParams.maxBoxes !== undefined) indicator.params.maxBoxes = newParams.maxBoxes;
         if (newParams.minGapPct !== undefined) indicator.params.minGapPct = newParams.minGapPct;
+        if (newParams.maxLookbackDays !== undefined) indicator.params.maxLookbackDays = newParams.maxLookbackDays;
+        if (newParams.fractalWidth !== undefined) indicator.params.fractalWidth = newParams.fractalWidth;
+        if (newParams.tolerancePct !== undefined) indicator.params.tolerancePct = newParams.tolerancePct;
+        if (newParams.minTouches !== undefined) indicator.params.minTouches = newParams.minTouches;
+        if (newParams.maxSegments !== undefined) indicator.params.maxSegments = newParams.maxSegments;
+        if (newParams.highColor !== undefined) indicator.style.highColor = newParams.highColor;
+        if (newParams.lowColor !== undefined) indicator.style.lowColor = newParams.lowColor;
         if (indicator.type === 'sessionsplus') {
             ['showSydney', 'showTokyo', 'showAsian', 'showFrankfurt', 'showLondon', 'showNewYork',
                 'sydneyStart', 'sydneyEnd', 'tokyoStart', 'tokyoEnd', 'asianStart', 'asianEnd',
@@ -2810,6 +3008,24 @@
                     minGapPct: indicator.params.minGapPct
                 });
                 break;
+            case 'ictsesspd':
+                indicator.name = 'ICT Session PD';
+                this.indicators.data[indicator.id] = calculateIctSessionPrevDayPD(this.data, {
+                    rangeStart: indicator.params.rangeStart,
+                    rangeEnd: indicator.params.rangeEnd,
+                    maxLookbackDays: indicator.params.maxLookbackDays
+                });
+                break;
+            case 'ictliquidity':
+                indicator.name = 'ICT Equal L/H Liquidity';
+                this.indicators.data[indicator.id] = calculateLiquidityEqualLevels(this.data, {
+                    fractalWidth: indicator.params.fractalWidth,
+                    tolerancePct: indicator.params.tolerancePct,
+                    minTouches: indicator.params.minTouches,
+                    maxSegments: indicator.params.maxSegments,
+                    extendBars: indicator.params.extendBars
+                });
+                break;
             case 'custom':
                 if (typeof this._scheduleCustomIndicatorCompute === 'function') {
                     this._scheduleCustomIndicatorCompute(indicator);
@@ -3036,6 +3252,22 @@
                         extendBars: indicator.params.extendBars,
                         maxBoxes: indicator.params.maxBoxes,
                         minGapPct: indicator.params.minGapPct
+                    });
+                    break;
+                case 'ictsesspd':
+                    this.indicators.data[indicator.id] = calculateIctSessionPrevDayPD(this.data, {
+                        rangeStart: indicator.params.rangeStart,
+                        rangeEnd: indicator.params.rangeEnd,
+                        maxLookbackDays: indicator.params.maxLookbackDays
+                    });
+                    break;
+                case 'ictliquidity':
+                    this.indicators.data[indicator.id] = calculateLiquidityEqualLevels(this.data, {
+                        fractalWidth: indicator.params.fractalWidth,
+                        tolerancePct: indicator.params.tolerancePct,
+                        minTouches: indicator.params.minTouches,
+                        maxSegments: indicator.params.maxSegments,
+                        extendBars: indicator.params.extendBars
                     });
                     break;
                 case 'custom':
@@ -3317,8 +3549,10 @@
                 this.drawSessions(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'openingrange') {
                 this.drawBollingerBands(data, indicator.style, startIndex, endIndex);
-            } else if (indicator.type === 'ictpd' || indicator.type === 'ictasian' || indicator.type === 'ictote') {
+            } else if (indicator.type === 'ictpd' || indicator.type === 'ictasian' || indicator.type === 'ictote' || indicator.type === 'ictsesspd') {
                 this.drawBollingerBands(data, indicator.style, startIndex, endIndex);
+            } else if (indicator.type === 'ictliquidity' || indicator.isLiquidityEq) {
+                this.drawLiquidityEqLines(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'ictfvg' || indicator.isIctFvg) {
                 this.drawIctFvgBoxes(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'supertrend') {
@@ -4656,6 +4890,39 @@ Chart.prototype.drawIctFvgBoxes = function(data, style, startIndex = 0, endIndex
         ctx.strokeRect(drawX1, yTop, boxWidth, boxHeight);
     }, this);
 };
+
+Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, endIndex) {
+    if (!data || !data.segments || data.segments.length === 0) return;
+    const ctx = this.ctx;
+    const m = this.margin;
+    const ch = this.h - m.t - m.b;
+    const effectiveVolumeHeight = this.chartSettings && this.chartSettings.showVolume ? this.volumeHeight : 0;
+    const volumeAreaHeight = ch * effectiveVolumeHeight;
+    const priceAreaBottom = this.h - m.b - volumeAreaHeight;
+    const hiCol = style.highColor || '#f23645';
+    const loCol = style.lowColor || '#2962ff';
+    const lw = style.lineWidth != null ? style.lineWidth : 1;
+    const n = this.data ? this.data.length : 0;
+    endIndex = endIndex == null ? n : Math.min(endIndex, n);
+    ctx.setLineDash([6, 4]);
+    data.segments.forEach(function(seg) {
+        if (seg.endIndex < startIndex || seg.startIndex > endIndex) return;
+        const x1 = this.dataIndexToPixel(seg.startIndex);
+        const x2 = this.dataIndexToPixel(seg.endIndex);
+        if (x2 < m.l || x1 > this.w - m.r) return;
+        const drawX1 = Math.max(x1, m.l);
+        const drawX2 = Math.min(x2, this.w - m.r);
+        const y = this.yScale(seg.price);
+        if (y < m.t || y > priceAreaBottom) return;
+        ctx.strokeStyle = seg.kind === 'high' ? hiCol : loCol;
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        ctx.moveTo(drawX1, y);
+        ctx.lineTo(drawX2, y);
+        ctx.stroke();
+    }, this);
+    ctx.setLineDash([]);
+};
     
     Chart.prototype.updateOHLCIndicators = function() {
         const idSuffix = (this.panelIndex !== undefined) ? this.panelIndex : '';
@@ -4695,7 +4962,7 @@ Chart.prototype.drawIctFvgBoxes = function(data, style, startIndex = 0, endIndex
             };
 
             const colorBox = document.createElement('span');
-            const displayColor = indicator.style.color || indicator.style.middleColor || '#2962ff';
+            const displayColor = indicator.style.color || indicator.style.middleColor || indicator.style.highColor || '#2962ff';
             colorBox.style.cssText = chip.colorStrip(displayColor);
             item.appendChild(colorBox);
 

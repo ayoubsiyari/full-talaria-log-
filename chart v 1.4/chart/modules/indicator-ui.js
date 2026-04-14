@@ -488,6 +488,34 @@ const INDICATOR_DEFINITIONS = {
             { id: 'lineWidth', label: 'Border thickness', type: 'number', default: 1, min: 1, max: 3 }
         ]
     },
+    ictsesspd: {
+        name: 'ICT — Session PD (prev session, UTC)',
+        type: 'overlay',
+        params: [
+            { id: 'rangeStart', label: 'Session start (UTC)', type: 'time', default: '13:00' },
+            { id: 'rangeEnd', label: 'Session end (UTC)', type: 'time', default: '21:00' },
+            { id: 'maxLookbackDays', label: 'Max days to find prior session', type: 'number', default: 6, min: 1, max: 14 },
+            { id: 'upperColor', label: 'Session high', type: 'color', default: '#00e676' },
+            { id: 'middleColor', label: 'Equilibrium', type: 'color', default: '#787b86' },
+            { id: 'lowerColor', label: 'Session low', type: 'color', default: '#f23645' },
+            { id: 'fillColor', label: 'Zone fill (RGBA)', type: 'text', default: 'rgba(0, 230, 118, 0.05)' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4 }
+        ]
+    },
+    ictliquidity: {
+        name: 'ICT — Equal highs / lows (liquidity)',
+        type: 'overlay',
+        params: [
+            { id: 'fractalWidth', label: 'Fractal bars (each side)', type: 'number', default: 2, min: 1, max: 5 },
+            { id: 'tolerancePct', label: 'Cluster tolerance (% of price)', type: 'number', default: 0.03, min: 0.001, max: 1, step: 0.001 },
+            { id: 'minTouches', label: 'Min swings in cluster', type: 'number', default: 2, min: 2, max: 10 },
+            { id: 'extendBars', label: 'Extend line right (bars)', type: 'number', default: 12, min: 0, max: 200 },
+            { id: 'maxSegments', label: 'Max lines drawn', type: 'number', default: 80, min: 8, max: 200 },
+            { id: 'highColor', label: 'Equal highs', type: 'color', default: '#f23645' },
+            { id: 'lowColor', label: 'Equal lows', type: 'color', default: '#2962ff' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 3 }
+        ]
+    },
     custom: {
         name: 'Custom (sandboxed JS)',
         type: 'overlay',
@@ -1137,7 +1165,7 @@ function createIndicatorSelectionMenu(chartInstance) {
         ict: {
             name: 'ICT',
             icon: '',
-            indicators: ['ictpd', 'ictasian', 'ictote', 'ictfvg']
+            indicators: ['ictpd', 'ictsesspd', 'ictasian', 'ictote', 'ictfvg', 'ictliquidity']
         },
         script: {
             name: 'Custom',
