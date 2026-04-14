@@ -4062,7 +4062,6 @@
                     const x = this.dataIndexToPixel(i);
                     const y = scaleY(val);
                     if (y === null) continue;
-                    if (x < m.l - 10 || x > this.w - m.r + 10) continue;
                     if (!started) {
                         ctx.moveTo(x, y);
                         started = true;
@@ -4254,7 +4253,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     // Clip all indicator geometry to this stack so lines/labels never bleed into the time axis.
     ctx.save();
     ctx.beginPath();
-    ctx.rect(m.l, panelTop, this.w - m.l, totalPanelHeight);
+    ctx.rect(m.l, panelTop, this.w - m.l - m.r, totalPanelHeight);
     ctx.clip();
     
     // Outer top separator — solid divider line matching panel borders
@@ -4278,9 +4277,9 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     ctx.stroke();
     ctx.lineCap = 'butt';
     
-    // Get visible range
-    const visibleStart = Math.max(0, Math.floor(this.visibleStartIndex || 0));
-    const visibleEnd = Math.min(this.data.length, Math.ceil(this.visibleEndIndex || this.data.length));
+    // Visible indices (set in render() from plot left/right); keep in sync with overlay drawIndicators.
+    const visibleStart = Math.max(0, Math.floor(Number.isFinite(this.visibleStartIndex) ? this.visibleStartIndex : 0));
+    const visibleEnd = Math.min(this.data.length, Math.ceil(Number.isFinite(this.visibleEndIndex) ? this.visibleEndIndex : this.data.length));
     
     const panelSlots = [];
     let slotBottomCursor = panelBottom;
@@ -4447,7 +4446,6 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             const y = scaleY(val);
             
             if (y === null) continue;
-            if (x < m.l - 10 || x > this.w - m.r + 10) continue;
             
             if (!started) {
                 ctx.moveTo(x, y);
@@ -5784,7 +5782,8 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (val === null || val === undefined || isNaN(val)) { started = false; continue; }
             const x = this.dataIndexToPixel(i);
             let y = scaleY(val);
-            if (y === null || !Number.isFinite(y) || x < m.l - 10 || x > this.w - m.r + 10) { started = false; continue; }
+            // Do not skip by x: panel ctx is already clipped; skipping broke polylines at pan edges.
+            if (y === null || !Number.isFinite(y)) { started = false; continue; }
             if (useClip) y = Math.max(clipTop + 0.5, Math.min(clipBottom - 0.5, y));
             if (!started) { ctx.moveTo(x, y); started = true; }
             else { ctx.lineTo(x, y); }
@@ -5836,7 +5835,6 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const val = histArr[i];
             if (val === null || val === undefined || isNaN(val)) continue;
             const x = this.dataIndexToPixel(i);
-            if (x < m.l || x > this.w - m.r) continue;
             const y = scaleY(val);
             const z = (zeroY !== null && !isNaN(zeroY)) ? zeroY : (panelBottom - 5);
             const prevVal = (i > visibleStart) ? histArr[i - 1] : null;

@@ -10664,11 +10664,14 @@ class Chart {
         // Build time-axis ticks ONCE – shared by drawGrid() and drawAxes() for perfect sync
         this._timeTicks = this._buildTimeTicks();
 
-        const candleSpacing = this.getCandleSpacing();
-        const firstVisibleIndex = Math.floor(-this.offsetX / candleSpacing);
-        const numVisibleCandles = Math.ceil(this.w / candleSpacing);
-        const startIdx = Math.max(0, firstVisibleIndex);
-        const endIdx = Math.min(this.data.length, firstVisibleIndex + numVisibleCandles + 2);
+        // Visible bar indices: derive from plot edges (matches dataIndexToPixel / panning).
+        // Using full canvas width for bar count was too wide vs the drawable area and caused
+        // separate-panel indicators to miss segments when scrolling into older bars.
+        const mVis = this.margin || { l: 0, r: 0, t: 0, b: 0 };
+        const plotRight = this.w - mVis.r;
+        const edgeBuf = 6;
+        const startIdx = Math.max(0, Math.floor(this.pixelToDataIndex(mVis.l)) - edgeBuf);
+        const endIdx = Math.min(this.data.length, Math.ceil(this.pixelToDataIndex(plotRight)) + edgeBuf);
         
         // Expose current visible range for indicator rendering
         this.visibleStartIndex = startIdx;
