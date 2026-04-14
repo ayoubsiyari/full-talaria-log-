@@ -29,6 +29,7 @@ import {
   Layers,
   Shield,
 } from "lucide-react";
+import "./dashboard-shell.css";
 
 /* ═══════════ TYPES ═══════════ */
 
@@ -148,15 +149,10 @@ function cn(...c: (string | false | undefined | null)[]): string {
   return c.filter(Boolean).join(" ");
 }
 
-/** Neon cyan accent — improves contrast on dark UI without full gradients */
-const CARD =
-  "rounded-lg border border-cyan-400/20 bg-cyan-950/30 shadow-[inset_0_1px_0_0_rgba(34,211,238,0.06)] hover:border-cyan-400/45 hover:shadow-[0_0_28px_-8px_rgba(34,211,238,0.22)] transition-all";
-
-const SECTION =
-  "text-[11px] font-medium text-cyan-400/95 uppercase tracking-[0.12em]";
-
-const LINK_MUTED =
-  "text-[11px] text-cyan-400/80 hover:text-cyan-300 transition-colors";
+/** Same card / label / link tokens as Sessions (/backtest) dashboard */
+const CARD = "db-card";
+const SECTION = "db-section-label";
+const LINK_MUTED = "db-link-muted";
 
 /* ═══════════ MAIN ═══════════ */
 
@@ -258,13 +254,10 @@ export default function GlobalDashboard() {
 
   if (loading || !user) {
     return (
-      <div className="flex items-center justify-center py-40">
-        <div className="text-center">
-          <div className="relative w-12 h-12 mx-auto mb-4">
-            <div className="absolute inset-0 rounded-full border-2 border-cyan-500/20" />
-            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-cyan-400 animate-spin shadow-[0_0_12px_rgba(34,211,238,0.35)]" />
-          </div>
-          <p className="text-[13px] text-cyan-100/50 tracking-tight">Loading your dashboard…</p>
+      <div className="db-loading">
+        <div className="db-loading-inner">
+          <div className="db-loading-spinner" aria-hidden />
+          <p className="db-loading-text">Loading your dashboard…</p>
         </div>
       </div>
     );
@@ -287,82 +280,59 @@ export default function GlobalDashboard() {
   const winPct = (winCount / totalWL) * 100;
 
   return (
-    <div className="relative space-y-8 pb-16">
-      <div
-        className="pointer-events-none absolute left-1/2 top-[-5rem] h-[min(22rem,55vh)] w-[min(56rem,140%)] -translate-x-1/2 bg-[radial-gradient(ellipse_at_top,rgba(34,211,238,0.16),transparent_68%)]"
-        aria-hidden
-      />
-
-      {/* ═══ HEADER ═══ */}
-      <div className="relative flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6 border-b border-cyan-500/20 pb-8">
-        <div>
-          <h1 className="text-2xl sm:text-[26px] font-semibold text-slate-100 tracking-tight leading-snug">
-            {greeting},{" "}
-            <span className="text-cyan-300 drop-shadow-[0_0_20px_rgba(34,211,238,0.35)]">
-              {user.name || "Trader"}
-            </span>
+    <div className="db-page">
+      <div className="db-hero">
+        <div className="min-w-0 flex-1">
+          <h1 className="db-hero-greeting">
+            {greeting}, <span>{user.name || "Trader"}</span>
           </h1>
-          <p className="text-[13px] text-cyan-100/45 mt-1.5 font-normal">{todayStr}</p>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-3">
+          <p className="db-hero-date">{todayStr}</p>
+          <div className="db-hero-meta">
             {planName ? (
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded border border-cyan-400/35 bg-cyan-500/10 text-cyan-100/90">
-                <Crown className="w-3 h-3 text-cyan-400/80" /> {planName}
+              <span className="db-plan-badge">
+                <Crown className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
+                {planName}
               </span>
             ) : hasSub ? (
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded border border-cyan-400/35 bg-cyan-500/10 text-cyan-100/90">
-                <Shield className="w-3 h-3 text-cyan-400/80" /> Active
+              <span className="db-plan-badge">
+                <Shield className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
+                Active
               </span>
             ) : null}
-            {memberSince && (
-              <span className="text-[11px] text-cyan-200/40">Member since {memberSince}</span>
-            )}
+            {memberSince ? <span className="db-plan-member">Member since {memberSince}</span> : null}
           </div>
         </div>
-        <div className="flex items-center gap-2 self-start">
-          <a
-            href="/journal/settings"
-            className="inline-flex items-center gap-1.5 text-[12px] font-medium text-cyan-200/80 hover:text-cyan-100 border border-cyan-500/30 rounded-md px-3 py-1.5 bg-cyan-950/20 hover:bg-cyan-500/10 hover:border-cyan-400/45 transition-colors"
-          >
-            <Settings className="w-3.5 h-3.5 text-cyan-400/70" /> Settings
+        <div className="db-hero-actions">
+          <a href="/journal/settings" className="db-btn-sm">
+            <Settings className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+            Settings
           </a>
-          <a
-            href="/journal/pricing"
-            className="inline-flex items-center gap-1.5 text-[12px] font-medium text-cyan-200/80 hover:text-cyan-100 border border-cyan-500/30 rounded-md px-3 py-1.5 bg-cyan-950/20 hover:bg-cyan-500/10 hover:border-cyan-400/45 transition-colors"
-          >
-            <CreditCard className="w-3.5 h-3.5 text-cyan-400/70" /> Plans
+          <a href="/journal/pricing" className="db-btn-sm">
+            <CreditCard className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+            Plans
           </a>
         </div>
       </div>
 
-      {/* ═══ QUICK NAV ═══ */}
-      <div className="relative">
-        <h2 className={cn(SECTION, "mb-3")}>Shortcuts</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="db-shortcuts-wrap">
+        <h2 className={SECTION}>Shortcuts</h2>
+        <div className="db-shortcuts">
           {[
             { icon: BarChart3, title: "Backtesting", desc: "Historical strategy practice", href: "/backtest/" },
             { icon: BookOpen, title: "Trade Journal", desc: "Log and review trades", href: "/journal/dashboard" },
             { icon: GraduationCap, title: "Mentorship", desc: "Learn from professionals", href: "/bootcamp/" },
           ].map((item) => (
-            <a
-              key={item.title}
-              href={item.href}
-              className={cn(
-                CARD,
-                "group flex items-start gap-3.5 border-l-[3px] border-l-cyan-400/70 p-4 pl-[0.85rem] no-underline"
-              )}
-            >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-cyan-400/25 bg-cyan-500/10 shadow-[0_0_12px_-4px_rgba(34,211,238,0.25)]">
-                <item.icon className="h-[18px] w-[18px] text-cyan-300 group-hover:text-cyan-200 transition-colors" />
-              </div>
-              <div className="min-w-0 flex-1 pt-0.5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[13px] font-medium text-slate-100 group-hover:text-cyan-50 transition-colors">
-                    {item.title}
-                  </span>
-                  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-cyan-500/50 group-hover:text-cyan-300 group-hover:translate-x-0.5 transition-all" />
+            <a key={item.title} href={item.href} className="db-shortcut-card">
+              <div className="db-shortcut-left">
+                <div className="db-shortcut-icon">
+                  <item.icon className="h-[15px] w-[15px]" strokeWidth={1.75} />
                 </div>
-                <p className="text-[11px] text-cyan-100/40 mt-0.5 leading-relaxed">{item.desc}</p>
+                <div className="min-w-0">
+                  <div className="db-shortcut-name">{item.title}</div>
+                  <div className="db-shortcut-desc">{item.desc}</div>
+                </div>
               </div>
+              <ArrowRight className="db-shortcut-arrow" strokeWidth={2} aria-hidden />
             </a>
           ))}
         </div>
@@ -372,8 +342,8 @@ export default function GlobalDashboard() {
       {hasTrades && stats ? (
         <>
           <div>
-            <h2 className={cn(SECTION, "mb-3")}>Performance overview</h2>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <h2 className={SECTION}>Performance overview</h2>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
               <MetricCard icon={Activity} label="Total Trades" value={String(stats.total_trades ?? 0)} sub={`${stats.winning_trades ?? 0}W / ${stats.losing_trades ?? 0}L`} />
               <MetricCard icon={DollarSign} label="Net P&L" value={fmt(stats.total_pnl)} valueColor={(stats.total_pnl ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"} sub={`Avg ${fmt(stats.avg_pnl)}/trade`} trend={(stats.total_pnl ?? 0) >= 0 ? "up" : "down"} />
               <MetricCard icon={Target} label="Win Rate" value={pct(stats.win_rate)} valueColor={(stats.win_rate ?? 0) >= 50 ? "text-emerald-400" : "text-amber-400"} sub={stats.breakeven_trades ? `${stats.breakeven_trades} breakeven` : undefined} />
@@ -390,25 +360,19 @@ export default function GlobalDashboard() {
           </div>
         </>
       ) : (
-        <div className={cn(CARD, "p-10 text-center border-cyan-400/25")}>
-          <div className="w-11 h-11 mx-auto mb-4 rounded-md border border-cyan-400/35 bg-cyan-500/10 flex items-center justify-center shadow-[0_0_20px_-6px_rgba(34,211,238,0.35)]">
-            <Activity className="w-5 h-5 text-cyan-400" />
+        <div className="db-empty-panel">
+          <div className="db-empty-icon">
+            <Activity className="h-[22px] w-[22px]" strokeWidth={1.75} aria-hidden />
           </div>
-          <h3 className="text-[15px] font-medium text-slate-100 mb-1.5 tracking-tight">No trades yet</h3>
-          <p className="text-[12px] text-cyan-100/45 mb-6 max-w-sm mx-auto leading-relaxed">
+          <h3 className="db-empty-title">No trades yet</h3>
+          <p className="db-empty-desc">
             Import trades or add them manually to unlock performance metrics and charts.
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <a
-              href="/journal/import-trades"
-              className="inline-flex items-center gap-1.5 text-[12px] font-medium text-cyan-950 bg-cyan-400 border border-cyan-300 rounded-md px-4 py-2 hover:bg-cyan-300 hover:border-cyan-200 shadow-[0_0_20px_-4px_rgba(34,211,238,0.45)] transition-colors"
-            >
-              Import trades <ArrowRight className="w-3 h-3 opacity-70" />
+          <div className="db-empty-actions">
+            <a href="/journal/import-trades" className="db-btn-accent">
+              Import trades <ArrowRight className="h-3 w-3 opacity-90" aria-hidden />
             </a>
-            <a
-              href="/journal/journal"
-              className="inline-flex items-center gap-1.5 text-[12px] font-medium text-cyan-200/85 border border-cyan-500/35 rounded-md px-4 py-2 bg-cyan-950/30 hover:bg-cyan-500/15 hover:border-cyan-400/50 transition-colors"
-            >
+            <a href="/journal/journal" className="db-btn-ghost">
               Add manually
             </a>
           </div>
@@ -608,86 +572,111 @@ export default function GlobalDashboard() {
         </div>
       )}
 
-      {/* ═══ SYMBOLS + SESSIONS ═══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {symbols.length > 0 && (
-          <div className={cn(CARD, "p-5")}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className={SECTION}>Top symbols</h3>
-              <a href="/journal/analytics/symbols" className={LINK_MUTED}>
-                All symbols →
-              </a>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {symbols.map((s) => (
-                <div key={s.symbol} className="rounded-md border border-cyan-500/15 bg-cyan-950/20 p-3">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[12px] font-semibold text-cyan-100/75">{s.symbol}</span>
-                    <span className={cn("text-[11px] font-bold", s.total_pnl >= 0 ? "text-emerald-400" : "text-red-400")}>{fmt(s.total_pnl)}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-cyan-200/40">{s.total_trades} trades</span>
-                    <span className="text-[10px] text-cyan-200/40">{pct(s.win_rate)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
+      {symbols.length > 0 && (
         <div className={cn(CARD, "p-5")}>
           <div className="flex items-center justify-between mb-4">
-            <h3 className={SECTION}>Backtest sessions</h3>
-            {sessions.length > 0 && (
+            <h3 className={SECTION}>Top symbols</h3>
+            <a href="/journal/analytics/symbols" className={LINK_MUTED}>
+              All symbols →
+            </a>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {symbols.map((s) => (
+              <div key={s.symbol} className="rounded-lg border border-white/[0.06] bg-[#111318] p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[12px] font-semibold text-[#e8e4dc]">{s.symbol}</span>
+                  <span className={cn("text-[11px] font-bold", s.total_pnl >= 0 ? "text-emerald-400" : "text-red-400")}>{fmt(s.total_pnl)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-[#4a4850]">{s.total_trades} trades</span>
+                  <span className="text-[10px] text-[#4a4850]">{pct(s.win_rate)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="db-bottom-row">
+        <div className="db-panel">
+          <div className="db-panel-head">
+            <span className="db-panel-title">Backtest sessions</span>
+            {sessions.length > 0 ? (
               <a href="/backtest/" className={LINK_MUTED}>
                 View all →
               </a>
-            )}
+            ) : null}
           </div>
           {sessions.length > 0 ? (
-            <div className="space-y-2">
-              {sessions.map((s) => (
-                <a
-                  key={s.id}
-                  href={`/chart/index.html?mode=${s.session_type === "propfirm" ? "propfirm" : "backtest"}&sessionId=${s.id}`}
-                  className="group flex items-center gap-3 rounded-md border border-cyan-500/15 bg-cyan-950/25 hover:border-cyan-400/40 hover:bg-cyan-500/10 p-3 transition-colors"
-                >
-                  <div className="w-8 h-8 rounded-md border border-cyan-400/25 bg-cyan-500/10 flex items-center justify-center flex-shrink-0 shadow-[0_0_12px_-4px_rgba(34,211,238,0.2)]">
-                    <Play className="w-3.5 h-3.5 text-cyan-400 ml-0.5 group-hover:text-cyan-300 transition-colors" fill="currentColor" />
+            sessions.map((s) => (
+              <a
+                key={s.id}
+                href={`/chart/index.html?mode=${s.session_type === "propfirm" ? "propfirm" : "backtest"}&sessionId=${s.id}`}
+                className="db-session-row"
+              >
+                <div className="db-session-left">
+                  <div className="db-mini-play">
+                    <Play className="h-2.5 w-2.5 ml-px" fill="currentColor" aria-hidden />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[12px] font-medium text-slate-200 truncate group-hover:text-cyan-50 transition-colors">{s.name}</div>
-                    <div className="text-[10px] text-cyan-200/40">
-                      {s.session_type === "propfirm" ? "Prop Firm" : "Personal"}
-                      {s.symbol ? ` · ${s.symbol}` : ""}
-                      {s.start_balance ? ` · ${fmt(s.start_balance)}` : ""}
+                  <div className="min-w-0">
+                    <div className="db-sname">{s.name}</div>
+                    <div className="db-smeta">
+                      {s.session_type === "propfirm" ? (
+                        <span className="db-smeta-prop">Prop Firm</span>
+                      ) : (
+                        <span className="db-smeta-prop">Personal</span>
+                      )}
+                      {s.symbol ? (
+                        <>
+                          <span className="db-smeta-sep">·</span>
+                          {s.symbol}
+                        </>
+                      ) : null}
+                      {s.start_balance ? (
+                        <>
+                          <span className="db-smeta-sep">·</span>
+                          {fmt(s.start_balance)}
+                        </>
+                      ) : null}
                     </div>
                   </div>
-                  <ChevronRight className="w-3.5 h-3.5 text-cyan-500/30 group-hover:text-cyan-400/80 transition-colors flex-shrink-0" />
-                </a>
-              ))}
-            </div>
+                </div>
+                <ChevronRight className="db-chevron h-3.5 w-3.5" aria-hidden />
+              </a>
+            ))
           ) : (
-            <div className="py-6 text-center">
-              <p className="text-sm text-cyan-200/40 mb-3">No sessions yet</p>
-              <a href="/backtest/" className="inline-flex items-center gap-1.5 text-[12px] font-medium text-cyan-400 hover:text-cyan-300 transition-colors">
-                Start your first backtest <ArrowRight className="w-3 h-3 opacity-70" />
+            <div className="px-5 py-8 text-center">
+              <p className="text-sm text-[#4a4850] mb-3">No sessions yet</p>
+              <a href="/backtest/" className={LINK_MUTED}>
+                Start your first backtest →
               </a>
             </div>
           )}
         </div>
-      </div>
 
-      {/* ═══ ACCOUNT ═══ */}
-      <div className={cn(CARD, "p-5")}>
-        <h3 className={cn(SECTION, "mb-4")}>Account</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <AccountField icon={User} label="Email" value={user.email} />
-          {memberSince && <AccountField icon={Calendar} label="Member Since" value={memberSince} />}
-          <AccountField icon={Layers} label="Plan" value={planName || (hasSub ? "Active" : "No plan")} />
-          {sub?.subscription?.status && (
-            <AccountField icon={Clock} label="Status" value={`${sub.subscription.status}${sub.subscription.cancel_at_period_end ? " (canceling)" : ""}`} valueColor={sub.subscription.status === "active" ? "text-emerald-400/80" : sub.subscription.status === "trialing" ? "text-cyan-400/90" : "text-amber-400/80"} />
-          )}
+        <div className="db-panel db-acct-panel">
+          <div className="db-panel-head">
+            <span className="db-panel-title">Account</span>
+          </div>
+          <div className="db-acct-grid">
+            <AccountField icon={User} label="Email" value={user.email} />
+            {memberSince ? <AccountField icon={Calendar} label="Member Since" value={memberSince} /> : null}
+            <AccountField icon={Layers} label="Plan" value={planName || (hasSub ? "Active" : "No plan")} />
+            {sub?.subscription?.status ? (
+              <AccountField
+                icon={Clock}
+                label="Status"
+                value={`${sub.subscription.status}${sub.subscription.cancel_at_period_end ? " (canceling)" : ""}`}
+                valueColor={
+                  sub.subscription.status === "active"
+                    ? "text-emerald-400/90"
+                    : sub.subscription.status === "trialing"
+                      ? "text-[#93c5fd]"
+                      : "text-amber-400/90"
+                }
+              />
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
@@ -700,14 +689,14 @@ function MetricCard({ icon: Icon, label, value, valueColor, sub, trend }: { icon
   return (
     <div className={cn(CARD, "p-4")}>
       <div className="flex items-center gap-2 mb-3">
-        <div className="flex h-7 w-7 items-center justify-center rounded-md border border-cyan-400/25 bg-cyan-500/10">
-          <Icon className="w-3.5 h-3.5 text-cyan-400/80" />
+        <div className="db-icon-box">
+          <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
         </div>
-        <span className="text-[10px] font-medium text-cyan-400/75 uppercase tracking-[0.08em]">{label}</span>
+        <span className="text-[10px] font-semibold text-[#35333a] uppercase tracking-[0.08em]">{label}</span>
         {trend && <span className="ml-auto">{trend === "up" ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400/60" /> : <ArrowDownRight className="w-3.5 h-3.5 text-red-400/60" />}</span>}
       </div>
-      <div className={cn("text-lg font-semibold tracking-tight", valueColor || "text-slate-100")}>{value}</div>
-      {sub && <div className="text-[11px] text-cyan-100/40 mt-1">{sub}</div>}
+      <div className={cn("text-lg font-semibold tracking-tight", valueColor || "text-[#e8e4dc]")}>{value}</div>
+      {sub && <div className="text-[11px] text-[#4a4850] mt-1">{sub}</div>}
     </div>
   );
 }
@@ -716,23 +705,30 @@ function MiniMetric({ icon: Icon, label, value, color }: { icon: React.ElementTy
   return (
     <div className={cn(CARD, "p-3")}>
       <div className="flex items-center gap-1.5 mb-1.5">
-        <Icon className="w-3 h-3 text-cyan-500/45" />
-        <span className="text-[10px] text-cyan-400/70 uppercase tracking-[0.06em] font-medium">{label}</span>
+        <Icon className="h-3 w-3 text-[#60a5fa]/70" strokeWidth={1.75} />
+        <span className="text-[10px] text-[#35333a] uppercase tracking-[0.06em] font-semibold">{label}</span>
       </div>
-      <div className={cn("text-[15px] font-semibold tracking-tight", color || "text-slate-200")}>{value}</div>
+      <div className={cn("text-[15px] font-semibold tracking-tight", color || "text-[#e8e4dc]")}>{value}</div>
     </div>
   );
 }
 
 function AccountField({ icon: Icon, label, value, valueColor }: { icon: React.ElementType; label: string; value: string; valueColor?: string }) {
   return (
-    <div className="flex items-center gap-3">
-      <div className="w-8 h-8 rounded-md border border-cyan-400/20 bg-cyan-500/5 flex items-center justify-center flex-shrink-0">
-        <Icon className="w-4 h-4 text-cyan-400/65" />
+    <div className="db-acct-cell">
+      <div className="db-acct-icon">
+        <Icon className="h-3.5 w-3.5" strokeWidth={1.5} />
       </div>
-      <div>
-        <div className="text-[10px] text-cyan-400/65 uppercase tracking-[0.06em] font-medium">{label}</div>
-        <div className={cn("text-[12px] truncate max-w-[180px] font-medium", valueColor || "text-cyan-100/70")}>{value}</div>
+      <div className="min-w-0">
+        <div className="db-acct-label">{label}</div>
+        <div
+          className={cn(
+            "text-[12px] font-semibold truncate max-w-[200px] tabular-nums",
+            valueColor || "text-[#9b97a0]",
+          )}
+        >
+          {value}
+        </div>
       </div>
     </div>
   );
@@ -755,8 +751,8 @@ function SVGSparkline({ data, height = 160 }: { data: number[]; height?: number 
   const line = points.join(" ");
   const areaPath = `M${points[0]} L${line} L${w - pad},${h} L${pad},${h} Z`;
   const isUp = data[data.length - 1] >= data[0];
-  const stroke = isUp ? "#22d3ee" : "#f87171";
-  const fill = isUp ? "rgba(34, 211, 238, 0.14)" : "rgba(248, 113, 113, 0.1)";
+  const stroke = isUp ? "#60a5fa" : "#f87171";
+  const fill = isUp ? "rgba(59, 130, 246, 0.14)" : "rgba(248, 113, 113, 0.1)";
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ height }} preserveAspectRatio="none">

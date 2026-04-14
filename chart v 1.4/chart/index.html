@@ -44011,35 +44011,9 @@
 
 
 
-            // Check if it's a propfirm session and show the button
+            if (typeof window.applyChallengeToolbarVisibility === 'function') {
 
-            const session = userStorage.getItem('backtestingSession');
-
-            if (session) {
-
-                try {
-
-                    const sessionData = JSON.parse(session);
-
-                    if (sessionData.type === 'propfirm') {
-
-                        if (challengeToolbarContainer) {
-
-                            challengeToolbarContainer.style.display = 'block';
-
-                        }
-
-                        
-
-                        // Load prop firm rules
-
-                        loadPropFirmRulesCompact(sessionData);
-
-                    }
-
-                } catch (e) {
-
-                }
+                window.applyChallengeToolbarVisibility();
 
             }
 
@@ -45130,6 +45104,54 @@
         // Expose compact functions globally
 
         window.updateChallengeProgressCompact = updateChallengeProgressCompact;
+
+        window.applyChallengeToolbarVisibility = function () {
+
+            var challengeToolbarContainer = document.getElementById('challengeToolbarContainer');
+
+            if (!challengeToolbarContainer) return;
+
+            var mode = null;
+
+            try {
+
+                mode = new URLSearchParams(window.location.search).get('mode');
+
+            } catch (e) {}
+
+            var sessionRaw = null;
+
+            try {
+
+                sessionRaw = userStorage.getItem('backtestingSession');
+
+            } catch (e) {}
+
+            var sessionData = null;
+
+            if (sessionRaw) {
+
+                try {
+
+                    sessionData = JSON.parse(sessionRaw);
+
+                } catch (e) {}
+
+            }
+
+            var isPropConfig = sessionData && sessionData.type === 'propfirm';
+
+            var show = mode === 'propfirm' && isPropConfig;
+
+            challengeToolbarContainer.style.display = show ? 'block' : 'none';
+
+            if (show && typeof loadPropFirmRulesCompact === 'function' && sessionData) {
+
+                loadPropFirmRulesCompact(sessionData);
+
+            }
+
+        };
 
     </script>
 

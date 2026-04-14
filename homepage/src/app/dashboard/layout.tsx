@@ -2,6 +2,7 @@
 
 import React from "react";
 import { useLanguage } from "../LanguageProvider";
+import "./dashboard-shell.css";
 
 type User = {
   id: number;
@@ -55,82 +56,62 @@ export default function DashboardLayout({
         logout: "Logout",
       };
 
+  const navClass = "db-nav " + (isArabic ? "flex-row-reverse" : "");
+
   return (
-    <div className="min-h-screen bg-[#050a10] text-foreground">
-      <div className="pointer-events-none fixed inset-0 -z-10">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_120%_80%_at_50%_-10%,rgba(34,211,238,0.11),transparent_55%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_100%_0%,rgba(6,182,212,0.06),transparent_45%)]" />
-      </div>
+    <div className={`db-layout min-h-screen ${isArabic ? "rtl" : "ltr"}`} dir={isArabic ? "rtl" : "ltr"}>
+      <header className="db-topbar">
+        <a href="/" className="db-brand">
+          <div className="db-brand-mark">
+            <img src="/logo-08.png" alt="" width={22} height={22} />
+          </div>
+          <div className="min-w-0">
+            <div className="db-brand-title">Talaria Log</div>
+            <div className="db-brand-email">{user ? user.email : " "}</div>
+          </div>
+        </a>
 
-      <header className="sticky top-0 z-[100] border-b border-cyan-500/15 bg-[#050a10]/85 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-3">
-          <a href="/" className="flex items-center gap-3">
-            <img src="/logo-08.png" alt="Talaria Log" className="h-8 w-8" />
-            <div className="leading-tight">
-              <div className="text-sm font-semibold text-slate-100">
-                Talaria Log
-              </div>
-              <div className="text-[11px] text-cyan-200/45">
-                {user ? user.email : ""}
-              </div>
-            </div>
-          </a>
-
-          <nav
-            className={
-              "flex items-center gap-1.5 text-[12px] " +
-              (isArabic ? "flex-row-reverse" : "")
-            }
+        <nav className={navClass}>
+          {[
+            { label: nav.sessions, href: "/backtest/" },
+            { label: nav.backtest, href: "/chart/index.html" },
+            { label: nav.strategiesLab, href: "/strategies-lab/" },
+            { label: nav.journal, href: "/journal/dashboard" },
+          ].map((item) => (
+            <a key={item.href} href={item.href} className="db-nav-link">
+              {item.label}
+            </a>
+          ))}
+          {user?.role === "admin" && (
+            <a href="/dashboard/admin/" className="db-nav-link">
+              {nav.admin}
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await fetch("/api/auth/logout", {
+                  method: "POST",
+                  credentials: "include",
+                });
+              } catch {
+                /* ignore */
+              }
+              localStorage.removeItem("token");
+              localStorage.removeItem("refresh_token");
+              localStorage.removeItem("talaria_current_user");
+              localStorage.removeItem("is_admin");
+              window.location.href = "/login/";
+            }}
+            className="db-nav-link db-nav-link--logout"
           >
-            {[
-              { label: nav.sessions, href: "/backtest/" },
-              {
-                label: nav.backtest,
-                href: "/chart/index.html",
-              },
-              { label: nav.strategiesLab, href: "/strategies-lab/" },
-              { label: nav.journal, href: "/journal/dashboard" },
-            ].map((item) => (
-              <a
-                key={item.label}
-                href={item.href}
-                className="rounded-lg border border-cyan-500/20 bg-cyan-950/20 px-3 py-1.5 text-cyan-100/50 hover:text-cyan-200 hover:bg-cyan-500/10 hover:border-cyan-400/35 transition-all"
-              >
-                {item.label}
-              </a>
-            ))}
-            {user?.role === "admin" && (
-              <a
-                href="/dashboard/admin/"
-                className="rounded-lg border border-cyan-500/20 bg-cyan-950/20 px-3 py-1.5 text-cyan-100/50 hover:text-cyan-200 hover:bg-cyan-500/10 hover:border-cyan-400/35 transition-all"
-              >
-                {nav.admin}
-              </a>
-            )}
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  await fetch("/api/auth/logout", {
-                    method: "POST",
-                    credentials: "include",
-                  });
-                } catch {}
-                localStorage.removeItem("token");
-                localStorage.removeItem("refresh_token");
-                localStorage.removeItem("talaria_current_user");
-                localStorage.removeItem("is_admin");
-                window.location.href = "/login/";
-              }}
-              className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-red-400/50 hover:text-red-400 hover:bg-red-500/5 hover:border-red-500/10 transition-all"
-            >
-              {nav.logout}
-            </button>
-          </nav>
-        </div>
+            {nav.logout}
+          </button>
+        </nav>
       </header>
 
-      <main className="mx-auto max-w-7xl px-6 py-8">{children}</main>
+      <main className="db-main-wrap">{children}</main>
     </div>
   );
 }

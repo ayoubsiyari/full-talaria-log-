@@ -132,7 +132,13 @@ export default function BacktestSessions() {
 
   function openSession(session: Session) {
     try {
-      if (session.config) localStorage.setItem("backtestingSession", JSON.stringify(session.config));
+      if (session.config) {
+        const cfg = {
+          ...session.config,
+          type: session.session_type === "propfirm" ? "propfirm" : "standard",
+        };
+        localStorage.setItem("backtestingSession", JSON.stringify(cfg));
+      }
       localStorage.setItem("active_trading_session_id", String(session.id));
     } catch {
       /* ignore */

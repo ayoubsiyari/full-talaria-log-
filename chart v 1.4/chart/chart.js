@@ -805,7 +805,10 @@ class Chart {
                     if (res.ok) {
                         const payload = await res.json();
                         if (payload && payload.session && payload.session.config) {
-                            session = this.normalizeBacktestingSession(payload.session.config);
+                            const st = String(payload.session.session_type || '').toLowerCase();
+                            const raw = payload.session.config || {};
+                            const merged = { ...raw, type: st === 'propfirm' ? 'propfirm' : 'standard' };
+                            session = this.normalizeBacktestingSession(merged);
                             try {
                                 userStorage.setItem('backtestingSession', JSON.stringify(session));
                                 userStorage.setItem('active_trading_session_id', String(sessionId));
@@ -822,7 +825,11 @@ class Chart {
             if (!session) {
                 const sessionData = userStorage.getItem('backtestingSession');
                 if (sessionData) {
-                    session = this.normalizeBacktestingSession(JSON.parse(sessionData));
+                    let parsed = JSON.parse(sessionData);
+                    if (!isPropFirm) {
+                        parsed = { ...parsed, type: 'standard' };
+                    }
+                    session = this.normalizeBacktestingSession(parsed);
                 }
             }
 
@@ -842,6 +849,11 @@ class Chart {
                 if (typeof window.syncPropFirmTracker === 'function') {
                     try {
                         window.syncPropFirmTracker();
+                    } catch (e) {}
+                }
+                if (typeof window.applyChallengeToolbarVisibility === 'function') {
+                    try {
+                        window.applyChallengeToolbarVisibility();
                     } catch (e) {}
                 }
 
