@@ -533,7 +533,7 @@ class AlertSystem {
         if (Notification.permission === 'granted') {
             new Notification(`${alert.symbol} Alert`, {
                 body: `${alert.message}\nCurrent: ${this.formatPrice(currentPrice)}`,
-                icon: 'modules/LOGO-04.png',
+                icon: 'modules/logo-05.png',
                 tag: alert.id
             });
         } else if (Notification.permission !== 'denied') {
