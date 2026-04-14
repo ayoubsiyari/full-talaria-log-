@@ -343,7 +343,7 @@ const INDICATOR_DEFINITIONS = {
             },
             {
                 id: 'script',
-                label: 'Script (define compute(bars, params) — not Pine)',
+                label: 'JavaScript — must define compute(bars, params) (Pine Script will not run)',
                 type: 'textarea',
                 default:
                     'function compute(bars, params) {\n' +
@@ -1416,6 +1416,19 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     title.style.flexShrink = '0';
     panel.appendChild(title);
 
+    if (indicatorType === 'custom') {
+        const hint = document.createElement('p');
+        hint.textContent =
+            'This runs sandboxed JavaScript only. TradingView Pine Script is not supported. ' +
+            'Use the default template: function compute(bars, params) { return { overlay, plots }; } ' +
+            'where plots are line or histogram series. For built-in EMA/RSI/MACD, use the Technicals list instead.';
+        hint.style.cssText =
+            'font-size:12px;line-height:1.45;color:var(--sp-text-muted,#787b86);' +
+            'margin:0 0 12px 0;padding:10px 12px;border-radius:6px;' +
+            'background:rgba(255,193,7,0.07);border:1px solid rgba(255,193,7,0.28);';
+        panel.appendChild(hint);
+    }
+
     const form = document.createElement('div');
     form.style.display = 'flex';
     form.style.flexDirection = 'column';
@@ -1641,6 +1654,18 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             alert('Error: Chart indicator system not loaded. Please refresh the page.');
             closePanel();
             return;
+        }
+
+        if (indicatorType === 'custom') {
+            const mergedEarly = { ...newParams, ...newStyle };
+            const TC = typeof window.TalariaCustomIndicators !== 'undefined' ? window.TalariaCustomIndicators : null;
+            if (TC && typeof TC.validateCustomScriptSource === 'function') {
+                const check = TC.validateCustomScriptSource(mergedEarly.script);
+                if (!check.ok) {
+                    alert(check.error || 'Invalid script');
+                    return;
+                }
+            }
         }
 
         if (existingIndicator) {

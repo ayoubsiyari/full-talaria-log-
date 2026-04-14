@@ -177,6 +177,33 @@
         });
     }
 
+    function looksLikePineScript(source) {
+        if (!source || typeof source !== 'string') return false;
+        var s = source.trim();
+        if (/^\/\/\s*@version\s*=/m.test(s)) return true;
+        if (/\bindicator\s*\(\s*["']/.test(s) && /\bta\.\w+\s*\(/.test(s)) return true;
+        if (/\bstrategy\s*\(/.test(s)) return true;
+        var score = 0;
+        if (/\bta\.(ema|rsi|sma|wma|macd|crossover|crossunder|barssince)\s*\(/i.test(s)) score += 2;
+        if (/\binput\.(int|float|bool|string|source)\s*\(/.test(s)) score += 2;
+        if (/\bplot\s*\([^)]*\b(color|style|linewidth)\b/i.test(s)) score += 1;
+        return score >= 3;
+    }
+
+    function validateCustomScriptSource(source) {
+        var str = source == null ? '' : String(source);
+        if (!str.trim()) {
+            return { ok: false, error: 'Script is empty.' };
+        }
+        if (looksLikePineScript(str)) {
+            return {
+                ok: false,
+                error: 'This looks like Pine Script, which Talaria does not run. Use JavaScript: define function compute(bars, params) { return { overlay: true|false, plots: [...] }; }'
+            };
+        }
+        return { ok: true };
+    }
+
     function serializeBarsFromChartData(data) {
         var n = data ? data.length : 0;
         var open = new Array(n);
@@ -203,6 +230,8 @@
         MAX_PLOTS: MAX_PLOTS,
         DEFAULT_TIMEOUT_MS: DEFAULT_TIMEOUT_MS,
         runCompute: runCompute,
-        serializeBarsFromChartData: serializeBarsFromChartData
+        serializeBarsFromChartData: serializeBarsFromChartData,
+        looksLikePineScript: looksLikePineScript,
+        validateCustomScriptSource: validateCustomScriptSource
     };
 })(typeof window !== 'undefined' ? window : this);

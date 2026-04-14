@@ -1524,6 +1524,15 @@
                     }
                     return;
                 }
+                if (typeof TC.validateCustomScriptSource === 'function') {
+                    const check = TC.validateCustomScriptSource(script);
+                    if (!check.ok) {
+                        if (typeof this.showNotification === 'function') {
+                            this.showNotification(check.error || 'Invalid script');
+                        }
+                        return;
+                    }
+                }
                 indicator.isCustomScript = true;
                 indicator.params.script = script;
                 indicator.params.customParams = params.customParams && typeof params.customParams === 'object' ? params.customParams : {};
@@ -1609,6 +1618,19 @@
                 overlay: indicator.overlay !== false
             };
             return;
+        }
+        if (typeof TC.validateCustomScriptSource === 'function') {
+            const check = TC.validateCustomScriptSource(script);
+            if (!check.ok) {
+                this.indicators.data[indicator.id] = {
+                    loading: false,
+                    plots: [],
+                    error: check.error || 'Invalid script',
+                    overlay: indicator.overlay !== false
+                };
+                if (typeof self.render === 'function') self.render();
+                return;
+            }
         }
         const bars = TC.serializeBarsFromChartData(this.data);
         const userParams = indicator.params.customParams && typeof indicator.params.customParams === 'object'
