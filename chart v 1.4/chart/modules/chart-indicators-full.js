@@ -786,6 +786,12 @@
             result.boxes.push({...box});
         });
         
+        // NY Open horizontal line spans until the bar before the next NY day (not only to chart edge)
+        for (let j = 0; j < result.nyMidnight.length; j++) {
+            const next = result.nyMidnight[j + 1];
+            result.nyMidnight[j].endIndex = next ? next.index - 1 : data.length - 1;
+        }
+        
         // Store params for deviations
         result.showDeviations = params.showDeviations || false;
         result.deviationCount = params.deviationCount || 2;
@@ -5177,25 +5183,41 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         const prec = self._symbolPrecision != null ? self._symbolPrecision : (self.pricePrecision != null ? self.pricePrecision : 5);
         
         data.nyMidnight.forEach(function(midnight) {
-            const x = self.dataIndexToPixel(midnight.index);
+            const visLeft = m.l;
+            const visRight = self.w - m.r;
+            const xOpen = self.dataIndexToPixel(midnight.index);
+            const endIdx = midnight.endIndex != null ? midnight.endIndex : midnight.index;
+            const xDayEnd = self.dataIndexToPixel(endIdx);
+            const xSegLeft = Math.min(xOpen, xDayEnd);
+            const xSegRight = Math.max(xOpen, xDayEnd);
             const y = self.yScale(midnight.price);
-            if (x < m.l || x > self.w - m.r) return;
+            
+            const hLeft = Math.max(xSegLeft, visLeft);
+            const hRight = Math.min(xSegRight, visRight);
+            const vertInView = xOpen >= visLeft && xOpen <= visRight;
+            if (hLeft >= hRight && !vertInView) return;
             
             ctx.save();
             ctx.strokeStyle = nyStroke;
-            ctx.lineWidth = 1;
-            ctx.setLineDash([10, 14]);
             ctx.globalAlpha = 0.9;
-            ctx.beginPath();
-            ctx.moveTo(x, m.t + 2);
-            ctx.lineTo(x, priceAreaBottom - 1);
-            ctx.stroke();
-            ctx.setLineDash([12, 8]);
-            ctx.lineWidth = 1.15;
-            ctx.beginPath();
-            ctx.moveTo(x, y);
-            ctx.lineTo(self.w - m.r, y);
-            ctx.stroke();
+            
+            if (vertInView) {
+                ctx.lineWidth = 1;
+                ctx.setLineDash([10, 14]);
+                ctx.beginPath();
+                ctx.moveTo(xOpen, m.t + 2);
+                ctx.lineTo(xOpen, priceAreaBottom - 1);
+                ctx.stroke();
+            }
+            
+            if (hLeft < hRight) {
+                ctx.setLineDash([12, 8]);
+                ctx.lineWidth = 1.15;
+                ctx.beginPath();
+                ctx.moveTo(hLeft, y);
+                ctx.lineTo(hRight, y);
+                ctx.stroke();
+            }
             ctx.setLineDash([]);
             ctx.globalAlpha = 1;
             
@@ -5205,9 +5227,15 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             ctx.textBaseline = 'bottom';
             const tw = ctx.measureText(priceText).width + 14;
             const th = 18;
-            let lx = x + 6;
+            let lx;
+            if (vertInView) {
+                lx = xOpen + 6;
+                if (lx + tw > visRight - 2) lx = xOpen - tw - 6;
+            } else {
+                lx = Math.min(hRight - tw - 6, visRight - tw - 8);
+                lx = Math.max(hLeft + 4, lx);
+            }
             let ly = y - 6;
-            if (lx + tw > self.w - m.r - 2) lx = x - tw - 6;
             if (ly - th < m.t + 2) ly = y + th + 4;
             ctx.fillStyle = 'rgba(13, 17, 23, 0.9)';
             roundRectPath(ctx, lx, ly - th, tw, th, 4);
