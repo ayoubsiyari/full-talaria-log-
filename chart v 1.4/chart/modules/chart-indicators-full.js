@@ -1961,6 +1961,96 @@
         ].join('&');
     }
 
+    /**
+     * Normalized chart root symbol → CFTC Legacy Combined contract code (jun7-fc8e).
+     * When the chart symbol is unknown, caller falls back to ES (13874A).
+     */
+    var COTNET_SYMBOL_TO_CFTC = {
+        ES: '13874A',
+        MES: '13874U',
+        SPX: '13874A',
+        NQ: '209741',
+        MNQ: '209747',
+        GC: '088691',
+        MGC: '088691',
+        CL: '067651',
+        MCL: '067651',
+        '6E': '099741',
+        EURUSD: '099741',
+        RTY: '239742',
+        M2K: '239747',
+        YM: '124603',
+        MYM: '124603',
+        '6B': '096742',
+        GBPUSD: '096742',
+        '6J': '097741',
+        USDJPY: '097741',
+        '6A': '232741',
+        AUDUSD: '232741',
+        '6N': '112741',
+        NZDUSD: '112741',
+        '6C': '090741',
+        USDCAD: '090741',
+        '6S': '092741',
+        USDCHF: '092741',
+        SI: '084691',
+        SIL: '084691',
+        HG: '085692',
+        XAUUSD: '088691',
+        XAGUSD: '084691',
+        ZB: '020601',
+        ZN: '042601',
+        ZF: '044601',
+        ZT: '043601'
+    };
+
+    var COTNET_FX_CCYS = new Set(['USD', 'EUR', 'GBP', 'JPY', 'AUD', 'NZD', 'CAD', 'CHF', 'HKD', 'SGD', 'SEK', 'NOK', 'DKK', 'ZAR', 'TRY', 'MXN', 'BTC', 'ETH', 'XAU', 'XAG']);
+
+    /** Same idea as Chart._formatPairTicker: EUR/USD → EURUSD; then futures roots ESZ4 → ES. */
+    function cotNetNormalizeSymbolKey(raw) {
+        if (raw == null || raw === '') return '';
+        const clean = String(raw).replace(/\.(csv|CSV)$/i, '').replace(/^\d{8}_\d{6}_/, '');
+        const flat = clean.toUpperCase().replace(/[\s\-_\/\.]/g, '');
+        const m6 = flat.match(/^([A-Z]{6})/);
+        if (m6) {
+            const pair = m6[1];
+            const base = pair.substring(0, 3);
+            const quote = pair.substring(3, 6);
+            if (COTNET_FX_CCYS.has(base) && COTNET_FX_CCYS.has(quote)) {
+                return pair;
+            }
+        }
+        let s = flat.replace(/^=/, '');
+        s = s.replace(/(\.[A-Z0-9]+)+$/i, '');
+        const fm = s.match(/^([A-Z0-9]{1,6})([FGHJKMNQUVZ])(\d{2,4})$/);
+        if (fm) return fm[1];
+        return s;
+    }
+
+    function cotNetLooksLikeForexSix(key) {
+        return /^[A-Z]{6}$/.test(key) && COTNET_FX_CCYS.has(key.slice(0, 3)) && COTNET_FX_CCYS.has(key.slice(3, 6));
+    }
+
+    /**
+     * @returns {{ code: string, auto: boolean, root: string }}
+     */
+    function cotNetResolveCftcCode(chart, params) {
+        const symKey = cotNetNormalizeSymbolKey(chart && chart.currentSymbol);
+        const explicit = params && params.cftcCode != null ? String(params.cftcCode).trim() : '';
+
+        if (explicit && explicit.toLowerCase() !== 'auto') {
+            return { code: sanitizeCftcContractCode(explicit), auto: false, root: explicit };
+        }
+
+        if (symKey && COTNET_SYMBOL_TO_CFTC[symKey]) {
+            return { code: COTNET_SYMBOL_TO_CFTC[symKey], auto: true, root: symKey };
+        }
+        if (cotNetLooksLikeForexSix(symKey)) {
+            throw new Error('No CFTC Legacy mapping for ' + symKey + ' — set cftcCode in indicator settings (see cftc.gov Public Reporting)');
+        }
+        return { code: '13874A', auto: true, root: symKey || '' };
+    }
+
     function normalizeCotNetPoint(p) {
         if (!p || typeof p !== 'object') return null;
         const t = p.t != null ? Number(p.t) : (p.time != null ? Number(p.time) : NaN);
@@ -2616,7 +2706,7 @@
                 break;
 
             case 'cotnet':
-                indicator.params.cftcCode = params.cftcCode != null ? String(params.cftcCode).trim() : '13874A';
+                indicator.params.cftcCode = params.cftcCode != null ? String(params.cftcCode).trim() : 'auto';
                 indicator.params.dataUrl = params.dataUrl != null ? String(params.dataUrl) : '';
                 indicator.params.showCommercial = params.showCommercial !== false;
                 indicator.params.showLarge = params.showLarge !== false;
@@ -2924,17 +3014,20 @@
         const params = indicator.params || {};
         const url = (params.dataUrl && String(params.dataUrl).trim()) || '';
 
-        function applyMerged(merged, note, marketName) {
+        function applyMerged(merged, note, marketName, resolvedMeta) {
             if (!self.indicators || !self.indicators.active) return;
             const still = self.indicators.active.some(function(i) { return i.id === indicator.id; });
             if (!still) return;
+            const rm = resolvedMeta || {};
             self.indicators.data[indicator.id] = {
                 loading: false,
                 error: null,
                 bull: merged.bull,
                 bear: merged.bear,
                 _cotNote: note || '',
-                _cotMarket: marketName || ''
+                _cotMarket: marketName || '',
+                _cotRoot: rm.root || '',
+                _cotCodeUsed: rm.code || ''
             };
             if (typeof self._updateIndicatorPanelHeight === 'function') self._updateIndicatorPanelHeight();
             if (typeof self.render === 'function') self.render();
@@ -2981,8 +3074,10 @@
         }
 
         let apiUrl;
+        let resolvedCot;
         try {
-            apiUrl = cotNetBuildCftcLegacyUrl(params.cftcCode || '13874A');
+            resolvedCot = cotNetResolveCftcCode(self, params);
+            apiUrl = cotNetBuildCftcLegacyUrl(resolvedCot.code);
         } catch (e) {
             fail(e && e.message ? e.message : String(e));
             return;
@@ -2999,7 +3094,7 @@
                 }
                 const parsed = cotNetCftcRowsToPoints(rows);
                 if (!parsed.points.length) throw new Error('Could not parse COT positions');
-                applyMerged(mergeCotNetPointsToBars(self.data, parsed.points), 'cftc', parsed.marketName);
+                applyMerged(mergeCotNetPointsToBars(self.data, parsed.points), 'cftc', parsed.marketName, resolvedCot);
             })
             .catch(function(e) {
                 fail(e && e.message ? e.message : String(e));

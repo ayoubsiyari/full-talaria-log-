@@ -508,9 +508,9 @@ const INDICATOR_DEFINITIONS = {
         params: [
             {
                 id: 'cftcCode',
-                label: 'CFTC contract code (Legacy Combined). Default 13874A = E-mini S&P',
+                label: 'CFTC code, or auto (matches chart symbol — e.g. EUR/USD → Euro FX)',
                 type: 'text',
-                default: '13874A'
+                default: 'auto'
             },
             {
                 id: 'dataUrl',
