@@ -261,7 +261,11 @@
         var key = getApiKey();
         if (!key) {
             state.loading = false;
-            state.error = 'Add FINNHUB_API_KEY to chart/.env, run: node scripts/sync-chart-env.mjs, then refresh.';
+            state.error =
+                'No Finnhub key in the browser. Put FINNHUB_API_KEY in the chart folder .env ' +
+                '(same folder as index.html, not the repo root), run: node scripts/sync-chart-env.mjs ' +
+                'from that folder, then hard-refresh. The page reads modules/chart-env.generated.js — ' +
+                'that file must contain your key after sync.';
             state.events = [];
             render();
             return;

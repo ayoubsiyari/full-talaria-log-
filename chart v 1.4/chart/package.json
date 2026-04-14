@@ -1,6 +1,9 @@
 {
   "name": "talaria-trading-chart-runtime",
   "private": true,
+  "scripts": {
+    "sync-env": "node scripts/sync-chart-env.mjs"
+  },
   "dependencies": {
     "dukascopy-node": "1.46.3"
   }
