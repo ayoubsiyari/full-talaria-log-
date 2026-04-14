@@ -708,18 +708,17 @@
             }
         };
         
-        // Track active session boxes
+        // One session per bar (priority) avoids stacked semi-transparent fills when windows overlap.
+        const sessionOrder = ['cbdr', 'asia', 'london', 'nyam', 'londonClose'];
         const activeBoxes = {};
         let lastDate = null;
         
         for (let i = 0; i < data.length; i++) {
             const date = new Date(data[i].t);
             const nyTime = toNYTime(date);
-            const currentDate = date.toDateString();
             
             // Track NY Midnight (00:00 NY time)
             if (params.showNYMidnight !== false) {
-                // Check if this candle crosses midnight NY time
                 if (lastDate) {
                     const lastNYTime = toNYTime(lastDate);
                     if (lastNYTime.decimal > 23 || (lastNYTime.decimal > nyTime.decimal && nyTime.decimal < 1)) {
@@ -732,16 +731,22 @@
                 }
             }
             
-            // Process each session
-            Object.keys(sessionDefs).forEach(key => {
+            let currentKey = null;
+            for (let si = 0; si < sessionOrder.length; si++) {
+                const key = sessionOrder[si];
+                const session = sessionDefs[key];
+                if (!session.enabled) continue;
+                if (isInSession(nyTime.decimal, session)) {
+                    currentKey = key;
+                    break;
+                }
+            }
+            
+            sessionOrder.forEach(function(key) {
                 const session = sessionDefs[key];
                 if (!session.enabled) return;
-                
-                const inSession = isInSession(nyTime.decimal, session);
-                
-                if (inSession) {
+                if (key === currentKey) {
                     if (!activeBoxes[key]) {
-                        // Start new session box
                         activeBoxes[key] = {
                             type: key,
                             name: session.name,
@@ -753,20 +758,16 @@
                             endIndex: i
                         };
                     } else {
-                        // Update existing session box
                         activeBoxes[key].high = Math.max(activeBoxes[key].high, data[i].h);
                         activeBoxes[key].low = Math.min(activeBoxes[key].low, data[i].l);
                         activeBoxes[key].endIndex = i;
                     }
-                } else {
-                    // Session ended
-                    if (activeBoxes[key]) {
-                        const box = activeBoxes[key];
-                        box.endTime = data[i - 1] ? data[i - 1].t : data[i].t;
-                        box.range = box.high - box.low;
-                        result.boxes.push({...box});
-                        delete activeBoxes[key];
-                    }
+                } else if (activeBoxes[key]) {
+                    const box = activeBoxes[key];
+                    box.endTime = data[i - 1] ? data[i - 1].t : data[i].t;
+                    box.range = box.high - box.low;
+                    result.boxes.push({...box});
+                    delete activeBoxes[key];
                 }
             });
             
@@ -786,7 +787,7 @@
         result.deviationCount = params.deviationCount || 2;
         result.showMidline = params.showMidline !== false;
         result.showBoxInfo = params.showBoxInfo !== false;
-        result.boxTransparency = params.boxTransparency !== undefined ? params.boxTransparency : 85;
+        result.boxTransparency = params.boxTransparency !== undefined ? params.boxTransparency : 88;
         result.showNYMidnight = params.showNYMidnight !== false;
         result.nyMidnightColor = params.nyMidnightColor || '#2d62b6';
         
@@ -2152,7 +2153,7 @@
                 indicator.params.showBoxInfo = params.showBoxInfo !== false;
                 indicator.params.showDeviations = params.showDeviations || false;
                 indicator.params.deviationCount = params.deviationCount || 2;
-                indicator.params.boxTransparency = params.boxTransparency !== undefined ? params.boxTransparency : 85;
+                indicator.params.boxTransparency = params.boxTransparency !== undefined ? params.boxTransparency : 88;
                 // Session times (NY timezone)
                 indicator.params.cbdrStart = params.cbdrStart || '14:00';
                 indicator.params.cbdrEnd = params.cbdrEnd || '20:00';
@@ -5014,102 +5015,146 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
     const volumeAreaHeight = ch * effectiveVolumeHeight;
     const priceAreaBottom = this.h - m.b - volumeAreaHeight;
     
-    const transparency = data.boxTransparency !== undefined ? data.boxTransparency : 85;
+    const transparency = data.boxTransparency !== undefined ? data.boxTransparency : 88;
+    const baseFillAlpha = Math.min(0.22, Math.max(0.04, (100 - transparency) / 100));
     
-    // Draw session boxes
-    data.boxes.forEach(box => {
-        const x1 = this.dataIndexToPixel(box.startIndex);
-        const x2 = this.dataIndexToPixel(box.endIndex);
-        const y1 = this.yScale(box.high);
-        const y2 = this.yScale(box.low);
+    const colorToRgba = function(c, alpha) {
+        if (alpha == null || isNaN(alpha)) alpha = 0.18;
+        alpha = Math.min(1, Math.max(0, alpha));
+        if (!c || typeof c !== 'string') return 'rgba(100,120,160,' + alpha + ')';
+        const s = c.trim();
+        if (s.indexOf('rgba') === 0 || s.indexOf('rgb(') === 0) {
+            const m = s.match(/rgba?\s*\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+            if (m) return 'rgba(' + m[1] + ',' + m[2] + ',' + m[3] + ',' + alpha + ')';
+        }
+        let hex = s.replace('#', '');
+        if (hex.length === 3) {
+            hex = hex.split('').map(function(ch) { return ch + ch; }).join('');
+        }
+        if (hex.length === 6) {
+            const r = parseInt(hex.slice(0, 2), 16);
+            const g = parseInt(hex.slice(2, 4), 16);
+            const b = parseInt(hex.slice(4, 6), 16);
+            if (!isNaN(r) && !isNaN(g) && !isNaN(b)) return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+        }
+        return 'rgba(100,120,160,' + alpha + ')';
+    };
+    
+    const roundRectPath = function(context, x, y, w, h, r) {
+        const rad = Math.min(r, w / 2, h / 2);
+        if (typeof context.roundRect === 'function') {
+            context.beginPath();
+            context.roundRect(x, y, w, h, rad);
+        } else {
+            context.beginPath();
+            context.moveTo(x + rad, y);
+            context.lineTo(x + w - rad, y);
+            context.quadraticCurveTo(x + w, y, x + w, y + rad);
+            context.lineTo(x + w, y + h - rad);
+            context.quadraticCurveTo(x + w, y + h, x + w - rad, y + h);
+            context.lineTo(x + rad, y + h);
+            context.quadraticCurveTo(x, y + h, x, y + h - rad);
+            context.lineTo(x, y + rad);
+            context.quadraticCurveTo(x, y, x + rad, y);
+            context.closePath();
+        }
+    };
+    
+    const boxes = data.boxes.slice().sort(function(a, b) {
+        if (a.startIndex !== b.startIndex) return a.startIndex - b.startIndex;
+        return (a.endIndex || 0) - (b.endIndex || 0);
+    });
+    
+    const self = this;
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    
+    boxes.forEach(function(box) {
+        const x1 = self.dataIndexToPixel(box.startIndex);
+        const x2 = self.dataIndexToPixel(box.endIndex);
+        const yTop = self.yScale(box.high);
+        const yBot = self.yScale(box.low);
         
-        // Skip if completely outside visible area
-        if (x2 < m.l || x1 > this.w - m.r) return;
+        if (x2 < m.l || x1 > self.w - m.r) return;
         
-        // Clamp to chart boundaries
         const drawX1 = Math.max(x1, m.l);
-        const drawX2 = Math.min(x2, this.w - m.r);
+        const drawX2 = Math.min(x2, self.w - m.r);
         const boxWidth = drawX2 - drawX1;
-        const boxHeight = y2 - y1;
+        const top = Math.min(yTop, yBot);
+        const bot = Math.max(yTop, yBot);
+        const boxHeight = bot - top;
         
         if (boxWidth <= 0 || boxHeight <= 0) return;
         
-        // Convert hex color to rgba with transparency
-        const hexToRgba = (hex, alpha) => {
-            const r = parseInt(hex.slice(1, 3), 16);
-            const g = parseInt(hex.slice(3, 5), 16);
-            const b = parseInt(hex.slice(5, 7), 16);
-            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-        };
+        const fillCol = colorToRgba(box.color, baseFillAlpha);
+        const edgeCol = colorToRgba(box.color, Math.min(0.5, baseFillAlpha * 2.6));
         
-        // Draw box fill
-        ctx.fillStyle = hexToRgba(box.color, (100 - transparency) / 100);
-        ctx.fillRect(drawX1, y1, boxWidth, boxHeight);
+        roundRectPath(ctx, drawX1, top, boxWidth, boxHeight, 3);
+        ctx.fillStyle = fillCol;
+        ctx.fill();
         
-        // Draw top border (high line)
-        ctx.strokeStyle = box.color;
+        ctx.strokeStyle = edgeCol;
         ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(drawX1, y1);
-        ctx.lineTo(drawX2, y1);
+        ctx.setLineDash([]);
+        roundRectPath(ctx, drawX1, top, boxWidth, boxHeight, 3);
         ctx.stroke();
         
-        // Draw bottom border (low line)
-        ctx.beginPath();
-        ctx.moveTo(drawX1, y2);
-        ctx.lineTo(drawX2, y2);
-        ctx.stroke();
-        
-        // Draw midline if enabled
         if (data.showMidline) {
-            const midY = (y1 + y2) / 2;
-            ctx.setLineDash([4, 4]);
+            const midY = (top + bot) / 2;
+            ctx.strokeStyle = colorToRgba(box.color, 0.2);
+            ctx.lineWidth = 1;
+            ctx.setLineDash([7, 6]);
             ctx.beginPath();
-            ctx.moveTo(drawX1, midY);
-            ctx.lineTo(drawX2, midY);
+            ctx.moveTo(drawX1 + 1, midY);
+            ctx.lineTo(drawX2 - 1, midY);
             ctx.stroke();
             ctx.setLineDash([]);
         }
         
-        // Draw session label with range info
-        if (data.showBoxInfo && boxWidth > 40) {
-            const midX = (drawX1 + drawX2) / 2;
-            const labelY = y1 - 5;
-            
-            // Calculate range in pips (for forex) or points
+        if (data.showBoxInfo && boxWidth > 48) {
             const range = box.range;
-            const pipMultiplier = this.pipSize || 0.0001;
+            const pipMultiplier = self.pipSize || 0.0001;
             const pips = Math.round(range / pipMultiplier);
-            const rangeText = `${pips} pips`;
-            
-            ctx.fillStyle = style.textColor || '#5c71af';
-            ctx.font = '10px Roboto';
+            const label = box.name + ' · ' + pips + ' pips';
+            ctx.font = '600 11px Roboto, system-ui, sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText(`${box.name} • ${rangeText}`, midX, labelY);
+            ctx.textBaseline = 'bottom';
+            const tw = ctx.measureText(label).width + 16;
+            const th = 18;
+            let lx = (drawX1 + drawX2) / 2 - tw / 2;
+            let ly = top - 6;
+            lx = Math.max(m.l + 2, Math.min(lx, self.w - m.r - tw - 2));
+            if (ly - th < m.t + 4) {
+                ly = bot + th + 8;
+            }
+            ctx.fillStyle = 'rgba(13, 17, 23, 0.88)';
+            roundRectPath(ctx, lx, ly - th, tw, th, 4);
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.lineWidth = 1;
+            roundRectPath(ctx, lx, ly - th, tw, th, 4);
+            ctx.stroke();
+            ctx.fillStyle = style.textColor || '#d1d4dc';
+            ctx.fillText(label, lx + tw / 2, ly - 4);
         }
         
-        // Draw deviations if enabled
         if (data.showDeviations && data.deviationCount > 0) {
             const devRange = box.range;
-            ctx.setLineDash([2, 2]);
-            
+            ctx.setLineDash([5, 5]);
+            ctx.strokeStyle = colorToRgba(box.color, 0.26);
+            ctx.lineWidth = 1;
             for (let d = 1; d <= data.deviationCount; d++) {
-                // Upper deviation
                 const upperDevPrice = box.high + (devRange * d);
-                const upperY = this.yScale(upperDevPrice);
-                if (upperY >= m.t) {
-                    ctx.strokeStyle = box.color;
-                    ctx.lineWidth = 1;
+                const upperY = self.yScale(upperDevPrice);
+                if (upperY >= m.t && upperY <= priceAreaBottom) {
                     ctx.beginPath();
                     ctx.moveTo(drawX1, upperY);
                     ctx.lineTo(drawX2, upperY);
                     ctx.stroke();
                 }
-                
-                // Lower deviation
                 const lowerDevPrice = box.low - (devRange * d);
-                const lowerY = this.yScale(lowerDevPrice);
-                if (lowerY <= priceAreaBottom) {
+                const lowerY = self.yScale(lowerDevPrice);
+                if (lowerY <= priceAreaBottom && lowerY >= m.t) {
                     ctx.beginPath();
                     ctx.moveTo(drawX1, lowerY);
                     ctx.lineTo(drawX2, lowerY);
@@ -5120,43 +5165,56 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         }
     });
     
-    // Draw NY Midnight lines
+    ctx.restore();
+    
     if (data.showNYMidnight && data.nyMidnight && data.nyMidnight.length > 0) {
-        const nyColor = data.nyMidnightColor || '#2d62b6';
+        const nyRaw = data.nyMidnightColor || '#2d62b6';
+        const nyStroke = colorToRgba(nyRaw, 0.38);
+        const prec = self._symbolPrecision != null ? self._symbolPrecision : (self.pricePrecision != null ? self.pricePrecision : 5);
         
-        data.nyMidnight.forEach(midnight => {
-            const x = this.dataIndexToPixel(midnight.index);
-            const y = this.yScale(midnight.price);
+        data.nyMidnight.forEach(function(midnight) {
+            const x = self.dataIndexToPixel(midnight.index);
+            const y = self.yScale(midnight.price);
+            if (x < m.l || x > self.w - m.r) return;
             
-            // Skip if outside visible area
-            if (x < m.l || x > this.w - m.r) return;
-            
-            // Draw vertical line at midnight
-            ctx.strokeStyle = nyColor;
+            ctx.save();
+            ctx.strokeStyle = nyStroke;
             ctx.lineWidth = 1;
-            ctx.setLineDash([4, 4]);
+            ctx.setLineDash([10, 14]);
+            ctx.globalAlpha = 0.9;
             ctx.beginPath();
-            ctx.moveTo(x, m.t);
-            ctx.lineTo(x, priceAreaBottom);
+            ctx.moveTo(x, m.t + 2);
+            ctx.lineTo(x, priceAreaBottom - 1);
             ctx.stroke();
-            ctx.setLineDash([]);
-            
-            // Draw horizontal price line extending right
-            ctx.strokeStyle = nyColor;
-            ctx.lineWidth = 2;
-            ctx.setLineDash([8, 4]);
+            ctx.setLineDash([12, 8]);
+            ctx.lineWidth = 1.15;
             ctx.beginPath();
             ctx.moveTo(x, y);
-            ctx.lineTo(this.w - m.r, y);
+            ctx.lineTo(self.w - m.r, y);
             ctx.stroke();
             ctx.setLineDash([]);
+            ctx.globalAlpha = 1;
             
-            // Draw label
-            ctx.fillStyle = style.textColor || '#5c71af';
-            ctx.font = '10px Roboto';
+            const priceText = 'NY Open ' + midnight.price.toFixed(prec);
+            ctx.font = '600 11px Roboto, system-ui, sans-serif';
             ctx.textAlign = 'left';
-            const priceText = midnight.price.toFixed(this._symbolPrecision ?? this.pricePrecision ?? 5);
-            ctx.fillText(`NY Open ${priceText}`, x + 5, y - 5);
+            ctx.textBaseline = 'bottom';
+            const tw = ctx.measureText(priceText).width + 14;
+            const th = 18;
+            let lx = x + 6;
+            let ly = y - 6;
+            if (lx + tw > self.w - m.r - 2) lx = x - tw - 6;
+            if (ly - th < m.t + 2) ly = y + th + 4;
+            ctx.fillStyle = 'rgba(13, 17, 23, 0.9)';
+            roundRectPath(ctx, lx, ly - th, tw, th, 4);
+            ctx.fill();
+            ctx.strokeStyle = colorToRgba(nyRaw, 0.55);
+            ctx.lineWidth = 1;
+            roundRectPath(ctx, lx, ly - th, tw, th, 4);
+            ctx.stroke();
+            ctx.fillStyle = style.textColor || '#d1d4dc';
+            ctx.fillText(priceText, lx + 7, ly - 5);
+            ctx.restore();
         });
     }
 };

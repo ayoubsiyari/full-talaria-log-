@@ -181,7 +181,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'showBoxInfo', label: 'Box Labels', type: 'checkbox', default: true },
             { id: 'showDeviations', label: 'Deviations', type: 'checkbox', default: false },
             { id: 'deviationCount', label: 'Deviation Count', type: 'number', default: 2, min: 1, max: 5 },
-            { id: 'boxTransparency', label: 'Box Transparency', type: 'number', default: 85, min: 0, max: 100 },
+            { id: 'boxTransparency', label: 'Box Transparency', type: 'number', default: 88, min: 0, max: 100 },
             // Session Times (NY Timezone)
             { id: 'cbdrStart', label: 'CBDR Start (NY)', type: 'time', default: '14:00' },
             { id: 'cbdrEnd', label: 'CBDR End (NY)', type: 'time', default: '20:00' },
