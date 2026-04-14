@@ -1,9 +1,9 @@
-/* Sessions dashboard — Syne + DM Mono, lime on #0a0c0f (scoped) */
+/* Sessions dashboard — Zain (root layout) + blue accents on #0a0c0f */
 
 .sd-root {
   background: #0a0c0f;
   min-height: 100vh;
-  font-family: var(--font-syne), "Syne", system-ui, sans-serif;
+  font-family: var(--font-zain), system-ui, sans-serif;
   color: #e8e4dc;
   padding: 0;
 }
@@ -30,7 +30,8 @@
 .sd-logo-mark {
   width: 28px;
   height: 28px;
-  background: #c8f060;
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.35);
   border-radius: 6px;
   display: flex;
   align-items: center;
@@ -88,12 +89,12 @@
 }
 
 .sd-btn-primary {
-  background: #c8f060;
-  color: #0a0c0f;
+  background: #2563eb;
+  color: #fff;
   border: none;
   border-radius: 8px;
   padding: 8px 16px;
-  font-family: var(--font-syne), "Syne", sans-serif;
+  font-family: var(--font-zain), system-ui, sans-serif;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -101,11 +102,13 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: opacity 0.15s, transform 0.12s;
+  transition: opacity 0.15s, transform 0.12s, background 0.15s;
+  box-shadow: 0 4px 20px rgba(37, 99, 235, 0.25);
 }
 
 .sd-btn-primary:hover {
-  opacity: 0.92;
+  background: #1d4ed8;
+  opacity: 1;
 }
 
 .sd-btn-primary:active {
@@ -133,7 +136,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #c8f060;
+  background: #60a5fa;
   flex-shrink: 0;
 }
 
@@ -142,7 +145,7 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 7px;
   padding: 7px 14px;
-  font-family: var(--font-syne), "Syne", sans-serif;
+  font-family: var(--font-zain), system-ui, sans-serif;
   font-size: 11px;
   font-weight: 600;
   color: #9b97a0;
@@ -196,7 +199,7 @@
 }
 
 .sd-stat-card.sd-stat-accent .sd-stat-value {
-  color: #c8f060;
+  color: #93c5fd;
 }
 
 .sd-stat-value-sm {
@@ -208,7 +211,8 @@
   font-size: 11px;
   color: #4a4850;
   margin-top: 6px;
-  font-family: var(--font-dm-mono), "DM Mono", ui-monospace, monospace;
+  font-family: var(--font-zain), system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
 }
 
 .sd-filters {
@@ -224,7 +228,7 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 20px;
   padding: 6px 16px;
-  font-family: var(--font-syne), "Syne", sans-serif;
+  font-family: var(--font-zain), system-ui, sans-serif;
   font-size: 12px;
   font-weight: 500;
   color: #4a4850;
@@ -238,9 +242,9 @@
 }
 
 .sd-filter-btn.sd-active {
-  background: #c8f060;
-  border-color: #c8f060;
-  color: #0a0c0f;
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
   font-weight: 700;
 }
 
@@ -336,19 +340,19 @@
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: rgba(200, 240, 96, 0.1);
-  border: 1px solid rgba(200, 240, 96, 0.2);
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.28);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   cursor: pointer;
-  color: #c8f060;
+  color: #60a5fa;
   transition: background 0.12s, transform 0.12s;
 }
 
 .sd-play-btn:hover {
-  background: rgba(200, 240, 96, 0.18);
+  background: rgba(59, 130, 246, 0.2);
   transform: scale(1.04);
 }
 
@@ -367,7 +371,8 @@
 .sd-row-date {
   font-size: 10px;
   color: #4a4850;
-  font-family: var(--font-dm-mono), "DM Mono", ui-monospace, monospace;
+  font-family: var(--font-zain), system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
   margin-top: 2px;
 }
 
@@ -378,7 +383,7 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 6px;
   padding: 4px 10px;
-  font-family: var(--font-dm-mono), "DM Mono", ui-monospace, monospace;
+  font-family: var(--font-zain), system-ui, sans-serif;
   font-size: 11px;
   font-weight: 500;
   color: #9b97a0;
@@ -403,13 +408,13 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  background: rgba(200, 240, 96, 0.08);
-  border: 1px solid rgba(200, 240, 96, 0.15);
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.22);
   border-radius: 6px;
   padding: 4px 10px;
   font-size: 10px;
   font-weight: 700;
-  color: #c8f060;
+  color: #93c5fd;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -421,21 +426,24 @@
 }
 
 .sd-balance {
-  font-family: var(--font-dm-mono), "DM Mono", ui-monospace, monospace;
+  font-family: var(--font-zain), system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-weight: 500;
   color: #e8e4dc;
 }
 
 .sd-date-range {
-  font-family: var(--font-dm-mono), "DM Mono", ui-monospace, monospace;
+  font-family: var(--font-zain), system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
   font-size: 10px;
   color: #4a4850;
   line-height: 1.5;
 }
 
 .sd-created-cell {
-  font-family: var(--font-dm-mono), "DM Mono", ui-monospace, monospace;
+  font-family: var(--font-zain), system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
   font-size: 10px;
   color: #4a4850;
 }
@@ -453,7 +461,7 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 7px;
   padding: 5px 10px;
-  font-family: var(--font-syne), "Syne", sans-serif;
+  font-family: var(--font-zain), system-ui, sans-serif;
   font-size: 10px;
   font-weight: 600;
   color: #6b6870;
@@ -472,13 +480,13 @@
 }
 
 .sd-act-btn.sd-challenge {
-  background: rgba(200, 240, 96, 0.06);
-  border-color: rgba(200, 240, 96, 0.18);
-  color: #c8f060;
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.22);
+  color: #93c5fd;
 }
 
 .sd-act-btn.sd-challenge:hover {
-  background: rgba(200, 240, 96, 0.12);
+  background: rgba(59, 130, 246, 0.14);
 }
 
 .sd-act-btn.sd-danger:hover {
@@ -528,7 +536,7 @@
   }
 }
 
-/* Modal overlay — lime theme */
+/* Modal overlay — blue theme */
 .sd-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -552,7 +560,7 @@
 }
 
 .sd-modal-panel h2 {
-  font-family: var(--font-syne), "Syne", sans-serif;
+  font-family: var(--font-zain), system-ui, sans-serif;
   font-size: 22px;
   font-weight: 600;
   color: #e8e4dc;
@@ -591,14 +599,14 @@
 }
 
 .sd-modal-choice:hover {
-  border-color: rgba(200, 240, 96, 0.35);
-  background: rgba(200, 240, 96, 0.06);
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.08);
   transform: translateY(-2px);
 }
 
 .sd-modal-choice svg {
   margin: 0 auto 12px;
-  color: #c8f060;
+  color: #60a5fa;
 }
 
 .sd-modal-choice-alt svg {
@@ -671,7 +679,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: transparent;
   padding: 8px 14px;
-  font-family: var(--font-syne), "Syne", sans-serif;
+  font-family: var(--font-zain), system-ui, sans-serif;
   font-size: 11px;
   font-weight: 600;
   color: #9b97a0;

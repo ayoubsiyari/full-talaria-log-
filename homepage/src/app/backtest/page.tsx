@@ -1,21 +1,8 @@
 "use client";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, Trash2, BarChart3, Trophy, X, Shield } from "lucide-react";
-import { Syne, DM_Mono } from "next/font/google";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import "./sessions-dashboard.css";
-
-const fontSyne = Syne({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-syne",
-});
-
-const fontDmMono = DM_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  variable: "--font-dm-mono",
-});
 
 interface Session {
   id: number;
@@ -218,10 +205,8 @@ export default function BacktestSessions() {
     { key: "propfirm", label: "Prop Firm" },
   ];
 
-  const fontClass = `${fontSyne.variable} ${fontDmMono.variable}`;
-
   return (
-    <div className={`sd-root min-h-screen ${fontClass}`} dir="ltr" lang="en">
+    <div className="sd-root min-h-screen" dir="ltr" lang="en">
       <header className="sd-topbar">
         <div className="sd-logo-area">
           <a href="/" className="sd-logo-mark shrink-0" aria-label="Home">
@@ -348,7 +333,7 @@ export default function BacktestSessions() {
                         className="sd-play-btn"
                       >
                         <svg viewBox="0 0 10 10" width={12} height={12} aria-hidden className="shrink-0 ml-px">
-                          <path d="M3 2l5 3-5 3V2z" fill="#c8f060" />
+                          <path d="M3 2l5 3-5 3V2z" fill="#60a5fa" />
                         </svg>
                       </button>
                       <div>
