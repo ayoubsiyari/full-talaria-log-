@@ -153,8 +153,27 @@ body::before {
   display: flex;
   flex-direction: column;
   gap: 1.4rem;
-  max-height: 72vh;
+  max-height: min(72vh, 900px);
   overflow-y: auto;
+}
+
+/* Simulation preset — keep visible at top of scroll */
+.pf-preset-section {
+  scroll-margin-top: 12px;
+  padding: 14px 16px 16px;
+  background: rgba(234, 88, 12, 0.04);
+  border: 1px solid rgba(234, 88, 12, 0.14);
+  border-radius: 12px;
+}
+.pf-preset-intro {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #64748b;
+  margin-bottom: 12px;
+}
+.pf-preset-intro strong {
+  color: #94a3b8;
+  font-weight: 600;
 }
 
 .pf-modal-body::-webkit-scrollbar {
@@ -238,6 +257,7 @@ body::before {
 .pf-modal input[type='text'],
 .pf-modal input[type='number'],
 .pf-modal input[type='date'],
+.pf-modal input[type='datetime-local'],
 .pf-modal textarea,
 .pf-modal select {
   width: 100%;

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Prop Firm Challenge Mode</title>
-    <link rel="stylesheet" href="propfirm-styles.css?v=3">
+    <link rel="stylesheet" href="propfirm-styles.css?v=4">
     <script>
         (function() {
             function redirectToLogin() {
@@ -91,8 +91,9 @@
                 </div>
 
                 <div class="pf-modal-body">
-                    <div>
+                    <div class="pf-preset-section" id="simulationPresetSection">
                         <div class="section-label">Simulation preset</div>
+                        <p class="pf-preset-intro">Choose a rule template, then adjust symbols and details below. <strong>Custom</strong> leaves your fields as-is.</p>
                         <div id="simulationPresetGrid" class="preset-grid" role="list"></div>
                         <input type="hidden" id="simulationPresetId" name="simulationPresetId" value="custom" />
                         <input type="hidden" id="simulationPresetLabel" name="simulationPresetLabel" value="Custom configuration" />
@@ -182,15 +183,15 @@
                         <div class="section-label">Testing period</div>
                         <div class="grid-2">
                             <div class="field">
-                                <label>Start date <span class="req">*</span></label>
-                                <input type="date" id="startDate" class="mono" disabled>
+                                <label>Start date &amp; time <span class="req">*</span></label>
+                                <input type="datetime-local" id="startDate" name="startDate" class="mono" required>
                             </div>
                             <div class="field">
-                                <label>End date <span class="req">*</span></label>
-                                <input type="date" id="endDate" class="mono" disabled>
+                                <label>End date &amp; time <span class="req">*</span></label>
+                                <input type="datetime-local" id="endDate" name="endDate" class="mono" required>
                             </div>
                         </div>
-                        <span class="hint" style="margin-top:6px;display:block;">Select a data file to see the available date range</span>
+                        <span id="testingPeriodHint" class="hint" style="margin-top:6px;display:block;">Select a data file to load the full available date and time range (same as standard backtest).</span>
                     </div>
 
                     <div>
@@ -480,8 +481,8 @@
         </div>
     </div>
 
-    <script src="propfirm-presets.js"></script>
-    <script src="propfirm-script.js"></script>
+    <script src="propfirm-presets.js?v=4"></script>
+    <script src="propfirm-script.js?v=4"></script>
     <script>
         console.log('🔥 Prop Firm Backtest - Script loaded');
         
@@ -904,8 +905,15 @@
                     console.error('❌ Cannot find date/time field in data');
                     return;
                 }
+                if (typeof firstTimestamp === 'string' && /^\d+$/.test(String(firstTimestamp).trim())) {
+                    firstTimestamp = parseInt(firstTimestamp, 10);
+                }
                 
                 const firstDate = new Date(firstTimestamp);
+                if (isNaN(firstDate.getTime())) {
+                    console.error('❌ Invalid first row timestamp');
+                    return;
+                }
                 console.log('📅 First date detected:', firstDate.toLocaleString());
                 
                 // Get last row
@@ -958,23 +966,36 @@
                         }
                         
                         if (lastTimestamp) {
+                            if (typeof lastTimestamp === 'string' && /^\d+$/.test(String(lastTimestamp).trim())) {
+                                lastTimestamp = parseInt(lastTimestamp, 10);
+                            }
                             lastDate = new Date(lastTimestamp);
                             console.log('📅 Last date detected:', lastDate.toLocaleString());
                         }
                     }
                 }
                 
-                // Set date inputs
+                // Same behavior as backtesting.html: full datetime range, editable within min/max
                 const startDateInput = document.getElementById('startDate');
                 const endDateInput = document.getElementById('endDate');
+                const hintEl = document.getElementById('testingPeriodHint');
                 
                 if (startDateInput && endDateInput) {
-                    startDateInput.value = firstDate.toISOString().split('T')[0];
-                    endDateInput.value = lastDate.toISOString().split('T')[0];
-                    startDateInput.disabled = false;
-                    endDateInput.disabled = false;
+                    const minStr = firstDate.toISOString().slice(0, 16);
+                    const maxStr = lastDate.toISOString().slice(0, 16);
+                    startDateInput.min = minStr;
+                    startDateInput.max = maxStr;
+                    endDateInput.min = minStr;
+                    endDateInput.max = maxStr;
+                    startDateInput.value = minStr;
+                    endDateInput.value = maxStr;
+                    startDateInput.removeAttribute('disabled');
+                    endDateInput.removeAttribute('disabled');
                     
-                    console.log(`✅ Date range: ${firstDate.toLocaleDateString()} to ${lastDate.toLocaleDateString()}`);
+                    if (hintEl) {
+                        hintEl.textContent = 'Available data in file: ' + firstDate.toLocaleString() + ' — ' + lastDate.toLocaleString() + '. You can narrow the window; stay within the range above.';
+                    }
+                    console.log(`✅ Date range: ${firstDate.toLocaleString()} to ${lastDate.toLocaleString()}`);
                 }
                 
             } catch (error) {

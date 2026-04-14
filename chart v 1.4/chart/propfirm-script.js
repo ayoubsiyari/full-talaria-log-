@@ -679,19 +679,20 @@ async function updateDateInputs() {
     const selectedSymbols = document.querySelectorAll('.symbol-checkbox:checked');
     const startDate = document.getElementById('startDate');
     const endDate = document.getElementById('endDate');
-    
+    if (!startDate || !endDate) return;
+
     if (selectedSymbols.length > 0) {
-        startDate.disabled = false;
-        endDate.disabled = false;
-        
-        // Load date range from first selected file
+        startDate.removeAttribute('disabled');
+        endDate.removeAttribute('disabled');
         const firstFileId = selectedSymbols[0].value;
         await loadDateRangeFromFile(firstFileId);
     } else {
-        startDate.disabled = true;
-        endDate.disabled = true;
         startDate.value = '';
         endDate.value = '';
+        startDate.removeAttribute('min');
+        startDate.removeAttribute('max');
+        endDate.removeAttribute('min');
+        endDate.removeAttribute('max');
     }
 }
 
@@ -723,8 +724,12 @@ async function loadDateRangeFromFile(fileId) {
         // Extract timestamp from first row
         let firstTimestamp = extractTimestamp(firstRow);
         if (!firstTimestamp) return;
-        
+        if (typeof firstTimestamp === 'string' && /^\d+$/.test(String(firstTimestamp).trim())) {
+            firstTimestamp = parseInt(firstTimestamp, 10);
+        }
+
         const firstDate = new Date(firstTimestamp);
+        if (isNaN(firstDate.getTime())) return;
         
         // Fetch last row
         const totalRows = responseData.total || 30000;
@@ -745,19 +750,40 @@ async function loadDateRangeFromFile(fileId) {
                 
                 let lastTimestamp = extractTimestamp(lastRow);
                 if (lastTimestamp) {
+                    if (typeof lastTimestamp === 'string' && /^\d+$/.test(String(lastTimestamp).trim())) {
+                        lastTimestamp = parseInt(lastTimestamp, 10);
+                    }
                     lastDate = new Date(lastTimestamp);
                 }
             }
         }
         
-        // Set date inputs
         const startDateInput = document.getElementById('startDate');
         const endDateInput = document.getElementById('endDate');
-        
-        startDateInput.value = firstDate.toISOString().split('T')[0];
-        endDateInput.value = lastDate.toISOString().split('T')[0];
-        
-        console.log(`✅ Date range: ${firstDate.toLocaleDateString()} to ${lastDate.toLocaleDateString()}`);
+        if (!startDateInput || !endDateInput) return;
+
+        const minStr = firstDate.toISOString().slice(0, 16);
+        const maxStr = lastDate.toISOString().slice(0, 16);
+        startDateInput.min = minStr;
+        startDateInput.max = maxStr;
+        endDateInput.min = minStr;
+        endDateInput.max = maxStr;
+        startDateInput.value = minStr;
+        endDateInput.value = maxStr;
+        startDateInput.removeAttribute('disabled');
+        endDateInput.removeAttribute('disabled');
+
+        const hintEl = document.getElementById('testingPeriodHint');
+        if (hintEl) {
+            hintEl.textContent =
+                'Available data in file: ' +
+                firstDate.toLocaleString() +
+                ' — ' +
+                lastDate.toLocaleString() +
+                '. You can narrow the window; stay within the range above.';
+        }
+
+        console.log(`✅ Date range: ${firstDate.toLocaleString()} to ${lastDate.toLocaleString()}`);
         
     } catch (error) {
         console.error('❌ Error loading date range:', error);
