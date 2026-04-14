@@ -2,20 +2,29 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import "./cot-page.css";
-import { COT_INSTRUMENTS, type CotAssetGroup } from "./cot-instruments";
 import {
-  loadAllSnapshots,
+  loadFullUniverseSnapshots,
   type CotSnapshot,
+  type LoadCotProgress,
 } from "./cot-fetch";
 
-const ASSET_TABS: { id: CotAssetGroup | "all"; label: string }[] = [
+/** CFTC commodity_group_name — full Legacy Combined universe */
+type CotCategoryFilter =
+  | "all"
+  | "AGRICULTURE"
+  | "FINANCIAL INSTRUMENTS"
+  | "NATURAL RESOURCES"
+  | "__none__";
+
+const CATEGORY_TABS: { id: CotCategoryFilter; label: string }[] = [
   { id: "all", label: "All" },
-  { id: "forex", label: "Forex" },
-  { id: "commodities", label: "Commodities" },
-  { id: "indices", label: "Indices" },
-  { id: "bonds", label: "Bonds" },
-  { id: "crypto", label: "Crypto" },
+  { id: "AGRICULTURE", label: "Agriculture" },
+  { id: "FINANCIAL INSTRUMENTS", label: "Financial" },
+  { id: "NATURAL RESOURCES", label: "Resources" },
+  { id: "__none__", label: "Ungrouped" },
 ];
+
+type SortKey = "net_abs" | "net_desc" | "net_asc" | "name" | "code";
 
 const VIEW_WEEKS = [4, 13, 26, 52] as const;
 
@@ -99,15 +108,25 @@ export default function CotDashboardPage() {
   const [snapshots, setSnapshots] = useState<CotSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [assetGroup, setAssetGroup] = useState<CotAssetGroup | "all">("forex");
-  const [selectedSym, setSelectedSym] = useState<string | null>(null);
+  const [loadProgress, setLoadProgress] = useState<LoadCotProgress>({
+    phase: "catalog",
+    done: 0,
+    total: 1,
+  });
+  const [categoryFilter, setCategoryFilter] =
+    useState<CotCategoryFilter>("all");
+  const [subgroupFilter, setSubgroupFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("net_abs");
+  const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [viewWeeks, setViewWeeks] = useState<number>(13);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setLoadProgress({ phase: "catalog", done: 0, total: 1 });
     try {
-      const rows = await loadAllSnapshots(COT_INSTRUMENTS, 220);
+      const rows = await loadFullUniverseSnapshots(220, 14, setLoadProgress);
       if (!rows.length) throw new Error("No CFTC rows returned");
       setSnapshots(rows);
     } catch (e) {
@@ -122,26 +141,103 @@ export default function CotDashboardPage() {
     load();
   }, [load]);
 
-  const filtered = useMemo(() => {
-    if (assetGroup === "all") return snapshots;
-    return snapshots.filter((s) => s.def.group === assetGroup);
-  }, [snapshots, assetGroup]);
+  const subgroupOptions = useMemo(() => {
+    let base = snapshots;
+    if (categoryFilter !== "all") {
+      if (categoryFilter === "__none__") {
+        base = base.filter((s) => !s.def.commodityGroup);
+      } else {
+        base = base.filter((s) => s.def.commodityGroup === categoryFilter);
+      }
+    }
+    const set = new Set<string>();
+    for (const s of base) {
+      if (s.def.commoditySubgroup) set.add(s.def.commoditySubgroup);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [snapshots, categoryFilter]);
 
-  const stripList = useMemo(() => filtered.slice(0, 6), [filtered]);
+  useEffect(() => {
+    if (
+      subgroupFilter !== "all" &&
+      !subgroupOptions.includes(subgroupFilter)
+    ) {
+      setSubgroupFilter("all");
+    }
+  }, [subgroupOptions, subgroupFilter]);
+
+  const filtered = useMemo(() => {
+    let out = snapshots;
+    if (categoryFilter !== "all") {
+      if (categoryFilter === "__none__") {
+        out = out.filter((s) => !s.def.commodityGroup);
+      } else {
+        out = out.filter((s) => s.def.commodityGroup === categoryFilter);
+      }
+    }
+    if (subgroupFilter !== "all") {
+      out = out.filter(
+        (s) => (s.def.commoditySubgroup || "") === subgroupFilter
+      );
+    }
+    const q = search.trim().toLowerCase();
+    if (q) {
+      out = out.filter((s) => {
+        const hay = [
+          s.def.sym,
+          s.marketName,
+          s.def.code,
+          s.def.commodityName || "",
+          s.def.commoditySubgroup || "",
+          s.def.commodityGroup || "",
+        ]
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(q);
+      });
+    }
+    const sorted = [...out];
+    if (sortKey === "net_abs") {
+      sorted.sort(
+        (a, b) => Math.abs(b.netNonComm) - Math.abs(a.netNonComm)
+      );
+    } else if (sortKey === "net_desc") {
+      sorted.sort((a, b) => b.netNonComm - a.netNonComm);
+    } else if (sortKey === "net_asc") {
+      sorted.sort((a, b) => a.netNonComm - b.netNonComm);
+    } else if (sortKey === "name") {
+      sorted.sort((a, b) => a.def.sym.localeCompare(b.def.sym));
+    } else {
+      sorted.sort((a, b) => a.def.code.localeCompare(b.def.code));
+    }
+    return sorted;
+  }, [
+    snapshots,
+    categoryFilter,
+    subgroupFilter,
+    search,
+    sortKey,
+  ]);
+
+  const stripList = useMemo(() => filtered.slice(0, 8), [filtered]);
 
   useEffect(() => {
     if (!filtered.length) {
-      setSelectedSym(null);
+      setSelectedCode(null);
       return;
     }
-    if (!selectedSym || !filtered.some((s) => s.def.sym === selectedSym)) {
-      setSelectedSym(filtered[0].def.sym);
+    if (
+      !selectedCode ||
+      !filtered.some((s) => s.def.code === selectedCode)
+    ) {
+      setSelectedCode(filtered[0].def.code);
     }
-  }, [filtered, selectedSym]);
+  }, [filtered, selectedCode]);
 
   const selected = useMemo(
-    () => filtered.find((s) => s.def.sym === selectedSym) || filtered[0] || null,
-    [filtered, selectedSym]
+    () =>
+      filtered.find((s) => s.def.code === selectedCode) || filtered[0] || null,
+    [filtered, selectedCode]
   );
 
   const latestReport = useMemo(() => {
@@ -154,6 +250,7 @@ export default function CotDashboardPage() {
 
   const extremes = useMemo(() => {
     const out: {
+      code: string;
       sym: string;
       desc: string;
       pct: number;
@@ -164,6 +261,7 @@ export default function CotDashboardPage() {
       if (p == null) continue;
       if (p >= 85) {
         out.push({
+          code: s.def.code,
           sym: s.def.sym,
           desc: "High vs sample — crowded long positioning",
           pct: p,
@@ -171,6 +269,7 @@ export default function CotDashboardPage() {
         });
       } else if (p <= 15) {
         out.push({
+          code: s.def.code,
           sym: s.def.sym,
           desc: "Low vs sample — crowded short positioning",
           pct: p,
@@ -183,6 +282,7 @@ export default function CotDashboardPage() {
 
   const flips = useMemo(() => {
     const out: {
+      code: string;
       sym: string;
       type: string;
       bear: boolean;
@@ -191,6 +291,7 @@ export default function CotDashboardPage() {
     for (const s of filtered) {
       if (s.crossedZero) {
         out.push({
+          code: s.def.code,
           sym: s.def.sym,
           type: "Net spec crossed zero (vs prior week)",
           bear: s.netNonComm < 0,
@@ -205,6 +306,8 @@ export default function CotDashboardPage() {
     const headers = [
       "symbol",
       "cftc_code",
+      "commodity_group",
+      "commodity_subgroup",
       "report_date",
       "net_noncomm",
       "wk_delta_net",
@@ -218,10 +321,14 @@ export default function CotDashboardPage() {
     const lines = [headers.join(",")];
     for (const s of filtered) {
       const b = biasFromIndex(s.percentile3y);
+      const esc = (x: string) =>
+        x.includes(",") ? `"${x.replace(/"/g, '""')}"` : x;
       lines.push(
         [
-          s.def.sym,
+          esc(s.def.sym),
           s.def.code,
+          esc(s.def.commodityGroup || ""),
+          esc(s.def.commoditySubgroup || ""),
           s.reportDate,
           s.netNonComm,
           s.wkNetDelta,
@@ -245,9 +352,13 @@ export default function CotDashboardPage() {
   }, [filtered, latestReport]);
 
   if (loading) {
+    const msg =
+      loadProgress.phase === "catalog"
+        ? "Loading CFTC catalog (latest report)…"
+        : `Loading weekly history ${loadProgress.done}/${loadProgress.total}…`;
     return (
       <div className="cot-page cot-page-bg">
-        <div className="cot-loading">Loading CFTC Legacy Combined data…</div>
+        <div className="cot-loading">{msg}</div>
       </div>
     );
   }
@@ -287,8 +398,9 @@ export default function CotDashboardPage() {
             Commitment of <span>Traders</span>
           </div>
           <div className="cot-page-sub">
-            CFTC Public Reporting · Legacy Combined (futures + options) · Week
-            ending {formatReportDate(latestReport)}
+            CFTC Public Reporting · Legacy Combined (futures + options) · Full
+            universe ({snapshots.length} markets) · Week ending{" "}
+            {formatReportDate(latestReport)}
           </div>
         </div>
         <div className="cot-header-right">
@@ -306,43 +418,86 @@ export default function CotDashboardPage() {
       </div>
 
       <div className="cot-main">
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
+        <div className="cot-filters-block">
           <div className="cot-asset-tabs">
-            {ASSET_TABS.map((t) => (
+            {CATEGORY_TABS.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 className={
-                  "cot-asset-tab" + (assetGroup === t.id ? " cot-active" : "")
+                  "cot-asset-tab" +
+                  (categoryFilter === t.id ? " cot-active" : "")
                 }
-                onClick={() => setAssetGroup(t.id)}
+                onClick={() => {
+                  setCategoryFilter(t.id);
+                  setSubgroupFilter("all");
+                }}
               >
                 <span className="cot-dot" />
                 {t.label}
               </button>
             ))}
           </div>
-          <div className="cot-view-row">
-            <span className="cot-section-label">View:</span>
-            {VIEW_WEEKS.map((w) => (
-              <button
-                key={w}
-                type="button"
-                className={
-                  "cot-wk-btn" + (viewWeeks === w ? " cot-active" : "")
-                }
-                onClick={() => setViewWeeks(w)}
+          <div className="cot-filter-row">
+            <label className="cot-filter-label">
+              <span className="cot-section-label">Subgroup</span>
+              <select
+                className="cot-select"
+                value={subgroupFilter}
+                onChange={(e) => setSubgroupFilter(e.target.value)}
               >
-                {w}W
-              </button>
-            ))}
+                <option value="all">All subgroups</option>
+                {subgroupOptions.map((sg) => (
+                  <option key={sg} value={sg}>
+                    {sg}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="cot-filter-label cot-filter-grow">
+              <span className="cot-section-label">Search</span>
+              <input
+                type="search"
+                className="cot-search-input"
+                placeholder="Name, CFTC code, commodity…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                autoComplete="off"
+              />
+            </label>
+            <label className="cot-filter-label">
+              <span className="cot-section-label">Sort</span>
+              <select
+                className="cot-select"
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as SortKey)}
+              >
+                <option value="net_abs">|Net| (largest)</option>
+                <option value="net_desc">Net (high → low)</option>
+                <option value="net_asc">Net (low → high)</option>
+                <option value="name">Name (A–Z)</option>
+                <option value="code">CFTC code</option>
+              </select>
+            </label>
+            <div className="cot-view-row">
+              <span className="cot-section-label">View:</span>
+              {VIEW_WEEKS.map((w) => (
+                <button
+                  key={w}
+                  type="button"
+                  className={
+                    "cot-wk-btn" + (viewWeeks === w ? " cot-active" : "")
+                  }
+                  onClick={() => setViewWeeks(w)}
+                >
+                  {w}W
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="cot-filter-meta">
+            Showing {filtered.length} of {snapshots.length} markets
+            {search.trim() ? ` matching “${search.trim()}”` : ""}
           </div>
         </div>
 
@@ -361,13 +516,14 @@ export default function CotDashboardPage() {
             const bull = p.netNonComm >= 0;
             return (
               <button
-                key={p.def.sym}
+                key={p.def.code}
                 type="button"
                 className={
                   "cot-sent-card" +
-                  (selected?.def.sym === p.def.sym ? " cot-selected" : "")
+                  (selected?.def.code === p.def.code ? " cot-selected" : "")
                 }
-                onClick={() => setSelectedSym(p.def.sym)}
+                onClick={() => setSelectedCode(p.def.code)}
+                title={p.marketName}
               >
                 <div className="cot-sent-sym">{p.def.sym}</div>
                 <div
@@ -420,8 +576,9 @@ export default function CotDashboardPage() {
                 );
                 return (
                   <div key={p.def.code} className="cot-bar-row">
-                    <div className="cot-bar-label">
-                      {p.def.sym.replace(/[^A-Z/]/gi, "").slice(0, 7)}
+                    <div className="cot-bar-label" title={p.def.sym}>
+                      {p.def.sym.slice(0, 8)}
+                      {p.def.sym.length > 8 ? "…" : ""}
                     </div>
                     <div className="cot-bar-track">
                       <div className="cot-bar-center" />
@@ -716,7 +873,7 @@ export default function CotDashboardPage() {
                 <div className="cot-panel-body cot-hint">No extremes in this filter</div>
               ) : (
                 extremes.map((e) => (
-                  <div key={e.sym} className="cot-ext-row">
+                  <div key={e.code} className="cot-ext-row">
                     <div className="cot-ext-left">
                       <div className="cot-ext-sym">{e.sym}</div>
                       <div>
@@ -768,7 +925,9 @@ export default function CotDashboardPage() {
                 ].slice(-6);
                 return (
                   <div key={p.def.code} className="cot-hm-row">
-                    <div className="cot-hm-label">{p.def.sym.slice(0, 6)}</div>
+                    <div className="cot-hm-label" title={p.def.sym}>
+                      {p.def.sym.slice(0, 8)}
+                    </div>
                     <div className="cot-hm-cells">
                       {padded.map((v, i) => {
                         if (v == null) {
@@ -828,7 +987,9 @@ export default function CotDashboardPage() {
             <table className="cot-data-table">
               <thead>
                 <tr>
-                  <th>Symbol</th>
+                  <th>Market</th>
+                  <th>Subgroup</th>
+                  <th>Code</th>
                   <th>Net Non-Comm</th>
                   <th>Wk Δ</th>
                   <th>Long</th>
@@ -858,8 +1019,27 @@ export default function CotDashboardPage() {
                         : "NEUTRAL";
                   const sig = signalFromDelta(p.wkNetDelta);
                   return (
-                    <tr key={p.def.code}>
-                      <td className="cot-td-sym">{p.def.sym}</td>
+                    <tr
+                      key={p.def.code}
+                      className={
+                        selected?.def.code === p.def.code
+                          ? "cot-tr-selected"
+                          : undefined
+                      }
+                      onClick={() => setSelectedCode(p.def.code)}
+                    >
+                      <td className="cot-td-sym" title={p.marketName}>
+                        {p.def.sym}
+                      </td>
+                      <td className="cot-td-muted">
+                        {p.def.commoditySubgroup || "—"}
+                      </td>
+                      <td
+                        className="cot-td-muted"
+                        style={{ fontVariantNumeric: "tabular-nums" }}
+                      >
+                        {p.def.code}
+                      </td>
                       <td
                         className={
                           p.netNonComm >= 0 ? "cot-td-bull" : "cot-td-bear"
@@ -932,20 +1112,23 @@ export default function CotDashboardPage() {
                 </div>
               </div>
               <div className="cot-week-sel">
-                {["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD"].map((sym) => {
-                  const s = snapshots.find((x) => x.def.sym === sym);
-                  if (!s) return null;
+                {filtered.slice(0, 6).map((s) => {
+                  const short =
+                    s.def.sym.length > 14
+                      ? `${s.def.sym.slice(0, 12)}…`
+                      : s.def.sym;
                   return (
                     <button
                       key={s.def.code}
                       type="button"
                       className={
                         "cot-wk-btn" +
-                        (selected?.def.sym === s.def.sym ? " cot-active" : "")
+                        (selected?.def.code === s.def.code ? " cot-active" : "")
                       }
-                      onClick={() => setSelectedSym(s.def.sym)}
+                      onClick={() => setSelectedCode(s.def.code)}
+                      title={s.marketName}
                     >
-                      {sym.startsWith("USD") ? "USD" : sym.slice(0, 3)}
+                      {short}
                     </button>
                   );
                 })}
@@ -1223,7 +1406,7 @@ export default function CotDashboardPage() {
                 <div className="cot-panel-body cot-hint">No sign flips in current filter</div>
               ) : (
                 flips.map((f) => (
-                  <div key={f.sym} className="cot-flip-row">
+                  <div key={f.code} className="cot-flip-row">
                     <div
                       style={{
                         display: "flex",

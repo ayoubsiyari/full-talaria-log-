@@ -1,4 +1,5 @@
 import type { CotInstrumentDef } from "./cot-instruments";
+import { inferLegacyGroup } from "./cot-instruments";
 
 const CFTC_BASE = "https://publicreporting.cftc.gov/resource/jun7-fc8e.json";
 
@@ -6,6 +7,11 @@ export type CftcRow = {
   cftc_contract_market_code?: string;
   report_date_as_yyyy_mm_dd?: string;
   market_and_exchange_names?: string;
+  contract_market_name?: string;
+  commodity_name?: string;
+  commodity?: string;
+  commodity_group_name?: string;
+  commodity_subgroup_name?: string;
   open_interest_all?: string;
   noncomm_positions_long_all?: string;
   noncomm_positions_short_all?: string;
@@ -14,6 +20,8 @@ export type CftcRow = {
   nonrept_positions_long_all?: string;
   nonrept_positions_short_all?: string;
   change_in_open_interest_all?: string;
+  change_in_noncomm_long_all?: string;
+  change_in_noncomm_short_all?: string;
 };
 
 export function parseIntField(s: string | undefined): number {
@@ -43,9 +51,72 @@ export function rowSmallSpecNet(r: CftcRow): number {
   return L - S;
 }
 
+function escapeSoqlString(s: string): string {
+  return String(s).replace(/'/g, "''");
+}
+
+/** Latest report timestamp as returned by the API (for $where clauses). */
+export async function fetchLatestReportDateRaw(): Promise<string> {
+  const url = `${CFTC_BASE}?$select=report_date_as_yyyy_mm_dd&$order=report_date_as_yyyy_mm_dd DESC&$limit=1`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`CFTC HTTP ${res.status}`);
+  const rows = (await res.json()) as { report_date_as_yyyy_mm_dd?: string }[];
+  const d = rows[0]?.report_date_as_yyyy_mm_dd;
+  if (!d) throw new Error("No report date from CFTC");
+  return String(d);
+}
+
+/** YYYY-MM-DD for display. */
+export function reportDateDisplay(raw: string): string {
+  return raw.slice(0, 10);
+}
+
+/** All Legacy Combined rows for a single report (one row per contract market). */
+export async function fetchRowsForReportDate(
+  reportDateRaw: string
+): Promise<CftcRow[]> {
+  const safe = escapeSoqlString(reportDateRaw);
+  const where = `report_date_as_yyyy_mm_dd='${safe}'`;
+  const url =
+    `${CFTC_BASE}?$where=${encodeURIComponent(where)}` +
+    `&$order=${encodeURIComponent("cftc_contract_market_code ASC")}` +
+    `&$limit=50000`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`CFTC HTTP ${res.status}`);
+  const rows = (await res.json()) as CftcRow[];
+  return Array.isArray(rows) ? rows : [];
+}
+
+export function rowToDef(r: CftcRow): CotInstrumentDef | null {
+  const code = String(r.cftc_contract_market_code || "").trim();
+  if (!code) return null;
+  const longName =
+    String(r.contract_market_name || "").trim() ||
+    String(r.market_and_exchange_names || "").trim() ||
+    code;
+  const sym =
+    longName.length > 48 ? `${longName.slice(0, 46)}…` : longName;
+  const cg = r.commodity_group_name ?? null;
+  const cs = r.commodity_subgroup_name ?? null;
+  const cn =
+    r.commodity_name ?? r.commodity ?? null;
+  return {
+    sym,
+    cftc_contract_market_code: code,
+    code,
+    group: inferLegacyGroup(cg, cs),
+    commodityGroup: cg,
+    commoditySubgroup: cs,
+    commodityName: cn,
+  };
+}
+
 /** ASC by report date (oldest first). */
-export async function fetchCotHistory(code: string, limit = 200): Promise<CftcRow[]> {
-  const safe = String(code).replace(/'/g, "''");
+export async function fetchCotHistory(
+  code: string,
+  limit = 200
+): Promise<CftcRow[]> {
+  const safe = escapeSoqlString(String(code));
   const where = `cftc_contract_market_code='${safe}'`;
   const url =
     `${CFTC_BASE}?$where=${encodeURIComponent(where)}` +
@@ -160,6 +231,59 @@ export function buildSnapshot(def: CotInstrumentDef, rows: CftcRow[]): CotSnapsh
   };
 }
 
+async function runWithConcurrency(
+  tasks: (() => Promise<void>)[],
+  limit: number
+): Promise<void> {
+  let ix = 0;
+  const runWorker = async () => {
+    for (;;) {
+      const i = ix++;
+      if (i >= tasks.length) return;
+      await tasks[i]();
+    }
+  };
+  const n = Math.max(1, Math.min(limit, tasks.length));
+  await Promise.all(Array.from({ length: n }, () => runWorker()));
+}
+
+export type LoadCotProgress = { phase: "catalog" | "history"; done: number; total: number };
+
+/**
+ * Full universe: latest report’s markets, each with weekly history for percentiles and charts.
+ */
+export async function loadFullUniverseSnapshots(
+  historyLimit = 220,
+  concurrency = 14,
+  onProgress?: (p: LoadCotProgress) => void
+): Promise<CotSnapshot[]> {
+  onProgress?.({ phase: "catalog", done: 0, total: 1 });
+  const rawDate = await fetchLatestReportDateRaw();
+  const latestRows = await fetchRowsForReportDate(rawDate);
+  const defs = latestRows
+    .map(rowToDef)
+    .filter((d): d is CotInstrumentDef => d != null);
+  const total = defs.length;
+  if (!total) return [];
+
+  const snapshots: (CotSnapshot | null)[] = new Array(total);
+  let done = 0;
+  const tasks = defs.map((def, i) => async () => {
+    try {
+      const rows = await fetchCotHistory(def.code, historyLimit);
+      snapshots[i] = buildSnapshot(def, rows);
+    } catch {
+      snapshots[i] = null;
+    }
+    done++;
+    onProgress?.({ phase: "history", done, total });
+  });
+
+  await runWithConcurrency(tasks, concurrency);
+  return snapshots.filter((x): x is CotSnapshot => x != null);
+}
+
+/** @deprecated Use loadFullUniverseSnapshots */
 export async function loadAllSnapshots(
   defs: CotInstrumentDef[],
   historyLimit = 200
