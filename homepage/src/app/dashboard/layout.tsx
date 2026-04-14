@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { usePathname } from "next/navigation";
 import { useLanguage } from "../LanguageProvider";
 import "./dashboard-shell.css";
 
@@ -44,6 +45,7 @@ export default function DashboardLayout({
         journal: "سجل التداول",
         backtest: "باكتيست",
         strategiesLab: "المختبر",
+        cot: "COT",
         admin: "لوحة الإدارة",
         logout: "تسجيل الخروج",
       }
@@ -52,11 +54,23 @@ export default function DashboardLayout({
         journal: "Journal",
         backtest: "Backtest",
         strategiesLab: "Strategies Lab",
+        cot: "COT",
         admin: "Admin",
         logout: "Logout",
       };
 
+  const pathname = usePathname() || "";
   const navClass = "db-nav " + (isArabic ? "flex-row-reverse" : "");
+
+  function navLinkClass(href: string): string {
+    const p = pathname.replace(/\/$/, "") || "/";
+    const h = href.replace(/\/$/, "");
+    const active =
+      p === h ||
+      (h === "/journal/dashboard" && p.startsWith("/journal/dashboard")) ||
+      (h === "/dashboard/cot" && p.startsWith("/dashboard/cot"));
+    return "db-nav-link" + (active ? " db-nav-link--active" : "");
+  }
 
   return (
     <div className={`db-layout min-h-screen ${isArabic ? "rtl" : "ltr"}`} dir={isArabic ? "rtl" : "ltr"}>
@@ -76,14 +90,15 @@ export default function DashboardLayout({
             { label: nav.sessions, href: "/backtest/" },
             { label: nav.backtest, href: "/chart/index.html" },
             { label: nav.strategiesLab, href: "/strategies-lab/" },
+            { label: nav.cot, href: "/dashboard/cot/" },
             { label: nav.journal, href: "/journal/dashboard" },
           ].map((item) => (
-            <a key={item.href} href={item.href} className="db-nav-link">
+            <a key={item.href} href={item.href} className={navLinkClass(item.href)}>
               {item.label}
             </a>
           ))}
           {user?.role === "admin" && (
-            <a href="/dashboard/admin/" className="db-nav-link">
+            <a href="/dashboard/admin/" className={navLinkClass("/dashboard/admin/")}>
               {nav.admin}
             </a>
           )}

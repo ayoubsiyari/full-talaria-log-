@@ -99,6 +99,12 @@
   border-color: rgba(255, 255, 255, 0.15);
 }
 
+.db-nav-link--active {
+  color: #c8f060;
+  border-color: rgba(200, 240, 96, 0.25);
+  background: rgba(200, 240, 96, 0.06);
+}
+
 .db-nav-link--logout {
   color: #ff5f5f;
   border-color: rgba(255, 80, 80, 0.15);

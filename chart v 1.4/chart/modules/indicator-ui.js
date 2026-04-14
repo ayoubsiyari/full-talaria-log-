@@ -524,13 +524,13 @@ const INDICATOR_DEFINITIONS = {
         params: [
             {
                 id: 'cftcCode',
-                label: 'CFTC code, or auto (matches chart symbol — e.g. EUR/USD → Euro FX)',
+                label: '',
                 type: 'text',
                 default: 'auto'
             },
             {
                 id: 'dataUrl',
-                label: 'Optional JSON URL (overrides CFTC). Array or { points: [] } with t, commercialNet, noncommNet',
+                label: '',
                 type: 'text',
                 default: ''
             },
