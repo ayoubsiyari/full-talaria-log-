@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Prop Firm Challenge Mode</title>
-    <link rel="stylesheet" href="propfirm-styles.css?v=9">
+    <link rel="stylesheet" href="propfirm-styles.css?v=10">
     <script>
         (function() {
             function redirectToLogin() {
@@ -133,8 +133,8 @@
                                             <span class="file-area-text" id="fileAreaSummary">No files selected — select one or more datasets to backtest</span>
                                             <button type="button" class="file-browse-btn" id="fileSelectBtn">Browse files</button>
                                         </div>
-                                        <div id="fileDropdown" style="display: none; position: absolute; top: 100%; left: 0; right: 0; max-height: 220px; overflow-y: auto; z-index: 200;">
-                                            <div id="fileList" style="padding: 8px;">
+                                        <div id="fileDropdown" class="pf-file-dropdown" style="display: none;">
+                                            <div id="fileList" class="pf-file-list">
                                                 <div style="color: #64748b; padding: 12px; text-align: center;">Loading files...</div>
                                             </div>
                                         </div>
@@ -658,11 +658,16 @@
                 });
             }
             
-            // Close dropdown when clicking outside
+            // Close dropdown when clicking outside the file row + dropdown (not only the small Browse button)
             document.addEventListener('click', function(e) {
-                if (!fileDropdown.contains(e.target) && !fileSelectBtn.contains(e.target)) {
-                    fileDropdown.style.display = 'none';
+                const fileArea = document.getElementById('fileAreaTrigger');
+                if (
+                    fileDropdown.contains(e.target) ||
+                    (fileArea && fileArea.contains(e.target))
+                ) {
+                    return;
                 }
+                fileDropdown.style.display = 'none';
             });
             
             // Load files on init
@@ -678,6 +683,11 @@
             initFileDropdown();
         }
         
+        function closeFileDropdown() {
+            var dd = document.getElementById('fileDropdown');
+            if (dd) dd.style.display = 'none';
+        }
+
         // Toggle file selection
         function toggleFileSelection(fileId, fileName) {
             const index = selectedFilesArray.findIndex(f => f.id === fileId);
@@ -689,6 +699,7 @@
             }
             updateSelectedFilesUI();
             updateFileListUI();
+            closeFileDropdown();
         }
         
         // Remove file from selection
@@ -765,13 +776,11 @@
                 const displayName = hasDupes && rows ? pairName + ' (' + rows + ')' : pairName;
                 const safeToggle = rawName.replace(/'/g, "\\'");
                 return (
-                    '<label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; border-radius: 6px; transition: background 0.15s; ' + (isSelected ? 'background: rgba(59, 130, 246, 0.15);' : '') + '" ' +
-                    'onmouseover="this.style.background=\'rgba(59, 130, 246, 0.1)\'" ' +
-                    'onmouseout="this.style.background=\'' + (isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent') + '\'">' +
-                    '<input type="checkbox" ' + (isSelected ? 'checked' : '') + ' onchange="toggleFileSelection(\'' + file.id + '\', \'' + safeToggle + '\')" style="accent-color: #3b82f6; width: 16px; height: 16px;">' +
-                    '<div style="flex:1;display:flex;justify-content:space-between;align-items:center;">' +
-                    '<span style="color: #e5e7eb; font-size: 14px; font-weight: 600;">' + displayName + '</span>' +
-                    '<span style="color: #64748b; font-size: 11px;">' + (rows ? rows + ' candles' : '') + '</span>' +
+                    '<label class="pf-file-dropdown-label' + (isSelected ? ' pf-file-row--selected' : '') + '">' +
+                    '<input type="checkbox" class="pf-file-checkbox" ' + (isSelected ? 'checked' : '') + ' onchange="toggleFileSelection(\'' + file.id + '\', \'' + safeToggle + '\')">' +
+                    '<div class="pf-file-row-main">' +
+                    '<span class="pf-file-row-name">' + displayName + '</span>' +
+                    '<span class="pf-file-row-meta">' + (rows ? rows + ' candles' : '') + '</span>' +
                     '</div></label>'
                 );
             }).join('');

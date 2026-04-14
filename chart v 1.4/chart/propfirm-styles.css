@@ -575,12 +575,126 @@ body.pf-embedded .pf-modal-body::-webkit-scrollbar-thumb {
   background: rgba(234, 88, 12, 0.16);
 }
 
+#fileDropdown.pf-file-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  z-index: 200;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
 #fileDropdown {
-  background: #0b0f1a !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-radius: 10px !important;
-  margin-top: 6px !important;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55) !important;
+  background: #080c14 !important;
+  border: 1px solid rgba(234, 88, 12, 0.22) !important;
+  border-radius: 12px !important;
+  margin-top: 8px !important;
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(0, 0, 0, 0.35) !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(234, 88, 12, 0.35) transparent;
+}
+
+#fileDropdown::-webkit-scrollbar {
+  width: 8px;
+}
+#fileDropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+#fileDropdown::-webkit-scrollbar-thumb {
+  background: rgba(234, 88, 12, 0.22);
+  border-radius: 8px;
+}
+
+.pf-file-list {
+  padding: 6px;
+}
+
+.pf-file-dropdown-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin: 2px 0;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  border: 1px solid transparent;
+}
+.pf-file-dropdown-label:hover {
+  background: rgba(234, 88, 12, 0.07);
+  border-color: rgba(234, 88, 12, 0.12);
+}
+.pf-file-dropdown-label.pf-file-row--selected {
+  background: rgba(234, 88, 12, 0.11);
+  border-color: rgba(234, 88, 12, 0.22);
+}
+.pf-file-dropdown-label.pf-file-row--selected:hover {
+  background: rgba(234, 88, 12, 0.15);
+}
+
+.pf-file-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  margin: 0;
+}
+.pf-file-checkbox:hover {
+  border-color: rgba(251, 146, 60, 0.55);
+  box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.12);
+}
+.pf-file-checkbox:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.35);
+}
+.pf-file-checkbox:checked {
+  background: linear-gradient(145deg, #ea580c 0%, #c2410c 100%);
+  border-color: rgba(251, 146, 60, 0.65);
+  box-shadow: 0 2px 8px rgba(234, 88, 12, 0.25);
+}
+.pf-file-checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 5px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  box-sizing: border-box;
+}
+
+.pf-file-row-main {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.pf-file-row-name {
+  color: #f1f5f9;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.pf-file-row-meta {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 /* Instrument table */
