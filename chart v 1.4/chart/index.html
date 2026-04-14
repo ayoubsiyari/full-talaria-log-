@@ -4033,6 +4033,7 @@
                 overflow-x: auto;
                 overflow-y: hidden;
                 scrollbar-width: thin;
+                scrollbar-gutter: stable;
             }
 
             .toolbar-left,
@@ -21916,6 +21917,27 @@
 
             opacity: 1;
 
+        }
+
+        /* Toolbar row "shake": tooltips + overflow-x:auto can toggle scrollbars; transition:all reflows */
+        .toolbar {
+            scrollbar-gutter: stable;
+        }
+        .toolbar .toolbar-left .tool-group-btn::after,
+        .toolbar .left-sidebar .tool-group-btn::after,
+        .toolbar .left-sidebar .tool-btn::after {
+            max-width: min(280px, calc(100vw - 32px));
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: block;
+        }
+        .toolbar .toolbar-left .tool-group-btn,
+        .toolbar .left-sidebar .tool-group-btn,
+        .toolbar .left-sidebar .drawing-tools-vertical .tool-btn,
+        .toolbar-drawing-tools .tool-group-btn,
+        .toolbar-drawing-tools .toolbar-tool-btn,
+        .toolbar-drawing-icons .tool-group-btn {
+            transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease !important;
         }
 
 
