@@ -19,6 +19,9 @@ const ASSET_TABS: { id: CotAssetGroup | "all"; label: string }[] = [
 
 const VIEW_WEEKS = [4, 13, 26, 52] as const;
 
+/** Matches dashboard shell: blue accent (Tailwind blue-400 / brand) */
+const ACCENT = "#60a5fa";
+
 function fmtK(n: number): string {
   if (!Number.isFinite(n)) return "—";
   const a = Math.abs(n);
@@ -87,7 +90,7 @@ function biasFromIndex(idx: number | null): "bull" | "bear" | "neutral" {
 }
 
 function signalFromDelta(d: number): { text: string; color: string } {
-  if (d > 3000) return { text: "▲ Increasing", color: "#c8f060" };
+  if (d > 3000) return { text: "▲ Increasing", color: ACCENT };
   if (d < -3000) return { text: "▼ Decreasing", color: "#ff6060" };
   return { text: "→ Steady", color: "#35333a" };
 }
@@ -469,7 +472,7 @@ export default function CotDashboardPage() {
               })}
               <div className="cot-stacked-legend">
                 <div className="cot-leg-item">
-                  <div className="cot-leg-dot" style={{ background: "#c8f060" }} />
+                  <div className="cot-leg-dot" style={{ background: ACCENT }} />
                   Long
                 </div>
                 <div className="cot-leg-item">
@@ -516,8 +519,8 @@ export default function CotDashboardPage() {
                     y2="0%"
                   >
                     <stop offset="0%" stopColor="#ff6060" />
-                    <stop offset="50%" stopColor="#c8f060" stopOpacity={0.4} />
-                    <stop offset="100%" stopColor="#c8f060" />
+                    <stop offset="50%" stopColor={ACCENT} stopOpacity={0.4} />
+                    <stop offset="100%" stopColor={ACCENT} />
                   </linearGradient>
                 </defs>
                 <line
@@ -525,17 +528,17 @@ export default function CotDashboardPage() {
                   y1={90}
                   x2={needleX}
                   y2={needleY}
-                  stroke="#c8f060"
+                  stroke={ACCENT}
                   strokeWidth={2}
                   strokeLinecap="round"
                 />
-                <circle cx={90} cy={90} r={5} fill="#c8f060" />
+                <circle cx={90} cy={90} r={5} fill={ACCENT} />
                 <text
                   x={16}
                   y={105}
                   fontSize={8}
                   fill="#35333a"
-                  fontFamily="DM Mono, monospace"
+                  fontFamily="var(--font-zain),system-ui,sans-serif"
                 >
                   0
                 </text>
@@ -544,7 +547,7 @@ export default function CotDashboardPage() {
                   y={18}
                   fontSize={8}
                   fill="#35333a"
-                  fontFamily="DM Mono, monospace"
+                  fontFamily="var(--font-zain),system-ui,sans-serif"
                 >
                   50
                 </text>
@@ -553,7 +556,7 @@ export default function CotDashboardPage() {
                   y={105}
                   fontSize={8}
                   fill="#35333a"
-                  fontFamily="DM Mono, monospace"
+                  fontFamily="var(--font-zain),system-ui,sans-serif"
                 >
                   100
                 </text>
@@ -586,7 +589,7 @@ export default function CotDashboardPage() {
                       style={{
                         fontSize: 9,
                         color: "#35333a",
-                        fontFamily: "DM Mono, monospace",
+                        fontFamily: "var(--font-zain), system-ui, sans-serif",
                         marginBottom: 3,
                       }}
                     >
@@ -595,7 +598,7 @@ export default function CotDashboardPage() {
                     <div
                       style={{
                         fontSize: 12,
-                        fontFamily: "DM Mono, monospace",
+                        fontFamily: "var(--font-zain), system-ui, sans-serif",
                         color: "#9b97a0",
                       }}
                     >
@@ -615,7 +618,7 @@ export default function CotDashboardPage() {
                       style={{
                         fontSize: 9,
                         color: "#35333a",
-                        fontFamily: "DM Mono, monospace",
+                        fontFamily: "var(--font-zain), system-ui, sans-serif",
                         marginBottom: 3,
                       }}
                     >
@@ -624,8 +627,8 @@ export default function CotDashboardPage() {
                     <div
                       style={{
                         fontSize: 12,
-                        fontFamily: "DM Mono, monospace",
-                        color: "#c8f060",
+                        fontFamily: "var(--font-zain), system-ui, sans-serif",
+                        color: ACCENT,
                       }}
                     >
                       {fmtK(selected.netNonComm)}
@@ -644,7 +647,7 @@ export default function CotDashboardPage() {
                       style={{
                         fontSize: 9,
                         color: "#35333a",
-                        fontFamily: "DM Mono, monospace",
+                        fontFamily: "var(--font-zain), system-ui, sans-serif",
                         marginBottom: 3,
                       }}
                     >
@@ -653,7 +656,7 @@ export default function CotDashboardPage() {
                     <div
                       style={{
                         fontSize: 12,
-                        fontFamily: "DM Mono, monospace",
+                        fontFamily: "var(--font-zain), system-ui, sans-serif",
                         color: "#9b97a0",
                       }}
                     >
@@ -680,7 +683,7 @@ export default function CotDashboardPage() {
               {filtered.map((p) => {
                 const series = p.netHistoryFull.slice(-viewWeeks);
                 const last = series[series.length - 1];
-                const color = (last ?? 0) >= 0 ? "#c8f060" : "#ff6060";
+                const color = (last ?? 0) >= 0 ? ACCENT : "#ff6060";
                 return (
                   <div key={p.def.code} className="cot-sparkline-row">
                     <div className="cot-spark-name">{p.def.sym}</div>
@@ -723,7 +726,7 @@ export default function CotDashboardPage() {
                             className="cot-ext-bar"
                             style={{
                               width: `${Math.min(100, e.pct)}%`,
-                              background: e.bear ? "#ff6060" : "#c8f060",
+                              background: e.bear ? "#ff6060" : ACCENT,
                             }}
                           />
                         </div>
@@ -731,7 +734,7 @@ export default function CotDashboardPage() {
                     </div>
                     <div
                       className="cot-ext-pct"
-                      style={{ color: e.bear ? "#ff6060" : "#c8f060" }}
+                      style={{ color: e.bear ? "#ff6060" : ACCENT }}
                     >
                       {e.pct}th
                     </div>
@@ -786,7 +789,7 @@ export default function CotDashboardPage() {
                         const alpha = Math.min(0.9, (abs / 50000) * 0.8 + 0.1);
                         const bg =
                           v > 0
-                            ? `rgba(200,240,96,${alpha})`
+                            ? `rgba(96,165,250,${alpha})`
                             : `rgba(255,96,96,${alpha})`;
                         const k = Math.round(v / 1000);
                         return (
@@ -842,7 +845,7 @@ export default function CotDashboardPage() {
                   const idx = p.percentile3y;
                   const idxColor =
                     idx != null && idx > 66
-                      ? "#c8f060"
+                      ? ACCENT
                       : idx != null && idx < 33
                         ? "#ff6060"
                         : "#9b97a0";
@@ -890,7 +893,7 @@ export default function CotDashboardPage() {
                       </td>
                       <td
                         style={{
-                          fontFamily: "DM Mono, monospace",
+                          fontFamily: "var(--font-zain), system-ui, sans-serif",
                           color: idxColor,
                           fontWeight: 600,
                         }}
@@ -906,7 +909,7 @@ export default function CotDashboardPage() {
                         style={{
                           color: sig.color,
                           fontSize: 10,
-                          fontFamily: "DM Mono, monospace",
+                          fontFamily: "var(--font-zain), system-ui, sans-serif",
                         }}
                       >
                         {sig.text}
@@ -969,7 +972,7 @@ export default function CotDashboardPage() {
                         style={{
                           fontSize: 10,
                           color: "#4a4850",
-                          fontFamily: "DM Mono, monospace",
+                          fontFamily: "var(--font-zain), system-ui, sans-serif",
                         }}
                       >
                         Non-Commercial (Spec)
@@ -977,8 +980,8 @@ export default function CotDashboardPage() {
                       <span
                         style={{
                           fontSize: 10,
-                          fontFamily: "DM Mono, monospace",
-                          color: "#c8f060",
+                          fontFamily: "var(--font-zain), system-ui, sans-serif",
+                          color: ACCENT,
                         }}
                       >
                         {selected.netNonComm >= 0 ? "+" : ""}
@@ -997,7 +1000,7 @@ export default function CotDashboardPage() {
                         style={{
                           width: `${specLongPct}%`,
                           height: "100%",
-                          background: "#c8f060",
+                          background: ACCENT,
                           borderRadius: 4,
                           opacity: 0.7,
                         }}
@@ -1016,7 +1019,7 @@ export default function CotDashboardPage() {
                         style={{
                           fontSize: 10,
                           color: "#4a4850",
-                          fontFamily: "DM Mono, monospace",
+                          fontFamily: "var(--font-zain), system-ui, sans-serif",
                         }}
                       >
                         Commercial (Hedgers)
@@ -1024,7 +1027,7 @@ export default function CotDashboardPage() {
                       <span
                         style={{
                           fontSize: 10,
-                          fontFamily: "DM Mono, monospace",
+                          fontFamily: "var(--font-zain), system-ui, sans-serif",
                           color: "#ff6060",
                         }}
                       >
@@ -1063,7 +1066,7 @@ export default function CotDashboardPage() {
                         style={{
                           fontSize: 10,
                           color: "#4a4850",
-                          fontFamily: "DM Mono, monospace",
+                          fontFamily: "var(--font-zain), system-ui, sans-serif",
                         }}
                       >
                         Small traders (non-reportable)
@@ -1071,7 +1074,7 @@ export default function CotDashboardPage() {
                       <span
                         style={{
                           fontSize: 10,
-                          fontFamily: "DM Mono, monospace",
+                          fontFamily: "var(--font-zain), system-ui, sans-serif",
                           color: "#9b97a0",
                         }}
                       >
@@ -1120,7 +1123,7 @@ export default function CotDashboardPage() {
                         style={{
                           fontSize: 9,
                           color: "#35333a",
-                          fontFamily: "DM Mono, monospace",
+                          fontFamily: "var(--font-zain), system-ui, sans-serif",
                           marginBottom: 4,
                           letterSpacing: "0.08em",
                         }}
@@ -1131,7 +1134,7 @@ export default function CotDashboardPage() {
                         style={{
                           fontSize: 15,
                           fontWeight: 700,
-                          color: "#c8f060",
+                          color: ACCENT,
                         }}
                       >
                         {fmtK(selected.noncommLong)}
@@ -1149,7 +1152,7 @@ export default function CotDashboardPage() {
                         style={{
                           fontSize: 9,
                           color: "#35333a",
-                          fontFamily: "DM Mono, monospace",
+                          fontFamily: "var(--font-zain), system-ui, sans-serif",
                           marginBottom: 4,
                           letterSpacing: "0.08em",
                         }}
@@ -1178,7 +1181,7 @@ export default function CotDashboardPage() {
                         style={{
                           fontSize: 9,
                           color: "#35333a",
-                          fontFamily: "DM Mono, monospace",
+                          fontFamily: "var(--font-zain), system-ui, sans-serif",
                           marginBottom: 4,
                           letterSpacing: "0.08em",
                         }}
@@ -1237,8 +1240,8 @@ export default function CotDashboardPage() {
                           borderRadius: 8,
                           background: f.bear
                             ? "rgba(255,96,96,0.08)"
-                            : "rgba(200,240,96,0.07)",
-                          border: `1px solid ${f.bear ? "rgba(255,96,96,0.15)" : "rgba(200,240,96,0.12)"}`,
+                            : "rgba(96,165,250,0.07)",
+                          border: `1px solid ${f.bear ? "rgba(255,96,96,0.15)" : "rgba(96,165,250,0.12)"}`,
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
@@ -1268,7 +1271,7 @@ export default function CotDashboardPage() {
                       style={{
                         fontSize: 9,
                         color: "#35333a",
-                        fontFamily: "DM Mono, monospace",
+                        fontFamily: "var(--font-zain), system-ui, sans-serif",
                         maxWidth: 200,
                         textAlign: "right",
                         lineHeight: 1.5,
