@@ -12612,7 +12612,7 @@ class Chart {
     }
 
     /**
-     * TradingView-style economic calendar dots on the time-axis strip (pair-filtered data from economic-news-sidebar).
+     * TradingView-style economic calendar dots above the time-axis border (pair-filtered data from economic-news-sidebar).
      */
     drawEconomicCalendarAxisMarkers() {
         const api = typeof window !== 'undefined' ? window.__economicCalendarForChart : null;
@@ -12628,11 +12628,15 @@ class Chart {
 
         const m = this.margin;
         const cs = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 8;
-        // Readable on all zoom levels — noticeably larger than date labels (~12–13px text).
-        const r = Math.max(6, Math.min(10, cs * 0.55));
-        const axisTop = this.h - m.b;
-        // Vertically center in the time-axis strip, slightly toward the chart so dots sit above the date text.
-        const y = axisTop + Math.max(r + 3, m.b * 0.38);
+        // Larger than date labels; scales slightly with zoom.
+        const r = Math.max(9, Math.min(14, cs * 0.72));
+        // Top edge of the bottom margin / date strip — horizontal line between plot and labels.
+        const axisLineY = this.h - m.b;
+        const gapAboveLine = 10; // clear air between dot bottom and axis line
+        // Circle fully above the line: bottom of circle = y + r = axisLineY - gapAboveLine
+        let y = axisLineY - r - gapAboveLine;
+        // Keep inside drawable chart (never overlap top margin)
+        y = Math.max(m.t + r + 6, y);
 
         this.ctx.save();
         for (let i = 0; i < events.length; i++) {
@@ -12642,25 +12646,25 @@ class Chart {
             const idx = this._timestampToFractionalDataIndex(ts);
             if (idx == null || !Number.isFinite(idx)) continue;
             const x = this.dataIndexToPixel(idx);
-            if (x < m.l - 4 || x > this.w - m.r + 4) continue;
+            const pad = r + 6;
+            if (x < m.l - pad || x > this.w - m.r + pad) continue;
 
             let fill = '#787b86';
             if (e.impact === 'high') fill = '#f23645';
             else if (e.impact === 'medium') fill = '#ff9800';
 
-            // Wider spread when multiple releases share a slot so they don’t read as one tiny smudge.
-            const jitter = (i % 7) * (r * 0.55) - (3 * (r * 0.55));
+            const jitter = (i % 7) * (r * 0.5) - (3 * (r * 0.5));
             const xi = x + jitter;
 
             this.ctx.beginPath();
             this.ctx.fillStyle = fill;
-            this.ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-            this.ctx.lineWidth = 2;
+            this.ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+            this.ctx.lineWidth = 2.5;
             this.ctx.arc(xi, y, r, 0, Math.PI * 2);
             this.ctx.fill();
             this.ctx.stroke();
-            this.ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-            this.ctx.lineWidth = 1;
+            this.ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+            this.ctx.lineWidth = 1.25;
             this.ctx.stroke();
         }
         this.ctx.restore();
