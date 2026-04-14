@@ -698,6 +698,15 @@
             return { hours: nyHours, minutes: utcMinutes, decimal: nyHours + (utcMinutes / 60) };
         };
         
+        // Calendar day in NY (fixed offset, same basis as toNYTime) — one NY Open line per day
+        const nyDayKey = (date) => {
+            const shifted = new Date(date.getTime() + nyOffset * 3600000);
+            const y = shifted.getUTCFullYear();
+            const mo = shifted.getUTCMonth() + 1;
+            const d = shifted.getUTCDate();
+            return y + '-' + (mo < 10 ? '0' : '') + mo + '-' + (d < 10 ? '0' : '') + d;
+        };
+        
         // Check if time is in session (handles overnight)
         const isInSession = (decimal, session) => {
             if (session.start <= session.end) {
@@ -717,18 +726,13 @@
             const date = new Date(data[i].t);
             const nyTime = toNYTime(date);
             
-            // Track NY Midnight (00:00 NY time)
-            if (params.showNYMidnight !== false) {
-                if (lastDate) {
-                    const lastNYTime = toNYTime(lastDate);
-                    if (lastNYTime.decimal > 23 || (lastNYTime.decimal > nyTime.decimal && nyTime.decimal < 1)) {
-                        result.nyMidnight.push({
-                            index: i,
-                            price: data[i].o,
-                            time: data[i].t
-                        });
-                    }
-                }
+            // First bar of each NY calendar day: NY Open (avoid firing on every bar in the 23:xx hour)
+            if (params.showNYMidnight !== false && lastDate && nyDayKey(lastDate) !== nyDayKey(date)) {
+                result.nyMidnight.push({
+                    index: i,
+                    price: data[i].o,
+                    time: data[i].t
+                });
             }
             
             let currentKey = null;
