@@ -17,6 +17,9 @@
         replayDayReloadTimer: null
     };
 
+    /** Bumps when a new calendar fetch starts so stale async completions do not overwrite state. */
+    var calendarLoadId = 0;
+
     function mainChart() {
         return window.chart || window.mainChart || null;
     }
@@ -422,7 +425,9 @@
         return 'HTTP ' + status;
     }
 
-    async function loadCalendar() {
+    async function loadCalendar(force) {
+        if (state.loading && !force) return;
+        var myId = ++calendarLoadId;
         state.loading = true;
         state.error = null;
         render();
@@ -448,15 +453,18 @@
                 }
             }
             out.sort(function (a, b) { return a.t - b.t; });
+            if (myId !== calendarLoadId) return;
             state.events = out;
             state.loaded = true;
             state.loadedForDay = fromStr;
         } catch (err) {
+            if (myId !== calendarLoadId) return;
             state.error = (err && err.message) ? String(err.message) : 'Failed to load calendar';
             state.events = [];
             state.loaded = false;
             state.loadedForDay = null;
         } finally {
+            if (myId !== calendarLoadId) return;
             state.loading = false;
             render();
             startCountdownLoop();
@@ -560,7 +568,7 @@
     window.refreshEconomicNewsSidebar = function () {
         state.loaded = false;
         state.loadedForDay = null;
-        loadCalendar();
+        loadCalendar(true);
     };
 
     document.addEventListener('visibilitychange', function () {
@@ -583,15 +591,35 @@
             }
             state.loaded = false;
             state.loadedForDay = null;
-            loadCalendar();
+            loadCalendar(true);
         }, 400);
     });
 
-    window.addEventListener('chartDataLoaded', function () {
+    function onChartContextReady() {
+        var rng = focusCalendarDayRange();
+        // Load calendar for the chart focus day even when News is closed so time-axis markers work immediately.
+        if (!state.loading && (!state.loaded || state.loadedForDay !== rng.fromStr)) {
+            loadCalendar();
+            return;
+        }
         if (newsPanelIsActive() && state.loaded) {
             render();
             startCountdownLoop();
         }
         requestChartMarkerRedraw();
+    }
+
+    window.addEventListener('chartDataLoaded', function () {
+        onChartContextReady();
     });
+
+    // chart.js runs before this script; first chartDataLoaded may fire before the listener exists — catch up once DOM/scripts are ready.
+    if (typeof window !== 'undefined') {
+        setTimeout(function () {
+            var ch = window.chart || window.mainChart;
+            if (ch && Array.isArray(ch.data) && ch.data.length) {
+                onChartContextReady();
+            }
+        }, 0);
+    }
 })();
