@@ -4,6 +4,22 @@ import React, { Suspense, useCallback, useEffect, useMemo, useState } from "reac
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft, BarChart3, RefreshCw, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Syne, DM_Mono } from "next/font/google";
+import "./challenge-overview.css";
+
+const fontSyne = Syne({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-syne",
+});
+
+const fontDmMono = DM_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-dm-mono",
+});
+
+const fontClass = `${fontSyne.variable} ${fontDmMono.variable}`;
 
 type SessionPayload = {
   session?: {
@@ -46,14 +62,14 @@ function fmtMoney(n: number | undefined): string {
   return `$${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function rulePill(status: "pass" | "risk" | "breach" | "neutral") {
+function rulePillClass(status: "pass" | "risk" | "breach" | "neutral"): string {
   const map = {
-    pass: "bg-emerald-500/15 text-emerald-200 border-emerald-500/30",
-    risk: "bg-amber-500/15 text-amber-200 border-amber-500/30",
-    breach: "bg-red-500/15 text-red-200 border-red-500/30",
-    neutral: "bg-white/5 text-white/50 border-white/10",
+    pass: "co-pill co-pill-pass",
+    risk: "co-pill co-pill-risk",
+    breach: "co-pill co-pill-breach",
+    neutral: "co-pill co-pill-neutral",
   };
-  return `inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${map[status]}`;
+  return map[status];
 }
 
 function ChallengeOverviewInner() {
@@ -115,9 +131,11 @@ function ChallengeOverviewInner() {
       const st = await fetchJson<{ state?: { propfirm_challenge?: ChallengeSnapshot } }>(
         `/api/sessions/${encodeURIComponent(sessionId)}/state`,
       );
-      setSnapshot(st.state?.propfirm_challenge && Object.keys(st.state.propfirm_challenge).length > 0
-        ? st.state.propfirm_challenge
-        : null);
+      setSnapshot(
+        st.state?.propfirm_challenge && Object.keys(st.state.propfirm_challenge).length > 0
+          ? st.state.propfirm_challenge
+          : null,
+      );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -151,9 +169,7 @@ function ChallengeOverviewInner() {
   }, [sessionId, config]);
 
   const presetLabel =
-    (config?.simulationPresetLabel as string) ||
-    snapshot?.simulationPresetLabel ||
-    "—";
+    (config?.simulationPresetLabel as string) || snapshot?.simulationPresetLabel || "—";
 
   const balance = typeof config?.balance === "number" ? config.balance : Number(config?.balance);
   const profitTarget = typeof config?.profitTarget === "number" ? config.profitTarget : Number(config?.profitTarget);
@@ -169,182 +185,161 @@ function ChallengeOverviewInner() {
   }, [snapshot]);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="pointer-events-none fixed inset-0 -z-10">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(59,130,246,0.12),transparent_55%),radial-gradient(ellipse_at_bottom,rgba(245,158,11,0.08),transparent_55%)]" />
-      </div>
-
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-[#0b0b16]/80 backdrop-blur-xl">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <Link
-              href="/backtest/"
-              className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/70 hover:bg-white/10 transition shrink-0"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Sessions
-            </Link>
-            <div className="min-w-0">
-              <h1 className="text-lg font-bold tracking-tight truncate">Challenge overview</h1>
-              <p className="text-xs text-white/40 truncate">{sessionName || "…"}</p>
-            </div>
+    <div className={`co-root ${fontClass}`} dir="ltr" lang="en">
+      <header className="co-header">
+        <div className="co-header-left">
+          <Link href="/backtest/" className="co-link-back">
+            <ArrowLeft className="w-4 h-4 shrink-0" aria-hidden />
+            Sessions
+          </Link>
+          <div className="co-title-block">
+            <h1 className="co-title">Challenge overview</h1>
+            <p className="co-subtitle">{sessionName || "…"}</p>
           </div>
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/10"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Refresh
-          </button>
         </div>
+        <button type="button" onClick={() => void load()} className="co-btn-ghost">
+          <RefreshCw className="w-3.5 h-3.5" aria-hidden />
+          Refresh
+        </button>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
-        {loading && (
-          <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-8 text-center text-white/50 text-sm">
-            Loading challenge…
-          </div>
-        )}
+      <main className="co-main">
+        {loading && <div className="co-loading">Loading challenge…</div>}
 
-        {!loading && error && (
-          <div className="rounded-2xl border border-red-500/30 bg-red-950/20 p-6 text-sm text-red-200">{error}</div>
-        )}
+        {!loading && error && <div className="co-error">{error}</div>}
 
         {!loading && !error && (
-          <>
-            <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 backdrop-blur-xl p-6">
-              <div className="flex items-start gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center shrink-0">
-                  <ShieldCheck className="w-5 h-5 text-amber-300" />
+          <div className="co-stack">
+            <section className="co-card" aria-labelledby="sim-heading">
+              <div className="co-card-head">
+                <div className="co-icon-box">
+                  <ShieldCheck className="w-5 h-5" aria-hidden />
                 </div>
                 <div>
-                  <h2 className="text-sm font-semibold text-white/90">Simulation</h2>
-                  <p className="text-sm text-white/50 mt-1">{presetLabel}</p>
-                  <p className="text-xs text-white/35 mt-2">
-                    Rules below come from your session config. Live compliance updates when you trade in the chart (refreshes every 5s).
+                  <h2 id="sim-heading" className="co-card-title">
+                    Simulation
+                  </h2>
+                  <p className="co-card-meta">{presetLabel}</p>
+                  <p className="co-card-desc">
+                    Rules below come from your session config. Live compliance updates when you trade in the chart (refreshes every
+                    5s).
                   </p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                  <div className="text-white/40 uppercase tracking-wide mb-1">Start balance</div>
-                  <div className="font-semibold text-white/90">{Number.isFinite(balance) ? fmtMoney(balance) : "—"}</div>
+              <div className="co-stat-grid">
+                <div className="co-stat-cell">
+                  <div className="co-stat-label">Start balance</div>
+                  <div className="co-stat-value">{Number.isFinite(balance) ? fmtMoney(balance) : "—"}</div>
                 </div>
-                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                  <div className="text-white/40 uppercase tracking-wide mb-1">Profit target</div>
-                  <div className="font-semibold text-white/90">{Number.isFinite(profitTarget) ? `${profitTarget}%` : "—"}</div>
+                <div className="co-stat-cell">
+                  <div className="co-stat-label">Profit target</div>
+                  <div className="co-stat-value">{Number.isFinite(profitTarget) ? `${profitTarget}%` : "—"}</div>
                 </div>
-                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                  <div className="text-white/40 uppercase tracking-wide mb-1">Max daily loss</div>
-                  <div className="font-semibold text-white/90">
+                <div className="co-stat-cell">
+                  <div className="co-stat-label">Max daily loss</div>
+                  <div className="co-stat-value">
                     {md?.percent != null ? `${md.percent}%` : "—"}
-                    {md?.dollar != null ? <span className="text-white/45 font-normal"> · {fmtMoney(md.dollar)}</span> : null}
+                    {md?.dollar != null ? (
+                      <span>
+                        {" "}
+                        · {fmtMoney(md.dollar)}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
-                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                  <div className="text-white/40 uppercase tracking-wide mb-1">Max total loss</div>
-                  <div className="font-semibold text-white/90">
+                <div className="co-stat-cell">
+                  <div className="co-stat-label">Max total loss</div>
+                  <div className="co-stat-value">
                     {mt?.percent != null ? `${mt.percent}%` : "—"}
-                    {mt?.dollar != null ? <span className="text-white/45 font-normal"> · {fmtMoney(mt.dollar)}</span> : null}
+                    {mt?.dollar != null ? (
+                      <span>
+                        {" "}
+                        · {fmtMoney(mt.dollar)}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               </div>
 
-              {minDays != null && (
-                <p className="text-xs text-white/35 mt-3">Minimum trading days: {String(minDays)}</p>
-              )}
-            </div>
+              {minDays != null && <p className="co-footnote">Minimum trading days: {String(minDays)}</p>}
+            </section>
 
-            <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 backdrop-blur-xl p-6">
-              <h3 className="text-sm font-semibold text-white/90 mb-4 flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-cyan-400" />
+            <section className="co-card" aria-labelledby="compliance-heading">
+              <h3 id="compliance-heading" className="co-section-title">
+                <BarChart3 className="w-4 h-4" aria-hidden />
                 Compliance status
               </h3>
 
               {!snapshot && (
-                <p className="text-sm text-white/45">
+                <p className="co-muted-para">
                   No live data yet. Open the chart and place trades to record progress. This page will show pass / breach per rule.
                 </p>
               )}
 
               {snapshot && (
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className="text-white/40">Overall:</span>
-                    {overallStatus === "breached" && (
-                      <span className={rulePill("breach")}>Breached</span>
-                    )}
-                    {overallStatus === "passed" && (
-                      <span className={rulePill("pass")}>Passed</span>
-                    )}
-                    {overallStatus === "active" && (
-                      <span className={rulePill("neutral")}>In progress</span>
-                    )}
+                <>
+                  <div className="co-status-row">
+                    <span className="co-status-label">Overall:</span>
+                    {overallStatus === "breached" && <span className={rulePillClass("breach")}>Breached</span>}
+                    {overallStatus === "passed" && <span className={rulePillClass("pass")}>Passed</span>}
+                    {overallStatus === "active" && <span className={rulePillClass("neutral")}>In progress</span>}
                     {snapshot.updatedAt && (
-                      <span className="text-white/30">Updated {new Date(snapshot.updatedAt).toLocaleString()}</span>
+                      <span className="co-updated">Updated {new Date(snapshot.updatedAt).toLocaleString()}</span>
                     )}
                   </div>
 
-                  <div className="grid gap-2 text-xs">
-                    <div className="flex justify-between items-center py-2 border-b border-white/5">
-                      <span className="text-white/50">Trading days</span>
-                      <span className="text-white/85">
+                  <div className="co-metrics">
+                    <div className="co-metric">
+                      <span className="co-metric-label">Trading days</span>
+                      <span className="co-metric-value">
                         {snapshot.summary?.tradingDays?.current ?? snapshot.tradingDaysCount ?? 0}
                         {" / "}
                         {snapshot.summary?.tradingDays?.required ?? "—"}
                       </span>
                     </div>
-                    <div className="flex justify-between items-center py-2 border-b border-white/5">
-                      <span className="text-white/50">Profit vs target</span>
-                      <span className="text-white/85">
+                    <div className="co-metric">
+                      <span className="co-metric-label">Profit vs target</span>
+                      <span className="co-metric-value">
                         {(snapshot.summary?.profit?.current ?? snapshot.profitPercent ?? 0).toFixed(2)}% /{" "}
                         {snapshot.summary?.profit?.target ?? profitTarget ?? "—"}%
                       </span>
                     </div>
-                    <div className="flex justify-between items-center py-2 border-b border-white/5">
-                      <span className="text-white/50">Daily loss (sim)</span>
-                      <span className="flex items-center gap-2">
+                    <div className="co-metric">
+                      <span className="co-metric-label">Daily loss (sim)</span>
+                      <span className="co-metric-value">
                         {(snapshot.summary?.dailyLoss?.breached || snapshot.violations?.dailyLoss) && (
-                          <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                          <AlertTriangle className="w-3.5 h-3.5 co-warn-icon" aria-hidden />
                         )}
-                        <span className="text-white/85">
-                          {(snapshot.summary?.dailyLoss?.current ?? 0).toFixed(2)}% /{" "}
-                          {snapshot.summary?.dailyLoss?.limit ?? md?.percent ?? "—"}%
-                        </span>
+                        {(snapshot.summary?.dailyLoss?.current ?? 0).toFixed(2)}% /{" "}
+                        {snapshot.summary?.dailyLoss?.limit ?? md?.percent ?? "—"}%
                       </span>
                     </div>
-                    <div className="flex justify-between items-center py-2">
-                      <span className="text-white/50">Total loss (sim)</span>
-                      <span className="flex items-center gap-2">
+                    <div className="co-metric">
+                      <span className="co-metric-label">Total loss (sim)</span>
+                      <span className="co-metric-value">
                         {(snapshot.summary?.totalLoss?.breached || snapshot.violations?.totalLoss) && (
-                          <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                          <AlertTriangle className="w-3.5 h-3.5 co-warn-icon" aria-hidden />
                         )}
-                        <span className="text-white/85">
-                          {(snapshot.summary?.totalLoss?.current ?? 0).toFixed(2)}% /{" "}
-                          {snapshot.summary?.totalLoss?.limit ?? mt?.percent ?? "—"}%
-                        </span>
+                        {(snapshot.summary?.totalLoss?.current ?? 0).toFixed(2)}% /{" "}
+                        {snapshot.summary?.totalLoss?.limit ?? mt?.percent ?? "—"}%
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex justify-between text-xs text-white/35 pt-2">
+                  <div className="co-balance-row">
                     <span>Balance (sim)</span>
                     <span>{fmtMoney(snapshot.currentBalance ?? snapshot.startBalance)}</span>
                   </div>
-                </div>
+                </>
               )}
-            </div>
+            </section>
 
-            <a
-              href={chartHref}
-              className="flex items-center justify-center gap-2 w-full rounded-2xl py-4 font-semibold text-sm text-white bg-gradient-to-r from-blue-500/90 to-cyan-600/90 hover:from-blue-500 hover:to-cyan-500 border border-white/10 transition shadow-lg"
-            >
-              <BarChart3 className="w-5 h-5" />
+            <a href={chartHref} className="co-btn-chart">
+              <BarChart3 className="w-5 h-5 shrink-0" aria-hidden />
               Open chart
             </a>
-          </>
+          </div>
         )}
       </main>
     </div>
@@ -355,7 +350,7 @@ export default function ChallengeOverviewPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-background text-white/50 text-sm">
+        <div className={`co-fallback ${fontClass}`} dir="ltr">
           Loading…
         </div>
       }

@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, Play, Trash2, BarChart3, Trophy, X, Shield } from "lucide-react";
+import { Plus, Trash2, BarChart3, Trophy, X, Shield } from "lucide-react";
 import { Syne, DM_Mono } from "next/font/google";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import "./sessions-dashboard.css";
@@ -347,7 +347,9 @@ export default function BacktestSessions() {
                         title="Open session"
                         className="sd-play-btn"
                       >
-                        <Play className="ml-0.5 shrink-0" size={12} fill="#c8f060" color="#c8f060" strokeWidth={0} />
+                        <svg viewBox="0 0 10 10" width={12} height={12} aria-hidden className="shrink-0 ml-px">
+                          <path d="M3 2l5 3-5 3V2z" fill="#c8f060" />
+                        </svg>
                       </button>
                       <div>
                         <div className="sd-row-name">{s.name}</div>
