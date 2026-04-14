@@ -922,8 +922,8 @@ async function handleFormSubmit(e) {
             alert('Please select at least one data file');
             return;
         }
-        if (instrumentRows.length > 10) {
-            alert('Maximum 10 instruments per session.');
+        if (instrumentRows.length > 1) {
+            alert('Prop firm challenges use exactly one pair. Remove extra files and try again.');
             return;
         }
         if (instrumentRows.some(row => !row.fileId)) {
@@ -1037,8 +1037,8 @@ async function handleFormSubmit(e) {
         barsTimeFormat: document.getElementById('barsTimeFormat').value,
         accountCurrency: (document.getElementById('accountCurrency') && document.getElementById('accountCurrency').value) || 'USD',
         leverage: parseInt(document.getElementById('leverageValue').value),
-        forwardTestingOnly: document.getElementById('forwardTestingOnly').checked,
-        allowBackNavigation: !document.getElementById('forwardTestingOnly').checked, // Inverse of forwardTestingOnly
+        forwardTestingOnly: true,
+        allowBackNavigation: false
         created: new Date().toISOString(),
         
         // Protection Preset

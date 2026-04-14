@@ -50469,7 +50469,8 @@ function showIndicatorsMenu() {
 
                         defaultRisk: session.defaultRisk || 1,
 
-                        allowBackNavigation: session.allowBackNavigation !== false, // Default to true if not specified
+                        // Prop firm challenges always disable rewind, regardless of stored flag
+                        allowBackNavigation: sessionType === 'propfirm' ? false : (session.allowBackNavigation !== false),
 
                         
 

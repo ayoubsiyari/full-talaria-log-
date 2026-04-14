@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Prop Firm Challenge Mode</title>
-    <link rel="stylesheet" href="propfirm-styles.css?v=5">
+    <link rel="stylesheet" href="propfirm-styles.css?v=6">
     <script>
         (function() {
             function redirectToLogin() {
@@ -148,13 +148,13 @@
                                     </button>
                                 </div>
                                 <input type="hidden" id="selectedFiles" name="selectedFiles" value="[]">
-                                <span class="hint">Datasets managed by admin. <span class="link" tabindex="0" role="link">Contact administrator ↗</span></span>
+                                <span class="hint">Prop challenges use <strong style="color:#94a3b8;font-weight:600;">one pair only</strong> — picking another file replaces the current selection. Datasets managed by admin. <span class="link" tabindex="0" role="link">Contact administrator ↗</span></span>
                             </div>
                         </div>
                     </div>
 
                     <div>
-                        <div class="section-label">Instruments <span style="font-size:10px;font-weight:400;letter-spacing:0;text-transform:none;color:#475569;">max 10</span></div>
+                        <div class="section-label">Instruments <span style="font-size:10px;font-weight:400;letter-spacing:0;text-transform:none;color:#475569;">one pair</span></div>
                         <div class="inst-table">
                             <table>
                                 <thead>
@@ -339,23 +339,24 @@
                         </div>
                     </div>
 
-                    <div class="toggle-row">
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="forwardTestingOnly" name="forwardTestingOnly">
+                    <div class="toggle-row pf-toggle-row--locked">
+                        <label class="toggle-switch" title="Required for prop challenges">
+                            <input type="checkbox" id="forwardTestingOnlyDisplay" checked disabled tabindex="-1" aria-hidden="true">
                             <span class="toggle-slider"></span>
                         </label>
-                        <span class="toggle-label pf-toggle-wrap">Enable forward-only navigation
+                        <span class="toggle-label pf-toggle-wrap">Forward-only replay (always on)
                             <span class="info-icon-container">
                                 <svg class="info-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <circle cx="12" cy="12" r="10"></circle>
                                     <line x1="12" y1="16" x2="12" y2="12"></line>
                                     <line x1="12" y1="8" x2="12.01" y2="8"></line>
                                 </svg>
-                                <span class="info-tooltip">When enabled, you cannot move the replay backward—similar to live trading.</span>
+                                <span class="info-tooltip">Prop firm mode always runs like live trading: you cannot rewind the replay. This cannot be disabled.</span>
                             </span>
                         </span>
-                        <span class="toggle-hint">Step through trades chronologically</span>
+                        <span class="toggle-hint">No stepping backward</span>
                     </div>
+                    <input type="hidden" id="forwardTestingOnly" name="forwardTestingOnly" value="true" />
                 </div>
 
                 <div class="pf-modal-footer">
@@ -479,8 +480,8 @@
         </div>
     </div>
 
-    <script src="propfirm-presets.js?v=4"></script>
-    <script src="propfirm-script.js?v=4"></script>
+    <script src="propfirm-presets.js?v=5"></script>
+    <script src="propfirm-script.js?v=5"></script>
     <script>
         console.log('🔥 Prop Firm Backtest - Script loaded');
         
@@ -588,11 +589,11 @@
             const hint = document.getElementById('instrumentTableHint');
             if (!body) return;
             if (selectedFilesArray.length === 0) {
-                body.innerHTML = '<tr><td colspan="8" style="font-style:italic;color:#64748b;">Select datasets above to populate rows</td></tr>';
-                if (hint) hint.textContent = 'Select datasets above to populate instrument rows.';
+                body.innerHTML = '<tr><td colspan="8" style="font-style:italic;color:#64748b;">Select one pair above to configure execution</td></tr>';
+                if (hint) hint.textContent = 'Select exactly one dataset above.';
                 return;
             }
-            if (hint) hint.textContent = selectedFilesArray.length + ' instrument(s) selected.';
+            if (hint) hint.textContent = 'One pair — adjust spread, commission, and pip settings for this challenge.';
             body.innerHTML = selectedFilesArray.map(function (file, idx) {
                 const d = defaultInstrumentConfigFor(file);
                 return (
@@ -681,7 +682,8 @@
         function toggleFileSelection(fileId, fileName) {
             const index = selectedFilesArray.findIndex(f => f.id === fileId);
             if (index === -1) {
-                selectedFilesArray.push({ id: fileId, name: fileName });
+                // Prop firm: exactly one pair — new selection replaces any previous file
+                selectedFilesArray = [{ id: fileId, name: fileName }];
             } else {
                 selectedFilesArray.splice(index, 1);
             }
