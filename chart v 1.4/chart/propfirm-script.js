@@ -1038,7 +1038,7 @@ async function handleFormSubmit(e) {
         accountCurrency: (document.getElementById('accountCurrency') && document.getElementById('accountCurrency').value) || 'USD',
         leverage: parseInt(document.getElementById('leverageValue').value),
         forwardTestingOnly: true,
-        allowBackNavigation: false
+        allowBackNavigation: false,
         created: new Date().toISOString(),
         
         // Protection Preset
