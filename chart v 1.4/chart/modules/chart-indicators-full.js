@@ -773,6 +773,183 @@
         
         return result;
     }
+
+    /** Previous UTC calendar day high / low / midpoint (PD reference for premium vs discount). */
+    function calculateIctPrevDayPD(data) {
+        const n = data.length;
+        const upper = new Array(n).fill(null);
+        const lower = new Array(n).fill(null);
+        const middle = new Array(n).fill(null);
+        let curDay = null;
+        let dayH = -Infinity;
+        let dayL = Infinity;
+        let prevH = null;
+        let prevL = null;
+        for (let i = 0; i < n; i++) {
+            const dk = new Date(data[i].t).toISOString().slice(0, 10);
+            if (curDay !== dk) {
+                if (curDay !== null) {
+                    prevH = dayH;
+                    prevL = dayL;
+                }
+                curDay = dk;
+                dayH = data[i].h;
+                dayL = data[i].l;
+            } else {
+                dayH = Math.max(dayH, data[i].h);
+                dayL = Math.min(dayL, data[i].l);
+            }
+            if (prevH != null && prevL != null) {
+                upper[i] = prevH;
+                lower[i] = prevL;
+                middle[i] = (prevH + prevL) / 2;
+            }
+        }
+        return { upper: upper, lower: lower, middle: middle };
+    }
+
+    function _ictUtcDayMinute(t) {
+        const d = new Date(t);
+        return d.getUTCHours() * 60 + d.getUTCMinutes();
+    }
+
+    function _ictParseHmToMinutes(str) {
+        const p = String(str != null ? str : '00:00').split(':');
+        return parseInt(p[0], 10) * 60 + parseInt(p[1] || 0, 10);
+    }
+
+    function _ictMinuteInSession(m, sm, em) {
+        if (sm <= em) {
+            return m >= sm && m < em;
+        }
+        return m >= sm || m < em;
+    }
+
+    /**
+     * Developing then fixed Asian range per UTC day (default 00:00–09:00 UTC).
+     * Before the session: null; during: expanding H/L; after: fixed until midnight.
+     */
+    function calculateIctAsianRange(data, params) {
+        const sm = _ictParseHmToMinutes(params.rangeStart != null ? params.rangeStart : '00:00');
+        const em = _ictParseHmToMinutes(params.rangeEnd != null ? params.rangeEnd : '09:00');
+        const n = data.length;
+        const upper = new Array(n).fill(null);
+        const lower = new Array(n).fill(null);
+        const middle = new Array(n).fill(null);
+        let dayKey = null;
+        let accH = -Infinity;
+        let accL = Infinity;
+        let lockedU = null;
+        let lockedL = null;
+        let seenAsian = false;
+        for (let i = 0; i < n; i++) {
+            const dk = new Date(data[i].t).toISOString().slice(0, 10);
+            const minute = _ictUtcDayMinute(data[i].t);
+            if (dk !== dayKey) {
+                dayKey = dk;
+                accH = -Infinity;
+                accL = Infinity;
+                lockedU = null;
+                lockedL = null;
+                seenAsian = false;
+            }
+            const inA = _ictMinuteInSession(minute, sm, em);
+            if (inA) {
+                seenAsian = true;
+                accH = accH === -Infinity ? data[i].h : Math.max(accH, data[i].h);
+                accL = accL === Infinity ? data[i].l : Math.min(accL, data[i].l);
+                upper[i] = accH;
+                lower[i] = accL;
+            } else if (seenAsian && lockedU === null) {
+                lockedU = accH === -Infinity ? data[i].h : accH;
+                lockedL = accL === Infinity ? data[i].l : accL;
+                upper[i] = lockedU;
+                lower[i] = lockedL;
+            } else if (lockedU !== null) {
+                upper[i] = lockedU;
+                lower[i] = lockedL;
+            }
+            if (upper[i] != null && lower[i] != null) {
+                middle[i] = (upper[i] + lower[i]) / 2;
+            }
+        }
+        return { upper: upper, lower: lower, middle: middle };
+    }
+
+    /**
+     * OTE-style zone: fibLow–fibHigh of the rolling range (lowest low → highest high in lookback).
+     * Common defaults 0.62 / 0.79 (context tool, not a trade signal by itself).
+     */
+    function calculateIctOTE(data, lookback, fibLo, fibHi) {
+        const lb = lookback != null && !isNaN(lookback) ? lookback : 24;
+        const L = Math.max(5, Math.floor(lb));
+        const lo = fibLo != null && !isNaN(fibLo) ? fibLo : 0.62;
+        const hi = fibHi != null && !isNaN(fibHi) ? fibHi : 0.79;
+        const n = data.length;
+        const upper = new Array(n).fill(null);
+        const lower = new Array(n).fill(null);
+        const middle = new Array(n).fill(null);
+        for (let i = 0; i < n; i++) {
+            if (i < L - 1) {
+                continue;
+            }
+            let sl = Infinity;
+            let sh = -Infinity;
+            for (let j = 0; j < L; j++) {
+                const k = i - j;
+                sl = Math.min(sl, data[k].l);
+                sh = Math.max(sh, data[k].h);
+            }
+            const r = sh - sl;
+            if (r <= 0) {
+                continue;
+            }
+            lower[i] = sl + lo * r;
+            upper[i] = sl + hi * r;
+            middle[i] = (lower[i] + upper[i]) / 2;
+        }
+        return { upper: upper, lower: lower, middle: middle };
+    }
+
+    /** 3-candle fair value gaps; extends each box by extendBars for visibility. */
+    function calculateFairValueGaps(data, params) {
+        const extendBars = params.extendBars != null ? params.extendBars : 80;
+        const maxBoxes = Math.min(400, Math.max(8, params.maxBoxes != null ? params.maxBoxes : 120));
+        const minGapPct = params.minGapPct != null ? params.minGapPct : 0;
+        const boxes = [];
+        const n = data.length;
+        for (let i = 2; i < n; i++) {
+            if (data[i].l > data[i - 2].h) {
+                const gap = data[i].l - data[i - 2].h;
+                const ref = Math.abs(data[i].c) || 1;
+                if (minGapPct > 0 && gap < ref * minGapPct) {
+                    continue;
+                }
+                boxes.push({
+                    startIndex: i - 2,
+                    endIndex: Math.min(n - 1, i + extendBars),
+                    top: data[i].l,
+                    bottom: data[i - 2].h,
+                    bullish: true
+                });
+            }
+            if (data[i].h < data[i - 2].l) {
+                const gap = data[i - 2].l - data[i].h;
+                const ref = Math.abs(data[i].c) || 1;
+                if (minGapPct > 0 && gap < ref * minGapPct) {
+                    continue;
+                }
+                boxes.push({
+                    startIndex: i - 2,
+                    endIndex: Math.min(n - 1, i + extendBars),
+                    top: data[i - 2].l,
+                    bottom: data[i].h,
+                    bullish: false
+                });
+            }
+        }
+        return { boxes: boxes.length > maxBoxes ? boxes.slice(-maxBoxes) : boxes };
+    }
     
     // CCI (Commodity Channel Index)
     function calculateCCI(data, period) {
@@ -1981,6 +2158,69 @@
                 this.indicators.data[indicator.id] = calculateDPO(this.data, indicator.params.period);
                 break;
 
+            case 'ictpd':
+                indicator.style.upperColor = params.upperColor || '#2962ff';
+                indicator.style.middleColor = params.middleColor || '#787b86';
+                indicator.style.lowerColor = params.lowerColor || '#2962ff';
+                indicator.style.fillColor = params.fillColor || 'rgba(41, 98, 255, 0.04)';
+                indicator.style.lineWidth = params.lineWidth || 1;
+                indicator.overlay = true;
+                indicator.name = 'ICT Prev Day PD';
+                this.indicators.data[indicator.id] = calculateIctPrevDayPD(this.data);
+                break;
+
+            case 'ictasian':
+                indicator.params.rangeStart = params.rangeStart || '00:00';
+                indicator.params.rangeEnd = params.rangeEnd || '09:00';
+                indicator.style.upperColor = params.upperColor || '#ff9800';
+                indicator.style.middleColor = params.middleColor || '#787b86';
+                indicator.style.lowerColor = params.lowerColor || '#ff9800';
+                indicator.style.fillColor = params.fillColor || 'rgba(255, 152, 0, 0.06)';
+                indicator.style.lineWidth = params.lineWidth || 1;
+                indicator.overlay = true;
+                indicator.name = 'ICT Asian Range';
+                this.indicators.data[indicator.id] = calculateIctAsianRange(this.data, {
+                    rangeStart: indicator.params.rangeStart,
+                    rangeEnd: indicator.params.rangeEnd
+                });
+                break;
+
+            case 'ictote':
+                indicator.params.lookback = params.lookback != null ? params.lookback : 24;
+                indicator.params.fibLow = params.fibLow != null ? params.fibLow : 0.62;
+                indicator.params.fibHigh = params.fibHigh != null ? params.fibHigh : 0.79;
+                indicator.style.upperColor = params.upperColor || '#7c4dff';
+                indicator.style.middleColor = params.middleColor || '#787b86';
+                indicator.style.lowerColor = params.lowerColor || '#7c4dff';
+                indicator.style.fillColor = params.fillColor || 'rgba(124, 77, 255, 0.08)';
+                indicator.style.lineWidth = params.lineWidth || 1;
+                indicator.overlay = true;
+                indicator.name = 'ICT OTE Zone';
+                this.indicators.data[indicator.id] = calculateIctOTE(
+                    this.data,
+                    indicator.params.lookback,
+                    indicator.params.fibLow,
+                    indicator.params.fibHigh
+                );
+                break;
+
+            case 'ictfvg':
+                indicator.params.extendBars = params.extendBars != null ? params.extendBars : 80;
+                indicator.params.maxBoxes = params.maxBoxes != null ? params.maxBoxes : 120;
+                indicator.params.minGapPct = params.minGapPct != null ? params.minGapPct : 0;
+                indicator.style.bullColor = params.bullColor || 'rgba(38, 166, 154, 0.22)';
+                indicator.style.bearColor = params.bearColor || 'rgba(239, 83, 80, 0.22)';
+                indicator.style.lineWidth = params.lineWidth || 1;
+                indicator.overlay = true;
+                indicator.isIctFvg = true;
+                indicator.name = 'ICT Fair Value Gaps';
+                this.indicators.data[indicator.id] = calculateFairValueGaps(this.data, {
+                    extendBars: indicator.params.extendBars,
+                    maxBoxes: indicator.params.maxBoxes,
+                    minGapPct: indicator.params.minGapPct
+                });
+                break;
+
             case 'custom': {
                 const TC = global.TalariaCustomIndicators;
                 if (!TC) {
@@ -2210,6 +2450,14 @@
         if (newParams.period1 !== undefined) indicator.params.period1 = newParams.period1;
         if (newParams.period2 !== undefined) indicator.params.period2 = newParams.period2;
         if (newParams.period3 !== undefined) indicator.params.period3 = newParams.period3;
+        if (newParams.rangeStart !== undefined) indicator.params.rangeStart = newParams.rangeStart;
+        if (newParams.rangeEnd !== undefined) indicator.params.rangeEnd = newParams.rangeEnd;
+        if (newParams.lookback !== undefined) indicator.params.lookback = newParams.lookback;
+        if (newParams.fibLow !== undefined) indicator.params.fibLow = newParams.fibLow;
+        if (newParams.fibHigh !== undefined) indicator.params.fibHigh = newParams.fibHigh;
+        if (newParams.extendBars !== undefined) indicator.params.extendBars = newParams.extendBars;
+        if (newParams.maxBoxes !== undefined) indicator.params.maxBoxes = newParams.maxBoxes;
+        if (newParams.minGapPct !== undefined) indicator.params.minGapPct = newParams.minGapPct;
         if (indicator.type === 'sessionsplus') {
             ['showSydney', 'showTokyo', 'showAsian', 'showFrankfurt', 'showLondon', 'showNewYork',
                 'sydneyStart', 'sydneyEnd', 'tokyoStart', 'tokyoEnd', 'asianStart', 'asianEnd',
@@ -2534,6 +2782,34 @@
                 indicator.name = 'DPO(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateDPO(this.data, indicator.params.period);
                 break;
+            case 'ictpd':
+                indicator.name = 'ICT Prev Day PD';
+                this.indicators.data[indicator.id] = calculateIctPrevDayPD(this.data);
+                break;
+            case 'ictasian':
+                indicator.name = 'ICT Asian Range';
+                this.indicators.data[indicator.id] = calculateIctAsianRange(this.data, {
+                    rangeStart: indicator.params.rangeStart,
+                    rangeEnd: indicator.params.rangeEnd
+                });
+                break;
+            case 'ictote':
+                indicator.name = 'ICT OTE Zone';
+                this.indicators.data[indicator.id] = calculateIctOTE(
+                    this.data,
+                    indicator.params.lookback,
+                    indicator.params.fibLow,
+                    indicator.params.fibHigh
+                );
+                break;
+            case 'ictfvg':
+                indicator.name = 'ICT Fair Value Gaps';
+                this.indicators.data[indicator.id] = calculateFairValueGaps(this.data, {
+                    extendBars: indicator.params.extendBars,
+                    maxBoxes: indicator.params.maxBoxes,
+                    minGapPct: indicator.params.minGapPct
+                });
+                break;
             case 'custom':
                 if (typeof this._scheduleCustomIndicatorCompute === 'function') {
                     this._scheduleCustomIndicatorCompute(indicator);
@@ -2737,6 +3013,30 @@
                     break;
                 case 'dpo':
                     this.indicators.data[indicator.id] = calculateDPO(this.data, indicator.params.period);
+                    break;
+                case 'ictpd':
+                    this.indicators.data[indicator.id] = calculateIctPrevDayPD(this.data);
+                    break;
+                case 'ictasian':
+                    this.indicators.data[indicator.id] = calculateIctAsianRange(this.data, {
+                        rangeStart: indicator.params.rangeStart,
+                        rangeEnd: indicator.params.rangeEnd
+                    });
+                    break;
+                case 'ictote':
+                    this.indicators.data[indicator.id] = calculateIctOTE(
+                        this.data,
+                        indicator.params.lookback,
+                        indicator.params.fibLow,
+                        indicator.params.fibHigh
+                    );
+                    break;
+                case 'ictfvg':
+                    this.indicators.data[indicator.id] = calculateFairValueGaps(this.data, {
+                        extendBars: indicator.params.extendBars,
+                        maxBoxes: indicator.params.maxBoxes,
+                        minGapPct: indicator.params.minGapPct
+                    });
                     break;
                 case 'custom':
                     if (typeof this._scheduleCustomIndicatorCompute === 'function') {
@@ -3017,6 +3317,10 @@
                 this.drawSessions(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'openingrange') {
                 this.drawBollingerBands(data, indicator.style, startIndex, endIndex);
+            } else if (indicator.type === 'ictpd' || indicator.type === 'ictasian' || indicator.type === 'ictote') {
+                this.drawBollingerBands(data, indicator.style, startIndex, endIndex);
+            } else if (indicator.type === 'ictfvg' || indicator.isIctFvg) {
+                this.drawIctFvgBoxes(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'supertrend') {
                 this.drawSupertrendOverlay(data, indicator, startIndex, endIndex);
             } else if (indicator.type === 'killzones' || indicator.type === 'ictkz' || indicator.isKillzones) {
@@ -4319,6 +4623,38 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             ctx.fillText(`NY Open ${priceText}`, x + 5, y - 5);
         });
     }
+};
+
+Chart.prototype.drawIctFvgBoxes = function(data, style, startIndex = 0, endIndex) {
+    if (!data || !data.boxes || data.boxes.length === 0) return;
+    const ctx = this.ctx;
+    const m = this.margin;
+    const bull = style.bullColor || 'rgba(38, 166, 154, 0.22)';
+    const bear = style.bearColor || 'rgba(239, 83, 80, 0.22)';
+    const lw = style.lineWidth || 1;
+    const n = this.data ? this.data.length : 0;
+    endIndex = endIndex == null ? n : Math.min(endIndex, n);
+
+    data.boxes.forEach(function(box) {
+        if (box.endIndex < startIndex || box.startIndex > endIndex) return;
+        const x1 = this.dataIndexToPixel(box.startIndex);
+        const x2 = this.dataIndexToPixel(box.endIndex);
+        const topP = Math.max(box.top, box.bottom);
+        const botP = Math.min(box.top, box.bottom);
+        const yTop = this.yScale(topP);
+        const yBot = this.yScale(botP);
+        if (x2 < m.l || x1 > this.w - m.r) return;
+        const drawX1 = Math.max(x1, m.l);
+        const drawX2 = Math.min(x2, this.w - m.r);
+        const boxWidth = drawX2 - drawX1;
+        const boxHeight = yBot - yTop;
+        if (boxWidth <= 0 || boxHeight <= 0) return;
+        ctx.fillStyle = box.bullish ? bull : bear;
+        ctx.fillRect(drawX1, yTop, boxWidth, boxHeight);
+        ctx.strokeStyle = box.bullish ? 'rgba(38, 166, 154, 0.55)' : 'rgba(239, 83, 80, 0.55)';
+        ctx.lineWidth = lw;
+        ctx.strokeRect(drawX1, yTop, boxWidth, boxHeight);
+    }, this);
 };
     
     Chart.prototype.updateOHLCIndicators = function() {

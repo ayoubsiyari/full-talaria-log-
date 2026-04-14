@@ -438,6 +438,56 @@ const INDICATOR_DEFINITIONS = {
             { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
         ]
     },
+    ictpd: {
+        name: 'ICT — Previous day PD (UTC)',
+        type: 'overlay',
+        params: [
+            { id: 'upperColor', label: 'Prior day high', type: 'color', default: '#2962ff' },
+            { id: 'middleColor', label: 'Equilibrium (50%)', type: 'color', default: '#787b86' },
+            { id: 'lowerColor', label: 'Prior day low', type: 'color', default: '#2962ff' },
+            { id: 'fillColor', label: 'Zone fill (RGBA)', type: 'text', default: 'rgba(41, 98, 255, 0.04)' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4 }
+        ]
+    },
+    ictasian: {
+        name: 'ICT — Asian range (UTC)',
+        type: 'overlay',
+        params: [
+            { id: 'rangeStart', label: 'Range start (UTC)', type: 'time', default: '00:00' },
+            { id: 'rangeEnd', label: 'Range end (UTC)', type: 'time', default: '09:00' },
+            { id: 'upperColor', label: 'Asian high', type: 'color', default: '#ff9800' },
+            { id: 'middleColor', label: 'Midline', type: 'color', default: '#787b86' },
+            { id: 'lowerColor', label: 'Asian low', type: 'color', default: '#ff9800' },
+            { id: 'fillColor', label: 'Zone fill (RGBA)', type: 'text', default: 'rgba(255, 152, 0, 0.06)' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4 }
+        ]
+    },
+    ictote: {
+        name: 'ICT — OTE zone (rolling range)',
+        type: 'overlay',
+        params: [
+            { id: 'lookback', label: 'Swing lookback (bars)', type: 'number', default: 24, min: 5 },
+            { id: 'fibLow', label: 'Lower fib (e.g. 0.62)', type: 'number', default: 0.62, min: 0.01, max: 0.99, step: 0.01 },
+            { id: 'fibHigh', label: 'Upper fib (e.g. 0.79)', type: 'number', default: 0.79, min: 0.01, max: 0.99, step: 0.01 },
+            { id: 'upperColor', label: 'Upper band', type: 'color', default: '#7c4dff' },
+            { id: 'middleColor', label: 'Midline', type: 'color', default: '#787b86' },
+            { id: 'lowerColor', label: 'Lower band', type: 'color', default: '#7c4dff' },
+            { id: 'fillColor', label: 'Zone fill (RGBA)', type: 'text', default: 'rgba(124, 77, 255, 0.08)' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4 }
+        ]
+    },
+    ictfvg: {
+        name: 'ICT — Fair value gaps (3-bar)',
+        type: 'overlay',
+        params: [
+            { id: 'extendBars', label: 'Box length (bars)', type: 'number', default: 80, min: 5, max: 500 },
+            { id: 'maxBoxes', label: 'Max gaps drawn', type: 'number', default: 120, min: 8, max: 400 },
+            { id: 'minGapPct', label: 'Min gap vs price (0 = off)', type: 'number', default: 0, min: 0, step: 0.00001 },
+            { id: 'bullColor', label: 'Bullish FVG fill', type: 'color', default: 'rgba(38, 166, 154, 0.22)' },
+            { id: 'bearColor', label: 'Bearish FVG fill', type: 'color', default: 'rgba(239, 83, 80, 0.22)' },
+            { id: 'lineWidth', label: 'Border thickness', type: 'number', default: 1, min: 1, max: 3 }
+        ]
+    },
     custom: {
         name: 'Custom (sandboxed JS)',
         type: 'overlay',
@@ -1084,6 +1134,11 @@ function createIndicatorSelectionMenu(chartInstance) {
             icon: '',
             indicators: ['sessions', 'sessionsplus', 'openingrange', 'killzones']
         },
+        ict: {
+            name: 'ICT',
+            icon: '',
+            indicators: ['ictpd', 'ictasian', 'ictote', 'ictfvg']
+        },
         script: {
             name: 'Custom',
             icon: '',
@@ -1275,6 +1330,7 @@ function createIndicatorSelectionMenu(chartInstance) {
     sidebar.appendChild(createCategoryItem(null, 'BUILT-IN', true));
     sidebar.appendChild(createCategoryItem('technicals', categories.technicals));
     sidebar.appendChild(createCategoryItem('sessions', categories.sessions));
+    sidebar.appendChild(createCategoryItem('ict', categories.ict));
     sidebar.appendChild(createCategoryItem(null, 'SCRIPT', true));
     sidebar.appendChild(createCategoryItem('script', categories.script));
     sidebar.appendChild(createCategoryItem(null, 'PERSONAL', true));
