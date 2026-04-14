@@ -4780,7 +4780,7 @@
 
             border-radius: 4px;
 
-            transition: all 0.15s ease;
+            transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
 
         }
 
@@ -4958,7 +4958,7 @@
 
             border-radius: 4px;
 
-            transition: all 0.15s ease;
+            transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
 
         }
 
@@ -8727,7 +8727,7 @@
 
             cursor: default;
 
-            transition: all 0.15s ease;
+            transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
 
             flex-shrink: 0;
 
@@ -8857,7 +8857,9 @@
 
             position: absolute;
 
-            bottom: -32px;
+            top: auto;
+
+            bottom: calc(100% + 6px);
 
             left: 50%;
 
@@ -8884,6 +8886,14 @@
             border: 1px solid #363a45;
 
             z-index: 1000;
+
+            max-width: min(280px, calc(100vw - 32px));
+
+            overflow: hidden;
+
+            text-overflow: ellipsis;
+
+            display: block;
 
         }
 
@@ -21924,6 +21934,7 @@
             scrollbar-gutter: stable;
         }
         .toolbar .toolbar-left .tool-group-btn::after,
+        .toolbar .toolbar-left .toolbar-icon-btn::after,
         .toolbar .left-sidebar .tool-group-btn::after,
         .toolbar .left-sidebar .tool-btn::after {
             max-width: min(280px, calc(100vw - 32px));
@@ -21932,6 +21943,7 @@
             display: block;
         }
         .toolbar .toolbar-left .tool-group-btn,
+        .toolbar .toolbar-left .toolbar-icon-btn,
         .toolbar .left-sidebar .tool-group-btn,
         .toolbar .left-sidebar .drawing-tools-vertical .tool-btn,
         .toolbar-drawing-tools .tool-group-btn,
@@ -32482,6 +32494,19 @@
 
             padding: 6px 12px !important;
 
+        }
+
+        /* Indicators button: keep tooltip above the control (late override) so overflow/scrollbars do not jitter the toolbar */
+        #indicatorsBtn::after {
+            top: auto !important;
+            bottom: calc(100% + 6px) !important;
+            left: 50% !important;
+            right: auto !important;
+            transform: translateX(-50%) !important;
+            max-width: min(280px, calc(100vw - 32px)) !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            display: block !important;
         }
 
 
