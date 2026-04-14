@@ -92,7 +92,7 @@ function biasFromIndex(idx: number | null): "bull" | "bear" | "neutral" {
 function signalFromDelta(d: number): { text: string; color: string } {
   if (d > 3000) return { text: "▲ Increasing", color: ACCENT };
   if (d < -3000) return { text: "▼ Decreasing", color: "#ff6060" };
-  return { text: "→ Steady", color: "#35333a" };
+  return { text: "→ Steady", color: "#a8a4b2" };
 }
 
 export default function CotDashboardPage() {
@@ -537,7 +537,7 @@ export default function CotDashboardPage() {
                   x={16}
                   y={105}
                   fontSize={8}
-                  fill="#35333a"
+                  fill="#a8a4b2"
                   fontFamily="var(--font-zain),system-ui,sans-serif"
                 >
                   0
@@ -546,7 +546,7 @@ export default function CotDashboardPage() {
                   x={83}
                   y={18}
                   fontSize={8}
-                  fill="#35333a"
+                  fill="#a8a4b2"
                   fontFamily="var(--font-zain),system-ui,sans-serif"
                 >
                   50
@@ -555,7 +555,7 @@ export default function CotDashboardPage() {
                   x={160}
                   y={105}
                   fontSize={8}
-                  fill="#35333a"
+                  fill="#a8a4b2"
                   fontFamily="var(--font-zain),system-ui,sans-serif"
                 >
                   100
@@ -588,7 +588,7 @@ export default function CotDashboardPage() {
                     <div
                       style={{
                         fontSize: 9,
-                        color: "#35333a",
+                        color: "#a8a4b2",
                         fontFamily: "var(--font-zain), system-ui, sans-serif",
                         marginBottom: 3,
                       }}
@@ -599,7 +599,7 @@ export default function CotDashboardPage() {
                       style={{
                         fontSize: 12,
                         fontFamily: "var(--font-zain), system-ui, sans-serif",
-                        color: "#9b97a0",
+                        color: "#c4c0ce",
                       }}
                     >
                       {fmtK(selected.low3y)}
@@ -617,7 +617,7 @@ export default function CotDashboardPage() {
                     <div
                       style={{
                         fontSize: 9,
-                        color: "#35333a",
+                        color: "#a8a4b2",
                         fontFamily: "var(--font-zain), system-ui, sans-serif",
                         marginBottom: 3,
                       }}
@@ -646,7 +646,7 @@ export default function CotDashboardPage() {
                     <div
                       style={{
                         fontSize: 9,
-                        color: "#35333a",
+                        color: "#a8a4b2",
                         fontFamily: "var(--font-zain), system-ui, sans-serif",
                         marginBottom: 3,
                       }}
@@ -657,7 +657,7 @@ export default function CotDashboardPage() {
                       style={{
                         fontSize: 12,
                         fontFamily: "var(--font-zain), system-ui, sans-serif",
-                        color: "#9b97a0",
+                        color: "#c4c0ce",
                       }}
                     >
                       {fmtK(selected.high3y)}
@@ -778,7 +778,7 @@ export default function CotDashboardPage() {
                               className="cot-hm-cell"
                               style={{
                                 background: "rgba(255,255,255,0.03)",
-                                color: "#35333a",
+                                color: "#a8a4b2",
                               }}
                             >
                               —
@@ -848,7 +848,7 @@ export default function CotDashboardPage() {
                       ? ACCENT
                       : idx != null && idx < 33
                         ? "#ff6060"
-                        : "#9b97a0";
+                        : "#c4c0ce";
                   const bias = biasFromIndex(idx);
                   const biasLabel =
                     bias === "bull"
@@ -971,7 +971,7 @@ export default function CotDashboardPage() {
                       <span
                         style={{
                           fontSize: 10,
-                          color: "#4a4850",
+                          color: "#b8b4c0",
                           fontFamily: "var(--font-zain), system-ui, sans-serif",
                         }}
                       >
@@ -1018,7 +1018,7 @@ export default function CotDashboardPage() {
                       <span
                         style={{
                           fontSize: 10,
-                          color: "#4a4850",
+                          color: "#b8b4c0",
                           fontFamily: "var(--font-zain), system-ui, sans-serif",
                         }}
                       >
@@ -1065,7 +1065,7 @@ export default function CotDashboardPage() {
                       <span
                         style={{
                           fontSize: 10,
-                          color: "#4a4850",
+                          color: "#b8b4c0",
                           fontFamily: "var(--font-zain), system-ui, sans-serif",
                         }}
                       >
@@ -1075,7 +1075,7 @@ export default function CotDashboardPage() {
                         style={{
                           fontSize: 10,
                           fontFamily: "var(--font-zain), system-ui, sans-serif",
-                          color: "#9b97a0",
+                          color: "#c4c0ce",
                         }}
                       >
                         {Number.isFinite(selected.smallNet)
@@ -1096,7 +1096,7 @@ export default function CotDashboardPage() {
                         style={{
                           width: `${Math.min(100, (Math.abs(selected.smallNet) / Math.max(selected.oi, 1)) * 400)}%`,
                           height: "100%",
-                          background: "#9b97a0",
+                          background: "#a8a5b0",
                           borderRadius: 4,
                           opacity: 0.4,
                         }}
@@ -1122,7 +1122,7 @@ export default function CotDashboardPage() {
                       <div
                         style={{
                           fontSize: 9,
-                          color: "#35333a",
+                          color: "#a8a4b2",
                           fontFamily: "var(--font-zain), system-ui, sans-serif",
                           marginBottom: 4,
                           letterSpacing: "0.08em",
@@ -1151,7 +1151,7 @@ export default function CotDashboardPage() {
                       <div
                         style={{
                           fontSize: 9,
-                          color: "#35333a",
+                          color: "#a8a4b2",
                           fontFamily: "var(--font-zain), system-ui, sans-serif",
                           marginBottom: 4,
                           letterSpacing: "0.08em",
@@ -1180,7 +1180,7 @@ export default function CotDashboardPage() {
                       <div
                         style={{
                           fontSize: 9,
-                          color: "#35333a",
+                          color: "#a8a4b2",
                           fontFamily: "var(--font-zain), system-ui, sans-serif",
                           marginBottom: 4,
                           letterSpacing: "0.08em",
@@ -1262,7 +1262,7 @@ export default function CotDashboardPage() {
                         >
                           {f.sym}
                         </div>
-                        <div style={{ fontSize: 10, color: "#4a4850" }}>
+                        <div style={{ fontSize: 10, color: "#b8b4c0" }}>
                           {f.type}
                         </div>
                       </div>
@@ -1270,7 +1270,7 @@ export default function CotDashboardPage() {
                     <div
                       style={{
                         fontSize: 9,
-                        color: "#35333a",
+                        color: "#a8a4b2",
                         fontFamily: "var(--font-zain), system-ui, sans-serif",
                         maxWidth: 200,
                         textAlign: "right",
