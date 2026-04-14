@@ -161,6 +161,16 @@ export default function BacktestSessions() {
     };
   }, [closeIframe]);
 
+  /** Lock dashboard scroll while chart iframe is open; only the iframe (or its inner panel) should scroll */
+  useEffect(() => {
+    if (!iframeUrl) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [iframeUrl]);
+
   const tabs: { key: "all" | "personal" | "propfirm"; label: string }[] = [
     { key: "all", label: "All" },
     { key: "personal", label: "Personal" },
@@ -410,12 +420,11 @@ export default function BacktestSessions() {
         </div>
       )}
 
-      {/* Chart Iframe Modal */}
+      {/* Chart Iframe Modal — close only via X or iframe calling closePropFirmIframe(); backdrop does not dismiss */}
       {iframeUrl && (
         <div
-          className="fixed inset-0 z-[3000] bg-black/75 flex items-center justify-center p-5"
-          onClick={(e) => e.target === e.currentTarget && closeIframe()}
-          onKeyDown={(e) => e.key === "Escape" && closeIframe()}
+          className="fixed inset-0 z-[3000] bg-black/75 flex items-center justify-center p-5 overscroll-none"
+          role="presentation"
         >
           <div className="relative w-[90vw] h-[90vh] max-w-[1200px] bg-[#030014] rounded-2xl overflow-hidden shadow-2xl border border-white/10">
             <button

@@ -33176,6 +33176,131 @@
             border-color: rgba(255, 255, 255, 0.22);
         }
 
+        /* Challenge failed — same structure as passed, red accent for breach state */
+        #challengeFailedModal.challenge-modal-overlay {
+            background: rgba(2, 5, 8, 0.92);
+        }
+
+        #challengeFailedModal .challenge-modal--failed {
+            font-family: 'DM Sans', system-ui, sans-serif;
+            background: linear-gradient(165deg, #0f1419 0%, #0a0e14 55%, #06090d 100%);
+            border: 1px solid rgba(248, 113, 113, 0.22);
+            border-radius: 18px;
+            padding: 0;
+            max-width: 420px;
+            width: 92%;
+            text-align: center;
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+        }
+
+        #challengeFailedModal .challenge-failed-topbar {
+            height: 3px;
+            background: linear-gradient(90deg, transparent, rgba(248, 113, 113, 0.55), rgba(251, 113, 133, 0.75), rgba(248, 113, 113, 0.55), transparent);
+            border-radius: 18px 18px 0 0;
+        }
+
+        #challengeFailedModal .challenge-failed-hero {
+            padding: 1.75rem 1.5rem 0.5rem;
+        }
+
+        #challengeFailedModal .challenge-failed-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 1rem;
+            border-radius: 50%;
+            background: rgba(248, 113, 113, 0.1);
+            border: 1px solid rgba(248, 113, 113, 0.28);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            overflow: hidden;
+        }
+
+        #challengeFailedModal .challenge-failed-logo {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+
+        #challengeFailedModal .challenge-failed-kicker {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.11em;
+            text-transform: uppercase;
+            color: #f87171;
+            margin-bottom: 0.35rem;
+        }
+
+        #challengeFailedModal .challenge-modal--failed .challenge-modal-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #f8fafc;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.5rem;
+        }
+
+        #challengeFailedModal .challenge-modal--failed #challengeFailedReason {
+            font-size: 0.875rem;
+            color: #94a3b8;
+            margin-bottom: 0;
+            line-height: 1.55;
+        }
+
+        #challengeFailedModal .challenge-modal--failed .challenge-modal-stats {
+            margin: 1.25rem 1.25rem 1.35rem;
+            padding: 0.25rem 1rem;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 12px;
+            text-align: left;
+        }
+
+        #challengeFailedModal .challenge-modal--failed .challenge-modal-stat {
+            padding: 0.85rem 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        #challengeFailedModal .challenge-modal--failed .challenge-modal-stat:last-child {
+            border-bottom: none;
+        }
+
+        #challengeFailedModal .challenge-modal--failed .challenge-modal-stat-label {
+            font-size: 13px;
+            color: #64748b;
+            font-weight: 500;
+        }
+
+        #challengeFailedModal .challenge-modal--failed .challenge-modal-stat-value {
+            font-family: 'JetBrains Mono', ui-monospace, monospace;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        #challengeFailedModal .challenge-modal--failed .challenge-modal-buttons {
+            padding: 0 1.25rem 1.5rem;
+            justify-content: stretch;
+        }
+
+        #challengeFailedModal .challenge-modal--failed .challenge-modal-btn-failed-primary {
+            cursor: pointer;
+            width: 100%;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 12px 16px;
+            background: linear-gradient(135deg, #b91c1c, #991b1b);
+            color: #fff;
+            border: none;
+            box-shadow: 0 4px 20px rgba(239, 68, 68, 0.25);
+        }
+
+        #challengeFailedModal .challenge-modal--failed .challenge-modal-btn-failed-primary:hover {
+            filter: brightness(1.06);
+            box-shadow: 0 6px 24px rgba(239, 68, 68, 0.35);
+        }
+
     </style>
 
     
@@ -36267,25 +36392,33 @@
 
     <div id="challengeFailedModal" class="challenge-modal-overlay">
 
-        <div class="challenge-modal">
+        <div class="challenge-modal challenge-modal--failed">
 
-            <div class="challenge-modal-icon failure">❌</div>
+            <div class="challenge-failed-topbar" aria-hidden="true"></div>
 
-            <div class="challenge-modal-title">Challenge Failed</div>
+            <div class="challenge-failed-hero">
 
-            <div class="challenge-modal-subtitle" id="challengeFailedReason">
+                <div class="challenge-failed-icon" aria-hidden="true">
+                    <img src="modules/logo-08.png" alt="" class="challenge-failed-logo" width="44" height="44" decoding="async" />
+                </div>
 
-                You have exceeded the maximum loss limit
+                <p class="challenge-failed-kicker">Challenge failed</p>
+
+                <div class="challenge-modal-title">Limit breached</div>
+
+                <div class="challenge-modal-subtitle" id="challengeFailedReason">
+
+                    You have exceeded the maximum loss limit
+
+                </div>
 
             </div>
-
-            
 
             <div class="challenge-modal-stats">
 
                 <div class="challenge-modal-stat">
 
-                    <span class="challenge-modal-stat-label">Final Balance</span>
+                    <span class="challenge-modal-stat-label">Final balance</span>
 
                     <span class="challenge-modal-stat-value" id="challengeFailedBalance">$9,500.00</span>
 
@@ -36293,7 +36426,7 @@
 
                 <div class="challenge-modal-stat">
 
-                    <span class="challenge-modal-stat-label">Total P&L</span>
+                    <span class="challenge-modal-stat-label">Total P&amp;L</span>
 
                     <span class="challenge-modal-stat-value negative" id="challengeFailedPnL">-$500.00 (-5.00%)</span>
 
@@ -36301,7 +36434,7 @@
 
                 <div class="challenge-modal-stat">
 
-                    <span class="challenge-modal-stat-label">Rule Violated</span>
+                    <span class="challenge-modal-stat-label">Rule violated</span>
 
                     <span class="challenge-modal-stat-value negative" id="challengeFailedRule">Max Daily Loss</span>
 
@@ -36309,7 +36442,7 @@
 
                 <div class="challenge-modal-stat">
 
-                    <span class="challenge-modal-stat-label">Trading Days</span>
+                    <span class="challenge-modal-stat-label">Trading days</span>
 
                     <span class="challenge-modal-stat-value" id="challengeFailedDays">3</span>
 
@@ -36317,13 +36450,11 @@
 
             </div>
 
-            
-
             <div class="challenge-modal-buttons">
 
-                <button class="challenge-modal-btn challenge-modal-btn-primary" onclick="exitToSessionDashboard()">
+                <button type="button" class="challenge-modal-btn challenge-modal-btn-failed-primary" onclick="exitToSessionDashboard()">
 
-                    Return to Dashboard
+                    Return to dashboard
 
                 </button>
 
