@@ -4278,6 +4278,19 @@ class ReplaySystem {
         if (window.timezoneManager) {
             const timeStr = window.timezoneManager.formatTime(currentBar.t, 'full');
             this.timeLabel.textContent = timeStr;
+            try {
+                const ts = Number.isFinite(this.replayTimestamp)
+                    ? this.replayTimestamp
+                    : currentBar.t;
+                if (Number.isFinite(ts)) {
+                    const sym = this.chart && this.chart.currentSymbol
+                        ? String(this.chart.currentSymbol)
+                        : '';
+                    window.dispatchEvent(new CustomEvent('replayVirtualTimeChanged', {
+                        detail: { timestamp: ts, symbol: sym }
+                    }));
+                }
+            } catch (e) { /* ignore */ }
             return;
         }
 
@@ -4301,6 +4314,21 @@ class ReplaySystem {
         const timeStr = `(${dayName}) ${year}-${month}-${day} ${hours}:${minutes}`;
 
         this.timeLabel.textContent = timeStr;
+
+        // Forex news panel: virtual time + symbol for period-matched headlines (TradingView-style)
+        try {
+            const ts = Number.isFinite(this.replayTimestamp)
+                ? this.replayTimestamp
+                : (currentBar && currentBar.t);
+            if (Number.isFinite(ts)) {
+                const sym = this.chart && this.chart.currentSymbol
+                    ? String(this.chart.currentSymbol)
+                    : '';
+                window.dispatchEvent(new CustomEvent('replayVirtualTimeChanged', {
+                    detail: { timestamp: ts, symbol: sym }
+                }));
+            }
+        } catch (e) { /* ignore */ }
     }
 
     /**
