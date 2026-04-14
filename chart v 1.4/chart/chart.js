@@ -12698,8 +12698,13 @@ class Chart {
             if (!Number.isFinite(ts)) continue;
             const idx = this._timestampToFractionalDataIndex(ts);
             if (idx == null || !Number.isFinite(idx)) continue;
-            const x = this.dataIndexToPixel(idx);
             const pad = r + 6;
+            // Releases before the first loaded bar map to idx < 0 (off-screen left) — same items as "Previous"
+            // in the news panel. Pin to the inner left edge so those markers are not dropped.
+            let x = this.dataIndexToPixel(idx);
+            if (idx < 0) {
+                x = m.l + pad;
+            }
             if (x < m.l - pad || x > this.w - m.r + pad) continue;
 
             let fill = '#787b86';
