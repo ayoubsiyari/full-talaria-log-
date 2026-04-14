@@ -502,6 +502,22 @@ const INDICATOR_DEFINITIONS = {
             { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
         ]
     },
+    seasonality: {
+        name: 'Seasonality (avg % by calendar date)',
+        type: 'separate',
+        params: [
+            {
+                id: 'minSamples',
+                label: 'Min samples per date (years of that month/day in history)',
+                type: 'number',
+                default: 2,
+                min: 1,
+                max: 50
+            },
+            { id: 'color', label: 'Line color', type: 'color', default: '#ff9800' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
     cotnet: {
         name: 'COT — Net commercial vs non-commercial',
         type: 'separate',
@@ -1241,7 +1257,7 @@ function createIndicatorSelectionMenu(chartInstance) {
                 'sma', 'ema', 'wma', 'dema', 'tema', 'hma', 'bb', 'envelope', 'vwap', 'donchian', 'keltner', 'psar', 'supertrend', 'stddev',
                 'roc', 'mom',
                 'rsi', 'macd', 'ppo', 'stoch', 'stochrsi', 'atr', 'cci', 'adx', 'willr', 'mfi', 'aroon', 'cmf', 'trix', 'ao', 'uo', 'vortex', 'dpo',
-                'massindex', 'coppock', 'rvi', 'elderray', 'cotnet',
+                'massindex', 'coppock', 'rvi', 'elderray', 'seasonality', 'cotnet',
                 'obv', 'adr', 'volume'
             ]
         },

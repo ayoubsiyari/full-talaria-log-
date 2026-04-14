@@ -2081,6 +2081,50 @@
         return { bull: bull, bear: bear };
     }
 
+    /**
+     * Calendar seasonality: mean close-to-close % return for each month/day (UTC) across all years in the series.
+     * Uses the same bars as the chart (same instrument as the open dataset). Requires enough history per date.
+     */
+    function calculateSeasonality(data, minSamples) {
+        const n = data ? data.length : 0;
+        const out = new Array(n).fill(null);
+        if (n < 2) return out;
+        const msParsed = minSamples != null ? parseInt(minSamples, 10) : 2;
+        const ms = Math.max(1, isNaN(msParsed) ? 2 : msParsed);
+
+        function calKey(t) {
+            const d = new Date(t);
+            return (d.getUTCMonth() + 1) * 100 + d.getUTCDate();
+        }
+
+        const buckets = {};
+        for (let i = 1; i < n; i++) {
+            const pc = data[i - 1].c;
+            if (pc == null || pc === 0 || isNaN(pc)) continue;
+            const ret = (data[i].c - pc) / pc * 100;
+            if (!isFinite(ret)) continue;
+            const k = calKey(data[i].t);
+            if (!buckets[k]) buckets[k] = [];
+            buckets[k].push(ret);
+        }
+
+        const mean = {};
+        Object.keys(buckets).forEach(function(k) {
+            const arr = buckets[k];
+            if (arr.length >= ms) {
+                let s = 0;
+                for (let j = 0; j < arr.length; j++) s += arr[j];
+                mean[k] = s / arr.length;
+            }
+        });
+
+        for (let i = 0; i < n; i++) {
+            const k = calKey(data[i].t);
+            out[i] = mean[k] != null ? mean[k] : null;
+        }
+        return out;
+    }
+
     /** SMA envelope — % distance from SMA(close). */
     function calculateEnvelope(data, period, percent) {
         const mid = calculateSMA(data, Math.max(1, period), 'c');
@@ -2705,6 +2749,16 @@
                 this.indicators.data[indicator.id] = calculateElderRay(this.data, indicator.params.period);
                 break;
 
+            case 'seasonality':
+                indicator.params.minSamples = params.minSamples != null ? Math.max(1, parseInt(params.minSamples, 10) || 2) : 2;
+                indicator.style.color = params.color || '#ff9800';
+                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
+                indicator.overlay = false;
+                indicator.separatePanel = true;
+                indicator.name = 'Seasonality (avg % by date)';
+                this.indicators.data[indicator.id] = calculateSeasonality(this.data, indicator.params.minSamples);
+                break;
+
             case 'cotnet':
                 indicator.params.cftcCode = params.cftcCode != null ? String(params.cftcCode).trim() : 'auto';
                 indicator.params.dataUrl = params.dataUrl != null ? String(params.dataUrl) : '';
@@ -3209,6 +3263,11 @@
             if (newParams.showCommercial !== undefined) indicator.params.showCommercial = newParams.showCommercial !== false;
             if (newParams.showLarge !== undefined) indicator.params.showLarge = newParams.showLarge !== false;
         }
+        if (indicator.type === 'seasonality') {
+            if (newParams.minSamples !== undefined) indicator.params.minSamples = Math.max(1, parseInt(newParams.minSamples, 10) || 2);
+            if (newParams.color !== undefined) indicator.style.color = newParams.color;
+            if (newParams.lineWidth !== undefined) indicator.style.lineWidth = newParams.lineWidth;
+        }
 
         // Recalculate data
         switch (indicator.type) {
@@ -3537,6 +3596,13 @@
                 indicator.name = 'Elder Ray(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateElderRay(this.data, indicator.params.period);
                 break;
+            case 'seasonality':
+                indicator.name = 'Seasonality (avg % by date)';
+                this.indicators.data[indicator.id] = calculateSeasonality(
+                    this.data,
+                    indicator.params.minSamples != null ? indicator.params.minSamples : 2
+                );
+                break;
             case 'cotnet':
                 this.indicators.data[indicator.id] = { loading: true, error: null };
                 if (typeof this._scheduleCotNetLoad === 'function') this._scheduleCotNetLoad(indicator);
@@ -3823,6 +3889,12 @@
                     break;
                 case 'elderray':
                     this.indicators.data[indicator.id] = calculateElderRay(this.data, indicator.params.period);
+                    break;
+                case 'seasonality':
+                    this.indicators.data[indicator.id] = calculateSeasonality(
+                        this.data,
+                        indicator.params.minSamples != null ? indicator.params.minSamples : 2
+                    );
                     break;
                 case 'cotnet':
                     this.indicators.data[indicator.id] = { loading: true, error: null };
@@ -4795,7 +4867,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
                 }
             });
             ctx.textAlign = 'left';
-        } else if (indicator.type === 'cmf' || indicator.type === 'trix' || indicator.type === 'rvi') {
+        } else if (indicator.type === 'cmf' || indicator.type === 'trix' || indicator.type === 'rvi' || indicator.type === 'seasonality') {
             const zy = scaleY(0);
             if (zy !== null && zy > indTop && zy < indBottom) {
                 ctx.strokeStyle = 'rgba(255,255,255,0.18)';
