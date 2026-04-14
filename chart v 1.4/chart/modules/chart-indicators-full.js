@@ -1915,6 +1915,82 @@
         return { bull: bull, bear: bear };
     }
 
+    /** CFTC Public Reporting — Legacy Combined (futures + options), same family as TV “Legacy” COT. */
+    var COTNET_CFTC_LEGACY_COMBINED = 'jun7-fc8e';
+    var COTNET_CFTC_API = 'https://publicreporting.cftc.gov/resource/';
+
+    function sanitizeCftcContractCode(code) {
+        const s = String(code == null ? '' : code).trim();
+        if (!/^[0-9A-Za-z+]{1,16}$/.test(s)) {
+            throw new Error('Invalid CFTC contract code (use digits/letters/+, e.g. 13874A or 085692)');
+        }
+        return s;
+    }
+
+    function cotNetCftcRowsToPoints(rows) {
+        const pts = [];
+        let marketName = '';
+        for (let i = 0; i < rows.length; i++) {
+            const r = rows[i];
+            if (!marketName && r.market_and_exchange_names) marketName = String(r.market_and_exchange_names);
+            const oi = parseInt(r.open_interest_all, 10);
+            if (!oi || isNaN(oi)) continue;
+            const cl = parseInt(r.comm_positions_long_all, 10);
+            const cs = parseInt(r.comm_positions_short_all, 10);
+            const nl = parseInt(r.noncomm_positions_long_all, 10);
+            const ns = parseInt(r.noncomm_positions_short_all, 10);
+            if (isNaN(cl) || isNaN(cs) || isNaN(nl) || isNaN(ns)) continue;
+            const t = Date.parse(r.report_date_as_yyyy_mm_dd);
+            if (!Number.isFinite(t)) continue;
+            pts.push({
+                t: t,
+                commercialNet: (cl - cs) / oi,
+                noncommNet: (nl - ns) / oi
+            });
+        }
+        return { points: pts, marketName: marketName };
+    }
+
+    function cotNetBuildCftcLegacyUrl(cftcCode) {
+        const code = sanitizeCftcContractCode(cftcCode);
+        const where = "cftc_contract_market_code='" + code.replace(/'/g, "''") + "'";
+        return COTNET_CFTC_API + COTNET_CFTC_LEGACY_COMBINED + '.json?' + [
+            '$where=' + encodeURIComponent(where),
+            '$order=' + encodeURIComponent('report_date_as_yyyy_mm_dd ASC'),
+            '$limit=10000'
+        ].join('&');
+    }
+
+    function normalizeCotNetPoint(p) {
+        if (!p || typeof p !== 'object') return null;
+        const t = p.t != null ? Number(p.t) : (p.time != null ? Number(p.time) : NaN);
+        const c = p.commercialNet != null ? Number(p.commercialNet) : (p.c != null ? Number(p.c) : NaN);
+        const n = p.noncommNet != null ? Number(p.noncommNet) : (p.n != null ? Number(p.n) : NaN);
+        if (!Number.isFinite(t) || !Number.isFinite(c) || !Number.isFinite(n)) return null;
+        return { t: t, commercialNet: c, noncommNet: n };
+    }
+
+    function mergeCotNetPointsToBars(candles, points) {
+        const sorted = points.filter(Boolean).slice().sort(function(a, b) { return a.t - b.t; });
+        const n = candles.length;
+        const bull = new Array(n).fill(null);
+        const bear = new Array(n).fill(null);
+        let j = 0;
+        let lastC = null;
+        let lastN = null;
+        for (let i = 0; i < n; i++) {
+            const bt = candles[i].t;
+            while (j < sorted.length && sorted[j].t <= bt) {
+                lastC = sorted[j].commercialNet;
+                lastN = sorted[j].noncommNet;
+                j++;
+            }
+            bull[i] = lastC;
+            bear[i] = lastN;
+        }
+        return { bull: bull, bear: bear };
+    }
+
     /** SMA envelope — % distance from SMA(close). */
     function calculateEnvelope(data, period, percent) {
         const mid = calculateSMA(data, Math.max(1, period), 'c');
@@ -2539,6 +2615,21 @@
                 this.indicators.data[indicator.id] = calculateElderRay(this.data, indicator.params.period);
                 break;
 
+            case 'cotnet':
+                indicator.params.cftcCode = params.cftcCode != null ? String(params.cftcCode).trim() : '13874A';
+                indicator.params.dataUrl = params.dataUrl != null ? String(params.dataUrl) : '';
+                indicator.params.showCommercial = params.showCommercial !== false;
+                indicator.params.showLarge = params.showLarge !== false;
+                indicator.style.bullColor = params.bullColor || '#26a69a';
+                indicator.style.bearColor = params.bearColor || '#ef5350';
+                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
+                indicator.overlay = false;
+                indicator.separatePanel = true;
+                indicator.isCotNet = true;
+                indicator.name = 'COT net comm vs non-comm';
+                this.indicators.data[indicator.id] = { loading: true, error: null };
+                break;
+
             case 'ictpd':
                 indicator.style.upperColor = params.upperColor || '#2962ff';
                 indicator.style.middleColor = params.middleColor || '#787b86';
@@ -2697,6 +2788,9 @@
         if (indicator.type === 'custom' && typeof this._scheduleCustomIndicatorCompute === 'function') {
             this._scheduleCustomIndicatorCompute(indicator);
         }
+        if (indicator.type === 'cotnet' && typeof this._scheduleCotNetLoad === 'function') {
+            this._scheduleCotNetLoad(indicator);
+        }
         this._updateIndicatorPanelHeight();
         
         if (typeof this.render === 'function') {
@@ -2824,6 +2918,96 @@
             }
         });
     };
+
+    Chart.prototype._scheduleCotNetLoad = function(indicator) {
+        const self = this;
+        const params = indicator.params || {};
+        const url = (params.dataUrl && String(params.dataUrl).trim()) || '';
+
+        function applyMerged(merged, note, marketName) {
+            if (!self.indicators || !self.indicators.active) return;
+            const still = self.indicators.active.some(function(i) { return i.id === indicator.id; });
+            if (!still) return;
+            self.indicators.data[indicator.id] = {
+                loading: false,
+                error: null,
+                bull: merged.bull,
+                bear: merged.bear,
+                _cotNote: note || '',
+                _cotMarket: marketName || ''
+            };
+            if (typeof self._updateIndicatorPanelHeight === 'function') self._updateIndicatorPanelHeight();
+            if (typeof self.render === 'function') self.render();
+            if (typeof self.persistIndicators === 'function') self.persistIndicators();
+        }
+
+        function fail(msg) {
+            if (!self.indicators || !self.indicators.active) return;
+            const still = self.indicators.active.some(function(i) { return i.id === indicator.id; });
+            if (!still) return;
+            self.indicators.data[indicator.id] = { loading: false, error: msg, bull: null, bear: null };
+            if (typeof self.render === 'function') self.render();
+        }
+
+        if (!this.data || this.data.length === 0) {
+            fail('No chart data');
+            return;
+        }
+
+        if (url) {
+            fetch(url, { credentials: 'same-origin', mode: 'cors' })
+                .then(function(r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                })
+                .then(function(json) {
+                    const raw = json && json.points != null ? json.points : json;
+                    if (!Array.isArray(raw)) throw new Error('JSON must be an array or { points: [] }');
+                    const pts = [];
+                    for (let i = 0; i < raw.length; i++) {
+                        const np = normalizeCotNetPoint(raw[i]);
+                        if (np) pts.push(np);
+                    }
+                    if (pts.length === 0) throw new Error('No valid COT points');
+                    applyMerged(mergeCotNetPointsToBars(self.data, pts), 'file', '');
+                })
+                .catch(function(e) {
+                    fail(e && e.message ? e.message : String(e));
+                    if (typeof self.showNotification === 'function') {
+                        self.showNotification('COT: ' + (e && e.message ? e.message : 'load failed'));
+                    }
+                });
+            return;
+        }
+
+        let apiUrl;
+        try {
+            apiUrl = cotNetBuildCftcLegacyUrl(params.cftcCode || '13874A');
+        } catch (e) {
+            fail(e && e.message ? e.message : String(e));
+            return;
+        }
+
+        fetch(apiUrl, { mode: 'cors' })
+            .then(function(r) {
+                if (!r.ok) throw new Error('CFTC API HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function(rows) {
+                if (!Array.isArray(rows) || rows.length === 0) {
+                    throw new Error('No COT rows for cftcCode — check code at cftc.gov Public Reporting');
+                }
+                const parsed = cotNetCftcRowsToPoints(rows);
+                if (!parsed.points.length) throw new Error('Could not parse COT positions');
+                applyMerged(mergeCotNetPointsToBars(self.data, parsed.points), 'cftc', parsed.marketName);
+            })
+            .catch(function(e) {
+                fail(e && e.message ? e.message : String(e));
+                if (typeof self.showNotification === 'function') {
+                    self.showNotification('COT: ' + (e && e.message ? e.message : 'CFTC fetch failed'));
+                }
+            });
+    };
     
     Chart.prototype.updateIndicator = function(id, newParams) {
         const indicator = this.indicators.active.find(function(ind) {
@@ -2924,7 +3108,13 @@
                 }
             }
         }
-        
+        if (indicator.type === 'cotnet') {
+            if (newParams.cftcCode !== undefined) indicator.params.cftcCode = String(newParams.cftcCode).trim();
+            if (newParams.dataUrl !== undefined) indicator.params.dataUrl = String(newParams.dataUrl);
+            if (newParams.showCommercial !== undefined) indicator.params.showCommercial = newParams.showCommercial !== false;
+            if (newParams.showLarge !== undefined) indicator.params.showLarge = newParams.showLarge !== false;
+        }
+
         // Recalculate data
         switch (indicator.type) {
             case 'sma':
@@ -3252,6 +3442,10 @@
                 indicator.name = 'Elder Ray(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateElderRay(this.data, indicator.params.period);
                 break;
+            case 'cotnet':
+                this.indicators.data[indicator.id] = { loading: true, error: null };
+                if (typeof this._scheduleCotNetLoad === 'function') this._scheduleCotNetLoad(indicator);
+                break;
             case 'ictpd':
                 indicator.name = 'ICT Prev Day PD';
                 this.indicators.data[indicator.id] = calculateIctPrevDayPD(this.data);
@@ -3534,6 +3728,10 @@
                     break;
                 case 'elderray':
                     this.indicators.data[indicator.id] = calculateElderRay(this.data, indicator.params.period);
+                    break;
+                case 'cotnet':
+                    this.indicators.data[indicator.id] = { loading: true, error: null };
+                    if (typeof this._scheduleCotNetLoad === 'function') this._scheduleCotNetLoad(indicator);
                     break;
                 case 'ictpd':
                     this.indicators.data[indicator.id] = calculateIctPrevDayPD(this.data);
@@ -4361,6 +4559,9 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             return;
         } else if (indicator.type === 'elderray') {
             this._renderElderRayPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
+        } else if (indicator.type === 'cotnet' || indicator.isCotNet) {
+            this._renderCotNetPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
         } else if (indicator.type === 'uo') {
             this._renderUltimateOscillatorPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
@@ -5955,6 +6156,86 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         this._drawPanelLine(ctx, m, b, indicator.style.bearColor || '#ef5350', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
         indicator._displayColor = indicator.style.bullColor || '#26a69a';
         indicator._displayLabel = 'Elder Ray';
+    };
+
+    Chart.prototype._renderCotNetPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
+        if (!data) return;
+        if (data.loading) {
+            ctx.fillStyle = '#787b86';
+            ctx.font = '11px Roboto';
+            ctx.textAlign = 'center';
+            ctx.fillText('Loading COT…', (m.l + this.w - m.r) / 2, panelTop + panelHeight / 2);
+            ctx.textAlign = 'left';
+            return;
+        }
+        if (data.error) {
+            ctx.fillStyle = '#ef5350';
+            ctx.font = '11px Roboto';
+            ctx.textAlign = 'left';
+            ctx.fillText(String(data.error).slice(0, 140), m.l + 4, panelTop + 14);
+            ctx.textAlign = 'left';
+            return;
+        }
+        if (!data.bull || !data.bear) return;
+        const showC = indicator.params && indicator.params.showCommercial !== false;
+        const showL = indicator.params && indicator.params.showLarge !== false;
+        const a = data.bull;
+        const b = data.bear;
+        let min = Infinity;
+        let max = -Infinity;
+        for (let i = visibleStart; i < visibleEnd; i++) {
+            if (showC && a[i] != null && !isNaN(a[i])) {
+                min = Math.min(min, a[i]);
+                max = Math.max(max, a[i]);
+            }
+            if (showL && b[i] != null && !isNaN(b[i])) {
+                min = Math.min(min, b[i]);
+                max = Math.max(max, b[i]);
+            }
+        }
+        if (min === Infinity) return;
+        const range = max - min || 1;
+        min -= range * 0.08;
+        max += range * 0.08;
+        if (min > 0) min = Math.min(min, 0);
+        if (max < 0) max = Math.max(max, 0);
+        indicator._panelBaseMin = min;
+        indicator._panelBaseMax = max;
+        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        min = dom.min;
+        max = dom.max;
+        const vSpan = Math.max(1e-12, max - min);
+        const scaleY = function(val) {
+            if (val === null || val === undefined) return null;
+            const y = panelBottom - 5 - ((val - min) / vSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
+        const zy = scaleY(0);
+        if (zy !== null && zy > panelTop && zy < panelBottom) {
+            ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(m.l, zy);
+            ctx.lineTo(this.w - m.r, zy);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+        const lw = indicator.style.lineWidth || 2;
+        if (showC) {
+            this._drawPanelLine(ctx, m, a, indicator.style.bullColor || '#26a69a', lw, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+        }
+        if (showL) {
+            this._drawPanelLine(ctx, m, b, indicator.style.bearColor || '#ef5350', lw, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+        }
+        indicator._displayColor = indicator.style.bullColor || '#26a69a';
+        if (data._cotMarket) {
+            const m = data._cotMarket;
+            indicator._displayLabel = m.length > 42 ? m.slice(0, 39) + '…' : m;
+        } else {
+            indicator._displayLabel = data._cotNote === 'file' ? 'COT (file)' : 'COT (CFTC)';
+        }
     };
 
     Chart.prototype._renderUltimateOscillatorPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {

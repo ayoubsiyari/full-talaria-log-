@@ -502,6 +502,29 @@ const INDICATOR_DEFINITIONS = {
             { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
         ]
     },
+    cotnet: {
+        name: 'COT — Net commercial vs non-commercial',
+        type: 'separate',
+        params: [
+            {
+                id: 'cftcCode',
+                label: 'CFTC contract code (Legacy Combined). Default 13874A = E-mini S&P',
+                type: 'text',
+                default: '13874A'
+            },
+            {
+                id: 'dataUrl',
+                label: 'Optional JSON URL (overrides CFTC). Array or { points: [] } with t, commercialNet, noncommNet',
+                type: 'text',
+                default: ''
+            },
+            { id: 'showCommercial', label: 'Show commercial net', type: 'checkbox', default: true },
+            { id: 'showLarge', label: 'Show non-commercial net', type: 'checkbox', default: true },
+            { id: 'bullColor', label: 'Commercial (net)', type: 'color', default: '#26a69a' },
+            { id: 'bearColor', label: 'Non-commercial (net)', type: 'color', default: '#ef5350' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
     ictpd: {
         name: 'ICT — Previous day PD (UTC)',
         type: 'overlay',
@@ -1218,7 +1241,7 @@ function createIndicatorSelectionMenu(chartInstance) {
                 'sma', 'ema', 'wma', 'dema', 'tema', 'hma', 'bb', 'envelope', 'vwap', 'donchian', 'keltner', 'psar', 'supertrend', 'stddev',
                 'roc', 'mom',
                 'rsi', 'macd', 'ppo', 'stoch', 'stochrsi', 'atr', 'cci', 'adx', 'willr', 'mfi', 'aroon', 'cmf', 'trix', 'ao', 'uo', 'vortex', 'dpo',
-                'massindex', 'coppock', 'rvi', 'elderray',
+                'massindex', 'coppock', 'rvi', 'elderray', 'cotnet',
                 'obv', 'adr', 'volume'
             ]
         },
