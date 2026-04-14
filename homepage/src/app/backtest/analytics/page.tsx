@@ -131,9 +131,19 @@ export default function BacktestAnalyticsPage() {
         if (!mounted) return;
         const list = data.sessions ?? [];
         setSessions(list);
-        if (!selectedSessionId && list.length > 0) {
-          setSelectedSessionId(String(list[0].id));
-        }
+        // Do not overwrite ?sessionId= from URL: async completion can run with a stale
+        // selectedSessionId closure and previously replaced the user's session with list[0].
+        setSelectedSessionId((prev) => {
+          if (prev) return prev;
+          try {
+            const sid = new URLSearchParams(window.location.search).get("sessionId");
+            if (sid) return sid;
+          } catch {
+            /* ignore */
+          }
+          if (list.length > 0) return String(list[0].id);
+          return prev;
+        });
       } catch (e) {
         if (!mounted) return;
         setError(e instanceof Error ? e.message : String(e));
@@ -142,7 +152,7 @@ export default function BacktestAnalyticsPage() {
     return () => {
       mounted = false;
     };
-  }, [selectedSessionId]);
+  }, []);
 
   useEffect(() => {
     let mounted = true;

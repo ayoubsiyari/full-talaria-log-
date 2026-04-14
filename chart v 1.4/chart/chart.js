@@ -798,6 +798,16 @@ class Chart {
             
             const sessionId = urlParams.get('sessionId');
 
+            // URL session always wins for persistence (journal PATCH / state). Stale localStorage
+            // must not override ?sessionId= or trades save to the wrong row.
+            if (sessionId) {
+                const sid = String(sessionId);
+                this.activeTradingSessionId = sid;
+                try {
+                    userStorage.setItem('active_trading_session_id', sid);
+                } catch (e) {}
+            }
+
             let session = null;
             if (sessionId) {
                 try {
@@ -1737,12 +1747,12 @@ class Chart {
     }
 
     getActiveTradingSessionId() {
-        if (this.activeTradingSessionId) return String(this.activeTradingSessionId);
         try {
             const urlParams = new URLSearchParams(window.location.search);
             const fromUrl = urlParams.get('sessionId');
             if (fromUrl) return String(fromUrl);
         } catch (e) {}
+        if (this.activeTradingSessionId) return String(this.activeTradingSessionId);
         try {
             const fromStorage = userStorage.getItem('active_trading_session_id');
             if (fromStorage) return String(fromStorage);
@@ -1950,13 +1960,16 @@ class Chart {
         this._pendingCriticalSessionStatePatch = null;
 
         try {
-            await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
+            const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 keepalive: true,
                 body: JSON.stringify(patch)
             });
+            if (!res.ok) {
+                console.warn('⚠️ Critical session state PATCH failed', res.status, await res.text().catch(() => ''));
+            }
         } catch (e) {
             console.warn('⚠️ Failed to save critical trading session state', e);
         }
@@ -1971,13 +1984,16 @@ class Chart {
         this._pendingSessionStatePatch = null;
 
         try {
-            await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
+            const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 keepalive: true,
                 body: JSON.stringify(patch)
             });
+            if (!res.ok) {
+                console.warn('⚠️ Session state PATCH failed', res.status, await res.text().catch(() => ''));
+            }
         } catch (e) {
             console.warn('⚠️ Failed to save trading session state', e);
         }
