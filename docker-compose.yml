@@ -79,6 +79,7 @@ services:
       TILE_CDN_BASE_URL: ${TILE_CDN_BASE_URL:-}
       TILE_CDN_REDIRECT: ${TILE_CDN_REDIRECT:-false}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy

@@ -1,11 +1,8 @@
 /**
- * Economic calendar (News sidebar) — Finnhub /calendar/economic.
- * Uses FINNHUB_API_KEY from window.__CHART_ENV (chart/.env + scripts/sync-chart-env.mjs).
+ * Economic calendar (News sidebar) — Finnhub data via chart API (token on server: FINNHUB_API_KEY).
  */
 (function () {
     'use strict';
-
-    var FINNHUB_CAL = 'https://finnhub.io/api/v1/calendar/economic';
 
     var state = {
         events: [],
@@ -16,11 +13,6 @@
         error: null,
         countdownTimer: null
     };
-
-    function getApiKey() {
-        var e = window.__CHART_ENV || {};
-        return (e.FINNHUB_API_KEY && String(e.FINNHUB_API_KEY).trim()) || '';
-    }
 
     function escapeHtml(s) {
         return String(s)
@@ -257,19 +249,18 @@
         }
     }
 
-    async function loadCalendar() {
-        var key = getApiKey();
-        if (!key) {
-            state.loading = false;
-            state.error =
-                'No Finnhub key in the browser. Put FINNHUB_API_KEY in the chart folder .env ' +
-                '(same folder as index.html, not the repo root), run: node scripts/sync-chart-env.mjs ' +
-                'from that folder, then hard-refresh. The page reads modules/chart-env.generated.js — ' +
-                'that file must contain your key after sync.';
-            state.events = [];
-            render();
-            return;
+    function detailFromJson(j, status) {
+        if (!j || typeof j !== 'object') return 'HTTP ' + status;
+        var d = j.detail;
+        if (typeof d === 'string') return d;
+        if (Array.isArray(d) && d.length && d[0].msg) {
+            return d.map(function (x) { return x.msg; }).join(' ');
         }
+        if (j.error) return String(j.error);
+        return 'HTTP ' + status;
+    }
+
+    async function loadCalendar() {
         state.loading = true;
         state.error = null;
         render();
@@ -281,11 +272,11 @@
             to.setDate(to.getDate() + 21);
             var fromStr = from.toISOString().slice(0, 10);
             var toStr = to.toISOString().slice(0, 10);
-            var url = FINNHUB_CAL + '?from=' + encodeURIComponent(fromStr) + '&to=' + encodeURIComponent(toStr) + '&token=' + encodeURIComponent(key);
-            var r = await fetch(url, { method: 'GET', mode: 'cors' });
-            var j = await r.json();
+            var url = '/api/finnhub/calendar/economic?from=' + encodeURIComponent(fromStr) + '&to=' + encodeURIComponent(toStr);
+            var r = await fetch(url, { method: 'GET', credentials: 'include' });
+            var j = await r.json().catch(function () { return {}; });
             if (!r.ok) {
-                throw new Error(j.error || j.message || ('HTTP ' + r.status));
+                throw new Error(detailFromJson(j, r.status));
             }
             if (j.error) throw new Error(j.error);
             var rawList = j.economicCalendar || j.data || [];

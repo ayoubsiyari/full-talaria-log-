@@ -1,10 +1,6 @@
 /**
  * Replay / backtest forex news (TradingView-style): headlines for the current virtual period.
- *
- * Configuration: chart/.env → FINNHUB_API_KEY, then run: node scripts/sync-chart-env.mjs
- * Loads modules/chart-env.generated.js (see chart/.env.example).
- *
- * Finnhub is called from the browser; the key is visible in DevTools (same as many public widgets).
+ * Data is loaded via /api/finnhub/news (Finnhub token stays on the chart API server: FINNHUB_API_KEY).
  */
 (function () {
     'use strict';
@@ -13,7 +9,6 @@
     var DEBOUNCE_MS = 450;
     var WINDOW_HALF_MS = 36 * 60 * 60 * 1000;
     var MAX_WINDOW_MS = 31 * 24 * 60 * 60 * 1000;
-    var FINNHUB_NEWS = 'https://finnhub.io/api/v1/news';
 
     var state = {
         root: null,
@@ -24,11 +19,6 @@
         lastKey: '',
         collapsed: false
     };
-
-    function getFinnhubKey() {
-        var e = window.__CHART_ENV || {};
-        return (e.FINNHUB_API_KEY && String(e.FINNHUB_API_KEY).trim()) || '';
-    }
 
     function normalizeSymbol(sym) {
         if (!sym) return '';
@@ -78,7 +68,7 @@
         };
     }
 
-    function fetchFinnhubForexWindow(startSec, endSec, token, symbol, skipSymbolFilter) {
+    function fetchFinnhubForexWindow(startSec, endSec, symbol, skipSymbolFilter) {
         var sym = skipSymbolFilter ? '' : symbol;
         return new Promise(function (resolve, reject) {
             var out = [];
@@ -93,12 +83,17 @@
                     return;
                 }
                 page++;
-                var url = FINNHUB_NEWS + '?category=forex&token=' + encodeURIComponent(token);
+                var url = '/api/finnhub/news?category=forex';
                 if (minId != null) url += '&minId=' + encodeURIComponent(String(minId));
-                fetch(url, { method: 'GET', mode: 'cors' })
+                fetch(url, { method: 'GET', mode: 'cors', credentials: 'include' })
                     .then(function (r) {
-                        if (!r.ok) throw new Error('Finnhub HTTP ' + r.status);
-                        return r.json();
+                        return r.json().then(function (data) {
+                            if (!r.ok) {
+                                var d = data && data.detail;
+                                throw new Error(typeof d === 'string' ? d : ((data && data.error) || ('HTTP ' + r.status)));
+                            }
+                            return data;
+                        });
                     })
                     .then(function (data) {
                         if (!Array.isArray(data) || data.length === 0) {
@@ -181,7 +176,7 @@
                 id: 'demo-' + dayKey + '-' + i,
                 datetime: ts,
                 headline: templates[i].replace(/\{p\}/g, p),
-                summary: 'Demo headline — set FINNHUB_API_KEY in chart/.env and run sync-chart-env.mjs.',
+                summary: 'Demo headline — set FINNHUB_API_KEY on the chart API server.',
                 source: 'Talaria (demo)',
                 url: '',
                 related: pair.slice(0, 3) + ',' + pair.slice(3, 6)
@@ -191,7 +186,7 @@
         return items;
     }
 
-    function buildPayload(startMs, endMs, symbol, apiKey) {
+    function buildPayload(startMs, endMs, symbol) {
         var msgParts = [];
         if (endMs <= startMs) {
             return { success: false, items: [], source: 'none', message: 'invalid window' };
@@ -207,50 +202,39 @@
         var source = 'none';
         var items = [];
 
-        if (apiKey) {
-            return fetchFinnhubForexWindow(startSec, endSec, apiKey, symbol, false)
-                .then(function (first) {
-                    items = first || [];
-                    if (!items.length && normalizeSymbol(symbol)) {
-                        return fetchFinnhubForexWindow(startSec, endSec, apiKey, '', true);
-                    }
-                    return null;
-                })
-                .then(function (second) {
-                    if (second && second.length) items = second;
-                    if (items && items.length) {
-                        source = 'finnhub';
+        return fetchFinnhubForexWindow(startSec, endSec, symbol, false)
+            .then(function (first) {
+                items = first || [];
+                if (!items.length && normalizeSymbol(symbol)) {
+                    return fetchFinnhubForexWindow(startSec, endSec, '', true);
+                }
+                return null;
+            })
+            .then(function (second) {
+                if (second && second.length) items = second;
+                if (items && items.length) {
+                    source = 'finnhub';
+                } else {
+                    msgParts.push(
+                        'No Finnhub forex headlines in this time range (coverage is often recent-only). Showing demo lines.'
+                    );
+                }
+                if (!items || !items.length) {
+                    items = buildDemoNews(startMs, endMs, symbol);
+                    if (source === 'none') {
+                        source = 'demo';
+                        msgParts.push('Set FINNHUB_API_KEY on the chart API server (or sign in if the API returns 401).');
                     } else {
-                        msgParts.push(
-                            'No Finnhub forex headlines in this time range (coverage is often recent-only). Showing demo lines.'
-                        );
+                        source = 'demo_fallback';
                     }
-                    if (!items || !items.length) {
-                        items = buildDemoNews(startMs, endMs, symbol);
-                        if (source === 'none') {
-                            source = 'demo';
-                            msgParts.push('Set FINNHUB_API_KEY in chart/.env and run: node scripts/sync-chart-env.mjs');
-                        } else {
-                            source = 'demo_fallback';
-                        }
-                    }
-                    return {
-                        success: true,
-                        items: items,
-                        source: source,
-                        message: msgParts.length ? msgParts.join(' ') : null
-                    };
-                });
-        }
-
-        items = buildDemoNews(startMs, endMs, symbol);
-        msgParts.push('Set FINNHUB_API_KEY in chart/.env and run: node scripts/sync-chart-env.mjs');
-        return Promise.resolve({
-            success: true,
-            items: items,
-            source: 'demo',
-            message: msgParts.join(' ')
-        });
+                }
+                return {
+                    success: true,
+                    items: items,
+                    source: source,
+                    message: msgParts.length ? msgParts.join(' ') : null
+                };
+            });
     }
 
     function ensureDom() {
@@ -379,12 +363,11 @@
     }
 
     function fetchNews(ts, symbol) {
-        var key = getFinnhubKey();
         var start = ts - WINDOW_HALF_MS;
         var end = ts + WINDOW_HALF_MS;
-        if (state.badgeEl) state.badgeEl.textContent = key ? 'Loading…' : 'Demo (no API key)';
+        if (state.badgeEl) state.badgeEl.textContent = 'Loading…';
 
-        buildPayload(start, end, symbol, key)
+        buildPayload(start, end, symbol)
             .then(function (data) {
                 if (!data.success) throw new Error(data.message || 'Failed');
                 render(data, ts);
@@ -395,7 +378,7 @@
                 var hint = state.root && state.root.querySelector('.replay-news-hint');
                 var msg = String(err && err.message ? err.message : err);
                 if (msg.indexOf('Failed to fetch') !== -1 || msg.indexOf('NetworkError') !== -1) {
-                    msg += ' — If CORS blocked Finnhub, serve the chart over HTTPS or use a small proxy.';
+                    msg += ' — Is the chart API running at the same origin? Set FINNHUB_API_KEY on the server.';
                 }
                 if (hint) hint.textContent = msg;
                 var demo = {
