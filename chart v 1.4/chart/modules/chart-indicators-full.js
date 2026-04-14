@@ -635,6 +635,7 @@
         const result = {
             sessions: [],
             nyMidnight: [],
+            nyClose: [],
             boxes: []
         };
         
@@ -684,18 +685,37 @@
             }
         };
         
-        // NY timezone offset (UTC-5 for EST, UTC-4 for EDT)
-        // Default to EST (UTC-5)
+        // NY timezone offset (fallback when Intl is unavailable)
         const nyOffset = params.nyOffset !== undefined ? params.nyOffset : -5;
         
-        // Helper to convert UTC time to NY time
-        const toNYTime = (date) => {
+        const getNyYmd = function(ms) {
+            try {
+                return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+            } catch (e) {
+                return null;
+            }
+        };
+        
+        const getNyDecimalHours = function(ms) {
+            try {
+                const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ms));
+                const hp = parts.find(function(p) { return p.type === 'hour'; });
+                const mp = parts.find(function(p) { return p.type === 'minute'; });
+                if (!hp || !mp) return null;
+                return parseInt(hp.value, 10) + parseInt(mp.value, 10) / 60;
+            } catch (e) {
+                return null;
+            }
+        };
+        
+        const toNYTime = function(date) {
             const utcHours = date.getUTCHours();
             const utcMinutes = date.getUTCMinutes();
             let nyHours = utcHours + nyOffset;
             if (nyHours < 0) nyHours += 24;
             if (nyHours >= 24) nyHours -= 24;
-            return { hours: nyHours, minutes: utcMinutes, decimal: nyHours + (utcMinutes / 60) };
+            const dec = getNyDecimalHours(date.getTime());
+            return { hours: nyHours, minutes: utcMinutes, decimal: dec != null ? dec : nyHours + (utcMinutes / 60) };
         };
         
         // Check if time is in session (handles overnight)
@@ -717,12 +737,38 @@
             const date = new Date(data[i].t);
             const nyTime = toNYTime(date);
             
-            // Track NY Midnight (00:00 NY time)
-            if (params.showNYMidnight !== false) {
-                if (lastDate) {
+            // NY calendar day change = true midnight in America/New_York (not "any bar after 11pm")
+            if (params.showNYMidnight !== false && i > 0 && lastDate) {
+                const yPrev = getNyYmd(lastDate.getTime());
+                const yCur = getNyYmd(data[i].t);
+                if (yPrev && yCur && yCur !== yPrev) {
+                    result.nyMidnight.push({
+                        index: i,
+                        price: data[i].o,
+                        time: data[i].t
+                    });
+                } else if (!yPrev || !yCur) {
                     const lastNYTime = toNYTime(lastDate);
-                    if (lastNYTime.decimal > 23 || (lastNYTime.decimal > nyTime.decimal && nyTime.decimal < 1)) {
+                    if (lastNYTime.decimal > 22.5 && nyTime.decimal < 1.5) {
                         result.nyMidnight.push({
+                            index: i,
+                            price: data[i].o,
+                            time: data[i].t
+                        });
+                    }
+                }
+            }
+            
+            // NY session "close" (default 17:00 NY) — first bar of the fix window, same NY day
+            if (params.showNYClose !== false && i > 0) {
+                const closeDec = parseTime(params.nyCloseTime != null ? params.nyCloseTime : '17:00');
+                const dPrev = getNyYmd(data[i - 1].t);
+                const dCur = getNyYmd(data[i].t);
+                if (dPrev && dCur && dPrev === dCur) {
+                    const pDec = getNyDecimalHours(data[i - 1].t);
+                    const cDec = getNyDecimalHours(data[i].t);
+                    if (pDec != null && cDec != null && pDec < closeDec && cDec >= closeDec) {
+                        result.nyClose.push({
                             index: i,
                             price: data[i].o,
                             time: data[i].t
@@ -790,6 +836,9 @@
         result.boxTransparency = params.boxTransparency !== undefined ? params.boxTransparency : 88;
         result.showNYMidnight = params.showNYMidnight !== false;
         result.nyMidnightColor = params.nyMidnightColor || '#2d62b6';
+        result.showNYClose = params.showNYClose !== false;
+        result.nyCloseColor = params.nyCloseColor || '#c9a227';
+        result.nyCloseTime = params.nyCloseTime || '17:00';
         
         return result;
     }
@@ -2149,6 +2198,8 @@
                 indicator.params.showNYAM = params.showNYAM !== false;
                 indicator.params.showLC = params.showLC !== false;
                 indicator.params.showNYMidnight = params.showNYMidnight !== false;
+                indicator.params.showNYClose = params.showNYClose !== false;
+                indicator.params.nyCloseTime = params.nyCloseTime || '17:00';
                 indicator.params.showMidline = params.showMidline !== false;
                 indicator.params.showBoxInfo = params.showBoxInfo !== false;
                 indicator.params.showDeviations = params.showDeviations || false;
@@ -2172,6 +2223,7 @@
                 indicator.style.nyamColor = params.nyamColor || '#00acb8';
                 indicator.style.lcColor = params.lcColor || '#434651';
                 indicator.style.nyMidnightColor = params.nyMidnightColor || '#2d62b6';
+                indicator.style.nyCloseColor = params.nyCloseColor || '#c9a227';
                 indicator.style.textColor = params.textColor || '#5c71af';
                 indicator.overlay = true;
                 indicator.isKillzones = true;
@@ -2183,6 +2235,8 @@
                     showNYAM: indicator.params.showNYAM,
                     showLC: indicator.params.showLC,
                     showNYMidnight: indicator.params.showNYMidnight,
+                    showNYClose: indicator.params.showNYClose,
+                    nyCloseTime: indicator.params.nyCloseTime,
                     showMidline: indicator.params.showMidline,
                     showBoxInfo: indicator.params.showBoxInfo,
                     showDeviations: indicator.params.showDeviations,
@@ -2203,7 +2257,8 @@
                     londonColor: indicator.style.londonColor,
                     nyamColor: indicator.style.nyamColor,
                     lcColor: indicator.style.lcColor,
-                    nyMidnightColor: indicator.style.nyMidnightColor
+                    nyMidnightColor: indicator.style.nyMidnightColor,
+                    nyCloseColor: indicator.style.nyCloseColor
                 });
                 break;
 
@@ -3043,6 +3098,8 @@
                 if (newParams.showNYAM !== undefined) indicator.params.showNYAM = newParams.showNYAM;
                 if (newParams.showLC !== undefined) indicator.params.showLC = newParams.showLC;
                 if (newParams.showNYMidnight !== undefined) indicator.params.showNYMidnight = newParams.showNYMidnight;
+                if (newParams.showNYClose !== undefined) indicator.params.showNYClose = newParams.showNYClose;
+                if (newParams.nyCloseTime !== undefined) indicator.params.nyCloseTime = newParams.nyCloseTime;
                 if (newParams.showMidline !== undefined) indicator.params.showMidline = newParams.showMidline;
                 if (newParams.showBoxInfo !== undefined) indicator.params.showBoxInfo = newParams.showBoxInfo;
                 if (newParams.showDeviations !== undefined) indicator.params.showDeviations = newParams.showDeviations;
@@ -3066,6 +3123,7 @@
                 if (newParams.nyamColor !== undefined) indicator.style.nyamColor = newParams.nyamColor;
                 if (newParams.lcColor !== undefined) indicator.style.lcColor = newParams.lcColor;
                 if (newParams.nyMidnightColor !== undefined) indicator.style.nyMidnightColor = newParams.nyMidnightColor;
+                if (newParams.nyCloseColor !== undefined) indicator.style.nyCloseColor = newParams.nyCloseColor;
                 if (newParams.textColor !== undefined) indicator.style.textColor = newParams.textColor;
                 this.indicators.data[indicator.id] = calculateKillzones(this.data, {
                     showCBDR: indicator.params.showCBDR,
@@ -3074,6 +3132,8 @@
                     showNYAM: indicator.params.showNYAM,
                     showLC: indicator.params.showLC,
                     showNYMidnight: indicator.params.showNYMidnight,
+                    showNYClose: indicator.params.showNYClose,
+                    nyCloseTime: indicator.params.nyCloseTime,
                     showMidline: indicator.params.showMidline,
                     showBoxInfo: indicator.params.showBoxInfo,
                     showDeviations: indicator.params.showDeviations,
@@ -3094,7 +3154,8 @@
                     londonColor: indicator.style.londonColor,
                     nyamColor: indicator.style.nyamColor,
                     lcColor: indicator.style.lcColor,
-                    nyMidnightColor: indicator.style.nyMidnightColor
+                    nyMidnightColor: indicator.style.nyMidnightColor,
+                    nyCloseColor: indicator.style.nyCloseColor
                 });
                 break;
             case 'dema':
@@ -3377,6 +3438,8 @@
                         showNYAM: indicator.params.showNYAM,
                         showLC: indicator.params.showLC,
                         showNYMidnight: indicator.params.showNYMidnight,
+                        showNYClose: indicator.params.showNYClose,
+                        nyCloseTime: indicator.params.nyCloseTime,
                         showMidline: indicator.params.showMidline,
                         showBoxInfo: indicator.params.showBoxInfo,
                         showDeviations: indicator.params.showDeviations,
@@ -3397,7 +3460,8 @@
                         londonColor: indicator.style.londonColor,
                         nyamColor: indicator.style.nyamColor,
                         lcColor: indicator.style.lcColor,
-                        nyMidnightColor: indicator.style.nyMidnightColor
+                        nyMidnightColor: indicator.style.nyMidnightColor,
+                        nyCloseColor: indicator.style.nyCloseColor
                     });
                     break;
                 case 'dema':
@@ -5167,15 +5231,82 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
     
     ctx.restore();
     
+    const dataLastIdx = (self.data && self.data.length) ? self.data.length - 1 : 0;
+    const midSorted = (data.nyMidnight || []).slice().sort(function(a, b) { return a.index - b.index; });
+    const horizEndIndex = function(fromIdx) {
+        for (let k = 0; k < midSorted.length; k++) {
+            if (midSorted[k].index > fromIdx) {
+                return Math.max(fromIdx, midSorted[k].index - 1);
+            }
+        }
+        return dataLastIdx;
+    };
+    const prec = self._symbolPrecision != null ? self._symbolPrecision : (self.pricePrecision != null ? self.pricePrecision : 5);
+    
+    // NY Close (e.g. 17:00 fix) — draw under midnight so verticals stay readable
+    if (data.showNYClose && data.nyClose && data.nyClose.length > 0) {
+        const closeRaw = data.nyCloseColor || '#c9a227';
+        const closeStroke = colorToRgba(closeRaw, 0.36);
+        data.nyClose.forEach(function(nc) {
+            const x = self.dataIndexToPixel(nc.index);
+            const y = self.yScale(nc.price);
+            const endIx = horizEndIndex(nc.index);
+            const x2 = self.dataIndexToPixel(endIx);
+            const xDraw1 = Math.max(x, m.l);
+            const xDraw2 = Math.min(x2, self.w - m.r);
+            if (xDraw2 <= xDraw1) return;
+            ctx.save();
+            ctx.strokeStyle = closeStroke;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([6, 10]);
+            ctx.globalAlpha = 0.75;
+            ctx.beginPath();
+            ctx.moveTo(x, m.t + 2);
+            ctx.lineTo(x, priceAreaBottom - 1);
+            ctx.stroke();
+            ctx.setLineDash([8, 6]);
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(xDraw1, y);
+            ctx.lineTo(xDraw2, y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.globalAlpha = 1;
+            const priceText = 'NY Close ' + nc.price.toFixed(prec);
+            ctx.font = '600 11px Roboto, system-ui, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'bottom';
+            const tw = ctx.measureText(priceText).width + 14;
+            const th = 18;
+            let lx = x + 6;
+            let ly = y - 6;
+            if (lx + tw > self.w - m.r - 2) lx = x - tw - 6;
+            if (ly - th < m.t + 2) ly = y + th + 4;
+            ctx.fillStyle = 'rgba(13, 17, 23, 0.9)';
+            roundRectPath(ctx, lx, ly - th, tw, th, 4);
+            ctx.fill();
+            ctx.strokeStyle = colorToRgba(closeRaw, 0.5);
+            ctx.lineWidth = 1;
+            roundRectPath(ctx, lx, ly - th, tw, th, 4);
+            ctx.stroke();
+            ctx.fillStyle = style.textColor || '#d1d4dc';
+            ctx.fillText(priceText, lx + 7, ly - 5);
+            ctx.restore();
+        });
+    }
+    
     if (data.showNYMidnight && data.nyMidnight && data.nyMidnight.length > 0) {
         const nyRaw = data.nyMidnightColor || '#2d62b6';
         const nyStroke = colorToRgba(nyRaw, 0.38);
-        const prec = self._symbolPrecision != null ? self._symbolPrecision : (self.pricePrecision != null ? self.pricePrecision : 5);
         
         data.nyMidnight.forEach(function(midnight) {
             const x = self.dataIndexToPixel(midnight.index);
             const y = self.yScale(midnight.price);
-            if (x < m.l || x > self.w - m.r) return;
+            const endIx = horizEndIndex(midnight.index);
+            const x2 = self.dataIndexToPixel(endIx);
+            const xDraw1 = Math.max(x, m.l);
+            const xDraw2 = Math.min(x2, self.w - m.r);
+            if (xDraw2 <= xDraw1) return;
             
             ctx.save();
             ctx.strokeStyle = nyStroke;
@@ -5189,13 +5320,13 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             ctx.setLineDash([12, 8]);
             ctx.lineWidth = 1.15;
             ctx.beginPath();
-            ctx.moveTo(x, y);
-            ctx.lineTo(self.w - m.r, y);
+            ctx.moveTo(xDraw1, y);
+            ctx.lineTo(xDraw2, y);
             ctx.stroke();
             ctx.setLineDash([]);
             ctx.globalAlpha = 1;
             
-            const priceText = 'NY Open ' + midnight.price.toFixed(prec);
+            const priceText = 'Midnight Open ' + midnight.price.toFixed(prec);
             ctx.font = '600 11px Roboto, system-ui, sans-serif';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'bottom';
