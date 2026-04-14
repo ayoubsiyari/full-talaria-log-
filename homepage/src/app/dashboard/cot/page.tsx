@@ -19,8 +19,8 @@ const ASSET_TABS: { id: CotAssetGroup | "all"; label: string }[] = [
 
 const VIEW_WEEKS = [4, 13, 26, 52] as const;
 
-/** Matches dashboard shell: blue accent (Tailwind blue-400 / brand) */
-const ACCENT = "#60a5fa";
+/** Bull / positive data accent (lime) — matches original COT mock */
+const ACCENT = "#c8f060";
 
 function fmtK(n: number): string {
   if (!Number.isFinite(n)) return "—";
@@ -789,7 +789,7 @@ export default function CotDashboardPage() {
                         const alpha = Math.min(0.9, (abs / 50000) * 0.8 + 0.1);
                         const bg =
                           v > 0
-                            ? `rgba(96,165,250,${alpha})`
+                            ? `rgba(200,240,96,${alpha})`
                             : `rgba(255,96,96,${alpha})`;
                         const k = Math.round(v / 1000);
                         return (
@@ -1240,8 +1240,8 @@ export default function CotDashboardPage() {
                           borderRadius: 8,
                           background: f.bear
                             ? "rgba(255,96,96,0.08)"
-                            : "rgba(96,165,250,0.07)",
-                          border: `1px solid ${f.bear ? "rgba(255,96,96,0.15)" : "rgba(96,165,250,0.12)"}`,
+                            : "rgba(200,240,96,0.07)",
+                          border: `1px solid ${f.bear ? "rgba(255,96,96,0.15)" : "rgba(200,240,96,0.12)"}`,
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
