@@ -12627,8 +12627,12 @@ class Chart {
         if (!events || events.length === 0 || !this.ctx) return;
 
         const m = this.margin;
-        const y = this.h - m.b + 12;
-        const r = Math.max(2.5, Math.min(4, (typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 8) * 0.2));
+        const cs = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 8;
+        // Readable on all zoom levels — noticeably larger than date labels (~12–13px text).
+        const r = Math.max(6, Math.min(10, cs * 0.55));
+        const axisTop = this.h - m.b;
+        // Vertically center in the time-axis strip, slightly toward the chart so dots sit above the date text.
+        const y = axisTop + Math.max(r + 3, m.b * 0.38);
 
         this.ctx.save();
         for (let i = 0; i < events.length; i++) {
@@ -12644,15 +12648,19 @@ class Chart {
             if (e.impact === 'high') fill = '#f23645';
             else if (e.impact === 'medium') fill = '#ff9800';
 
-            const jitter = (i % 5) * 2.2 - 4.4;
+            // Wider spread when multiple releases share a slot so they don’t read as one tiny smudge.
+            const jitter = (i % 7) * (r * 0.55) - (3 * (r * 0.55));
             const xi = x + jitter;
 
             this.ctx.beginPath();
             this.ctx.fillStyle = fill;
-            this.ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-            this.ctx.lineWidth = 1;
+            this.ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+            this.ctx.lineWidth = 2;
             this.ctx.arc(xi, y, r, 0, Math.PI * 2);
             this.ctx.fill();
+            this.ctx.stroke();
+            this.ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+            this.ctx.lineWidth = 1;
             this.ctx.stroke();
         }
         this.ctx.restore();
