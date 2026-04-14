@@ -688,9 +688,14 @@
             if (dd) dd.style.display = 'none';
         }
 
+        /** API may return numeric ids; DOM/onclick passes strings — compare coerced */
+        function sameFileId(a, b) {
+            return String(a) === String(b);
+        }
+
         // Toggle file selection
         function toggleFileSelection(fileId, fileName) {
-            const index = selectedFilesArray.findIndex(f => f.id === fileId);
+            const index = selectedFilesArray.findIndex(function (f) { return sameFileId(f.id, fileId); });
             if (index === -1) {
                 // Prop firm: exactly one pair — new selection replaces any previous file
                 selectedFilesArray = [{ id: fileId, name: fileName }];
@@ -704,7 +709,7 @@
         
         // Remove file from selection
         function removeSelectedFile(fileId) {
-            selectedFilesArray = selectedFilesArray.filter(f => f.id !== fileId);
+            selectedFilesArray = selectedFilesArray.filter(function (f) { return !sameFileId(f.id, fileId); });
             updateSelectedFilesUI();
             updateFileListUI();
         }
@@ -768,7 +773,7 @@
             });
 
             fileList.innerHTML = availableFilesCache.map(function (file) {
-                const isSelected = selectedFilesArray.some(function (f) { return f.id === file.id; });
+                const isSelected = selectedFilesArray.some(function (f) { return sameFileId(f.id, file.id); });
                 const rawName = file.original_name || file.name || file.filename || file.symbol || ('File ' + file.id);
                 const pairName = cleanPairName(rawName);
                 const rows = file.row_count ? formatRowCount(file.row_count) : '';
