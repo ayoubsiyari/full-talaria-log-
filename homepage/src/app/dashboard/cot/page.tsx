@@ -1,9 +1,18 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import "./cot-page.css";
+import { COT_POPULAR_CODES } from "./cot-instruments";
 import {
-  loadFullUniverseSnapshots,
+  buildSnapshot,
+  fetchCotHistory,
+  loadPopularAndCatalog,
   type CotSnapshot,
   type LoadCotProgress,
 } from "./cot-fetch";
@@ -120,13 +129,24 @@ export default function CotDashboardPage() {
   const [sortKey, setSortKey] = useState<SortKey>("net_abs");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [viewWeeks, setViewWeeks] = useState<number>(13);
+  const [detailLoadingCode, setDetailLoadingCode] = useState<string | null>(
+    null
+  );
+  const snapshotsRef = useRef<CotSnapshot[]>([]);
+  snapshotsRef.current = snapshots;
+  const historyFetchInFlight = useRef<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     setLoadProgress({ phase: "catalog", done: 0, total: 1 });
     try {
-      const rows = await loadFullUniverseSnapshots(220, 14, setLoadProgress);
+      const rows = await loadPopularAndCatalog(
+        COT_POPULAR_CODES,
+        220,
+        8,
+        setLoadProgress
+      );
       if (!rows.length) throw new Error("No CFTC rows returned");
       setSnapshots(rows);
     } catch (e) {
@@ -134,6 +154,26 @@ export default function CotDashboardPage() {
       setSnapshots([]);
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const ensureHistory = useCallback(async (code: string) => {
+    const cur = snapshotsRef.current.find((s) => s.def.code === code);
+    if (!cur || cur.historyLoaded) return;
+    if (historyFetchInFlight.current.has(code)) return;
+    historyFetchInFlight.current.add(code);
+
+    setDetailLoadingCode(code);
+    try {
+      const rows = await fetchCotHistory(code, 220);
+      const full = buildSnapshot(cur.def, rows);
+      if (!full) return;
+      setSnapshots((prev) =>
+        prev.map((s) => (s.def.code === code ? full : s))
+      );
+    } finally {
+      historyFetchInFlight.current.delete(code);
+      setDetailLoadingCode((c) => (c === code ? null : c));
     }
   }, []);
 
@@ -248,6 +288,11 @@ export default function CotDashboardPage() {
     return max;
   }, [snapshots]);
 
+  const chartsReadyCount = useMemo(
+    () => snapshots.filter((s) => s.historyLoaded).length,
+    [snapshots]
+  );
+
   const extremes = useMemo(() => {
     const out: {
       code: string;
@@ -354,8 +399,8 @@ export default function CotDashboardPage() {
   if (loading) {
     const msg =
       loadProgress.phase === "catalog"
-        ? "Loading CFTC catalog (latest report)…"
-        : `Loading weekly history ${loadProgress.done}/${loadProgress.total}…`;
+        ? "Loading latest CFTC report (all markets, positions only)…"
+        : `Loading popular markets — weekly history ${loadProgress.done}/${loadProgress.total}…`;
     return (
       <div className="cot-page cot-page-bg">
         <div className="cot-loading">{msg}</div>
@@ -398,8 +443,9 @@ export default function CotDashboardPage() {
             Commitment of <span>Traders</span>
           </div>
           <div className="cot-page-sub">
-            CFTC Public Reporting · Legacy Combined (futures + options) · Full
-            universe ({snapshots.length} markets) · Week ending{" "}
+            CFTC Public Reporting · Legacy Combined (futures + options) ·{" "}
+            {snapshots.length} markets in catalog · {chartsReadyCount} with full
+            weekly history preloaded · Week ending{" "}
             {formatReportDate(latestReport)}
           </div>
         </div>
@@ -497,7 +543,9 @@ export default function CotDashboardPage() {
           </div>
           <div className="cot-filter-meta">
             Showing {filtered.length} of {snapshots.length} markets
-            {search.trim() ? ` matching “${search.trim()}”` : ""}
+            {search.trim() ? ` matching “${search.trim()}”` : ""}. Select a
+            market to load weekly history (charts, percentile) if not
+            preloaded.
           </div>
         </div>
 
@@ -522,7 +570,10 @@ export default function CotDashboardPage() {
                   "cot-sent-card" +
                   (selected?.def.code === p.def.code ? " cot-selected" : "")
                 }
-                onClick={() => setSelectedCode(p.def.code)}
+                onClick={() => {
+                  setSelectedCode(p.def.code);
+                  if (!p.historyLoaded) void ensureHistory(p.def.code);
+                }}
                 title={p.marketName}
               >
                 <div className="cot-sent-sym">{p.def.sym}</div>
@@ -723,7 +774,26 @@ export default function CotDashboardPage() {
                 Percentile ·{" "}
                 {biasFromIndex(selected?.percentile3y ?? null).toUpperCase()}
               </div>
-              {selected && (
+              {selected && !selected.historyLoaded && (
+                <div style={{ marginTop: 12, textAlign: "center" }}>
+                  <p className="cot-hint" style={{ marginBottom: 8 }}>
+                    {detailLoadingCode === selected.def.code
+                      ? "Loading weekly history…"
+                      : "COT index needs weekly history — use the table row or Load below."}
+                  </p>
+                  <button
+                    type="button"
+                    className="cot-btn-sm"
+                    disabled={detailLoadingCode === selected.def.code}
+                    onClick={() => ensureHistory(selected.def.code)}
+                  >
+                    {detailLoadingCode === selected.def.code
+                      ? "Loading…"
+                      : "Load weekly history"}
+                  </button>
+                </div>
+              )}
+              {selected && selected.historyLoaded && (
                 <div
                   style={{
                     display: "flex",
@@ -838,20 +908,42 @@ export default function CotDashboardPage() {
             </div>
             <div className="cot-line-chart-wrap">
               {filtered.map((p) => {
-                const series = p.netHistoryFull.slice(-viewWeeks);
+                const series = p.historyLoaded
+                  ? p.netHistoryFull.slice(-viewWeeks)
+                  : [];
                 const last = series[series.length - 1];
                 const color = (last ?? 0) >= 0 ? ACCENT : "#ff6060";
                 return (
                   <div key={p.def.code} className="cot-sparkline-row">
                     <div className="cot-spark-name">{p.def.sym}</div>
-                    <svg className="cot-spark-svg" viewBox="0 0 160 28" preserveAspectRatio="none">
-                      {makeSpark(series.length ? series : [0], color)}
-                    </svg>
-                    <div className="cot-spark-val" style={{ color }}>
-                      {last != null && Number.isFinite(last)
-                        ? (last >= 0 ? "+" : "") + fmtK(last)
-                        : "—"}
-                    </div>
+                    {!p.historyLoaded ? (
+                      <span
+                        className="cot-hint"
+                        style={{
+                          flex: 1,
+                          textAlign: "center",
+                          fontSize: 10,
+                          alignSelf: "center",
+                        }}
+                      >
+                        Select row to load
+                      </span>
+                    ) : (
+                      <>
+                        <svg
+                          className="cot-spark-svg"
+                          viewBox="0 0 160 28"
+                          preserveAspectRatio="none"
+                        >
+                          {makeSpark(series.length ? series : [0], color)}
+                        </svg>
+                        <div className="cot-spark-val" style={{ color }}>
+                          {last != null && Number.isFinite(last)
+                            ? (last >= 0 ? "+" : "") + fmtK(last)
+                            : "—"}
+                        </div>
+                      </>
+                    )}
                   </div>
                 );
               })}
@@ -990,6 +1082,7 @@ export default function CotDashboardPage() {
                   <th>Market</th>
                   <th>Subgroup</th>
                   <th>Code</th>
+                  <th title="Full weekly history loaded">Hist</th>
                   <th>Net Non-Comm</th>
                   <th>Wk Δ</th>
                   <th>Long</th>
@@ -1026,7 +1119,10 @@ export default function CotDashboardPage() {
                           ? "cot-tr-selected"
                           : undefined
                       }
-                      onClick={() => setSelectedCode(p.def.code)}
+                      onClick={() => {
+                        setSelectedCode(p.def.code);
+                        if (!p.historyLoaded) void ensureHistory(p.def.code);
+                      }}
                     >
                       <td className="cot-td-sym" title={p.marketName}>
                         {p.def.sym}
@@ -1039,6 +1135,20 @@ export default function CotDashboardPage() {
                         style={{ fontVariantNumeric: "tabular-nums" }}
                       >
                         {p.def.code}
+                      </td>
+                      <td
+                        className="cot-td-muted"
+                        title={
+                          p.historyLoaded
+                            ? "Weekly history loaded"
+                            : "Latest week only — select row to load history"
+                        }
+                      >
+                        {detailLoadingCode === p.def.code
+                          ? "…"
+                          : p.historyLoaded
+                            ? "✓"
+                            : "—"}
                       </td>
                       <td
                         className={
@@ -1125,7 +1235,10 @@ export default function CotDashboardPage() {
                         "cot-wk-btn" +
                         (selected?.def.code === s.def.code ? " cot-active" : "")
                       }
-                      onClick={() => setSelectedCode(s.def.code)}
+                      onClick={() => {
+                        setSelectedCode(s.def.code);
+                        if (!s.historyLoaded) void ensureHistory(s.def.code);
+                      }}
                       title={s.marketName}
                     >
                       {short}

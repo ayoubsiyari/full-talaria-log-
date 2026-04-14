@@ -61,3 +61,29 @@ export function inferLegacyGroup(
   if (g.includes("FINANCIAL")) return "bonds";
   return "other";
 }
+
+/**
+ * CFTC contract market codes (Legacy Combined) loaded with full weekly history on
+ * first paint. All other markets use latest report only until the user opens them.
+ */
+export const COT_POPULAR_CODES: readonly string[] = [
+  "099741",
+  "096742",
+  "097741",
+  "232741",
+  "090741",
+  "112741",
+  "092741",
+  "088691",
+  "084691",
+  "067651",
+  "085692",
+  "13874A",
+  "209741",
+  "239742",
+  "124603",
+  "020601",
+  "042601",
+  "133741",
+  "133742",
+] as const;
