@@ -12581,6 +12581,58 @@ class Chart {
         return this.margin.l + (dataIdx * candleSpacing) + this.offsetX;
     }
 
+    /** Fallback ms between bars when data-derived step is unavailable (matches crosshair / x-axis tf map). */
+    _estimateTimeframeStepMs() {
+        if (this.data && this.data.length >= 2) {
+            const d = this.data[1].t - this.data[0].t;
+            if (Number.isFinite(d) && d > 0) return d;
+        }
+        const tfMap = {
+            '1m': 60000, '2m': 120000, '3m': 180000, '4m': 240000, '5m': 300000, '10m': 600000,
+            '15m': 900000, '30m': 1800000, '45m': 2700000, '1h': 3600000, '2h': 7200000, '4h': 14400000,
+            '6h': 21600000, '12h': 43200000, '1d': 86400000, '1w': 604800000, '1mo': 2592000000
+        };
+        return tfMap[this.currentTimeframe || '1m'] || 60000;
+    }
+
+    /**
+     * Wall-clock ms for a fractional data index (crosshair time label).
+     * Past the last bar, extrapolate from the last bar step so empty plot area continues the date sequence
+     * (firstBar + index * avgStep drifts when bars have weekend/holiday gaps).
+     */
+    estimateTimestampForDataIndex(dataIdx) {
+        const data = this.data;
+        if (!data || data.length === 0 || !Number.isFinite(dataIdx)) return null;
+        const tfFallback = this._estimateTimeframeStepMs();
+        const n = data.length;
+        const first = data[0];
+        const last = data[n - 1];
+
+        if (dataIdx >= 0 && dataIdx < n) {
+            const i = Math.floor(dataIdx);
+            const frac = dataIdx - i;
+            const t0 = data[i].t;
+            if (!Number.isFinite(t0)) return null;
+            if (frac < 1e-6) return t0;
+            if (i + 1 < n) {
+                const t1 = data[i + 1].t;
+                if (Number.isFinite(t1)) return t0 + frac * (t1 - t0);
+            }
+            let step = i > 0 ? (t0 - data[i - 1].t) : (n > 1 ? data[1].t - first.t : tfFallback);
+            if (!Number.isFinite(step) || step <= 0) step = tfFallback;
+            return t0 + frac * step;
+        }
+        if (dataIdx >= n) {
+            const lastIdx = n - 1;
+            let step = n >= 2 ? (last.t - data[lastIdx - 1].t) : tfFallback;
+            if (!Number.isFinite(step) || step <= 0) step = tfFallback;
+            return last.t + (dataIdx - lastIdx) * step;
+        }
+        let step = n >= 2 ? (data[1].t - first.t) : tfFallback;
+        if (!Number.isFinite(step) || step <= 0) step = tfFallback;
+        return first.t + dataIdx * step;
+    }
+
     /**
      * Map wall-clock ms to fractional bar index (aligns with CoordinateUtils.timestampToIndex for marks).
      */
@@ -15344,7 +15396,8 @@ class Chart {
         const _dm = this.drawingManager;
         
         // Snap crosshair to candle center (like TradingView)
-        let dataIdx = Math.round(this.pixelToDataIndex(x));
+        const rawDataIdx = this.pixelToDataIndex(x);
+        let dataIdx = Math.round(rawDataIdx);
         const isCrosshairLocked = !!this.chartSettings?.crosshairLocked;
         if (isCrosshairLocked && Number.isFinite(this.lockedCrosshairDataIndex)) {
             const lastIdx = Math.max(0, this.data.length - 1);
@@ -15473,19 +15526,18 @@ class Chart {
             if (this.data.length >= 2) {
                 timeframeMs = this.data[1].t - this.data[0].t;
             } else {
-                // Auto-detect timeframe from data like x-axis does
-                let timeframe = this.currentTimeframe || '1m';
-                const tfMap = { '1m': 60000, '2m': 120000, '3m': 180000, '4m': 240000, '5m': 300000, '10m': 600000, '15m': 900000, '30m': 1800000, '45m': 2700000, '1h': 3600000, '2h': 7200000, '4h': 14400000, '6h': 21600000, '12h': 43200000, '1d': 86400000, '1w': 604800000, '1mo': 2592000000 };
-                timeframeMs = tfMap[timeframe] || 60000;
+                timeframeMs = this._estimateTimeframeStepMs();
             }
             
-            // Use the real snapped candle time when available.
-            // Fallback to synthetic time only when cursor is in empty left/right chart space.
-            let timestamp = snappedCandle ? snappedCandle.t : null;
-            if ((timestamp == null || !Number.isFinite(timestamp)) && this.data.length > 0) {
-                const firstCandle = this.data[0];
-                timestamp = firstCandle.t + (snappedDataIdx * timeframeMs);
-            }
+            // Time for label: match vertical line (locked crosshair uses clamped index, not raw mouse index).
+            const idxForTime = (isCrosshairLocked && Number.isFinite(this.lockedCrosshairDataIndex))
+                ? Math.max(0, Math.min(this.data.length - 1, Math.round(this.lockedCrosshairDataIndex)))
+                : rawDataIdx;
+            // Extrapolate past last / before first using last bar step (not firstBar + index * avg — wrong with gaps).
+            let timestamp = typeof this.estimateTimestampForDataIndex === 'function'
+                ? this.estimateTimestampForDataIndex(idxForTime)
+                : null;
+            if (timestamp != null && !Number.isFinite(timestamp)) timestamp = null;
             
             // Show time label if we have a valid timestamp
             if (timestamp && timestamp > 0) {
