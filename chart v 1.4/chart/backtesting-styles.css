@@ -471,10 +471,6 @@ input.mono {
   margin: 0 2rem 0;
 }
 
-.bt-modal > .bt-toggle-row {
-  margin: 0;
-}
-
 .bt-toggle-row .toggle-switch {
   position: relative;
   display: inline-block;
