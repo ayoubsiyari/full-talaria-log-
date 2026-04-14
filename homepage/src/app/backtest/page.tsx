@@ -139,6 +139,11 @@ export default function BacktestSessions() {
     }
   }
 
+  const closeIframe = useCallback(() => {
+    setIframeUrl(null);
+    loadSessions();
+  }, [loadSessions]);
+
   function goToBacktest(type: "personal" | "propfirm") {
     setModalOpen(false);
     const url = type === "personal"
@@ -147,10 +152,14 @@ export default function BacktestSessions() {
     setIframeUrl(url);
   }
 
-  function closeIframe() {
-    setIframeUrl(null);
-    loadSessions();
-  }
+  /** Prop firm chart page calls `window.parent.closePropFirmIframe()` from Back to Sessions */
+  useEffect(() => {
+    const w = window as Window & { closePropFirmIframe?: () => void };
+    w.closePropFirmIframe = closeIframe;
+    return () => {
+      delete w.closePropFirmIframe;
+    };
+  }, [closeIframe]);
 
   const tabs: { key: "all" | "personal" | "propfirm"; label: string }[] = [
     { key: "all", label: "All" },

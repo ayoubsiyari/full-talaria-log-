@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Prop Firm Challenge Mode</title>
-    <link rel="stylesheet" href="propfirm-styles.css?v=6">
+    <link rel="stylesheet" href="propfirm-styles.css?v=7">
     <script>
         (function() {
             function redirectToLogin() {
@@ -1018,13 +1018,14 @@
             }
         }
         
-        // Hide top bar if in iframe
+        // Embedded in dashboard iframe: parent already dims the page — drop inner full-screen overlay
         if (window.self !== window.top) {
+            document.documentElement.classList.add('pf-embedded');
+            document.body.classList.add('pf-embedded');
             const topBar = document.querySelector('.top-bar');
             if (topBar) {
                 topBar.style.display = 'none';
             }
-            // Hide the close button in pf-modal-header (iframe embed)
             const modalCloseBtn = document.querySelector('.pf-modal-header .close-btn');
             if (modalCloseBtn) {
                 modalCloseBtn.style.display = 'none';

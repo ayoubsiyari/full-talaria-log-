@@ -89,6 +89,48 @@ body::before {
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
 }
 
+/* Embedded in Sessions dashboard iframe: parent overlay + frame already provide the shell */
+html.pf-embedded,
+html.pf-embedded body {
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+}
+body.pf-embedded .pf-overlay {
+  min-height: 100%;
+  background: transparent;
+  padding: 0;
+  align-items: stretch;
+  justify-content: stretch;
+}
+body.pf-embedded .pf-modal {
+  max-width: none;
+  width: 100%;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+body.pf-embedded .pf-modal > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+body.pf-embedded .pf-modal-body {
+  flex: 1;
+  max-height: none;
+  min-height: 0;
+  overflow-y: auto;
+}
+body.pf-embedded .pf-modal-header,
+body.pf-embedded .pf-modal-footer {
+  flex-shrink: 0;
+}
+
 .pf-modal-header {
   padding: 1.6rem 2rem 1.2rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
