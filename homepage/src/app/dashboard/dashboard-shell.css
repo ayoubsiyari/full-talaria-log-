@@ -120,6 +120,14 @@
   padding: 28px 32px 48px;
 }
 
+/* Full-width content (e.g. COT dashboard) — no 80rem cap */
+.db-main-wrap.db-main-wrap--full {
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 28px clamp(16px, 2.5vw, 48px) 48px;
+}
+
 .db-page {
   display: flex;
   flex-direction: column;
