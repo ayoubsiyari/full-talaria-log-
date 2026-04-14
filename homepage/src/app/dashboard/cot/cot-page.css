@@ -91,6 +91,20 @@
   gap: 24px;
 }
 
+/* Single horizontal gutter from dashboard shell when main is full-width */
+.db-main-wrap--full .cot-page-header {
+  padding-left: 0;
+  padding-right: 0;
+}
+.db-main-wrap--full .cot-main {
+  padding-left: 0;
+  padding-right: 0;
+}
+.db-main-wrap--full .cot-loading {
+  padding-left: 0;
+  padding-right: 0;
+}
+
 .cot-asset-tabs {
   display: flex;
   align-items: center;
