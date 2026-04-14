@@ -484,7 +484,8 @@
         document.addEventListener('click', function (e) {
             var tab = e.target && e.target.closest ? e.target.closest('.news-tab') : null;
             if (!tab || !tab.getAttribute('data-tab')) return;
-            if (!tab.closest('#newsContent')) return;
+            // Must work when news HTML is cloned into other panels (e.g. global market) — not only under #newsContent.
+            if (!tab.closest('.news-tabs')) return;
             var t = tab.getAttribute('data-tab');
             state.tab = t;
             syncTabClasses();

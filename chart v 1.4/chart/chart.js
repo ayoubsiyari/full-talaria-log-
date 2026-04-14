@@ -12641,6 +12641,7 @@ class Chart {
         this.ctx.save();
         for (let i = 0; i < events.length; i++) {
             const e = events[i];
+            if (e.impact !== 'high' && e.impact !== 'medium') continue;
             const ts = e && e.t;
             if (!Number.isFinite(ts)) continue;
             const idx = this._timestampToFractionalDataIndex(ts);
