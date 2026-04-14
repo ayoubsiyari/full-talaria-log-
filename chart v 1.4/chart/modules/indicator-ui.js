@@ -177,8 +177,6 @@ const INDICATOR_DEFINITIONS = {
             { id: 'showLC', label: 'London Close', type: 'checkbox', default: true },
             // Display Options
             { id: 'showNYMidnight', label: 'NY Midnight Open', type: 'checkbox', default: true },
-            { id: 'showNYClose', label: 'NY Close (session fix)', type: 'checkbox', default: true },
-            { id: 'nyCloseTime', label: 'NY Close time (NY)', type: 'time', default: '17:00' },
             { id: 'showMidline', label: 'Session Midline', type: 'checkbox', default: true },
             { id: 'showBoxInfo', label: 'Box Labels', type: 'checkbox', default: true },
             { id: 'showDeviations', label: 'Deviations', type: 'checkbox', default: false },
@@ -202,7 +200,6 @@ const INDICATOR_DEFINITIONS = {
             { id: 'nyamColor', label: 'NY AM Color', type: 'color', default: '#00acb8' },
             { id: 'lcColor', label: 'London Close Color', type: 'color', default: '#434651' },
             { id: 'nyMidnightColor', label: 'NY Midnight Color', type: 'color', default: '#2d62b6' },
-            { id: 'nyCloseColor', label: 'NY Close Color', type: 'color', default: '#c9a227' },
             { id: 'textColor', label: 'Text Color', type: 'color', default: '#5c71af' }
         ]
     },
