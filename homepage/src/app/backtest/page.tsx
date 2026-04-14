@@ -1,7 +1,21 @@
 "use client";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, Play, Trash2, BarChart3, Trophy, X, Shield } from "lucide-react";
+import { Syne, DM_Mono } from "next/font/google";
 import { LanguageToggle } from "@/components/LanguageToggle";
+import "./sessions-dashboard.css";
+
+const fontSyne = Syne({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-syne",
+});
+
+const fontDmMono = DM_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-dm-mono",
+});
 
 interface Session {
   id: number;
@@ -32,6 +46,16 @@ function relativeDate(dateStr?: string): string {
   return `${diff} days ago`;
 }
 
+function initialsFromUser(name?: string, email?: string): string {
+  const src = (name || email || "").trim();
+  if (!src) return "?";
+  const parts = src.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  return src.slice(0, 2).toUpperCase();
+}
+
 export default function BacktestSessions() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [filter, setFilter] = useState<"all" | "personal" | "propfirm">("all");
@@ -40,8 +64,8 @@ export default function BacktestSessions() {
   const [modalOpen, setModalOpen] = useState(false);
   const [iframeUrl, setIframeUrl] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [userInitials, setUserInitials] = useState("?");
 
-  // Auth check via chart session cookie
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -55,10 +79,13 @@ export default function BacktestSessions() {
           window.location.href = `/login/?next=${encodeURIComponent(target)}`;
           return;
         }
-        const body = (await res.json().catch(() => null)) as { user?: { role?: string; has_journal_access?: boolean } } | null;
+        const body = (await res.json().catch(() => null)) as {
+          user?: { role?: string; has_journal_access?: boolean; name?: string; email?: string };
+        } | null;
         if (mounted) {
           const role = body?.user?.role;
           setIsAdmin(role === "admin");
+          setUserInitials(initialsFromUser(body?.user?.name, body?.user?.email));
           if (role !== "admin" && !body?.user?.has_journal_access) {
             window.location.href = "/journal/pricing";
             return;
@@ -87,17 +114,30 @@ export default function BacktestSessions() {
     }
   }, []);
 
-  useEffect(() => { loadSessions(); }, [loadSessions]);
+  useEffect(() => {
+    loadSessions();
+  }, [loadSessions]);
 
-  const stats = useMemo(() => ({
-    total: sessions.length,
-    personal: sessions.filter((s) => s.session_type === "personal").length,
-    propfirm: sessions.filter((s) => s.session_type === "propfirm").length,
-    lastCreated: sessions.length > 0 ? relativeDate(sessions[0]?.created_at) : "-",
-  }), [sessions]);
+  const stats = useMemo(
+    () => ({
+      total: sessions.length,
+      personal: sessions.filter((s) => s.session_type === "personal").length,
+      propfirm: sessions.filter((s) => s.session_type === "propfirm").length,
+      lastCreated: sessions.length > 0 ? relativeDate(sessions[0]?.created_at) : "-",
+    }),
+    [sessions],
+  );
+
+  const lastCreatedSub = useMemo(() => {
+    if (!sessions[0]?.created_at) return "—";
+    return new Date(sessions[0].created_at).toLocaleDateString();
+  }, [sessions]);
+
+  const personalPct = stats.total > 0 ? Math.round((stats.personal / stats.total) * 100) : 0;
+  const propPct = stats.total > 0 ? Math.round((stats.propfirm / stats.total) * 100) : 0;
 
   const filtered = useMemo(
-    () => filter === "all" ? sessions : sessions.filter((s) => s.session_type === filter),
+    () => (filter === "all" ? sessions : sessions.filter((s) => s.session_type === filter)),
     [sessions, filter],
   );
 
@@ -107,7 +147,9 @@ export default function BacktestSessions() {
     try {
       if (session.config) localStorage.setItem("backtestingSession", JSON.stringify(session.config));
       localStorage.setItem("active_trading_session_id", String(session.id));
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     const mode = session.session_type === "propfirm" ? "propfirm" : "backtest";
     window.location.href = `/chart/index.html?mode=${mode}&sessionId=${encodeURIComponent(String(session.id))}`;
   }
@@ -146,13 +188,13 @@ export default function BacktestSessions() {
 
   function goToBacktest(type: "personal" | "propfirm") {
     setModalOpen(false);
-    const url = type === "personal"
-      ? `/chart/backtesting.html?v=${Date.now()}`
-      : `/chart/propfirm-backtest.html?v=${Date.now()}`;
+    const url =
+      type === "personal"
+        ? `/chart/backtesting.html?v=${Date.now()}`
+        : `/chart/propfirm-backtest.html?v=${Date.now()}`;
     setIframeUrl(url);
   }
 
-  /** Prop firm chart page calls `window.parent.closePropFirmIframe()` from Back to Sessions */
   useEffect(() => {
     const w = window as Window & { closePropFirmIframe?: () => void };
     w.closePropFirmIframe = closeIframe;
@@ -161,7 +203,6 @@ export default function BacktestSessions() {
     };
   }, [closeIframe]);
 
-  /** Lock dashboard scroll while chart iframe is open; only the iframe (or its inner panel) should scroll */
   useEffect(() => {
     if (!iframeUrl) return;
     const prev = document.body.style.overflow;
@@ -177,266 +218,254 @@ export default function BacktestSessions() {
     { key: "propfirm", label: "Prop Firm" },
   ];
 
-  return (
-    <div className="min-h-screen bg-background text-foreground">
-      {/* Background gradient overlay (same as dashboard) */}
-      <div className="pointer-events-none fixed inset-0 -z-10">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(59,130,246,0.12),transparent_55%),radial-gradient(ellipse_at_bottom,rgba(139,92,246,0.10),transparent_55%)]" />
-      </div>
+  const fontClass = `${fontSyne.variable} ${fontDmMono.variable}`;
 
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-[#0b0b16]/80 backdrop-blur-xl">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <a href="/" className="flex items-center gap-3">
-              <img src="/logo-08.png" alt="Talaria Log" className="h-9 w-9" />
+  return (
+    <div className={`sd-root min-h-screen ${fontClass}`} dir="ltr" lang="en">
+      <header className="sd-topbar">
+        <div className="sd-logo-area">
+          <a href="/" className="sd-logo-mark shrink-0" aria-label="Home">
+            <img src="/logo-08.png" alt="" width={22} height={22} />
+          </a>
+          <div className="sd-brand-wrap">
+            <span className="sd-brand">Sessions</span>
+            <span className="sd-brand-sub">Dashboard</span>
+          </div>
+        </div>
+        <div className="sd-topbar-right">
+          <LanguageToggle />
+          {isAdmin ? (
+            <a href="/dashboard/admin/" className="sd-link-admin">
+              Admin
             </a>
-            <h1 className="text-xl font-bold tracking-tight">Sessions Dashboard</h1>
+          ) : null}
+          <div className="sd-avatar" aria-hidden title="Account">
+            {userInitials}
           </div>
-          <div className="flex items-center gap-2">
-            <LanguageToggle />
-            {isAdmin ? (
-              <a
-                href="/dashboard/admin/"
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold hover:bg-white/10 transition-all"
-              >
-                Admin
-              </a>
-            ) : null}
-            <button
-              onClick={() => setModalOpen(true)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-sm text-white bg-blue-500/80 hover:bg-blue-500 border border-white/10 transition-all"
-            >
-              <Plus className="w-4 h-4" strokeWidth={2.5} />
-              Create Session
-            </button>
-          </div>
+          <button type="button" onClick={() => setModalOpen(true)} className="sd-btn-primary">
+            <Plus className="w-3 h-3 stroke-[3]" aria-hidden />
+            Create Session
+          </button>
         </div>
       </header>
 
-      {/* Continue Banner */}
-      {activeSessionId && (
-        <div className="border-b border-white/10 bg-blue-500/10 px-4 py-3">
-          <div className="max-w-6xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center text-base">📊</div>
-              <span className="text-sm font-medium text-white/80">Continue your backtesting session</span>
+      {activeSessionId ? (
+        <div className="sd-banner">
+          <div className="sd-banner-left">
+            <span className="sd-banner-dot" />
+            Continue your backtesting session
+          </div>
+          <button type="button" onClick={continueSession} className="sd-btn-ghost">
+            Resume →
+          </button>
+        </div>
+      ) : null}
+
+      <main className="sd-main">
+        <div className="sd-stats-grid sd-stats-grid--stack">
+          <div className="sd-stat-card">
+            <div className="sd-stat-label">Total Sessions</div>
+            <div className="sd-stat-value">{stats.total}</div>
+            <div className="sd-stat-sub">All time</div>
+          </div>
+          <div className="sd-stat-card">
+            <div className="sd-stat-label">Personal Backtests</div>
+            <div className="sd-stat-value">{stats.personal}</div>
+            <div className="sd-stat-sub">{stats.total === 0 ? "—" : `${personalPct}% of total`}</div>
+          </div>
+          <div className="sd-stat-card">
+            <div className="sd-stat-label">Prop Firm Backtests</div>
+            <div className="sd-stat-value">{stats.propfirm}</div>
+            <div className="sd-stat-sub">{stats.total === 0 ? "—" : `${propPct}% of total`}</div>
+          </div>
+          <div className="sd-stat-card sd-stat-accent">
+            <div className="sd-stat-label">Last Created</div>
+            <div className={`sd-stat-value ${stats.lastCreated.length > 12 ? "sd-stat-value-sm" : ""}`}>
+              {stats.lastCreated}
             </div>
-            <button
-              onClick={continueSession}
-              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold hover:bg-white/10 transition"
-            >
-              Continue session
-            </button>
+            <div className="sd-stat-sub">{lastCreatedSub}</div>
           </div>
         </div>
-      )}
 
-      {/* Content */}
-      <main className="max-w-6xl mx-auto px-4 py-8">
-        {/* Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {[
-            { label: "Total Sessions", value: stats.total },
-            { label: "Personal Backtests", value: stats.personal },
-            { label: "Prop Firm Backtests", value: stats.propfirm },
-            { label: "Last Created", value: stats.lastCreated, small: true },
-          ].map((s) => (
-            <div
-              key={s.label}
-              className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 backdrop-blur-xl p-5 hover:border-white/20 transition-all"
-            >
-              <div className="text-xs font-semibold uppercase tracking-wide text-white/40 mb-2">{s.label}</div>
-              <div className={`font-bold text-white ${s.small ? "text-base" : "text-3xl"}`}>
-                {s.value}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Tabs */}
-        <div className="flex gap-2 mb-6">
+        <div className="sd-filters">
           {tabs.map((t) => (
             <button
               key={t.key}
+              type="button"
               onClick={() => setFilter(t.key)}
-              className={`rounded-full px-4 py-2 text-sm font-semibold border transition ${
-                filter === t.key
-                  ? "border-white/20 bg-white/10"
-                  : "border-white/10 bg-white/5 hover:bg-white/10"
-              }`}
+              className={`sd-filter-btn ${filter === t.key ? "sd-active" : ""}`}
             >
               {t.label}
             </button>
           ))}
         </div>
 
-        {/* Table */}
-        <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 backdrop-blur-xl overflow-hidden">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="border-b border-white/10">
-                {["Name", "Symbol", "Strategy", "Type", "Start Balance", "Date Range", "Created", "Actions"].map((h) => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase text-white/40">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={8} className="text-center py-16 text-white/40">Loading sessions...</td>
-                </tr>
-              ) : error ? (
-                <tr>
-                  <td colSpan={8} className="text-center py-16">
-                    <div className="text-4xl mb-3">⚠️</div>
-                    <h3 className="font-semibold text-white/80 mb-1">Failed to load sessions</h3>
-                    <p className="text-sm text-red-300/80">{error}</p>
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="text-center py-16">
-                    <div className="text-4xl mb-3">📊</div>
-                    <h3 className="font-semibold text-white/80 mb-1">No Sessions Yet</h3>
-                    <p className="text-sm text-white/40">Create your first backtest session to get started</p>
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((s) => (
-                  <tr key={s.id} className="border-t border-white/5 hover:bg-white/[0.03] transition">
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => openSession(s)}
-                          title="Open session"
-                          className="w-9 h-9 rounded-full bg-blue-500/80 text-white flex items-center justify-center hover:bg-blue-500 hover:scale-105 transition"
-                        >
-                          <Play className="w-3.5 h-3.5 ml-0.5" fill="white" />
-                        </button>
-                        <div>
-                          <div className="font-semibold text-white/90">{s.name}</div>
-                          <div className="text-xs text-white/40">
-                            {s.created_at ? new Date(s.created_at).toLocaleString() : ""}
-                          </div>
+        <div className="sd-table-wrap">
+          <div className="sd-table-head">
+            <div className="sd-th">Session</div>
+            <div className="sd-th">Symbol</div>
+            <div className="sd-th">Strategy</div>
+            <div className="sd-th">Type</div>
+            <div className="sd-th">Balance</div>
+            <div className="sd-th">Date Range</div>
+            <div className="sd-th">Created</div>
+            <div className="sd-th sd-th-actions">Actions</div>
+          </div>
+
+          {loading ? (
+            <div className="sd-table-message">Loading sessions…</div>
+          ) : error ? (
+            <div className="sd-table-message">
+              <div className="text-2xl mb-1" aria-hidden>
+                ⚠️
+              </div>
+              <h3>Failed to load sessions</h3>
+              <p className="sd-text-error">{error}</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="sd-table-message">
+              <div className="text-2xl mb-1" aria-hidden>
+                📊
+              </div>
+              <h3>No sessions yet</h3>
+              <p>Create your first backtest session to get started.</p>
+            </div>
+          ) : (
+            filtered.map((s) => {
+              const playbook =
+                (s.config as { playbook_display?: string } | undefined)?.playbook_display?.trim() ||
+                (s.config as { playbook?: string } | undefined)?.playbook ||
+                "";
+              return (
+                <div key={s.id} className="sd-table-row">
+                  <div>
+                    <span className="sd-mob-label">Session</span>
+                    <div className="sd-row-name-wrap">
+                      <button
+                        type="button"
+                        onClick={() => openSession(s)}
+                        title="Open session"
+                        className="sd-play-btn"
+                      >
+                        <Play className="ml-0.5 shrink-0" size={12} fill="#c8f060" color="#c8f060" strokeWidth={0} />
+                      </button>
+                      <div>
+                        <div className="sd-row-name">{s.name}</div>
+                        <div className="sd-row-date">
+                          {s.created_at ? new Date(s.created_at).toLocaleString() : ""}
                         </div>
                       </div>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium">
-                        {s.symbol || "N/A"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 max-w-[200px]">
-                      <span className="text-xs text-white/70 line-clamp-2" title={String((s.config as { playbook_display?: string })?.playbook_display ?? "")}>
-                        {(s.config as { playbook_display?: string } | undefined)?.playbook_display?.trim()
-                          || (s.config as { playbook?: string } | undefined)?.playbook
-                          || "—"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span
-                        className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${
-                          s.session_type === "propfirm"
-                            ? "border-pink-500/30 bg-pink-500/10 text-pink-300"
-                            : "border-blue-500/30 bg-blue-500/10 text-blue-300"
-                        }`}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="sd-mob-label">Symbol</span>
+                    <span className="sd-symbol-pill" title={s.symbol || "N/A"}>
+                      {s.symbol || "N/A"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="sd-mob-label">Strategy</span>
+                    <span className="sd-strategy-cell" title={playbook || undefined}>
+                      {playbook || "—"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="sd-mob-label">Type</span>
+                    <span
+                      className={`sd-type-badge ${s.session_type === "personal" ? "sd-type-personal" : ""}`}
+                    >
+                      {s.session_type === "propfirm" ? "Prop Firm" : "Personal"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="sd-mob-label">Balance</span>
+                    <span className="sd-balance">${Number(s.start_balance ?? 0).toLocaleString()}</span>
+                  </div>
+                  <div>
+                    <span className="sd-mob-label">Date range</span>
+                    <div className="sd-date-range">
+                      {s.start_date ? new Date(s.start_date).toLocaleDateString() : "—"}
+                      <br />
+                      {s.end_date ? new Date(s.end_date).toLocaleDateString() : "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="sd-mob-label">Created</span>
+                    <div className="sd-created-cell">
+                      {s.created_at ? new Date(s.created_at).toLocaleDateString() : "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="sd-mob-label">Actions</span>
+                    <div className="sd-actions-cell">
+                      {s.session_type === "propfirm" ? (
+                        <button
+                          type="button"
+                          onClick={() => openChallengeOverview(s)}
+                          className="sd-act-btn sd-challenge"
+                          title="Challenge rules and compliance"
+                        >
+                          <Shield className="w-3 h-3" />
+                          Challenge
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => openSessionAnalytics(s)}
+                        className="sd-act-btn"
+                        title="Open analytics for this session"
                       >
-                        {s.session_type === "propfirm" ? "Prop Firm" : "Personal"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-sm text-white/70">${Number(s.start_balance ?? 0).toLocaleString()}</td>
-                    <td className="px-4 py-4 text-xs text-white/50">
-                      {s.start_date ? new Date(s.start_date).toLocaleDateString() : "-"} –{" "}
-                      {s.end_date ? new Date(s.end_date).toLocaleDateString() : "-"}
-                    </td>
-                    <td className="px-4 py-4 text-xs text-white/50">
-                      {s.created_at ? new Date(s.created_at).toLocaleDateString() : "-"}
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {s.session_type === "propfirm" ? (
-                          <button
-                            onClick={() => openChallengeOverview(s)}
-                            className="flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-200 hover:bg-amber-500/20 transition"
-                            title="Challenge rules and compliance"
-                          >
-                            <Shield className="w-3.5 h-3.5" />
-                            Challenge
-                          </button>
-                        ) : null}
-                        <button
-                          onClick={() => openSessionAnalytics(s)}
-                          className="flex items-center gap-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-semibold text-blue-300 hover:bg-blue-500/20 transition"
-                          title="Open analytics for this session"
-                        >
-                          <BarChart3 className="w-3.5 h-3.5" />
-                          Analytics
-                        </button>
-                        <button
-                          onClick={() => deleteSession(s.id)}
-                          className="flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-500/20 transition"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                        <BarChart3 className="w-3 h-3" />
+                        Analytics
+                      </button>
+                      <button type="button" onClick={() => deleteSession(s.id)} className="sd-act-btn sd-danger" title="Delete session">
+                        <Trash2 className="w-3 h-3" />
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </main>
 
-      {/* Create Session Modal */}
-      {modalOpen && (
-        <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => e.target === e.currentTarget && setModalOpen(false)}>
-          <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/95 backdrop-blur-xl p-10 max-w-[650px] w-full shadow-2xl">
-            <h2 className="text-2xl font-semibold text-white mb-2">
-              Choose session type
-            </h2>
-            <p className="text-white/50 text-sm mb-6">Personal backtests, or prop-style simulations with preset rule packs and a compliance overview</p>
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={() => goToBacktest("personal")}
-                className="rounded-2xl border-2 border-white/10 bg-white/[0.03] p-8 text-center hover:border-blue-500/40 hover:bg-blue-500/[0.06] hover:-translate-y-1 transition-all group"
-              >
-                <BarChart3 className="w-12 h-12 mx-auto mb-3 text-blue-400 group-hover:text-blue-300 transition" />
-                <div className="font-semibold text-white/90 mb-1">Standard Backtesting</div>
-                <div className="text-xs text-white/40">Test your personal trading strategies and analyze performance</div>
+      {modalOpen ? (
+        <div
+          className="sd-modal-backdrop"
+          role="presentation"
+          onClick={(e) => e.target === e.currentTarget && setModalOpen(false)}
+        >
+          <div className="sd-modal-panel">
+            <h2>Choose session type</h2>
+            <p>Personal backtests, or prop-style simulations with preset rule packs and a compliance overview.</p>
+            <div className="sd-modal-grid">
+              <button type="button" onClick={() => goToBacktest("personal")} className="sd-modal-choice sd-modal-choice-alt">
+                <BarChart3 className="w-10 h-10" strokeWidth={1.25} />
+                <div className="sd-modal-choice-title">Standard Backtesting</div>
+                <div className="sd-modal-choice-desc">Test your personal trading strategies and analyze performance.</div>
               </button>
-              <button
-                onClick={() => goToBacktest("propfirm")}
-                className="rounded-2xl border-2 border-white/10 bg-white/[0.03] p-8 text-center hover:border-amber-500/40 hover:bg-amber-500/[0.06] hover:-translate-y-1 transition-all group"
-              >
-                <Trophy className="w-12 h-12 mx-auto mb-3 text-amber-400 group-hover:text-amber-300 transition" />
-                <div className="font-semibold text-white/90 mb-1">Prop simulations</div>
-                <div className="text-xs text-white/40">Pick a preset rule set, then review compliance on the challenge dashboard</div>
+              <button type="button" onClick={() => goToBacktest("propfirm")} className="sd-modal-choice">
+                <Trophy className="w-10 h-10" strokeWidth={1.25} />
+                <div className="sd-modal-choice-title">Prop simulations</div>
+                <div className="sd-modal-choice-desc">Pick a preset rule set, then review compliance on the challenge dashboard.</div>
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {/* Chart Iframe Modal — close only via X or iframe calling closePropFirmIframe(); backdrop does not dismiss */}
-      {iframeUrl && (
-        <div
-          className="fixed inset-0 z-[3000] bg-black/75 flex items-center justify-center p-5 overscroll-none"
-          role="presentation"
-        >
-          <div className="relative w-[90vw] h-[90vh] max-w-[1200px] bg-[#030014] rounded-2xl overflow-hidden shadow-2xl border border-white/10">
-            <button
-              onClick={closeIframe}
-              className="absolute top-3 right-3 z-[10000] w-10 h-10 rounded-full bg-white/10 border border-white/20 text-white flex items-center justify-center shadow-lg hover:bg-white/20 hover:scale-110 transition-all"
-            >
+      {iframeUrl ? (
+        <div className="fixed inset-0 z-[3000] bg-black/75 flex items-center justify-center p-5 overscroll-none" role="presentation">
+          <div className="sd-iframe-shell">
+            <button type="button" onClick={closeIframe} className="sd-iframe-close" aria-label="Close">
               <X className="w-5 h-5" />
             </button>
-            <iframe src={iframeUrl} className="w-full h-full border-none rounded-2xl" />
+            <iframe src={iframeUrl} title="Backtest setup" className="sd-iframe" />
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
