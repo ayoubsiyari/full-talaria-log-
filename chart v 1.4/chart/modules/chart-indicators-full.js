@@ -1112,6 +1112,344 @@
         return sar;
     }
 
+    /** Extended forex session backgrounds (UTC). Reuses drawSessions. */
+    function calculateSessionsPlus(data, params) {
+        const parseTime = function(timeStr) {
+            if (!timeStr) return 0;
+            const parts = String(timeStr).split(':');
+            return parseInt(parts[0], 10) + (parseInt(parts[1] || 0, 10) / 60);
+        };
+        const isInSession = function(hour, minute, session) {
+            const timeDecimal = hour + (minute / 60);
+            if (session.start <= session.end) {
+                return timeDecimal >= session.start && timeDecimal < session.end;
+            }
+            return timeDecimal >= session.start || timeDecimal < session.end;
+        };
+        const defs = [];
+        if (params.showSydney !== false) {
+            defs.push({
+                key: 'sydney',
+                start: parseTime(params.sydneyStart != null ? params.sydneyStart : '21:00'),
+                end: parseTime(params.sydneyEnd != null ? params.sydneyEnd : '06:00'),
+                color: params.sydneyColor || 'rgba(156, 39, 176, 0.14)'
+            });
+        }
+        if (params.showTokyo !== false) {
+            defs.push({
+                key: 'tokyo',
+                start: parseTime(params.tokyoStart != null ? params.tokyoStart : '00:00'),
+                end: parseTime(params.tokyoEnd != null ? params.tokyoEnd : '09:00'),
+                color: params.tokyoColor || 'rgba(255, 152, 0, 0.14)'
+            });
+        }
+        if (params.showAsian !== false) {
+            defs.push({
+                key: 'asian',
+                start: parseTime(params.asianStart != null ? params.asianStart : '00:00'),
+                end: parseTime(params.asianEnd != null ? params.asianEnd : '09:00'),
+                color: params.asianColor || 'rgba(255, 193, 7, 0.12)'
+            });
+        }
+        if (params.showFrankfurt !== false) {
+            defs.push({
+                key: 'frankfurt',
+                start: parseTime(params.frankfurtStart != null ? params.frankfurtStart : '07:00'),
+                end: parseTime(params.frankfurtEnd != null ? params.frankfurtEnd : '10:00'),
+                color: params.frankfurtColor || 'rgba(3, 169, 244, 0.14)'
+            });
+        }
+        if (params.showLondon !== false) {
+            defs.push({
+                key: 'london',
+                start: parseTime(params.londonStart != null ? params.londonStart : '08:00'),
+                end: parseTime(params.londonEnd != null ? params.londonEnd : '16:00'),
+                color: params.londonColor || 'rgba(33, 150, 243, 0.14)'
+            });
+        }
+        if (params.showNewYork !== false) {
+            defs.push({
+                key: 'newyork',
+                start: parseTime(params.newYorkStart != null ? params.newYorkStart : '13:00'),
+                end: parseTime(params.newYorkEnd != null ? params.newYorkEnd : '21:00'),
+                color: params.newYorkColor || 'rgba(76, 175, 80, 0.14)'
+            });
+        }
+        const sessions = [];
+        for (let i = 0; i < data.length; i++) {
+            const date = new Date(data[i].t);
+            const hour = date.getUTCHours();
+            const minute = date.getUTCMinutes();
+            const candleSessions = [];
+            for (let d = 0; d < defs.length; d++) {
+                const s = defs[d];
+                if (isInSession(hour, minute, s)) {
+                    candleSessions.push({ type: s.key, color: s.color });
+                }
+            }
+            sessions.push(candleSessions);
+        }
+        return sessions;
+    }
+
+    /** First N minutes of each UTC day — high/low channel (opening range). */
+    function calculateOpeningRange(data, minutes) {
+        const upper = [];
+        const lower = [];
+        const m = Math.max(1, Math.floor(minutes));
+        let dayKey = null;
+        let orH = null;
+        let orL = null;
+        let windowEnd = null;
+        const dayStr = function(t) {
+            return new Date(t).toISOString().slice(0, 10);
+        };
+        for (let i = 0; i < data.length; i++) {
+            const dk = dayStr(data[i].t);
+            if (dk !== dayKey) {
+                dayKey = dk;
+                const t0 = data[i].t;
+                windowEnd = t0 + m * 60 * 1000;
+                orH = data[i].h;
+                orL = data[i].l;
+            }
+            if (data[i].t <= windowEnd) {
+                orH = Math.max(orH, data[i].h);
+                orL = Math.min(orL, data[i].l);
+            }
+            upper.push(orH);
+            lower.push(orL);
+        }
+        const middle = upper.map(function(u, i) {
+            return (u + lower[i]) / 2;
+        });
+        return { upper: upper, lower: lower, middle: middle };
+    }
+
+    function calculateSupertrend(data, period, multiplier) {
+        const mult = multiplier != null ? multiplier : 3;
+        const p = Math.max(1, period || 10);
+        const atr = calculateATR(data, p);
+        const n = data.length;
+        const finalUpper = new Array(n).fill(null);
+        const finalLower = new Array(n).fill(null);
+        const line = new Array(n).fill(null);
+        const direction = new Array(n).fill(1);
+        for (let i = 0; i < n; i++) {
+            const hl2 = (data[i].h + data[i].l) / 2;
+            const a = atr[i];
+            if (a == null || isNaN(a)) continue;
+            const basicUpper = hl2 + mult * a;
+            const basicLower = hl2 - mult * a;
+            if (i === 0) {
+                finalUpper[i] = basicUpper;
+                finalLower[i] = basicLower;
+                line[i] = finalLower[i];
+                direction[i] = 1;
+                continue;
+            }
+            const pU = finalUpper[i - 1];
+            const pL = finalLower[i - 1];
+            const pC = data[i - 1].c;
+            finalUpper[i] = (basicUpper < pU || pC > pU) ? basicUpper : pU;
+            finalLower[i] = (basicLower > pL || pC < pL) ? basicLower : pL;
+            if (direction[i - 1] === 1) {
+                if (data[i].c < finalLower[i - 1]) {
+                    direction[i] = -1;
+                    line[i] = finalUpper[i];
+                } else {
+                    direction[i] = 1;
+                    line[i] = finalLower[i];
+                }
+            } else {
+                if (data[i].c > finalUpper[i - 1]) {
+                    direction[i] = 1;
+                    line[i] = finalLower[i];
+                } else {
+                    direction[i] = -1;
+                    line[i] = finalUpper[i];
+                }
+            }
+        }
+        return { line: line, direction: direction, upper: finalUpper, lower: finalLower };
+    }
+
+    function calculateStdDevLine(data, period) {
+        const p = Math.max(2, period);
+        const out = [];
+        for (let i = 0; i < data.length; i++) {
+            if (i < p - 1) {
+                out.push(null);
+                continue;
+            }
+            let sum = 0;
+            let sumSq = 0;
+            for (let j = 0; j < p; j++) {
+                const c = data[i - j].c;
+                sum += c;
+                sumSq += c * c;
+            }
+            const mean = sum / p;
+            const variance = Math.max(0, sumSq / p - mean * mean);
+            out.push(Math.sqrt(variance));
+        }
+        return out;
+    }
+
+    function smaMedianPrice(data, len) {
+        const med = data.map(function(d) {
+            return (d.h + d.l) / 2;
+        });
+        const out = med.map(function() {
+            return null;
+        });
+        let sum = 0;
+        for (let i = 0; i < med.length; i++) {
+            sum += med[i];
+            if (i >= len) sum -= med[i - len];
+            if (i >= len - 1) out[i] = sum / len;
+        }
+        return out;
+    }
+
+    function calculateAO(data) {
+        const fast = smaMedianPrice(data, 5);
+        const slow = smaMedianPrice(data, 34);
+        return fast.map(function(f, i) {
+            if (f == null || slow[i] == null) return null;
+            return f - slow[i];
+        });
+    }
+
+    function calculateUltimateOscillator(data, p1, p2, p3) {
+        const n = data.length;
+        const bp = [];
+        const tr = [];
+        for (let i = 0; i < n; i++) {
+            if (i === 0) {
+                bp.push(data[i].c - data[i].l);
+                tr.push(data[i].h - data[i].l);
+            } else {
+                const pc = data[i - 1].c;
+                bp.push(data[i].c - Math.min(data[i].l, pc));
+                tr.push(Math.max(data[i].h, pc) - Math.min(data[i].l, pc));
+            }
+        }
+        const maxP = Math.max(p1, p2, p3);
+        const out = [];
+        function windowRatio(idx, len) {
+            let sb = 0;
+            let st = 0;
+            for (let k = 0; k < len; k++) {
+                const j = idx - k;
+                if (j < 0) return null;
+                sb += bp[j];
+                st += tr[j];
+            }
+            return st ? sb / st : null;
+        }
+        for (let i = 0; i < n; i++) {
+            if (i < maxP - 1) {
+                out.push(null);
+                continue;
+            }
+            const a1 = windowRatio(i, p1);
+            const a2 = windowRatio(i, p2);
+            const a3 = windowRatio(i, p3);
+            if (a1 == null || a2 == null || a3 == null) {
+                out.push(null);
+            } else {
+                out.push(100 * (4 * a1 + 2 * a2 + a3) / 7);
+            }
+        }
+        return out;
+    }
+
+    function calculateVortex(data, period) {
+        const n = data.length;
+        const p = Math.max(2, period);
+        const vmPlus = [0];
+        const vmMinus = [0];
+        const trArr = [data[0].h - data[0].l];
+        for (let i = 1; i < n; i++) {
+            vmPlus.push(Math.abs(data[i].h - data[i - 1].l));
+            vmMinus.push(Math.abs(data[i].l - data[i - 1].h));
+            trArr.push(Math.max(data[i].h, data[i - 1].c) - Math.min(data[i].l, data[i - 1].c));
+        }
+        const viPlus = [];
+        const viMinus = [];
+        for (let i = 0; i < n; i++) {
+            if (i < p - 1) {
+                viPlus.push(null);
+                viMinus.push(null);
+                continue;
+            }
+            let sp = 0;
+            let sm = 0;
+            let str = 0;
+            for (let j = 0; j < p; j++) {
+                sp += vmPlus[i - j];
+                sm += vmMinus[i - j];
+                str += trArr[i - j];
+            }
+            viPlus.push(str ? sp / str : null);
+            viMinus.push(str ? sm / str : null);
+        }
+        return { viPlus: viPlus, viMinus: viMinus };
+    }
+
+    function calculatePPO(data, fast, slow, signal) {
+        const fastEMA = calculateEMA(data, fast, 'c');
+        const slowEMA = calculateEMA(data, slow, 'c');
+        const macd = [];
+        for (let i = 0; i < data.length; i++) {
+            if (fastEMA[i] !== null && slowEMA[i] !== null && slowEMA[i] !== 0) {
+                macd.push(100 * (fastEMA[i] - slowEMA[i]) / slowEMA[i]);
+            } else {
+                macd.push(null);
+            }
+        }
+        const signalLine = [];
+        const multiplier = 2 / (signal + 1);
+        let ema = null;
+        for (let i = 0; i < macd.length; i++) {
+            if (macd[i] === null) {
+                signalLine.push(null);
+            } else if (ema === null) {
+                ema = macd[i];
+                signalLine.push(ema);
+            } else {
+                ema = (macd[i] - ema) * multiplier + ema;
+                signalLine.push(ema);
+            }
+        }
+        const histogram = [];
+        for (let i = 0; i < macd.length; i++) {
+            if (macd[i] !== null && signalLine[i] !== null) {
+                histogram.push(macd[i] - signalLine[i]);
+            } else {
+                histogram.push(null);
+            }
+        }
+        return { macd: macd, signal: signalLine, histogram: histogram };
+    }
+
+    function calculateDPO(data, period) {
+        const p = Math.max(3, period);
+        const shift = Math.floor(p / 2) + 1;
+        const sma = calculateSMA(data, p, 'c');
+        const out = [];
+        for (let i = 0; i < data.length; i++) {
+            const j = i - shift;
+            if (j < 0 || sma[j] === null) {
+                out.push(null);
+            } else {
+                out.push(data[i].c - sma[j]);
+            }
+        }
+        return out;
+    }
+
     // ===== Chart Integration =====
     
     Chart.prototype.initIndicators = function() {
@@ -1503,6 +1841,146 @@
                 this.indicators.data[indicator.id] = calculatePSAR(this.data, indicator.params.step, indicator.params.maxStep);
                 break;
 
+            case 'sessionsplus':
+                indicator.params.showSydney = params.showSydney !== false;
+                indicator.params.showTokyo = params.showTokyo !== false;
+                indicator.params.showAsian = params.showAsian !== false;
+                indicator.params.showFrankfurt = params.showFrankfurt !== false;
+                indicator.params.showLondon = params.showLondon !== false;
+                indicator.params.showNewYork = params.showNewYork !== false;
+                indicator.params.sydneyStart = params.sydneyStart || '21:00';
+                indicator.params.sydneyEnd = params.sydneyEnd || '06:00';
+                indicator.params.tokyoStart = params.tokyoStart || '00:00';
+                indicator.params.tokyoEnd = params.tokyoEnd || '09:00';
+                indicator.params.asianStart = params.asianStart || '00:00';
+                indicator.params.asianEnd = params.asianEnd || '09:00';
+                indicator.params.frankfurtStart = params.frankfurtStart || '07:00';
+                indicator.params.frankfurtEnd = params.frankfurtEnd || '10:00';
+                indicator.params.londonStart = params.londonStart || '08:00';
+                indicator.params.londonEnd = params.londonEnd || '16:00';
+                indicator.params.newYorkStart = params.newYorkStart || '13:00';
+                indicator.params.newYorkEnd = params.newYorkEnd || '21:00';
+                indicator.style.sydneyColor = params.sydneyColor || 'rgba(156, 39, 176, 0.14)';
+                indicator.style.tokyoColor = params.tokyoColor || 'rgba(255, 152, 0, 0.14)';
+                indicator.style.asianColor = params.asianColor || 'rgba(255, 193, 7, 0.12)';
+                indicator.style.frankfurtColor = params.frankfurtColor || 'rgba(3, 169, 244, 0.14)';
+                indicator.style.londonColor = params.londonColor || 'rgba(33, 150, 243, 0.14)';
+                indicator.style.newYorkColor = params.newYorkColor || 'rgba(76, 175, 80, 0.14)';
+                indicator.overlay = true;
+                indicator.isSessionsPlus = true;
+                indicator.name = 'Sessions+';
+                this.indicators.data[indicator.id] = calculateSessionsPlus(this.data, {
+                    showSydney: indicator.params.showSydney,
+                    showTokyo: indicator.params.showTokyo,
+                    showAsian: indicator.params.showAsian,
+                    showFrankfurt: indicator.params.showFrankfurt,
+                    showLondon: indicator.params.showLondon,
+                    showNewYork: indicator.params.showNewYork,
+                    sydneyStart: indicator.params.sydneyStart,
+                    sydneyEnd: indicator.params.sydneyEnd,
+                    tokyoStart: indicator.params.tokyoStart,
+                    tokyoEnd: indicator.params.tokyoEnd,
+                    asianStart: indicator.params.asianStart,
+                    asianEnd: indicator.params.asianEnd,
+                    frankfurtStart: indicator.params.frankfurtStart,
+                    frankfurtEnd: indicator.params.frankfurtEnd,
+                    londonStart: indicator.params.londonStart,
+                    londonEnd: indicator.params.londonEnd,
+                    newYorkStart: indicator.params.newYorkStart,
+                    newYorkEnd: indicator.params.newYorkEnd,
+                    sydneyColor: indicator.style.sydneyColor,
+                    tokyoColor: indicator.style.tokyoColor,
+                    asianColor: indicator.style.asianColor,
+                    frankfurtColor: indicator.style.frankfurtColor,
+                    londonColor: indicator.style.londonColor,
+                    newYorkColor: indicator.style.newYorkColor
+                });
+                break;
+
+            case 'openingrange':
+            case 'or':
+                indicator.params.minutes = params.minutes != null ? params.minutes : 30;
+                indicator.style.upperColor = params.upperColor || '#2962ff';
+                indicator.style.lowerColor = params.lowerColor || '#2962ff';
+                indicator.style.middleColor = params.middleColor || '#787b86';
+                indicator.style.fillColor = params.fillColor || 'rgba(41, 98, 255, 0.06)';
+                indicator.style.lineWidth = params.lineWidth || 1;
+                indicator.overlay = true;
+                indicator.type = 'openingrange';
+                indicator.name = 'Opening Range(' + indicator.params.minutes + 'm)';
+                this.indicators.data[indicator.id] = calculateOpeningRange(this.data, indicator.params.minutes);
+                break;
+
+            case 'supertrend':
+                indicator.params.period = params.period != null ? params.period : 10;
+                indicator.params.multiplier = params.multiplier != null ? params.multiplier : 3;
+                indicator.style.upColor = params.upColor || '#26a69a';
+                indicator.style.downColor = params.downColor || '#ef5350';
+                indicator.style.lineWidth = params.lineWidth || 2;
+                indicator.overlay = true;
+                indicator.name = 'Supertrend(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateSupertrend(this.data, indicator.params.period, indicator.params.multiplier);
+                break;
+
+            case 'stddev':
+                indicator.params.period = params.period || 20;
+                indicator.style.color = params.color || '#ab47bc';
+                indicator.style.lineWidth = params.lineWidth || 2;
+                indicator.overlay = true;
+                indicator.name = 'StdDev(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateStdDevLine(this.data, indicator.params.period);
+                break;
+
+            case 'ao':
+                indicator.style.color = params.color || '#26a69a';
+                indicator.style.lineWidth = params.lineWidth || 2;
+                indicator.overlay = false;
+                indicator.name = 'Awesome Oscillator';
+                this.indicators.data[indicator.id] = calculateAO(this.data);
+                break;
+
+            case 'uo':
+                indicator.params.period1 = params.period1 || 7;
+                indicator.params.period2 = params.period2 || 14;
+                indicator.params.period3 = params.period3 || 28;
+                indicator.style.color = params.color || '#7e57c2';
+                indicator.style.lineWidth = params.lineWidth || 2;
+                indicator.overlay = false;
+                indicator.name = 'Ultimate Oscillator';
+                this.indicators.data[indicator.id] = calculateUltimateOscillator(this.data, indicator.params.period1, indicator.params.period2, indicator.params.period3);
+                break;
+
+            case 'vortex':
+                indicator.params.period = params.period || 14;
+                indicator.style.plusColor = params.plusColor || '#00e676';
+                indicator.style.minusColor = params.minusColor || '#f23645';
+                indicator.style.lineWidth = params.lineWidth || 2;
+                indicator.overlay = false;
+                indicator.name = 'Vortex(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateVortex(this.data, indicator.params.period);
+                break;
+
+            case 'ppo':
+                indicator.params.fast = params.fast || 12;
+                indicator.params.slow = params.slow || 26;
+                indicator.params.signal = params.signal || 9;
+                indicator.style.macdColor = params.macdColor || '#2962ff';
+                indicator.style.signalColor = params.signalColor || '#f23645';
+                indicator.style.histogramColor = params.histogramColor || '#787b86';
+                indicator.overlay = false;
+                indicator.name = 'PPO(' + indicator.params.fast + ',' + indicator.params.slow + ',' + indicator.params.signal + ')';
+                this.indicators.data[indicator.id] = calculatePPO(this.data, indicator.params.fast, indicator.params.slow, indicator.params.signal);
+                break;
+
+            case 'dpo':
+                indicator.params.period = params.period || 20;
+                indicator.style.color = params.color || '#78909c';
+                indicator.style.lineWidth = params.lineWidth || 2;
+                indicator.overlay = false;
+                indicator.name = 'DPO(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateDPO(this.data, indicator.params.period);
+                break;
+
             case 'custom': {
                 const TC = global.TalariaCustomIndicators;
                 if (!TC) {
@@ -1726,6 +2204,22 @@
         if (newParams.maxStep !== undefined) indicator.params.maxStep = newParams.maxStep;
         if (newParams.bullColor !== undefined) indicator.style.bullColor = newParams.bullColor;
         if (newParams.bearColor !== undefined) indicator.style.bearColor = newParams.bearColor;
+        if (newParams.plusColor !== undefined) indicator.style.plusColor = newParams.plusColor;
+        if (newParams.minusColor !== undefined) indicator.style.minusColor = newParams.minusColor;
+        if (newParams.minutes !== undefined) indicator.params.minutes = newParams.minutes;
+        if (newParams.period1 !== undefined) indicator.params.period1 = newParams.period1;
+        if (newParams.period2 !== undefined) indicator.params.period2 = newParams.period2;
+        if (newParams.period3 !== undefined) indicator.params.period3 = newParams.period3;
+        if (indicator.type === 'sessionsplus') {
+            ['showSydney', 'showTokyo', 'showAsian', 'showFrankfurt', 'showLondon', 'showNewYork',
+                'sydneyStart', 'sydneyEnd', 'tokyoStart', 'tokyoEnd', 'asianStart', 'asianEnd',
+                'frankfurtStart', 'frankfurtEnd', 'londonStart', 'londonEnd', 'newYorkStart', 'newYorkEnd'].forEach(function(k) {
+                if (newParams[k] !== undefined) indicator.params[k] = newParams[k];
+            });
+            ['sydneyColor', 'tokyoColor', 'asianColor', 'frankfurtColor', 'londonColor', 'newYorkColor'].forEach(function(k) {
+                if (newParams[k] !== undefined) indicator.style[k] = newParams[k];
+            });
+        }
         if (indicator.type === 'custom') {
             if (newParams.script !== undefined) indicator.params.script = newParams.script;
             if (newParams.customParams !== undefined) indicator.params.customParams = newParams.customParams;
@@ -1980,6 +2474,66 @@
             case 'psar':
                 this.indicators.data[indicator.id] = calculatePSAR(this.data, indicator.params.step, indicator.params.maxStep);
                 break;
+            case 'sessionsplus':
+                indicator.name = 'Sessions+';
+                this.indicators.data[indicator.id] = calculateSessionsPlus(this.data, {
+                    showSydney: indicator.params.showSydney,
+                    showTokyo: indicator.params.showTokyo,
+                    showAsian: indicator.params.showAsian,
+                    showFrankfurt: indicator.params.showFrankfurt,
+                    showLondon: indicator.params.showLondon,
+                    showNewYork: indicator.params.showNewYork,
+                    sydneyStart: indicator.params.sydneyStart,
+                    sydneyEnd: indicator.params.sydneyEnd,
+                    tokyoStart: indicator.params.tokyoStart,
+                    tokyoEnd: indicator.params.tokyoEnd,
+                    asianStart: indicator.params.asianStart,
+                    asianEnd: indicator.params.asianEnd,
+                    frankfurtStart: indicator.params.frankfurtStart,
+                    frankfurtEnd: indicator.params.frankfurtEnd,
+                    londonStart: indicator.params.londonStart,
+                    londonEnd: indicator.params.londonEnd,
+                    newYorkStart: indicator.params.newYorkStart,
+                    newYorkEnd: indicator.params.newYorkEnd,
+                    sydneyColor: indicator.style.sydneyColor,
+                    tokyoColor: indicator.style.tokyoColor,
+                    asianColor: indicator.style.asianColor,
+                    frankfurtColor: indicator.style.frankfurtColor,
+                    londonColor: indicator.style.londonColor,
+                    newYorkColor: indicator.style.newYorkColor
+                });
+                break;
+            case 'openingrange':
+            case 'or':
+                indicator.name = 'Opening Range(' + indicator.params.minutes + 'm)';
+                this.indicators.data[indicator.id] = calculateOpeningRange(this.data, indicator.params.minutes);
+                break;
+            case 'supertrend':
+                indicator.name = 'Supertrend(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateSupertrend(this.data, indicator.params.period, indicator.params.multiplier);
+                break;
+            case 'stddev':
+                indicator.name = 'StdDev(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateStdDevLine(this.data, indicator.params.period);
+                break;
+            case 'ao':
+                this.indicators.data[indicator.id] = calculateAO(this.data);
+                break;
+            case 'uo':
+                this.indicators.data[indicator.id] = calculateUltimateOscillator(this.data, indicator.params.period1, indicator.params.period2, indicator.params.period3);
+                break;
+            case 'vortex':
+                indicator.name = 'Vortex(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateVortex(this.data, indicator.params.period);
+                break;
+            case 'ppo':
+                indicator.name = 'PPO(' + indicator.params.fast + ',' + indicator.params.slow + ',' + indicator.params.signal + ')';
+                this.indicators.data[indicator.id] = calculatePPO(this.data, indicator.params.fast, indicator.params.slow, indicator.params.signal);
+                break;
+            case 'dpo':
+                indicator.name = 'DPO(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateDPO(this.data, indicator.params.period);
+                break;
             case 'custom':
                 if (typeof this._scheduleCustomIndicatorCompute === 'function') {
                     this._scheduleCustomIndicatorCompute(indicator);
@@ -2130,6 +2684,59 @@
                     break;
                 case 'psar':
                     this.indicators.data[indicator.id] = calculatePSAR(this.data, indicator.params.step, indicator.params.maxStep);
+                    break;
+                case 'sessionsplus':
+                    this.indicators.data[indicator.id] = calculateSessionsPlus(this.data, {
+                        showSydney: indicator.params.showSydney,
+                        showTokyo: indicator.params.showTokyo,
+                        showAsian: indicator.params.showAsian,
+                        showFrankfurt: indicator.params.showFrankfurt,
+                        showLondon: indicator.params.showLondon,
+                        showNewYork: indicator.params.showNewYork,
+                        sydneyStart: indicator.params.sydneyStart,
+                        sydneyEnd: indicator.params.sydneyEnd,
+                        tokyoStart: indicator.params.tokyoStart,
+                        tokyoEnd: indicator.params.tokyoEnd,
+                        asianStart: indicator.params.asianStart,
+                        asianEnd: indicator.params.asianEnd,
+                        frankfurtStart: indicator.params.frankfurtStart,
+                        frankfurtEnd: indicator.params.frankfurtEnd,
+                        londonStart: indicator.params.londonStart,
+                        londonEnd: indicator.params.londonEnd,
+                        newYorkStart: indicator.params.newYorkStart,
+                        newYorkEnd: indicator.params.newYorkEnd,
+                        sydneyColor: indicator.style.sydneyColor,
+                        tokyoColor: indicator.style.tokyoColor,
+                        asianColor: indicator.style.asianColor,
+                        frankfurtColor: indicator.style.frankfurtColor,
+                        londonColor: indicator.style.londonColor,
+                        newYorkColor: indicator.style.newYorkColor
+                    });
+                    break;
+                case 'openingrange':
+                case 'or':
+                    this.indicators.data[indicator.id] = calculateOpeningRange(this.data, indicator.params.minutes);
+                    break;
+                case 'supertrend':
+                    this.indicators.data[indicator.id] = calculateSupertrend(this.data, indicator.params.period, indicator.params.multiplier);
+                    break;
+                case 'stddev':
+                    this.indicators.data[indicator.id] = calculateStdDevLine(this.data, indicator.params.period);
+                    break;
+                case 'ao':
+                    this.indicators.data[indicator.id] = calculateAO(this.data);
+                    break;
+                case 'uo':
+                    this.indicators.data[indicator.id] = calculateUltimateOscillator(this.data, indicator.params.period1, indicator.params.period2, indicator.params.period3);
+                    break;
+                case 'vortex':
+                    this.indicators.data[indicator.id] = calculateVortex(this.data, indicator.params.period);
+                    break;
+                case 'ppo':
+                    this.indicators.data[indicator.id] = calculatePPO(this.data, indicator.params.fast, indicator.params.slow, indicator.params.signal);
+                    break;
+                case 'dpo':
+                    this.indicators.data[indicator.id] = calculateDPO(this.data, indicator.params.period);
                     break;
                 case 'custom':
                     if (typeof this._scheduleCustomIndicatorCompute === 'function') {
@@ -2406,6 +3013,12 @@
                 this.drawParabolicSAR(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'sessions') {
                 this.drawSessions(data, indicator.style, startIndex, endIndex);
+            } else if (indicator.type === 'sessionsplus' || indicator.isSessionsPlus) {
+                this.drawSessions(data, indicator.style, startIndex, endIndex);
+            } else if (indicator.type === 'openingrange') {
+                this.drawBollingerBands(data, indicator.style, startIndex, endIndex);
+            } else if (indicator.type === 'supertrend') {
+                this.drawSupertrendOverlay(data, indicator, startIndex, endIndex);
             } else if (indicator.type === 'killzones' || indicator.type === 'ictkz' || indicator.isKillzones) {
                 this.drawKillzones(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'adr' || indicator.isADR) {
@@ -2414,12 +3027,55 @@
                 this.drawATRBands(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'custom') {
                 this.drawCustomOverlayPlots(data, indicator, startIndex, endIndex);
+            } else if (indicator.type === 'stddev') {
+                this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex);
             } else {
                 this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex);
             }
         }
 
         ctx.restore();
+    };
+
+    Chart.prototype.drawSupertrendOverlay = function(data, indicator, startIndex, endIndex) {
+        if (!data || !data.line || !data.direction) return;
+        const ctx = this.ctx;
+        const m = this.margin;
+        const upColor = indicator.style.upColor || '#26a69a';
+        const downColor = indicator.style.downColor || '#ef5350';
+        const lw = indicator.style.lineWidth || 2;
+        let i = startIndex;
+        while (i < endIndex && i < data.line.length) {
+            if (data.line[i] == null || isNaN(data.line[i])) {
+                i++;
+                continue;
+            }
+            const dirUp = data.direction[i] >= 0;
+            ctx.strokeStyle = dirUp ? upColor : downColor;
+            ctx.lineWidth = lw;
+            ctx.beginPath();
+            let started = false;
+            let j = i;
+            while (j < endIndex && j < data.line.length && (data.direction[j] >= 0) === dirUp && data.line[j] != null && !isNaN(data.line[j])) {
+                const x = this.dataIndexToPixel(j);
+                const y = this.yScale(data.line[j]);
+                if (x < m.l - 30 || x > this.w - m.r + 30) {
+                    if (started) ctx.stroke();
+                    started = false;
+                    j++;
+                    continue;
+                }
+                if (!started) {
+                    ctx.moveTo(x, y);
+                    started = true;
+                } else {
+                    ctx.lineTo(x, y);
+                }
+                j++;
+            }
+            if (started) ctx.stroke();
+            i = j > i ? j : i + 1;
+        }
     };
 
     Chart.prototype.drawCustomOverlayPlots = function(data, indicator, startIndex, endIndex) {
@@ -2835,6 +3491,9 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         if (indicator.type === 'macd') {
             this._renderMACDPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
+        } else if (indicator.type === 'ppo') {
+            this._renderMACDPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
         } else if (indicator.type === 'stoch' || indicator.type === 'stochastic') {
             this._renderStochPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
@@ -2849,6 +3508,12 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             return;
         } else if (indicator.type === 'mfi') {
             this._renderMFIPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
+        } else if (indicator.type === 'vortex') {
+            this._renderVortexPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
+        } else if (indicator.type === 'uo') {
+            this._renderUltimateOscillatorPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
         } else if (indicator.type === 'custom') {
             this._renderCustomSeparatePanelSlot(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
@@ -4197,6 +4862,89 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         }
         indicator._displayColor = indicator.style.macdColor || '#2962ff';
         indicator._displayLabel = lastM !== null ? 'M:' + lastM.toFixed(5) + (lastS !== null ? '  S:' + lastS.toFixed(5) : '') : '';
+    };
+
+    Chart.prototype._renderVortexPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
+        if (!data || !data.viPlus || !data.viMinus) return;
+        const a = data.viPlus;
+        const b = data.viMinus;
+        let min = Infinity;
+        let max = -Infinity;
+        for (let i = visibleStart; i < visibleEnd; i++) {
+            if (a[i] != null && !isNaN(a[i])) {
+                min = Math.min(min, a[i]);
+                max = Math.max(max, a[i]);
+            }
+            if (b[i] != null && !isNaN(b[i])) {
+                min = Math.min(min, b[i]);
+                max = Math.max(max, b[i]);
+            }
+        }
+        if (min === Infinity) return;
+        const range = max - min || 1;
+        min -= range * 0.08;
+        max += range * 0.08;
+        indicator._panelBaseMin = min;
+        indicator._panelBaseMax = max;
+        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        min = dom.min;
+        max = dom.max;
+        const vSpan = Math.max(1e-12, max - min);
+        const scaleY = function(val) {
+            if (val === null || val === undefined) return null;
+            const y = panelBottom - 5 - ((val - min) / vSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
+        this._drawPanelLine(ctx, m, a, indicator.style.plusColor || '#00e676', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+        this._drawPanelLine(ctx, m, b, indicator.style.minusColor || '#f23645', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+        const zy = scaleY(1);
+        if (zy !== null && zy > panelTop && zy < panelBottom) {
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(m.l, zy);
+            ctx.lineTo(this.w - m.r, zy);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+        indicator._displayColor = indicator.style.plusColor || '#00e676';
+        indicator._displayLabel = 'VI';
+    };
+
+    Chart.prototype._renderUltimateOscillatorPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
+        if (!Array.isArray(data)) return;
+        indicator._panelBaseMin = 0;
+        indicator._panelBaseMax = 100;
+        const domS = this._applyIndicatorPanelDomain(0, 100, indicator);
+        const sMin = domS.min;
+        const sMax = domS.max;
+        const sSpan = Math.max(1e-9, sMax - sMin);
+        const scaleY = function(v) {
+            if (v === null || v === undefined) return null;
+            const y = panelBottom - 5 - ((v - sMin) / sSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
+        [[70, 'rgba(239,83,80,0.45)'], [50, 'rgba(120,123,134,0.3)'], [30, 'rgba(38,166,154,0.45)']].forEach(function(row) {
+            const lvl = row[0];
+            const col = row[1];
+            const ry = scaleY(lvl);
+            if (ry !== null && ry > panelTop && ry < panelBottom) {
+                ctx.strokeStyle = col;
+                ctx.lineWidth = 1;
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath();
+                ctx.moveTo(m.l, ry);
+                ctx.lineTo(this.w - m.r, ry);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }, this);
+        this._drawPanelLine(ctx, m, data, indicator.style.color || '#7e57c2', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+        indicator._displayColor = indicator.style.color || '#7e57c2';
+        indicator._displayLabel = 'UO';
     };
 
     // ---- Stochastic panel: %K + %D lines + 80/50/20 reference levels ----

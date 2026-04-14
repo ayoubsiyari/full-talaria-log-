@@ -326,6 +326,118 @@ const INDICATOR_DEFINITIONS = {
             { id: 'lineWidth', label: 'Dot Size (rel.)', type: 'number', default: 2, min: 1, max: 6 }
         ]
     },
+    sessionsplus: {
+        name: 'Sessions+ (multi-session, UTC)',
+        type: 'overlay',
+        params: [
+            { id: 'showSydney', label: 'Sydney', type: 'checkbox', default: true },
+            { id: 'sydneyStart', label: 'Sydney start (UTC)', type: 'time', default: '21:00' },
+            { id: 'sydneyEnd', label: 'Sydney end (UTC)', type: 'time', default: '06:00' },
+            { id: 'sydneyColor', label: 'Sydney color', type: 'color', default: 'rgba(156, 39, 176, 0.14)' },
+            { id: 'showTokyo', label: 'Tokyo', type: 'checkbox', default: true },
+            { id: 'tokyoStart', label: 'Tokyo start (UTC)', type: 'time', default: '00:00' },
+            { id: 'tokyoEnd', label: 'Tokyo end (UTC)', type: 'time', default: '09:00' },
+            { id: 'tokyoColor', label: 'Tokyo color', type: 'color', default: 'rgba(255, 152, 0, 0.14)' },
+            { id: 'showAsian', label: 'Asian (alias band)', type: 'checkbox', default: true },
+            { id: 'asianStart', label: 'Asian start (UTC)', type: 'time', default: '00:00' },
+            { id: 'asianEnd', label: 'Asian end (UTC)', type: 'time', default: '09:00' },
+            { id: 'asianColor', label: 'Asian color', type: 'color', default: 'rgba(255, 193, 7, 0.12)' },
+            { id: 'showFrankfurt', label: 'Frankfurt', type: 'checkbox', default: true },
+            { id: 'frankfurtStart', label: 'Frankfurt start (UTC)', type: 'time', default: '07:00' },
+            { id: 'frankfurtEnd', label: 'Frankfurt end (UTC)', type: 'time', default: '10:00' },
+            { id: 'frankfurtColor', label: 'Frankfurt color', type: 'color', default: 'rgba(3, 169, 244, 0.14)' },
+            { id: 'showLondon', label: 'London', type: 'checkbox', default: true },
+            { id: 'londonStart', label: 'London start (UTC)', type: 'time', default: '08:00' },
+            { id: 'londonEnd', label: 'London end (UTC)', type: 'time', default: '16:00' },
+            { id: 'londonColor', label: 'London color', type: 'color', default: 'rgba(33, 150, 243, 0.14)' },
+            { id: 'showNewYork', label: 'New York', type: 'checkbox', default: true },
+            { id: 'newYorkStart', label: 'NY start (UTC)', type: 'time', default: '13:00' },
+            { id: 'newYorkEnd', label: 'NY end (UTC)', type: 'time', default: '21:00' },
+            { id: 'newYorkColor', label: 'NY color', type: 'color', default: 'rgba(76, 175, 80, 0.14)' }
+        ]
+    },
+    openingrange: {
+        name: 'Opening range (UTC day, first N min)',
+        type: 'overlay',
+        params: [
+            { id: 'minutes', label: 'Minutes from UTC midnight', type: 'number', default: 30, min: 1, max: 1440 },
+            { id: 'upperColor', label: 'High band color', type: 'color', default: '#2962ff' },
+            { id: 'middleColor', label: 'Midline color', type: 'color', default: '#787b86' },
+            { id: 'lowerColor', label: 'Low band color', type: 'color', default: '#2962ff' },
+            { id: 'fillColor', label: 'Fill (RGBA)', type: 'text', default: 'rgba(41, 98, 255, 0.06)' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4 }
+        ]
+    },
+    supertrend: {
+        name: 'Supertrend',
+        type: 'overlay',
+        params: [
+            { id: 'period', label: 'ATR length', type: 'number', default: 10, min: 1 },
+            { id: 'multiplier', label: 'ATR multiplier', type: 'number', default: 3, min: 0.1, step: 0.1 },
+            { id: 'upColor', label: 'Bull line color', type: 'color', default: '#26a69a' },
+            { id: 'downColor', label: 'Bear line color', type: 'color', default: '#ef5350' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    stddev: {
+        name: 'Close volatility (rolling stdev)',
+        type: 'overlay',
+        params: [
+            { id: 'period', label: 'Length', type: 'number', default: 20, min: 2 },
+            { id: 'color', label: 'Line color', type: 'color', default: '#ab47bc' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    ao: {
+        name: 'Awesome Oscillator',
+        type: 'separate',
+        params: [
+            { id: 'color', label: 'Bar / line color', type: 'color', default: '#26a69a' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    uo: {
+        name: 'Ultimate Oscillator',
+        type: 'separate',
+        params: [
+            { id: 'period1', label: 'Period 1', type: 'number', default: 7, min: 1 },
+            { id: 'period2', label: 'Period 2', type: 'number', default: 14, min: 1 },
+            { id: 'period3', label: 'Period 3', type: 'number', default: 28, min: 1 },
+            { id: 'color', label: 'Line color', type: 'color', default: '#7e57c2' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    vortex: {
+        name: 'Vortex Indicator',
+        type: 'separate',
+        params: [
+            { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
+            { id: 'plusColor', label: '+VI color', type: 'color', default: '#00e676' },
+            { id: 'minusColor', label: '-VI color', type: 'color', default: '#f23645' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
+    ppo: {
+        name: 'Percentage Price Oscillator',
+        type: 'separate',
+        params: [
+            { id: 'fast', label: 'Fast length', type: 'number', default: 12, min: 1 },
+            { id: 'slow', label: 'Slow length', type: 'number', default: 26, min: 1 },
+            { id: 'signal', label: 'Signal length', type: 'number', default: 9, min: 1 },
+            { id: 'macdColor', label: 'PPO line color', type: 'color', default: '#2962ff' },
+            { id: 'signalColor', label: 'Signal color', type: 'color', default: '#f23645' },
+            { id: 'histogramColor', label: 'Histogram color', type: 'color', default: '#787b86' }
+        ]
+    },
+    dpo: {
+        name: 'Detrended Price Oscillator',
+        type: 'separate',
+        params: [
+            { id: 'period', label: 'Length', type: 'number', default: 20, min: 2 },
+            { id: 'color', label: 'Line color', type: 'color', default: '#78909c' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ]
+    },
     custom: {
         name: 'Custom (sandboxed JS)',
         type: 'overlay',
@@ -961,16 +1073,16 @@ function createIndicatorSelectionMenu(chartInstance) {
             name: 'Technicals',
             icon: '',
             indicators: [
-                'sma', 'ema', 'wma', 'dema', 'tema', 'hma', 'bb', 'vwap', 'donchian', 'keltner', 'psar',
+                'sma', 'ema', 'wma', 'dema', 'tema', 'hma', 'bb', 'vwap', 'donchian', 'keltner', 'psar', 'supertrend', 'stddev',
                 'roc', 'mom',
-                'rsi', 'macd', 'stoch', 'atr', 'cci', 'adx', 'willr', 'mfi', 'aroon', 'cmf', 'trix',
+                'rsi', 'macd', 'ppo', 'stoch', 'atr', 'cci', 'adx', 'willr', 'mfi', 'aroon', 'cmf', 'trix', 'ao', 'uo', 'vortex', 'dpo',
                 'obv', 'adr', 'volume'
             ]
         },
         sessions: {
             name: 'Sessions',
             icon: '',
-            indicators: ['sessions', 'killzones']
+            indicators: ['sessions', 'sessionsplus', 'openingrange', 'killzones']
         },
         script: {
             name: 'Custom',
