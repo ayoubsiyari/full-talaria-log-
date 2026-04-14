@@ -51,6 +51,96 @@
         return !!(el && el.classList.contains('active'));
     }
 
+    /** Active chart ticker (e.g. EURUSD) — not used for FILE_* placeholders. */
+    function getCurrentChartSymbol() {
+        var ch = mainChart();
+        var s = ch && ch.currentSymbol ? String(ch.currentSymbol) : '';
+        if (!s || /^FILE_/i.test(s)) return '';
+        return s;
+    }
+
+    /**
+     * Parse six-letter FX/metal spot symbols (EURUSD, XAUUSD). Returns null if unknown shape.
+     */
+    function parseForexPair(sym) {
+        if (!sym) return null;
+        var s = String(sym).toUpperCase().replace(/[^A-Z]/g, '');
+        if (s.length < 6) return null;
+        s = s.slice(0, 6);
+        if (!/^[A-Z]{6}$/.test(s)) return null;
+        return { base: s.slice(0, 3), quote: s.slice(3, 6) };
+    }
+
+    /**
+     * Finnhub calendar uses country (often ISO2) and sometimes currency. Map each FX leg to regions/codes.
+     */
+    var CCY_TO_REGION_CODES = {
+        USD: ['US', 'USA'],
+        EUR: ['EU', 'EZ', 'DE', 'FR', 'IT', 'ES', 'NL', 'BE', 'AT', 'PT', 'IE', 'GR', 'FI'],
+        GBP: ['GB', 'UK'],
+        JPY: ['JP'],
+        AUD: ['AU'],
+        NZD: ['NZ'],
+        CAD: ['CA'],
+        CHF: ['CH'],
+        XAU: ['US', 'EU', 'EZ', 'GB', 'DE', 'FR'],
+        XAG: ['US', 'EU', 'EZ', 'GB', 'DE', 'FR'],
+        CNY: ['CN'],
+        CNH: ['CN'],
+        HKD: ['HK'],
+        SGD: ['SG'],
+        TRY: ['TR'],
+        ZAR: ['ZA'],
+        MXN: ['MX'],
+        NOK: ['NO'],
+        SEK: ['SE'],
+        DKK: ['DK'],
+        PLN: ['PL'],
+        RUB: ['RU'],
+        INR: ['IN'],
+        BRL: ['BR'],
+        KRW: ['KR'],
+        THB: ['TH'],
+        ILS: ['IL'],
+        BTC: ['US'],
+        ETH: ['US']
+    };
+
+    function normCountryToken(raw) {
+        var c = String(raw || '').trim().toUpperCase();
+        if (!c) return '';
+        if (c.length <= 3) return c;
+        if (c.indexOf('UNITED STATES') !== -1) return 'US';
+        if (c.indexOf('UNITED KINGDOM') !== -1) return 'GB';
+        if (c.indexOf('EMU') !== -1 || c.indexOf('EURO AREA') !== -1) return 'EU';
+        return c;
+    }
+
+    function currencyLegMatchesEvent(ccy, eventCountry, eventCurrency) {
+        ccy = String(ccy || '').toUpperCase();
+        if (!ccy) return false;
+        var ecu = String(eventCurrency || '').trim().toUpperCase();
+        if (ecu === ccy) return true;
+        var cty = normCountryToken(eventCountry);
+        var regions = CCY_TO_REGION_CODES[ccy];
+        if (!regions || !regions.length) {
+            return cty.length >= 2 && cty.slice(0, 2) === ccy.slice(0, 2);
+        }
+        for (var i = 0; i < regions.length; i++) {
+            var r = regions[i];
+            if (cty === r || (cty.length >= 2 && cty.slice(0, 2) === r.slice(0, 2))) return true;
+        }
+        return false;
+    }
+
+    function eventMatchesChartPair(e, pair) {
+        if (!pair) return true;
+        return (
+            currencyLegMatchesEvent(pair.base, e.country, e.currency) ||
+            currencyLegMatchesEvent(pair.quote, e.country, e.currency)
+        );
+    }
+
     function escapeHtml(s) {
         return String(s)
             .replace(/&/g, '&amp;')
@@ -131,7 +221,8 @@
         var t = parseTime(raw.time || raw.date || raw.datetime);
         if (t == null) return null;
         var ev = raw.event || raw.name || raw.title || 'Economic event';
-        var country = raw.country || raw.currency || '';
+        var country = raw.country || '';
+        var currency = raw.currency != null && raw.currency !== '' ? String(raw.currency) : '';
         var unit = raw.unit || raw.unitType || '';
         var est = raw.estimate != null ? raw.estimate : raw.forecast;
         var prev = raw.prev != null ? raw.prev : raw.previous;
@@ -139,6 +230,7 @@
             t: t,
             event: ev,
             country: country,
+            currency: currency,
             impact: impactClass(raw.impact),
             actual: fmtVal(raw.actual, unit),
             forecast: fmtVal(est, unit),
@@ -176,12 +268,14 @@
     function filterEvents() {
         var q = state.query.trim().toLowerCase();
         var now = referenceNowMs();
+        var pair = parseForexPair(getCurrentChartSymbol());
         var list = state.events.filter(function (e) {
+            if (pair && !eventMatchesChartPair(e, pair)) return false;
             var upcoming = e.t >= now;
             if (state.tab === 'upcoming' && !upcoming) return false;
             if (state.tab === 'previous' && upcoming) return false;
             if (!q) return true;
-            var hay = (e.event + ' ' + e.country).toLowerCase();
+            var hay = (e.event + ' ' + e.country + ' ' + e.currency).toLowerCase();
             return hay.indexOf(q) !== -1;
         });
         return list;
@@ -192,7 +286,7 @@
         var tp = timeParts(e.t);
         var upcoming = e.t >= now;
         var cd = upcoming ? formatCountdown(e.t - now) : '—';
-        var flag = flagEmoji(e.country);
+        var flag = flagEmoji(e.country || e.currency);
         var prevCls = prevValueClass(e.previous);
 
         var impactBars = '';
@@ -255,7 +349,12 @@
         }
         var list = filterEvents();
         if (!list.length) {
-            setNewsItemsHtml('<div style="padding:24px;text-align:center;color:#6a6a7a;">No events in this view.</div>');
+            var sym = getCurrentChartSymbol();
+            var pr = parseForexPair(sym);
+            var hint = pr
+                ? ('No economic releases for ' + pr.base + '/' + pr.quote + ' on this day in this view.')
+                : 'No events in this view.';
+            setNewsItemsHtml('<div style="padding:24px;text-align:center;color:#6a6a7a;">' + escapeHtml(hint) + '</div>');
             return;
         }
         setNewsItemsHtml(list.map(renderItem).join(''));
@@ -337,6 +436,7 @@
             state.loading = false;
             render();
             startCountdownLoop();
+            requestChartMarkerRedraw();
         }
     }
 
@@ -380,6 +480,28 @@
         }, 200);
     }
 
+    /** Redraw main chart canvas so time-axis economic markers track pan/zoom (see chart.js). */
+    function requestChartMarkerRedraw() {
+        var ch = window.chart || window.mainChart;
+        if (ch && typeof ch.scheduleRender === 'function') {
+            ch.scheduleRender();
+        }
+    }
+
+    /**
+     * Pair-filtered releases for the focused day (upcoming + past) — used on the time axis, not search/tab.
+     */
+    window.__economicCalendarForChart = {
+        getEvents: function () {
+            if (!state.events || !state.events.length) return [];
+            var pair = parseForexPair(getCurrentChartSymbol());
+            if (!pair) return state.events.slice();
+            return state.events.filter(function (e) {
+                return eventMatchesChartPair(e, pair);
+            });
+        }
+    };
+
     function bindNewsSearchInputs() {
         document.querySelectorAll('[id="newsSearchInput"]').forEach(function (input) {
             if (boundSearchInputs) {
@@ -405,6 +527,7 @@
         } else {
             render();
             startCountdownLoop();
+            requestChartMarkerRedraw();
         }
     };
 
@@ -423,16 +546,26 @@
         if (state.replayDayReloadTimer) clearTimeout(state.replayDayReloadTimer);
         state.replayDayReloadTimer = setTimeout(function () {
             state.replayDayReloadTimer = null;
-            if (!newsPanelIsActive()) return;
+            requestChartMarkerRedraw();
             var rng = focusCalendarDayRange();
             if (state.loaded && state.loadedForDay === rng.fromStr) {
-                render();
-                startCountdownLoop();
+                if (newsPanelIsActive()) {
+                    render();
+                    startCountdownLoop();
+                }
                 return;
             }
             state.loaded = false;
             state.loadedForDay = null;
             loadCalendar();
         }, 400);
+    });
+
+    window.addEventListener('chartDataLoaded', function () {
+        if (newsPanelIsActive() && state.loaded) {
+            render();
+            startCountdownLoop();
+        }
+        requestChartMarkerRedraw();
     });
 })();

@@ -10722,6 +10722,7 @@ class Chart {
             const latestCandle = this.data[this.data.length - 1];
             this.drawPriceLine([latestCandle]);
             this.drawAxes();
+            this.drawEconomicCalendarAxisMarkers();
             
             this.drawCurrentPriceLabel([latestCandle]);
             
@@ -10823,6 +10824,9 @@ class Chart {
         // Draw axes LAST so the price/time axis always overlays candles and other chart content.
         // This makes candles hide behind the axis instead of drawing above it.
         this.drawAxes();
+
+        // Economic calendar markers (Finnhub) on the time-axis row — after axes so they sit above the axis line.
+        this.drawEconomicCalendarAxisMarkers();
 
         // Draw current price label AFTER axes so it isn't covered by the axis background fill
         this.drawCurrentPriceLabel(visible);
@@ -12575,6 +12579,83 @@ class Chart {
         // Use same calculation as pixelToDataIndex but inverted
         const candleSpacing = this.getCandleSpacing();
         return this.margin.l + (dataIdx * candleSpacing) + this.offsetX;
+    }
+
+    /**
+     * Map wall-clock ms to fractional bar index (aligns with CoordinateUtils.timestampToIndex for marks).
+     */
+    _timestampToFractionalDataIndex(timestamp) {
+        const data = this.data;
+        if (!data || data.length === 0 || !Number.isFinite(timestamp)) return null;
+        let tf = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        let interval = this.parseTimeframe(tf);
+        if (!Number.isFinite(interval) || interval <= 0) {
+            interval = data.length >= 2 ? (data[1].t - data[0].t) : 60000;
+        }
+        const firstCandle = data[0];
+        const lastCandle = data[data.length - 1];
+        if (timestamp < firstCandle.t) {
+            return -(firstCandle.t - timestamp) / interval;
+        }
+        if (timestamp > lastCandle.t) {
+            return (data.length - 1) + (timestamp - lastCandle.t) / interval;
+        }
+        for (let i = 0; i < data.length; i++) {
+            const candle = data[i];
+            const nextCandle = data[i + 1];
+            if (!nextCandle || timestamp < nextCandle.t) {
+                const fractionWithinCandle = (timestamp - candle.t) / interval;
+                return i + fractionWithinCandle;
+            }
+        }
+        return data.length - 1;
+    }
+
+    /**
+     * TradingView-style economic calendar dots on the time-axis strip (pair-filtered data from economic-news-sidebar).
+     */
+    drawEconomicCalendarAxisMarkers() {
+        const api = typeof window !== 'undefined' ? window.__economicCalendarForChart : null;
+        if (!api || typeof api.getEvents !== 'function' || !this.data || this.data.length === 0) return;
+
+        let events;
+        try {
+            events = api.getEvents();
+        } catch (e) {
+            return;
+        }
+        if (!events || events.length === 0 || !this.ctx) return;
+
+        const m = this.margin;
+        const y = this.h - m.b + 12;
+        const r = Math.max(2.5, Math.min(4, (typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 8) * 0.2));
+
+        this.ctx.save();
+        for (let i = 0; i < events.length; i++) {
+            const e = events[i];
+            const ts = e && e.t;
+            if (!Number.isFinite(ts)) continue;
+            const idx = this._timestampToFractionalDataIndex(ts);
+            if (idx == null || !Number.isFinite(idx)) continue;
+            const x = this.dataIndexToPixel(idx);
+            if (x < m.l - 4 || x > this.w - m.r + 4) continue;
+
+            let fill = '#787b86';
+            if (e.impact === 'high') fill = '#f23645';
+            else if (e.impact === 'medium') fill = '#ff9800';
+
+            const jitter = (i % 5) * 2.2 - 4.4;
+            const xi = x + jitter;
+
+            this.ctx.beginPath();
+            this.ctx.fillStyle = fill;
+            this.ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+            this.ctx.lineWidth = 1;
+            this.ctx.arc(xi, y, r, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.stroke();
+        }
+        this.ctx.restore();
     }
     
     /**
