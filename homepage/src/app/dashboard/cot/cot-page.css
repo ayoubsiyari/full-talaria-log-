@@ -91,20 +91,6 @@
   gap: 24px;
 }
 
-/* Single horizontal gutter from dashboard shell when main is full-width */
-.db-main-wrap--full .cot-page-header {
-  padding-left: 0;
-  padding-right: 0;
-}
-.db-main-wrap--full .cot-main {
-  padding-left: 0;
-  padding-right: 0;
-}
-.db-main-wrap--full .cot-loading {
-  padding-left: 0;
-  padding-right: 0;
-}
-
 .cot-asset-tabs {
   display: flex;
   align-items: center;
@@ -143,89 +129,16 @@
   opacity: 0.6;
 }
 
-.cot-filters-block {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.cot-filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 12px 16px;
-}
-.cot-filter-label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-.cot-filter-grow {
-  flex: 1 1 200px;
-  min-width: 160px;
-}
-.cot-select {
-  background: #111318;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 12px;
-  font-family: var(--font-zain), system-ui, sans-serif;
-  color: #e8e4dc;
-  min-width: 140px;
-  max-width: 100%;
-  cursor: pointer;
-}
-.cot-select:focus {
-  outline: none;
-  border-color: rgba(200, 240, 96, 0.35);
-}
-.cot-search-input {
-  width: 100%;
-  background: #111318;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 12px;
-  font-family: var(--font-zain), system-ui, sans-serif;
-  color: #e8e4dc;
-}
-.cot-search-input::placeholder {
-  color: #7a7680;
-}
-.cot-search-input:focus {
-  outline: none;
-  border-color: rgba(200, 240, 96, 0.35);
-}
-.cot-filter-meta {
-  font-size: 11px;
-  color: #a3a0ae;
-  font-variant-numeric: tabular-nums;
-}
-.cot-td-muted {
-  font-size: 10px;
-  color: #a8a5b0;
-  max-width: 140px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .cot-sentiment-strip {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 1px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 12px;
   overflow: hidden;
 }
-@media (max-width: 1200px) {
-  .cot-sentiment-strip {
-    grid-template-columns: repeat(4, 1fr);
-  }
-}
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .cot-sentiment-strip {
     grid-template-columns: repeat(3, 1fr);
   }
@@ -596,14 +509,8 @@
 .cot-data-table tr:last-child td {
   border-bottom: none;
 }
-.cot-data-table tbody tr {
-  cursor: pointer;
-}
 .cot-data-table tr:hover td {
   background: rgba(255, 255, 255, 0.02);
-}
-.cot-data-table tr.cot-tr-selected td {
-  background: rgba(200, 240, 96, 0.06);
 }
 .cot-td-sym {
   color: #e8e4dc;

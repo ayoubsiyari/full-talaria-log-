@@ -126,15 +126,7 @@ export default function DashboardLayout({
         </nav>
       </header>
 
-      <main
-        className={
-          pathname.startsWith("/dashboard/cot")
-            ? "db-main-wrap db-main-wrap--full"
-            : "db-main-wrap"
-        }
-      >
-        {children}
-      </main>
+      <main className="db-main-wrap">{children}</main>
     </div>
   );
 }

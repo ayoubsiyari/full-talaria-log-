@@ -1,5 +1,4 @@
 import type { CotInstrumentDef } from "./cot-instruments";
-import { inferLegacyGroup } from "./cot-instruments";
 
 const CFTC_BASE = "https://publicreporting.cftc.gov/resource/jun7-fc8e.json";
 
@@ -7,11 +6,6 @@ export type CftcRow = {
   cftc_contract_market_code?: string;
   report_date_as_yyyy_mm_dd?: string;
   market_and_exchange_names?: string;
-  contract_market_name?: string;
-  commodity_name?: string;
-  commodity?: string;
-  commodity_group_name?: string;
-  commodity_subgroup_name?: string;
   open_interest_all?: string;
   noncomm_positions_long_all?: string;
   noncomm_positions_short_all?: string;
@@ -20,8 +14,6 @@ export type CftcRow = {
   nonrept_positions_long_all?: string;
   nonrept_positions_short_all?: string;
   change_in_open_interest_all?: string;
-  change_in_noncomm_long_all?: string;
-  change_in_noncomm_short_all?: string;
 };
 
 export function parseIntField(s: string | undefined): number {
@@ -51,72 +43,9 @@ export function rowSmallSpecNet(r: CftcRow): number {
   return L - S;
 }
 
-function escapeSoqlString(s: string): string {
-  return String(s).replace(/'/g, "''");
-}
-
-/** Latest report timestamp as returned by the API (for $where clauses). */
-export async function fetchLatestReportDateRaw(): Promise<string> {
-  const url = `${CFTC_BASE}?$select=report_date_as_yyyy_mm_dd&$order=report_date_as_yyyy_mm_dd DESC&$limit=1`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`CFTC HTTP ${res.status}`);
-  const rows = (await res.json()) as { report_date_as_yyyy_mm_dd?: string }[];
-  const d = rows[0]?.report_date_as_yyyy_mm_dd;
-  if (!d) throw new Error("No report date from CFTC");
-  return String(d);
-}
-
-/** YYYY-MM-DD for display. */
-export function reportDateDisplay(raw: string): string {
-  return raw.slice(0, 10);
-}
-
-/** All Legacy Combined rows for a single report (one row per contract market). */
-export async function fetchRowsForReportDate(
-  reportDateRaw: string
-): Promise<CftcRow[]> {
-  const safe = escapeSoqlString(reportDateRaw);
-  const where = `report_date_as_yyyy_mm_dd='${safe}'`;
-  const url =
-    `${CFTC_BASE}?$where=${encodeURIComponent(where)}` +
-    `&$order=${encodeURIComponent("cftc_contract_market_code ASC")}` +
-    `&$limit=50000`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`CFTC HTTP ${res.status}`);
-  const rows = (await res.json()) as CftcRow[];
-  return Array.isArray(rows) ? rows : [];
-}
-
-export function rowToDef(r: CftcRow): CotInstrumentDef | null {
-  const code = String(r.cftc_contract_market_code || "").trim();
-  if (!code) return null;
-  const longName =
-    String(r.contract_market_name || "").trim() ||
-    String(r.market_and_exchange_names || "").trim() ||
-    code;
-  const sym =
-    longName.length > 48 ? `${longName.slice(0, 46)}…` : longName;
-  const cg = r.commodity_group_name ?? null;
-  const cs = r.commodity_subgroup_name ?? null;
-  const cn =
-    r.commodity_name ?? r.commodity ?? null;
-  return {
-    sym,
-    cftc_contract_market_code: code,
-    code,
-    group: inferLegacyGroup(cg, cs),
-    commodityGroup: cg,
-    commoditySubgroup: cs,
-    commodityName: cn,
-  };
-}
-
 /** ASC by report date (oldest first). */
-export async function fetchCotHistory(
-  code: string,
-  limit = 200
-): Promise<CftcRow[]> {
-  const safe = escapeSoqlString(String(code));
+export async function fetchCotHistory(code: string, limit = 200): Promise<CftcRow[]> {
+  const safe = String(code).replace(/'/g, "''");
   const where = `cftc_contract_market_code='${safe}'`;
   const url =
     `${CFTC_BASE}?$where=${encodeURIComponent(where)}` +
@@ -153,8 +82,6 @@ export type CotSnapshot = {
   percentile3y: number | null;
   low3y: number;
   high3y: number;
-  /** Full weekly history fetched (charts, percentile, flip detection). */
-  historyLoaded: boolean;
 };
 
 function percentileRank(value: number, sortedAsc: number[]): number | null {
@@ -230,139 +157,7 @@ export function buildSnapshot(def: CotInstrumentDef, rows: CftcRow[]): CotSnapsh
     percentile3y,
     low3y,
     high3y,
-    historyLoaded: true,
   };
-}
-
-/**
- * Latest report only (no time series). Uses CFTC week-over-week change fields for Δ net / OI.
- */
-export function buildPartialSnapshot(
-  def: CotInstrumentDef,
-  row: CftcRow
-): CotSnapshot | null {
-  const oi = parseIntField(row.open_interest_all);
-  const ncl = parseIntField(row.noncomm_positions_long_all);
-  const ncs = parseIntField(row.noncomm_positions_short_all);
-  const commL = parseIntField(row.comm_positions_long_all);
-  const commS = parseIntField(row.comm_positions_short_all);
-  const netNonComm = rowNetNonComm(row);
-  const netComm = rowNetComm(row);
-  const smallNet = rowSmallSpecNet(row);
-  if (!Number.isFinite(netNonComm) || !Number.isFinite(oi)) return null;
-
-  const dL = parseIntField(row.change_in_noncomm_long_all);
-  const dS = parseIntField(row.change_in_noncomm_short_all);
-  const wkNetDelta =
-    Number.isFinite(dL) && Number.isFinite(dS) ? dL - dS : 0;
-
-  const oiChg = parseIntField(row.change_in_open_interest_all);
-  const prevOi = Number.isFinite(oiChg) ? oi - oiChg : NaN;
-  let wkOiDeltaPct = 0;
-  if (Number.isFinite(prevOi) && prevOi !== 0) {
-    wkOiDeltaPct = (oiChg / prevOi) * 100;
-  }
-
-  const reportDate = String(row.report_date_as_yyyy_mm_dd || "").slice(0, 10);
-  const marketName = String(row.market_and_exchange_names || def.sym);
-
-  return {
-    def,
-    marketName,
-    reportDate,
-    oi,
-    noncommLong: ncl,
-    noncommShort: ncs,
-    commLong: commL,
-    commShort: commS,
-    netNonComm,
-    netComm,
-    smallNet,
-    wkNetDelta,
-    wkOiDeltaPct,
-    netDeltaSeries: [],
-    netHistory: [],
-    netHistoryFull: [],
-    crossedZero: false,
-    percentile3y: null,
-    low3y: netNonComm,
-    high3y: netNonComm,
-    historyLoaded: false,
-  };
-}
-
-async function runWithConcurrency(
-  tasks: (() => Promise<void>)[],
-  limit: number
-): Promise<void> {
-  let ix = 0;
-  const runWorker = async () => {
-    for (;;) {
-      const i = ix++;
-      if (i >= tasks.length) return;
-      await tasks[i]();
-    }
-  };
-  const n = Math.max(1, Math.min(limit, tasks.length));
-  await Promise.all(Array.from({ length: n }, () => runWorker()));
-}
-
-export type LoadCotProgress = { phase: "catalog" | "history"; done: number; total: number };
-
-/**
- * One catalog request (all markets, latest week only) + full history only for `popularCodes`.
- * Remaining markets stay {@link CotSnapshot.historyLoaded} false until merged via fetch.
- */
-export async function loadPopularAndCatalog(
-  popularCodes: readonly string[],
-  historyLimit = 220,
-  concurrency = 8,
-  onProgress?: (p: LoadCotProgress) => void
-): Promise<CotSnapshot[]> {
-  onProgress?.({ phase: "catalog", done: 0, total: 1 });
-  const rawDate = await fetchLatestReportDateRaw();
-  const latestRows = await fetchRowsForReportDate(rawDate);
-  const byCode = new Map<string, CftcRow>();
-  for (const r of latestRows) {
-    const c = String(r.cftc_contract_market_code || "").trim();
-    if (c) byCode.set(c, r);
-  }
-
-  const partials: CotSnapshot[] = [];
-  for (const r of latestRows) {
-    const def = rowToDef(r);
-    if (!def) continue;
-    const p = buildPartialSnapshot(def, r);
-    if (p) partials.push(p);
-  }
-
-  const want = popularCodes
-    .map((c) => c.trim())
-    .filter((c) => c.length > 0 && byCode.has(c));
-  const total = want.length;
-  let done = 0;
-  onProgress?.({ phase: "history", done: 0, total: total || 1 });
-
-  const fullByCode = new Map<string, CotSnapshot>();
-  const tasks = want.map((code) => async () => {
-    const row = byCode.get(code);
-    if (!row) return;
-    const def = rowToDef(row);
-    if (!def) return;
-    try {
-      const rows = await fetchCotHistory(code, historyLimit);
-      const snap = buildSnapshot(def, rows);
-      if (snap) fullByCode.set(code, snap);
-    } catch {
-      /* keep partial */
-    }
-    done++;
-    onProgress?.({ phase: "history", done, total: total || 1 });
-  });
-
-  await runWithConcurrency(tasks, concurrency);
-
-  return partials.map((p) => fullByCode.get(p.def.code) ?? p);
 }
 
 export async function loadAllSnapshots(
