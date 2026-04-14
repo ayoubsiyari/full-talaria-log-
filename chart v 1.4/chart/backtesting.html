@@ -29,471 +29,264 @@
                 });
         })();
     </script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #070711;
-            color: #e2e8f0;
-            min-height: 100vh;
-            overflow: hidden;
-        }
-
-        body::before {
-            content: '';
-            position: fixed;
-            inset: 0;
-            background: radial-gradient(ellipse at top, rgba(59,130,246,0.07), transparent 60%);
-            pointer-events: none;
-            z-index: 0;
-        }
-
-        .top-bar {
-            position: fixed;
-            top: 0; left: 0; right: 0;
-            height: 52px;
-            background: rgba(7,7,17,0.92);
-            backdrop-filter: blur(20px);
-            border-bottom: 1px solid rgba(255,255,255,0.06);
-            display: flex;
-            align-items: center;
-            padding: 0 20px;
-            z-index: 100;
-        }
-        .top-bar-logo { height: 30px; margin-right: 14px; }
-        .top-bar-title { font-size: 14px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 8px; }
-        .top-bar-title svg { width: 16px; height: 16px; stroke: #3b82f6; }
-        .top-bar-actions { margin-left: auto; display: flex; gap: 8px; }
-
-        .container {
-            max-width: 720px;
-            margin: 0 auto;
-            padding: 64px 20px 20px;
-            height: 100vh;
-            overflow: hidden;
-        }
-        html.iframe-mode, html.iframe-mode body {
-            height: 100%;
-            overflow: hidden;
-        }
-        html.iframe-mode .container {
-            height: 100%;
-            padding: 0;
-            max-width: none;
-        }
-        html.iframe-mode .main-content {
-            height: 100%;
-            border-radius: 0;
-            border: none;
-        }
-
-        .main-content {
-            background: rgba(255,255,255,0.02);
-            border: 1px solid rgba(255,255,255,0.06);
-            border-radius: 14px;
-            overflow: hidden;
-            height: calc(100vh - 84px);
-            display: flex;
-            flex-direction: column;
-        }
-
-        .modal-header-bar { padding: 14px 20px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-        .modal-header-bar h1 { font-size: 15px; font-weight: 600; color: #fff; letter-spacing: -0.01em; }
-        .close-btn { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: rgba(255,255,255,0.4); width: 28px; height: 28px; border-radius: 8px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
-        .close-btn:hover { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.2); color: #ef4444; }
-        .full-panel { flex: 1; padding: 18px 20px 24px; overflow-y: auto; overflow-x: hidden; }
-        .full-panel::-webkit-scrollbar { width: 3px; }
-        .full-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
-        .form-grid { display: flex; flex-direction: column; }
-        .form-card { padding: 16px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
-        .form-card:last-of-type { border-bottom: none; }
-        .card-icon { display: none; }
-        .form-card h3 { font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.28); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; }
-        .form-group { margin-bottom: 12px; }
-        .form-group:last-child { margin-bottom: 0; }
-        .form-group label { display: block; font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.4); margin-bottom: 5px; }
-        .form-group label .required { color: #f87171; }
-        .form-group input[type="text"], .form-group input[type="number"], .form-group input[type="datetime-local"], .form-group input[type="date"], .form-group textarea, .form-group select { width: 100%; padding: 8px 11px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: #e2e8f0; font-size: 13px; font-family: inherit; transition: border-color 0.15s, background 0.15s; -webkit-appearance: none; appearance: none; }
-        .form-group select option {
-            background: #111425;
-            color: #e2e8f0;
-        }
-        .form-group select option:checked,
-        .form-group select option:hover {
-            background: #2b67c1;
-            color: #ffffff;
-        }
-        .form-group input::placeholder, .form-group textarea::placeholder { color: rgba(255,255,255,0.18); }
-        .form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline: none; border-color: rgba(59,130,246,0.4); background: rgba(255,255,255,0.06); }
-        .form-group textarea { resize: vertical; min-height: 60px; }
-        .helper-text { font-size: 11px; color: rgba(255,255,255,0.22); margin-top: 4px; line-height: 1.4; }
-        .instrument-table-wrap {
-            overflow-x: auto;
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 8px;
-            background: rgba(255,255,255,0.02);
-        }
-        .instrument-table {
-            width: 100%;
-            border-collapse: collapse;
-            min-width: 820px;
-        }
-        .instrument-table thead th {
-            text-align: left;
-            padding: 9px 8px;
-            color: rgba(255,255,255,0.45);
-            font-size: 12px;
-            font-weight: 600;
-            border-bottom: 1px solid rgba(255,255,255,0.08);
-            background: rgba(255,255,255,0.02);
-        }
-        .instrument-table tbody td {
-            padding: 8px;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-        }
-        .instrument-table tbody tr:last-child td {
-            border-bottom: none;
-        }
-        .instrument-input {
-            width: 100%;
-            padding: 8px 11px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 8px;
-            color: #e2e8f0;
-            font-size: 13px;
-            font-family: inherit;
-            transition: border-color 0.15s, background 0.15s;
-            -webkit-appearance: none;
-            appearance: none;
-        }
-        .instrument-input:focus {
-            outline: none;
-            border-color: rgba(59,130,246,0.4);
-            background: rgba(255,255,255,0.06);
-        }
-        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-        @media (max-width: 900px) {
-            .form-row-3 { grid-template-columns: 1fr 1fr; }
-        }
-        @media (max-width: 640px) {
-            .form-row, .form-row-3 { grid-template-columns: 1fr; }
-        }
-        .preset-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-
-        .preset-btn { padding: 5px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 20px; color: rgba(255,255,255,0.45); font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s; font-family: inherit; }
-        .preset-btn:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.14); color: #fff; }
-        .preset-btn.active { background: rgba(59,130,246,0.2); border-color: rgba(59,130,246,0.35); color: #93c5fd; }
-        .form-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 16px; margin-top: 16px; border-top: 1px solid rgba(255,255,255,0.05); }
-        .form-actions-container { display: flex; justify-content: space-between; align-items: center; padding: 14px 0 0; margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.05); }
-        .forward-mode-toggle { display: flex; align-items: center; gap: 10px; }
-        .toggle-text-wrapper { display: flex; align-items: center; gap: 6px; }
-        .toggle-text { color: rgba(255,255,255,0.55); font-size: 12px; font-weight: 500; user-select: none; }
-        .action-buttons-group { display: flex; gap: 8px; }
-        .btn { padding: 8px 18px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; border: 1px solid rgba(255,255,255,0.08); outline: none; font-family: inherit; display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.6); }
-        .btn:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.14); color: #fff; }
-        .btn svg { width: 14px; height: 14px; stroke: currentColor; }
-        .btn-cancel { background: transparent; color: rgba(255,255,255,0.4); border: 1px solid rgba(255,255,255,0.07); }
-        .btn-cancel:hover { background: rgba(255,255,255,0.05); color: #fff; }
-        .btn-primary { background: rgba(59,130,246,0.85); color: #fff; border: 1px solid rgba(59,130,246,0.4); }
-        .btn-primary:hover { background: #3b82f6; border-color: rgba(59,130,246,0.6); }
-        .link { color: rgba(59,130,246,0.8); text-decoration: none; font-size: 12px; }
-        .link:hover { color: #60a5fa; text-decoration: underline; }
-        .symbol-tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.18); border-radius: 16px; font-size: 12px; color: #c4b5fd; }
-        .symbol-tag button { background: none; border: none; color: #a78bfa; cursor: pointer; padding: 0; font-size: 14px; line-height: 1; }
-        .toggle-switch { position: relative; display: inline-block; width: 38px; height: 22px; flex-shrink: 0; }
-        .toggle-switch input { opacity: 0; width: 0; height: 0; }
-        .toggle-slider { position: absolute; cursor: pointer; inset: 0; background: rgba(255,255,255,0.08); transition: all 0.2s; border-radius: 22px; border: 1px solid rgba(255,255,255,0.1); }
-        .toggle-slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background: #94a3b8; transition: all 0.2s; border-radius: 50%; }
-        input:checked + .toggle-slider { background: rgba(59,130,246,0.6); border-color: rgba(59,130,246,0.4); }
-        input:checked + .toggle-slider:before { transform: translateX(16px); background: #fff; }
-        .readonly-input {
-            background: rgba(255,255,255,0.03) !important;
-            color: rgba(255,255,255,0.8) !important;
-            border-color: rgba(255,255,255,0.1) !important;
-            cursor: not-allowed;
-        }
-        .warning-box { background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.2); border-radius: 8px; padding: 10px 12px; color: #fbbf24; font-size: 12px; }
-        .info-tooltip { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; background: rgba(255,255,255,0.08); border-radius: 50%; font-size: 10px; color: rgba(255,255,255,0.35); cursor: help; vertical-align: middle; margin-left: 3px; }
-        .info-icon-container { position: relative; display: inline-flex; align-items: center; cursor: help; }
-        .info-icon { color: rgba(255,255,255,0.22); transition: all 0.15s; }
-        .info-icon-container:hover .info-icon { color: #60a5fa; }
-        .info-icon-container .info-tooltip { display: block; width: 280px; height: auto; background: rgba(10,10,20,0.98); border: 1px solid rgba(255,255,255,0.1); color: #e2e8f0; padding: 10px 14px; border-radius: 8px; font-size: 12px; line-height: 1.5; white-space: normal; box-shadow: 0 8px 24px rgba(0,0,0,0.5); opacity: 0; visibility: hidden; transition: all 0.2s; pointer-events: none; z-index: 1000; position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%) scale(0.95); }
-        .info-icon-container:hover .info-tooltip { opacity: 1; visibility: visible; transform: translateX(-50%) scale(1); }
-        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center; }
-        .modal-overlay.active { display: flex; }
-        .modal-content { background: #0a0a14; border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 24px; max-width: 480px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.06); }
-        .modal-header h2 { font-size: 15px; font-weight: 600; color: #fff; }
-        .modal-close { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); font-size: 18px; cursor: pointer; color: rgba(255,255,255,0.4); width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 8px; transition: all 0.15s; }
-        .modal-close:hover { background: rgba(239,68,68,0.1); color: #ef4444; }
-        #createPresetModal label { color: rgba(255,255,255,0.6); font-size: 12px; font-weight: 500; display: block; margin-bottom: 6px; }
-        #createPresetModal .required { color: #f87171; }
-        .empty-state { text-align: center; padding: 32px 16px; color: rgba(255,255,255,0.3); }
-    </style>
+    <link rel="stylesheet" href="backtesting-styles.css?v=3">
 </head>
 <body>
     <!-- Top Bar -->
-    <div class="top-bar">
-        <img src="modules/logo-08.png" alt="Logo" class="top-bar-logo">
-        <div class="top-bar-title">Standard Backtesting Mode</div>
-        <div class="top-bar-actions">
-            <button type="button" class="btn btn-cancel" onclick="handleCancel()">Back to Sessions</button>
+    <header class="bt-top-bar">
+        <img src="modules/logo-08.png" alt="" class="bt-top-bar-logo" width="28" height="28" decoding="async" />
+        <div class="bt-top-bar-title">Standard Backtesting Mode</div>
+        <div class="bt-top-bar-actions">
+            <button type="button" class="bt-top-cancel" onclick="handleCancel()">Back to Sessions</button>
         </div>
-    </div>
+    </header>
 
-    <div class="container">
-        <!-- Main Content -->
-        <div class="main-content">
-            <!-- Header -->
-            <div class="modal-header-bar">
-                <h1>Create Standard Backtest</h1>
-                <button class="close-btn" onclick="handleCancel()" type="button">&times;</button>
+    <div class="bt-overlay">
+        <div class="bt-modal">
+            <div class="bt-modal-header">
+                <div class="header-left">
+                    <div class="header-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="bt-modal-title">Create Standard Backtest</div>
+                        <div class="bt-modal-subtitle">Configure session parameters and trading settings</div>
+                    </div>
+                </div>
+                <button type="button" class="bt-close-btn close-btn" onclick="handleCancel()" aria-label="Close">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
             </div>
 
-            <!-- Content Wrapper -->
-            <div class="full-panel">
-                <form id="backtestingForm">
-                  <div class="form-grid">
-                    <!-- General Card -->
-                    <div class="form-card form-card-full">
-                        <h3>General</h3>
-                        <div class="form-group">
-                            <label>Session name <span class="required">*</span></label>
-                            <input type="text" id="sessionName" name="sessionName" required placeholder="Enter session name">
+            <form id="backtestingForm">
+                <div class="bt-modal-body">
+                    <!-- General -->
+                    <div>
+                        <div class="section-label">General</div>
+                        <div class="bt-section-stack">
+                            <div class="grid-2">
+                                <div class="field">
+                                    <label>Session name <span class="req">*</span></label>
+                                    <input type="text" id="sessionName" name="sessionName" required placeholder="e.g. EURUSD Breakout Test">
+                                </div>
+                                <div class="field">
+                                    <label>Playbook / strategy</label>
+                                    <select id="playbook" name="playbook">
+                                        <option value="">Select playbook...</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label>Description</label>
+                                <textarea id="description" name="description" placeholder="Optional description of your backtesting session"></textarea>
+                                <span class="hint">Choose a strategy from Strategies Lab for analytics, or use a quick label. Shown in Backtest Analytics → Playbook.</span>
+                                <a href="/strategies-lab/" target="_blank" rel="noopener" class="link" style="margin-top:6px;display:inline-block;">Open Strategies Lab ↗</a>
+                            </div>
+                            <div class="field">
+                                <label>Symbols / Data files <span class="req">*</span></label>
+                                <span class="hint" style="display:block;margin-bottom:8px;">Select one or more files; switch between them on the chart.</span>
+                                <div id="selectedFilesContainer" class="bt-selected-wrap">
+                                    <span class="hint" id="noFilesText" style="margin:0;">No files selected</span>
+                                </div>
+                                <div class="file-select-row">
+                                    <div style="flex:1;position:relative;">
+                                        <div class="file-select-area" id="fileAreaTrigger" role="button" tabindex="0">
+                                            <span class="file-select-text" id="fileAreaSummary">No files selected — select one or more datasets to backtest</span>
+                                            <button type="button" id="fileSelectBtn" class="file-select-btn">Browse files</button>
+                                        </div>
+                                        <div id="fileDropdown" class="bt-file-dropdown" style="display: none;">
+                                            <div id="fileList" class="bt-file-list">
+                                                <div style="color: #64748b; padding: 12px; text-align: center;">Loading files...</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="file-refresh-btn" onclick="loadAvailableFiles()" title="Refresh file list">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="23 4 23 10 17 10"></polyline>
+                                            <polyline points="1 20 1 14 7 14"></polyline>
+                                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                                        </svg>
+                                    </button>
+                                </div>
+                                <input type="hidden" id="selectedFiles" name="selectedFiles" value="[]">
+                                <span class="hint">Datasets are managed by the admin. <a href="/strategies-lab/" class="link">Open Strategies Lab ↗</a></span>
+                            </div>
                         </div>
-
-                        <div class="form-group">
-                            <label>Description</label>
-                            <textarea id="description" name="description" placeholder="Optional description of your backtesting session"></textarea>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Playbook / strategy</label>
-                            <select id="playbook" name="playbook">
-                                <option value="">Select playbook...</option>
-                            </select>
-                            <div class="helper-text" style="margin-top:6px;">Choose a strategy you built in Strategies Lab, or a quick label. This appears in Backtest Analytics → Playbook.</div>
-                            <a href="/strategies-lab/" target="_blank" rel="noopener" class="link" style="margin-top: 8px; display: inline-block;">Open Strategies Lab</a>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Symbols / Data Files <span class="required">*</span></label>
-                            <div class="helper-text" style="margin-bottom: 8px;">Select one or more files to backtest. You can switch between them on the chart.</div>
-                    
-                    <!-- Selected Files Tags -->
-                    <div id="selectedFilesContainer" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; min-height: 28px; padding: 6px 8px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
-                        <span style="color: rgba(255,255,255,0.22); font-size: 12px;" id="noFilesText">No files selected</span>
                     </div>
-                    
-                    <!-- File Selection Dropdown -->
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <div style="flex: 1; position: relative;">
-                            <button type="button" id="fileSelectBtn" class="btn" style="width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center; padding: 10px 14px;">
-                                <span>Click to select files...</span>
-                                <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <polyline points="6 9 12 15 18 9"></polyline>
-                                </svg>
-                            </button>
-                            <div id="fileDropdown" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: #0a0a14; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; margin-top: 4px; max-height: 180px; overflow-y: auto; z-index: 100; box-shadow: 0 8px 24px rgba(0,0,0,0.6);">
-                                <div id="fileList" style="padding: 8px;">
-                                    <div style="color: #64748b; padding: 12px; text-align: center;">Loading files...</div>
+
+                    <!-- Testing period -->
+                    <div>
+                        <div class="section-label">Testing period</div>
+                        <div class="grid-2">
+                            <div class="field">
+                                <label>Start date <span class="req">*</span></label>
+                                <input type="datetime-local" class="date-field" id="startDate" name="startDate" required>
+                            </div>
+                            <div class="field">
+                                <label>End date <span class="req">*</span></label>
+                                <input type="datetime-local" class="date-field" id="endDate" name="endDate" required>
+                            </div>
+                        </div>
+                        <span id="testingPeriodHint" class="hint" style="margin-top:6px;display:block;">Select a data file to see available date range</span>
+                    </div>
+
+                    <!-- Trading settings -->
+                    <div>
+                        <div class="section-label">Trading settings</div>
+                        <div class="bt-section-stack">
+                            <div class="grid-2">
+                                <div class="field">
+                                    <label>Start balance <span class="req">*</span></label>
+                                    <input type="number" id="startBalance" name="startBalance" placeholder="0" min="0" step="1000" required value="10000">
+                                    <div class="quick-pills preset-buttons" style="margin-top:6px;">
+                                        <button type="button" class="pill preset-btn" data-value="5000">5K</button>
+                                        <button type="button" class="pill preset-btn" data-value="10000">10K</button>
+                                        <button type="button" class="pill preset-btn" data-value="20000">20K</button>
+                                        <button type="button" class="pill preset-btn" data-value="40000">40K</button>
+                                        <button type="button" class="pill preset-btn" data-value="50000">50K</button>
+                                        <button type="button" class="pill preset-btn" data-value="100000">100K</button>
+                                    </div>
+                                    <span class="hint">Your starting account balance for this session</span>
+                                </div>
+                                <div class="field">
+                                    <label>Risk type</label>
+                                    <select id="defaultRiskType" name="defaultRiskType">
+                                        <option value="percent" selected>Percentage (%)</option>
+                                        <option value="dollar">Dollar ($)</option>
+                                        <option value="lot">Lot</option>
+                                    </select>
+                                    <span class="hint">How to specify risk per trade</span>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label id="defaultRiskLabel">Default risk per trade (%)</label>
+                                <input type="number" id="defaultRisk" name="defaultRisk" placeholder="1" min="0.1" step="0.1" value="1">
+                                <span class="hint" id="defaultRiskHelper">Percentage of account balance to risk</span>
+                            </div>
+                            <div class="grid-3">
+                                <div class="field">
+                                    <label>Account currency</label>
+                                    <select id="accountCurrency" name="accountCurrency">
+                                        <option value="USD" selected>USD</option>
+                                        <option value="EUR">EUR</option>
+                                        <option value="GBP">GBP</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>Leverage</label>
+                                    <select id="accountLeverage" name="accountLeverage">
+                                        <option value="1:1">1:1</option>
+                                        <option value="1:10">1:10</option>
+                                        <option value="1:30" selected>1:30</option>
+                                        <option value="1:50">1:50</option>
+                                        <option value="1:100">1:100</option>
+                                        <option value="1:200">1:200</option>
+                                        <option value="1:500">1:500</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>Asset class</label>
+                                    <input type="text" id="assetClass" name="assetClass" class="readonly-input" value="Forex" readonly>
+                                    <span class="hint">Auto-detected</span>
+                                </div>
+                            </div>
+                            <div class="grid-3">
+                                <div class="field">
+                                    <label>Margin call level (%)</label>
+                                    <input type="number" id="marginCallLevel" name="marginCallLevel" min="1" step="1" value="100">
+                                </div>
+                                <div class="field">
+                                    <label>Stop out level (%)</label>
+                                    <input type="number" id="stopOutLevel" name="stopOutLevel" min="1" step="1" value="50">
+                                </div>
+                                <div class="field">
+                                    <label>Max risk per trade (%)</label>
+                                    <input type="number" id="maxRiskPerTradePct" name="maxRiskPerTradePct" min="0" step="0.1" placeholder="Optional">
                                 </div>
                             </div>
                         </div>
-                        <button type="button" class="btn" onclick="loadAvailableFiles()" style="padding: 10px 12px; min-width: auto;" title="Refresh file list">
-                            <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="23 4 23 10 17 10"></polyline>
-                                <polyline points="1 20 1 14 7 14"></polyline>
-                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                            </svg>
-                        </button>
-                    </div>
-                    
-                    <!-- Hidden input to store selected files -->
-                    <input type="hidden" id="selectedFiles" name="selectedFiles" value="[]">
-                    
-                    <div style="margin-top: 8px; padding: 6px 10px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; font-size: 11px; color: rgba(255,255,255,0.25);">
-                        Datasets are managed by the admin. Contact your administrator to add or update datasets.
-                    </div>
-                        </div>
                     </div>
 
-                    <!-- Testing Period Card -->
-                    <div class="form-card">
-                        <h3>Testing Period</h3>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Start date <span class="required">*</span></label>
-                                <input type="datetime-local" id="startDate" name="startDate" required>
-                            </div>
-                            <div class="form-group">
-                                <label>End date <span class="required">*</span></label>
-                                <input type="datetime-local" id="endDate" name="endDate" required>
-                            </div>
+                    <!-- Instrument table -->
+                    <div>
+                        <div class="section-label">Instrument table <span class="section-label-note">max 10, one row per dataset</span></div>
+                        <span class="hint" style="display:block;margin-bottom:10px;">Configure spread and commission per instrument.</span>
+                        <div class="instrument-table-wrap">
+                            <table class="instrument-table">
+                                <thead>
+                                    <tr>
+                                        <th>Ticker</th>
+                                        <th>Spread (pips)</th>
+                                        <th>Commission / lot / side</th>
+                                        <th>Pip size</th>
+                                        <th>Pip value / lot</th>
+                                        <th>Contract size</th>
+                                        <th>Min lot</th>
+                                        <th>Lot step</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="instrumentTableBody"></tbody>
+                            </table>
                         </div>
-                        <div class="helper-text">Select a data file to see available date range</div>
+                        <div id="instrumentTableHint" class="hint" style="margin-top:8px;">Select datasets to populate instrument rows.</div>
                     </div>
 
-                    <!-- Trading Settings Card -->
-                    <div class="form-card">
-                        <h3>Trading Settings</h3>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Start Balance <span class="required">*</span></label>
-                                <input type="number" id="startBalance" name="startBalance" placeholder="$ 0" min="0" step="1000" required value="10000">
-                                <div class="preset-buttons">
-                                    <button type="button" class="preset-btn" data-value="5000">5K</button>
-                                    <button type="button" class="preset-btn" data-value="10000">10K</button>
-                                    <button type="button" class="preset-btn" data-value="20000">20K</button>
-                                    <button type="button" class="preset-btn" data-value="40000">40K</button>
-                                    <button type="button" class="preset-btn" data-value="50000">50K</button>
-                                    <button type="button" class="preset-btn" data-value="100000">100K</button>
-                                </div>
-                                <div class="helper-text">Your starting account balance for this session</div>
-                            </div>
-                            <div class="form-group">
-                                <label>Risk Type</label>
-                                <select id="defaultRiskType" name="defaultRiskType">
-                                    <option value="percent" selected>Percentage (%)</option>
-                                    <option value="dollar">Dollar ($)</option>
-                                    <option value="lot">Lot</option>
-                                </select>
-                                <div class="helper-text">How to specify risk per trade</div>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label id="defaultRiskLabel">Default Risk Per Trade (%)</label>
-                            <input type="number" id="defaultRisk" name="defaultRisk" placeholder="1" min="0.1" step="0.1" value="1">
-                            <div class="helper-text" id="defaultRiskHelper">Percentage of account balance to risk</div>
-                        </div>
-
-                        <div class="form-row-3">
-                            <div class="form-group">
-                                <label>Account Currency</label>
-                                <select id="accountCurrency" name="accountCurrency">
-                                    <option value="USD" selected>USD</option>
-                                    <option value="EUR">EUR</option>
-                                    <option value="GBP">GBP</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Leverage</label>
-                                <select id="accountLeverage" name="accountLeverage">
-                                    <option value="1:1">1:1</option>
-                                    <option value="1:10">1:10</option>
-                                    <option value="1:30" selected>1:30</option>
-                                    <option value="1:50">1:50</option>
-                                    <option value="1:100">1:100</option>
-                                    <option value="1:200">1:200</option>
-                                    <option value="1:500">1:500</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Asset Class (Auto Detected)</label>
-                                <input type="text" id="assetClass" name="assetClass" class="readonly-input" value="Forex" readonly>
-                            </div>
-                        </div>
-
-                        <div class="form-row-3">
-                            <div class="form-group">
-                                <label>Margin Call Level (%)</label>
-                                <input type="number" id="marginCallLevel" name="marginCallLevel" min="1" step="1" value="100">
-                            </div>
-                            <div class="form-group">
-                                <label>Stop Out Level (%)</label>
-                                <input type="number" id="stopOutLevel" name="stopOutLevel" min="1" step="1" value="50">
-                            </div>
-                            <div class="form-group">
-                                <label>Max Risk Per Trade (%)</label>
-                                <input type="number" id="maxRiskPerTradePct" name="maxRiskPerTradePct" min="0" step="0.1" placeholder="Optional">
-                            </div>
-                        </div>
-
-                        <div class="form-group" style="margin-top: 2px;">
-                            <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.34);">Instrument Table (Max 10)</label>
-                            <div class="helper-text" style="margin-bottom: 10px;">One row per selected dataset. Configure spread/commission per instrument.</div>
-                            <div class="instrument-table-wrap">
-                                <table class="instrument-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Ticker</th>
-                                            <th>Spread (pips)</th>
-                                            <th>Commission / lot / side</th>
-                                            <th>Pip Size</th>
-                                            <th>Pip Value / lot</th>
-                                            <th>Contract Size</th>
-                                            <th>Min Lot</th>
-                                            <th>Lot Step</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="instrumentTableBody"></tbody>
-                                </table>
-                            </div>
-                            <div id="instrumentTableHint" class="helper-text" style="margin-top:8px;">Select datasets to populate instrument rows.</div>
-                        </div>
-                    </div>
-
-                    <!-- Protection Settings Card -->
-                    <div class="form-card form-card-full">
-                        <h3>Protection Settings</h3>
-                        <div class="form-group">
-                            <label>Load Protection Preset <span class="info-tooltip" title="Use protection presets created in the Place Order panel">?</span></label>
-                            <div style="display: flex; gap: 8px; align-items: center;">
-                                <select id="protectionPresetSelect" name="protectionPreset" style="flex: 1;">
+                    <!-- Protection -->
+                    <div>
+                        <div class="section-label">Protection settings</div>
+                        <div class="protection-row">
+                            <div class="field">
+                                <label>Load protection preset <span class="info-tooltip" title="Use protection presets created in the Place Order panel">?</span></label>
+                                <select id="protectionPresetSelect" name="protectionPreset">
                                     <option value="">-- None (Configure in chart) --</option>
                                 </select>
-                                <button type="button" class="btn" onclick="openCreatePresetModal()" style="padding: 8px 12px; min-width: auto; white-space: nowrap;" title="Create new protection preset">
-                                    <svg style="width: 16px; height: 16px; margin-right: 4px; display: inline-block; vertical-align: middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M12 5v14M5 12h14"></path>
-                                    </svg>
-                                    Create New
-                                </button>
-                            </div>
-                            <div class="helper-text">Select a protection preset to auto-apply breakeven, trailing stop, and take profit settings</div>
-                            <div id="presetDetails" style="margin-top: 12px; padding: 12px; background: rgba(124, 58, 237, 0.1); border: 1px solid rgba(124, 58, 237, 0.3); border-radius: 6px; display: none;">
-                                <div style="font-size: 12px; color: #a78bfa; font-weight: 600; margin-bottom: 8px;">📋 Preset Details:</div>
-                                <div id="presetDetailsContent" style="font-size: 11px; color: #9ca3af; line-height: 1.6;"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                  </div><!-- end form-grid -->
-
-                    <!-- Actions -->
-                    <div class="form-actions-container">
-                    <!-- Enable Back Navigation Toggle -->
-                    <div class="forward-mode-toggle">
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="allowBackNavigation" name="allowBackNavigation" checked>
-                            <span class="toggle-slider"></span>
-                        </label>
-                        <div class="toggle-text-wrapper">
-                            <span class="toggle-text">Enable back/forward navigation</span>
-                            <div class="info-icon-container">
-                                <svg class="info-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <circle cx="12" cy="12" r="10"></circle>
-                                    <line x1="12" y1="16" x2="12" y2="12"></line>
-                                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                                </svg>
-                                <div class="info-tooltip">
-                                    When enabled, you can go backward in time during replay. A visible badge will appear on the chart for transparency. Disable this for forward-only testing (simulating real trading).
+                                <span class="hint">Auto-applies breakeven, trailing stop, and take profit when configured</span>
+                                <div id="presetDetails" style="display: none;">
+                                    <div style="font-size: 12px; color: #a5b4fc; font-weight: 600; margin-bottom: 8px;">Preset details</div>
+                                    <div id="presetDetailsContent"></div>
                                 </div>
                             </div>
+                            <button type="button" class="new-btn" onclick="openCreatePresetModal()" title="Create new protection preset">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                                Create new
+                            </button>
                         </div>
                     </div>
-                    
-                    <!-- Action Buttons -->
-                    <div class="action-buttons-group">
-                        <button type="button" class="btn btn-cancel" onclick="handleCancel()">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Create session</button>
+                </div>
+
+                <div class="bt-toggle-row">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="allowBackNavigation" name="allowBackNavigation" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <div class="toggle-text-wrapper">
+                        <span class="toggle-text">Enable back/forward navigation</span>
+                        <div class="info-icon-container">
+                            <svg class="info-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="12" y1="16" x2="12" y2="12"></line>
+                                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                            </svg>
+                            <div class="info-tooltip">
+                                When enabled, you can go backward in time during replay. A visible badge will appear on the chart for transparency. Disable this for forward-only testing (simulating real trading).
+                            </div>
+                        </div>
                     </div>
-                </form>
-            </div>
+                    <span class="toggle-hint-inline">Step through trades chronologically</span>
+                </div>
+
+                <div class="bt-modal-footer">
+                    <button type="button" class="btn-cancel" onclick="handleCancel()">Cancel</button>
+                    <button type="submit" class="bt-btn-create btn-primary">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
+                        Create session
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
     
@@ -502,29 +295,27 @@
         function handleCancel() {
             const isInIframe = window.self !== window.top;
             if (isInIframe) {
-                // Close the iframe modal by calling parent function
-                window.parent.closeBacktestingIframe();
+                var p = window.parent;
+                if (typeof p.closePropFirmIframe === 'function') {
+                    p.closePropFirmIframe();
+                } else if (typeof p.closeBacktestingIframe === 'function') {
+                    p.closeBacktestingIframe();
+                }
             } else {
                 window.location.href = 'index.html';
             }
         }
 
-        // Hide top bar if in iframe (modal mode)
+        // Hide top bar if in iframe (Sessions dashboard); parent provides chrome
         if (window.self !== window.top) {
             document.documentElement.classList.add('iframe-mode');
-            const topBar = document.querySelector('.top-bar');
-            if (topBar) {
-                topBar.style.display = 'none';
+            var topBarEl = document.querySelector('.bt-top-bar');
+            if (topBarEl) {
+                topBarEl.style.display = 'none';
             }
-            // Hide the close button in modal-header-bar (we use the overlay close button)
-            const modalCloseBtn = document.querySelector('.modal-header-bar .close-btn');
+            var modalCloseBtn = document.querySelector('.bt-modal-header .bt-close-btn');
             if (modalCloseBtn) {
                 modalCloseBtn.style.display = 'none';
-            }
-            // Adjust container padding since top bar is hidden
-            const container = document.querySelector('.container');
-            if (container) {
-                container.style.paddingTop = '0';
             }
         }
 
@@ -1000,30 +791,42 @@
         function initFileDropdown() {
             const fileSelectBtn = document.getElementById('fileSelectBtn');
             const fileDropdown = document.getElementById('fileDropdown');
-            
+            const fileAreaTrigger = document.getElementById('fileAreaTrigger');
+
             if (!fileSelectBtn || !fileDropdown) {
                 console.log('File dropdown elements not found, retrying...');
                 setTimeout(initFileDropdown, 100);
                 return;
             }
-            
-            // Toggle file dropdown
-            fileSelectBtn.addEventListener('click', function(e) {
-                e.stopPropagation();
+
+            function toggleFileDropdown(e) {
+                if (e) e.stopPropagation();
                 fileDropdown.style.display = fileDropdown.style.display === 'none' ? 'block' : 'none';
+            }
+
+            fileSelectBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                toggleFileDropdown(e);
             });
-            
-            // Close dropdown when clicking outside
-            document.addEventListener('click', function(e) {
-                if (!fileDropdown.contains(e.target) && !fileSelectBtn.contains(e.target)) {
-                    fileDropdown.style.display = 'none';
+
+            if (fileAreaTrigger) {
+                fileAreaTrigger.addEventListener('click', function (e) {
+                    if (e.target === fileSelectBtn || (fileSelectBtn && fileSelectBtn.contains(e.target))) return;
+                    toggleFileDropdown(e);
+                });
+            }
+
+            document.addEventListener('click', function (e) {
+                const fileArea = document.getElementById('fileAreaTrigger');
+                if (fileDropdown.contains(e.target) || (fileArea && fileArea.contains(e.target))) {
+                    return;
                 }
+                fileDropdown.style.display = 'none';
             });
-            
-            // Load files on init
+
             loadAvailableFiles();
             syncAutoAssetClass();
-            
+
             console.log('✅ File dropdown initialized');
         }
         
@@ -1034,13 +837,17 @@
             initFileDropdown();
         }
         
+        function sameFileId(a, b) {
+            return String(a) === String(b);
+        }
+
         // Toggle file selection
         function toggleFileSelection(fileId, fileName) {
-            if (selectedFilesArray.length >= 10 && selectedFilesArray.findIndex(f => f.id === fileId) === -1) {
+            if (selectedFilesArray.length >= 10 && selectedFilesArray.findIndex(function (f) { return sameFileId(f.id, fileId); }) === -1) {
                 alert('Maximum 10 instruments per session.');
                 return;
             }
-            const index = selectedFilesArray.findIndex(f => f.id === fileId);
+            const index = selectedFilesArray.findIndex(function (f) { return sameFileId(f.id, fileId); });
             if (index === -1) {
                 selectedFilesArray.push({ id: fileId, name: fileName });
             } else {
@@ -1049,10 +856,10 @@
             updateSelectedFilesUI();
             updateFileListUI();
         }
-        
+
         // Remove file from selection
         function removeSelectedFile(fileId) {
-            selectedFilesArray = selectedFilesArray.filter(f => f.id !== fileId);
+            selectedFilesArray = selectedFilesArray.filter(function (f) { return !sameFileId(f.id, fileId); });
             updateSelectedFilesUI();
             updateFileListUI();
         }
@@ -1060,29 +867,37 @@
         // Update the selected files display
         function updateSelectedFilesUI() {
             const container = document.getElementById('selectedFilesContainer');
-            const noFilesText = document.getElementById('noFilesText');
             const hiddenInput = document.getElementById('selectedFiles');
-            
-            // Update hidden input
+            const summaryEl = document.getElementById('fileAreaSummary');
+
             hiddenInput.value = JSON.stringify(selectedFilesArray);
-            
+
             if (selectedFilesArray.length === 0) {
-                container.innerHTML = '<span style="color: rgba(255,255,255,0.22); font-size: 12px;" id="noFilesText">No files selected</span>';
+                container.innerHTML = '<span class="hint" id="noFilesText" style="margin:0;">No files selected</span>';
+                if (summaryEl) {
+                    summaryEl.textContent = 'No files selected — select one or more datasets to backtest';
+                }
                 syncAutoAssetClass();
                 rebuildInstrumentTable();
                 return;
             }
-            
-            container.innerHTML = selectedFilesArray.map(file => {
-                const display = cleanPairName(file.name);
-                return `
-                <span style="display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2)); border: 1px solid rgba(59, 130, 246, 0.3); padding: 4px 10px; border-radius: 16px; font-size: 12px; color: #fff; font-weight: 600;">
-                    ${display}
-                    <button type="button" onclick="removeSelectedFile('${file.id}')" style="background: none; border: none; color: #94a3b8; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">&times;</button>
-                </span>
-            `}).join('');
-            
-            // Load date range from first selected file
+
+            var names = selectedFilesArray.map(function (file) {
+                return cleanPairName(file.name);
+            });
+            if (summaryEl) {
+                summaryEl.textContent = names.length + ' file' + (names.length === 1 ? '' : 's') + ' — ' + names.slice(0, 4).join(', ') + (names.length > 4 ? '…' : '');
+            }
+
+            container.innerHTML = selectedFilesArray.map(function (file) {
+                var display = cleanPairName(file.name);
+                var sid = String(file.id).replace(/'/g, "\\'");
+                return (
+                    '<span class="symbol-tag">' + display +
+                    '<button type="button" onclick="removeSelectedFile(\'' + sid + '\')">&times;</button></span>'
+                );
+            }).join('');
+
             if (selectedFilesArray.length > 0) {
                 loadDateRangeFromFile(selectedFilesArray[0].id);
             }
@@ -1237,25 +1052,22 @@
                 pairCounts[pair] = (pairCounts[pair] || 0) + 1;
             });
             
-            fileList.innerHTML = availableFilesCache.map(file => {
-                const isSelected = selectedFilesArray.some(f => f.id === file.id);
-                const rawName = file.original_name || file.name || file.filename || file.symbol || `File ${file.id}`;
+            fileList.innerHTML = availableFilesCache.map(function (file) {
+                const isSelected = selectedFilesArray.some(function (f) { return sameFileId(f.id, file.id); });
+                const rawName = file.original_name || file.name || file.filename || file.symbol || ('File ' + file.id);
                 const pairName = cleanPairName(rawName);
                 const rows = file.row_count ? formatRowCount(file.row_count) : '';
-                // Add row count suffix if duplicate pair names exist
                 const hasDupes = pairCounts[pairName] > 1;
                 const displayName = hasDupes && rows ? pairName + ' (' + rows + ')' : pairName;
-                return `
-                    <label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; border-radius: 6px; transition: background 0.15s; ${isSelected ? 'background: rgba(59, 130, 246, 0.15);' : ''}" 
-                           onmouseover="this.style.background='rgba(59, 130, 246, 0.1)'" 
-                           onmouseout="this.style.background='${isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent'}'">
-                        <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleFileSelection('${file.id}', '${displayName.replace(/'/g, "\\'")}')" style="accent-color: #3b82f6; width: 16px; height: 16px;">
-                        <div style="flex:1;display:flex;justify-content:space-between;align-items:center;">
-                            <span style="color: #e5e7eb; font-size: 14px; font-weight: 600;">${pairName}</span>
-                            <span style="color: #64748b; font-size: 11px;">${rows ? rows + ' candles' : ''}</span>
-                        </div>
-                    </label>
-                `;
+                const safeName = displayName.replace(/'/g, "\\'");
+                return (
+                    '<label class="bt-file-dropdown-label' + (isSelected ? ' bt-file-row--selected' : '') + '">' +
+                    '<input type="checkbox" class="bt-file-checkbox"' + (isSelected ? ' checked' : '') + ' onchange="toggleFileSelection(\'' + file.id + '\', \'' + safeName + '\')">' +
+                    '<div class="bt-file-row-main">' +
+                    '<span class="bt-file-row-name">' + pairName + '</span>' +
+                    '<span class="bt-file-row-meta">' + (rows ? rows + ' candles' : '') + '</span>' +
+                    '</div></label>'
+                );
             }).join('');
         }
         
@@ -1353,16 +1165,9 @@
                             startDateInput.value = firstDate.toISOString().slice(0, 16);
                             endDateInput.value = lastDate.toISOString().slice(0, 16);
 
-                            const helperText = document.querySelector('.form-row .helper-text');
-                            const helperValue = `Available data: ${firstDate.toLocaleDateString()} to ${lastDate.toLocaleDateString()}`;
-                            if (!helperText) {
-                                const newHelper = document.createElement('div');
-                                newHelper.className = 'helper-text';
-                                newHelper.style.gridColumn = '1 / -1';
-                                newHelper.textContent = helperValue;
-                                document.querySelector('.form-row').appendChild(newHelper);
-                            } else {
-                                helperText.textContent = helperValue;
+                            const hintEl = document.getElementById('testingPeriodHint');
+                            if (hintEl) {
+                                hintEl.textContent = 'Available data: ' + firstDate.toLocaleDateString() + ' — ' + lastDate.toLocaleDateString();
                             }
 
                             console.log(`✅ Date range (meta): ${firstDate.toLocaleString()} to ${lastDate.toLocaleString()}`);
@@ -1552,16 +1357,9 @@
                 
                 console.log(`✅ Date range: ${firstDate.toLocaleString()} to ${lastDate.toLocaleString()}`);
                 
-                // Update helper text
-                const helperText = document.querySelector('.form-row .helper-text');
-                if (!helperText) {
-                    const newHelper = document.createElement('div');
-                    newHelper.className = 'helper-text';
-                    newHelper.style.gridColumn = '1 / -1';
-                    newHelper.textContent = `Available data: ${firstDate.toLocaleDateString()} to ${lastDate.toLocaleDateString()}`;
-                    document.querySelector('.form-row').appendChild(newHelper);
-                } else {
-                    helperText.textContent = `Available data: ${firstDate.toLocaleDateString()} to ${lastDate.toLocaleDateString()}`;
+                var hintEl2 = document.getElementById('testingPeriodHint');
+                if (hintEl2) {
+                    hintEl2.textContent = 'Available data: ' + firstDate.toLocaleDateString() + ' — ' + lastDate.toLocaleDateString();
                 }
                 
             } catch (error) {
