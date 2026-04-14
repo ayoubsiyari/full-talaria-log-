@@ -427,16 +427,19 @@ function setupPresetButtons() {
     balanceValues.forEach(value => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'preset-btn';
+        btn.className = 'pill';
+        btn.dataset.val = String(value);
         btn.textContent = value >= 1000000 ? (value/1000000) + 'M' : (value/1000) + 'K';
         btn.onclick = function() {
             document.getElementById('balance').value = value;
-            document.querySelectorAll('#balancePresets .preset-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('#balancePresets .pill').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             updateLossLimits();
         };
         balancePresets.appendChild(btn);
     });
+    const firstBal = balancePresets.querySelector('.pill');
+    if (firstBal) firstBal.classList.add('active');
     
     // Profit target presets
     const profitPresets = document.getElementById('profitPresets');
@@ -444,15 +447,19 @@ function setupPresetButtons() {
     profitValues.forEach(value => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'preset-btn';
+        btn.className = 'pill';
+        btn.dataset.pt = String(value);
         btn.textContent = value + '%';
         btn.onclick = function() {
             document.getElementById('profitTarget').value = value;
-            document.querySelectorAll('#profitPresets .preset-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('#profitPresets .pill').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
+            updateLossLimits();
         };
         profitPresets.appendChild(btn);
     });
+    const firstPt = profitPresets.querySelector('.pill');
+    if (firstPt) firstPt.classList.add('active');
 }
 
 function initSimulationPresetGrid() {
@@ -466,10 +473,14 @@ function initSimulationPresetGrid() {
     list.forEach(function (preset) {
         var btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'simulation-preset-card';
+        btn.className = 'preset-card';
         btn.setAttribute('data-preset-id', preset.id);
         btn.setAttribute('role', 'listitem');
-        btn.innerHTML = '<h4>' + String(preset.title || preset.id) + '</h4><p>' + String(preset.description || '') + '</p>';
+        var icon = preset.icon ? String(preset.icon) : '📌';
+        btn.innerHTML =
+            '<div class="preset-icon" aria-hidden="true">' + icon + '</div>' +
+            '<div class="preset-name">' + String(preset.title || preset.id) + '</div>' +
+            '<div class="preset-desc">' + String(preset.description || '') + '</div>';
         btn.addEventListener('click', function () {
             applySimulationPreset(preset.id);
         });
@@ -493,11 +504,19 @@ function applySimulationPreset(presetId) {
     if (idEl) idEl.value = preset.id;
     if (labelEl) labelEl.value = preset.title || preset.id;
 
-    document.querySelectorAll('.simulation-preset-card').forEach(function (el) {
-        el.classList.toggle('selected', el.getAttribute('data-preset-id') === preset.id);
+    document.querySelectorAll('.preset-card').forEach(function (el) {
+        el.classList.toggle('active', el.getAttribute('data-preset-id') === preset.id);
     });
 
+    var nameEl = document.getElementById('active-preset-name');
+    if (nameEl) {
+        nameEl.textContent = preset.title || preset.id || 'Custom';
+    }
+
     if (!preset.rules) {
+        if (typeof updateLossLimits === 'function') {
+            updateLossLimits();
+        }
         return;
     }
 
@@ -536,6 +555,17 @@ function applySimulationPreset(presetId) {
         levVal.value = String(lv);
     }
 
+    if (balanceEl && balanceEl.value) {
+        document.querySelectorAll('#balancePresets .pill').forEach(function (p) {
+            p.classList.toggle('active', p.dataset.val === String(balanceEl.value));
+        });
+    }
+    if (profitEl && profitEl.value) {
+        document.querySelectorAll('#profitPresets .pill').forEach(function (p) {
+            p.classList.toggle('active', p.dataset.pt === String(profitEl.value));
+        });
+    }
+
     if (typeof updateLossLimits === 'function') {
         updateLossLimits();
     }
@@ -545,18 +575,21 @@ function applySimulationPreset(presetId) {
 function setupFormHandlers() {
     // Balance input updates loss limits
     document.getElementById('balance').addEventListener('input', updateLossLimits);
+    document.getElementById('profitTarget').addEventListener('input', updateLossLimits);
     
     // Loss percentage inputs update dollar amounts
     document.getElementById('maxDailyLossPercent').addEventListener('input', function() {
         const balance = parseFloat(document.getElementById('balance').value) || 0;
         const percent = parseFloat(this.value) || 0;
         document.getElementById('maxDailyLossDollar').value = Math.round(balance * percent / 100);
+        updateLossLimits();
     });
     
     document.getElementById('maxTotalLossPercent').addEventListener('input', function() {
         const balance = parseFloat(document.getElementById('balance').value) || 0;
         const percent = parseFloat(this.value) || 0;
         document.getElementById('maxTotalLossDollar').value = Math.round(balance * percent / 100);
+        updateLossLimits();
     });
     
     // Loss dollar inputs update percentages
@@ -595,6 +628,8 @@ function setupFormHandlers() {
     
     // Form submission
     document.getElementById('propfirmForm').addEventListener('submit', handleFormSubmit);
+
+    updateLossLimits();
 }
 
 // Update loss limits when balance changes
@@ -602,9 +637,33 @@ function updateLossLimits() {
     const balance = parseFloat(document.getElementById('balance').value) || 0;
     const dailyPercent = parseFloat(document.getElementById('maxDailyLossPercent').value) || 5;
     const totalPercent = parseFloat(document.getElementById('maxTotalLossPercent').value) || 10;
-    
+    const profitPct = parseFloat(document.getElementById('profitTarget').value) || 0;
+
     document.getElementById('maxDailyLossDollar').value = Math.round(balance * dailyPercent / 100);
     document.getElementById('maxTotalLossDollar').value = Math.round(balance * totalPercent / 100);
+
+    const ptUsd = document.getElementById('profitTargetUsd');
+    if (ptUsd) {
+        ptUsd.value = Math.round(balance * profitPct / 100);
+    }
+
+    const rsT = document.getElementById('rs-target');
+    const rsTu = document.getElementById('rs-target-usd');
+    const rsL = document.getElementById('rs-loss');
+    const rsLu = document.getElementById('rs-loss-usd');
+    if (rsT) rsT.textContent = profitPct + '%';
+    if (rsTu) {
+        rsTu.textContent =
+            '$' +
+            Math.round(balance * profitPct / 100).toLocaleString() +
+            ' on $' +
+            balance.toLocaleString() +
+            ' account';
+    }
+    if (rsL) rsL.textContent = totalPercent + '%';
+    if (rsLu) {
+        rsLu.textContent = '$' + Math.round(balance * totalPercent / 100).toLocaleString() + ' drawdown limit';
+    }
 }
 
 // Setup symbol checkbox handlers
@@ -950,6 +1009,7 @@ async function handleFormSubmit(e) {
         sessionCloseTime: document.getElementById('sessionCloseTime').value,
         daylightSavingTime: document.getElementById('daylightSavingTime').value,
         barsTimeFormat: document.getElementById('barsTimeFormat').value,
+        accountCurrency: (document.getElementById('accountCurrency') && document.getElementById('accountCurrency').value) || 'USD',
         leverage: parseInt(document.getElementById('leverageValue').value),
         forwardTestingOnly: document.getElementById('forwardTestingOnly').checked,
         allowBackNavigation: !document.getElementById('forwardTestingOnly').checked, // Inverse of forwardTestingOnly

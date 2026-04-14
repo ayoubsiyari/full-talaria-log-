@@ -6,6 +6,7 @@
     var PROPFIRM_SIMULATION_PRESETS = [
         {
             id: 'eval_standard',
+            icon: '🏆',
             title: 'Evaluation — Standard',
             description: '10% profit target, 5% max daily loss, 10% max total loss. Common evaluation-style mix.',
             rules: {
@@ -20,6 +21,7 @@
         },
         {
             id: 'eval_strict',
+            icon: '⚡',
             title: 'Evaluation — Strict',
             description: 'Tighter drawdowns: 8% target, 4% daily, 8% total. Minimum five trading days.',
             rules: {
@@ -34,6 +36,7 @@
         },
         {
             id: 'tight_daily_guard',
+            icon: '🎯',
             title: 'Tight daily guard',
             description: 'Same 10% target with a stricter daily loss cap and wider trailing room.',
             rules: {
@@ -48,6 +51,7 @@
         },
         {
             id: 'starter_10k',
+            icon: '💼',
             title: 'Starter account (10K)',
             description: 'Smaller balance template with standard percentage rules.',
             rules: {
@@ -62,6 +66,7 @@
         },
         {
             id: 'scaled_50k',
+            icon: '📈',
             title: 'Mid-size (50K)',
             description: '50K balance with proportional limits for practice at a larger notional.',
             rules: {
@@ -76,6 +81,7 @@
         },
         {
             id: 'custom',
+            icon: '⚙️',
             title: 'Custom configuration',
             description: 'Do not change fields automatically. Adjust every value below to match your plan.',
             rules: null
