@@ -1902,10 +1902,20 @@ class Chart {
         if (typeof this.render === 'function') this.render();
     }
 
+    /** Trade journal patches must persist even if GET /state has not finished (race on first load). */
+    _sessionStatePatchIsJournalRelated(patch) {
+        if (!patch || typeof patch !== 'object') return false;
+        return (
+            patch.journal != null ||
+            patch.journal_by_ticker != null ||
+            patch.per_instrument_stats != null
+        );
+    }
+
     scheduleSessionStateSave(patch) {
         const sessionId = this.getActiveTradingSessionId();
         if (!sessionId) return;
-        if (this._sessionStateLoadedFor !== String(sessionId)) return;
+        if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchIsJournalRelated(patch)) return;
         if (!patch || typeof patch !== 'object') return;
 
         this._pendingSessionStatePatch = Object.assign({}, this._pendingSessionStatePatch || {}, patch);
@@ -1955,9 +1965,9 @@ class Chart {
     async flushSessionStateSave() {
         const sessionId = this.getActiveTradingSessionId();
         if (!sessionId) return;
-        if (this._sessionStateLoadedFor !== String(sessionId)) return;
         const patch = this._pendingSessionStatePatch;
         if (!patch) return;
+        if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchIsJournalRelated(patch)) return;
         this._pendingSessionStatePatch = null;
 
         try {

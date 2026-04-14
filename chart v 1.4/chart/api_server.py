@@ -2661,6 +2661,8 @@ class TradingSessionUpdateIn(BaseModel):
 class TradingSessionStateUpdateIn(BaseModel):
     drawings: list | None = None
     journal: list | None = None
+    journal_by_ticker: dict | None = None
+    per_instrument_stats: dict | None = None
     pending_orders: list | None = None
     open_positions: list | None = None
     account_runtime: dict | None = None
@@ -2719,6 +2721,20 @@ def _require_admin(request: Request):
 def _can_access_trading_session(user: User, session: TradingSession) -> bool:
     return int(session.user_id) == int(user.id)
 
+def _session_symbol_from_config(cfg: dict):
+    """Top-level symbol for session lists; personal backtest used to omit cfg['symbol'] (only symbols[])."""
+    sym = cfg.get("symbol")
+    if sym:
+        return sym
+    syms = cfg.get("symbols")
+    if not isinstance(syms, list) or not syms:
+        return None
+    if len(syms) == 1:
+        row = syms[0] if isinstance(syms[0], dict) else {}
+        return row.get("symbolName") or row.get("ticker")
+    return f"{len(syms)} symbols"
+
+
 def _session_public_dict(s: TradingSession):
     cfg = {}
     try:
@@ -2735,7 +2751,7 @@ def _session_public_dict(s: TradingSession):
         "start_balance": cfg.get("startBalance") or cfg.get("start_balance") or cfg.get("balance"),
         "start_date": cfg.get("startDate") or cfg.get("start_date"),
         "end_date": cfg.get("endDate") or cfg.get("end_date"),
-        "symbol": cfg.get("symbol"),
+        "symbol": _session_symbol_from_config(cfg),
         "config": cfg,
     }
 
@@ -4417,6 +4433,12 @@ async def get_trading_session_state(session_id: int, request: Request):
             "state": {
                 "drawings": state.get("drawings") if isinstance(state.get("drawings"), list) else [],
                 "journal": state.get("journal") if isinstance(state.get("journal"), list) else [],
+                "journal_by_ticker": state.get("journal_by_ticker")
+                if isinstance(state.get("journal_by_ticker"), dict)
+                else {},
+                "per_instrument_stats": state.get("per_instrument_stats")
+                if isinstance(state.get("per_instrument_stats"), dict)
+                else {},
                 "pending_orders": state.get("pending_orders") if isinstance(state.get("pending_orders"), list) else [],
                 "open_positions": state.get("open_positions") if isinstance(state.get("open_positions"), list) else [],
                 "account_runtime": state.get("account_runtime") if isinstance(state.get("account_runtime"), dict) else {},
@@ -4451,6 +4473,10 @@ async def patch_trading_session_state(session_id: int, payload: TradingSessionSt
             state["drawings"] = payload.drawings
         if payload.journal is not None:
             state["journal"] = payload.journal
+        if payload.journal_by_ticker is not None:
+            state["journal_by_ticker"] = payload.journal_by_ticker
+        if payload.per_instrument_stats is not None:
+            state["per_instrument_stats"] = payload.per_instrument_stats
         if payload.pending_orders is not None:
             state["pending_orders"] = payload.pending_orders
         if payload.open_positions is not None:

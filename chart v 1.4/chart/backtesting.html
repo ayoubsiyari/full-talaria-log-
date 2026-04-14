@@ -2730,6 +2730,13 @@ html.iframe-mode .bt-modal-footer {
                         return acc;
                     }, {}),
                     symbols: instrumentRows.map(row => ({ symbolName: row.ticker, fileId: row.fileId })),
+                    // Same as prop firm: used by /api/sessions list (Session page SYMBOL column)
+                    symbol:
+                        instrumentRows.length === 1
+                            ? instrumentRows[0].ticker
+                            : instrumentRows.length > 1
+                              ? instrumentRows.length + " symbols"
+                              : null,
                     activeFileIndex: 0,
                     startDate: document.getElementById('startDate').value,
                     endDate: document.getElementById('endDate').value,
