@@ -1,5 +1,6 @@
 /**
- * Economic calendar (News sidebar) — Finnhub data via chart API (token on server: FINNHUB_API_KEY).
+ * Economic calendar (News sidebar) — Finnhub via chart API.
+ * During replay/backtest, shows only the virtual calendar day and uses virtual time for upcoming/previous.
  */
 (function () {
     'use strict';
@@ -9,10 +10,46 @@
         tab: 'upcoming',
         query: '',
         loaded: false,
+        loadedForDay: null,
         loading: false,
         error: null,
-        countdownTimer: null
+        countdownTimer: null,
+        replayDayReloadTimer: null
     };
+
+    function mainChart() {
+        return window.chart || window.mainChart || null;
+    }
+
+    /** Wall clock or replay virtual instant (ms) — used as "now" for calendar UI. */
+    function referenceNowMs() {
+        var ch = mainChart();
+        var rs = ch && ch.replaySystem;
+        if (rs && rs.isActive && Number.isFinite(rs.replayTimestamp)) {
+            return rs.replayTimestamp;
+        }
+        return Date.now();
+    }
+
+    /** Local YYYY-MM-DD for a timestamp (matches chart date display for that instant). */
+    function isoDateLocal(ms) {
+        var d = new Date(ms);
+        var y = d.getFullYear();
+        var mo = String(d.getMonth() + 1).padStart(2, '0');
+        var day = String(d.getDate()).padStart(2, '0');
+        return y + '-' + mo + '-' + day;
+    }
+
+    /** Single calendar day to request (backtest day when replay is on, else today). */
+    function focusCalendarDayRange() {
+        var day = isoDateLocal(referenceNowMs());
+        return { fromStr: day, toStr: day };
+    }
+
+    function newsPanelIsActive() {
+        var el = document.getElementById('newsContent');
+        return !!(el && el.classList.contains('active'));
+    }
 
     function escapeHtml(s) {
         return String(s)
@@ -138,7 +175,7 @@
 
     function filterEvents() {
         var q = state.query.trim().toLowerCase();
-        var now = Date.now();
+        var now = referenceNowMs();
         var list = state.events.filter(function (e) {
             var upcoming = e.t >= now;
             if (state.tab === 'upcoming' && !upcoming) return false;
@@ -151,7 +188,7 @@
     }
 
     function renderItem(e) {
-        var now = Date.now();
+        var now = referenceNowMs();
         var tp = timeParts(e.t);
         var upcoming = e.t >= now;
         var cd = upcoming ? formatCountdown(e.t - now) : '—';
@@ -205,7 +242,11 @@
         if (!allNewsItemRoots().length) return;
 
         if (state.loading) {
-            setNewsItemsHtml('<div class="news-loading" style="padding:24px;text-align:center;color:#6a6a7a;">Loading economic calendar…</div>');
+            var rng = focusCalendarDayRange();
+            setNewsItemsHtml(
+                '<div class="news-loading" style="padding:24px;text-align:center;color:#6a6a7a;">Loading calendar for ' +
+                escapeHtml(rng.fromStr) + '…</div>'
+            );
             return;
         }
         if (state.error) {
@@ -221,7 +262,7 @@
     }
 
     function tickCountdowns() {
-        var now = Date.now();
+        var now = referenceNowMs();
         var nodes = document.querySelectorAll('[id="newsItems"] .news-item[data-event-ms]');
         for (var i = 0; i < nodes.length; i++) {
             var node = nodes[i];
@@ -266,12 +307,9 @@
         render();
 
         try {
-            var from = new Date();
-            from.setDate(from.getDate() - 7);
-            var to = new Date();
-            to.setDate(to.getDate() + 21);
-            var fromStr = from.toISOString().slice(0, 10);
-            var toStr = to.toISOString().slice(0, 10);
+            var rng = focusCalendarDayRange();
+            var fromStr = rng.fromStr;
+            var toStr = rng.toStr;
             var url = '/api/finnhub/calendar/economic?from=' + encodeURIComponent(fromStr) + '&to=' + encodeURIComponent(toStr);
             var r = await fetch(url, { method: 'GET', credentials: 'include' });
             var j = await r.json().catch(function () { return {}; });
@@ -289,9 +327,12 @@
             out.sort(function (a, b) { return a.t - b.t; });
             state.events = out;
             state.loaded = true;
+            state.loadedForDay = fromStr;
         } catch (err) {
             state.error = (err && err.message) ? String(err.message) : 'Failed to load calendar';
             state.events = [];
+            state.loaded = false;
+            state.loadedForDay = null;
         } finally {
             state.loading = false;
             render();
@@ -358,7 +399,8 @@
         wireTabs();
         syncTabClasses();
         bindNewsSearchInputs();
-        if (!state.loaded) {
+        var rng = focusCalendarDayRange();
+        if (!state.loaded || state.loadedForDay !== rng.fromStr) {
             loadCalendar();
         } else {
             render();
@@ -368,11 +410,29 @@
 
     window.refreshEconomicNewsSidebar = function () {
         state.loaded = false;
+        state.loadedForDay = null;
         loadCalendar();
     };
 
     document.addEventListener('visibilitychange', function () {
         if (document.hidden) stopCountdownLoop();
         else if (state.loaded) startCountdownLoop();
+    });
+
+    window.addEventListener('replayVirtualTimeChanged', function () {
+        if (state.replayDayReloadTimer) clearTimeout(state.replayDayReloadTimer);
+        state.replayDayReloadTimer = setTimeout(function () {
+            state.replayDayReloadTimer = null;
+            if (!newsPanelIsActive()) return;
+            var rng = focusCalendarDayRange();
+            if (state.loaded && state.loadedForDay === rng.fromStr) {
+                render();
+                startCountdownLoop();
+                return;
+            }
+            state.loaded = false;
+            state.loadedForDay = null;
+            loadCalendar();
+        }, 400);
     });
 })();
