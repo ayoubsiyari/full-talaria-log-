@@ -1502,12 +1502,54 @@
                 indicator.name = 'PSAR';
                 this.indicators.data[indicator.id] = calculatePSAR(this.data, indicator.params.step, indicator.params.maxStep);
                 break;
+
+            case 'custom': {
+                const TC = global.TalariaCustomIndicators;
+                if (!TC) {
+                    if (typeof this.showNotification === 'function') {
+                        this.showNotification('Custom indicators runtime not loaded');
+                    }
+                    return;
+                }
+                const script = params.script;
+                if (!script || typeof script !== 'string') {
+                    if (typeof this.showNotification === 'function') {
+                        this.showNotification('Custom indicator: script required');
+                    }
+                    return;
+                }
+                if (script.length > TC.MAX_SCRIPT_CHARS) {
+                    if (typeof this.showNotification === 'function') {
+                        this.showNotification('Custom script exceeds size limit (' + TC.MAX_SCRIPT_CHARS + ' chars)');
+                    }
+                    return;
+                }
+                indicator.isCustomScript = true;
+                indicator.params.script = script;
+                indicator.params.customParams = params.customParams && typeof params.customParams === 'object' ? params.customParams : {};
+                indicator.params.customApiVersion = params.customApiVersion != null ? params.customApiVersion : TC.API_VERSION;
+                indicator.params.timeoutMs = params.timeoutMs != null ? params.timeoutMs : TC.DEFAULT_TIMEOUT_MS;
+                indicator.name = params.name || 'Custom';
+                const overlayOn = params.overlay !== false && params.separatePanel !== true;
+                indicator.overlay = overlayOn;
+                indicator.separatePanel = params.separatePanel === true || !overlayOn;
+                this.indicators.data[indicator.id] = {
+                    loading: true,
+                    plots: [],
+                    error: null,
+                    overlay: overlayOn
+                };
+                break;
+            }
                 
             default:
                 return;
         }
         
         this.indicators.active.push(indicator);
+        if (indicator.type === 'custom' && typeof this._scheduleCustomIndicatorCompute === 'function') {
+            this._scheduleCustomIndicatorCompute(indicator);
+        }
         this._updateIndicatorPanelHeight();
         
         if (typeof this.render === 'function') {
@@ -1522,8 +1564,10 @@
 
     Chart.prototype.persistIndicators = function() {
         if (!this.indicators || !Array.isArray(this.indicators.active)) return;
+        const TC = global.TalariaCustomIndicators;
+        const maxScript = TC && TC.MAX_SCRIPT_CHARS ? TC.MAX_SCRIPT_CHARS : 48000;
         const snapshot = this.indicators.active.map(function(ind) {
-            return {
+            const base = {
                 type: ind.type,
                 name: ind.name,
                 params: Object.assign({}, ind.params || {}),
@@ -1533,10 +1577,92 @@
                 separatePanel: ind.separatePanel,
                 isVolume: ind.isVolume || false,
             };
+            if (ind.type === 'custom' && base.params && typeof base.params.script === 'string') {
+                if (base.params.script.length > maxScript) {
+                    base.params.script = base.params.script.slice(0, maxScript);
+                    base.params.customScriptTruncated = true;
+                }
+                base.isCustomScript = true;
+            }
+            return base;
         });
         if (typeof this.scheduleSessionStateSave === 'function') {
             this.scheduleSessionStateSave({ indicators: snapshot });
         }
+    };
+
+    Chart.prototype.addCustomIndicator = function(opts) {
+        opts = opts || {};
+        return this.addIndicator('custom', opts);
+    };
+
+    Chart.prototype._scheduleCustomIndicatorCompute = function(indicator) {
+        const self = this;
+        const TC = global.TalariaCustomIndicators;
+        if (!TC || !indicator || indicator.type !== 'custom') return;
+        const script = indicator.params && indicator.params.script;
+        if (!script || typeof script !== 'string') {
+            this.indicators.data[indicator.id] = {
+                loading: false,
+                plots: [],
+                error: 'No script',
+                overlay: indicator.overlay !== false
+            };
+            return;
+        }
+        const bars = TC.serializeBarsFromChartData(this.data);
+        const userParams = indicator.params.customParams && typeof indicator.params.customParams === 'object'
+            ? indicator.params.customParams
+            : {};
+        const timeoutMs = indicator.params.timeoutMs != null ? indicator.params.timeoutMs : TC.DEFAULT_TIMEOUT_MS;
+        this.indicators.data[indicator.id] = {
+            loading: true,
+            plots: [],
+            error: null,
+            overlay: indicator.overlay !== false
+        };
+        TC.runCompute(script, bars, userParams, timeoutMs).then(function(result) {
+            if (!self.indicators || !self.indicators.active) return;
+            const still = self.indicators.active.some(function(i) {
+                return i.id === indicator.id;
+            });
+            if (!still) return;
+            const wantPanel = indicator.params && indicator.params.separatePanel === true;
+            if (wantPanel) {
+                indicator.overlay = false;
+                indicator.separatePanel = true;
+            } else {
+                indicator.overlay = result.overlay !== false;
+                indicator.separatePanel = result.overlay === false;
+            }
+            self.indicators.data[indicator.id] = {
+                loading: false,
+                plots: result.plots,
+                error: null,
+                overlay: indicator.overlay !== false
+            };
+            if (typeof self._updateIndicatorPanelHeight === 'function') {
+                self._updateIndicatorPanelHeight();
+            }
+            if (typeof self.render === 'function') self.render();
+            self.persistIndicators();
+        }).catch(function(err) {
+            if (!self.indicators || !self.indicators.active) return;
+            const still = self.indicators.active.some(function(i) {
+                return i.id === indicator.id;
+            });
+            if (!still) return;
+            self.indicators.data[indicator.id] = {
+                loading: false,
+                plots: [],
+                error: err && err.message ? err.message : String(err),
+                overlay: indicator.overlay !== false
+            };
+            if (typeof self.render === 'function') self.render();
+            if (typeof self.showNotification === 'function') {
+                self.showNotification('Custom indicator: ' + (err && err.message ? err.message : 'error'));
+            }
+        });
     };
     
     Chart.prototype.updateIndicator = function(id, newParams) {
@@ -1578,6 +1704,27 @@
         if (newParams.maxStep !== undefined) indicator.params.maxStep = newParams.maxStep;
         if (newParams.bullColor !== undefined) indicator.style.bullColor = newParams.bullColor;
         if (newParams.bearColor !== undefined) indicator.style.bearColor = newParams.bearColor;
+        if (indicator.type === 'custom') {
+            if (newParams.script !== undefined) indicator.params.script = newParams.script;
+            if (newParams.customParams !== undefined) indicator.params.customParams = newParams.customParams;
+            if (newParams.name !== undefined) indicator.name = newParams.name;
+            if (newParams.timeoutMs !== undefined) indicator.params.timeoutMs = newParams.timeoutMs;
+            if (newParams.separatePanel !== undefined) {
+                indicator.params.separatePanel = newParams.separatePanel === true;
+                indicator.separatePanel = indicator.params.separatePanel;
+                if (indicator.separatePanel) indicator.overlay = false;
+            }
+            if (newParams.overlay !== undefined) {
+                indicator.overlay = newParams.overlay !== false;
+                if (!indicator.overlay) {
+                    indicator.separatePanel = true;
+                    indicator.params.separatePanel = true;
+                } else {
+                    indicator.separatePanel = false;
+                    indicator.params.separatePanel = false;
+                }
+            }
+        }
         
         // Recalculate data
         switch (indicator.type) {
@@ -1811,6 +1958,11 @@
             case 'psar':
                 this.indicators.data[indicator.id] = calculatePSAR(this.data, indicator.params.step, indicator.params.maxStep);
                 break;
+            case 'custom':
+                if (typeof this._scheduleCustomIndicatorCompute === 'function') {
+                    this._scheduleCustomIndicatorCompute(indicator);
+                }
+                break;
         }
         
         if (typeof this.render === 'function') {
@@ -1956,6 +2108,11 @@
                     break;
                 case 'psar':
                     this.indicators.data[indicator.id] = calculatePSAR(this.data, indicator.params.step, indicator.params.maxStep);
+                    break;
+                case 'custom':
+                    if (typeof this._scheduleCustomIndicatorCompute === 'function') {
+                        this._scheduleCustomIndicatorCompute(indicator);
+                    }
                     break;
             }
         }, this);
@@ -2233,12 +2390,182 @@
                 this.drawADRBands(data, indicator.style, startIndex, endIndex);
             } else if (indicator.isATR) {
                 this.drawATRBands(data, indicator.style, startIndex, endIndex);
+            } else if (indicator.type === 'custom') {
+                this.drawCustomOverlayPlots(data, indicator, startIndex, endIndex);
             } else {
                 this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex);
             }
         }
 
         ctx.restore();
+    };
+
+    Chart.prototype.drawCustomOverlayPlots = function(data, indicator, startIndex, endIndex) {
+        if (!data || data.loading) return;
+        if (data.error) return;
+        const plots = data.plots;
+        if (!Array.isArray(plots) || plots.length === 0) return;
+        const ctx = this.ctx;
+        const m = this.margin;
+        plots.forEach(function(plot) {
+            if (!plot || !Array.isArray(plot.values)) return;
+            const color = plot.color || indicator.style.color || '#2962ff';
+            const lw = plot.lineWidth != null ? plot.lineWidth : (indicator.style.lineWidth || 2);
+            if (plot.type === 'line') {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = lw;
+                ctx.beginPath();
+                let started = false;
+                for (let i = startIndex; i < endIndex && i < plot.values.length; i++) {
+                    const val = plot.values[i];
+                    if (val === null || val === undefined || isNaN(val)) continue;
+                    const x = this.dataIndexToPixel(i);
+                    const y = this.yScale(val);
+                    if (x < m.l - 20 || x > this.w - m.r + 20) continue;
+                    if (!started) {
+                        ctx.moveTo(x, y);
+                        started = true;
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                if (started) ctx.stroke();
+            } else if (plot.type === 'histogram') {
+                const baseline = plot.baseline != null && !isNaN(plot.baseline) ? plot.baseline : 0;
+                const y0 = this.yScale(baseline);
+                for (let i = startIndex; i < endIndex && i < plot.values.length; i++) {
+                    const val = plot.values[i];
+                    if (val === null || val === undefined || isNaN(val)) continue;
+                    const x = this.dataIndexToPixel(i);
+                    const y = this.yScale(val);
+                    const cw = Math.max(1, (this.candleWidth || 8) * 0.8);
+                    ctx.fillStyle = color;
+                    ctx.fillRect(x - cw / 2, Math.min(y0, y), cw, Math.abs(y - y0));
+                }
+            }
+        }, this);
+    };
+
+    Chart.prototype._renderCustomSeparatePanelSlot = function(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd) {
+        if (!indicatorData || indicatorData.loading) {
+            ctx.fillStyle = '#787b86';
+            ctx.font = '11px Roboto';
+            ctx.textAlign = 'center';
+            ctx.fillText('Custom indicator…', (m.l + this.w - m.r) / 2, indTop + panelHeight / 2);
+            ctx.textAlign = 'left';
+            return;
+        }
+        if (indicatorData.error) {
+            ctx.fillStyle = '#ef5350';
+            ctx.font = '11px Roboto';
+            ctx.textAlign = 'left';
+            const msg = String(indicatorData.error).slice(0, 120);
+            ctx.fillText(msg, m.l + 4, indTop + 14);
+            return;
+        }
+        const plots = indicatorData.plots;
+        if (!Array.isArray(plots) || plots.length === 0) return;
+
+        let min = Infinity;
+        let max = -Infinity;
+        for (let pi = 0; pi < plots.length; pi++) {
+            const plot = plots[pi];
+            if (!plot || !Array.isArray(plot.values)) continue;
+            const base = plot.baseline != null && !isNaN(plot.baseline) ? plot.baseline : 0;
+            if (plot.type === 'histogram') {
+                for (let i = visibleStart; i < visibleEnd && i < plot.values.length; i++) {
+                    const val = plot.values[i];
+                    if (val === null || val === undefined || isNaN(val)) continue;
+                    min = Math.min(min, val, base);
+                    max = Math.max(max, val, base);
+                }
+            } else {
+                for (let i = visibleStart; i < visibleEnd && i < plot.values.length; i++) {
+                    const val = plot.values[i];
+                    if (val === null || val === undefined || isNaN(val)) continue;
+                    min = Math.min(min, val);
+                    max = Math.max(max, val);
+                }
+            }
+        }
+        if (min === Infinity || max === -Infinity) return;
+        const range = max - min || 1;
+        min = min - range * 0.1;
+        max = max + range * 0.1;
+
+        indicator._panelBaseMin = min;
+        indicator._panelBaseMax = max;
+        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        min = dom.min;
+        max = dom.max;
+
+        const vSpan = Math.max(1e-12, max - min);
+        const scaleY = function(val) {
+            if (val === null || val === undefined) return null;
+            const y = indBottom - 5 - ((val - min) / vSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(indTop + 2, Math.min(indBottom - 2, y));
+        };
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.lineWidth = 1;
+        const numGridLines = 4;
+        for (let g = 0; g <= numGridLines; g++) {
+            const val = min + (max - min) * (g / numGridLines);
+            const y = scaleY(val);
+            if (y === null) continue;
+            ctx.beginPath();
+            ctx.moveTo(m.l, y);
+            ctx.lineTo(this.w - m.r, y);
+            ctx.stroke();
+            ctx.fillStyle = '#787b86';
+            ctx.font = '10px Roboto';
+            ctx.textAlign = 'right';
+            ctx.fillText(val.toFixed(2), this.w - m.r + 45, y + 3);
+        }
+
+        plots.forEach(function(plot) {
+            if (!plot || !Array.isArray(plot.values)) return;
+            const color = plot.color || indicator.style.color || '#2962ff';
+            const lw = plot.lineWidth != null ? plot.lineWidth : 2;
+            if (plot.type === 'line') {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = lw;
+                ctx.beginPath();
+                let started = false;
+                for (let i = visibleStart; i < visibleEnd && i < plot.values.length; i++) {
+                    const val = plot.values[i];
+                    if (val === null || val === undefined || isNaN(val)) continue;
+                    const x = this.dataIndexToPixel(i);
+                    const y = scaleY(val);
+                    if (y === null) continue;
+                    if (x < m.l - 10 || x > this.w - m.r + 10) continue;
+                    if (!started) {
+                        ctx.moveTo(x, y);
+                        started = true;
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                if (started) ctx.stroke();
+            } else if (plot.type === 'histogram') {
+                const baseline = plot.baseline != null && !isNaN(plot.baseline) ? plot.baseline : 0;
+                const y0 = scaleY(baseline);
+                if (y0 === null) return;
+                for (let i = visibleStart; i < visibleEnd && i < plot.values.length; i++) {
+                    const val = plot.values[i];
+                    if (val === null || val === undefined || isNaN(val)) continue;
+                    const x = this.dataIndexToPixel(i);
+                    const y = scaleY(val);
+                    if (y === null) continue;
+                    const cw = Math.max(1, (this.candleWidth || 8) * 0.75);
+                    ctx.fillStyle = color;
+                    ctx.fillRect(x - cw / 2, Math.min(y0, y), cw, Math.abs(y - y0));
+                }
+            }
+        }, this);
+
+        ctx.textAlign = 'left';
     };
 
 const DEFAULT_SEPARATE_PANEL_HEIGHT = 100;
@@ -2500,6 +2827,9 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             return;
         } else if (indicator.type === 'mfi') {
             this._renderMFIPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
+        } else if (indicator.type === 'custom') {
+            this._renderCustomSeparatePanelSlot(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
         }
 

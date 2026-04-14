@@ -43696,6 +43696,10 @@
 
     
 
+    <!-- Sandboxed custom indicator runtime (Web Worker); load before chart-indicators-full -->
+
+    <script defer src="modules/custom-indicators-runtime.js?v=20260418"></script>
+
     <!-- Chart Indicators Module (Full version with ADR, ATR, Sessions) -->
 
     <!-- MUST be loaded AFTER chart.js as it extends the Chart prototype -->
@@ -48180,6 +48184,68 @@ function showIndicatorsMenu() {
 
             </div>
 
+            <div class="indicator-category">
+
+                <div style="padding: 8px 20px; font-size: 11px; font-weight: 600; color: #787b86; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 8px;">
+
+                    Script
+
+                </div>
+
+                <button class="indicator-item" data-type="custom">
+
+                    <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+
+                        <div style="width: 32px; height: 32px; background: #ede7f6; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5e35b1" stroke-width="1">
+
+                                <polyline points="4 7 4 4 20 4 20 7"/>
+
+                                <line x1="9" y1="20" x2="15" y2="20"/>
+
+                                <line x1="12" y1="4" x2="12" y2="20"/>
+
+                            </svg>
+
+                        </div>
+
+                        <div style="text-align: left; flex: 1;">
+
+                            <div style="font-size: 14px; font-weight: 500; color: #050028;">Custom (sandboxed JS)</div>
+
+                            <div style="font-size: 12px; color: #787b86;">Not Pine Script · Web Worker</div>
+
+                        </div>
+
+                    </div>
+
+                    <div class="indicator-item-actions">
+
+                        <span class="indicator-settings-trigger" data-type="custom" title="Configure">
+
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="1">
+
+                                <circle cx="12" cy="12" r="3"/>
+
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09A1.65 1.65 0 0 0 11 4.6V4a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+
+                            </svg>
+
+                        </span>
+
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#787b86" stroke-width="1">
+
+                            <polyline points="9 18 15 12 9 6"/>
+
+                        </svg>
+
+                    </div>
+
+                </button>
+
+            </div>
+
         </div>
 
         <div class="indicator-settings-panel" style="display:none; flex: 1; overflow-y: auto; padding: 20px;"></div>
@@ -48760,7 +48826,47 @@ function showIndicatorsMenu() {
 
             { id: 'dColor', label: '%D Color', type: 'color', default: '#f23645' }
 
-        ] }
+        ] },
+
+        custom: {
+
+            name: 'Custom script (sandboxed JS)',
+
+            params: [
+
+                { id: 'name', label: 'Name', type: 'text', default: 'Custom' },
+
+                {
+
+                    id: 'placement',
+
+                    label: 'Placement',
+
+                    type: 'select',
+
+                    options: [{ value: 'overlay', label: 'On price chart' }, { value: 'panel', label: 'Separate panel' }],
+
+                    default: 'overlay'
+
+                },
+
+                {
+
+                    id: 'script',
+
+                    label: 'Script (must define compute(bars, params); not Pine)',
+
+                    type: 'textarea',
+
+                    default: 'function compute(bars, params) {\n  const c = bars.close;\n  const n = c.length;\n  const p = params.period != null ? params.period : 20;\n  const out = new Array(n).fill(null);\n  let s = 0;\n  for (let i = 0; i < n; i++) {\n    s += c[i];\n    if (i >= p) s -= c[i - p];\n    if (i >= p - 1) out[i] = s / p;\n  }\n  return {\n    overlay: true,\n    plots: [{ type: \'line\', values: out, color: \'#2962ff\', name: \'SMA\' }]\n  };\n}'
+
+                },
+
+                { id: 'period', label: 'Example param (params.period)', type: 'number', min: 1, default: 20 }
+
+            ]
+
+        }
 
     };
 
@@ -48786,6 +48892,22 @@ function showIndicatorsMenu() {
 
         });
 
+        if (type === 'custom') {
+
+            params.customParams = { period: params.period };
+
+            delete params.period;
+
+            params.separatePanel = params.placement === 'panel';
+
+            params.overlay = params.placement !== 'panel';
+
+            delete params.placement;
+
+            params.customApiVersion = (window.TalariaCustomIndicators && window.TalariaCustomIndicators.API_VERSION) || 1;
+
+        }
+
 
 
         if (typeof targetChart.addIndicator === 'function') {
@@ -48798,7 +48920,11 @@ function showIndicatorsMenu() {
 
                 // Show notification with panel info
 
-                let message = `✅ Added ${type.toUpperCase()} indicator`;
+                let message = type === 'custom'
+
+                    ? '✅ Added custom indicator (sandboxed JS)'
+
+                    : `✅ Added ${type.toUpperCase()} indicator`;
 
                 if (window.panelManager && window.panelManager.currentLayout !== '1') {
 
@@ -48875,6 +49001,42 @@ function showIndicatorsMenu() {
                     if (p.step !== undefined) attrs.push(`step="${p.step}"`);
 
                     const value = p.default;
+
+                    if (p.type === 'textarea') {
+
+                        const safe = String(value).replace(/</g, '&lt;');
+
+                        return `
+
+                        <div style="margin-bottom:10px;">
+
+                            <label for="${formId}-${p.id}">${p.label}</label>
+
+                            <textarea id="${formId}-${p.id}" name="${p.id}" rows="14" style="width:100%;box-sizing:border-box;font-family:ui-monospace,Menlo,monospace;font-size:11px;padding:8px;border-radius:6px;border:1px solid #d6dce6;">${safe}</textarea>
+
+                        </div>
+
+                    `;
+
+                    }
+
+                    if (p.type === 'select' && Array.isArray(p.options)) {
+
+                        const opts = p.options.map(o => `<option value="${o.value}"${o.value === p.default ? ' selected' : ''}>${o.label}</option>`).join('');
+
+                        return `
+
+                        <div style="margin-bottom:10px;">
+
+                            <label for="${formId}-${p.id}">${p.label}</label>
+
+                            <select id="${formId}-${p.id}" name="${p.id}" style="width:100%;padding:8px;border-radius:6px;">${opts}</select>
+
+                        </div>
+
+                    `;
+
+                    }
 
                     return `
 
@@ -48971,6 +49133,14 @@ function showIndicatorsMenu() {
         btn.addEventListener('click', e => {
 
             if (e.target.closest('.indicator-settings-trigger')) return;
+
+            if (btn.dataset.type === 'custom') {
+
+                showSettings('custom');
+
+                return;
+
+            }
 
             addIndicator(btn.dataset.type);
 
