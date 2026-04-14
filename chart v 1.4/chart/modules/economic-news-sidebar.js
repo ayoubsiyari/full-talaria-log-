@@ -25,8 +25,19 @@
     function referenceNowMs() {
         var ch = mainChart();
         var rs = ch && ch.replaySystem;
-        if (rs && rs.isActive && Number.isFinite(rs.replayTimestamp)) {
-            return rs.replayTimestamp;
+        if (rs && rs.isActive) {
+            if (Number.isFinite(rs.replayTimestamp)) {
+                return rs.replayTimestamp;
+            }
+            var idx = rs.currentIndex;
+            var fr = rs.fullRawData;
+            if (Array.isArray(fr) && Number.isFinite(idx) && fr[idx] && Number.isFinite(fr[idx].t)) {
+                return fr[idx].t;
+            }
+            var cd = ch && ch.data;
+            if (Array.isArray(cd) && cd.length && Number.isFinite(idx) && cd[idx] && Number.isFinite(cd[idx].t)) {
+                return cd[idx].t;
+            }
         }
         return Date.now();
     }
@@ -268,8 +279,12 @@
     function filterEvents() {
         var q = state.query.trim().toLowerCase();
         var now = referenceNowMs();
+        if (!Number.isFinite(now)) {
+            now = Date.now();
+        }
         var pair = parseForexPair(getCurrentChartSymbol());
         var list = state.events.filter(function (e) {
+            if (e.impact !== 'high' && e.impact !== 'medium') return false;
             if (pair && !eventMatchesChartPair(e, pair)) return false;
             var upcoming = e.t >= now;
             if (state.tab === 'upcoming' && !upcoming) return false;
@@ -278,11 +293,17 @@
             var hay = (e.event + ' ' + e.country + ' ' + e.currency).toLowerCase();
             return hay.indexOf(q) !== -1;
         });
+        if (state.tab === 'previous') {
+            list.sort(function (a, b) { return b.t - a.t; });
+        } else {
+            list.sort(function (a, b) { return a.t - b.t; });
+        }
         return list;
     }
 
     function renderItem(e) {
         var now = referenceNowMs();
+        if (!Number.isFinite(now)) now = Date.now();
         var tp = timeParts(e.t);
         var upcoming = e.t >= now;
         var cd = upcoming ? formatCountdown(e.t - now) : '—';
@@ -362,6 +383,7 @@
 
     function tickCountdowns() {
         var now = referenceNowMs();
+        if (!Number.isFinite(now)) now = Date.now();
         var nodes = document.querySelectorAll('[id="newsItems"] .news-item[data-event-ms]');
         for (var i = 0; i < nodes.length; i++) {
             var node = nodes[i];
@@ -421,7 +443,9 @@
             var out = [];
             for (var i = 0; i < rawList.length; i++) {
                 var n = normalizeRaw(rawList[i]);
-                if (n) out.push(n);
+                if (n && (n.impact === 'high' || n.impact === 'medium')) {
+                    out.push(n);
+                }
             }
             out.sort(function (a, b) { return a.t - b.t; });
             state.events = out;
@@ -495,8 +519,9 @@
         getEvents: function () {
             if (!state.events || !state.events.length) return [];
             var pair = parseForexPair(getCurrentChartSymbol());
-            if (!pair) return state.events.slice();
             return state.events.filter(function (e) {
+                if (e.impact !== 'high' && e.impact !== 'medium') return false;
+                if (!pair) return true;
                 return eventMatchesChartPair(e, pair);
             });
         }
