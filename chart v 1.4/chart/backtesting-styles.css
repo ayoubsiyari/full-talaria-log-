@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Fonts loaded from backtesting.html <link> so a blocked @import cannot drop the whole sheet */
 
 :root {
   --bt-bg: #0d1117;
@@ -1036,13 +1036,19 @@ input.mono {
   color: rgba(255, 255, 255, 0.3);
 }
 
-/* Embedded in Sessions dashboard iframe */
+/* Embedded in Sessions dashboard iframe: fill iframe height, keep scroll inside body */
 html.iframe-mode,
 html.iframe-mode body {
   height: 100%;
   margin: 0;
-  background: transparent;
+  background: #0d1117;
   overflow: hidden;
+}
+
+html.iframe-mode body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 html.iframe-mode body::before {
@@ -1054,25 +1060,38 @@ html.iframe-mode .bt-top-bar {
 }
 
 html.iframe-mode .bt-overlay {
+  flex: 1;
+  min-height: 0;
   margin-top: 0;
-  min-height: 100%;
   padding: 0;
-  background: transparent;
+  background: #0d1117;
   align-items: stretch;
+  justify-content: flex-start;
+  display: flex;
+  flex-direction: column;
 }
 
 html.iframe-mode .bt-modal {
   max-width: none;
   width: 100%;
   max-height: none;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  height: auto;
   border-radius: 0;
   border: none;
   box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 html.iframe-mode .bt-modal > form {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 html.iframe-mode .bt-modal-body {
@@ -1086,7 +1105,7 @@ html.iframe-mode .bt-toggle-row {
 }
 
 html.iframe-mode .bt-modal-footer {
-  margin-top: auto;
+  margin-top: 0;
   flex-shrink: 0;
 }
 

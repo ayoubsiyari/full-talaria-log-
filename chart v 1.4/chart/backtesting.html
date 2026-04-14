@@ -4,6 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Standard Backtesting Mode</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <!-- Critical fallback if main stylesheet fails to load (iframe / wrong base path) -->
+    <style>
+        html, body { height: 100%; margin: 0; }
+        body { background: #05060d; color: #e2e8f0; font-family: 'DM Sans', system-ui, sans-serif; }
+        .bt-modal, .bt-modal-header, .bt-modal-body, .bt-modal-footer { box-sizing: border-box; }
+        .bt-modal { background: #0d1117; color: #e2e8f0; }
+        .bt-modal-body label { color: #94a3b8; }
+        .bt-modal-body input, .bt-modal-body select, .bt-modal-body textarea {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.12);
+            color: #e2e8f0;
+            border-radius: 8px;
+            padding: 9px 12px;
+            font-size: 13px;
+        }
+    </style>
+    <link rel="stylesheet" href="/chart/backtesting-styles.css?v=5" />
     <script>
         (function() {
             function redirectToLogin() {
@@ -29,12 +49,11 @@
                 });
         })();
     </script>
-    <link rel="stylesheet" href="backtesting-styles.css?v=3">
 </head>
 <body>
     <!-- Top Bar -->
     <header class="bt-top-bar">
-        <img src="modules/logo-08.png" alt="" class="bt-top-bar-logo" width="28" height="28" decoding="async" />
+        <img src="/chart/modules/logo-08.png" alt="" class="bt-top-bar-logo" width="28" height="28" decoding="async" />
         <div class="bt-top-bar-title">Standard Backtesting Mode</div>
         <div class="bt-top-bar-actions">
             <button type="button" class="bt-top-cancel" onclick="handleCancel()">Back to Sessions</button>
