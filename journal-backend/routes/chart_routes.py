@@ -6,8 +6,6 @@ from models import db, ChartDrawing, ChartSettings, UserPreferences, User, Subsc
 from datetime import datetime, timedelta
 from functools import wraps
 
-from forex_news_service import get_replay_news_payload
-
 chart_bp = Blueprint('chart', __name__)
 
 
@@ -564,32 +562,3 @@ def update_preferences():
             'success': False,
             'error': str(e)
         }), 500
-
-
-@chart_bp.route('/replay-news', methods=['GET'])
-@jwt_required()
-@journal_access_required
-def get_replay_news():
-    """
-    Forex headlines aligned to replay virtual time (backtest period).
-    Query: start_ts, end_ts (milliseconds, required), symbol (optional chart ticker).
-    Server uses FINNHUB_API_KEY; falls back to deterministic demo lines if no coverage.
-    """
-    try:
-        start_ts = request.args.get('start_ts', type=float)
-        end_ts = request.args.get('end_ts', type=float)
-        symbol = (request.args.get('symbol') or '').strip()
-
-        if start_ts is None or end_ts is None:
-            return jsonify({
-                'success': False,
-                'error': 'start_ts and end_ts are required (milliseconds)',
-            }), 400
-
-        payload = get_replay_news_payload(int(start_ts), int(end_ts), symbol=symbol)
-        if not payload.get('success'):
-            return jsonify(payload), 400
-        return jsonify({'success': True, **payload}), 200
-    except Exception as e:
-        print(f'❌ Error replay-news: {e}')
-        return jsonify({'success': False, 'error': str(e)}), 500
