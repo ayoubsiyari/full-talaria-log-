@@ -1865,20 +1865,44 @@ class Chart {
                 if (typeof this.orderManager.persistJournal === 'function') {
                     this.orderManager.persistJournal();
                 }
-                if (typeof this.orderManager.recomputeAccountFromJournal === 'function') {
-                    this.orderManager.recomputeAccountFromJournal();
+            }
+
+            // Restore open orders + account snapshot so refresh keeps in-progress trades and balance.
+            const hasRuntimeOrderState =
+                state &&
+                ((Array.isArray(state.pending_orders) && state.pending_orders.length > 0) ||
+                    (Array.isArray(state.open_positions) && state.open_positions.length > 0) ||
+                    (state.account_runtime && typeof state.account_runtime === 'object'));
+            if (hasRuntimeOrderState && this.orderManager && typeof this.orderManager.restoreRuntimeOrderStateFromSession === 'function') {
+                this.orderManager.restoreRuntimeOrderStateFromSession(state);
+                if (typeof this.orderManager._syncReplayHeaderStatsFromAccount === 'function') {
+                    this.orderManager._syncReplayHeaderStatsFromAccount();
                 }
+                // Session restore can run before OHLC is ready; redraw lines/markers after data exists.
+                const om = this.orderManager;
+                const redrawLater = () => {
+                    try {
+                        if (typeof om.redrawPreservedTradeMarkers === 'function') {
+                            om.redrawPreservedTradeMarkers();
+                        }
+                    } catch (e) {
+                        /* ignore */
+                    }
+                };
+                window.addEventListener('chartDataLoaded', redrawLater, { once: true });
+                setTimeout(redrawLater, 500);
+            } else if (this.orderManager && typeof this.orderManager.recomputeAccountFromJournal === 'function') {
+                this.orderManager.recomputeAccountFromJournal();
+            }
+
+            if (this.orderManager) {
                 if (typeof this.orderManager.updateJournalTab === 'function') {
                     this.orderManager.updateJournalTab();
                 }
-                if (typeof this.orderManager.updatePositionsPanel === 'function') {
+                if (!hasRuntimeOrderState && typeof this.orderManager.updatePositionsPanel === 'function') {
                     this.orderManager.updatePositionsPanel();
                 }
             }
-
-            // Order state (pending_orders, open_positions, account_runtime,
-            // order_counters) is intentionally NOT restored on page load so
-            // that a refresh always starts with a clean order slate.
 
             if (state.replay && typeof state.replay === 'object') {
                 this._pendingReplayState = state.replay;
@@ -1990,13 +2014,17 @@ class Chart {
         if (typeof this.render === 'function') this.render();
     }
 
-    /** Trade journal patches must persist even if GET /state has not finished (race on first load). */
+    /** Patches that must persist even if GET /state has not finished (race on first load). */
     _sessionStatePatchIsJournalRelated(patch) {
         if (!patch || typeof patch !== 'object') return false;
         return (
             patch.journal != null ||
             patch.journal_by_ticker != null ||
-            patch.per_instrument_stats != null
+            patch.per_instrument_stats != null ||
+            patch.pending_orders != null ||
+            patch.open_positions != null ||
+            patch.account_runtime != null ||
+            patch.order_counters != null
         );
     }
 

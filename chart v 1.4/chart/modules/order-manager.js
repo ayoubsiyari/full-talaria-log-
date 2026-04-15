@@ -2681,9 +2681,43 @@ class OrderManager {
     }
 
     persistRuntimeOrderState() {
-        // Disabled: order state (pending orders, open positions) should not
-        // survive page refresh.  Users expect a clean slate after reload.
-        return;
+        const sessionId =
+            this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
+                ? this.chart.getActiveTradingSessionId()
+                : null;
+        if (!sessionId) return;
+
+        const safeClone = (arr) => {
+            try {
+                return JSON.parse(JSON.stringify(Array.isArray(arr) ? arr : []));
+            } catch (e) {
+                return [];
+            }
+        };
+
+        const account_runtime = {
+            balance: this.balance,
+            equity: this.equity,
+            initialBalance: this.initialBalance,
+            session_current_time:
+                this.orderService && this.orderService.multiInstrumentSession
+                    ? this.orderService.multiInstrumentSession.current_time
+                    : undefined,
+        };
+
+        const order_counters = {
+            orderIdCounter: this.orderIdCounter,
+            tradeGroupIdCounter: this.tradeGroupIdCounter,
+        };
+
+        if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
+            this.chart.scheduleSessionStateSave({
+                pending_orders: safeClone(this.pendingOrders),
+                open_positions: safeClone(this.openPositions),
+                account_runtime,
+                order_counters,
+            });
+        }
     }
 
     restoreRuntimeOrderStateFromSession(state) {
@@ -2755,8 +2789,20 @@ class OrderManager {
         (this._collectLayoutCharts() || []).forEach((c) => this._stripOrderDrawingLayersFromChart(c));
 
         this.openPositions.forEach((position) => {
-            this.drawOrderLine(position);
-            this.drawSLTPLines(position);
+            try {
+                this.drawOrderLine(position);
+            } catch (_) {}
+            try {
+                this.drawSLTPLines(position);
+            } catch (_) {}
+            try {
+                this.drawEntryMarker(position);
+            } catch (_) {}
+            if (Array.isArray(position.tpTargets) && position.tpTargets.length > 1) {
+                try {
+                    this.drawMultiTPAvgLine(position);
+                } catch (_) {}
+            }
         });
         this.pendingOrders.forEach((order) => {
             this.drawPendingOrderLine(order);
