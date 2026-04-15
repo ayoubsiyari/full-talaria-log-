@@ -624,8 +624,8 @@
     }
 
     function rebuildCountryMultiselect() {
-        var sels = document.querySelectorAll('select.news-country-filter');
-        if (!sels.length) return;
+        var lists = document.querySelectorAll('.news-country-filter-list');
+        if (!lists.length) return;
         var seen = {};
         var rows = [];
         state.events.forEach(function (e) {
@@ -637,15 +637,18 @@
         rows.sort(function (a, b) { return a.label.localeCompare(b.label); });
         var codes = state.filters.countryCodes;
         var allCountries = !codes || codes.length === 0;
-        for (var s = 0; s < sels.length; s++) {
-            var sel = sels[s];
-            sel.innerHTML = rows.map(function (row) {
-                return '<option value="' + escapeHtml(row.code) + '">' + escapeHtml(row.label) + '</option>';
-            }).join('');
-            for (var i = 0; i < sel.options.length; i++) {
-                var opt = sel.options[i];
-                opt.selected = allCountries || codes.indexOf(opt.value) !== -1;
-            }
+        var html = rows.map(function (row) {
+            var sel = allCountries || codes.indexOf(row.code) !== -1;
+            return (
+                '<label class="news-country-item">' +
+                '<input type="checkbox" class="news-country-filter-cb" value="' + escapeHtml(row.code) + '"' + (sel ? ' checked' : '') + '/>' +
+                '<span class="news-country-item-code">' + escapeHtml(row.code) + '</span>' +
+                '<span class="news-country-item-name">' + escapeHtml(row.label) + '</span>' +
+                '</label>'
+            );
+        }).join('');
+        for (var s = 0; s < lists.length; s++) {
+            lists[s].innerHTML = html;
         }
     }
 
@@ -662,24 +665,26 @@
         document.querySelectorAll('.news-filter-impact-med').forEach(function (el) { el.checked = state.filters.impactMedium; });
         document.querySelectorAll('.news-filter-impact-low').forEach(function (el) { el.checked = state.filters.impactLow; });
         document.querySelectorAll('.news-filter-pair-only').forEach(function (el) { el.checked = state.filters.pairOnly; });
-        var sel = document.querySelector('select.news-country-filter');
-        if (sel && sel.options.length) {
+        var primaryList = document.querySelector('.news-country-filter-list');
+        if (primaryList) {
+            var cbs = primaryList.querySelectorAll('.news-country-filter-cb');
+            var total = cbs.length;
             var picked = [];
-            for (var i = 0; i < sel.options.length; i++) {
-                if (sel.options[i].selected) picked.push(sel.options[i].value);
+            for (var i = 0; i < cbs.length; i++) {
+                if (cbs[i].checked) picked.push(cbs[i].value);
             }
-            if (picked.length === 0 || picked.length === sel.options.length) {
+            if (picked.length === 0 || picked.length === total) {
                 state.filters.countryCodes = [];
             } else {
                 state.filters.countryCodes = picked.slice();
             }
         }
-        document.querySelectorAll('select.news-country-filter').forEach(function (s) {
-            if (s === sel) return;
-            var allC = !state.filters.countryCodes || state.filters.countryCodes.length === 0;
-            for (var j = 0; j < s.options.length; j++) {
-                s.options[j].selected = allC || state.filters.countryCodes.indexOf(s.options[j].value) !== -1;
-            }
+        var allC = !state.filters.countryCodes || state.filters.countryCodes.length === 0;
+        document.querySelectorAll('.news-country-filter-list').forEach(function (lst) {
+            if (lst === primaryList) return;
+            lst.querySelectorAll('.news-country-filter-cb').forEach(function (cb) {
+                cb.checked = allC || state.filters.countryCodes.indexOf(cb.value) !== -1;
+            });
         });
         saveFiltersToStorage();
         render();
@@ -696,7 +701,7 @@
             if (!t.closest('.news-filters')) return;
             if (t.classList.contains('news-filter-impact-high') || t.classList.contains('news-filter-impact-med') ||
                 t.classList.contains('news-filter-impact-low') || t.classList.contains('news-filter-pair-only') ||
-                t.classList.contains('news-country-filter')) {
+                t.classList.contains('news-country-filter-cb')) {
                 applyFiltersFromUi();
             }
         });

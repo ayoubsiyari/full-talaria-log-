@@ -28526,35 +28526,49 @@
 
         .news-filters {
 
-            padding: 0 20px 12px;
+            margin: 0 16px 12px;
 
-            border-bottom: 1px solid rgba(255,255,255,.06);
+            padding: 12px 12px 10px;
+
+            background: linear-gradient(165deg, rgba(28, 32, 44, 0.92) 0%, rgba(19, 22, 32, 0.88) 100%);
+
+            border: 1px solid rgba(255, 255, 255, 0.08);
+
+            border-radius: 12px;
+
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 
         }
 
         .news-filters-title {
 
-            font-size: 11px;
+            font-size: 10px;
 
-            font-weight: 600;
+            font-weight: 700;
 
             text-transform: uppercase;
 
-            letter-spacing: 0.06em;
+            letter-spacing: 0.1em;
 
-            color: #787b86;
+            color: #6a6f7c;
 
-            margin-bottom: 8px;
+            margin: 0 0 12px;
 
         }
 
         .news-filters-row {
 
-            margin-bottom: 8px;
+            margin-bottom: 10px;
 
             font-size: 12px;
 
             color: #d1d4dc;
+
+        }
+
+        .news-filters-row:last-child {
+
+            margin-bottom: 0;
 
         }
 
@@ -28564,51 +28578,189 @@
 
             flex-wrap: wrap;
 
-            align-items: center;
+            align-items: flex-start;
 
-            gap: 8px 14px;
+            gap: 8px 12px;
 
         }
 
         .news-filters-label {
 
+            flex: 0 0 100%;
+
+            font-size: 11px;
+
+            font-weight: 600;
+
             color: #9a9daa;
 
-            margin-right: 4px;
+            margin-bottom: 2px;
 
         }
 
-        .news-filters-check {
+        .news-filters-impact-row .news-filters-label {
+
+            flex: 0 0 auto;
+
+            margin-bottom: 0;
+
+            line-height: 28px;
+
+        }
+
+        .news-impact-pills {
+
+            display: flex;
+
+            flex-wrap: wrap;
+
+            gap: 6px;
+
+            flex: 1;
+
+            min-width: 0;
+
+        }
+
+        .news-impact-pill {
+
+            position: relative;
+
+            cursor: pointer;
+
+            user-select: none;
+
+        }
+
+        .news-impact-pill input {
+
+            position: absolute;
+
+            opacity: 0;
+
+            width: 1px;
+
+            height: 1px;
+
+            clip: rect(0, 0, 0, 0);
+
+        }
+
+        .news-impact-pill span {
 
             display: inline-flex;
 
             align-items: center;
 
-            gap: 4px;
+            justify-content: center;
 
-            cursor: pointer;
+            min-height: 28px;
 
-            user-select: none;
+            padding: 0 12px;
+
+            font-size: 11px;
+
+            font-weight: 600;
+
+            letter-spacing: 0.02em;
+
+            border-radius: 8px;
+
+            border: 1px solid rgba(255, 255, 255, 0.1);
+
+            background: rgba(255, 255, 255, 0.04);
+
+            color: #787b86;
+
+            transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 
         }
 
-        .news-filters-check input {
+        .news-impact-pill:hover span {
 
-            accent-color: #2962ff;
+            background: rgba(255, 255, 255, 0.07);
+
+            color: #b2b5be;
 
         }
 
-        .news-filters-pair {
+        .news-impact-pill input:focus-visible + span {
+
+            outline: 2px solid rgba(41, 98, 255, 0.65);
+
+            outline-offset: 2px;
+
+        }
+
+        .news-impact-pill--high input:checked + span {
+
+            border-color: rgba(242, 54, 69, 0.55);
+
+            background: rgba(242, 54, 69, 0.18);
+
+            color: #ff8a93;
+
+            box-shadow: 0 0 0 1px rgba(242, 54, 69, 0.12);
+
+        }
+
+        .news-impact-pill--med input:checked + span {
+
+            border-color: rgba(255, 183, 77, 0.5);
+
+            background: rgba(255, 183, 77, 0.14);
+
+            color: #ffc266;
+
+            box-shadow: 0 0 0 1px rgba(255, 183, 77, 0.1);
+
+        }
+
+        .news-impact-pill--low input:checked + span {
+
+            border-color: rgba(102, 187, 106, 0.5);
+
+            background: rgba(102, 187, 106, 0.14);
+
+            color: #9bd39e;
+
+            box-shadow: 0 0 0 1px rgba(102, 187, 106, 0.1);
+
+        }
+
+        .news-filters-pair-row {
+
+            margin-bottom: 10px;
+
+        }
+
+        .news-filters-pair-switch {
 
             display: flex;
 
             align-items: center;
 
-            gap: 6px;
+            justify-content: space-between;
+
+            gap: 12px;
+
+            width: 100%;
 
             cursor: pointer;
 
             user-select: none;
+
+        }
+
+        .news-filters-pair-text {
+
+            font-size: 12px;
+
+            font-weight: 500;
+
+            color: #d1d4dc;
+
+            line-height: 1.35;
 
         }
 
@@ -28616,17 +28768,129 @@
 
             font-size: 10px;
 
+            font-weight: 400;
+
             color: #6a6a7a;
 
         }
 
-        .news-filters-country-row {
+        .news-switch {
+
+            position: relative;
+
+            width: 42px;
+
+            height: 24px;
+
+            flex-shrink: 0;
+
+        }
+
+        .news-switch input {
+
+            opacity: 0;
+
+            width: 0;
+
+            height: 0;
+
+            position: absolute;
+
+        }
+
+        .news-switch-slider {
+
+            position: absolute;
+
+            cursor: pointer;
+
+            inset: 0;
+
+            background: rgba(255, 255, 255, 0.1);
+
+            border-radius: 12px;
+
+            transition: background 0.2s ease;
+
+            border: 1px solid rgba(255, 255, 255, 0.08);
+
+        }
+
+        .news-switch-slider:before {
+
+            position: absolute;
+
+            content: "";
+
+            height: 18px;
+
+            width: 18px;
+
+            left: 3px;
+
+            bottom: 2px;
+
+            background: linear-gradient(180deg, #fff 0%, #e8e8ea 100%);
+
+            border-radius: 50%;
+
+            transition: transform 0.2s ease;
+
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+
+        }
+
+        .news-switch input:checked + .news-switch-slider {
+
+            background: rgba(41, 98, 255, 0.85);
+
+            border-color: rgba(41, 98, 255, 0.5);
+
+        }
+
+        .news-switch input:focus-visible + .news-switch-slider {
+
+            outline: 2px solid rgba(41, 98, 255, 0.65);
+
+            outline-offset: 2px;
+
+        }
+
+        .news-switch input:checked + .news-switch-slider:before {
+
+            transform: translateX(18px);
+
+        }
+
+        .news-filters-country-block {
 
             display: flex;
 
             flex-direction: column;
 
-            gap: 6px;
+            gap: 8px;
+
+        }
+
+        .news-filters-country-head {
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content: space-between;
+
+            gap: 8px;
+
+        }
+
+        .news-filters-country-head .news-filters-label {
+
+            flex: 1 1 auto;
+
+            min-width: 0;
+
+            margin-bottom: 0;
 
         }
 
@@ -28636,59 +28900,187 @@
 
             flex-direction: column;
 
-            gap: 6px;
+            min-height: 0;
 
         }
 
-        .news-country-filter {
+        .news-country-filter-list {
 
             width: 100%;
 
-            max-height: 120px;
+            max-height: 168px;
 
-            padding: 6px 8px;
+            overflow-x: hidden;
 
-            background: rgba(30, 30, 35, 0.8);
+            overflow-y: auto;
 
-            border: 1px solid #2a2a2e;
+            padding: 4px;
 
-            border-radius: 6px;
+            background: rgba(0, 0, 0, 0.28);
 
-            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.07);
 
-            font-size: 12px;
+            border-radius: 10px;
+
+            scrollbar-width: thin;
+
+            scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
         }
 
-        .news-filter-country-all {
+        .news-country-filter-list::-webkit-scrollbar {
 
-            align-self: flex-start;
+            width: 6px;
 
-            padding: 6px 12px;
+        }
 
-            font-size: 11px;
+        .news-country-filter-list::-webkit-scrollbar-track {
 
-            background: rgba(41, 98, 255, 0.2);
+            background: transparent;
 
-            border: 1px solid rgba(41, 98, 255, 0.45);
+        }
 
-            border-radius: 6px;
+        .news-country-filter-list::-webkit-scrollbar-thumb {
 
-            color: #8ab4ff;
+            background: rgba(255, 255, 255, 0.18);
+
+            border-radius: 3px;
+
+        }
+
+        .news-country-item {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 10px;
+
+            padding: 8px 10px;
+
+            margin-bottom: 2px;
+
+            border-radius: 8px;
+
+            cursor: pointer;
+
+            user-select: none;
+
+            transition: background 0.12s ease;
+
+        }
+
+        .news-country-item:last-child {
+
+            margin-bottom: 0;
+
+        }
+
+        .news-country-item:hover {
+
+            background: rgba(255, 255, 255, 0.05);
+
+        }
+
+        .news-country-item input {
+
+            width: 16px;
+
+            height: 16px;
+
+            margin: 0;
+
+            flex-shrink: 0;
+
+            accent-color: #2962ff;
 
             cursor: pointer;
 
         }
 
+        .news-country-item-code {
+
+            flex-shrink: 0;
+
+            min-width: 32px;
+
+            padding: 3px 7px;
+
+            font-size: 10px;
+
+            font-weight: 700;
+
+            letter-spacing: 0.06em;
+
+            text-align: center;
+
+            color: #b2b5be;
+
+            background: rgba(255, 255, 255, 0.08);
+
+            border-radius: 5px;
+
+            border: 1px solid rgba(255, 255, 255, 0.06);
+
+        }
+
+        .news-country-item-name {
+
+            flex: 1;
+
+            min-width: 0;
+
+            font-size: 12px;
+
+            color: #c9cdd4;
+
+            white-space: nowrap;
+
+            overflow: hidden;
+
+            text-overflow: ellipsis;
+
+        }
+
+        .news-filter-country-all {
+
+            padding: 4px 10px;
+
+            font-size: 11px;
+
+            font-weight: 600;
+
+            background: transparent;
+
+            border: 1px solid rgba(41, 98, 255, 0.35);
+
+            border-radius: 8px;
+
+            color: #7eb0ff;
+
+            cursor: pointer;
+
+            transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+
+        }
+
         .news-filter-country-all:hover {
 
-            background: rgba(41, 98, 255, 0.35);
+            background: rgba(41, 98, 255, 0.15);
+
+            border-color: rgba(41, 98, 255, 0.55);
+
+            color: #b8d4ff;
 
         }
 
         body.light-mode .news-filters {
 
-            border-bottom-color: rgba(0,0,0,.08);
+            background: linear-gradient(165deg, #ffffff 0%, #f4f5f8 100%);
+
+            border-color: rgba(0, 0, 0, 0.08);
+
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
 
         }
 
@@ -28698,23 +29090,95 @@
 
         }
 
-        body.light-mode .news-country-filter {
+        body.light-mode .news-impact-pill span {
 
-            background: #f5f5f7;
+            background: rgba(0, 0, 0, 0.04);
 
-            border-color: #e0e0e6;
+            border-color: rgba(0, 0, 0, 0.1);
+
+            color: #787b86;
+
+        }
+
+        body.light-mode .news-impact-pill:hover span {
+
+            background: rgba(0, 0, 0, 0.06);
+
+        }
+
+        body.light-mode .news-impact-pill--high input:checked + span {
+
+            color: #c92a2a;
+
+        }
+
+        body.light-mode .news-impact-pill--med input:checked + span {
+
+            color: #b35c00;
+
+        }
+
+        body.light-mode .news-impact-pill--low input:checked + span {
+
+            color: #2f6f32;
+
+        }
+
+        body.light-mode .news-filters-pair-text {
 
             color: #131722;
 
         }
 
+        body.light-mode .news-switch-slider {
+
+            background: rgba(0, 0, 0, 0.12);
+
+            border-color: rgba(0, 0, 0, 0.1);
+
+        }
+
+        body.light-mode .news-country-filter-list {
+
+            background: rgba(0, 0, 0, 0.04);
+
+            border-color: rgba(0, 0, 0, 0.1);
+
+        }
+
+        body.light-mode .news-country-item:hover {
+
+            background: rgba(0, 0, 0, 0.04);
+
+        }
+
+        body.light-mode .news-country-item-name {
+
+            color: #131722;
+
+        }
+
+        body.light-mode .news-country-item-code {
+
+            color: #5a5e6a;
+
+            background: rgba(0, 0, 0, 0.06);
+
+            border-color: rgba(0, 0, 0, 0.08);
+
+        }
+
         body.light-mode .news-filter-country-all {
 
-            background: rgba(41, 98, 255, 0.12);
-
-            border-color: rgba(41, 98, 255, 0.35);
+            border-color: rgba(41, 98, 255, 0.4);
 
             color: #2962ff;
+
+        }
+
+        body.light-mode .news-filter-country-all:hover {
+
+            background: rgba(41, 98, 255, 0.1);
 
         }
 
@@ -42782,29 +43246,49 @@
 
                         <span class="news-filters-label">Impact</span>
 
-                        <label class="news-filters-check"><input type="checkbox" class="news-filter-impact-high" checked/> High</label>
+                        <div class="news-impact-pills">
 
-                        <label class="news-filters-check"><input type="checkbox" class="news-filter-impact-med" checked/> Med</label>
+                            <label class="news-impact-pill news-impact-pill--high"><input type="checkbox" class="news-filter-impact-high" checked/><span>High</span></label>
 
-                        <label class="news-filters-check"><input type="checkbox" class="news-filter-impact-low"/> Low</label>
+                            <label class="news-impact-pill news-impact-pill--med"><input type="checkbox" class="news-filter-impact-med" checked/><span>Med</span></label>
 
-                    </div>
+                            <label class="news-impact-pill news-impact-pill--low"><input type="checkbox" class="news-filter-impact-low"/><span>Low</span></label>
 
-                    <div class="news-filters-row">
-
-                        <label class="news-filters-pair"><input type="checkbox" class="news-filter-pair-only" checked/> Chart symbol only <span class="news-filters-hint">(e.g. EURUSD legs)</span></label>
+                        </div>
 
                     </div>
 
-                    <div class="news-filters-row news-filters-country-row">
+                    <div class="news-filters-row news-filters-pair-row">
 
-                        <span class="news-filters-label">Countries</span>
+                        <label class="news-filters-pair-switch">
+
+                            <span class="news-filters-pair-text">Chart symbol only <span class="news-filters-hint">(e.g. EURUSD legs)</span></span>
+
+                            <span class="news-switch">
+
+                                <input type="checkbox" class="news-filter-pair-only" checked/>
+
+                                <span class="news-switch-slider"></span>
+
+                            </span>
+
+                        </label>
+
+                    </div>
+
+                    <div class="news-filters-row news-filters-country-block">
+
+                        <div class="news-filters-country-head">
+
+                            <span class="news-filters-label">Countries</span>
+
+                            <button type="button" class="news-filter-country-all">All countries</button>
+
+                        </div>
 
                         <div class="news-filters-country-wrap">
 
-                            <select class="news-country-filter" multiple size="5" aria-label="Filter by country"></select>
-
-                            <button type="button" class="news-filter-country-all">All countries</button>
+                            <div class="news-country-filter-list" role="group" aria-label="Filter by country"></div>
 
                         </div>
 
@@ -43374,7 +43858,7 @@
     <script defer src="modules/chart-env.defaults.js?v=20260424"></script>
     <script defer src="modules/chart-env.generated.js?v=20260424"></script>
     <script defer src="modules/replay-news-panel.js?v=20260424"></script>
-    <script defer src="modules/economic-news-sidebar.js?v=20260431"></script>
+    <script defer src="modules/economic-news-sidebar.js?v=20260432"></script>
 
     <script defer src="modules/order-event-bus.js?v=20260424"></script>
 
