@@ -731,17 +731,23 @@ const INDICATOR_COLOR_ROWS = [
 
 const INDICATOR_COLOR_RECENTS = ['#131722', '#2962FF', '#1E3A5F', '#262B3E'];
 
-/** Indicator legend row (OHLC + separate panels) — TradingView-style: compact, no chip background */
+/** Indicator legend chips (OHLC + panels) — TradingView-style compact pills */
 const TALARIA_INDICATOR_CHIP_CSS =
-    'display:inline-flex;align-items:center;gap:4px;min-height:18px;box-sizing:border-box;' +
-    'padding:0 2px;margin-right:6px;margin-bottom:2px;border-radius:0;line-height:1;' +
-    'border:none;background:transparent;' +
-    'cursor:pointer;vertical-align:middle;';
-const TALARIA_INDICATOR_CHIP_BG = 'transparent';
-const TALARIA_INDICATOR_CHIP_BG_HOVER = 'transparent';
-const TALARIA_INDICATOR_CHIP_BORDER_HOVER = 'transparent';
+    'display:inline-flex;align-items:center;gap:6px;min-height:22px;box-sizing:border-box;' +
+    'padding:3px 8px 3px 6px;margin:0 4px 4px 0;border-radius:3px;line-height:1.25;' +
+    'border:1px solid #363a45;background:#2a2e39;' +
+    'cursor:pointer;vertical-align:middle;' +
+    'font-family:-apple-system,BlinkMacSystemFont,Trebuchet MS,Roboto,Ubuntu,sans-serif;' +
+    'box-shadow:inset 0 1px 0 rgba(255,255,255,0.04);';
+const TALARIA_INDICATOR_CHIP_BG = '#2a2e39';
+const TALARIA_INDICATOR_CHIP_BG_HOVER = '#363a45';
+const TALARIA_INDICATOR_CHIP_BORDER_HOVER = '#4a5058';
 const TALARIA_INDICATOR_COLOR_STRIP = (color) =>
-    'display:inline-block;width:10px;height:2px;border-radius:1px;background:' + color + ';flex-shrink:0;';
+    'display:inline-block;width:3px;height:14px;border-radius:1px;background:' + color + ';flex-shrink:0;';
+const talariaIndNameStyle = (visible) =>
+    'color:#d1d4dc;font-size:12px;font-weight:400;letter-spacing:0.01em;opacity:' + (visible ? '1' : '0.45') + ';';
+const TALARIA_IND_ACTION_BTN =
+    'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:2px;cursor:pointer;transition:background .15s,color .15s;flex-shrink:0;';
 
 if (typeof window !== 'undefined') {
     window.TALARIA_INDICATOR_CHIP_CSS = TALARIA_INDICATOR_CHIP_CSS;
@@ -1293,12 +1299,12 @@ function createIndicatorSelectionMenu(chartInstance) {
     menu.style.cssText = `
         position: fixed; top: 50%; left: 50%;
         transform: translate(-50%, -50%);
-        width: 700px; max-width: 92vw;
+        width: 720px; max-width: 92vw;
         height: 520px; max-height: 82vh;
         background: var(--sp-ui-chrome-bg, #131722);
-        border: 1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
-        border-radius: 10px;
-        box-shadow: 0 24px 64px rgba(0,0,0,0.65);
+        border: 1px solid var(--sp-ui-border, rgba(42,46,57,0.65));
+        border-radius: 8px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.03) inset;
         z-index: 9999; visibility: hidden; opacity: 0;
         transition: opacity 0.15s ease, visibility 0.15s ease;
         display: flex; flex-direction: column; overflow: hidden;
@@ -1387,10 +1393,10 @@ function createIndicatorSelectionMenu(chartInstance) {
 
     const sidebar = document.createElement('div');
     sidebar.style.cssText = `
-        width: 172px;
+        width: 176px;
         border-right: 1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
-        padding: 6px 0; overflow-y: auto; flex-shrink: 0;
-        background: var(--sp-ui-sidebar-bg, #0d1427);
+        padding: 8px 0; overflow-y: auto; flex-shrink: 0;
+        background: var(--sp-ui-sidebar-bg, #1a1f2e);
     `;
 
     let activeCategory = 'technicals';
@@ -1414,11 +1420,12 @@ function createIndicatorSelectionMenu(chartInstance) {
         item.dataset.category = key;
         item.style.cssText = `
             display: flex; align-items: center; gap: 8px;
-            padding: 8px 12px; cursor: pointer;
+            padding: 8px 12px 8px 9px; cursor: pointer;
             font-size: 13px; font-weight: 500;
             color: var(--sp-text, #d1d4dc);
-            transition: all 0.12s;
-            margin: 1px 6px; border-radius: 5px;
+            transition: background 0.12s, color 0.12s, border-color 0.12s;
+            margin: 2px 8px; border-radius: 4px;
+            border-left: 3px solid transparent;
             font-family: 'Roboto', -apple-system, sans-serif;
         `;
 
@@ -1434,7 +1441,7 @@ function createIndicatorSelectionMenu(chartInstance) {
 
         item.onmouseenter = () => {
             if (activeCategory !== key) {
-                item.style.background = 'var(--sp-hover-bg, rgba(42,46,57,0.6))';
+                item.style.background = 'rgba(255, 255, 255, 0.05)';
             }
         };
         item.onmouseleave = () => {
@@ -1447,10 +1454,12 @@ function createIndicatorSelectionMenu(chartInstance) {
                 categoryButtons[k].style.background = 'transparent';
                 categoryButtons[k].style.color = 'var(--sp-text, #d1d4dc)';
                 categoryButtons[k].style.fontWeight = '500';
+                categoryButtons[k].style.borderLeftColor = 'transparent';
             });
-            item.style.background = ac;
+            item.style.background = 'rgba(41, 98, 255, 0.16)';
             item.style.color = '#ffffff';
             item.style.fontWeight = '600';
+            item.style.borderLeftColor = ac;
             activeCategory = key;
             filterByCategory(key);
         };
@@ -1469,9 +1478,10 @@ function createIndicatorSelectionMenu(chartInstance) {
     sidebar.appendChild(createCategoryItem('favorites', categories.favorites));
 
     const initAc = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
-    categoryButtons['technicals'].style.background = initAc;
+    categoryButtons['technicals'].style.background = 'rgba(41, 98, 255, 0.16)';
     categoryButtons['technicals'].style.color = '#ffffff';
     categoryButtons['technicals'].style.fontWeight = '600';
+    categoryButtons['technicals'].style.borderLeftColor = initAc;
 
     contentArea.appendChild(sidebar);
 
@@ -1508,12 +1518,12 @@ function createIndicatorSelectionMenu(chartInstance) {
         const item = document.createElement('div');
         item.style.cssText = `
             display: flex; align-items: center;
-            padding: 9px 18px; cursor: pointer;
+            padding: 10px 16px; cursor: pointer;
             transition: background 0.1s;
             font-size: 13px; font-weight: 400;
             color: var(--sp-text, #d1d4dc);
             font-family: 'Roboto', -apple-system, sans-serif;
-            border-radius: 4px; margin: 1px 6px;
+            border-radius: 4px; margin: 1px 10px;
         `;
         item.dataset.name = def.name.toLowerCase();
         item.dataset.key = key;
@@ -1521,9 +1531,10 @@ function createIndicatorSelectionMenu(chartInstance) {
         const star = document.createElement('span');
         star.innerHTML = '★';
         star.style.cssText = `
-            color: var(--sp-text-muted, #787b86);
-            margin-right: 12px; font-size: 11px;
+            color: var(--sp-text-muted, #5d606b);
+            margin-right: 12px; font-size: 12px;
             cursor: pointer; transition: color 0.15s; flex-shrink: 0;
+            opacity: 0.85;
         `;
         star.onclick = (e) => {
             e.stopPropagation();
@@ -1541,7 +1552,7 @@ function createIndicatorSelectionMenu(chartInstance) {
         item.appendChild(star);
         item.appendChild(nameSpan);
 
-        item.onmouseenter = () => { item.style.background = 'var(--sp-hover-bg, rgba(42,46,57,0.6))'; };
+        item.onmouseenter = () => { item.style.background = 'rgba(255, 255, 255, 0.06)'; };
         item.onmouseleave = () => { item.style.background = 'transparent'; };
 
         item.onclick = () => {
@@ -1623,10 +1634,12 @@ function createIndicatorSelectionMenu(chartInstance) {
                 categoryButtons[k].style.background = 'transparent';
                 categoryButtons[k].style.color = 'var(--sp-text, #d1d4dc)';
                 categoryButtons[k].style.fontWeight = '500';
+                categoryButtons[k].style.borderLeftColor = 'transparent';
             } else {
-                categoryButtons[k].style.background = ac;
+                categoryButtons[k].style.background = 'rgba(41, 98, 255, 0.16)';
                 categoryButtons[k].style.color = '#ffffff';
                 categoryButtons[k].style.fontWeight = '600';
+                categoryButtons[k].style.borderLeftColor = ac;
             }
         });
     }
@@ -2052,6 +2065,14 @@ function setupIndicatorUI(chartInstance) {
     const menu = createIndicatorSelectionMenu(chartInstance);
     document.body.appendChild(menu);
 
+    try {
+        const syncIndBtnActive = () => {
+            indicatorsBtn.classList.toggle('active', menu.classList.contains('visible'));
+        };
+        syncIndBtnActive();
+        new MutationObserver(syncIndBtnActive).observe(menu, { attributes: true, attributeFilter: ['class'] });
+    } catch (err) { /* ignore */ }
+
     indicatorsBtn.onclick = (e) => {
         e.stopPropagation();
         // Toggle visibility of the selection menu
@@ -2116,7 +2137,7 @@ function setupIndicatorUI(chartInstance) {
             };
             item.onmouseleave = function() {
                 item.style.background = TALARIA_INDICATOR_CHIP_BG;
-                item.style.borderColor = 'transparent';
+                item.style.borderColor = '#363a45';
             };
 
             // Color indicator
@@ -2128,11 +2149,11 @@ function setupIndicatorUI(chartInstance) {
             // Name (dimmed when hidden)
             const nameSpan = document.createElement('span');
             nameSpan.textContent = indicator.name;
-            nameSpan.style.cssText = 'color: #d1d4dc; font-size: 11px; font-weight: 500; opacity: ' + (indicator.visible !== false ? '1' : '0.5') + ';';
+            nameSpan.style.cssText = talariaIndNameStyle(indicator.visible !== false);
             item.appendChild(nameSpan);
 
             const actions = document.createElement('span');
-            actions.style.cssText = 'display:inline-flex;align-items:center;gap:0;margin-left:2px;flex-shrink:0;';
+            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;';
 
             const self = this;
             const id = indicator.id;
@@ -2141,10 +2162,10 @@ function setupIndicatorUI(chartInstance) {
             // Visibility toggle (eye icon) - for first occurrence
             const visibilityBtn = document.createElement('span');
             visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';  // SVG eye icons
-            visibilityBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;opacity:' + (indicator.visible !== false ? '1' : '0.5') + ';';
+            visibilityBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#787b86;opacity:' + (indicator.visible !== false ? '1' : '0.5') + ';';
             visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
             visibilityBtn.onmouseenter = function() {
-                visibilityBtn.style.background = 'rgba(120, 123, 134, 0.2)';
+                visibilityBtn.style.background = 'rgba(255, 255, 255, 0.08)';
             };
             visibilityBtn.onmouseleave = function() {
                 visibilityBtn.style.background = 'transparent';
@@ -2160,7 +2181,7 @@ function setupIndicatorUI(chartInstance) {
                 visibilityBtn.title = indicator.visible ? 'Click to hide' : 'Click to show';
                 
                 // Update name opacity
-                nameSpan.style.opacity = indicator.visible ? '1' : '0.5';
+                nameSpan.style.cssText = talariaIndNameStyle(indicator.visible);
                 
                 // Hide/show indicator data to actually hide it from chart
                 if (!indicator.visible) {
@@ -2200,7 +2221,7 @@ function setupIndicatorUI(chartInstance) {
 
             const settingsBtn = document.createElement('span');
             settingsBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-            settingsBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;';
+            settingsBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#787b86;';
             settingsBtn.title = 'Edit settings';
             settingsBtn.onmouseenter = function() {
                 settingsBtn.style.color = '#ffffff';
@@ -2232,15 +2253,13 @@ function setupIndicatorUI(chartInstance) {
             // Add a small 'x' button to remove
             const removeBtn = document.createElement('span');
             removeBtn.textContent = '×';
-            removeBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;color:#f23645;font-size:13px;font-weight:700;transition:background 0.2s;';
+            removeBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#f23645;font-size:14px;font-weight:600;line-height:1;';
             removeBtn.title = 'Remove indicator';
             removeBtn.onmouseenter = function() {
-                removeBtn.style.background = 'rgba(242, 54, 69, 0.18)';
-                removeBtn.style.transform = 'scale(1.2)';
+                removeBtn.style.background = 'rgba(242, 54, 69, 0.2)';
             };
             removeBtn.onmouseleave = function() {
                 removeBtn.style.background = 'transparent';
-                removeBtn.style.transform = 'scale(1)';
             };
             removeBtn.onclick = function(e) {
                 e.stopPropagation();
@@ -2535,7 +2554,7 @@ if (typeof Chart !== 'undefined') {
             };
             item.onmouseleave = function() {
                 item.style.background = TALARIA_INDICATOR_CHIP_BG;
-                item.style.borderColor = 'transparent';
+                item.style.borderColor = '#363a45';
             };
 
             // Color indicator
@@ -2547,11 +2566,11 @@ if (typeof Chart !== 'undefined') {
             // Name (dimmed when hidden)
             const nameSpan = document.createElement('span');
             nameSpan.textContent = indicator.name;
-            nameSpan.style.cssText = 'color: #d1d4dc; font-size: 11px; font-weight: 500; opacity: ' + (indicator.visible !== false ? '1' : '0.5') + ';';
+            nameSpan.style.cssText = talariaIndNameStyle(indicator.visible !== false);
             item.appendChild(nameSpan);
 
             const actions = document.createElement('span');
-            actions.style.cssText = 'display:inline-flex;align-items:center;gap:0;margin-left:2px;flex-shrink:0;';
+            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;';
 
             const self = this;
             const id = indicator.id;
@@ -2560,10 +2579,10 @@ if (typeof Chart !== 'undefined') {
             // Visibility toggle (eye icon)
             const visibilityBtn = document.createElement('span');
             visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';  // SVG eye icons
-            visibilityBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;opacity:' + (indicator.visible !== false ? '1' : '0.5') + ';';
+            visibilityBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#787b86;opacity:' + (indicator.visible !== false ? '1' : '0.5') + ';';
             visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
             visibilityBtn.onmouseenter = function() {
-                visibilityBtn.style.background = 'rgba(120, 123, 134, 0.2)';
+                visibilityBtn.style.background = 'rgba(255, 255, 255, 0.08)';
             };
             visibilityBtn.onmouseleave = function() {
                 visibilityBtn.style.background = 'transparent';
@@ -2579,7 +2598,7 @@ if (typeof Chart !== 'undefined') {
                 visibilityBtn.title = indicator.visible ? 'Click to hide' : 'Click to show';
                 
                 // Update name opacity
-                nameSpan.style.opacity = indicator.visible ? '1' : '0.5';
+                nameSpan.style.cssText = talariaIndNameStyle(indicator.visible);
                 
                 // Hide/show indicator data to actually hide it from chart
                 if (!indicator.visible) {
@@ -2619,7 +2638,7 @@ if (typeof Chart !== 'undefined') {
 
             const settingsBtn = document.createElement('span');
             settingsBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-            settingsBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;color:#787b86;transition:background 0.2s,color 0.2s;';
+            settingsBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#787b86;';
             settingsBtn.title = 'Edit settings';
             settingsBtn.onmouseenter = function() {
                 settingsBtn.style.color = '#ffffff';
@@ -2651,15 +2670,13 @@ if (typeof Chart !== 'undefined') {
             // Add a small 'x' button to remove
             const removeBtn = document.createElement('span');
             removeBtn.textContent = '×';
-            removeBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border-radius:3px;cursor:pointer;color:#f23645;font-size:13px;font-weight:700;transition:background 0.2s;';
+            removeBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#f23645;font-size:14px;font-weight:600;line-height:1;';
             removeBtn.title = 'Remove indicator';
             removeBtn.onmouseenter = function() {
-                removeBtn.style.background = 'rgba(242, 54, 69, 0.18)';
-                removeBtn.style.transform = 'scale(1.2)';
+                removeBtn.style.background = 'rgba(242, 54, 69, 0.2)';
             };
             removeBtn.onmouseleave = function() {
                 removeBtn.style.background = 'transparent';
-                removeBtn.style.transform = 'scale(1)';
             };
             removeBtn.onclick = function(e) {
                 e.stopPropagation();

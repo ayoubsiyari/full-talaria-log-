@@ -13,20 +13,22 @@
     function attachIndicatorMethods() {
         const Chart = global.Chart;
 
-    /** TradingView-style transparent legend — matches indicator-ui.js */
+    /** TradingView-style legend chips — matches indicator-ui.js TALARIA_* (window set when indicator-ui loads) */
     function getTalariaChipStyles() {
         const w = global;
         const fallbackChip =
-            'display:inline-flex;align-items:center;gap:4px;min-height:18px;box-sizing:border-box;' +
-            'padding:0 2px;margin-right:6px;margin-bottom:2px;border-radius:0;line-height:1;' +
-            'border:none;background:transparent;cursor:pointer;vertical-align:middle;';
+            'display:inline-flex;align-items:center;gap:6px;min-height:22px;box-sizing:border-box;' +
+            'padding:3px 8px 3px 6px;margin:0 4px 4px 0;border-radius:3px;line-height:1.25;' +
+            'border:1px solid #363a45;background:#2a2e39;cursor:pointer;vertical-align:middle;' +
+            'font-family:-apple-system,BlinkMacSystemFont,Trebuchet MS,Roboto,Ubuntu,sans-serif;' +
+            'box-shadow:inset 0 1px 0 rgba(255,255,255,0.04);';
         return {
             chipCss: w.TALARIA_INDICATOR_CHIP_CSS || fallbackChip,
-            bg: w.TALARIA_INDICATOR_CHIP_BG || 'transparent',
-            bgHover: w.TALARIA_INDICATOR_CHIP_BG_HOVER || 'transparent',
-            borderHover: w.TALARIA_INDICATOR_CHIP_BORDER_HOVER || 'transparent',
+            bg: w.TALARIA_INDICATOR_CHIP_BG || '#2a2e39',
+            bgHover: w.TALARIA_INDICATOR_CHIP_BG_HOVER || '#363a45',
+            borderHover: w.TALARIA_INDICATOR_CHIP_BORDER_HOVER || '#4a5058',
             colorStrip: w.TALARIA_INDICATOR_COLOR_STRIP || function(c) {
-                return 'display:inline-block;width:10px;height:2px;border-radius:1px;background:' + c + ';flex-shrink:0;';
+                return 'display:inline-block;width:3px;height:14px;border-radius:1px;background:' + c + ';flex-shrink:0;';
             }
         };
     }
@@ -5716,7 +5718,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             };
             item.onmouseleave = function() {
                 item.style.background = chip.bg;
-                item.style.borderColor = 'transparent';
+                item.style.borderColor = '#363a45';
             };
 
             const colorBox = document.createElement('span');
@@ -5726,7 +5728,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const nameSpan = document.createElement('span');
             nameSpan.textContent = indicator.name;
-            nameSpan.style.cssText = 'color: #d1d4dc; font-size: 11px; font-weight: 500; user-select: none; opacity: ' + (indicator.visible !== false ? '1' : '0.5') + ';';
+            nameSpan.style.cssText = 'color:#d1d4dc;font-size:12px;font-weight:400;letter-spacing:0.01em;user-select:none;opacity:' + (indicator.visible !== false ? '1' : '0.45') + ';';
             nameSpan.title = indicator.name;
             item.appendChild(nameSpan);
 

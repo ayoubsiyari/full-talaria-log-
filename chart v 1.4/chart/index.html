@@ -8849,6 +8849,17 @@
             content: none !important;
         }
 
+        /* TradingView-like: Indicators toolbar button “pressed” while modal open */
+        #indicatorsBtn.active {
+            background: rgba(41, 98, 255, 0.2) !important;
+            color: var(--sp-accent, #2962ff) !important;
+        }
+
+        body.light-mode #indicatorsBtn.active {
+            background: rgba(41, 98, 255, 0.12) !important;
+            color: var(--sp-accent, #2962ff) !important;
+        }
+
 
 
         /* Tooltip for chart type button */
@@ -26692,9 +26703,13 @@
 
             display: flex;
 
-            flex-direction: column;
+            flex-direction: row;
 
-            gap: 1px;
+            flex-wrap: wrap;
+
+            align-items: center;
+
+            gap: 4px;
 
             font-size: 11px;
 
@@ -44096,11 +44111,11 @@
 
     <!-- MUST be loaded AFTER chart.js as it extends the Chart prototype -->
 
-    <script defer src="modules/chart-indicators-full.js?v=20260424"></script>
+    <script defer src="modules/chart-indicators-full.js?v=20260433"></script>
 
     <!-- Indicator UI must load AFTER indicators to override updateOHLCIndicators -->
 
-    <script defer src="modules/indicator-ui.js?v=20260424"></script>
+    <script defer src="modules/indicator-ui.js?v=20260433"></script>
 
     
 
