@@ -1,6 +1,6 @@
 /**
  * Economic calendar (News sidebar) — Finnhub via chart API.
- * During replay/backtest, shows only the virtual calendar day and uses virtual time for upcoming/previous.
+ * Loads calendar events for the chart’s bar date range (or visible window when history is long) so axis markers stay correct when panning.
  */
 (function () {
     'use strict';
@@ -10,7 +10,7 @@
         tab: 'upcoming',
         query: '',
         loaded: false,
-        loadedForDay: null,
+        loadedRangeKey: null,
         loading: false,
         error: null,
         countdownTimer: null,
@@ -19,6 +19,7 @@
 
     /** Bumps when a new calendar fetch starts so stale async completions do not overwrite state. */
     var calendarLoadId = 0;
+    var calendarPanDebounceTimer = null;
 
     function mainChart() {
         return window.chart || window.mainChart || null;
@@ -54,10 +55,58 @@
         return y + '-' + mo + '-' + day;
     }
 
-    /** Single calendar day to request (backtest day when replay is on, else today). */
-    function focusCalendarDayRange() {
-        var day = isoDateLocal(referenceNowMs());
-        return { fromStr: day, toStr: day };
+    /** Finnhub allows from/to range; one day when no bars, full span when short series, visible window when very long. */
+    var MAX_CALENDAR_FETCH_DAYS = 120;
+
+    function getCalendarFetchRange() {
+        var ch = mainChart();
+        if (!ch || !ch.data || ch.data.length === 0) {
+            var d = isoDateLocal(referenceNowMs());
+            return { fromStr: d, toStr: d, rangeKey: d + '|' + d };
+        }
+        var data = ch.data;
+        var t0 = data[0].t;
+        var t1 = data[data.length - 1].t;
+        var minT = Math.min(t0, t1);
+        var maxT = Math.max(t0, t1);
+        var spanDays = Math.max(1, Math.ceil((maxT - minT) / 86400000) + 1);
+
+        if (spanDays <= MAX_CALENDAR_FETCH_DAYS) {
+            var fs = isoDateLocal(minT);
+            var ts = isoDateLocal(maxT);
+            return { fromStr: fs, toStr: ts, rangeKey: fs + '|' + ts };
+        }
+
+        var m = ch.margin || { l: 0, r: 0 };
+        var w = ch.w;
+        var edgeBuf = 8;
+        var startIdx = 0;
+        var endIdx = data.length;
+        if (typeof ch.pixelToDataIndex === 'function' && Number.isFinite(w) && w > 0) {
+            var plotRight = w - m.r;
+            startIdx = Math.max(0, Math.floor(ch.pixelToDataIndex(m.l)) - edgeBuf);
+            endIdx = Math.min(data.length, Math.ceil(ch.pixelToDataIndex(plotRight)) + edgeBuf);
+        } else {
+            var refMs = referenceNowMs();
+            if (!Number.isFinite(refMs)) refMs = data[Math.floor(data.length / 2)].t;
+            var padMs = Math.floor(MAX_CALENDAR_FETCH_DAYS / 2) * 86400000;
+            minT = Math.max(minT, refMs - padMs);
+            maxT = Math.min(maxT, refMs + padMs);
+            var fsWin = isoDateLocal(minT);
+            var tsWin = isoDateLocal(maxT);
+            return { fromStr: fsWin, toStr: tsWin, rangeKey: fsWin + '|' + tsWin };
+        }
+        var i0 = Math.min(Math.max(0, startIdx), data.length - 1);
+        var i1 = Math.max(i0, Math.min(data.length - 1, Math.max(0, endIdx - 1)));
+        var minTV = data[i0].t;
+        var maxTV = data[i1].t;
+        minT = Math.min(minTV, maxTV);
+        maxT = Math.max(minTV, maxTV);
+        minT -= 86400000;
+        maxT += 86400000;
+        var fsVis = isoDateLocal(minT);
+        var tsVis = isoDateLocal(maxT);
+        return { fromStr: fsVis, toStr: tsVis, rangeKey: fsVis + '|' + tsVis };
     }
 
     function newsPanelIsActive() {
@@ -360,10 +409,13 @@
         if (!allNewsItemRoots().length) return;
 
         if (state.loading) {
-            var rng = focusCalendarDayRange();
+            var rng = getCalendarFetchRange();
+            var loadLabel = rng.fromStr === rng.toStr
+                ? escapeHtml(rng.fromStr)
+                : escapeHtml(rng.fromStr) + ' – ' + escapeHtml(rng.toStr);
             setNewsItemsHtml(
                 '<div class="news-loading" style="padding:24px;text-align:center;color:#6a6a7a;">Loading calendar for ' +
-                escapeHtml(rng.fromStr) + '…</div>'
+                loadLabel + '…</div>'
             );
             return;
         }
@@ -433,7 +485,7 @@
         render();
 
         try {
-            var rng = focusCalendarDayRange();
+            var rng = getCalendarFetchRange();
             var fromStr = rng.fromStr;
             var toStr = rng.toStr;
             var url = '/api/finnhub/calendar/economic?from=' + encodeURIComponent(fromStr) + '&to=' + encodeURIComponent(toStr);
@@ -456,13 +508,13 @@
             if (myId !== calendarLoadId) return;
             state.events = out;
             state.loaded = true;
-            state.loadedForDay = fromStr;
+            state.loadedRangeKey = rng.rangeKey;
         } catch (err) {
             if (myId !== calendarLoadId) return;
             state.error = (err && err.message) ? String(err.message) : 'Failed to load calendar';
             state.events = [];
             state.loaded = false;
-            state.loadedForDay = null;
+            state.loadedRangeKey = null;
         } finally {
             if (myId !== calendarLoadId) return;
             state.loading = false;
@@ -522,7 +574,7 @@
     }
 
     /**
-     * Pair-filtered releases for the focused day (upcoming + past) — used on the time axis, not search/tab.
+     * Pair-filtered releases for the loaded range — used on the time axis, not search/tab.
      */
     window.__economicCalendarForChart = {
         getEvents: function () {
@@ -555,8 +607,8 @@
         wireTabs();
         syncTabClasses();
         bindNewsSearchInputs();
-        var rng = focusCalendarDayRange();
-        if (!state.loaded || state.loadedForDay !== rng.fromStr) {
+        var rng = getCalendarFetchRange();
+        if (!state.loaded || state.loadedRangeKey !== rng.rangeKey) {
             loadCalendar();
         } else {
             render();
@@ -567,7 +619,7 @@
 
     window.refreshEconomicNewsSidebar = function () {
         state.loaded = false;
-        state.loadedForDay = null;
+        state.loadedRangeKey = null;
         loadCalendar(true);
     };
 
@@ -581,8 +633,8 @@
         state.replayDayReloadTimer = setTimeout(function () {
             state.replayDayReloadTimer = null;
             requestChartMarkerRedraw();
-            var rng = focusCalendarDayRange();
-            if (state.loaded && state.loadedForDay === rng.fromStr) {
+            var rng = getCalendarFetchRange();
+            if (state.loaded && state.loadedRangeKey === rng.rangeKey) {
                 if (newsPanelIsActive()) {
                     render();
                     startCountdownLoop();
@@ -590,15 +642,15 @@
                 return;
             }
             state.loaded = false;
-            state.loadedForDay = null;
+            state.loadedRangeKey = null;
             loadCalendar(true);
         }, 400);
     });
 
     function onChartContextReady() {
-        var rng = focusCalendarDayRange();
-        // Load calendar for the chart focus day even when News is closed so time-axis markers work immediately.
-        if (!state.loading && (!state.loaded || state.loadedForDay !== rng.fromStr)) {
+        var rng = getCalendarFetchRange();
+        // Load calendar for the chart bar range even when News is closed so time-axis markers work immediately.
+        if (!state.loading && (!state.loaded || state.loadedRangeKey !== rng.rangeKey)) {
             loadCalendar();
             return;
         }
@@ -622,4 +674,20 @@
             }
         }, 0);
     }
+
+    /** Called from chart.js render after pan/zoom — reload Finnhub range when visible dates change (long histories). */
+    window.__economicCalendarNotifyChartRender = function (chart) {
+        var ch = window.chart || window.mainChart;
+        if (!chart || chart !== ch || chart.isPanel) return;
+        if (calendarPanDebounceTimer) clearTimeout(calendarPanDebounceTimer);
+        calendarPanDebounceTimer = setTimeout(function () {
+            calendarPanDebounceTimer = null;
+            try {
+                var rng = getCalendarFetchRange();
+                if (!state.loading && (!state.loaded || state.loadedRangeKey !== rng.rangeKey)) {
+                    loadCalendar();
+                }
+            } catch (err) {}
+        }, 350);
+    };
 })();

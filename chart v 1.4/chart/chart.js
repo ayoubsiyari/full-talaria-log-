@@ -10843,6 +10843,11 @@ class Chart {
         if (this.boxZoom && this.boxZoom.active) {
             this.drawBoxZoom();
         }
+
+        // Economic calendar: refetch Finnhub range when visible window date span changes (long histories / pan).
+        if (!this.isPanel && typeof window !== 'undefined' && typeof window.__economicCalendarNotifyChartRender === 'function') {
+            window.__economicCalendarNotifyChartRender(this);
+        }
     }
     
     /**
