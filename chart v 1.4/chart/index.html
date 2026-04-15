@@ -28524,6 +28524,200 @@
 
         }
 
+        .news-filters {
+
+            padding: 0 20px 12px;
+
+            border-bottom: 1px solid rgba(255,255,255,.06);
+
+        }
+
+        .news-filters-title {
+
+            font-size: 11px;
+
+            font-weight: 600;
+
+            text-transform: uppercase;
+
+            letter-spacing: 0.06em;
+
+            color: #787b86;
+
+            margin-bottom: 8px;
+
+        }
+
+        .news-filters-row {
+
+            margin-bottom: 8px;
+
+            font-size: 12px;
+
+            color: #d1d4dc;
+
+        }
+
+        .news-filters-impact-row {
+
+            display: flex;
+
+            flex-wrap: wrap;
+
+            align-items: center;
+
+            gap: 8px 14px;
+
+        }
+
+        .news-filters-label {
+
+            color: #9a9daa;
+
+            margin-right: 4px;
+
+        }
+
+        .news-filters-check {
+
+            display: inline-flex;
+
+            align-items: center;
+
+            gap: 4px;
+
+            cursor: pointer;
+
+            user-select: none;
+
+        }
+
+        .news-filters-check input {
+
+            accent-color: #2962ff;
+
+        }
+
+        .news-filters-pair {
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 6px;
+
+            cursor: pointer;
+
+            user-select: none;
+
+        }
+
+        .news-filters-hint {
+
+            font-size: 10px;
+
+            color: #6a6a7a;
+
+        }
+
+        .news-filters-country-row {
+
+            display: flex;
+
+            flex-direction: column;
+
+            gap: 6px;
+
+        }
+
+        .news-filters-country-wrap {
+
+            display: flex;
+
+            flex-direction: column;
+
+            gap: 6px;
+
+        }
+
+        .news-country-filter {
+
+            width: 100%;
+
+            max-height: 120px;
+
+            padding: 6px 8px;
+
+            background: rgba(30, 30, 35, 0.8);
+
+            border: 1px solid #2a2a2e;
+
+            border-radius: 6px;
+
+            color: #ffffff;
+
+            font-size: 12px;
+
+        }
+
+        .news-filter-country-all {
+
+            align-self: flex-start;
+
+            padding: 6px 12px;
+
+            font-size: 11px;
+
+            background: rgba(41, 98, 255, 0.2);
+
+            border: 1px solid rgba(41, 98, 255, 0.45);
+
+            border-radius: 6px;
+
+            color: #8ab4ff;
+
+            cursor: pointer;
+
+        }
+
+        .news-filter-country-all:hover {
+
+            background: rgba(41, 98, 255, 0.35);
+
+        }
+
+        body.light-mode .news-filters {
+
+            border-bottom-color: rgba(0,0,0,.08);
+
+        }
+
+        body.light-mode .news-filters-title {
+
+            color: #787b86;
+
+        }
+
+        body.light-mode .news-country-filter {
+
+            background: #f5f5f7;
+
+            border-color: #e0e0e6;
+
+            color: #131722;
+
+        }
+
+        body.light-mode .news-filter-country-all {
+
+            background: rgba(41, 98, 255, 0.12);
+
+            border-color: rgba(41, 98, 255, 0.35);
+
+            color: #2962ff;
+
+        }
+
 
 
         .news-tabs {
@@ -42580,6 +42774,44 @@
 
                 </div>
 
+                <div class="news-filters" id="newsFiltersPanel">
+
+                    <div class="news-filters-title">Filters</div>
+
+                    <div class="news-filters-row news-filters-impact-row">
+
+                        <span class="news-filters-label">Impact</span>
+
+                        <label class="news-filters-check"><input type="checkbox" class="news-filter-impact-high" checked/> High</label>
+
+                        <label class="news-filters-check"><input type="checkbox" class="news-filter-impact-med" checked/> Med</label>
+
+                        <label class="news-filters-check"><input type="checkbox" class="news-filter-impact-low"/> Low</label>
+
+                    </div>
+
+                    <div class="news-filters-row">
+
+                        <label class="news-filters-pair"><input type="checkbox" class="news-filter-pair-only" checked/> Chart symbol only <span class="news-filters-hint">(e.g. EURUSD legs)</span></label>
+
+                    </div>
+
+                    <div class="news-filters-row news-filters-country-row">
+
+                        <span class="news-filters-label">Countries</span>
+
+                        <div class="news-filters-country-wrap">
+
+                            <select class="news-country-filter" multiple size="5" aria-label="Filter by country"></select>
+
+                            <button type="button" class="news-filter-country-all">All countries</button>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
                 <div class="news-tabs">
 
                 <button class="news-tab" data-tab="previous">Previous</button>
@@ -43142,7 +43374,7 @@
     <script defer src="modules/chart-env.defaults.js?v=20260424"></script>
     <script defer src="modules/chart-env.generated.js?v=20260424"></script>
     <script defer src="modules/replay-news-panel.js?v=20260424"></script>
-    <script defer src="modules/economic-news-sidebar.js?v=20260428"></script>
+    <script defer src="modules/economic-news-sidebar.js?v=20260431"></script>
 
     <script defer src="modules/order-event-bus.js?v=20260424"></script>
 

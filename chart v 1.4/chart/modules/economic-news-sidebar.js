@@ -5,6 +5,8 @@
 (function () {
     'use strict';
 
+    var FILTER_STORAGE_KEY = 'economicCalendarFilters';
+
     var state = {
         events: [],
         tab: 'upcoming',
@@ -14,7 +16,16 @@
         loading: false,
         error: null,
         countdownTimer: null,
-        replayDayReloadTimer: null
+        replayDayReloadTimer: null,
+        /** User filters: impact toggles, optional chart-pair-only, optional country subset. */
+        filters: {
+            impactHigh: true,
+            impactMedium: true,
+            impactLow: false,
+            pairOnly: true,
+            /** Empty = all countries; otherwise list of 2-letter (or EU) codes from country multiselect. */
+            countryCodes: []
+        }
     };
 
     /** Bumps when a new calendar fetch starts so stale async completions do not overwrite state. */
@@ -196,12 +207,89 @@
         return false;
     }
 
+    /**
+     * Energy / petroleum inventory & rig data: tied to US country so they matched the USD leg,
+     * but they are not typical FX macro drivers for pairs like AUD/USD (user expects rates/CPI/NFP, not NGAS).
+     */
+    function isCommodityEnergyInventoryEvent(e) {
+        var name = (e && e.event ? String(e.event) : '').toUpperCase();
+        if (!name) return false;
+        var patterns = [
+            'NGAS', 'NAT GAS', 'NATURAL GAS', 'EIA NGAS', 'EIA NAT',
+            'CRUDE OIL', 'WTI', 'BRENT', 'PETROLEUM STATUS', 'PETROLEUM INVENT',
+            'GASOLINE INVENT', 'DISTILLATE', 'HEATING OIL', 'CUSHING',
+            'OIL INVENT', 'GAS INVENT', 'SPR RELEASE', 'STRATEGIC PETROLEUM',
+            'RIG COUNT', 'BAKER HUGHES', 'EIA CRUDE', 'EIA PETROLEUM'
+        ];
+        for (var i = 0; i < patterns.length; i++) {
+            if (name.indexOf(patterns[i]) !== -1) return true;
+        }
+        // Short "CRUDE"/" OIL " can catch titles like "US Crude Oil Inventories"
+        if (name.indexOf('CRUDE') !== -1 && (name.indexOf('INVENT') !== -1 || name.indexOf('STOCK') !== -1)) return true;
+        return false;
+    }
+
     function eventMatchesChartPair(e, pair) {
         if (!pair) return true;
-        return (
+        var ok = (
             currencyLegMatchesEvent(pair.base, e.country, e.currency) ||
             currencyLegMatchesEvent(pair.quote, e.country, e.currency)
         );
+        if (!ok) return false;
+        if (isCommodityEnergyInventoryEvent(e)) return false;
+        return true;
+    }
+
+    function loadFiltersFromStorage() {
+        try {
+            var raw = localStorage.getItem(FILTER_STORAGE_KEY);
+            if (!raw) return;
+            var o = JSON.parse(raw);
+            if (!o || typeof o !== 'object') return;
+            if (typeof o.impactHigh === 'boolean') state.filters.impactHigh = o.impactHigh;
+            if (typeof o.impactMedium === 'boolean') state.filters.impactMedium = o.impactMedium;
+            if (typeof o.impactLow === 'boolean') state.filters.impactLow = o.impactLow;
+            if (typeof o.pairOnly === 'boolean') state.filters.pairOnly = o.pairOnly;
+            if (Array.isArray(o.countryCodes)) {
+                state.filters.countryCodes = o.countryCodes.filter(function (x) {
+                    return typeof x === 'string' && x.length > 0;
+                });
+            }
+        } catch (err) {}
+    }
+    loadFiltersFromStorage();
+
+    function saveFiltersToStorage() {
+        try {
+            localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(state.filters));
+        } catch (err) {}
+    }
+
+    function passesImpactFilter(e) {
+        var im = e.impact;
+        if (im === 'high' && state.filters.impactHigh) return true;
+        if (im === 'medium' && state.filters.impactMedium) return true;
+        if (im === 'low' && state.filters.impactLow) return true;
+        return false;
+    }
+
+    function passesCountryUserFilter(e) {
+        var codes = state.filters.countryCodes;
+        if (!codes || codes.length === 0) return true;
+        var k = e.countryKey || countryCode(e.country || '');
+        if (!k) return false;
+        return codes.indexOf(k) !== -1;
+    }
+
+    /** Sidebar + chart markers: impact, optional countries, optional chart-pair-only. */
+    function passesUserFilters(e) {
+        if (!passesImpactFilter(e)) return false;
+        if (!passesCountryUserFilter(e)) return false;
+        var pair = parseForexPair(getCurrentChartSymbol());
+        if (state.filters.pairOnly && pair) {
+            return eventMatchesChartPair(e, pair);
+        }
+        return true;
     }
 
     function escapeHtml(s) {
@@ -294,6 +382,7 @@
             event: ev,
             country: country,
             currency: currency,
+            countryKey: countryCode(country) || '',
             flagEmoji: flagEmoji(country || currency),
             impact: impactClass(raw.impact),
             actual: fmtVal(raw.actual, unit),
@@ -335,10 +424,8 @@
         if (!Number.isFinite(now)) {
             now = Date.now();
         }
-        var pair = parseForexPair(getCurrentChartSymbol());
         var list = state.events.filter(function (e) {
-            if (e.impact !== 'high' && e.impact !== 'medium') return false;
-            if (pair && !eventMatchesChartPair(e, pair)) return false;
+            if (!passesUserFilters(e)) return false;
             var upcoming = e.t >= now;
             if (state.tab === 'upcoming' && !upcoming) return false;
             if (state.tab === 'previous' && upcoming) return false;
@@ -426,11 +513,7 @@
         }
         var list = filterEvents();
         if (!list.length) {
-            var sym = getCurrentChartSymbol();
-            var pr = parseForexPair(sym);
-            var hint = pr
-                ? ('No economic releases for ' + pr.base + '/' + pr.quote + ' on this day in this view.')
-                : 'No events in this view.';
+            var hint = 'No events match your filters or search. Try other impact levels, countries, or clear the search.';
             setNewsItemsHtml('<div style="padding:24px;text-align:center;color:#6a6a7a;">' + escapeHtml(hint) + '</div>');
             return;
         }
@@ -501,9 +584,7 @@
             var out = [];
             for (var i = 0; i < rawList.length; i++) {
                 var n = normalizeRaw(rawList[i]);
-                if (n && (n.impact === 'high' || n.impact === 'medium')) {
-                    out.push(n);
-                }
+                if (n) out.push(n);
             }
             out.sort(function (a, b) { return a.t - b.t; });
             if (myId !== calendarLoadId) return;
@@ -522,7 +603,113 @@
             render();
             startCountdownLoop();
             requestChartMarkerRedraw();
+            syncFilterControlsToDom();
         }
+    }
+
+    function syncFilterControlsToDom() {
+        document.querySelectorAll('.news-filter-impact-high').forEach(function (el) {
+            el.checked = state.filters.impactHigh;
+        });
+        document.querySelectorAll('.news-filter-impact-med').forEach(function (el) {
+            el.checked = state.filters.impactMedium;
+        });
+        document.querySelectorAll('.news-filter-impact-low').forEach(function (el) {
+            el.checked = state.filters.impactLow;
+        });
+        document.querySelectorAll('.news-filter-pair-only').forEach(function (el) {
+            el.checked = state.filters.pairOnly;
+        });
+        rebuildCountryMultiselect();
+    }
+
+    function rebuildCountryMultiselect() {
+        var sels = document.querySelectorAll('select.news-country-filter');
+        if (!sels.length) return;
+        var seen = {};
+        var rows = [];
+        state.events.forEach(function (e) {
+            var k = e.countryKey || countryCode(e.country || '');
+            if (!k || seen[k]) return;
+            seen[k] = true;
+            rows.push({ code: k, label: (e.country && String(e.country).trim()) ? e.country : k });
+        });
+        rows.sort(function (a, b) { return a.label.localeCompare(b.label); });
+        var codes = state.filters.countryCodes;
+        var allCountries = !codes || codes.length === 0;
+        for (var s = 0; s < sels.length; s++) {
+            var sel = sels[s];
+            sel.innerHTML = rows.map(function (row) {
+                return '<option value="' + escapeHtml(row.code) + '">' + escapeHtml(row.label) + '</option>';
+            }).join('');
+            for (var i = 0; i < sel.options.length; i++) {
+                var opt = sel.options[i];
+                opt.selected = allCountries || codes.indexOf(opt.value) !== -1;
+            }
+        }
+    }
+
+    function applyFiltersFromUi() {
+        var h = document.querySelector('.news-filter-impact-high');
+        var m = document.querySelector('.news-filter-impact-med');
+        var l = document.querySelector('.news-filter-impact-low');
+        var p = document.querySelector('.news-filter-pair-only');
+        if (h) state.filters.impactHigh = !!h.checked;
+        if (m) state.filters.impactMedium = !!m.checked;
+        if (l) state.filters.impactLow = !!l.checked;
+        if (p) state.filters.pairOnly = !!p.checked;
+        document.querySelectorAll('.news-filter-impact-high').forEach(function (el) { el.checked = state.filters.impactHigh; });
+        document.querySelectorAll('.news-filter-impact-med').forEach(function (el) { el.checked = state.filters.impactMedium; });
+        document.querySelectorAll('.news-filter-impact-low').forEach(function (el) { el.checked = state.filters.impactLow; });
+        document.querySelectorAll('.news-filter-pair-only').forEach(function (el) { el.checked = state.filters.pairOnly; });
+        var sel = document.querySelector('select.news-country-filter');
+        if (sel && sel.options.length) {
+            var picked = [];
+            for (var i = 0; i < sel.options.length; i++) {
+                if (sel.options[i].selected) picked.push(sel.options[i].value);
+            }
+            if (picked.length === 0 || picked.length === sel.options.length) {
+                state.filters.countryCodes = [];
+            } else {
+                state.filters.countryCodes = picked.slice();
+            }
+        }
+        document.querySelectorAll('select.news-country-filter').forEach(function (s) {
+            if (s === sel) return;
+            var allC = !state.filters.countryCodes || state.filters.countryCodes.length === 0;
+            for (var j = 0; j < s.options.length; j++) {
+                s.options[j].selected = allC || state.filters.countryCodes.indexOf(s.options[j].value) !== -1;
+            }
+        });
+        saveFiltersToStorage();
+        render();
+        requestChartMarkerRedraw();
+    }
+
+    var filtersWired = false;
+    function bindNewsFilters() {
+        if (filtersWired) return;
+        filtersWired = true;
+        document.addEventListener('change', function (e) {
+            var t = e.target;
+            if (!t || !t.closest) return;
+            if (!t.closest('.news-filters')) return;
+            if (t.classList.contains('news-filter-impact-high') || t.classList.contains('news-filter-impact-med') ||
+                t.classList.contains('news-filter-impact-low') || t.classList.contains('news-filter-pair-only') ||
+                t.classList.contains('news-country-filter')) {
+                applyFiltersFromUi();
+            }
+        });
+        document.addEventListener('click', function (e) {
+            var btn = e.target && e.target.closest ? e.target.closest('.news-filter-country-all') : null;
+            if (!btn || !btn.closest('.news-filters')) return;
+            e.preventDefault();
+            state.filters.countryCodes = [];
+            saveFiltersToStorage();
+            syncFilterControlsToDom();
+            render();
+            requestChartMarkerRedraw();
+        });
     }
 
     var tabsWired = false;
@@ -580,11 +767,8 @@
     window.__economicCalendarForChart = {
         getEvents: function () {
             if (!state.events || !state.events.length) return [];
-            var pair = parseForexPair(getCurrentChartSymbol());
             return state.events.filter(function (e) {
-                if (e.impact !== 'high' && e.impact !== 'medium') return false;
-                if (!pair) return true;
-                return eventMatchesChartPair(e, pair);
+                return passesUserFilters(e);
             });
         },
         getFlagEmoji: function (code) {
@@ -611,6 +795,8 @@
         wireTabs();
         syncTabClasses();
         bindNewsSearchInputs();
+        bindNewsFilters();
+        syncFilterControlsToDom();
         var rng = getCalendarFetchRange();
         if (!state.loaded || state.loadedRangeKey !== rng.rangeKey) {
             loadCalendar();
