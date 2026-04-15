@@ -560,6 +560,7 @@ class OrderManager {
         s.selectAll('.exec-order-connector').remove();
         s.selectAll('.y-axis-pending-highlight,.y-axis-entry-highlight,.y-axis-sl-highlight,.y-axis-tp-highlight,.y-axis-pending-sl-highlight,.y-axis-pending-tp-highlight,.y-axis-pending-be-highlight,.y-axis-price-highlight').remove();
         s.selectAll('g[class*="entry-marker-"]').remove();
+        s.selectAll('.mfe-mae-marker-root').remove();
         s.selectAll('.exit-marker, [class*="exit-marker-"], .partial-close-marker, [class*="partial-close-marker-"]').remove();
         s.selectAll('.trade-connector').remove();
         if (this.tradeConnectors?.length) {
@@ -32319,8 +32320,14 @@ class OrderManager {
         if (!this.mfeMaeMarkers || !this.mfeMaeMarkers.length) return;
         const toRemove = this.mfeMaeMarkers.filter(m => m.orderId === orderId);
         toRemove.forEach(m => {
-            if (m.arrow) m.arrow.remove();
-            if (m.label) m.label.remove();
+            if (m.group && typeof m.group.remove === 'function') {
+                try {
+                    m.group.remove();
+                } catch (_) {}
+            } else {
+                if (m.arrow) m.arrow.remove();
+                if (m.label) m.label.remove();
+            }
         });
         if (toRemove.length) {
             this.mfeMaeMarkers = this.mfeMaeMarkers.filter(m => m.orderId !== orderId);
@@ -32546,159 +32553,136 @@ class OrderManager {
     }
     
     /**
-     * Draw MFE/MAE markers on chart
+     * Draw MFE/MAE markers using the same geometry as entry markers (candle index + dataIndexToPixel), not xScale(time).
+     */
+    _drawMfeMaeMarkersOnChart(chart, position) {
+        if (!chart || !chart.svg || !chart.scales || !chart.data || !chart.data.length) return;
+        if (!this._positionTickerMatchesChartSymbol(position, chart)) return;
+
+        const yScale = chart.scales.yScale;
+        if (!yScale) return;
+
+        const entryPrice = Number.parseFloat(position.openPrice ?? position.entryPrice);
+        const dir = String(position.type || position.direction || '').toUpperCase();
+        const isBuy = dir === 'BUY' || dir === 'LONG';
+        const sz = 12;
+        const gap = 4;
+        const candleSpacing = typeof chart.getCandleSpacing === 'function' ? chart.getCandleSpacing() : 8;
+        const tickW = Math.max(candleSpacing * 0.6, 8);
+        const dec = Number.isFinite(chart.symbolPrecision) ? chart.symbolPrecision : (this.symbolPrecision || 5);
+
+        const eps = Math.max(1e-8, Math.abs(Number.isFinite(entryPrice) ? entryPrice : 1) * 1e-7);
+
+        const markers = [];
+
+        const pushMarker = (kind, price, timeMs, fill) => {
+            if (!Number.isFinite(price) || !Number.isFinite(timeMs)) return;
+            if (Number.isFinite(entryPrice) && Math.abs(price - entryPrice) <= eps) return;
+
+            const idx = this._findCandleIndexForTime(chart.data, timeMs);
+            if (idx === -1) return;
+            const candle = chart.data[idx];
+            if (!candle) return;
+
+            const x = chart.dataIndexToPixel(idx);
+            const yPrice = yScale(price);
+            const wickHigh = yScale(candle.h);
+            const wickLow = yScale(candle.l);
+
+            let arrowCY;
+            let arrowPath;
+            let labelY;
+            if (kind === 'MFE') {
+                if (isBuy) {
+                    arrowCY = wickHigh - sz - gap;
+                    arrowPath = this._arrowUpPath(x, arrowCY, sz);
+                    labelY = arrowCY - 6;
+                } else {
+                    arrowCY = wickLow + sz + gap;
+                    arrowPath = this._arrowDownPath(x, arrowCY, sz);
+                    labelY = arrowCY + 18;
+                }
+            } else {
+                if (isBuy) {
+                    arrowCY = wickLow + sz + gap;
+                    arrowPath = this._arrowDownPath(x, arrowCY, sz);
+                    labelY = arrowCY + 18;
+                } else {
+                    arrowCY = wickHigh - sz - gap;
+                    arrowPath = this._arrowUpPath(x, arrowCY, sz);
+                    labelY = arrowCY - 6;
+                }
+            }
+
+            const g = chart.svg.append('g')
+                .attr('class', `mfe-mae-marker-root mfe-mae-${kind.toLowerCase()}-${position.id}`)
+                .attr('data-order-id', position.id)
+                .attr('data-kind', kind)
+                .style('pointer-events', 'none')
+                .raise();
+
+            g.append('line')
+                .attr('data-role', `${kind.toLowerCase()}-tick`)
+                .attr('x1', x - tickW / 2)
+                .attr('x2', x + tickW / 2)
+                .attr('y1', yPrice)
+                .attr('y2', yPrice)
+                .attr('stroke', fill)
+                .attr('stroke-width', 2);
+
+            g.append('path')
+                .attr('data-role', `${kind.toLowerCase()}-arrow`)
+                .attr('d', arrowPath)
+                .attr('fill', fill)
+                .attr('opacity', 0.95);
+
+            g.append('text')
+                .attr('x', x)
+                .attr('y', labelY)
+                .attr('text-anchor', 'middle')
+                .attr('fill', fill)
+                .attr('font-size', '10px')
+                .attr('font-weight', '600')
+                .text(`${kind} ${price.toFixed(dec)}`);
+
+            markers.push({ orderId: position.id, type: kind, group: g });
+        };
+
+        if (position.mfe != null && position.mfeTime != null) {
+            pushMarker('MFE', Number.parseFloat(position.mfe), Number(position.mfeTime), '#22c55e');
+        }
+        if (position.mae != null && position.maeTime != null) {
+            pushMarker('MAE', Number.parseFloat(position.mae), Number(position.maeTime), '#ef4444');
+        }
+
+        this.mfeMaeMarkers = this.mfeMaeMarkers.concat(markers);
+    }
+
+    /**
+     * Draw MFE/MAE markers on chart (aligned with entry-marker coordinate system).
      */
     drawMfeMaeMarkers(position) {
-        console.log(`🎨 ==========================================`);
-        console.log(`🎨 Drawing MFE/MAE markers for order #${position.id}`);
-        console.log(`   Trade Type: ${position.type || position.direction}`);
-        console.log(`   Entry Price: ${position.openPrice || position.entryPrice}`);
-        console.log(`   MFE: ${position.mfe?.toFixed(5)} at time ${position.mfeTime ? new Date(position.mfeTime).toLocaleString() : 'unknown'}`);
-        console.log(`   MAE: ${position.mae?.toFixed(5)} at time ${position.maeTime ? new Date(position.maeTime).toLocaleString() : 'unknown'}`);
-        
-        if (!this.chart) {
-            console.error('❌ Chart object not found!');
+        if (!position || position.id == null) return;
+
+        this.removeMfeMaeMarkers(position.id);
+
+        if (this._isMultiPanelLayout()) {
+            const charts = typeof this._collectLayoutCharts === 'function' ? this._collectLayoutCharts() : [];
+            charts.forEach((ch) => {
+                try {
+                    this._drawMfeMaeMarkersOnChart(ch, position);
+                } catch (e) {
+                    console.warn('MFE/MAE marker draw failed on panel:', e);
+                }
+            });
             return;
         }
-        
-        if (!this.chart.svg) {
-            console.error('❌ Chart SVG not found!');
-            return;
+
+        try {
+            this._drawMfeMaeMarkersOnChart(this.chart, position);
+        } catch (e) {
+            console.warn('MFE/MAE marker draw failed:', e);
         }
-        
-        if (!this.chart.scales) {
-            console.error('❌ Chart scales not found!');
-            return;
-        }
-        
-        console.log(`✅ Chart SVG and scales are ready`);
-        
-        const markers = [];
-        const yScale = this.chart.scales.yScale;
-        const xScale = this.chart.scales.xScale;
-        
-        // Draw MFE marker (green circle - best price)
-        const entryPrice = position.openPrice || position.entryPrice;
-        console.log(`   Checking MFE: mfe=${position.mfe}, entry=${entryPrice}, mfeTime=${position.mfeTime}`);
-        
-        // Check if MFE differs from entry by more than 0.00001 (1 pip tolerance)
-        if (position.mfe && position.mfeTime) {
-            const mfeDiff = Math.abs(position.mfe - entryPrice);
-            console.log(`   MFE difference from entry: ${mfeDiff}`);
-            
-            if (mfeDiff > 0.00001) {
-                const mfeY = yScale(position.mfe);
-                const mfeX = xScale(position.mfeTime);
-                
-                console.log(`   ✅ Drawing MFE at x=${mfeX}, y=${mfeY}`);
-                
-                // Determine arrow direction based on trade type
-                const isBuy = (position.type || position.direction) === 'BUY';
-                const arrowY = isBuy ? mfeY - 15 : mfeY + 15; // Arrow points UP for BUY (MFE is higher)
-                
-                // Arrow path (triangle pointing up or down)
-                const arrowPath = isBuy 
-                    ? `M ${mfeX} ${arrowY} L ${mfeX - 5} ${arrowY + 8} L ${mfeX + 5} ${arrowY + 8} Z`
-                    : `M ${mfeX} ${arrowY} L ${mfeX - 5} ${arrowY - 8} L ${mfeX + 5} ${arrowY - 8} Z`;
-                
-                const mfeArrow = this.chart.svg.append('path')
-                    .attr('class', `mfe-marker mfe-marker-${position.id}`)
-                    .attr('d', arrowPath)
-                    .attr('fill', '#22c55e')
-                    .attr('opacity', 0.9);
-                
-                // Label with price
-                const mfeLabel = this.chart.svg.append('text')
-                    .attr('class', `mfe-label mfe-marker-${position.id}`)
-                    .attr('x', mfeX)
-                    .attr('y', isBuy ? arrowY - 5 : arrowY + 15)
-                    .attr('text-anchor', 'middle')
-                    .attr('fill', '#22c55e')
-                    .attr('font-size', '10px')
-                    .attr('font-weight', '600')
-                    .text(`${position.mfe.toFixed(3)}`);
-                
-                markers.push({ 
-                    orderId: position.id, 
-                    type: 'MFE',
-                    arrow: mfeArrow,
-                    label: mfeLabel,
-                    time: position.mfeTime,
-                    price: position.mfe
-                });
-                
-                console.log(`  ✅ MFE arrow drawn at ${position.mfe.toFixed(5)}`);
-                console.log(`     Arrow element:`, mfeArrow);
-                console.log(`     Label element:`, mfeLabel);
-            } else {
-                console.log(`  ⚠️ MFE difference too small (${mfeDiff}) or equal to entry`);
-            }
-        } else {
-            console.log(`  ⚠️ MFE missing: mfe=${position.mfe}, mfeTime=${position.mfeTime}`);
-        }
-        
-        // Draw MAE marker (red circle - worst price)
-        console.log(`   Checking MAE: mae=${position.mae}, entry=${entryPrice}, maeTime=${position.maeTime}`);
-        
-        // Check if MAE differs from entry by more than 0.00001 (1 pip tolerance)
-        if (position.mae && position.maeTime) {
-            const maeDiff = Math.abs(position.mae - entryPrice);
-            console.log(`   MAE difference from entry: ${maeDiff}`);
-            
-            if (maeDiff > 0.00001) {
-                const maeY = yScale(position.mae);
-                const maeX = xScale(position.maeTime);
-                
-                console.log(`   ✅ Drawing MAE at x=${maeX}, y=${maeY}`);
-                
-                // Determine arrow direction based on trade type (opposite of MFE)
-                const isBuy = (position.type || position.direction) === 'BUY';
-                const arrowY = isBuy ? maeY + 15 : maeY - 15; // Arrow points DOWN for BUY (MAE is lower)
-                
-                // Arrow path (triangle pointing down or up)
-                const arrowPath = isBuy 
-                    ? `M ${maeX} ${arrowY} L ${maeX - 5} ${arrowY - 8} L ${maeX + 5} ${arrowY - 8} Z`
-                    : `M ${maeX} ${arrowY} L ${maeX - 5} ${arrowY + 8} L ${maeX + 5} ${arrowY + 8} Z`;
-                
-                const maeArrow = this.chart.svg.append('path')
-                    .attr('class', `mae-marker mae-marker-${position.id}`)
-                    .attr('d', arrowPath)
-                    .attr('fill', '#ef4444')
-                    .attr('opacity', 0.9);
-                
-                // Label with price
-                const maeLabel = this.chart.svg.append('text')
-                    .attr('class', `mae-label mae-marker-${position.id}`)
-                    .attr('x', maeX)
-                    .attr('y', isBuy ? arrowY + 15 : arrowY - 5)
-                    .attr('text-anchor', 'middle')
-                    .attr('fill', '#ef4444')
-                    .attr('font-size', '10px')
-                    .attr('font-weight', '600')
-                    .text(`${position.mae.toFixed(3)}`);
-                
-                markers.push({ 
-                    orderId: position.id, 
-                    type: 'MAE',
-                    arrow: maeArrow,
-                    label: maeLabel,
-                    time: position.maeTime,
-                    price: position.mae
-                });
-                
-                console.log(`  ✅ MAE arrow drawn at ${position.mae.toFixed(5)}`);
-                console.log(`     Arrow element:`, maeArrow);
-                console.log(`     Label element:`, maeLabel);
-            } else {
-                console.log(`  ⚠️ MAE difference too small (${maeDiff}) or equal to entry`);
-            }
-        } else {
-            console.log(`  ⚠️ MAE missing: mae=${position.mae}, maeTime=${position.maeTime}`);
-        }
-        
-        // Store markers
-        this.mfeMaeMarkers = this.mfeMaeMarkers.concat(markers);
-        console.log(`📊 Total MFE/MAE markers on chart: ${this.mfeMaeMarkers.length}`);
     }
     
     /**
