@@ -3963,9 +3963,16 @@ class OrderManager {
             }
         }
 
-        // Bottom tabs are rendered centrally in updatePositionsPanel().
+        // Bottom tabs (All Trades, History, Analytics) are updated in updatePositionsPanel().
+        // When a full panel pass is already running, defer so History/Analytics still sync with tradeJournal
+        // after journal save (otherwise only the sidebar list updates).
         if (!this._isUpdatingPanels) {
             this.updatePositionsPanel();
+        } else {
+            const self = this;
+            setTimeout(function () {
+                self.updatePositionsPanel();
+            }, 0);
         }
     }
     
