@@ -731,17 +731,18 @@ const INDICATOR_COLOR_ROWS = [
 
 const INDICATOR_COLOR_RECENTS = ['#131722', '#2962FF', '#1E3A5F', '#262B3E'];
 
-/** Indicator legend chips (OHLC + panels) — TradingView-style compact pills */
+/** Indicator legend chips — semi-transparent (TV-like), not solid panels */
+const TALARIA_IND_CHIP_BORDER = 'rgba(255, 255, 255, 0.12)';
 const TALARIA_INDICATOR_CHIP_CSS =
     'display:inline-flex;align-items:center;gap:6px;min-height:22px;box-sizing:border-box;' +
     'padding:3px 8px 3px 6px;margin:0 4px 4px 0;border-radius:3px;line-height:1.25;' +
-    'border:1px solid #363a45;background:#2a2e39;' +
+    'border:1px solid ' + TALARIA_IND_CHIP_BORDER + ';background:rgba(19, 23, 34, 0.38);' +
+    'backdrop-filter:saturate(1.2) blur(6px);-webkit-backdrop-filter:saturate(1.2) blur(6px);' +
     'cursor:pointer;vertical-align:middle;' +
-    'font-family:-apple-system,BlinkMacSystemFont,Trebuchet MS,Roboto,Ubuntu,sans-serif;' +
-    'box-shadow:inset 0 1px 0 rgba(255,255,255,0.04);';
-const TALARIA_INDICATOR_CHIP_BG = '#2a2e39';
-const TALARIA_INDICATOR_CHIP_BG_HOVER = '#363a45';
-const TALARIA_INDICATOR_CHIP_BORDER_HOVER = '#4a5058';
+    'font-family:-apple-system,BlinkMacSystemFont,Trebuchet MS,Roboto,Ubuntu,sans-serif;';
+const TALARIA_INDICATOR_CHIP_BG = 'rgba(19, 23, 34, 0.38)';
+const TALARIA_INDICATOR_CHIP_BG_HOVER = 'rgba(42, 46, 57, 0.52)';
+const TALARIA_INDICATOR_CHIP_BORDER_HOVER = 'rgba(255, 255, 255, 0.22)';
 const TALARIA_INDICATOR_COLOR_STRIP = (color) =>
     'display:inline-block;width:3px;height:14px;border-radius:1px;background:' + color + ';flex-shrink:0;';
 const talariaIndNameStyle = (visible) =>
@@ -754,6 +755,7 @@ if (typeof window !== 'undefined') {
     window.TALARIA_INDICATOR_CHIP_BG = TALARIA_INDICATOR_CHIP_BG;
     window.TALARIA_INDICATOR_CHIP_BG_HOVER = TALARIA_INDICATOR_CHIP_BG_HOVER;
     window.TALARIA_INDICATOR_CHIP_BORDER_HOVER = TALARIA_INDICATOR_CHIP_BORDER_HOVER;
+    window.TALARIA_IND_CHIP_BORDER = TALARIA_IND_CHIP_BORDER;
     window.TALARIA_INDICATOR_COLOR_STRIP = TALARIA_INDICATOR_COLOR_STRIP;
 }
 
@@ -2137,7 +2139,7 @@ function setupIndicatorUI(chartInstance) {
             };
             item.onmouseleave = function() {
                 item.style.background = TALARIA_INDICATOR_CHIP_BG;
-                item.style.borderColor = '#363a45';
+                item.style.borderColor = TALARIA_IND_CHIP_BORDER;
             };
 
             // Color indicator
@@ -2554,7 +2556,7 @@ if (typeof Chart !== 'undefined') {
             };
             item.onmouseleave = function() {
                 item.style.background = TALARIA_INDICATOR_CHIP_BG;
-                item.style.borderColor = '#363a45';
+                item.style.borderColor = TALARIA_IND_CHIP_BORDER;
             };
 
             // Color indicator
