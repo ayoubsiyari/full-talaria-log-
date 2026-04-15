@@ -731,18 +731,26 @@ const INDICATOR_COLOR_ROWS = [
 
 const INDICATOR_COLOR_RECENTS = ['#131722', '#2962FF', '#1E3A5F', '#262B3E'];
 
-/** Indicator legend chips — semi-transparent (TV-like), not solid panels */
-const TALARIA_IND_CHIP_BORDER = 'rgba(255, 255, 255, 0.12)';
+/** Indicator legend chips — frosted glass (strong backdrop blur; light tint so grid/canvas shows through) */
+const TALARIA_IND_CHIP_BORDER = 'rgba(255, 255, 255, 0.2)';
+const TALARIA_IND_CHIP_BG =
+    'linear-gradient(180deg,rgba(255,255,255,0.16) 0%,rgba(19,23,34,0.14) 100%)';
+const TALARIA_INDICATOR_GLASS =
+    'backdrop-filter:saturate(1.5) blur(20px);-webkit-backdrop-filter:saturate(1.5) blur(20px);';
 const TALARIA_INDICATOR_CHIP_CSS =
     'display:inline-flex;align-items:center;gap:6px;min-height:22px;box-sizing:border-box;' +
-    'padding:3px 8px 3px 6px;margin:0 4px 4px 0;border-radius:3px;line-height:1.25;' +
-    'border:1px solid ' + TALARIA_IND_CHIP_BORDER + ';background:rgba(19, 23, 34, 0.38);' +
-    'backdrop-filter:saturate(1.2) blur(6px);-webkit-backdrop-filter:saturate(1.2) blur(6px);' +
+    'padding:3px 8px 3px 6px;margin:0 4px 4px 0;border-radius:4px;line-height:1.25;' +
+    'border:1px solid ' + TALARIA_IND_CHIP_BORDER + ';' +
+    'background:' + TALARIA_IND_CHIP_BG + ';' +
+    TALARIA_INDICATOR_GLASS +
+    'box-shadow:inset 0 1px 0 rgba(255,255,255,0.28),0 2px 10px rgba(0,0,0,0.08);' +
+    'transform:translateZ(0);-webkit-transform:translateZ(0);' +
     'cursor:pointer;vertical-align:middle;' +
     'font-family:-apple-system,BlinkMacSystemFont,Trebuchet MS,Roboto,Ubuntu,sans-serif;';
-const TALARIA_INDICATOR_CHIP_BG = 'rgba(19, 23, 34, 0.38)';
-const TALARIA_INDICATOR_CHIP_BG_HOVER = 'rgba(42, 46, 57, 0.52)';
-const TALARIA_INDICATOR_CHIP_BORDER_HOVER = 'rgba(255, 255, 255, 0.22)';
+const TALARIA_INDICATOR_CHIP_BG = TALARIA_IND_CHIP_BG;
+const TALARIA_INDICATOR_CHIP_BG_HOVER =
+    'linear-gradient(180deg,rgba(255,255,255,0.22) 0%,rgba(25,29,38,0.32) 100%)';
+const TALARIA_INDICATOR_CHIP_BORDER_HOVER = 'rgba(255, 255, 255, 0.32)';
 const TALARIA_INDICATOR_COLOR_STRIP = (color) =>
     'display:inline-block;width:3px;height:14px;border-radius:1px;background:' + color + ';flex-shrink:0;';
 const talariaIndNameStyle = (visible) =>

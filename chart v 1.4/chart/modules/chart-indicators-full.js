@@ -18,16 +18,22 @@
         const w = global;
         const fallbackChip =
             'display:inline-flex;align-items:center;gap:6px;min-height:22px;box-sizing:border-box;' +
-            'padding:3px 8px 3px 6px;margin:0 4px 4px 0;border-radius:3px;line-height:1.25;' +
-            'border:1px solid rgba(255,255,255,0.12);background:rgba(19,23,34,0.38);cursor:pointer;vertical-align:middle;' +
-            'backdrop-filter:saturate(1.2) blur(6px);-webkit-backdrop-filter:saturate(1.2) blur(6px);' +
+            'padding:3px 8px 3px 6px;margin:0 4px 4px 0;border-radius:4px;line-height:1.25;' +
+            'border:1px solid rgba(255,255,255,0.2);' +
+            'background:linear-gradient(180deg,rgba(255,255,255,0.16) 0%,rgba(19,23,34,0.14) 100%);' +
+            'backdrop-filter:saturate(1.5) blur(20px);-webkit-backdrop-filter:saturate(1.5) blur(20px);' +
+            'box-shadow:inset 0 1px 0 rgba(255,255,255,0.28),0 2px 10px rgba(0,0,0,0.08);' +
+            'transform:translateZ(0);-webkit-transform:translateZ(0);' +
+            'cursor:pointer;vertical-align:middle;' +
             'font-family:-apple-system,BlinkMacSystemFont,Trebuchet MS,Roboto,Ubuntu,sans-serif;';
         return {
             chipCss: w.TALARIA_INDICATOR_CHIP_CSS || fallbackChip,
-            bg: w.TALARIA_INDICATOR_CHIP_BG || 'rgba(19, 23, 34, 0.38)',
-            bgHover: w.TALARIA_INDICATOR_CHIP_BG_HOVER || 'rgba(42, 46, 57, 0.52)',
-            borderHover: w.TALARIA_INDICATOR_CHIP_BORDER_HOVER || 'rgba(255, 255, 255, 0.22)',
-            borderDefault: w.TALARIA_IND_CHIP_BORDER || 'rgba(255, 255, 255, 0.12)',
+            bg: w.TALARIA_INDICATOR_CHIP_BG ||
+                'linear-gradient(180deg,rgba(255,255,255,0.16) 0%,rgba(19,23,34,0.14) 100%)',
+            bgHover: w.TALARIA_INDICATOR_CHIP_BG_HOVER ||
+                'linear-gradient(180deg,rgba(255,255,255,0.22) 0%,rgba(25,29,38,0.32) 100%)',
+            borderHover: w.TALARIA_INDICATOR_CHIP_BORDER_HOVER || 'rgba(255, 255, 255, 0.32)',
+            borderDefault: w.TALARIA_IND_CHIP_BORDER || 'rgba(255, 255, 255, 0.2)',
             colorStrip: w.TALARIA_INDICATOR_COLOR_STRIP || function(c) {
                 return 'display:inline-block;width:3px;height:14px;border-radius:1px;background:' + c + ';flex-shrink:0;';
             }
