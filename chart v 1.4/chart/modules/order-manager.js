@@ -572,6 +572,9 @@ class OrderManager {
         if (this.partialCloseMarkers?.length) {
             this.partialCloseMarkers = this.partialCloseMarkers.filter((m) => (m.chart || this.chart) !== chart);
         }
+        if (this.mfeMaeMarkers?.length) {
+            this.mfeMaeMarkers = this.mfeMaeMarkers.filter((m) => (m.chart || this.chart) !== chart);
+        }
         s.selectAll('text[class*="pip-indicator"]').remove();
         s.selectAll('text[class*="dollar-indicator"]').remove();
         s.selectAll('text[class*="rr-indicator"]').remove();
@@ -682,6 +685,9 @@ class OrderManager {
         });
 
         if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
+        try {
+            this._redrawMfeMaeMarkersFromState();
+        } catch (_) {}
         charts.forEach((c) => {
             if (c && typeof c.render === 'function') {
                 c.renderPending = true;
@@ -738,6 +744,9 @@ class OrderManager {
                 }
             });
             if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
+            try {
+                this._redrawMfeMaeMarkersFromState();
+            } catch (_) {}
             if (this.chart && typeof this.chart.render === 'function') {
                 this.chart.renderPending = true;
                 this.chart.render();
@@ -2811,6 +2820,10 @@ class OrderManager {
         });
         this._rebuildSplitGroupAvgLines();
         this._rebuildMultiTPAvgLines();
+
+        try {
+            this._redrawMfeMaeMarkersFromState();
+        } catch (_) {}
 
         if (typeof this.updateOrderLines === 'function') this.updateOrderLines();
         if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
@@ -30353,6 +30366,9 @@ class OrderManager {
         });
 
         if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
+        try {
+            this._redrawMfeMaeMarkersFromState();
+        } catch (_) {}
         this._renderAllLayoutCharts();
         console.log('🎨 redrawPreservedTradeMarkers: redrawn markers for',
             (preserved || []).length, 'closed +',
@@ -32360,7 +32376,7 @@ class OrderManager {
         };
 
         if (!Number.isFinite(price) || !Number.isFinite(timeMs)) return null;
-        const idx = this._findCandleIndexForTime(chart.data, timeMs);
+        const idx = this._chartIndexForCloseMarkerOnChart(chart, timeMs);
         if (idx === -1) return null;
         const candle = chart.data[idx];
         if (!candle) return null;
@@ -32683,6 +32699,38 @@ class OrderManager {
         this._renderAllLayoutCharts();
     }
     
+    /**
+     * Re-paint MFE/MAE from open positions and journal after SVG layers were stripped (restore, multi-panel sync, etc.).
+     * Journal can list MFE/MAE while DOM markers were removed — this keeps chart and journal in sync.
+     */
+    _redrawMfeMaeMarkersFromState() {
+        const rows = [];
+        const seen = new Set();
+        const push = (row) => {
+            if (!row) return;
+            if (!this._rowHasMfeMaeForChartMarkers(row)) return;
+            const oid = row.id != null ? row.id : row.tradeId;
+            if (oid == null || seen.has(oid)) return;
+            seen.add(oid);
+            rows.push(row.id != null ? row : { ...row, id: oid });
+        };
+        (this.openPositions || []).forEach(push);
+        (this.tradeJournal || []).forEach(push);
+        rows.forEach((row) => {
+            try {
+                this.drawMfeMaeMarkers(row);
+            } catch (_) {}
+        });
+    }
+
+    _rowHasMfeMaeForChartMarkers(row) {
+        const mfe = Number.parseFloat(row.mfe);
+        const mae = Number.parseFloat(row.mae);
+        const mt = Number(row.mfeTime);
+        const at = Number(row.maeTime);
+        return Number.isFinite(mfe) && Number.isFinite(mae) && Number.isFinite(mt) && Number.isFinite(at);
+    }
+
     /**
      * Draw MFE/MAE markers using the same geometry as entry markers (candle index + dataIndexToPixel), not xScale(time).
      */
