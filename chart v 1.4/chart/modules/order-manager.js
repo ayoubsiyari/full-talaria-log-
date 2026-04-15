@@ -32320,9 +32320,10 @@ class OrderManager {
         if (!this.mfeMaeMarkers || !this.mfeMaeMarkers.length) return;
         const toRemove = this.mfeMaeMarkers.filter(m => m.orderId === orderId);
         toRemove.forEach(m => {
-            if (m.group && typeof m.group.remove === 'function') {
+            const grp = m.markerGroup || m.group;
+            if (grp && typeof grp.remove === 'function') {
                 try {
-                    m.group.remove();
+                    grp.remove();
                 } catch (_) {}
             } else {
                 if (m.arrow) m.arrow.remove();
@@ -32332,6 +32333,136 @@ class OrderManager {
         if (toRemove.length) {
             this.mfeMaeMarkers = this.mfeMaeMarkers.filter(m => m.orderId !== orderId);
         }
+    }
+
+    /**
+     * Geometry for one MFE/MAE marker at current pan/zoom (same math as draw).
+     * @returns {{ x: number, yTickLine: number, arrowPath: string, labelY: number, tickW: number } | null}
+     */
+    _computeMfeMaeMarkerLayout(chart, kind, price, timeMs, isBuy) {
+        if (!chart?.data?.length) return null;
+        const yScale = chart.yScale || chart.scales?.yScale;
+        if (!yScale || typeof yScale.domain !== 'function') return null;
+
+        const sz = 12;
+        const gap = 4;
+        const candleSpacing = typeof chart.getCandleSpacing === 'function' ? chart.getCandleSpacing() : 8;
+        const tickW = Math.max(candleSpacing * 0.6, 8);
+
+        const yPxForPrice = (rawPrice) => {
+            const p = Number.parseFloat(rawPrice);
+            if (!Number.isFinite(p)) return null;
+            const dom = yScale.domain();
+            const d0 = Math.min(dom[0], dom[1]);
+            const d1 = Math.max(dom[0], dom[1]);
+            const clamped = Math.max(d0, Math.min(d1, p));
+            return yScale(clamped);
+        };
+
+        if (!Number.isFinite(price) || !Number.isFinite(timeMs)) return null;
+        const idx = this._findCandleIndexForTime(chart.data, timeMs);
+        if (idx === -1) return null;
+        const candle = chart.data[idx];
+        if (!candle) return null;
+
+        const x = chart.dataIndexToPixel(idx);
+        const lo = Math.min(candle.l, candle.h);
+        const hi = Math.max(candle.l, candle.h);
+        const barClamped = Math.max(lo, Math.min(hi, price));
+
+        const yPrice = yPxForPrice(barClamped);
+        const wickHigh = yPxForPrice(candle.h);
+        const wickLow = yPxForPrice(candle.l);
+        if (yPrice == null || wickHigh == null || wickLow == null) return null;
+
+        let arrowCY;
+        let arrowPath;
+        let labelY;
+        if (kind === 'MFE') {
+            if (isBuy) {
+                arrowCY = wickHigh - sz - gap;
+                arrowPath = this._arrowUpPath(x, arrowCY, sz);
+                labelY = arrowCY - 6;
+            } else {
+                arrowCY = wickLow + sz + gap;
+                arrowPath = this._arrowDownPath(x, arrowCY, sz);
+                labelY = arrowCY + 18;
+            }
+        } else {
+            if (isBuy) {
+                arrowCY = wickLow + sz + gap;
+                arrowPath = this._arrowDownPath(x, arrowCY, sz);
+                labelY = arrowCY + 18;
+            } else {
+                arrowCY = wickHigh - sz - gap;
+                arrowPath = this._arrowUpPath(x, arrowCY, sz);
+                labelY = arrowCY - 6;
+            }
+        }
+
+        const rng = yScale.range();
+        const plotTop = Math.min(rng[0], rng[1]);
+        const plotBot = Math.max(rng[0], rng[1]);
+        arrowCY = Math.max(plotTop + sz * 0.6, Math.min(plotBot - sz * 0.6, arrowCY));
+        labelY = Math.max(plotTop + 10, Math.min(plotBot - 6, labelY));
+        const yTickLine = Math.max(plotTop + 1, Math.min(plotBot - 1, yPrice));
+
+        return { x, yTickLine, arrowPath, labelY, tickW };
+    }
+
+    /**
+     * Called from chart.render() every frame — keeps MFE/MAE anchored to candles when panning/zooming.
+     */
+    _updateMfeMaeMarkersForChart(ch) {
+        if (!this.mfeMaeMarkers?.length || !ch?.data?.length) return;
+        const yScale = ch.yScale || ch.scales?.yScale;
+        if (!yScale) return;
+
+        this.mfeMaeMarkers.forEach((md) => {
+            if ((md.chart || this.chart) !== ch) return;
+            const g = md.markerGroup || md.group;
+            if (!g || typeof g.select !== 'function') return;
+
+            const layout = this._computeMfeMaeMarkerLayout(ch, md.kind, md.price, md.timeMs, md.isBuy);
+            const kr = String(md.kind || '').toLowerCase();
+            if (!layout) {
+                try {
+                    g.style('display', 'none');
+                } catch (_) {}
+                return;
+            }
+            try {
+                g.style('display', null);
+            } catch (_) {}
+
+            g.select(`[data-role="${kr}-tick"]`)
+                .attr('x1', layout.x - layout.tickW / 2)
+                .attr('x2', layout.x + layout.tickW / 2)
+                .attr('y1', layout.yTickLine)
+                .attr('y2', layout.yTickLine);
+            g.select(`[data-role="${kr}-arrow"]`).attr('d', layout.arrowPath);
+            g.select('text').attr('x', layout.x).attr('y', layout.labelY);
+        });
+    }
+
+    /**
+     * @param {object|null} [sourceChart] - chart instance from render(); when omitted, all panels are updated if multi-layout.
+     */
+    updateMfeMaeMarkers(sourceChart) {
+        if (!this.mfeMaeMarkers?.length) return;
+        const any = (c) => c && (c.yScale || c.scales?.yScale);
+        if (sourceChart && any(sourceChart)) {
+            this._updateMfeMaeMarkersForChart(sourceChart);
+            return;
+        }
+        if (sourceChart === undefined && this._isMultiPanelLayout()) {
+            (this._collectLayoutCharts() || []).forEach((c) => {
+                if (any(c)) this._updateMfeMaeMarkersForChart(c);
+            });
+            return;
+        }
+        const ch = sourceChart || this.chart;
+        if (any(ch)) this._updateMfeMaeMarkersForChart(ch);
     }
 
     /**
@@ -32559,30 +32690,11 @@ class OrderManager {
         if (!chart || !chart.svg || !chart.data || !chart.data.length) return;
         if (!this._positionTickerMatchesChartSymbol(position, chart)) return;
 
-        const yScale = chart.yScale || chart.scales?.yScale;
-        if (!yScale || typeof yScale.domain !== 'function') return;
-
         const entryPrice = Number.parseFloat(position.openPrice ?? position.entryPrice);
         const dir = String(position.type || position.direction || '').toUpperCase();
         const isBuy = dir === 'BUY' || dir === 'LONG';
-        const sz = 12;
-        const gap = 4;
-        const candleSpacing = typeof chart.getCandleSpacing === 'function' ? chart.getCandleSpacing() : 8;
-        const tickW = Math.max(candleSpacing * 0.6, 8);
         const dec = Number.isFinite(chart.symbolPrecision) ? chart.symbolPrecision : (this.symbolPrecision || 5);
-
         const eps = Math.max(1e-8, Math.abs(Number.isFinite(entryPrice) ? entryPrice : 1) * 1e-7);
-
-        /** Map price → pixel Y; clamp to visible domain so markers never extrapolate off the plot (fixes “stuck at bottom”). */
-        const yPxForPrice = (rawPrice) => {
-            const p = Number.parseFloat(rawPrice);
-            if (!Number.isFinite(p)) return null;
-            const dom = yScale.domain();
-            const d0 = Math.min(dom[0], dom[1]);
-            const d1 = Math.max(dom[0], dom[1]);
-            const clamped = Math.max(d0, Math.min(d1, p));
-            return yScale(clamped);
-        };
 
         const markers = [];
 
@@ -32590,52 +32702,8 @@ class OrderManager {
             if (!Number.isFinite(price) || !Number.isFinite(timeMs)) return;
             if (Number.isFinite(entryPrice) && Math.abs(price - entryPrice) <= eps) return;
 
-            const idx = this._findCandleIndexForTime(chart.data, timeMs);
-            if (idx === -1) return;
-            const candle = chart.data[idx];
-            if (!candle) return;
-
-            const x = chart.dataIndexToPixel(idx);
-            const lo = Math.min(candle.l, candle.h);
-            const hi = Math.max(candle.l, candle.h);
-            const barClamped = Math.max(lo, Math.min(hi, price));
-
-            const yPrice = yPxForPrice(barClamped);
-            const wickHigh = yPxForPrice(candle.h);
-            const wickLow = yPxForPrice(candle.l);
-            if (yPrice == null || wickHigh == null || wickLow == null) return;
-
-            let arrowCY;
-            let arrowPath;
-            let labelY;
-            if (kind === 'MFE') {
-                if (isBuy) {
-                    arrowCY = wickHigh - sz - gap;
-                    arrowPath = this._arrowUpPath(x, arrowCY, sz);
-                    labelY = arrowCY - 6;
-                } else {
-                    arrowCY = wickLow + sz + gap;
-                    arrowPath = this._arrowDownPath(x, arrowCY, sz);
-                    labelY = arrowCY + 18;
-                }
-            } else {
-                if (isBuy) {
-                    arrowCY = wickLow + sz + gap;
-                    arrowPath = this._arrowDownPath(x, arrowCY, sz);
-                    labelY = arrowCY + 18;
-                } else {
-                    arrowCY = wickHigh - sz - gap;
-                    arrowPath = this._arrowUpPath(x, arrowCY, sz);
-                    labelY = arrowCY - 6;
-                }
-            }
-
-            const rng = yScale.range();
-            const plotTop = Math.min(rng[0], rng[1]);
-            const plotBot = Math.max(rng[0], rng[1]);
-            arrowCY = Math.max(plotTop + sz * 0.6, Math.min(plotBot - sz * 0.6, arrowCY));
-            labelY = Math.max(plotTop + 10, Math.min(plotBot - 6, labelY));
-            const yTickLine = Math.max(plotTop + 1, Math.min(plotBot - 1, yPrice));
+            const layout = this._computeMfeMaeMarkerLayout(chart, kind, price, timeMs, isBuy);
+            if (!layout) return;
 
             const g = chart.svg.append('g')
                 .attr('class', `mfe-mae-marker-root mfe-mae-${kind.toLowerCase()}-${position.id}`)
@@ -32646,29 +32714,37 @@ class OrderManager {
 
             g.append('line')
                 .attr('data-role', `${kind.toLowerCase()}-tick`)
-                .attr('x1', x - tickW / 2)
-                .attr('x2', x + tickW / 2)
-                .attr('y1', yTickLine)
-                .attr('y2', yTickLine)
+                .attr('x1', layout.x - layout.tickW / 2)
+                .attr('x2', layout.x + layout.tickW / 2)
+                .attr('y1', layout.yTickLine)
+                .attr('y2', layout.yTickLine)
                 .attr('stroke', fill)
                 .attr('stroke-width', 2);
 
             g.append('path')
                 .attr('data-role', `${kind.toLowerCase()}-arrow`)
-                .attr('d', arrowPath)
+                .attr('d', layout.arrowPath)
                 .attr('fill', fill)
                 .attr('opacity', 0.95);
 
             g.append('text')
-                .attr('x', x)
-                .attr('y', labelY)
+                .attr('x', layout.x)
+                .attr('y', layout.labelY)
                 .attr('text-anchor', 'middle')
                 .attr('fill', fill)
                 .attr('font-size', '10px')
                 .attr('font-weight', '600')
                 .text(`${kind} ${price.toFixed(dec)}`);
 
-            markers.push({ orderId: position.id, type: kind, group: g });
+            markers.push({
+                orderId: position.id,
+                kind,
+                chart,
+                markerGroup: g,
+                timeMs: Number(timeMs),
+                price: Number(price),
+                isBuy,
+            });
         };
 
         if (position.mfe != null && position.mfeTime != null) {

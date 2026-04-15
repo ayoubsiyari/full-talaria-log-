@@ -10863,7 +10863,7 @@ class Chart {
                     this.orderManager._scheduleDraftPreviewRedrawIfNeeded(this);
                 }
                 if (typeof this.orderManager.updateMfeMaeMarkers === 'function') {
-                    this.orderManager.updateMfeMaeMarkers();
+                    this.orderManager.updateMfeMaeMarkers(this);
                 }
             }
             return;
@@ -10934,7 +10934,7 @@ class Chart {
                 this.orderManager._scheduleDraftPreviewRedrawIfNeeded(this);
             }
             if (typeof this.orderManager.updateMfeMaeMarkers === 'function') {
-                this.orderManager.updateMfeMaeMarkers();
+                this.orderManager.updateMfeMaeMarkers(this);
             }
         }
 
