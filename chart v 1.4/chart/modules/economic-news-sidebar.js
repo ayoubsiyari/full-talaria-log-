@@ -69,11 +69,29 @@
     /** Finnhub allows from/to range; one day when no bars, full span when short series, visible window when very long. */
     var MAX_CALENDAR_FETCH_DAYS = 120;
 
+    /** Always fetch through at least this many days after reference "now" so the Upcoming tab can show a full week. */
+    var UPCOMING_NEWS_DAYS_AHEAD = 7;
+
+    /**
+     * Extend `toStr` (YYYY-MM-DD) so calendar data includes reference-now + UPCOMING_NEWS_DAYS_AHEAD.
+     * Finnhub range is inclusive; string compare is valid for ISO dates.
+     */
+    function ensureUpcomingWeekHorizon(range) {
+        var refMs = referenceNowMs();
+        if (!Number.isFinite(refMs)) refMs = Date.now();
+        var minEndStr = isoDateLocal(refMs + UPCOMING_NEWS_DAYS_AHEAD * 86400000);
+        var toStr = range.toStr;
+        if (toStr < minEndStr) {
+            toStr = minEndStr;
+        }
+        return { fromStr: range.fromStr, toStr: toStr, rangeKey: range.fromStr + '|' + toStr };
+    }
+
     function getCalendarFetchRange() {
         var ch = mainChart();
         if (!ch || !ch.data || ch.data.length === 0) {
             var d = isoDateLocal(referenceNowMs());
-            return { fromStr: d, toStr: d, rangeKey: d + '|' + d };
+            return ensureUpcomingWeekHorizon({ fromStr: d, toStr: d, rangeKey: d + '|' + d });
         }
         var data = ch.data;
         var t0 = data[0].t;
@@ -85,7 +103,7 @@
         if (spanDays <= MAX_CALENDAR_FETCH_DAYS) {
             var fs = isoDateLocal(minT);
             var ts = isoDateLocal(maxT);
-            return { fromStr: fs, toStr: ts, rangeKey: fs + '|' + ts };
+            return ensureUpcomingWeekHorizon({ fromStr: fs, toStr: ts, rangeKey: fs + '|' + ts });
         }
 
         var m = ch.margin || { l: 0, r: 0 };
@@ -105,7 +123,7 @@
             maxT = Math.min(maxT, refMs + padMs);
             var fsWin = isoDateLocal(minT);
             var tsWin = isoDateLocal(maxT);
-            return { fromStr: fsWin, toStr: tsWin, rangeKey: fsWin + '|' + tsWin };
+            return ensureUpcomingWeekHorizon({ fromStr: fsWin, toStr: tsWin, rangeKey: fsWin + '|' + tsWin });
         }
         var i0 = Math.min(Math.max(0, startIdx), data.length - 1);
         var i1 = Math.max(i0, Math.min(data.length - 1, Math.max(0, endIdx - 1)));
@@ -117,7 +135,7 @@
         maxT += 86400000;
         var fsVis = isoDateLocal(minT);
         var tsVis = isoDateLocal(maxT);
-        return { fromStr: fsVis, toStr: tsVis, rangeKey: fsVis + '|' + tsVis };
+        return ensureUpcomingWeekHorizon({ fromStr: fsVis, toStr: tsVis, rangeKey: fsVis + '|' + tsVis });
     }
 
     function newsPanelIsActive() {
