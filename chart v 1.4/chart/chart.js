@@ -2057,6 +2057,25 @@ class Chart {
             console.warn('⚠️ Failed to save trading session state', e);
         }
     }
+
+    /**
+     * Flush debounced session PATCH queues immediately so journal hits the DB right after a trade
+     * (Backtest Analytics reads GET /api/sessions/:id/state). Avoids losing saves on fast navigation.
+     */
+    flushJournalSessionStateImmediate() {
+        const sessionId = this.getActiveTradingSessionId();
+        if (!sessionId) return;
+        if (this._sessionStateSaveTimer) {
+            clearTimeout(this._sessionStateSaveTimer);
+            this._sessionStateSaveTimer = null;
+        }
+        if (this._criticalSessionStateSaveTimer) {
+            clearTimeout(this._criticalSessionStateSaveTimer);
+            this._criticalSessionStateSaveTimer = null;
+        }
+        void this.flushCriticalSessionStateSave();
+        void this.flushSessionStateSave();
+    }
     
     /**
      * Initialize Drawing Tools Manager

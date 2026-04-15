@@ -2655,6 +2655,13 @@ class OrderManager {
             : null;
         if (!sessionId) {
             console.warn('📔 Trade journal cannot persist: no active trading session (open the chart with ?sessionId=… or assigned session).');
+            if (typeof this.showNotification === 'function') {
+                this.showNotification(
+                    'No trading session — journal will not sync to Backtest Analytics. Open this chart from your session with ?sessionId=…',
+                    'warning',
+                    { timeoutMs: 7000 }
+                );
+            }
         }
 
         if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
@@ -2670,6 +2677,9 @@ class OrderManager {
                 per_instrument_stats: perInstrumentStats,
                 journal_by_ticker: journalByTicker
             });
+        }
+        if (sessionId && this.chart && typeof this.chart.flushJournalSessionStateImmediate === 'function') {
+            this.chart.flushJournalSessionStateImmediate();
         }
     }
 
