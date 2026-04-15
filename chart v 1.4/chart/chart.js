@@ -12669,7 +12669,7 @@ class Chart {
     }
 
     /**
-     * TradingView-style economic calendar country flags above the time-axis border (pair-filtered; economic-news-sidebar).
+     * Economic calendar: neutral circular badges with country flag inside (no red/orange impact colors on canvas).
      * Hover hit regions stored on this._economicCalendarHitRegions for updateEconomicCalendarHover.
      */
     drawEconomicCalendarAxisMarkers() {
@@ -12687,12 +12687,17 @@ class Chart {
 
         const m = this.margin;
         const cs = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 8;
-        const fontPx = Math.max(12, Math.min(20, cs * 0.95));
-        const r = fontPx * 0.55;
+        const radius = Math.max(10, Math.min(16, cs * 0.78));
         const axisLineY = this.h - m.b;
         const gapAboveLine = 8;
-        let y = axisLineY - r - gapAboveLine;
-        y = Math.max(m.t + r + 6, y);
+        let cy = axisLineY - radius - gapAboveLine;
+        cy = Math.max(m.t + radius + 6, cy);
+
+        const bg = (this.chartSettings && this.chartSettings.backgroundColor) ? String(this.chartSettings.backgroundColor) : '';
+        const bodyLight = typeof document !== 'undefined' && document.body && document.body.classList.contains('light-mode');
+        const lightish = bodyLight || !bg || /#f{3,6}\b|#fff|white|rgb\s*\(\s*255/i.test(bg) || /245|250|252/.test(bg);
+        const fillCol = lightish ? 'rgba(255,255,255,0.96)' : 'rgba(54,58,69,0.96)';
+        const strokeCol = lightish ? 'rgba(120,123,134,0.88)' : 'rgba(150,153,165,0.65)';
 
         const getFlag = (ev) => {
             if (ev.flagEmoji) return ev.flagEmoji;
@@ -12703,7 +12708,6 @@ class Chart {
         this.ctx.save();
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
-        this.ctx.font = `${fontPx}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
 
         for (let i = 0; i < events.length; i++) {
             const e = events[i];
@@ -12712,41 +12716,34 @@ class Chart {
             if (!Number.isFinite(ts)) continue;
             const idx = this._timestampToFractionalDataIndex(ts);
             if (idx == null || !Number.isFinite(idx)) continue;
-            const pad = r + 8;
+            const pad = radius + 8;
             let x = this.dataIndexToPixel(idx);
             if (idx < 0) {
                 x = m.l + pad;
             }
             if (x < m.l - pad || x > this.w - m.r + pad) continue;
 
-            const jitter = (i % 7) * (fontPx * 0.35) - (3 * (fontPx * 0.35));
+            const jitter = (i % 7) * (radius * 0.22) - (3 * (radius * 0.22));
             const xi = x + jitter;
             const flagStr = getFlag(e);
 
-            this.ctx.shadowColor = 'rgba(0,0,0,0.35)';
-            this.ctx.shadowBlur = 3;
-            this.ctx.shadowOffsetY = 1;
-            this.ctx.fillText(flagStr, xi, y);
-            this.ctx.shadowBlur = 0;
-            this.ctx.shadowOffsetY = 0;
-
-            const impactColor = e.impact === 'high' ? '#f23645' : '#ff9800';
-            this.ctx.fillStyle = impactColor;
             this.ctx.beginPath();
-            this.ctx.arc(xi, y + fontPx * 0.48, 3.2, 0, Math.PI * 2);
+            this.ctx.arc(xi, cy, radius, 0, Math.PI * 2);
+            this.ctx.fillStyle = fillCol;
             this.ctx.fill();
+            this.ctx.strokeStyle = strokeCol;
+            this.ctx.lineWidth = Math.max(1, radius * 0.1);
+            this.ctx.stroke();
 
-            let hw = fontPx * 0.55;
-            try {
-                const tw = this.ctx.measureText(flagStr).width;
-                if (Number.isFinite(tw) && tw > 0) hw = Math.max(hw, tw / 2);
-            } catch (err) { /* ignore */ }
-            const hh = fontPx * 0.55;
+            const innerFont = Math.max(9, Math.min(14, radius * 1.15));
+            this.ctx.font = `${innerFont}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
+            this.ctx.fillText(flagStr, xi, cy);
+
             this._economicCalendarHitRegions.push({
-                left: xi - hw - 3,
-                right: xi + hw + 3,
-                top: y - hh - 2,
-                bottom: y + hh + 8,
+                left: xi - radius - 2,
+                right: xi + radius + 2,
+                top: cy - radius - 2,
+                bottom: cy + radius + 2,
                 event: e
             });
         }
@@ -12797,7 +12794,7 @@ class Chart {
             <div style="display:grid;grid-template-columns:72px 1fr;gap:4px 10px;font-size:11px;">
                 <span style="opacity:.75;">Country</span><span>${esc(ev.country || '—')}</span>
                 <span style="opacity:.75;">Currency</span><span>${esc(ev.currency || '—')}</span>
-                <span style="opacity:.75;">Impact</span><span style="color:${ev.impact === 'high' ? '#f23645' : '#ff9800'};">${esc(impactLabel)}</span>
+                <span style="opacity:.75;">Impact</span><span>${esc(impactLabel)}</span>
                 <span style="opacity:.75;">Actual</span><span>${esc(ev.actual)}</span>
                 <span style="opacity:.75;">Forecast</span><span>${esc(ev.forecast)}</span>
                 <span style="opacity:.75;">Previous</span><span>${esc(ev.previous)}</span>
