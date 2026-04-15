@@ -2005,10 +2005,12 @@ class Chart {
         this._pendingCriticalSessionStatePatch = Object.assign({}, this._pendingCriticalSessionStatePatch || {}, patch);
         if (this._criticalSessionStateSaveTimer) return;
 
+        // Near-immediate (same task turn) so journal reaches the DB quickly without SQLite
+        // write storms from firing two full PATCHes on every persistJournal (was breaking POST /api/sessions).
         this._criticalSessionStateSaveTimer = setTimeout(() => {
             this._criticalSessionStateSaveTimer = null;
             this.flushCriticalSessionStateSave();
-        }, 350);
+        }, 0);
     }
 
     async flushCriticalSessionStateSave() {
@@ -2056,25 +2058,6 @@ class Chart {
         } catch (e) {
             console.warn('⚠️ Failed to save trading session state', e);
         }
-    }
-
-    /**
-     * Flush debounced session PATCH queues immediately so journal hits the DB right after a trade
-     * (Backtest Analytics reads GET /api/sessions/:id/state). Avoids losing saves on fast navigation.
-     */
-    flushJournalSessionStateImmediate() {
-        const sessionId = this.getActiveTradingSessionId();
-        if (!sessionId) return;
-        if (this._sessionStateSaveTimer) {
-            clearTimeout(this._sessionStateSaveTimer);
-            this._sessionStateSaveTimer = null;
-        }
-        if (this._criticalSessionStateSaveTimer) {
-            clearTimeout(this._criticalSessionStateSaveTimer);
-            this._criticalSessionStateSaveTimer = null;
-        }
-        void this.flushCriticalSessionStateSave();
-        void this.flushSessionStateSave();
     }
     
     /**

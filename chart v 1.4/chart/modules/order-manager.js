@@ -2678,9 +2678,6 @@ class OrderManager {
                 journal_by_ticker: journalByTicker
             });
         }
-        if (sessionId && this.chart && typeof this.chart.flushJournalSessionStateImmediate === 'function') {
-            this.chart.flushJournalSessionStateImmediate();
-        }
     }
 
     persistRuntimeOrderState() {
