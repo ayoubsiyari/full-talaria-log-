@@ -32556,11 +32556,11 @@ class OrderManager {
      * Draw MFE/MAE markers using the same geometry as entry markers (candle index + dataIndexToPixel), not xScale(time).
      */
     _drawMfeMaeMarkersOnChart(chart, position) {
-        if (!chart || !chart.svg || !chart.scales || !chart.data || !chart.data.length) return;
+        if (!chart || !chart.svg || !chart.data || !chart.data.length) return;
         if (!this._positionTickerMatchesChartSymbol(position, chart)) return;
 
-        const yScale = chart.scales.yScale;
-        if (!yScale) return;
+        const yScale = chart.yScale || chart.scales?.yScale;
+        if (!yScale || typeof yScale.domain !== 'function') return;
 
         const entryPrice = Number.parseFloat(position.openPrice ?? position.entryPrice);
         const dir = String(position.type || position.direction || '').toUpperCase();
@@ -32572,6 +32572,17 @@ class OrderManager {
         const dec = Number.isFinite(chart.symbolPrecision) ? chart.symbolPrecision : (this.symbolPrecision || 5);
 
         const eps = Math.max(1e-8, Math.abs(Number.isFinite(entryPrice) ? entryPrice : 1) * 1e-7);
+
+        /** Map price → pixel Y; clamp to visible domain so markers never extrapolate off the plot (fixes “stuck at bottom”). */
+        const yPxForPrice = (rawPrice) => {
+            const p = Number.parseFloat(rawPrice);
+            if (!Number.isFinite(p)) return null;
+            const dom = yScale.domain();
+            const d0 = Math.min(dom[0], dom[1]);
+            const d1 = Math.max(dom[0], dom[1]);
+            const clamped = Math.max(d0, Math.min(d1, p));
+            return yScale(clamped);
+        };
 
         const markers = [];
 
@@ -32585,9 +32596,14 @@ class OrderManager {
             if (!candle) return;
 
             const x = chart.dataIndexToPixel(idx);
-            const yPrice = yScale(price);
-            const wickHigh = yScale(candle.h);
-            const wickLow = yScale(candle.l);
+            const lo = Math.min(candle.l, candle.h);
+            const hi = Math.max(candle.l, candle.h);
+            const barClamped = Math.max(lo, Math.min(hi, price));
+
+            const yPrice = yPxForPrice(barClamped);
+            const wickHigh = yPxForPrice(candle.h);
+            const wickLow = yPxForPrice(candle.l);
+            if (yPrice == null || wickHigh == null || wickLow == null) return;
 
             let arrowCY;
             let arrowPath;
@@ -32614,6 +32630,13 @@ class OrderManager {
                 }
             }
 
+            const rng = yScale.range();
+            const plotTop = Math.min(rng[0], rng[1]);
+            const plotBot = Math.max(rng[0], rng[1]);
+            arrowCY = Math.max(plotTop + sz * 0.6, Math.min(plotBot - sz * 0.6, arrowCY));
+            labelY = Math.max(plotTop + 10, Math.min(plotBot - 6, labelY));
+            const yTickLine = Math.max(plotTop + 1, Math.min(plotBot - 1, yPrice));
+
             const g = chart.svg.append('g')
                 .attr('class', `mfe-mae-marker-root mfe-mae-${kind.toLowerCase()}-${position.id}`)
                 .attr('data-order-id', position.id)
@@ -32625,8 +32648,8 @@ class OrderManager {
                 .attr('data-role', `${kind.toLowerCase()}-tick`)
                 .attr('x1', x - tickW / 2)
                 .attr('x2', x + tickW / 2)
-                .attr('y1', yPrice)
-                .attr('y2', yPrice)
+                .attr('y1', yTickLine)
+                .attr('y2', yTickLine)
                 .attr('stroke', fill)
                 .attr('stroke-width', 2);
 
@@ -32666,22 +32689,34 @@ class OrderManager {
 
         this.removeMfeMaeMarkers(position.id);
 
-        if (this._isMultiPanelLayout()) {
-            const charts = typeof this._collectLayoutCharts === 'function' ? this._collectLayoutCharts() : [];
-            charts.forEach((ch) => {
-                try {
-                    this._drawMfeMaeMarkersOnChart(ch, position);
-                } catch (e) {
-                    console.warn('MFE/MAE marker draw failed on panel:', e);
+        const self = this;
+        const paint = () => {
+            try {
+                if (self._isMultiPanelLayout()) {
+                    const charts = typeof self._collectLayoutCharts === 'function' ? self._collectLayoutCharts() : [];
+                    charts.forEach((ch) => {
+                        try {
+                            self._drawMfeMaeMarkersOnChart(ch, position);
+                        } catch (e) {
+                            console.warn('MFE/MAE marker draw failed on panel:', e);
+                        }
+                    });
+                } else {
+                    self._drawMfeMaeMarkersOnChart(self.chart, position);
                 }
-            });
-            return;
-        }
+            } catch (e) {
+                console.warn('MFE/MAE marker draw failed:', e);
+            }
+        };
 
-        try {
-            this._drawMfeMaeMarkersOnChart(this.chart, position);
-        } catch (e) {
-            console.warn('MFE/MAE marker draw failed:', e);
+        const ch = this.chart;
+        if (ch && typeof ch.scheduleRender === 'function') {
+            ch.scheduleRender();
+        }
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => requestAnimationFrame(paint));
+        } else {
+            paint();
         }
     }
     
