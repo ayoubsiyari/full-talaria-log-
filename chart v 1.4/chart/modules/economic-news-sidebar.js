@@ -294,6 +294,7 @@
             event: ev,
             country: country,
             currency: currency,
+            flagEmoji: flagEmoji(country || currency),
             impact: impactClass(raw.impact),
             actual: fmtVal(raw.actual, unit),
             forecast: fmtVal(est, unit),
@@ -585,6 +586,9 @@
                 if (!pair) return true;
                 return eventMatchesChartPair(e, pair);
             });
+        },
+        getFlagEmoji: function (code) {
+            return flagEmoji(code);
         }
     };
 

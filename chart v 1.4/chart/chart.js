@@ -12669,9 +12669,11 @@ class Chart {
     }
 
     /**
-     * TradingView-style economic calendar dots above the time-axis border (pair-filtered data from economic-news-sidebar).
+     * TradingView-style economic calendar country flags above the time-axis border (pair-filtered; economic-news-sidebar).
+     * Hover hit regions stored on this._economicCalendarHitRegions for updateEconomicCalendarHover.
      */
     drawEconomicCalendarAxisMarkers() {
+        this._economicCalendarHitRegions = [];
         const api = typeof window !== 'undefined' ? window.__economicCalendarForChart : null;
         if (!api || typeof api.getEvents !== 'function' || !this.data || this.data.length === 0) return;
 
@@ -12685,17 +12687,24 @@ class Chart {
 
         const m = this.margin;
         const cs = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 8;
-        // Larger than date labels; scales slightly with zoom.
-        const r = Math.max(9, Math.min(14, cs * 0.72));
-        // Top edge of the bottom margin / date strip — horizontal line between plot and labels.
+        const fontPx = Math.max(12, Math.min(20, cs * 0.95));
+        const r = fontPx * 0.55;
         const axisLineY = this.h - m.b;
-        const gapAboveLine = 10; // clear air between dot bottom and axis line
-        // Circle fully above the line: bottom of circle = y + r = axisLineY - gapAboveLine
+        const gapAboveLine = 8;
         let y = axisLineY - r - gapAboveLine;
-        // Keep inside drawable chart (never overlap top margin)
         y = Math.max(m.t + r + 6, y);
 
+        const getFlag = (ev) => {
+            if (ev.flagEmoji) return ev.flagEmoji;
+            if (typeof api.getFlagEmoji === 'function') return api.getFlagEmoji(ev.country || ev.currency || '');
+            return '🌐';
+        };
+
         this.ctx.save();
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.font = `${fontPx}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
+
         for (let i = 0; i < events.length; i++) {
             const e = events[i];
             if (e.impact !== 'high' && e.impact !== 'medium') continue;
@@ -12703,34 +12712,137 @@ class Chart {
             if (!Number.isFinite(ts)) continue;
             const idx = this._timestampToFractionalDataIndex(ts);
             if (idx == null || !Number.isFinite(idx)) continue;
-            const pad = r + 6;
-            // Releases before the first loaded bar map to idx < 0 (off-screen left) — same items as "Previous"
-            // in the news panel. Pin to the inner left edge so those markers are not dropped.
+            const pad = r + 8;
             let x = this.dataIndexToPixel(idx);
             if (idx < 0) {
                 x = m.l + pad;
             }
             if (x < m.l - pad || x > this.w - m.r + pad) continue;
 
-            let fill = '#787b86';
-            if (e.impact === 'high') fill = '#f23645';
-            else if (e.impact === 'medium') fill = '#ff9800';
-
-            const jitter = (i % 7) * (r * 0.5) - (3 * (r * 0.5));
+            const jitter = (i % 7) * (fontPx * 0.35) - (3 * (fontPx * 0.35));
             const xi = x + jitter;
+            const flagStr = getFlag(e);
 
+            this.ctx.shadowColor = 'rgba(0,0,0,0.35)';
+            this.ctx.shadowBlur = 3;
+            this.ctx.shadowOffsetY = 1;
+            this.ctx.fillText(flagStr, xi, y);
+            this.ctx.shadowBlur = 0;
+            this.ctx.shadowOffsetY = 0;
+
+            const impactColor = e.impact === 'high' ? '#f23645' : '#ff9800';
+            this.ctx.fillStyle = impactColor;
             this.ctx.beginPath();
-            this.ctx.fillStyle = fill;
-            this.ctx.strokeStyle = 'rgba(255,255,255,0.65)';
-            this.ctx.lineWidth = 2.5;
-            this.ctx.arc(xi, y, r, 0, Math.PI * 2);
+            this.ctx.arc(xi, y + fontPx * 0.48, 3.2, 0, Math.PI * 2);
             this.ctx.fill();
-            this.ctx.stroke();
-            this.ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-            this.ctx.lineWidth = 1.25;
-            this.ctx.stroke();
+
+            let hw = fontPx * 0.55;
+            try {
+                const tw = this.ctx.measureText(flagStr).width;
+                if (Number.isFinite(tw) && tw > 0) hw = Math.max(hw, tw / 2);
+            } catch (err) { /* ignore */ }
+            const hh = fontPx * 0.55;
+            this._economicCalendarHitRegions.push({
+                left: xi - hw - 3,
+                right: xi + hw + 3,
+                top: y - hh - 2,
+                bottom: y + hh + 8,
+                event: e
+            });
         }
         this.ctx.restore();
+    }
+
+    _escapeHtmlForEconTooltip(str) {
+        if (str == null) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    ensureEconomicCalendarTooltipEl() {
+        if (this._econCalTooltipEl && this._econCalTooltipEl.parentNode) return this._econCalTooltipEl;
+        const el = document.createElement('div');
+        el.className = 'economic-calendar-chart-tooltip';
+        el.setAttribute('data-economic-calendar-tooltip', '1');
+        el.style.cssText = 'position:fixed;z-index:100050;display:none;max-width:300px;padding:10px 12px;font:12px/1.45 system-ui,-apple-system,sans-serif;background:#2a2e39;color:#d1d4dc;border:1px solid rgba(255,255,255,.12);border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.4);pointer-events:none;text-align:left;';
+        document.body.appendChild(el);
+        this._econCalTooltipEl = el;
+        return el;
+    }
+
+    hideEconomicCalendarTooltip() {
+        if (this._econCalTooltipEl) {
+            this._econCalTooltipEl.style.display = 'none';
+        }
+    }
+
+    showEconomicCalendarTooltip(ev, clientX, clientY) {
+        const el = this.ensureEconomicCalendarTooltipEl();
+        const tzDate = typeof this.convertToTimezone === 'function'
+            ? this.convertToTimezone(ev.t)
+            : new Date(ev.t);
+        const timeStr = tzDate.toLocaleString(undefined, {
+            month: 'short', day: 'numeric', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        });
+        const impactLabel = ev.impact === 'high' ? 'High' : (ev.impact === 'medium' ? 'Medium' : ev.impact || '—');
+        const esc = (s) => this._escapeHtmlForEconTooltip(s);
+        const flag = ev.flagEmoji || '🌐';
+        el.innerHTML = `
+            <div style="font-weight:600;font-size:13px;margin-bottom:6px;color:#fff;">${flag} ${esc(ev.event)}</div>
+            <div style="opacity:.88;font-size:11px;margin-bottom:8px;">${esc(timeStr)}</div>
+            <div style="display:grid;grid-template-columns:72px 1fr;gap:4px 10px;font-size:11px;">
+                <span style="opacity:.75;">Country</span><span>${esc(ev.country || '—')}</span>
+                <span style="opacity:.75;">Currency</span><span>${esc(ev.currency || '—')}</span>
+                <span style="opacity:.75;">Impact</span><span style="color:${ev.impact === 'high' ? '#f23645' : '#ff9800'};">${esc(impactLabel)}</span>
+                <span style="opacity:.75;">Actual</span><span>${esc(ev.actual)}</span>
+                <span style="opacity:.75;">Forecast</span><span>${esc(ev.forecast)}</span>
+                <span style="opacity:.75;">Previous</span><span>${esc(ev.previous)}</span>
+            </div>`;
+        el.style.display = 'block';
+        const pad = 14;
+        let left = clientX + pad;
+        let top = clientY + pad;
+        const rect = el.getBoundingClientRect();
+        if (left + rect.width > window.innerWidth - 10) {
+            left = clientX - rect.width - pad;
+        }
+        if (top + rect.height > window.innerHeight - 10) {
+            top = clientY - rect.height - pad;
+        }
+        el.style.left = `${Math.max(8, left)}px`;
+        el.style.top = `${Math.max(8, top)}px`;
+    }
+
+    updateEconomicCalendarHover(mx, my, domEvent) {
+        if (this.isPanel) return;
+        if (this.drag && this.drag.active) {
+            this.hideEconomicCalendarTooltip();
+            return;
+        }
+        const regions = this._economicCalendarHitRegions;
+        if (!regions || regions.length === 0) {
+            this.hideEconomicCalendarTooltip();
+            return;
+        }
+        let hit = null;
+        for (let i = 0; i < regions.length; i++) {
+            const r = regions[i];
+            if (mx >= r.left && mx <= r.right && my >= r.top && my <= r.bottom) {
+                hit = r;
+                break;
+            }
+        }
+        if (hit && hit.event) {
+            this.showEconomicCalendarTooltip(hit.event, domEvent.clientX, domEvent.clientY);
+            this.canvas.style.cursor = 'pointer';
+            if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'pointer';
+        } else {
+            this.hideEconomicCalendarTooltip();
+        }
     }
     
     /**
@@ -13579,6 +13691,7 @@ class Chart {
             // leaving the chart, keep drag state alive so re-entering continues the drag.
             if (this.drag.active && hasPressedButton) {
                 this.hideTooltip();
+                if (typeof this.hideEconomicCalendarTooltip === 'function') this.hideEconomicCalendarTooltip();
                 return;
             }
 
@@ -13604,6 +13717,7 @@ class Chart {
             // calls updateCrosshair() on every move; its own boundary check hides the
             // crosshair when the mouse is genuinely outside the chart area.
             this.hideTooltip();
+            if (typeof this.hideEconomicCalendarTooltip === 'function') this.hideEconomicCalendarTooltip();
         });
 
         // Global capture-phase mousemove: updates the crosshair regardless of which
@@ -13690,7 +13804,29 @@ class Chart {
             }
 
             if (typeof this.updateCrosshair === 'function') this.updateCrosshair(e);
+
+            if (this.canvas && !this.isPanel) {
+                const rect = this.canvas.getBoundingClientRect();
+                const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+                if (!inside && typeof this.hideEconomicCalendarTooltip === 'function') {
+                    this.hideEconomicCalendarTooltip();
+                }
+            }
         }, true);
+
+        // Bubble phase: run after canvas mousemove so cursor can show pointer over calendar flags (SVG may sit above canvas).
+        document.addEventListener('mousemove', (e) => {
+            if (!this.canvas || this.isPanel) return;
+            const rect = this.canvas.getBoundingClientRect();
+            const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+            if (!inside) {
+                if (typeof this.hideEconomicCalendarTooltip === 'function') this.hideEconomicCalendarTooltip();
+                return;
+            }
+            if (typeof this.updateEconomicCalendarHover === 'function') {
+                this.updateEconomicCalendarHover(e.clientX - rect.left, e.clientY - rect.top, e);
+            }
+        }, false);
         
         // Prevent context menu for box zoom
         this.canvas.addEventListener('contextmenu', e => {
