@@ -738,7 +738,7 @@ const TALARIA_INDICATOR_GLASS =
     'backdrop-filter:saturate(1.5) blur(20px);-webkit-backdrop-filter:saturate(1.5) blur(20px);';
 const TALARIA_INDICATOR_CHIP_CSS =
     'display:inline-flex;align-items:center;gap:6px;min-height:22px;box-sizing:border-box;' +
-    'padding:3px 8px 3px 6px;margin:0 4px 4px 0;border-radius:4px;line-height:1.25;' +
+    'padding:3px 8px 3px 6px;margin:0;border-radius:4px;line-height:1.25;' +
     'border:1px solid ' + TALARIA_IND_CHIP_BORDER + ';' +
     'background:' + TALARIA_IND_CHIP_BG + ';' +
     TALARIA_INDICATOR_GLASS +

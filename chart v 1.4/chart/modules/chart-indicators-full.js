@@ -18,7 +18,7 @@
         const w = global;
         const fallbackChip =
             'display:inline-flex;align-items:center;gap:6px;min-height:22px;box-sizing:border-box;' +
-            'padding:3px 8px 3px 6px;margin:0 4px 4px 0;border-radius:4px;line-height:1.25;' +
+            'padding:3px 8px 3px 6px;margin:0;border-radius:4px;line-height:1.25;' +
             'border:1px solid rgba(255,255,255,0.2);' +
             'background:rgba(19,23,34,0.32);' +
             'backdrop-filter:saturate(1.5) blur(20px);-webkit-backdrop-filter:saturate(1.5) blur(20px);' +
