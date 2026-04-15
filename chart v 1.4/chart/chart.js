@@ -1790,6 +1790,23 @@ class Chart {
         if (!sessionId) return;
         if (this._sessionStateLoadedFor === String(sessionId)) return;
 
+        // Journal merge requires orderManager. Retry briefly so refresh doesn't mark the session
+        // "loaded" before OrderManager exists (race with initReplaySystem).
+        if (!this.orderManager) {
+            this._sessionStateLoadRetryCount = (this._sessionStateLoadRetryCount || 0) + 1;
+            if (this._sessionStateLoadRetryCount > 80) {
+                console.warn('⚠️ Trading session state: orderManager not ready after retries; open replay/backtest to restore journal');
+                return;
+            }
+            clearTimeout(this._sessionStateLoadRetryTimer);
+            this._sessionStateLoadRetryTimer = setTimeout(() => {
+                this._sessionStateLoadRetryTimer = null;
+                this.loadTradingSessionStateIfNeeded();
+            }, 50);
+            return;
+        }
+        this._sessionStateLoadRetryCount = 0;
+
         try {
             const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, { credentials: 'include' });
             if (!res.ok) return;
@@ -1803,7 +1820,8 @@ class Chart {
                 this.drawingManager.loadDrawingsFromData(state.drawings);
             }
 
-            if (this.orderManager && Array.isArray(state.journal)) {
+            // Always treat journal as an array (legacy/corrupt blobs may omit it or use a non-array).
+            if (this.orderManager) {
                 const normalizeJournalTrade = (trade) => {
                     const ticker = String(trade?.ticker || trade?.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
                     return {
@@ -1822,7 +1840,8 @@ class Chart {
                     ? this.orderManager.tradeJournal.map(normalizeJournalTrade)
                     : [];
                 const localJournal = [...inMemory, ...legacyJournal];
-                const serverJournal = state.journal.map(normalizeJournalTrade);
+                const rawJournal = state.journal;
+                const serverJournal = (Array.isArray(rawJournal) ? rawJournal : []).map(normalizeJournalTrade);
                 // Merge by trade id: in-memory + one-time legacy import + server (server wins field conflicts).
                 const merged = new Map();
                 localJournal.forEach((t) => {
@@ -2029,7 +2048,14 @@ class Chart {
                 body: JSON.stringify(patch)
             });
             if (!res.ok) {
-                console.warn('⚠️ Critical session state PATCH failed', res.status, await res.text().catch(() => ''));
+                const errText = await res.text().catch(() => '');
+                console.warn('⚠️ Critical session state PATCH failed', res.status, errText);
+                if (res.status === 403) {
+                    console.warn(
+                        'Journal not saved: API CSRF middleware blocked this Origin. GET /state still works, so trades disappear after refresh. ' +
+                        'Set env TRUSTED_ORIGINS to your site origin (e.g. http://31.97.192.82) or fix proxy Host / X-Forwarded-* headers.'
+                    );
+                }
             }
         } catch (e) {
             console.warn('⚠️ Failed to save critical trading session state', e);
@@ -2053,7 +2079,14 @@ class Chart {
                 body: JSON.stringify(patch)
             });
             if (!res.ok) {
-                console.warn('⚠️ Session state PATCH failed', res.status, await res.text().catch(() => ''));
+                const errText = await res.text().catch(() => '');
+                console.warn('⚠️ Session state PATCH failed', res.status, errText);
+                if (res.status === 403) {
+                    console.warn(
+                        'Journal not saved: API CSRF middleware blocked this Origin. GET /state still works, so trades disappear after refresh. ' +
+                        'Set env TRUSTED_ORIGINS to your site origin (e.g. http://31.97.192.82) or fix proxy Host / X-Forwarded-* headers.'
+                    );
+                }
             }
         } catch (e) {
             console.warn('⚠️ Failed to save trading session state', e);
