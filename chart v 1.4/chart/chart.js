@@ -1779,14 +1779,41 @@ class Chart {
             }
 
             if (this.orderManager && Array.isArray(state.journal)) {
-                this.orderManager.tradeJournal = state.journal.map((trade) => {
+                const normalizeJournalTrade = (trade) => {
                     const ticker = String(trade?.ticker || trade?.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
                     return {
                         ...trade,
                         ticker,
                         symbol: trade?.symbol || ticker
                     };
+                };
+                const tradeKey = (t) => {
+                    if (!t || typeof t !== 'object') return null;
+                    const id = t.tradeId != null ? t.tradeId : t.id;
+                    return id != null ? String(id) : null;
+                };
+                const localJournal = Array.isArray(this.orderManager.tradeJournal)
+                    ? this.orderManager.tradeJournal.map(normalizeJournalTrade)
+                    : [];
+                const serverJournal = state.journal.map(normalizeJournalTrade);
+                // Merge by trade id: local (from localStorage in OrderManager.init) + server.
+                // Replacing with server-only was wiping trades when API returned [] or stale data.
+                const merged = new Map();
+                localJournal.forEach((t) => {
+                    const k = tradeKey(t);
+                    if (k) merged.set(k, t);
                 });
+                serverJournal.forEach((t) => {
+                    const k = tradeKey(t);
+                    if (k) {
+                        const prev = merged.get(k);
+                        merged.set(k, prev ? { ...prev, ...t } : t);
+                    }
+                });
+                this.orderManager.tradeJournal = Array.from(merged.values());
+                if (typeof this.orderManager.persistJournal === 'function') {
+                    this.orderManager.persistJournal();
+                }
                 if (typeof this.orderManager.recomputeAccountFromJournal === 'function') {
                     this.orderManager.recomputeAccountFromJournal();
                 }
