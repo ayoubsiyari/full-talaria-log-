@@ -20,19 +20,17 @@
             'display:inline-flex;align-items:center;gap:6px;min-height:22px;box-sizing:border-box;' +
             'padding:3px 8px 3px 6px;margin:0 4px 4px 0;border-radius:4px;line-height:1.25;' +
             'border:1px solid rgba(255,255,255,0.2);' +
-            'background:linear-gradient(180deg,rgba(255,255,255,0.16) 0%,rgba(19,23,34,0.14) 100%);' +
+            'background:rgba(19,23,34,0.32);' +
             'backdrop-filter:saturate(1.5) blur(20px);-webkit-backdrop-filter:saturate(1.5) blur(20px);' +
-            'box-shadow:inset 0 1px 0 rgba(255,255,255,0.28),0 2px 10px rgba(0,0,0,0.08);' +
+            'box-shadow:inset 0 1px 0 rgba(255,255,255,0.18),0 2px 8px rgba(0,0,0,0.06);' +
             'transform:translateZ(0);-webkit-transform:translateZ(0);' +
             'cursor:pointer;vertical-align:middle;' +
             'font-family:-apple-system,BlinkMacSystemFont,Trebuchet MS,Roboto,Ubuntu,sans-serif;';
         return {
             chipCss: w.TALARIA_INDICATOR_CHIP_CSS || fallbackChip,
-            bg: w.TALARIA_INDICATOR_CHIP_BG ||
-                'linear-gradient(180deg,rgba(255,255,255,0.16) 0%,rgba(19,23,34,0.14) 100%)',
-            bgHover: w.TALARIA_INDICATOR_CHIP_BG_HOVER ||
-                'linear-gradient(180deg,rgba(255,255,255,0.22) 0%,rgba(25,29,38,0.32) 100%)',
-            borderHover: w.TALARIA_INDICATOR_CHIP_BORDER_HOVER || 'rgba(255, 255, 255, 0.32)',
+            bg: w.TALARIA_INDICATOR_CHIP_BG || 'rgba(19, 23, 34, 0.32)',
+            bgHover: w.TALARIA_INDICATOR_CHIP_BG_HOVER || 'rgba(30, 34, 44, 0.48)',
+            borderHover: w.TALARIA_INDICATOR_CHIP_BORDER_HOVER || 'rgba(255, 255, 255, 0.3)',
             borderDefault: w.TALARIA_IND_CHIP_BORDER || 'rgba(255, 255, 255, 0.2)',
             colorStrip: w.TALARIA_INDICATOR_COLOR_STRIP || function(c) {
                 return 'display:inline-block;width:3px;height:14px;border-radius:1px;background:' + c + ';flex-shrink:0;';
@@ -5735,7 +5733,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const nameSpan = document.createElement('span');
             nameSpan.textContent = indicator.name;
-            nameSpan.style.cssText = 'color:#d1d4dc;font-size:12px;font-weight:400;letter-spacing:0.01em;user-select:none;opacity:' + (indicator.visible !== false ? '1' : '0.45') + ';';
+            nameSpan.className = 'talaria-ind-chip-name' + (indicator.visible === false ? ' talaria-ind-chip-name--hidden' : '');
             nameSpan.title = indicator.name;
             item.appendChild(nameSpan);
 
@@ -5760,7 +5758,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 indicator.visible = indicator.visible === false ? true : false;
                 visibilityBtn.innerHTML = indicator.visible ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
                 visibilityBtn.style.opacity = indicator.visible ? '1' : '0.5';
-                nameSpan.style.opacity = indicator.visible ? '1' : '0.5';
+                nameSpan.className = 'talaria-ind-chip-name' + (indicator.visible ? '' : ' talaria-ind-chip-name--hidden');
                 if (!indicator.visible) {
                     if (indicator.data) {
                         indicator._hiddenData = indicator.data;

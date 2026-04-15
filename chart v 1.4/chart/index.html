@@ -26721,6 +26721,33 @@
 
         }
 
+        /* Match OHLC row label styling: .ohlc-info uses #fff; .ohlc-label uses opacity 0.6 */
+        .talaria-ind-chip-name {
+
+            font-size: 11px;
+
+            font-weight: 400;
+
+            letter-spacing: 0.01em;
+
+            user-select: none;
+
+            color: rgba(255, 255, 255, 0.6);
+
+        }
+
+        body.light-mode .talaria-ind-chip-name {
+
+            color: rgba(5, 0, 40, 0.6);
+
+        }
+
+        .talaria-ind-chip-name--hidden {
+
+            opacity: 0.45;
+
+        }
+
 
 
         .ohlc-indicator-item {
@@ -44111,11 +44138,11 @@
 
     <!-- MUST be loaded AFTER chart.js as it extends the Chart prototype -->
 
-    <script defer src="modules/chart-indicators-full.js?v=20260435"></script>
+    <script defer src="modules/chart-indicators-full.js?v=20260436"></script>
 
     <!-- Indicator UI must load AFTER indicators to override updateOHLCIndicators -->
 
-    <script defer src="modules/indicator-ui.js?v=20260435"></script>
+    <script defer src="modules/indicator-ui.js?v=20260436"></script>
 
     
 

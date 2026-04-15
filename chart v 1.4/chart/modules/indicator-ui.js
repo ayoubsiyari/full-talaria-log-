@@ -731,10 +731,9 @@ const INDICATOR_COLOR_ROWS = [
 
 const INDICATOR_COLOR_RECENTS = ['#131722', '#2962FF', '#1E3A5F', '#262B3E'];
 
-/** Indicator legend chips — frosted glass (strong backdrop blur; light tint so grid/canvas shows through) */
+/** Indicator legend chips — flat tint + blur (no gradient); text color via .talaria-ind-chip-name (matches OHLC labels in CSS) */
 const TALARIA_IND_CHIP_BORDER = 'rgba(255, 255, 255, 0.2)';
-const TALARIA_IND_CHIP_BG =
-    'linear-gradient(180deg,rgba(255,255,255,0.16) 0%,rgba(19,23,34,0.14) 100%)';
+const TALARIA_IND_CHIP_BG = 'rgba(19, 23, 34, 0.32)';
 const TALARIA_INDICATOR_GLASS =
     'backdrop-filter:saturate(1.5) blur(20px);-webkit-backdrop-filter:saturate(1.5) blur(20px);';
 const TALARIA_INDICATOR_CHIP_CSS =
@@ -743,18 +742,18 @@ const TALARIA_INDICATOR_CHIP_CSS =
     'border:1px solid ' + TALARIA_IND_CHIP_BORDER + ';' +
     'background:' + TALARIA_IND_CHIP_BG + ';' +
     TALARIA_INDICATOR_GLASS +
-    'box-shadow:inset 0 1px 0 rgba(255,255,255,0.28),0 2px 10px rgba(0,0,0,0.08);' +
+    'box-shadow:inset 0 1px 0 rgba(255,255,255,0.18),0 2px 8px rgba(0,0,0,0.06);' +
     'transform:translateZ(0);-webkit-transform:translateZ(0);' +
     'cursor:pointer;vertical-align:middle;' +
     'font-family:-apple-system,BlinkMacSystemFont,Trebuchet MS,Roboto,Ubuntu,sans-serif;';
 const TALARIA_INDICATOR_CHIP_BG = TALARIA_IND_CHIP_BG;
-const TALARIA_INDICATOR_CHIP_BG_HOVER =
-    'linear-gradient(180deg,rgba(255,255,255,0.22) 0%,rgba(25,29,38,0.32) 100%)';
-const TALARIA_INDICATOR_CHIP_BORDER_HOVER = 'rgba(255, 255, 255, 0.32)';
+const TALARIA_INDICATOR_CHIP_BG_HOVER = 'rgba(30, 34, 44, 0.48)';
+const TALARIA_INDICATOR_CHIP_BORDER_HOVER = 'rgba(255, 255, 255, 0.3)';
 const TALARIA_INDICATOR_COLOR_STRIP = (color) =>
     'display:inline-block;width:3px;height:14px;border-radius:1px;background:' + color + ';flex-shrink:0;';
-const talariaIndNameStyle = (visible) =>
-    'color:#d1d4dc;font-size:12px;font-weight:400;letter-spacing:0.01em;opacity:' + (visible ? '1' : '0.45') + ';';
+function setTalariaIndChipNameEl(el, visible) {
+    el.className = 'talaria-ind-chip-name' + (visible ? '' : ' talaria-ind-chip-name--hidden');
+}
 const TALARIA_IND_ACTION_BTN =
     'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:2px;cursor:pointer;transition:background .15s,color .15s;flex-shrink:0;';
 
@@ -2159,7 +2158,7 @@ function setupIndicatorUI(chartInstance) {
             // Name (dimmed when hidden)
             const nameSpan = document.createElement('span');
             nameSpan.textContent = indicator.name;
-            nameSpan.style.cssText = talariaIndNameStyle(indicator.visible !== false);
+            setTalariaIndChipNameEl(nameSpan, indicator.visible !== false);
             item.appendChild(nameSpan);
 
             const actions = document.createElement('span');
@@ -2190,8 +2189,7 @@ function setupIndicatorUI(chartInstance) {
                 visibilityBtn.style.opacity = indicator.visible ? '1' : '0.5';
                 visibilityBtn.title = indicator.visible ? 'Click to hide' : 'Click to show';
                 
-                // Update name opacity
-                nameSpan.style.cssText = talariaIndNameStyle(indicator.visible);
+                setTalariaIndChipNameEl(nameSpan, indicator.visible);
                 
                 // Hide/show indicator data to actually hide it from chart
                 if (!indicator.visible) {
@@ -2576,7 +2574,7 @@ if (typeof Chart !== 'undefined') {
             // Name (dimmed when hidden)
             const nameSpan = document.createElement('span');
             nameSpan.textContent = indicator.name;
-            nameSpan.style.cssText = talariaIndNameStyle(indicator.visible !== false);
+            setTalariaIndChipNameEl(nameSpan, indicator.visible !== false);
             item.appendChild(nameSpan);
 
             const actions = document.createElement('span');
@@ -2607,8 +2605,7 @@ if (typeof Chart !== 'undefined') {
                 visibilityBtn.style.opacity = indicator.visible ? '1' : '0.5';
                 visibilityBtn.title = indicator.visible ? 'Click to hide' : 'Click to show';
                 
-                // Update name opacity
-                nameSpan.style.cssText = talariaIndNameStyle(indicator.visible);
+                setTalariaIndChipNameEl(nameSpan, indicator.visible);
                 
                 // Hide/show indicator data to actually hide it from chart
                 if (!indicator.visible) {
