@@ -21,6 +21,16 @@ type Session = {
   session_type?: string;
 };
 
+/** Use when the static site and chart API are on different origins (set at build time). */
+function chartApiUrl(path: string): string {
+  const base = typeof process !== "undefined" ? process.env.NEXT_PUBLIC_CHART_API_ORIGIN?.trim() : "";
+  if (base && /^https?:\/\//i.test(base)) {
+    const p = path.startsWith("/") ? path : `/${path}`;
+    return `${base.replace(/\/$/, "")}${p}`;
+  }
+  return path;
+}
+
 type Trade = {
   tradeId?: number | string;
   id?: number | string;
@@ -52,12 +62,23 @@ type Trade = {
 };
 
 async function fetchJson<T = unknown>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, { credentials: "include", cache: "no-store", ...options });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail ?? `Request failed: ${res.status}`);
+  const resolved = chartApiUrl(url);
+  const res = await fetch(resolved, { credentials: "include", cache: "no-store", ...options });
+  const text = await res.text();
+  let body: unknown = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    if (!res.ok) {
+      throw new Error(`Request failed: ${res.status} (${resolved}) — response was not JSON`);
+    }
+    throw new Error(`Invalid JSON from ${resolved}: ${text.slice(0, 160)}`);
   }
-  return res.json();
+  if (!res.ok) {
+    const detail = (body as { detail?: string })?.detail;
+    throw new Error(detail ?? `Request failed: ${res.status} (${resolved})`);
+  }
+  return body as T;
 }
 
 function n(v: unknown): number {
@@ -101,7 +122,9 @@ export default function BacktestAnalyticsPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [allTrades, setAllTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
+  const [journalError, setJournalError] = useState<string | null>(null);
+  const [journalFetched, setJournalFetched] = useState(false);
   const [pairFilter, setPairFilter] = useState("ALL");
   const [playbookFilter, setPlaybookFilter] = useState("ALL");
   const [outcomeFilter, setOutcomeFilter] = useState("ALL");
@@ -144,9 +167,10 @@ export default function BacktestAnalyticsPage() {
           if (list.length > 0) return String(list[0].id);
           return prev;
         });
+        setListError(null);
       } catch (e) {
         if (!mounted) return;
-        setError(e instanceof Error ? e.message : String(e));
+        setListError(e instanceof Error ? e.message : String(e));
       }
     })();
     return () => {
@@ -159,11 +183,11 @@ export default function BacktestAnalyticsPage() {
     if (!selectedSessionId) {
       setLoading(false);
       setAllTrades([]);
+      setJournalFetched(false);
       return;
     }
     (async () => {
       setLoading(true);
-      setError(null);
       try {
         const payload = await fetchJson<{ state?: { journal?: Trade[] } }>(
           `/api/sessions/${encodeURIComponent(selectedSessionId)}/state`
@@ -171,10 +195,13 @@ export default function BacktestAnalyticsPage() {
         if (!mounted) return;
         const journal = Array.isArray(payload?.state?.journal) ? payload.state!.journal! : [];
         setAllTrades(journal);
+        setJournalError(null);
+        setJournalFetched(true);
       } catch (e) {
         if (!mounted) return;
-        setError(e instanceof Error ? e.message : String(e));
+        setJournalError(e instanceof Error ? e.message : String(e));
         setAllTrades([]);
+        setJournalFetched(true);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -636,10 +663,43 @@ export default function BacktestAnalyticsPage() {
           </select>
         </div>
 
+        {journalFetched &&
+        selectedSessionId &&
+        !loading &&
+        !journalError &&
+        !listError &&
+        allTrades.length === 0 ? (
+          <div className="rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4 text-amber-100/90 text-sm space-y-2">
+            <p className="font-medium text-amber-50">No trades in session state for this session</p>
+            <p className="text-amber-100/80">
+              Analytics reads <code className="text-xs bg-black/30 px-1 rounded">GET /api/sessions/{selectedSessionId}/state</code> and uses{" "}
+              <code className="text-xs bg-black/30 px-1 rounded">state.journal</code>. If the chart never saved trades for this session (missing session id,
+              failed save, or a different server), the journal stays empty here even though the session exists in the list.
+            </p>
+          </div>
+        ) : null}
+
         {loading ? (
           <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-10 text-center text-white/60">Loading analytics...</div>
-        ) : error ? (
-          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-red-200">{error}</div>
+        ) : journalError || listError ? (
+          <div className="space-y-3">
+            {listError ? (
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-100 text-sm">
+                <strong className="block mb-1">Session list</strong>
+                {listError}
+              </div>
+            ) : null}
+            {journalError ? (
+              <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-red-200">
+                <strong className="block mb-2">Journal / state</strong>
+                {journalError}
+                <p className="mt-3 text-sm text-red-200/80">
+                  If the API is on another host, set <code className="text-xs bg-black/30 px-1 rounded">NEXT_PUBLIC_CHART_API_ORIGIN</code> at build time
+                  (e.g. <code className="text-xs bg-black/30 px-1 rounded">https://your-chart-host</code>) so requests hit the chart server.
+                </p>
+              </div>
+            ) : null}
+          </div>
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
