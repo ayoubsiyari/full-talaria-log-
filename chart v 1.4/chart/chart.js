@@ -798,8 +798,8 @@ class Chart {
             
             const sessionId = urlParams.get('sessionId');
 
-            // URL session always wins for persistence (journal PATCH / state). Stale localStorage
-            // must not override ?sessionId= or trades save to the wrong row.
+            // URL session always wins for persistence (journal PATCH / state). Stale
+            // active_trading_session_id in storage must not override ?sessionId=.
             if (sessionId) {
                 const sid = String(sessionId);
                 this.activeTradingSessionId = sid;
@@ -1760,6 +1760,31 @@ class Chart {
         return null;
     }
 
+    /**
+     * One-time read of pre-migration journal keys from localStorage; removes keys so data lives only in DB afterward.
+     * @returns {Array} parsed trades or []
+     */
+    _consumeLegacyJournalFromLocalStorage(sessionId) {
+        try {
+            const sid = String(sessionId);
+            const k = `tradeJournal_s${sid}`;
+            let raw = userStorage.getItem(k);
+            if (!raw) raw = userStorage.getItem('tradeJournal');
+            if (!raw) return [];
+            const arr = JSON.parse(raw);
+            if (!Array.isArray(arr) || arr.length === 0) return [];
+            userStorage.removeItem(k);
+            userStorage.removeItem(`${k}_perInstrumentStats`);
+            userStorage.removeItem(`${k}_byTicker`);
+            userStorage.removeItem('tradeJournal');
+            console.log(`📔 Migrated ${arr.length} journal row(s) from legacy browser storage → syncing to server`);
+            return arr;
+        } catch (e) {
+            console.warn('Legacy journal migration skipped:', e);
+            return [];
+        }
+    }
+
     async loadTradingSessionStateIfNeeded() {
         const sessionId = this.getActiveTradingSessionId();
         if (!sessionId) return;
@@ -1792,12 +1817,13 @@ class Chart {
                     const id = t.tradeId != null ? t.tradeId : t.id;
                     return id != null ? String(id) : null;
                 };
-                const localJournal = Array.isArray(this.orderManager.tradeJournal)
+                const legacyJournal = this._consumeLegacyJournalFromLocalStorage(sessionId).map(normalizeJournalTrade);
+                const inMemory = Array.isArray(this.orderManager.tradeJournal)
                     ? this.orderManager.tradeJournal.map(normalizeJournalTrade)
                     : [];
+                const localJournal = [...inMemory, ...legacyJournal];
                 const serverJournal = state.journal.map(normalizeJournalTrade);
-                // Merge by trade id: local (from localStorage in OrderManager.init) + server.
-                // Replacing with server-only was wiping trades when API returned [] or stale data.
+                // Merge by trade id: in-memory + one-time legacy import + server (server wins field conflicts).
                 const merged = new Map();
                 localJournal.forEach((t) => {
                     const k = tradeKey(t);
@@ -1811,6 +1837,12 @@ class Chart {
                     }
                 });
                 this.orderManager.tradeJournal = Array.from(merged.values());
+                if (typeof this.orderManager.normalizeJournalRowsInPlace === 'function') {
+                    this.orderManager.normalizeJournalRowsInPlace();
+                }
+                if (typeof this.orderManager.restoreIdCountersFromJournal === 'function') {
+                    this.orderManager.restoreIdCountersFromJournal();
+                }
                 if (typeof this.orderManager.persistJournal === 'function') {
                     this.orderManager.persistJournal();
                 }

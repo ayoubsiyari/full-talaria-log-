@@ -6,6 +6,32 @@ from .types import NormalizedTrade
 from .utils import to_float, to_ticker
 
 
+def _instrument_settings_dict(t: dict[str, Any]) -> dict[str, Any]:
+    inst = t.get("instrument_settings")
+    return inst if isinstance(inst, dict) else {}
+
+
+def _spread_pips_at_entry(t: dict[str, Any]) -> float:
+    if "spread_pips_at_entry" in t and t["spread_pips_at_entry"] is not None:
+        return to_float(t.get("spread_pips_at_entry"))
+    inst = _instrument_settings_dict(t)
+    return to_float(inst.get("spread_pips", inst.get("spreadPips", 0.0)))
+
+
+def _commission_at_entry(t: dict[str, Any]) -> float:
+    if "commission_at_entry" in t and t["commission_at_entry"] is not None:
+        return to_float(t.get("commission_at_entry"))
+    inst = _instrument_settings_dict(t)
+    return to_float(inst.get("commission_per_lot_per_side", inst.get("commissionPerLotPerSide", 0.0)))
+
+
+def _pip_value_at_entry(t: dict[str, Any]) -> float:
+    if "pip_value_at_entry" in t and t["pip_value_at_entry"] is not None:
+        return to_float(t.get("pip_value_at_entry"))
+    inst = _instrument_settings_dict(t)
+    return to_float(inst.get("pip_value_per_lot", inst.get("pipValuePerLot", 0.0)))
+
+
 def normalize_trades(raw_trades: list[dict[str, Any]]) -> list[NormalizedTrade]:
     out: list[NormalizedTrade] = []
     for idx, t in enumerate(raw_trades):
@@ -27,9 +53,10 @@ def normalize_trades(raw_trades: list[dict[str, Any]]) -> list[NormalizedTrade]:
         mae_r = to_float(t.get("mae_r", 0.0))
         mfe_r = to_float(t.get("mfe_r", 0.0))
         quantity = to_float(t.get("quantity", 0.0))
-        spread_pips = to_float(t.get("spread_pips_at_entry", 0.0))
-        commission = to_float(t.get("commission_at_entry", 0.0))
-        pip_value = to_float(t.get("pip_value_at_entry", 0.0))
+        # Prefer flat fields saved on the journal row; fall back to instrument_settings once (no duplicate work in Python).
+        spread_pips = _spread_pips_at_entry(t)
+        commission = _commission_at_entry(t)
+        pip_value = _pip_value_at_entry(t)
         close_ts = to_float(t.get("closeTime", t.get("exitTime", 0.0)))
         risk_usd = to_float(t.get("riskAmount", t.get("originalRiskAmount", 0.0)))
         if risk_usd <= 0.0 and abs(rr_actual) > 1e-9:

@@ -58,6 +58,35 @@ def test_normalize_and_filter_instrument():
     assert eur[0].trade_id == "t1"
 
 
+def test_normalize_falls_back_to_instrument_settings_when_flats_missing():
+    """Older / alternate journal rows may only store instrument_settings; no duplicate flat fields."""
+    raw = [
+        {
+            "tradeId": "legacy1",
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "closeTime": 500,
+            "netPnL": 10,
+            "rMultiple": 1.0,
+            "mae_r": 0.0,
+            "mfe_r": 1.0,
+            "quantity": 1.0,
+            "riskAmount": 10,
+            "instrument_settings": {
+                "spread_pips": 1.5,
+                "commission_per_lot_per_side": 3.0,
+                "pip_value_per_lot": 10.0,
+            },
+        }
+    ]
+    trades = normalize_trades(raw)
+    assert len(trades) == 1
+    t = trades[0]
+    assert t.spread_pips_at_entry == 1.5
+    assert t.commission_at_entry == 3.0
+    assert t.pip_value_at_entry == 10.0
+
+
 def test_simulation_and_equity_curve():
     trades = normalize_trades(_sample_raw_trades())
     one = simulate_trade(trades[0], tp_r=1.5, sl_r=1.0)

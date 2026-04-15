@@ -252,16 +252,6 @@ class OrderManager {
         this.init();
     }
 
-    getJournalStorageKey() {
-        const sessionId = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
-            ? this.chart.getActiveTradingSessionId()
-            : null;
-        if (sessionId) {
-            return `tradeJournal_s${sessionId}`;
-        }
-        return 'tradeJournal';
-    }
-
     // ── Market Calculation Engine helpers ──────────────────────────────────────
     // These delegate to window.marketCalcEngine when available, falling back to
     // the legacy pipSize × pipValuePerLot math so existing behaviour is preserved.
@@ -2660,13 +2650,11 @@ class OrderManager {
     persistJournal() {
         const perInstrumentStats = this.buildPerInstrumentStats();
         const journalByTicker = this.groupJournalByTicker();
-        try {
-            const key = this.getJournalStorageKey();
-            userStorage.setItem(key, JSON.stringify(this.tradeJournal));
-            userStorage.setItem(`${key}_perInstrumentStats`, JSON.stringify(perInstrumentStats));
-            userStorage.setItem(`${key}_byTicker`, JSON.stringify(journalByTicker));
-        } catch (e) {
-            console.warn('Could not save trade journal to localStorage:', e);
+        const sessionId = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
+            ? this.chart.getActiveTradingSessionId()
+            : null;
+        if (!sessionId) {
+            console.warn('📔 Trade journal cannot persist: no active trading session (open the chart with ?sessionId=… or assigned session).');
         }
 
         if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
@@ -3048,6 +3036,134 @@ class OrderManager {
         setText('analyticsWouldHaveWon',    adv.wouldHaveWonPct);
     }
 
+    /**
+     * Fill only missing analytics fields on a journal row (does not overwrite data already saved
+     * by close/modal paths). Cost fields: either flat spread/commission/pip OR instrument_settings —
+     * not both when flats are complete (saves payload; analytics_core reads flats first, then inst).
+     * @param {object} entry - journal object (mutated)
+     * @param {object} position - open position or representative leg (e.g. first scaled/split entry)
+     * @param {{ closeTime: number, closePrice?: number }} ctx
+     */
+    _enrichJournalEntryForPersistence(entry, position, ctx = {}) {
+        if (!entry || !position) return entry;
+        const closeTime = ctx.closeTime != null ? ctx.closeTime : (entry.closeTime ?? entry.exitTime);
+        const closePrice = ctx.closePrice != null ? ctx.closePrice : (entry.exitPrice ?? entry.closePrice);
+        const openTime = position.openTime != null ? position.openTime : entry.openTime;
+        if (openTime == null || closeTime == null) return entry;
+
+        const holdingTimeMs = closeTime - openTime;
+        const entryDate = new Date(openTime);
+        const exitDate = new Date(closeTime);
+
+        const symbol = String(
+            position.ticker || position.symbol || entry.ticker || entry.symbol || this._getActiveTicker() || 'UNKNOWN'
+        ).replace('/', '').toUpperCase();
+        if (!entry.ticker) entry.ticker = symbol;
+        if (!entry.symbol) entry.symbol = symbol;
+
+        if (entry.entryTime == null) entry.entryTime = openTime;
+        if (entry.exitTime == null) entry.exitTime = closeTime;
+        if (!entry.entryDate) entry.entryDate = entryDate.toISOString();
+        if (!entry.exitDate) entry.exitDate = exitDate.toISOString();
+        if (entry.holdingTimeMs == null) entry.holdingTimeMs = holdingTimeMs;
+        if (entry.holdingTimeDays == null || Number.isNaN(Number(entry.holdingTimeDays))) {
+            entry.holdingTimeDays = parseFloat((holdingTimeMs / (1000 * 60 * 60 * 24)).toFixed(4));
+        }
+        if (entry.holdingTimeHours == null || Number.isNaN(Number(entry.holdingTimeHours))) {
+            entry.holdingTimeHours = parseFloat((holdingTimeMs / (1000 * 60 * 60)).toFixed(2));
+        }
+
+        if (entry.mfeTime == null && position.mfeTime != null) entry.mfeTime = position.mfeTime;
+        if (entry.maeTime == null && position.maeTime != null) entry.maeTime = position.maeTime;
+
+        const copyArr = (a) => (Array.isArray(a) ? a.slice() : null);
+        if (!entry.bar_close_r) {
+            const bc = copyArr(position.bar_close_r);
+            if (bc) entry.bar_close_r = bc;
+        }
+        if (!entry.bar_high_r) {
+            const bh = copyArr(position.bar_high_r);
+            if (bh) entry.bar_high_r = bh;
+        }
+        if (!entry.bar_low_r) {
+            const bl = copyArr(position.bar_low_r);
+            if (bl) entry.bar_low_r = bl;
+        }
+        if (!entry.post_exit_bar_close_r) {
+            const pec = copyArr(position.post_exit_bar_close_r);
+            if (pec) entry.post_exit_bar_close_r = pec;
+        }
+        if (!entry.post_exit_bar_high_r) {
+            const peh = copyArr(position.post_exit_bar_high_r);
+            if (peh) entry.post_exit_bar_high_r = peh;
+        }
+        if (!entry.post_exit_bar_low_r) {
+            const pel = copyArr(position.post_exit_bar_low_r);
+            if (pel) entry.post_exit_bar_low_r = pel;
+        }
+
+        if ((entry.mfe_r == null || entry.mfe_r === 0) && Array.isArray(position.bar_high_r) && position.bar_high_r.length > 0) {
+            entry.mfe_r = Math.max(...position.bar_high_r);
+        }
+        if ((entry.mae_r == null || entry.mae_r === 0) && Array.isArray(position.bar_low_r) && position.bar_low_r.length > 0) {
+            entry.mae_r = Math.max(...position.bar_low_r);
+        }
+
+        const hasFlatSpread = entry.spread_pips_at_entry != null && entry.spread_pips_at_entry !== '';
+        const hasFlatComm = entry.commission_at_entry != null && entry.commission_at_entry !== '';
+        const hasFlatPip = entry.pip_value_at_entry != null && entry.pip_value_at_entry !== '';
+        const costsComplete = hasFlatSpread && hasFlatComm && hasFlatPip;
+
+        if (!costsComplete) {
+            const inst = position.instrument_settings || this._getActiveInstrumentSettings();
+            if (!entry.instrument_settings) entry.instrument_settings = inst;
+            const instFlat = entry.instrument_settings || inst || {};
+            if (entry.spread_pips_at_entry == null || entry.spread_pips_at_entry === '') {
+                entry.spread_pips_at_entry = Number.parseFloat(instFlat.spread_pips ?? instFlat.spreadPips ?? 0) || 0;
+            }
+            if (entry.commission_at_entry == null || entry.commission_at_entry === '') {
+                entry.commission_at_entry = Number.parseFloat(
+                    instFlat.commission_per_lot_per_side ?? instFlat.commissionPerLotPerSide ?? 0
+                ) || 0;
+            }
+            if (entry.pip_value_at_entry == null || entry.pip_value_at_entry === '') {
+                entry.pip_value_at_entry = Number.parseFloat(
+                    instFlat.pip_value_per_lot ?? instFlat.pipValuePerLot ?? this.pipValuePerLot
+                ) || this.pipValuePerLot;
+            }
+            const allCostsNow =
+                entry.spread_pips_at_entry != null && entry.spread_pips_at_entry !== '' &&
+                entry.commission_at_entry != null && entry.commission_at_entry !== '' &&
+                entry.pip_value_at_entry != null && entry.pip_value_at_entry !== '';
+            if (allCostsNow && entry.instrument_settings) {
+                delete entry.instrument_settings;
+            }
+        }
+
+        const riskBasis = position.originalRiskAmount || position.riskAmount || entry.riskAmount;
+        const pnlNum = Number.parseFloat(entry.netPnL ?? entry.realizedPnL ?? entry.pnl ?? 0);
+        if (riskBasis > 0 && Number.isFinite(pnlNum)) {
+            if (entry.originalRiskAmount == null) {
+                entry.originalRiskAmount = position.originalRiskAmount ?? position.riskAmount ?? riskBasis;
+            }
+            if (entry.rMultiple == null || entry.rMultiple === '') {
+                entry.rMultiple = (pnlNum / riskBasis).toFixed(2);
+            }
+        }
+
+        if (entry.savedAt == null) entry.savedAt = Date.now();
+
+        if (this.chart && typeof this.chart.getActiveTradingSessionId === 'function') {
+            const sid = this.chart.getActiveTradingSessionId();
+            if (sid && !entry.trading_session_id) entry.trading_session_id = String(sid);
+        }
+
+        if (closePrice != null && entry.exitPrice == null) entry.exitPrice = closePrice;
+        if (closePrice != null && entry.closePrice == null) entry.closePrice = closePrice;
+
+        return entry;
+    }
+
     upsertJournalEntry(journalEntry, options = {}) {
         if (!journalEntry) return { index: -1, inserted: false, entry: null };
         const { skipIfExists = false } = options;
@@ -3110,110 +3226,92 @@ class OrderManager {
         });
         return buckets;
     }
+
+    /**
+     * Normalize tickers and remove duplicate trade ids in place (canonical journal is server-backed).
+     */
+    normalizeJournalRowsInPlace() {
+        if (!Array.isArray(this.tradeJournal)) {
+            this.tradeJournal = [];
+            return;
+        }
+        this.tradeJournal = this.tradeJournal.map((trade) => {
+            const normalizedTicker = String(trade.ticker || trade.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
+            return {
+                ...trade,
+                ticker: normalizedTicker,
+                symbol: trade.symbol || normalizedTicker
+            };
+        });
+        const seenIds = new Set();
+        const originalLength = this.tradeJournal.length;
+        this.tradeJournal = this.tradeJournal.filter((trade) => {
+            const id = trade.tradeId || trade.id;
+            if (seenIds.has(id)) {
+                console.warn(`🧹 Removing duplicate trade #${id} from journal`);
+                return false;
+            }
+            seenIds.add(id);
+            return true;
+        });
+        if (this.tradeJournal.length < originalLength) {
+            console.log(`🧹 Cleaned ${originalLength - this.tradeJournal.length} duplicate(s) from journal`);
+        }
+    }
+
+    /**
+     * Restore order / group id counters from loaded journal so new trades do not collide.
+     */
+    restoreIdCountersFromJournal() {
+        if (!Array.isArray(this.tradeJournal) || this.tradeJournal.length === 0) return;
+        let maxOrderId = 0;
+        let maxScaledGroupId = 0;
+        let maxSplitGroupId = 0;
+        this.tradeJournal.forEach((trade) => {
+            const id = trade.tradeId || trade.id;
+            if (typeof id === 'string') {
+                if (id.startsWith('scaled_')) {
+                    const num = parseInt(id.replace('scaled_', ''), 10);
+                    if (!isNaN(num) && num > maxScaledGroupId) maxScaledGroupId = num;
+                } else if (id.startsWith('split_')) {
+                    const num = parseInt(id.replace('split_', ''), 10);
+                    if (!isNaN(num) && num > maxSplitGroupId) maxSplitGroupId = num;
+                }
+            } else if (typeof id === 'number') {
+                if (id > maxOrderId) maxOrderId = id;
+            }
+            if (trade.scaledEntries) {
+                trade.scaledEntries.forEach((e) => {
+                    if (e.id && typeof e.id === 'number' && e.id > maxOrderId) {
+                        maxOrderId = e.id;
+                    }
+                });
+            }
+            if (trade.splitEntries) {
+                trade.splitEntries.forEach((e) => {
+                    if (e.id && typeof e.id === 'number' && e.id > maxOrderId) {
+                        maxOrderId = e.id;
+                    }
+                });
+            }
+        });
+        if (maxOrderId > 0) {
+            this.orderIdCounter = maxOrderId + 1;
+            console.log(`🔢 Restored orderIdCounter to ${this.orderIdCounter} (from journal)`);
+        }
+        if (maxScaledGroupId > 0 || maxSplitGroupId > 0) {
+            this.tradeGroupIdCounter = Math.max(maxScaledGroupId, maxSplitGroupId) + 1;
+            console.log(`🔢 Restored tradeGroupIdCounter to ${this.tradeGroupIdCounter} (from journal)`);
+        }
+    }
     
     init() {
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('📊 Order Manager v2.0 - WITH NEW GRADIENT CARDS');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
-        // Load trade journal from localStorage
-        try {
-            const key = this.getJournalStorageKey();
-            let savedJournal = userStorage.getItem(key);
-            if (!savedJournal && key !== 'tradeJournal') {
-                const legacy = userStorage.getItem('tradeJournal');
-                if (legacy) {
-                    savedJournal = legacy;
-                }
-            }
-            if (savedJournal) {
-                this.tradeJournal = JSON.parse(savedJournal);
-                this.tradeJournal = this.tradeJournal.map((trade) => {
-                    const normalizedTicker = String(trade.ticker || trade.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
-                    return {
-                        ...trade,
-                        ticker: normalizedTicker,
-                        symbol: trade.symbol || normalizedTicker
-                    };
-                });
-                console.log(`📔 Loaded ${this.tradeJournal.length} trades from journal`);
-                
-                // Clean up any duplicates that might exist
-                const originalLength = this.tradeJournal.length;
-                const seenIds = new Set();
-                this.tradeJournal = this.tradeJournal.filter(trade => {
-                    const id = trade.tradeId || trade.id;
-                    if (seenIds.has(id)) {
-                        console.warn(`🧹 Removing duplicate trade #${id} from journal`);
-                        return false;
-                    }
-                    seenIds.add(id);
-                    return true;
-                });
-                
-                if (this.tradeJournal.length < originalLength) {
-                    console.log(`🧹 Cleaned ${originalLength - this.tradeJournal.length} duplicate(s) from journal`);
-                    this.persistJournal();
-                }
-
-                if (key !== 'tradeJournal') {
-                    this.persistJournal();
-                }
-                
-                // ═══ RESTORE ID COUNTERS FROM JOURNAL ═══
-                // Prevent ID collisions after page refresh
-                let maxOrderId = 0;
-                let maxScaledGroupId = 0;
-                let maxSplitGroupId = 0;
-                
-                this.tradeJournal.forEach(trade => {
-                    const id = trade.tradeId || trade.id;
-                    
-                    if (typeof id === 'string') {
-                        // Handle prefixed IDs: "scaled_X" or "split_X"
-                        if (id.startsWith('scaled_')) {
-                            const num = parseInt(id.replace('scaled_', ''), 10);
-                            if (!isNaN(num) && num > maxScaledGroupId) maxScaledGroupId = num;
-                        } else if (id.startsWith('split_')) {
-                            const num = parseInt(id.replace('split_', ''), 10);
-                            if (!isNaN(num) && num > maxSplitGroupId) maxSplitGroupId = num;
-                        }
-                    } else if (typeof id === 'number') {
-                        // Regular numeric trade ID
-                        if (id > maxOrderId) maxOrderId = id;
-                    }
-                    
-                    // Also check scaledEntries and splitEntries for individual order IDs
-                    if (trade.scaledEntries) {
-                        trade.scaledEntries.forEach(e => {
-                            if (e.id && typeof e.id === 'number' && e.id > maxOrderId) {
-                                maxOrderId = e.id;
-                            }
-                        });
-                    }
-                    if (trade.splitEntries) {
-                        trade.splitEntries.forEach(e => {
-                            if (e.id && typeof e.id === 'number' && e.id > maxOrderId) {
-                                maxOrderId = e.id;
-                            }
-                        });
-                    }
-                });
-                
-                // Set counters to max + 1 to avoid collisions
-                if (maxOrderId > 0) {
-                    this.orderIdCounter = maxOrderId + 1;
-                    console.log(`🔢 Restored orderIdCounter to ${this.orderIdCounter} (from journal)`);
-                }
-                if (maxScaledGroupId > 0 || maxSplitGroupId > 0) {
-                    // Use the same counter for both scaled and split groups
-                    this.tradeGroupIdCounter = Math.max(maxScaledGroupId, maxSplitGroupId) + 1;
-                    console.log(`🔢 Restored tradeGroupIdCounter to ${this.tradeGroupIdCounter} (from journal)`);
-                }
-            }
-        } catch (e) {
-            console.warn('Could not load trade journal from localStorage:', e);
-        }
+        // Trade journal: loaded from API (GET /api/sessions/:id/state) — not localStorage.
+        this.tradeJournal = [];
         
         // Load MFE/MAE settings from localStorage
         try {
@@ -6648,6 +6746,10 @@ class OrderManager {
                     journalEntry.post_strategy_variables = postTradeNotes.postStrategyVariables;
                 }
             }
+            this._enrichJournalEntryForPersistence(journalEntry, order, {
+                closeTime: journalEntry.closeTime ?? journalEntry.exitTime,
+                closePrice: journalEntry.exitPrice ?? journalEntry.closePrice
+            });
             
             const upsert = this.upsertJournalEntry(journalEntry);
             if (!upsert.inserted) {
@@ -6795,7 +6897,7 @@ class OrderManager {
             entryScreenshot: order.entryScreenshot || null, // Captured on order placement
             exitScreenshot: exitScreenshot || null, // Captured on trade close
             
-            // Metadata
+            // Metadata (instrument_settings omitted — spread/commission/pip scalars below; analytics_core + normalization use those or fall back to instrument_settings on older rows)
             savedAt: Date.now(),
             
             // Legacy fields for backward compatibility
@@ -6810,6 +6912,7 @@ class OrderManager {
         };
         
         // CHECK FOR SCALED TRADES - Don't save individual entries
+        let journalFromAggregate = false;
         if (order.tradeGroupId) {
             const scaledInfo = this.scaledTrades.get(order.tradeGroupId);
             
@@ -6825,7 +6928,14 @@ class OrderManager {
                 
                 // Replace individual entry with aggregate
                 journalEntry = this.createAggregateJournalEntry(scaledInfo, exitScreenshot);
+                journalFromAggregate = true;
             }
+        }
+        if (!journalFromAggregate) {
+            this._enrichJournalEntryForPersistence(journalEntry, order, {
+                closeTime: closeData.closeTime,
+                closePrice: closeData.closePrice
+            });
         }
         
         const upsert = this.upsertJournalEntry(journalEntry, { skipIfExists: true });
@@ -24894,6 +25004,10 @@ class OrderManager {
                     active_sl_at_exit: position.stopLoss,
                     entries_locked: scaledInfo.entries.some(e => e.entries_locked) || false
                 };
+                this._enrichJournalEntryForPersistence(journalEntry, firstEntry, {
+                    closeTime: lastEntry.closeTime || closeTime,
+                    closePrice
+                });
                 
                 console.log(`📊 Created AGGREGATE journal entry for scaled trade group #${scaledInfo.groupId}:`);
                 console.log(`   Entries: ${scaledInfo.entries.length}`);
@@ -25074,6 +25188,10 @@ class OrderManager {
                         } : {};
                     })()
                 };
+                this._enrichJournalEntryForPersistence(journalEntry, firstEntry, {
+                    closeTime: lastEntry.closeTime || closeTime,
+                    closePrice: lastEntry.closePrice || closePrice
+                });
                 
                 console.log(`📊 Created AGGREGATE journal entry for SPLIT trade group ${splitInfo.groupId}:`);
                 console.log(`   Entries: ${splitInfo.entries.length}`);
@@ -25188,6 +25306,7 @@ class OrderManager {
                         } : {};
                     })()
                 };
+                this._enrichJournalEntryForPersistence(journalEntry, position, { closeTime, closePrice });
                 
                 // Log partial close details
                 if (hasPartialCloses) {
@@ -33677,6 +33796,10 @@ class OrderManager {
      */
     updatePositionsPanel() {
         if (this._isUpdatingPanels) {
+            // A full pass is already running (e.g. trade close → panel update while journal
+            // also requests a refresh). Skipping here left History/Analytics stale while the
+            // sidebar journal still showed the latest tradeJournal — queue one follow-up pass.
+            this._pendingPositionsPanelRefresh = true;
             try {
                 if (typeof this.renderCrossInstrumentPositionsDock === 'function') {
                     this.renderCrossInstrumentPositionsDock();
@@ -34290,6 +34413,13 @@ class OrderManager {
         this.renderCrossInstrumentPositionsDock();
         this.persistRuntimeOrderState();
         this._isUpdatingPanels = false;
+        if (this._pendingPositionsPanelRefresh) {
+            this._pendingPositionsPanelRefresh = false;
+            const self = this;
+            setTimeout(function () {
+                self.updatePositionsPanel();
+            }, 0);
+        }
     }
     
     /**
@@ -36346,7 +36476,7 @@ class OrderManager {
         const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
         
-        return {
+        const _je = {
             id: scaledInfo.groupId,
             tradeId: scaledInfo.groupId,
             type: scaledInfo.side,
@@ -36420,6 +36550,10 @@ class OrderManager {
             scaledGroupId: scaledInfo.groupId,
             numberOfEntries: scaledInfo.entries.length
         };
+        return this._enrichJournalEntryForPersistence(_je, firstEntry, {
+            closeTime: lastEntry.closeTime,
+            closePrice: lastEntry.closePrice
+        });
     }
 
     // ─── Shared Visual Helpers (eliminate duplicate patterns) ────────────────
