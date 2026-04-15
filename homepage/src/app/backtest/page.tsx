@@ -25,6 +25,41 @@ async function fetchJson<T = unknown>(url: string, options?: RequestInit): Promi
   return res.json();
 }
 
+/** Match chart `userStorage` scoped key so the active session is consistent across chart and analytics. */
+function setActiveTradingSessionIdInBrowser(sessionId: string) {
+  try {
+    localStorage.setItem("active_trading_session_id", sessionId);
+  } catch {
+    /* ignore */
+  }
+  try {
+    const uid = localStorage.getItem("_uid");
+    if (uid) {
+      localStorage.setItem(`u${uid}_active_trading_session_id`, sessionId);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function readActiveTradingSessionIdFromBrowser(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const uid = localStorage.getItem("_uid");
+    if (uid) {
+      const scoped = localStorage.getItem(`u${uid}_active_trading_session_id`);
+      if (scoped) return scoped;
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    return localStorage.getItem("active_trading_session_id");
+  } catch {
+    return null;
+  }
+}
+
 function relativeDate(dateStr?: string): string {
   if (!dateStr) return "-";
   const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
@@ -128,7 +163,7 @@ export default function BacktestSessions() {
     [sessions, filter],
   );
 
-  const activeSessionId = typeof window !== "undefined" ? localStorage.getItem("active_trading_session_id") : null;
+  const activeSessionId = typeof window !== "undefined" ? readActiveTradingSessionIdFromBrowser() : null;
 
   function openSession(session: Session) {
     try {
@@ -139,7 +174,7 @@ export default function BacktestSessions() {
         };
         localStorage.setItem("backtestingSession", JSON.stringify(cfg));
       }
-      localStorage.setItem("active_trading_session_id", String(session.id));
+      setActiveTradingSessionIdInBrowser(String(session.id));
     } catch {
       /* ignore */
     }
@@ -166,7 +201,7 @@ export default function BacktestSessions() {
   }
 
   function continueSession() {
-    const id = localStorage.getItem("active_trading_session_id");
+    const id = readActiveTradingSessionIdFromBrowser();
     if (id) {
       window.location.href = `/chart/index.html?mode=backtest&sessionId=${encodeURIComponent(id)}`;
     } else {

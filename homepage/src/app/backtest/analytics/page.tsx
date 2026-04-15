@@ -31,6 +31,28 @@ function chartApiUrl(path: string): string {
   return path;
 }
 
+/**
+ * Chart (`index.html`) stores `active_trading_session_id` via scoped userStorage: `u{uid}_active_trading_session_id`.
+ * The backtest dashboard also sets the legacy unprefixed key. Read both so analytics defaults to the session you traded.
+ */
+function readActiveTradingSessionIdFromBrowser(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const uid = localStorage.getItem("_uid");
+    if (uid) {
+      const scoped = localStorage.getItem(`u${uid}_active_trading_session_id`);
+      if (scoped) return scoped;
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    return localStorage.getItem("active_trading_session_id");
+  } catch {
+    return null;
+  }
+}
+
 type Trade = {
   tradeId?: number | string;
   id?: number | string;
@@ -142,7 +164,12 @@ export default function BacktestAnalyticsPage() {
     try {
       const search = typeof window !== "undefined" ? window.location.search : "";
       const sid = new URLSearchParams(search).get("sessionId") || "";
-      if (sid) setSelectedSessionId(sid);
+      if (sid) {
+        setSelectedSessionId(sid);
+        return;
+      }
+      const active = readActiveTradingSessionIdFromBrowser();
+      if (active) setSelectedSessionId(active);
     } catch {}
   }, []);
 
@@ -163,6 +190,12 @@ export default function BacktestAnalyticsPage() {
             if (sid) return sid;
           } catch {
             /* ignore */
+          }
+          const active = readActiveTradingSessionIdFromBrowser();
+          if (active) {
+            const match = list.find((s) => String(s.id) === String(active));
+            if (match) return String(match.id);
+            return String(active);
           }
           if (list.length > 0) return String(list[0].id);
           return prev;
@@ -673,8 +706,8 @@ export default function BacktestAnalyticsPage() {
             <p className="font-medium text-amber-50">No trades in session state for this session</p>
             <p className="text-amber-100/80">
               Analytics reads <code className="text-xs bg-black/30 px-1 rounded">GET /api/sessions/{selectedSessionId}/state</code> and uses{" "}
-              <code className="text-xs bg-black/30 px-1 rounded">state.journal</code>. If the chart never saved trades for this session (missing session id,
-              failed save, or a different server), the journal stays empty here even though the session exists in the list.
+              <code className="text-xs bg-black/30 px-1 rounded">state.journal</code>. If you had multiple backtest sessions, pick the same one you had open in
+              the chart (dropdown above). The chart saves trades per session id; choosing the newest session in the list by mistake shows zeros.
             </p>
           </div>
         ) : null}
