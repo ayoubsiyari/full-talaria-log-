@@ -2300,11 +2300,12 @@ class Chart {
 
         try {
             this._writeTradingSessionLocalBackup();
+            // Do NOT use fetch({ keepalive: true }) here — Chromium limits keepalive bodies to ~64KB.
+            // Journal payloads (base64 screenshots) exceed that and the request fails → nothing saved server-side.
             const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                keepalive: true,
                 body: JSON.stringify(patch)
             });
             if (!res.ok) {
@@ -2359,7 +2360,6 @@ class Chart {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                keepalive: true,
                 body: JSON.stringify(patch)
             });
             if (!res.ok) {
