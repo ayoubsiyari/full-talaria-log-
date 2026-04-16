@@ -6139,6 +6139,11 @@ class Chart {
 
     getPanelTemplateSwatches() {
         const all = this.getUnifiedThemeSwatches() || [];
+        // Admins: same full list as chart / unified themes (panel chrome per template).
+        // Non-admins: only Dark & Light (matches applyPanelOnlyTemplate + toolbar policy).
+        if (typeof window !== 'undefined' && typeof window.isTalariaAdmin === 'function' && window.isTalariaAdmin()) {
+            return all;
+        }
         return all.filter((tpl) => {
             const name = String((tpl && tpl.name) || '').trim().toLowerCase();
             return name === 'dark' || name === 'light';
