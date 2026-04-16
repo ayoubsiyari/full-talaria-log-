@@ -2323,7 +2323,11 @@ class Chart {
                 this._markSessionStateSyncedToServer(sessionId);
             }
         } catch (e) {
-            console.warn('⚠️ Failed to save critical trading session state', e);
+            let patchUrl = '';
+            try {
+                patchUrl = new URL(`/api/sessions/${encodeURIComponent(sessionId)}/state`, window.location.href).href;
+            } catch (_) {}
+            console.warn('⚠️ Failed to save critical trading session state', e, patchUrl ? `(PATCH ${patchUrl})` : '');
             this._notifyJournalNetworkError();
         }
     }
@@ -2384,7 +2388,11 @@ class Chart {
                 this._markSessionStateSyncedToServer(sessionId);
             }
         } catch (e) {
-            console.warn('⚠️ Failed to save trading session state', e);
+            let patchUrl = '';
+            try {
+                patchUrl = new URL(`/api/sessions/${encodeURIComponent(sessionId)}/state`, window.location.href).href;
+            } catch (_) {}
+            console.warn('⚠️ Failed to save trading session state', e, patchUrl ? `(PATCH ${patchUrl})` : '');
             this._notifyJournalNetworkError();
         }
     }
