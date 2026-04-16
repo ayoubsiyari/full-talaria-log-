@@ -6170,8 +6170,22 @@ def _bulk_email_rate_ok(admin_user_id: int) -> bool:
     return True
 
 
-def _send_one_bulk_html_email(to_addr: str, subject: str, html_body: str) -> None:
-    server, port, use_tls, use_ssl, user, password, envelope_from = _bulk_email_smtp_params()
+def _build_bulk_mime_message(to_addr: str, subject: str, html_body: str, envelope_from: str) -> str:
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"Talaria <{envelope_from}>"
+    msg["To"] = to_addr
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+    return msg.as_string()
+
+
+def _run_bulk_smtp_session(
+    unique_emails: list[str],
+    subject: str,
+    html_body: str,
+) -> tuple[int, list[dict[str, str]]]:
+    """One SMTP connection, EHLO→STARTTLS→EHLO→LOGIN (Office 365–friendly), then send each message."""
+    server, port, use_tls, use_ssl, username, password, envelope_from = _bulk_email_smtp_params()
     if not password or not username:
         raise HTTPException(
             status_code=503,
@@ -6181,24 +6195,56 @@ def _send_one_bulk_html_email(to_addr: str, subject: str, html_body: str) -> Non
             ),
         )
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = f"Talaria <{envelope_from}>"
-    msg["To"] = to_addr
-    msg.attach(MIMEText(html_body, "html", "utf-8"))
-    raw = msg.as_string()
+    if (os.environ.get("SMTP_FROM_SAME_AS_USER", "").lower() in {"1", "true", "yes", "on"}):
+        envelope_from = username
 
-    if use_ssl:
-        context = ssl_module.create_default_context()
-        with smtplib.SMTP_SSL(server, port, context=context) as smtp:
-            smtp.login(user, password)
-            smtp.sendmail(envelope_from, [to_addr], raw)
-    else:
-        with smtplib.SMTP(server, port) as smtp:
-            if use_tls:
+    timeout = int((os.environ.get("SMTP_TIMEOUT_SECONDS") or "60").strip() or "60")
+    debug_smtp = (os.environ.get("SMTP_DEBUG", "").lower() in {"1", "true", "yes", "on"})
+
+    sent_count = 0
+    failed_emails: list[dict[str, str]] = []
+
+    try:
+        if use_ssl:
+            context = ssl_module.create_default_context()
+            smtp = smtplib.SMTP_SSL(server, port, context=context, timeout=timeout)
+        else:
+            smtp = smtplib.SMTP(server, port, timeout=timeout)
+
+        with smtp:
+            if debug_smtp:
+                smtp.set_debuglevel(1)
+            smtp.ehlo()
+            if not use_ssl and use_tls:
                 smtp.starttls(context=ssl_module.create_default_context())
-            smtp.login(user, password)
-            smtp.sendmail(envelope_from, [to_addr], raw)
+                smtp.ehlo()
+            smtp.login(username, password)
+
+            for to_addr in unique_emails:
+                try:
+                    raw = _build_bulk_mime_message(to_addr, subject, html_body, envelope_from)
+                    smtp.sendmail(envelope_from, [to_addr], raw)
+                    sent_count += 1
+                except Exception as e:  # noqa: BLE001 — per-recipient
+                    failed_emails.append({"email": to_addr, "error": str(e)})
+    except HTTPException:
+        raise
+    except smtplib.SMTPAuthenticationError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "SMTP authentication failed. For Microsoft 365: enable SMTP AUTH for this mailbox, "
+                "use an app password if required, and ensure SMTP_USER/SMTP_PASSWORD are correct. "
+                f"Details: {e}"
+            ),
+        )
+    except (smtplib.SMTPException, OSError, TimeoutError) as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"SMTP connection error: {e}",
+        )
+
+    return sent_count, failed_emails
 
 
 class _BulkEmailIn(BaseModel):
@@ -6227,16 +6273,7 @@ async def admin_send_bulk_email(payload: _BulkEmailIn, request: Request):
     if not subject or not content:
         raise HTTPException(status_code=400, detail="Subject and content are required")
 
-    sent_count = 0
-    failed_emails: list[dict] = []
-    for email in unique_emails:
-        try:
-            _send_one_bulk_html_email(email, subject, content)
-            sent_count += 1
-        except HTTPException:
-            raise
-        except Exception as e:  # noqa: BLE001 — per-recipient failure; continue with rest
-            failed_emails.append({"email": email, "error": str(e)})
+    sent_count, failed_emails = _run_bulk_smtp_session(unique_emails, subject, content)
 
     return {
         "success": True,
