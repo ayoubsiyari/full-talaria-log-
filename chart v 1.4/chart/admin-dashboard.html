@@ -828,12 +828,48 @@ select { cursor: pointer; }
 /* ── Support chat ─────────────────────────────────── */
 .support-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 320px) 1fr;
+  grid-template-columns: minmax(260px, 300px) 1fr;
   gap: 16px;
   min-height: calc(100vh - 140px);
+  align-items: start;
+}
+.support-chat-column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
 }
 @media (max-width: 900px) {
   .support-layout { grid-template-columns: 1fr; }
+}
+.support-user-card .crm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  font-size: 12px;
+}
+.support-user-card .crm-item .k {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-bottom: 4px;
+}
+.support-user-card .crm-item .v {
+  color: var(--text);
+  font-weight: 500;
+  word-break: break-word;
+}
+.support-msg-read {
+  font-size: 10px;
+  color: var(--ok);
+  margin-top: 6px;
+  opacity: .9;
+}
+.support-msg-read.unread-hint {
+  color: var(--text-muted);
+  opacity: .7;
 }
 .support-thread-list {
   max-height: calc(100vh - 180px);
@@ -1500,17 +1536,26 @@ select { cursor: pointer; }
               <div class="empty-state"><p>Loading…</p></div>
             </div>
           </div>
-          <div class="card support-main" style="margin:0">
-            <div class="card-hdr" style="flex-wrap:wrap;gap:8px">
-              <div class="card-title" id="supportThreadTitle" style="flex:1;min-width:0">Select a conversation</div>
-              <button type="button" class="btn sm" id="supportCloseBtn" style="display:none" onclick="supportCloseThread()">Close thread</button>
+          <div class="support-chat-column">
+            <div class="card support-user-card" id="supportUserCard" style="margin:0;display:none">
+              <div class="card-hdr">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+                <div class="card-title">Requester profile</div>
+              </div>
+              <div class="card-body" id="supportUserCardBody"></div>
             </div>
-            <div class="support-messages" id="supportMessages">
-              <div class="empty-state" style="padding:24px"><p class="text-muted" style="color:var(--text-muted)">Choose a thread to view messages</p></div>
-            </div>
-            <div class="support-composer">
-              <textarea id="supportInput" placeholder="Type a reply…" disabled></textarea>
-              <button type="button" class="btn primary" id="supportSendBtn" disabled onclick="sendSupportReply()">Send</button>
+            <div class="card support-main" style="margin:0">
+              <div class="card-hdr" style="flex-wrap:wrap;gap:8px">
+                <div class="card-title" id="supportThreadTitle" style="flex:1;min-width:0">Select a conversation</div>
+                <button type="button" class="btn sm" id="supportCloseBtn" style="display:none" onclick="supportCloseThread()">Close thread</button>
+              </div>
+              <div class="support-messages" id="supportMessages">
+                <div class="empty-state" style="padding:24px"><p class="text-muted" style="color:var(--text-muted)">Choose a thread to view messages</p></div>
+              </div>
+              <div class="support-composer">
+                <textarea id="supportInput" placeholder="Type a reply…" disabled></textarea>
+                <button type="button" class="btn primary" id="supportSendBtn" disabled onclick="sendSupportReply()">Send</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1613,6 +1658,7 @@ let supportThreads = [];
 let selectedSupportId = null;
 let supportMessages = [];
 let supportWs = null;
+let supportSubscribedThreadId = null;
 let notifDropdownOpen = false;
 
 async function loadNotifications() {
@@ -1682,32 +1728,125 @@ function supportWsUrl() {
 }
 
 function supportDisconnectWs() {
+  supportSubscribedThreadId = null;
   if (supportWs) {
     try { supportWs.close(); } catch (e) {}
     supportWs = null;
   }
 }
 
-function supportConnectWs() {
-  supportDisconnectWs();
-  if (!selectedSupportId) return;
+function supportSendThreadSubscribe(ws, tid) {
+  try {
+    if (supportSubscribedThreadId != null && supportSubscribedThreadId !== tid) {
+      ws.send(JSON.stringify({ type: 'unsubscribe', thread_id: supportSubscribedThreadId }));
+    }
+    ws.send(JSON.stringify({ type: 'subscribe', thread_id: tid }));
+    supportSubscribedThreadId = tid;
+  } catch (e) {}
+}
+
+function ensureLiveSupportSocket() {
+  if (supportWs && supportWs.readyState === WebSocket.OPEN) {
+    if (selectedSupportId) supportSendThreadSubscribe(supportWs, selectedSupportId);
+    return;
+  }
+  if (supportWs && supportWs.readyState === WebSocket.CONNECTING) {
+    return;
+  }
   const ws = new WebSocket(supportWsUrl());
   supportWs = ws;
   ws.onopen = () => {
-    try { ws.send(JSON.stringify({ type: 'subscribe', thread_id: selectedSupportId })); } catch (e) {}
+    try {
+      ws.send(JSON.stringify({ type: 'subscribe_inbox' }));
+      if (selectedSupportId) supportSendThreadSubscribe(ws, selectedSupportId);
+    } catch (e) {}
   };
   ws.onmessage = (ev) => {
     try {
       const d = JSON.parse(ev.data);
+      if (d.type === 'notification_ping') {
+        loadNotifications();
+        return;
+      }
+      if (d.type === 'read_receipt' && d.thread_id === selectedSupportId) {
+        applySupportReadReceipt(d);
+        return;
+      }
       if (d.type === 'message' && d.message && d.thread_id === selectedSupportId) {
         const mid = d.message.id;
         if (supportMessages.some(function (x) { return x.id === mid; })) return;
         supportMessages.push(d.message);
         renderSupportMessages();
+        return;
       }
     } catch (e) {}
   };
-  ws.onclose = () => { if (supportWs === ws) supportWs = null; };
+  ws.onclose = () => {
+    supportWs = null;
+    supportSubscribedThreadId = null;
+  };
+}
+
+function applySupportReadReceipt(d) {
+  const req = d.requester_read_upto || 0;
+  const stf = d.staff_read_upto || 0;
+  const th = supportThreads.find(function (x) { return x.id === d.thread_id; });
+  const ownerId = th ? th.user_id : null;
+  if (ownerId == null) return;
+  supportMessages.forEach(function (m) {
+    const sid = m.sender_user_id;
+    if (sid === ownerId) m.read_by_counterparty = stf >= m.id;
+    else m.read_by_counterparty = req >= m.id;
+  });
+  renderSupportMessages();
+}
+
+function renderSupportUserCRM(req) {
+  const card = $('supportUserCard');
+  const body = $('supportUserCardBody');
+  if (!req || !body) {
+    if (card) card.style.display = 'none';
+    return;
+  }
+  card.style.display = 'block';
+  const sub = req.subscription;
+  const subLine = sub
+    ? (sub.plan_name || '—') + ' · ' + (sub.status || '') + (sub.period_end ? ' · renews ' + sub.period_end : '')
+    : '—';
+  body.innerHTML = `
+    <div class="crm-grid">
+      <div class="crm-item"><div class="k">Name</div><div class="v">${esc(req.name || '')}</div></div>
+      <div class="crm-item"><div class="k">Email</div><div class="v">${esc(req.email || '')}</div></div>
+      <div class="crm-item"><div class="k">User ID</div><div class="v">${esc(String(req.id))}</div></div>
+      <div class="crm-item"><div class="k">Account</div><div class="v">${esc(req.account_status || '')}</div></div>
+      <div class="crm-item"><div class="k">Role</div><div class="v">${esc(req.role || '')}</div></div>
+      <div class="crm-item"><div class="k">Sessions</div><div class="v">${esc(String(req.session_count ?? '—'))} devices · last active ${esc(req.last_active_at ? timeAgo(req.last_active_at) : '—')}</div></div>
+      <div class="crm-item"><div class="k">Journal access</div><div class="v">${req.has_journal_access ? 'Yes' : 'No'}</div></div>
+      <div class="crm-item"><div class="k">Access expires</div><div class="v">${esc(req.access_expires_at || '—')}</div></div>
+      <div class="crm-item" style="grid-column:1/-1"><div class="k">Subscription</div><div class="v">${esc(subLine)}</div></div>
+      <div class="crm-item" style="grid-column:1/-1"><div class="k">Stripe customer</div><div class="v">${esc(req.stripe_customer_id || '—')}</div></div>
+    </div>`;
+}
+
+async function loadSupportRequesterProfile() {
+  if (!selectedSupportId) return;
+  try {
+    const data = await api('/api/support/threads/' + selectedSupportId);
+    renderSupportUserCRM(data.requester || null);
+  } catch (e) {
+    renderSupportUserCRM(null);
+  }
+}
+
+async function markSupportThreadRead() {
+  if (!selectedSupportId) return;
+  try {
+    await api('/api/support/threads/' + selectedSupportId + '/read', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+  } catch (e) {}
 }
 
 async function loadSupportThreads() {
@@ -1747,7 +1886,12 @@ function renderSupportMessages() {
     const isOwner = ownerId != null && m.sender_user_id === ownerId;
     const cls = isOwner ? 'from-user' : 'from-admin';
     const label = isOwner ? 'User' : 'Support';
-    return `<div class="support-msg ${cls}"><div class="support-msg-hdr">${esc(label)} · ${esc(m.sender_name || '')}</div>${esc(m.body || '')}</div>`;
+    const readOk = m.read_by_counterparty === true;
+    const readPending = m.read_by_counterparty === false;
+    const readLine = readOk
+      ? '<div class="support-msg-read">Read</div>'
+      : (readPending ? '<div class="support-msg-read unread-hint">Delivered</div>' : '');
+    return `<div class="support-msg ${cls}"><div class="support-msg-hdr">${esc(label)} · ${esc(m.sender_name || '')}</div>${esc(m.body || '')}${readLine}</div>`;
   }).join('');
   box.scrollTop = box.scrollHeight;
 }
@@ -1770,13 +1914,15 @@ async function selectSupportThread(id) {
     const data = await api('/api/support/threads/' + id + '/messages?limit=200');
     supportMessages = data.messages || [];
     renderSupportMessages();
+    await loadSupportRequesterProfile();
+    await markSupportThreadRead();
   } catch (e) {
     toast(e.message || 'Failed to load messages', 'err');
   }
   document.querySelectorAll('.support-thread-row').forEach(r => {
     r.classList.toggle('active', parseInt(r.getAttribute('data-id'), 10) === id);
   });
-  supportConnectWs();
+  ensureLiveSupportSocket();
 }
 
 async function sendSupportReply() {
@@ -1812,6 +1958,7 @@ async function supportCloseThread() {
 }
 
 async function loadSupport() {
+  ensureLiveSupportSocket();
   await loadSupportThreads();
   if (selectedSupportId) await selectSupportThread(selectedSupportId);
 }
@@ -1825,7 +1972,12 @@ function navigate(section) {
   if (nav) nav.classList.add('active');
   $('pageTitle').textContent = sectionTitles[section] || section;
   window.location.hash = section;
-  if (section !== 'support') supportDisconnectWs();
+  if (section !== 'support') {
+    if (supportWs && supportWs.readyState === 1 && selectedSupportId) {
+      try { supportWs.send(JSON.stringify({ type: 'unsubscribe', thread_id: selectedSupportId })); } catch (e) {}
+      supportSubscribedThreadId = null;
+    }
+  }
   if (section === 'sessions') loadSessions();
   if (section === 'subscriptions') loadSubscriptionData();
   if (section === 'payments') loadPayments();
@@ -1871,7 +2023,8 @@ let dsPollTimer = null;
     renderOverview();
 
     loadNotifications();
-    setInterval(loadNotifications, 25000);
+    setInterval(loadNotifications, 60000);
+    ensureLiveSupportSocket();
 
     setInterval(loadSessions, 10000);
 

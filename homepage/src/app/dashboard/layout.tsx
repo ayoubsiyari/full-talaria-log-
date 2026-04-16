@@ -56,8 +56,36 @@ function DashboardNotificationBell({ isArabic }: { isArabic: boolean }) {
 
   React.useEffect(() => {
     load();
-    const t = setInterval(load, 25000);
+    const t = setInterval(load, 60000);
     return () => clearInterval(t);
+  }, [load]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${proto}//${window.location.host}/ws/support`);
+    ws.onopen = () => {
+      try {
+        ws.send(JSON.stringify({ type: "subscribe_inbox" }));
+      } catch {
+        /* ignore */
+      }
+    };
+    ws.onmessage = (ev) => {
+      try {
+        const d = JSON.parse(ev.data) as { type?: string };
+        if (d.type === "notification_ping") load();
+      } catch {
+        /* ignore */
+      }
+    };
+    return () => {
+      try {
+        ws.close();
+      } catch {
+        /* ignore */
+      }
+    };
   }, [load]);
 
   React.useEffect(() => {

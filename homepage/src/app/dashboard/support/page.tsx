@@ -29,6 +29,7 @@ type Msg = {
   sender_name?: string | null;
   body: string;
   created_at?: string | null;
+  read_by_counterparty?: boolean;
 };
 
 async function api<T>(url: string, opts: RequestInit = {}): Promise<T> {
@@ -67,6 +68,8 @@ export default function SupportPage() {
   const [showNew, setShowNew] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const threadsRef = useRef(threads);
+  threadsRef.current = threads;
 
   const selected = threads.find((t) => t.id === selectedId) ?? null;
 
@@ -80,6 +83,17 @@ export default function SupportPage() {
       `/api/support/threads/${threadId}/messages?limit=200`
     );
     setMessages(data.messages || []);
+  }, []);
+
+  const markThreadRead = useCallback(async (threadId: number) => {
+    try {
+      await api(`/api/support/threads/${threadId}/read`, {
+        method: "PATCH",
+        body: JSON.stringify({}),
+      });
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   useEffect(() => {
@@ -96,6 +110,7 @@ export default function SupportPage() {
           if (!Number.isNaN(id)) {
             setSelectedId(id);
             await loadMessages(id);
+            await markThreadRead(id);
           }
         }
       } catch {
@@ -107,7 +122,7 @@ export default function SupportPage() {
     return () => {
       alive = false;
     };
-  }, [loadThreads, loadMessages]);
+  }, [loadThreads, loadMessages, markThreadRead]);
 
   const disconnectWs = useCallback(() => {
     if (wsRef.current) {
@@ -127,6 +142,7 @@ export default function SupportPage() {
       wsRef.current = ws;
       ws.onopen = () => {
         try {
+          ws.send(JSON.stringify({ type: "subscribe_inbox" }));
           ws.send(JSON.stringify({ type: "subscribe", thread_id: threadId }));
         } catch {
           /* ignore */
@@ -138,7 +154,27 @@ export default function SupportPage() {
             type?: string;
             thread_id?: number;
             message?: Msg;
+            requester_read_upto?: number;
+            staff_read_upto?: number;
           };
+          if (d.type === "notification_ping") {
+            return;
+          }
+          if (d.type === "read_receipt" && d.thread_id === threadId) {
+            const req = d.requester_read_upto ?? 0;
+            const stf = d.staff_read_upto ?? 0;
+            const th0 = threadsRef.current.find((t) => t.id === threadId);
+            const owner = th0?.user_id;
+            setMessages((prev) =>
+              prev.map((m) => {
+                if (owner == null) return m;
+                const read =
+                  m.sender_user_id === owner ? stf >= m.id : req >= m.id;
+                return { ...m, read_by_counterparty: read };
+              })
+            );
+            return;
+          }
           if (d.type === "message" && d.message && d.thread_id === threadId) {
             setMessages((prev) => {
               if (prev.some((x) => x.id === d.message!.id)) return prev;
@@ -172,6 +208,7 @@ export default function SupportPage() {
   const selectThread = async (id: number) => {
     setSelectedId(id);
     await loadMessages(id);
+    await markThreadRead(id);
   };
 
   const sendReply = async () => {
@@ -183,6 +220,7 @@ export default function SupportPage() {
     });
     setReply("");
     await loadMessages(selectedId);
+    await markThreadRead(selectedId);
     await loadThreads();
   };
 
@@ -206,6 +244,7 @@ export default function SupportPage() {
     if (data.thread?.id) {
       setSelectedId(data.thread.id);
       await loadMessages(data.thread.id);
+      await markThreadRead(data.thread.id);
     }
   };
 
@@ -367,6 +406,11 @@ export default function SupportPage() {
                     <div style={{ fontSize: 13, lineHeight: 1.45, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                       {m.body || ""}
                     </div>
+                    {m.read_by_counterparty === true ? (
+                      <div style={{ fontSize: 10, color: "#4ade80", marginTop: 6, textAlign: "right" }}>Read</div>
+                    ) : m.read_by_counterparty === false ? (
+                      <div style={{ fontSize: 10, color: "#4a4850", marginTop: 6, textAlign: "right" }}>Delivered</div>
+                    ) : null}
                   </div>
                 );
               })}

@@ -2,7 +2,21 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Response,
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Float, text, func, nulls_last
+from sqlalchemy import (
+    create_engine,
+    Column,
+    Integer,
+    String,
+    DateTime,
+    Boolean,
+    ForeignKey,
+    Text,
+    Float,
+    text,
+    func,
+    nulls_last,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import sessionmaker, declarative_base
 from datetime import datetime, timedelta
 import os
@@ -460,6 +474,19 @@ class Notification(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class SupportThreadRead(Base):
+    """Per-user read watermark for a thread (for read receipts)."""
+
+    __tablename__ = "support_thread_reads"
+    __table_args__ = (UniqueConstraint("thread_id", "user_id", name="uq_support_thread_reads_thread_user"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    thread_id = Column(Integer, ForeignKey("support_threads.id"), index=True, nullable=False)
+    user_id = Column(Integer, index=True, nullable=False)
+    last_read_message_id = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # Create chart-specific tables only — exclude 'users' (managed by journal-backend).
 _CHART_TABLES = [
     CSVFile.__table__,
@@ -472,6 +499,7 @@ _CHART_TABLES = [
     SupportThread.__table__,
     SupportMessage.__table__,
     Notification.__table__,
+    SupportThreadRead.__table__,
 ]
 Base.metadata.create_all(bind=engine, tables=_CHART_TABLES)
 
@@ -635,6 +663,47 @@ class SupportConnectionManager:
 
 
 support_ws_manager = SupportConnectionManager()
+
+
+class InboxConnectionManager:
+    """WebSocket connections subscribed to live notification pings for a user."""
+
+    def __init__(self):
+        self.by_user: dict[int, set] = {}
+
+    def subscribe(self, ws: WebSocket, user_id: int):
+        if user_id not in self.by_user:
+            self.by_user[user_id] = set()
+        self.by_user[user_id].add(ws)
+
+    def disconnect(self, ws: WebSocket, user_id: int):
+        if user_id in self.by_user:
+            self.by_user[user_id].discard(ws)
+            if not self.by_user[user_id]:
+                del self.by_user[user_id]
+
+    async def broadcast_user(self, user_id: int, message: dict):
+        if user_id not in self.by_user:
+            return
+        dead = []
+        for w in self.by_user[user_id]:
+            try:
+                await w.send_json(message)
+            except Exception:
+                dead.append(w)
+        for w in dead:
+            self.by_user[user_id].discard(w)
+
+
+inbox_ws_manager = InboxConnectionManager()
+
+
+async def _push_inbox_notification_pings(recipient_ids: list[int], thread_id: int, message_id: int | None):
+    for uid in recipient_ids:
+        await inbox_ws_manager.broadcast_user(
+            uid,
+            {"type": "notification_ping", "thread_id": thread_id, "message_id": message_id},
+        )
 
 
 @app.get("/api/sessions/{session_id}/analytics")
@@ -3607,6 +3676,10 @@ class NotificationsReadIn(BaseModel):
     all: bool | None = None
 
 
+class SupportMarkReadIn(BaseModel):
+    last_read_message_id: int | None = None
+
+
 def _support_msg_dict(db, m: SupportMessage) -> dict:
     sender = db.query(User).filter(User.id == m.sender_user_id).first()
     return {
@@ -3618,6 +3691,63 @@ def _support_msg_dict(db, m: SupportMessage) -> dict:
         "body": m.body,
         "created_at": m.created_at.isoformat() if m.created_at else None,
     }
+
+
+def _support_read_watermarks(db, thread: SupportThread) -> tuple[int, int]:
+    """(requester_read_upto, staff_read_upto) — max message id seen by requester / any admin."""
+    rows = db.query(SupportThreadRead).filter(SupportThreadRead.thread_id == thread.id).all()
+    owner = int(thread.user_id)
+    requester_upto = 0
+    staff_upto = 0
+    for r in rows:
+        mid = int(r.last_read_message_id or 0)
+        uid = int(r.user_id)
+        if uid == owner:
+            requester_upto = max(requester_upto, mid)
+            continue
+        u = db.query(User).filter(User.id == uid).first()
+        if u and u.role == "admin":
+            staff_upto = max(staff_upto, mid)
+    return requester_upto, staff_upto
+
+
+def _support_msg_dict_with_read(
+    db,
+    m: SupportMessage,
+    thread: SupportThread,
+    requester_upto: int,
+    staff_upto: int,
+) -> dict:
+    d = _support_msg_dict(db, m)
+    owner = int(thread.user_id)
+    sid = int(m.sender_user_id)
+    if sid == owner:
+        d["read_by_counterparty"] = staff_upto >= m.id
+    else:
+        d["read_by_counterparty"] = requester_upto >= m.id
+    return d
+
+
+def _support_user_detail_dict(db, u: User, *, admin_style: bool) -> dict:
+    d = _user_public_dict(u, db)
+    if not admin_style:
+        return d
+    sess_row = (
+        db.query(
+            func.count(UserSession.id).label("cnt"),
+            func.max(UserSession.last_active_at).label("last_active"),
+        )
+        .filter(UserSession.user_id == u.id)
+        .first()
+    )
+    d["session_count"] = int(sess_row.cnt or 0) if sess_row else 0
+    la = sess_row.last_active if sess_row else None
+    d["last_active_at"] = la.isoformat() if la else None
+    now = datetime.utcnow()
+    expired = u.access_expires_at and u.access_expires_at < now
+    d["account_status"] = "banned" if not u.is_active else ("expired" if expired else "active")
+    d["stripe_customer_id"] = getattr(u, "stripe_customer_id", None)
+    return d
 
 
 def _support_thread_dict(db, t: SupportThread, last_preview: str | None = None) -> dict:
@@ -3637,8 +3767,9 @@ def _support_thread_dict(db, t: SupportThread, last_preview: str | None = None) 
     }
 
 
-def _notify_support_recipients(db, thread: SupportThread, msg: SupportMessage, sender: User):
+def _notify_support_recipients(db, thread: SupportThread, msg: SupportMessage, sender: User) -> list[int]:
     preview = (msg.body or "")[:200]
+    recipients: list[int] = []
     if sender.role == "admin":
         n = Notification(
             user_id=thread.user_id,
@@ -3649,6 +3780,7 @@ def _notify_support_recipients(db, thread: SupportThread, msg: SupportMessage, s
             body=preview,
         )
         db.add(n)
+        recipients.append(int(thread.user_id))
     else:
         admins = db.query(User).filter(User.role == "admin", User.is_active == True).all()
         subj = (thread.subject or "")[:80]
@@ -3665,6 +3797,8 @@ def _notify_support_recipients(db, thread: SupportThread, msg: SupportMessage, s
                     body=preview,
                 )
             )
+            recipients.append(int(a.id))
+    return recipients
 
 
 @app.post("/api/support/threads")
@@ -3696,13 +3830,47 @@ async def support_create_thread(payload: SupportCreateThreadIn, request: Request
         db.add(m)
         db.commit()
         db.refresh(m)
-        _notify_support_recipients(db, t, m, user)
+        recipients = _notify_support_recipients(db, t, m, user)
         db.commit()
+        req_upto, stf_upto = _support_read_watermarks(db, t)
+        msg_dict = _support_msg_dict_with_read(db, m, t, req_upto, stf_upto)
         await support_ws_manager.broadcast(
             t.id,
-            {"type": "message", "thread_id": t.id, "message": _support_msg_dict(db, m)},
+            {"type": "message", "thread_id": t.id, "message": msg_dict},
         )
-        return {"thread": _support_thread_dict(db, t, last_preview=body[:160]), "message": _support_msg_dict(db, m)}
+        await _push_inbox_notification_pings(recipients, t.id, m.id)
+        return {"thread": _support_thread_dict(db, t, last_preview=body[:160]), "message": msg_dict}
+    finally:
+        db.close()
+
+
+@app.get("/api/support/threads/{thread_id}")
+async def support_get_thread(thread_id: int, request: Request):
+    """Thread metadata + requester profile (admin gets full CRM-style fields)."""
+    user = _require_user(request)
+    db = SessionLocal()
+    try:
+        t = db.query(SupportThread).filter(SupportThread.id == thread_id).first()
+        if not t:
+            raise HTTPException(status_code=404, detail="Thread not found")
+        if not _support_user_can_access_thread(user, t):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        req_upto, stf_upto = _support_read_watermarks(db, t)
+        requester = db.query(User).filter(User.id == t.user_id).first()
+        requester_detail = None
+        if requester:
+            if user.role == "admin":
+                requester_detail = _support_user_detail_dict(db, requester, admin_style=True)
+            elif int(user.id) == int(t.user_id):
+                requester_detail = _support_user_detail_dict(db, requester, admin_style=False)
+        return {
+            "thread": _support_thread_dict(db, t),
+            "requester": requester_detail,
+            "read_state": {
+                "requester_read_upto": req_upto,
+                "staff_read_upto": stf_upto,
+            },
+        }
     finally:
         db.close()
 
@@ -3769,9 +3937,14 @@ async def support_list_messages(
             .limit(limit)
             .all()
         )
+        req_upto, stf_upto = _support_read_watermarks(db, t)
         return {
-            "messages": [_support_msg_dict(db, m) for m in msgs],
+            "messages": [_support_msg_dict_with_read(db, m, t, req_upto, stf_upto) for m in msgs],
             "total": total,
+            "read_state": {
+                "requester_read_upto": req_upto,
+                "staff_read_upto": stf_upto,
+            },
         }
     finally:
         db.close()
@@ -3799,13 +3972,76 @@ async def support_post_message(thread_id: int, payload: SupportAppendMessageIn, 
         t.updated_at = now
         db.commit()
         db.refresh(m)
-        _notify_support_recipients(db, t, m, user)
+        recipients = _notify_support_recipients(db, t, m, user)
         db.commit()
+        req_upto, stf_upto = _support_read_watermarks(db, t)
+        msg_dict = _support_msg_dict_with_read(db, m, t, req_upto, stf_upto)
         await support_ws_manager.broadcast(
             t.id,
-            {"type": "message", "thread_id": t.id, "message": _support_msg_dict(db, m)},
+            {"type": "message", "thread_id": t.id, "message": msg_dict},
         )
-        return {"message": _support_msg_dict(db, m)}
+        await _push_inbox_notification_pings(recipients, t.id, m.id)
+        return {"message": msg_dict}
+    finally:
+        db.close()
+
+
+@app.patch("/api/support/threads/{thread_id}/read")
+async def support_mark_thread_read(
+    thread_id: int,
+    payload: SupportMarkReadIn,
+    request: Request,
+):
+    user = _require_user(request)
+    db = SessionLocal()
+    try:
+        t = db.query(SupportThread).filter(SupportThread.id == thread_id).first()
+        if not t:
+            raise HTTPException(status_code=404, detail="Thread not found")
+        if not _support_user_can_access_thread(user, t):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        last_msg = (
+            db.query(SupportMessage)
+            .filter(SupportMessage.thread_id == thread_id)
+            .order_by(SupportMessage.id.desc())
+            .first()
+        )
+        max_id = int(last_msg.id) if last_msg else 0
+        target_mid = int(payload.last_read_message_id) if payload.last_read_message_id is not None else max_id
+        if target_mid < 0:
+            target_mid = 0
+        if max_id and target_mid > max_id:
+            target_mid = max_id
+        row = (
+            db.query(SupportThreadRead)
+            .filter(SupportThreadRead.thread_id == thread_id, SupportThreadRead.user_id == user.id)
+            .first()
+        )
+        if row:
+            cur = int(row.last_read_message_id or 0)
+            if target_mid > cur:
+                row.last_read_message_id = target_mid
+                row.updated_at = datetime.utcnow()
+        else:
+            db.add(
+                SupportThreadRead(
+                    thread_id=thread_id,
+                    user_id=user.id,
+                    last_read_message_id=target_mid,
+                )
+            )
+        db.commit()
+        req_upto, stf_upto = _support_read_watermarks(db, t)
+        await support_ws_manager.broadcast(
+            thread_id,
+            {
+                "type": "read_receipt",
+                "thread_id": thread_id,
+                "requester_read_upto": req_upto,
+                "staff_read_upto": stf_upto,
+            },
+        )
+        return {"read_state": {"requester_read_upto": req_upto, "staff_read_upto": stf_upto}}
     finally:
         db.close()
 
@@ -3904,12 +4140,18 @@ async def ws_support(websocket: WebSocket):
         await websocket.close(code=4401)
         return
     subscribed_tid: int | None = None
+    inbox_subscribed = False
+    uid = int(user.id)
     try:
         while True:
             data = await websocket.receive_json()
             mt = data.get("type", "")
             if mt == "ping":
                 await websocket.send_json({"type": "pong"})
+            elif mt == "subscribe_inbox":
+                inbox_ws_manager.subscribe(websocket, uid)
+                inbox_subscribed = True
+                await websocket.send_json({"type": "subscribed_inbox"})
             elif mt == "subscribe":
                 try:
                     tid = int(data.get("thread_id", 0))
@@ -3929,6 +4171,15 @@ async def ws_support(websocket: WebSocket):
                 support_ws_manager.subscribe(websocket, tid)
                 subscribed_tid = tid
                 await websocket.send_json({"type": "subscribed", "thread_id": tid})
+            elif mt == "unsubscribe":
+                try:
+                    tid = int(data.get("thread_id", 0))
+                except (TypeError, ValueError):
+                    continue
+                if subscribed_tid is not None and subscribed_tid == tid:
+                    support_ws_manager.disconnect(websocket, tid)
+                    subscribed_tid = None
+                    await websocket.send_json({"type": "unsubscribed", "thread_id": tid})
     except WebSocketDisconnect:
         pass
     except Exception:
@@ -3936,6 +4187,8 @@ async def ws_support(websocket: WebSocket):
     finally:
         if subscribed_tid is not None:
             support_ws_manager.disconnect(websocket, subscribed_tid)
+        if inbox_subscribed:
+            inbox_ws_manager.disconnect(websocket, uid)
 
 
 @app.get("/api/admin/users")
