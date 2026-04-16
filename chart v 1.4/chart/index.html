@@ -56576,7 +56576,7 @@ P['symbol']={title:'Symbol',build:function(){
 
         });
 
-        return '<div class="tl-dd-wrap" id="'+id+'_wrap" style="position:relative;"><div class="tl-dd-trig" id="'+id+'_trig" style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;background:'+ddc.trigBg+';border:1px solid '+ddc.trigBorder+';cursor:pointer;transition:border-color 0.15s;user-select:none;">'+ti+'<svg viewBox="0 0 24 24" fill="none" stroke="'+ddc.chevron+'" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg></div><div class="tl-dd-panel" id="'+id+'_panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:'+ddc.panelBg+';border:1px solid '+ddc.panelBorder+';border-radius:8px;box-shadow:'+ddc.panelShadow+';z-index:9999;max-height:220px;overflow-y:auto;padding:4px;">'+o+'</div></div></div>';
+        return '<div class="tl-dd-wrap" id="'+id+'_wrap" style="position:relative;"><div class="tl-dd-trig" id="'+id+'_trig" style="display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:6px;background:'+ddc.trigBg+';border:1px solid '+ddc.trigBorder+';cursor:pointer;transition:border-color 0.15s;user-select:none;">'+ti+'<svg viewBox="0 0 24 24" fill="none" stroke="'+ddc.chevron+'" stroke-width="2" width="11" height="11" style="flex-shrink:0;"><polyline points="6 9 12 15 18 9"/></svg></div><div class="tl-dd-panel" id="'+id+'_panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:'+ddc.panelBg+';border:1px solid '+ddc.panelBorder+';border-radius:8px;box-shadow:'+ddc.panelShadow+';z-index:9999;max-height:220px;overflow-y:auto;padding:4px;">'+o+'</div></div>';
 
     }
     function _tCard(icon,title,desc,ddId,list,selId,footerSuffix){footerSuffix=footerSuffix||'';return '<div style="border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:rgba(255,255,255,0.03);"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">'+icon+'<div><div style="font-size:13px;font-weight:600;color:#d1d4dc;">'+title+'</div><div style="font-size:11px;color:#787b86;margin-top:2px;">'+desc+'</div></div></div>'+_tMkdd(ddId,list,selId)+footerSuffix+'</div>';}
@@ -58160,7 +58160,7 @@ function loadSection(type){
 
     if(titleEl)titleEl.textContent=titles[type]||type;
 
-    document.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.toggle('active',n.dataset.settings===type);});
+    document.querySelectorAll('#settingsPanel .sp-nav-item[data-settings]').forEach(function(n){n.classList.toggle('active',n.dataset.settings===type);});
 
     var el=document.getElementById('settingsPanelContent');
 
@@ -58177,7 +58177,7 @@ function loadSection(type){
 
 
 
-window._spLoad=function(type,el){document.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});if(el)el.classList.add('active');loadSection(type);};
+window._spLoad=function(type,el){document.querySelectorAll('#settingsPanel .sp-nav-item[data-settings]').forEach(function(n){n.classList.remove('active');});if(el)el.classList.add('active');loadSection(type);};
 
 
 
@@ -58503,7 +58503,7 @@ window._spOpen = function(section) {
 
     if (!panel) return;
 
-    panel.querySelectorAll('.sp-nav-item').forEach(function(n) { n.classList.remove('active'); });
+    panel.querySelectorAll('.sp-nav-item[data-settings]').forEach(function(n) { n.classList.remove('active'); });
 
     var nav = panel.querySelector('.sp-nav-item[data-settings="' + section + '"]');
 
@@ -59533,7 +59533,7 @@ document.addEventListener('click',function(e){
 
 },true);
 
-window._spLoad=function(type,el){if(!panel)panel=document.getElementById('settingsPanel');document.querySelectorAll('.sp-nav-item').forEach(function(n){n.classList.remove('active');});if(el)el.classList.add('active');loadSection(type);};
+window._spLoad=function(type,el){if(!panel)panel=document.getElementById('settingsPanel');document.querySelectorAll('#settingsPanel .sp-nav-item[data-settings]').forEach(function(n){n.classList.remove('active');});if(el)el.classList.add('active');loadSection(type);};
 
 
 
