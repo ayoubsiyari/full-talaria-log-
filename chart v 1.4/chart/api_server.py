@@ -47,13 +47,31 @@ import urllib.request
 
 import math
 
-# Chart directory — load FINNHUB_API_KEY from .env here when the env var is missing or blank (e.g. misconfigured Compose).
+# Chart directory — load .env next to api_server.py for local dev (Docker Compose also injects env).
+# Python does not read .env by itself; we merge KEY=value lines into os.environ if not already set.
 _CHART_DIR = Path(__file__).resolve().parent
 
 
-def _load_finnhub_from_dotenv_files() -> None:
-    if (os.getenv("FINNHUB_API_KEY") or "").strip():
-        return
+def _parse_dotenv_line(line: str) -> tuple[str, str] | None:
+    trimmed = line.strip()
+    if not trimmed or trimmed.startswith("#"):
+        return None
+    if trimmed.startswith("export "):
+        trimmed = trimmed[7:].strip()
+    if "=" not in trimmed:
+        return None
+    key, _, rest = trimmed.partition("=")
+    key = key.strip()
+    if not key:
+        return None
+    val = rest.strip()
+    if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+        val = val[1:-1]
+    return (key, val)
+
+
+def _load_dotenv_files_from_chart_dir() -> None:
+    """Load .env / .env.local into os.environ (does not override existing vars)."""
     for name in (".env", ".env.local"):
         path = _CHART_DIR / name
         if not path.is_file():
@@ -63,19 +81,15 @@ def _load_finnhub_from_dotenv_files() -> None:
         except OSError:
             continue
         for line in raw.splitlines():
-            trimmed = line.strip()
-            if not trimmed or trimmed.startswith("#"):
+            parsed = _parse_dotenv_line(line)
+            if not parsed:
                 continue
-            m = re.match(r"^FINNHUB_API_KEY\s*=\s*(.*)$", trimmed)
-            if not m:
-                continue
-            val = m.group(1).strip().strip('"').strip("'")
-            if val:
-                os.environ["FINNHUB_API_KEY"] = val
-            return
+            key, val = parsed
+            if key not in os.environ:
+                os.environ[key] = val
 
 
-_load_finnhub_from_dotenv_files()
+_load_dotenv_files_from_chart_dir()
 
 from analytics_engine import (
     normalize_trades,
