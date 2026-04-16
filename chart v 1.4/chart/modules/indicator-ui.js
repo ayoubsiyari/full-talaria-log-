@@ -524,13 +524,13 @@ const INDICATOR_DEFINITIONS = {
         params: [
             {
                 id: 'cftcCode',
-                label: '',
+                label: 'CFTC code (Legacy Combined)',
                 type: 'text',
                 default: 'auto'
             },
             {
                 id: 'dataUrl',
-                label: '',
+                label: 'Custom data URL (optional)',
                 type: 'text',
                 default: ''
             },
