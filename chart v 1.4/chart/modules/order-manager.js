@@ -2690,7 +2690,10 @@ class OrderManager {
         }
     }
 
-    persistRuntimeOrderState() {
+    /**
+     * @param {{ critical?: boolean }} [opts] - If critical, also PATCH immediately (with journal-related saves) so balance/positions match the close in the same moment.
+     */
+    persistRuntimeOrderState(opts = {}) {
         const sessionId =
             this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
                 ? this.chart.getActiveTradingSessionId()
@@ -2720,13 +2723,18 @@ class OrderManager {
             tradeGroupIdCounter: this.tradeGroupIdCounter,
         };
 
+        const patch = {
+            pending_orders: safeClone(this.pendingOrders),
+            open_positions: safeClone(this.openPositions),
+            account_runtime,
+            order_counters,
+        };
+
         if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
-            this.chart.scheduleSessionStateSave({
-                pending_orders: safeClone(this.pendingOrders),
-                open_positions: safeClone(this.openPositions),
-                account_runtime,
-                order_counters,
-            });
+            this.chart.scheduleSessionStateSave(patch);
+        }
+        if (opts.critical && this.chart && typeof this.chart.queueCriticalSessionStateSave === 'function') {
+            this.chart.queueCriticalSessionStateSave(patch);
         }
     }
 
@@ -22843,11 +22851,25 @@ class OrderManager {
             };
             
         }
-        
-        // NOTE: Journal entry will be saved by showTradeJournalModal -> saveTradeToJournal
-        // Store the pre-built journal entry on the position for the modal to use
+
+        // Store pre-built entry for the notes modal (saveTradeToJournal merges screenshots + post-trade notes).
         position.pendingJournalEntry = journalEntry;
-        console.log(`📋 Prepared journal entry for position #${orderId} - will save after modal`)
+
+        // Persist trade to server immediately — do not wait for modal (SL/TP already did this in closePositionAtPrice).
+        if (journalEntry) {
+            if (!(scaledInfo && scaledInfo.status === 'CLOSED')) {
+                this._enrichJournalEntryForPersistence(journalEntry, position, { closeTime, closePrice });
+            }
+            const upsert = this.upsertJournalEntry(journalEntry, { skipIfExists: true });
+            if (upsert.inserted) {
+                this.persistJournal();
+                this.persistRuntimeOrderState({ critical: true });
+                this.updateJournalTab();
+                console.log(`📋 Manual close: trade #${orderId} journal synced immediately (notes modal can update again)`);
+            }
+        } else {
+            console.warn(`📋 No journal entry for position #${orderId} — modal flow only`);
+        }
         
         // Draw exit marker before removing lines
         this.drawExitMarker(position, {
@@ -25426,8 +25448,9 @@ class OrderManager {
                     }
                 }
 
-                // Save journal
+                // Save journal + account snapshot to server immediately (same second as close)
                 this.persistJournal();
+                this.persistRuntimeOrderState({ critical: true });
                 console.log('💾 Saved journal');
                 
                 // Update the Journal tab immediately

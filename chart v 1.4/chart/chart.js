@@ -2283,14 +2283,12 @@ class Chart {
 
         this._pendingCriticalSessionStatePatch = Object.assign({}, this._pendingCriticalSessionStatePatch || {}, patch);
         this._writeTradingSessionLocalBackup();
-        if (this._criticalSessionStateSaveTimer) return;
-
-        // Near-immediate (same task turn) so journal reaches the DB quickly without SQLite
-        // write storms from firing two full PATCHes on every persistJournal (was breaking POST /api/sessions).
-        this._criticalSessionStateSaveTimer = setTimeout(() => {
+        if (this._criticalSessionStateSaveTimer) {
+            clearTimeout(this._criticalSessionStateSaveTimer);
             this._criticalSessionStateSaveTimer = null;
-            this.flushCriticalSessionStateSave();
-        }, 0);
+        }
+        // Flush immediately so SL/TP/manual close journal hits the API in the same second (no setTimeout deferral).
+        void this.flushCriticalSessionStateSave();
     }
 
     async flushCriticalSessionStateSave() {
