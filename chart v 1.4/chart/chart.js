@@ -5968,6 +5968,15 @@ class Chart {
     }
 
     applyPanelOnlyTemplate(templateName) {
+        // When embedded in Talaria, non-admins may only use Dark/Light panel themes (toolbar toggle).
+        // Admin-only templates are UI-hidden; this blocks console bypass. Server also strips on sync.
+        const publicPanelTplIds = new Set(['tradingview-dark', 'tradingview-light']);
+        if (typeof window !== 'undefined' && typeof window.isTalariaAdmin === 'function' && !window.isTalariaAdmin()) {
+            const id = templateName && typeof templateName === 'string' ? templateName : '';
+            if (!publicPanelTplIds.has(id)) {
+                return;
+            }
+        }
         const PANEL_KEYS = [
             'settingsPanelAccentColor','settingsPanelBgColor','settingsPanelSidebarBgColor',
             'settingsPanelSecondaryColor','settingsPanelTextColor'

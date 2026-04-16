@@ -1,12 +1,49 @@
 # routes/chart_routes.py
 
+import copy
+
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from models import db, ChartDrawing, ChartSettings, UserPreferences, User, Subscription
 from datetime import datetime, timedelta
 from functools import wraps
 
 chart_bp = Blueprint('chart', __name__)
+
+
+# Panel-only color templates (admin UI): only these may sync for non-admins.
+# Matches client getPanelTemplateSwatches (Dark / Light). Others stay local-only.
+_ALLOWED_PUBLIC_PANEL_ONLY_TEMPLATE_IDS = frozenset({'tradingview-dark', 'tradingview-light'})
+
+
+def _request_is_admin():
+    """True if JWT says admin, else fall back to User.is_admin (older tokens)."""
+    try:
+        claims = get_jwt()
+        if isinstance(claims, dict) and claims.get('is_admin') is not None:
+            return bool(claims.get('is_admin'))
+    except Exception:
+        pass
+    try:
+        uid = get_jwt_identity()
+        uid = int(uid)
+    except (TypeError, ValueError):
+        return False
+    user = User.query.get(uid)
+    return bool(user and getattr(user, 'is_admin', False))
+
+
+def _sanitize_chart_settings_for_role(settings, is_admin):
+    """Strip panel-only template id from synced settings when not admin."""
+    if not isinstance(settings, dict):
+        return settings
+    out = copy.deepcopy(settings)
+    if is_admin:
+        return out
+    apt = out.get('activePanelOnlyTemplate')
+    if apt is not None and apt not in _ALLOWED_PUBLIC_PANEL_ONLY_TEMPLATE_IDS:
+        out['activePanelOnlyTemplate'] = None
+    return out
 
 
 def _has_active_or_grace_subscription(user_id):
@@ -293,10 +330,13 @@ def get_settings(symbol):
                 'success': True,
                 'settings': {}
             }), 200
+
+        is_admin = _request_is_admin()
+        safe = _sanitize_chart_settings_for_role(settings_record.settings_data, is_admin)
         
         return jsonify({
             'success': True,
-            'settings': settings_record.settings_data,
+            'settings': safe,
             'updated_at': settings_record.updated_at.isoformat()
         }), 200
         
@@ -329,6 +369,7 @@ def save_settings(symbol):
             }), 400
         
         settings = data.get('settings', {})
+        settings = _sanitize_chart_settings_for_role(settings, _request_is_admin())
         session_id = data.get('session_id', None)
         
         # Find existing record or create new one
