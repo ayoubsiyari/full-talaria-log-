@@ -241,25 +241,28 @@ export default function BacktestSessions() {
    */
   useEffect(() => {
     function isAllowedTalariaNavUrl(url: string): boolean {
+      if (typeof url !== "string" || url.trim().startsWith("//")) return false;
+      // Relative or absolute — iframe sends absolute chart origin + /chart/index.html?...
+      if (url.includes("/chart/index.html")) return true;
+      if (url.includes("/backtest/challenge")) return true;
       try {
-        if (url.startsWith("/chart/index.html") || url.startsWith("/backtest/challenge")) return true;
         const u = new URL(url);
         const path = u.pathname.replace(/\/$/, "") || "/";
         if (path.endsWith("/chart/index.html")) return true;
         if (path === "/backtest/challenge" || path.startsWith("/backtest/challenge/")) return true;
         return false;
       } catch {
-        return false;
+        return url.startsWith("/chart/") || url.startsWith("/backtest/challenge");
       }
     }
     function onMessage(ev: MessageEvent) {
       const d = ev.data as { type?: string; url?: string } | null;
       if (!d || d.type !== "talaria-open-chart" || typeof d.url !== "string") return;
       if (!isAllowedTalariaNavUrl(d.url)) return;
-      window.location.assign(d.url);
+      window.location.replace(d.url);
     }
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
+    window.addEventListener("message", onMessage, false);
+    return () => window.removeEventListener("message", onMessage, false);
   }, []);
 
   useEffect(() => {

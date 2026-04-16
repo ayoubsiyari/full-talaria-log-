@@ -2804,33 +2804,72 @@ html.iframe-mode .bt-modal-footer {
                 }
                 localStorage.setItem('backtestingSessions', JSON.stringify(sessions));
 
-                // Small delay to ensure localStorage is written
-                setTimeout(function () {
-                    // Chart entry must use THIS window's origin (the chart server). A relative /chart/...
-                    // path sent to the parent would resolve on the parent's origin (e.g. Next :3000) where
-                    // the chart bundle is not served. When embedded cross-origin, only postMessage + absolute URL works.
-                    console.log('🚀 Redirecting to backtesting mode...');
-                    var qs = new URLSearchParams();
-                    qs.set('mode', 'backtest');
-                    if (sessionId != null && sessionId !== '') {
-                        qs.set('sessionId', String(sessionId));
+                // Chart URL: same origin as this frame, or parentOrigin from query when embedded (Sessions passes it).
+                var qs = new URLSearchParams();
+                qs.set('mode', 'backtest');
+                if (sessionId != null && sessionId !== '') {
+                    qs.set('sessionId', String(sessionId));
+                }
+                if (selectedFileId != null && selectedFileId !== '') {
+                    qs.set('fileId', String(selectedFileId));
+                }
+                function resolveParentOriginFromQuery() {
+                    try {
+                        var raw = new URLSearchParams(window.location.search).get('parentOrigin');
+                        if (!raw) return null;
+                        var dec = decodeURIComponent(raw);
+                        var u = new URL(dec);
+                        if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+                        return u.origin;
+                    } catch (e) {
+                        return null;
                     }
-                    if (selectedFileId != null && selectedFileId !== '') {
-                        qs.set('fileId', String(selectedFileId));
-                    }
-                    var absUrl = window.location.origin + '/chart/index.html?' + qs.toString();
-                    var inIframe = window.self !== window.top;
+                }
+                var inIframe = window.self !== window.top;
+                var parentOriginFromQuery = resolveParentOriginFromQuery();
+                var chartOrigin = (inIframe && parentOriginFromQuery) ? parentOriginFromQuery : window.location.origin;
+                var absUrl = chartOrigin + '/chart/index.html?' + qs.toString();
+
+                function navigateToChartAfterCreate() {
+                    console.log('🚀 Redirecting to backtesting mode…', absUrl, 'inIframe=', inIframe);
                     if (!inIframe) {
-                        window.location.href = absUrl;
+                        window.location.replace(absUrl);
                         return;
                     }
+                    // 1) Tell parent (Sessions dashboard) to navigate — works cross-origin.
                     try {
-                        window.parent.postMessage({ type: 'talaria-open-chart', url: absUrl }, '*');
+                        window.parent.postMessage(
+                            { type: 'talaria-open-chart', url: absUrl },
+                            parentOriginFromQuery || '*'
+                        );
                     } catch (err) {
-                        console.error('[backtesting] postMessage failed, loading chart in frame', err);
-                        window.location.href = absUrl;
+                        console.warn('[backtesting] postMessage failed', err);
                     }
-                }, 100);
+                    // 2) Escape iframe: navigate top-level (often works when parent and chart share policy).
+                    try {
+                        var a = document.createElement('a');
+                        a.href = absUrl;
+                        a.target = '_top';
+                        a.rel = 'noopener noreferrer';
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                    } catch (err2) {
+                        console.warn('[backtesting] _top link failed', err2);
+                    }
+                    // 3) If still embedded after a tick, load chart in this frame so the user is not stuck.
+                    setTimeout(function () {
+                        try {
+                            if (window.self !== window.top) {
+                                window.location.replace(absUrl);
+                            }
+                        } catch (err3) {
+                            console.warn('[backtesting] iframe fallback navigation failed', err3);
+                        }
+                    }, 350);
+                }
+
+                navigateToChartAfterCreate();
             });
         }
 
