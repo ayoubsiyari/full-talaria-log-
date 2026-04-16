@@ -32,6 +32,7 @@ import subprocess
 import tempfile
 import time
 import threading
+from collections import deque
 from pydantic import BaseModel, Field
 from passlib.context import CryptContext
 from google.oauth2.service_account import Credentials
@@ -243,6 +244,8 @@ Base = declarative_base()
 # Upload directory
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
+SUPPORT_UPLOAD_DIR = UPLOAD_DIR / "support"
+SUPPORT_UPLOAD_DIR.mkdir(exist_ok=True)
 
 DUKASCOPY_SCRIPT_PATH = _APP_DIR / "download" / "fetch-data.js"
 DUKASCOPY_DEFAULT_TIMEFRAME = "m1"
@@ -460,6 +463,19 @@ class SupportMessage(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class SupportAttachment(Base):
+    __tablename__ = "support_attachments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    message_id = Column(Integer, ForeignKey("support_messages.id"), index=True, nullable=False, unique=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    stored_name = Column(String(128), nullable=False, unique=True)
+    original_name = Column(String(255), nullable=True)
+    mime_type = Column(String(128), nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Notification(Base):
     __tablename__ = "notifications"
 
@@ -498,6 +514,7 @@ _CHART_TABLES = [
     TradingSessionState.__table__,
     SupportThread.__table__,
     SupportMessage.__table__,
+    SupportAttachment.__table__,
     Notification.__table__,
     SupportThreadRead.__table__,
 ]
@@ -623,6 +640,44 @@ def _get_user_from_websocket(ws: WebSocket):
 
 SUPPORT_SUBJECT_MAX = 500
 SUPPORT_BODY_MAX = 8000
+SUPPORT_IMAGE_MAX_BYTES = max(1024, int(os.getenv("SUPPORT_IMAGE_MAX_BYTES", str(2 * 1024 * 1024))))
+SUPPORT_IMAGE_ALLOWED_MIME = frozenset({"image/jpeg", "image/png", "image/gif", "image/webp"})
+
+# Anti-spam: sliding windows per user id (in-memory; each worker has its own counters).
+SUPPORT_RATE_MSG_PER_MINUTE = max(1, int(os.getenv("SUPPORT_RATE_MSG_PER_MINUTE", "30")))
+SUPPORT_RATE_THREAD_PER_HOUR = max(1, int(os.getenv("SUPPORT_RATE_THREAD_PER_HOUR", "10")))
+_support_msg_times: dict[int, deque] = {}
+_support_thread_times: dict[int, deque] = {}
+_support_rate_lock = threading.Lock()
+
+
+def _support_rate_exempt(user: User) -> bool:
+    """Admins are not throttled so staff can reply without hitting user limits."""
+    return getattr(user, "role", None) == "admin"
+
+
+def _sliding_window_allow(bucket: dict[int, deque], uid: int, max_events: int, window_sec: float) -> bool:
+    now = time.monotonic()
+    with _support_rate_lock:
+        q = bucket.get(uid)
+        if q is None:
+            q = deque()
+            bucket[uid] = q
+        cutoff = now - window_sec
+        while q and q[0] < cutoff:
+            q.popleft()
+        if len(q) >= max_events:
+            return False
+        q.append(now)
+        return True
+
+
+def _support_rate_allow_message(uid: int) -> bool:
+    return _sliding_window_allow(_support_msg_times, uid, SUPPORT_RATE_MSG_PER_MINUTE, 60.0)
+
+
+def _support_rate_allow_new_thread(uid: int) -> bool:
+    return _sliding_window_allow(_support_thread_times, uid, SUPPORT_RATE_THREAD_PER_HOUR, 3600.0)
 
 
 def _support_user_can_access_thread(user: User, thread: SupportThread) -> bool:
@@ -3680,8 +3735,93 @@ class SupportMarkReadIn(BaseModel):
     last_read_message_id: int | None = None
 
 
+async def _support_consume_upload_image(upload) -> tuple[bytes, str, str | None]:
+    """Read an image upload with a 2 MiB cap; returns (data, mime, original_filename)."""
+    raw_ct = (getattr(upload, "content_type", None) or "").split(";")[0].strip().lower()
+    orig = getattr(upload, "filename", None)
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await upload.read(65536)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > SUPPORT_IMAGE_MAX_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Image too large (max {SUPPORT_IMAGE_MAX_BYTES // (1024 * 1024)} MB)",
+            )
+        chunks.append(chunk)
+    data = b"".join(chunks)
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file")
+    mime = raw_ct
+    if mime not in SUPPORT_IMAGE_ALLOWED_MIME:
+        if data[:3] == b"\xff\xd8\xff":
+            mime = "image/jpeg"
+        elif len(data) >= 8 and data[:8] == b"\x89PNG\r\n\x1a\n":
+            mime = "image/png"
+        elif len(data) >= 6 and data[:6] in (b"GIF87a", b"GIF89a"):
+            mime = "image/gif"
+        elif len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            mime = "image/webp"
+        else:
+            raise HTTPException(status_code=400, detail="Only JPEG, PNG, GIF, or WebP images are allowed")
+    if mime not in SUPPORT_IMAGE_ALLOWED_MIME:
+        raise HTTPException(status_code=400, detail="Only JPEG, PNG, GIF, or WebP images are allowed")
+    return data, mime, orig
+
+
+def _support_ext_for_mime(mime: str) -> str:
+    return {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/gif": ".gif",
+        "image/webp": ".webp",
+    }.get(mime, ".img")
+
+
+def _support_write_image_file(data: bytes, mime: str) -> str:
+    ext = _support_ext_for_mime(mime)
+    stored = secrets.token_urlsafe(18).replace("-", "")[:24] + ext
+    path = SUPPORT_UPLOAD_DIR / stored
+    path.write_bytes(data)
+    return stored
+
+
+def _support_add_attachment(
+    db,
+    message_id: int,
+    user_id: int,
+    data: bytes,
+    mime: str,
+    orig_name: str | None,
+) -> SupportAttachment:
+    stored = _support_write_image_file(data, mime)
+    on = (orig_name or "").strip()[:250] or None
+    att = SupportAttachment(
+        message_id=message_id,
+        user_id=user_id,
+        stored_name=stored,
+        original_name=on,
+        mime_type=mime,
+        size_bytes=len(data),
+    )
+    db.add(att)
+    return att
+
+
 def _support_msg_dict(db, m: SupportMessage) -> dict:
     sender = db.query(User).filter(User.id == m.sender_user_id).first()
+    att = db.query(SupportAttachment).filter(SupportAttachment.message_id == m.id).first()
+    attachment = None
+    if att:
+        attachment = {
+            "id": att.id,
+            "url": f"/api/support/attachments/{att.id}/file",
+            "mime_type": att.mime_type,
+            "original_name": att.original_name,
+        }
     return {
         "id": m.id,
         "thread_id": m.thread_id,
@@ -3690,6 +3830,7 @@ def _support_msg_dict(db, m: SupportMessage) -> dict:
         "sender_email": (sender.email if sender else None),
         "body": m.body,
         "created_at": m.created_at.isoformat() if m.created_at else None,
+        "attachment": attachment,
     }
 
 
@@ -3802,17 +3943,52 @@ def _notify_support_recipients(db, thread: SupportThread, msg: SupportMessage, s
 
 
 @app.post("/api/support/threads")
-async def support_create_thread(payload: SupportCreateThreadIn, request: Request):
+async def support_create_thread(request: Request):
     user = _require_user(request)
-    cat = (payload.category or "other").strip().lower()
+    image_tuple: tuple[bytes, str, str | None] | None = None
+    ct = (request.headers.get("content-type") or "").lower()
+    if "multipart/form-data" in ct:
+        form = await request.form()
+        subj = (form.get("subject") or "").strip()
+        cat = (form.get("category") or "other").strip().lower()
+        body_raw = (form.get("body") or "").strip()
+        up = form.get("file")
+        if up is not None and hasattr(up, "read"):
+            image_tuple = await _support_consume_upload_image(up)
+        body = body_raw
+        if not body and image_tuple:
+            body = "[Image attachment]"
+        elif not body and not image_tuple:
+            raise HTTPException(status_code=400, detail="Message text or an image is required")
+    else:
+        try:
+            raw = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+        payload = SupportCreateThreadIn(**raw)
+        cat = (payload.category or "other").strip().lower()
+        subj = payload.subject.strip()
+        body = payload.body.strip()
+        if not body:
+            raise HTTPException(status_code=400, detail="Message is required")
+
     if cat not in ("bug", "error", "other"):
         raise HTTPException(status_code=400, detail="Invalid category")
-    subj = payload.subject.strip()
     if not subj:
         raise HTTPException(status_code=400, detail="Subject is required")
-    body = payload.body.strip()
-    if not body:
-        raise HTTPException(status_code=400, detail="Message is required")
+    body = body.strip()[:SUPPORT_BODY_MAX]
+    if not _support_rate_exempt(user):
+        uid = int(user.id)
+        if not _support_rate_allow_new_thread(uid):
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many new conversations. Limit: {SUPPORT_RATE_THREAD_PER_HOUR} per hour. Try again later.",
+            )
+        if not _support_rate_allow_message(uid):
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many messages. Limit: {SUPPORT_RATE_MSG_PER_MINUTE} per minute. Wait briefly and try again.",
+            )
     db = SessionLocal()
     try:
         now = datetime.utcnow()
@@ -3826,10 +4002,14 @@ async def support_create_thread(payload: SupportCreateThreadIn, request: Request
         db.add(t)
         db.commit()
         db.refresh(t)
-        m = SupportMessage(thread_id=t.id, sender_user_id=user.id, body=body[:SUPPORT_BODY_MAX])
+        m = SupportMessage(thread_id=t.id, sender_user_id=user.id, body=body)
         db.add(m)
         db.commit()
         db.refresh(m)
+        if image_tuple:
+            data, mime, orig = image_tuple
+            _support_add_attachment(db, m.id, int(user.id), data, mime, orig)
+            db.commit()
         recipients = _notify_support_recipients(db, t, m, user)
         db.commit()
         req_upto, stf_upto = _support_read_watermarks(db, t)
@@ -3839,7 +4019,8 @@ async def support_create_thread(payload: SupportCreateThreadIn, request: Request
             {"type": "message", "thread_id": t.id, "message": msg_dict},
         )
         await _push_inbox_notification_pings(recipients, t.id, m.id)
-        return {"thread": _support_thread_dict(db, t, last_preview=body[:160]), "message": msg_dict}
+        preview = body[:160] if len(body) > 160 else body
+        return {"thread": _support_thread_dict(db, t, last_preview=preview), "message": msg_dict}
     finally:
         db.close()
 
@@ -3871,6 +4052,29 @@ async def support_get_thread(thread_id: int, request: Request):
                 "staff_read_upto": stf_upto,
             },
         }
+    finally:
+        db.close()
+
+
+@app.get("/api/support/attachments/{attachment_id}/file")
+async def support_download_attachment(attachment_id: int, request: Request):
+    user = _require_user(request)
+    db = SessionLocal()
+    try:
+        att = db.query(SupportAttachment).filter(SupportAttachment.id == attachment_id).first()
+        if not att:
+            raise HTTPException(status_code=404, detail="Not found")
+        msg = db.query(SupportMessage).filter(SupportMessage.id == att.message_id).first()
+        if not msg:
+            raise HTTPException(status_code=404, detail="Not found")
+        t = db.query(SupportThread).filter(SupportThread.id == msg.thread_id).first()
+        if not t or not _support_user_can_access_thread(user, t):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        path = SUPPORT_UPLOAD_DIR / att.stored_name
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="File missing")
+        fname = att.original_name or "attachment.jpg"
+        return FileResponse(path, media_type=att.mime_type, filename=fname)
     finally:
         db.close()
 
@@ -3951,11 +4155,37 @@ async def support_list_messages(
 
 
 @app.post("/api/support/threads/{thread_id}/messages")
-async def support_post_message(thread_id: int, payload: SupportAppendMessageIn, request: Request):
+async def support_post_message(thread_id: int, request: Request):
     user = _require_user(request)
-    body = payload.body.strip()
-    if not body:
-        raise HTTPException(status_code=400, detail="Message is required")
+    image_tuple: tuple[bytes, str, str | None] | None = None
+    ct = (request.headers.get("content-type") or "").lower()
+    if "multipart/form-data" in ct:
+        form = await request.form()
+        body_raw = (form.get("body") or "").strip()
+        up = form.get("file")
+        if up is not None and hasattr(up, "read"):
+            image_tuple = await _support_consume_upload_image(up)
+        body = body_raw
+        if not body and image_tuple:
+            body = "[Image attachment]"
+        elif not body and not image_tuple:
+            raise HTTPException(status_code=400, detail="Message text or an image is required")
+    else:
+        try:
+            raw = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+        payload = SupportAppendMessageIn(**raw)
+        body = payload.body.strip()
+        if not body:
+            raise HTTPException(status_code=400, detail="Message is required")
+    body = body.strip()[:SUPPORT_BODY_MAX]
+    if not _support_rate_exempt(user):
+        if not _support_rate_allow_message(int(user.id)):
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many messages. Limit: {SUPPORT_RATE_MSG_PER_MINUTE} per minute. Wait briefly and try again.",
+            )
     db = SessionLocal()
     try:
         t = db.query(SupportThread).filter(SupportThread.id == thread_id).first()
@@ -3966,12 +4196,16 @@ async def support_post_message(thread_id: int, payload: SupportAppendMessageIn, 
         if t.status == "closed":
             raise HTTPException(status_code=400, detail="Thread is closed")
         now = datetime.utcnow()
-        m = SupportMessage(thread_id=t.id, sender_user_id=user.id, body=body[:SUPPORT_BODY_MAX])
+        m = SupportMessage(thread_id=t.id, sender_user_id=user.id, body=body)
         db.add(m)
         t.last_message_at = now
         t.updated_at = now
         db.commit()
         db.refresh(m)
+        if image_tuple:
+            data, mime, orig = image_tuple
+            _support_add_attachment(db, m.id, int(user.id), data, mime, orig)
+            db.commit()
         recipients = _notify_support_recipients(db, t, m, user)
         db.commit()
         req_upto, stf_upto = _support_read_watermarks(db, t)

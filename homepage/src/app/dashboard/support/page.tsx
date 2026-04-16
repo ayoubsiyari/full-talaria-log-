@@ -22,6 +22,13 @@ type Thread = {
   last_message_preview?: string | null;
 };
 
+type Attachment = {
+  id: number;
+  url: string;
+  mime_type?: string;
+  original_name?: string | null;
+};
+
 type Msg = {
   id: number;
   thread_id: number;
@@ -30,11 +37,18 @@ type Msg = {
   body: string;
   created_at?: string | null;
   read_by_counterparty?: boolean;
+  attachment?: Attachment | null;
 };
+
+const SUPPORT_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 
 async function api<T>(url: string, opts: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = { ...(opts.headers as Record<string, string>) };
-  if (opts.body != null && !headers["Content-Type"]) {
+  if (
+    opts.body != null &&
+    !(opts.body instanceof FormData) &&
+    !headers["Content-Type"]
+  ) {
     headers["Content-Type"] = "application/json";
   }
   const res = await fetch(url, {
@@ -65,9 +79,14 @@ export default function SupportPage() {
   const [newSubject, setNewSubject] = useState("");
   const [newCategory, setNewCategory] = useState("other");
   const [newBody, setNewBody] = useState("");
+  const [newThreadFile, setNewThreadFile] = useState<File | null>(null);
+  const [replyFile, setReplyFile] = useState<File | null>(null);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const newThreadFileRef = useRef<HTMLInputElement | null>(null);
+  const replyFileRef = useRef<HTMLInputElement | null>(null);
   const threadsRef = useRef(threads);
   threadsRef.current = threads;
 
@@ -213,12 +232,29 @@ export default function SupportPage() {
 
   const sendReply = async () => {
     const body = reply.trim();
-    if (!body || !selectedId || selected?.status === "closed") return;
-    await api(`/api/support/threads/${selectedId}/messages`, {
-      method: "POST",
-      body: JSON.stringify({ body }),
-    });
+    if ((!body && !replyFile) || !selectedId || selected?.status === "closed") return;
+    if (replyFile && replyFile.size > SUPPORT_IMAGE_MAX_BYTES) {
+      setUploadErr("Image must be 2 MB or smaller.");
+      return;
+    }
+    setUploadErr(null);
+    if (replyFile) {
+      const fd = new FormData();
+      fd.append("body", body);
+      fd.append("file", replyFile);
+      await api(`/api/support/threads/${selectedId}/messages`, {
+        method: "POST",
+        body: fd,
+      });
+    } else {
+      await api(`/api/support/threads/${selectedId}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ body }),
+      });
+    }
     setReply("");
+    setReplyFile(null);
+    if (replyFileRef.current) replyFileRef.current.value = "";
     await loadMessages(selectedId);
     await markThreadRead(selectedId);
     await loadThreads();
@@ -227,17 +263,37 @@ export default function SupportPage() {
   const createThread = async () => {
     const subject = newSubject.trim();
     const body = newBody.trim();
-    if (!subject || !body) return;
-    const data = await api<{ thread: Thread }>("/api/support/threads", {
-      method: "POST",
-      body: JSON.stringify({
-        subject,
-        category: newCategory,
-        body,
-      }),
-    });
+    if (!subject || (!body && !newThreadFile)) return;
+    if (newThreadFile && newThreadFile.size > SUPPORT_IMAGE_MAX_BYTES) {
+      setUploadErr("Image must be 2 MB or smaller.");
+      return;
+    }
+    setUploadErr(null);
+    let data: { thread: Thread };
+    if (newThreadFile) {
+      const fd = new FormData();
+      fd.append("subject", subject);
+      fd.append("category", newCategory);
+      fd.append("body", body);
+      fd.append("file", newThreadFile);
+      data = await api<{ thread: Thread }>("/api/support/threads", {
+        method: "POST",
+        body: fd,
+      });
+    } else {
+      data = await api<{ thread: Thread }>("/api/support/threads", {
+        method: "POST",
+        body: JSON.stringify({
+          subject,
+          category: newCategory,
+          body,
+        }),
+      });
+    }
     setNewSubject("");
     setNewBody("");
+    setNewThreadFile(null);
+    if (newThreadFileRef.current) newThreadFileRef.current.value = "";
     setNewCategory("other");
     setShowNew(false);
     await loadThreads();
@@ -266,9 +322,15 @@ export default function SupportPage() {
           Support
         </h1>
         <p style={{ color: "#4a4850", fontSize: 13, margin: 0 }}>
-          Report bugs, errors, or ask for help. Messages are delivered to the team in real time.
+          Report bugs, errors, or ask for help. You can attach a screenshot (max 2 MB). Messages are delivered to the
+          team in real time.
         </p>
       </div>
+      {uploadErr && (
+        <div style={{ color: "#f87171", fontSize: 13, marginBottom: 8 }} role="alert">
+          {uploadErr}
+        </div>
+      )}
 
       <div className="db-support-grid">
         <div className="db-card" style={{ padding: 0, overflow: "hidden" }}>
@@ -318,10 +380,27 @@ export default function SupportPage() {
                 value={newBody}
                 onChange={(e) => setNewBody(e.target.value)}
                 rows={4}
-                placeholder="Describe the issue…"
+                placeholder="Describe the issue… (optional if you attach a screenshot)"
                 style={{ marginBottom: 10, resize: "vertical" }}
               />
-              <button type="button" className="db-btn-sm db-btn-accent" onClick={() => void createThread()}>
+              <label className="db-field-label">Screenshot (optional, max 2 MB)</label>
+              <input
+                ref={newThreadFileRef}
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                className="db-field-input"
+                style={{ marginBottom: 10, fontSize: 12 }}
+                onChange={(e) => {
+                  setNewThreadFile(e.target.files?.[0] ?? null);
+                  setUploadErr(null);
+                }}
+              />
+              <button
+                type="button"
+                className="db-btn-sm db-btn-accent"
+                disabled={!newSubject.trim() || (!newBody.trim() && !newThreadFile)}
+                onClick={() => void createThread()}
+              >
                 Send request
               </button>
             </div>
@@ -406,6 +485,26 @@ export default function SupportPage() {
                     <div style={{ fontSize: 13, lineHeight: 1.45, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                       {m.body || ""}
                     </div>
+                    {m.attachment?.url && (
+                      <a
+                        href={m.attachment.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ display: "block", marginTop: 8 }}
+                      >
+                        <img
+                          src={m.attachment.url}
+                          alt=""
+                          loading="lazy"
+                          style={{
+                            maxWidth: "100%",
+                            maxHeight: 240,
+                            borderRadius: 8,
+                            display: "block",
+                          }}
+                        />
+                      </a>
+                    )}
                     {m.read_by_counterparty === true ? (
                       <div style={{ fontSize: 10, color: "#4ade80", marginTop: 6, textAlign: "right" }}>Read</div>
                     ) : m.read_by_counterparty === false ? (
@@ -421,33 +520,54 @@ export default function SupportPage() {
               padding: 16,
               borderTop: "1px solid rgba(255,255,255,0.06)",
               display: "flex",
-              gap: 10,
-              alignItems: "flex-end",
+              flexDirection: "column",
+              gap: 8,
             }}
           >
-            <textarea
-              className="db-field-input"
-              value={reply}
-              onChange={(e) => setReply(e.target.value)}
-              placeholder={selected ? (isClosed ? "Thread closed" : "Type a message…") : "Select a thread"}
-              disabled={!selected || isClosed}
-              rows={3}
-              style={{ flex: 1, resize: "vertical" }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void sendReply();
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+              <textarea
+                className="db-field-input"
+                value={reply}
+                onChange={(e) => {
+                  setReply(e.target.value);
+                  setUploadErr(null);
+                }}
+                placeholder={
+                  selected ? (isClosed ? "Thread closed" : "Type a message… (optional if you attach a screenshot)") : "Select a thread"
                 }
-              }}
-            />
-            <button
-              type="button"
-              className="db-btn-sm db-btn-accent"
-              disabled={!selected || isClosed || !reply.trim()}
-              onClick={() => void sendReply()}
-            >
-              Send
-            </button>
+                disabled={!selected || isClosed}
+                rows={3}
+                style={{ flex: 1, resize: "vertical" }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void sendReply();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="db-btn-sm db-btn-accent"
+                disabled={!selected || isClosed || (!reply.trim() && !replyFile)}
+                onClick={() => void sendReply()}
+              >
+                Send
+              </button>
+            </div>
+            <label style={{ fontSize: 11, color: "#4a4850", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              Screenshot (optional, max 2 MB)
+              <input
+                ref={replyFileRef}
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                disabled={!selected || isClosed}
+                style={{ fontSize: 12, maxWidth: "100%" }}
+                onChange={(e) => {
+                  setReplyFile(e.target.files?.[0] ?? null);
+                  setUploadErr(null);
+                }}
+              />
+            </label>
           </div>
         </div>
       </div>
