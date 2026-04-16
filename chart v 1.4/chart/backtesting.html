@@ -2800,10 +2800,11 @@ html.iframe-mode .bt-modal-footer {
                 localStorage.setItem('backtestingSessions', JSON.stringify(sessions));
 
                 // Small delay to ensure localStorage is written
-                setTimeout(() => {
-                    // Redirect to chart with backtesting mode.
-                    // Must use an absolute path: when this page runs in an iframe (e.g. /backtest modal),
-                    // relative "index.html" resolves against the *parent* URL and becomes /index.html, not /chart/index.html.
+                setTimeout(function () {
+                    // Redirect to chart with backtesting mode (absolute path on this origin).
+                    // In the Sessions dashboard, this page runs in an iframe. If the parent is another
+                    // origin (e.g. Next.js on :3000 vs chart on :8000), assigning window.top.location
+                    // throws SecurityError — use postMessage so the parent can navigate.
                     console.log('🚀 Redirecting to backtesting mode...');
                     var qs = new URLSearchParams();
                     qs.set('mode', 'backtest');
@@ -2815,13 +2816,26 @@ html.iframe-mode .bt-modal-footer {
                     }
                     var targetUrl = '/chart/index.html?' + qs.toString();
 
-                    var isInIframe = window.self !== window.top;
-                    if (isInIframe) {
-                        console.log('📱 Running in iframe, redirecting parent window to chart');
-                        window.top.location.href = targetUrl;
-                    } else {
-                        window.location.href = targetUrl;
+                    function navigateToChart(url) {
+                        var inIframe = window.self !== window.top;
+                        if (!inIframe) {
+                            window.location.href = url;
+                            return;
+                        }
+                        try {
+                            window.top.location.href = url;
+                            return;
+                        } catch (err) {
+                            console.warn('[backtesting] top navigation blocked, using postMessage', err);
+                        }
+                        try {
+                            window.parent.postMessage({ type: 'talaria-open-chart', url: url }, '*');
+                        } catch (err2) {
+                            console.error('[backtesting] postMessage failed, opening chart in this frame', err2);
+                            window.location.href = url;
+                        }
                     }
+                    navigateToChart(targetUrl);
                 }, 100);
             });
         });

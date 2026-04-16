@@ -224,12 +224,26 @@ export default function BacktestSessions() {
   }
 
   useEffect(() => {
-    const w = window as Window & { closePropFirmIframe?: () => void };
+    const w = window as Window & { closePropFirmIframe?: () => void; closeBacktestingIframe?: () => void };
     w.closePropFirmIframe = closeIframe;
+    w.closeBacktestingIframe = closeIframe;
     return () => {
       delete w.closePropFirmIframe;
+      delete w.closeBacktestingIframe;
     };
   }, [closeIframe]);
+
+  /** Iframe (chart origin) cannot always set window.top when cross-origin; it posts this instead. */
+  useEffect(() => {
+    function onMessage(ev: MessageEvent) {
+      const d = ev.data as { type?: string; url?: string } | null;
+      if (!d || d.type !== "talaria-open-chart" || typeof d.url !== "string") return;
+      if (!d.url.startsWith("/chart/index.html") && !d.url.startsWith("/backtest/challenge")) return;
+      window.location.assign(d.url);
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
 
   useEffect(() => {
     if (!iframeUrl) return;

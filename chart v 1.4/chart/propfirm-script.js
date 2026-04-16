@@ -1081,17 +1081,23 @@ async function handleFormSubmit(e) {
     
     console.log('✅ Prop firm challenge created:', formData);
     console.log('📊 Redirecting to challenge overview, session:', sessionId);
-    
-    // Check if we're in an iframe
-    const isInIframe = window.self !== window.top;
-    const targetUrl = '/backtest/challenge?sessionId=' + encodeURIComponent(String(sessionId));
-    
-    if (isInIframe) {
-        console.log('📱 Running in iframe, redirecting parent window to challenge overview');
-        window.top.location.href = targetUrl;
-    } else {
-        console.log('🚀 Redirecting to challenge overview');
+
+    var targetUrl = '/backtest/challenge?sessionId=' + encodeURIComponent(String(sessionId));
+    var inIframe = window.self !== window.top;
+    if (!inIframe) {
         window.location.href = targetUrl;
+        return;
+    }
+    try {
+        window.top.location.href = targetUrl;
+    } catch (err) {
+        console.warn('[propfirm] top navigation blocked, using postMessage', err);
+        try {
+            window.parent.postMessage({ type: 'talaria-open-chart', url: targetUrl }, '*');
+        } catch (err2) {
+            console.error('[propfirm] postMessage failed', err2);
+            window.location.href = targetUrl;
+        }
     }
 }
 
