@@ -1082,22 +1082,23 @@ async function handleFormSubmit(e) {
     console.log('✅ Prop firm challenge created:', formData);
     console.log('📊 Redirecting to challenge overview, session:', sessionId);
 
-    var targetUrl = '/backtest/challenge?sessionId=' + encodeURIComponent(String(sessionId));
+    var po = null;
+    try {
+        po = new URLSearchParams(window.location.search).get('parentOrigin');
+    } catch (e) {}
+    var appOrigin = (po && String(po).replace(/\/$/, '')) || window.location.origin;
+    var targetUrl = appOrigin + '/backtest/challenge?sessionId=' + encodeURIComponent(String(sessionId));
+
     var inIframe = window.self !== window.top;
     if (!inIframe) {
         window.location.href = targetUrl;
         return;
     }
     try {
-        window.top.location.href = targetUrl;
+        window.parent.postMessage({ type: 'talaria-open-chart', url: targetUrl }, '*');
     } catch (err) {
-        console.warn('[propfirm] top navigation blocked, using postMessage', err);
-        try {
-            window.parent.postMessage({ type: 'talaria-open-chart', url: targetUrl }, '*');
-        } catch (err2) {
-            console.error('[propfirm] postMessage failed', err2);
-            window.location.href = targetUrl;
-        }
+        console.error('[propfirm] postMessage failed', err);
+        window.location.href = targetUrl;
     }
 }
 

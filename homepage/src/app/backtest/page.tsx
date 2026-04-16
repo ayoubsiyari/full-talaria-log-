@@ -216,10 +216,12 @@ export default function BacktestSessions() {
 
   function goToBacktest(type: "personal" | "propfirm") {
     setModalOpen(false);
+    const parentOrigin =
+      typeof window !== "undefined" ? encodeURIComponent(window.location.origin) : "";
     const url =
       type === "personal"
-        ? `/chart/backtesting.html?v=${Date.now()}`
-        : `/chart/propfirm-backtest.html?v=${Date.now()}`;
+        ? `/chart/backtesting.html?parentOrigin=${parentOrigin}&v=${Date.now()}`
+        : `/chart/propfirm-backtest.html?parentOrigin=${parentOrigin}&v=${Date.now()}`;
     setIframeUrl(url);
   }
 
@@ -233,12 +235,27 @@ export default function BacktestSessions() {
     };
   }, [closeIframe]);
 
-  /** Iframe (chart origin) cannot always set window.top when cross-origin; it posts this instead. */
+  /**
+   * Iframe runs on the chart app origin; the parent may be another port/host (static Next export).
+   * Child sends an absolute URL (chart or app) — relative /chart/... would resolve on the wrong origin.
+   */
   useEffect(() => {
+    function isAllowedTalariaNavUrl(url: string): boolean {
+      try {
+        if (url.startsWith("/chart/index.html") || url.startsWith("/backtest/challenge")) return true;
+        const u = new URL(url);
+        const path = u.pathname.replace(/\/$/, "") || "/";
+        if (path.endsWith("/chart/index.html")) return true;
+        if (path === "/backtest/challenge" || path.startsWith("/backtest/challenge/")) return true;
+        return false;
+      } catch {
+        return false;
+      }
+    }
     function onMessage(ev: MessageEvent) {
       const d = ev.data as { type?: string; url?: string } | null;
       if (!d || d.type !== "talaria-open-chart" || typeof d.url !== "string") return;
-      if (!d.url.startsWith("/chart/index.html") && !d.url.startsWith("/backtest/challenge")) return;
+      if (!isAllowedTalariaNavUrl(d.url)) return;
       window.location.assign(d.url);
     }
     window.addEventListener("message", onMessage);
