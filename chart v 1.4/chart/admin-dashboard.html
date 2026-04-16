@@ -1124,6 +1124,44 @@ select { cursor: pointer; }
   </div>
 </div>
 
+<!-- Affiliate profile modal -->
+<div class="modal-overlay" id="affiliateModal">
+  <div class="modal" style="max-width:520px">
+    <h2 id="affiliateModalTitle">New affiliate</h2>
+    <p class="text-muted" style="font-size:12px;color:var(--text-muted);margin:-8px 0 12px;line-height:1.45">
+      Use the <strong>same promo code</strong> you create under Coupons &amp; Stripe so checkout discounts match tracking.
+    </p>
+    <div class="form-grid">
+      <div class="field fg-full"><label>Display name</label><input type="text" id="affName" placeholder="Partner or campaign name" maxlength="200"></div>
+      <div class="field fg-full"><label>Promo code</label><input type="text" id="affPromoCode" placeholder="e.g. PARTNER20" style="text-transform:uppercase" maxlength="64"></div>
+      <div class="field fg-full"><label>Stripe coupon ID (optional)</label><input type="text" id="affStripeCouponId" placeholder="e.g. jTeqLdG8 — copy from Stripe or list above" maxlength="100"></div>
+      <div class="field fg-full"><label>Contact email (optional)</label><input type="email" id="affContactEmail" placeholder="partner@example.com" maxlength="255"></div>
+      <div class="field fg-full"><label>Notes</label><textarea id="affNotes" rows="2" placeholder="Internal notes"></textarea></div>
+      <div class="field"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="affActive" checked> Active</label></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="$('affiliateModal').classList.remove('open')">Cancel</button>
+      <button class="btn primary" onclick="saveAffiliateProfile()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="affiliateEventsModal">
+  <div class="modal" style="max-width:720px">
+    <h2 id="affiliateEventsTitle">Affiliate events</h2>
+    <div class="card-body" style="padding:0;max-height:420px;overflow-y:auto;margin-top:12px">
+      <table>
+        <thead><tr><th>When</th><th>Type</th><th>User</th><th>Amount</th></tr></thead>
+        <tbody id="affiliateEventsBody"></tbody>
+      </table>
+      <div class="empty-state" id="affiliateEventsEmpty" style="display:none;padding:24px"><p>No events yet</p></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="$('affiliateEventsModal').classList.remove('open')">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── App Shell ──────────────────────────────── -->
 <div class="app" id="appShell" style="display:none">
   <!-- Sidebar -->
@@ -1158,6 +1196,10 @@ select { cursor: pointer; }
       <a class="nav-item" data-section="payments" onclick="navigate('payments')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
         Payments
+      </a>
+      <a class="nav-item" data-section="affiliates" onclick="navigate('affiliates')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        Affiliates
       </a>
       <a class="nav-item" data-section="support" onclick="navigate('support')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
@@ -1552,6 +1594,55 @@ select { cursor: pointer; }
         </div>
       </div>
 
+      <!-- ════════ AFFILIATES SECTION ════════ -->
+      <div class="section" id="sec-affiliates">
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+            <div class="card-title">Affiliate program</div>
+            <button class="btn sm primary" onclick="openAffiliateModal(null)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              New affiliate
+            </button>
+          </div>
+          <div class="card-body" style="font-size:13px;line-height:1.5;color:var(--text-secondary)">
+            <p style="margin:0 0 8px">Create a profile with the <strong>same promo code</strong> as in <em>Subscriptions → Coupons</em> so Stripe applies the discount and attribution matches.</p>
+            <p style="margin:0">Share a tracking link (sets a cookie, then sends users to signup or pricing):</p>
+            <code id="affiliateLinkHelp" style="display:block;margin-top:8px;padding:10px 12px;background:var(--surface-raised);border-radius:var(--radius-sm);font-size:11px;word-break:break-all;color:var(--accent)">/api/affiliate/click?code=YOURCODE&amp;next=/register/</code>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M12 20v-6M6 20V10M18 20V4"/></svg>
+            <div class="card-title">Partners &amp; stats</div>
+            <span class="card-badge" id="affiliateCountBadge">0</span>
+            <button class="btn sm" onclick="loadAffiliates()">Refresh</button>
+          </div>
+          <div class="card-body" style="padding:0;max-height:calc(100vh - 340px);overflow-y:auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Promo</th>
+                  <th>Stripe coupon</th>
+                  <th>Users</th>
+                  <th>Signups</th>
+                  <th>Logins</th>
+                  <th>Purchases</th>
+                  <th>Revenue</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="affiliatesBody"></tbody>
+            </table>
+            <div class="empty-state" id="emptyAffiliates" style="display:none">
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div>
+              <p>No affiliates yet. Add a partner and link their promo code.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ════════ SUPPORT SECTION ════════ -->
       <div class="section" id="sec-support">
         <div class="support-layout">
@@ -1685,6 +1776,7 @@ const sectionTitles = {
   datasets: 'Dataset Management',
   subscriptions: 'Subscriptions',
   payments: 'Payments',
+  affiliates: 'Affiliates',
   support: 'Support',
   settings: 'Settings'
 };
@@ -2038,6 +2130,7 @@ function navigate(section) {
   if (section === 'sessions') loadSessions();
   if (section === 'subscriptions') loadSubscriptionData();
   if (section === 'payments') loadPayments();
+  if (section === 'affiliates') loadAffiliates();
   if (section === 'settings') updateSettingsPage();
   if (section === 'support') loadSupport();
 }
@@ -2051,6 +2144,8 @@ let allDatasets = [];
 let allPlans = [];
 let allSubscriptions = [];
 let allPayments = [];
+let allAffiliates = [];
+let editingAffiliateId = null;
 let subStats = {};
 let currentUser = null;
 let sortField = 'name';
@@ -2075,6 +2170,11 @@ let dsPollTimer = null;
     $('sidebarUser').textContent = currentUser.name;
     $('topbarName').textContent = currentUser.name;
     $('topbarAvatar').textContent = (currentUser.name || 'A')[0].toUpperCase();
+
+    const affHelp = $('affiliateLinkHelp');
+    if (affHelp && typeof window.location.origin === 'string') {
+      affHelp.textContent = window.location.origin + '/api/affiliate/click?code=YOURCODE&next=/register/';
+    }
 
     await Promise.all([loadUsers(), loadSessions(), loadDatasets(), loadSubStats()]);
     renderOverview();
@@ -2898,6 +2998,148 @@ async function deleteCoupon(id, name) {
     toast('Coupon deleted', 'ok');
     await loadCoupons();
   } catch (e) { toast(e.message, 'err'); }
+}
+
+// ─── Affiliates ───────────────────────────────────────────────
+async function loadAffiliates() {
+  try {
+    const data = await api('/api/admin/affiliates');
+    allAffiliates = data.affiliates || [];
+    renderAffiliates();
+  } catch (e) { toast('Failed to load affiliates: ' + e.message, 'err'); }
+}
+
+function renderAffiliates() {
+  const tbody = $('affiliatesBody');
+  const empty = $('emptyAffiliates');
+  const badge = $('affiliateCountBadge');
+  if (badge) badge.textContent = allAffiliates.length;
+  if (!allAffiliates.length) {
+    tbody.innerHTML = '';
+    if (empty) empty.style.display = '';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  tbody.innerHTML = allAffiliates.map(a => {
+    const st = a.stats || {};
+    const sc = a.stripe_coupon_id || '—';
+    return `<tr>
+      <td>${esc(a.name || '')}</td>
+      <td><code style="font-size:11px">${esc(a.promo_code || '')}</code></td>
+      <td style="font-size:11px;max-width:120px;word-break:break-all">${esc(sc)}</td>
+      <td>${st.users_attributed ?? 0}</td>
+      <td>${st.signups ?? 0}</td>
+      <td>${st.logins ?? 0}</td>
+      <td>${st.purchases ?? 0}</td>
+      <td>$${Number(st.revenue || 0).toFixed(2)}</td>
+      <td style="white-space:nowrap">
+        <button type="button" class="btn sm" onclick="openAffiliateModal(${a.id})">Edit</button>
+        <button type="button" class="btn sm" onclick="showAffiliateEvents(${a.id})">Events</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openAffiliateModal(id) {
+  editingAffiliateId = id;
+  const title = $('affiliateModalTitle');
+  const promo = $('affPromoCode');
+  if (id) {
+    const a = allAffiliates.find(x => x.id === id);
+    if (!a) return;
+    title.textContent = 'Edit affiliate';
+    $('affName').value = a.name || '';
+    promo.value = a.promo_code || '';
+    promo.disabled = true;
+    $('affStripeCouponId').value = a.stripe_coupon_id || '';
+    $('affContactEmail').value = a.contact_email || '';
+    $('affNotes').value = a.notes || '';
+    $('affActive').checked = a.is_active !== false;
+  } else {
+    title.textContent = 'New affiliate';
+    $('affName').value = '';
+    promo.value = '';
+    promo.disabled = false;
+    $('affStripeCouponId').value = '';
+    $('affContactEmail').value = '';
+    $('affNotes').value = '';
+    $('affActive').checked = true;
+  }
+  $('affiliateModal').classList.add('open');
+}
+
+async function saveAffiliateProfile() {
+  const name = $('affName').value.trim();
+  const promo = $('affPromoCode').value.trim().toUpperCase();
+  if (!name) return toast('Name is required', 'err');
+  if (!editingAffiliateId && !promo) return toast('Promo code is required', 'err');
+  const body = {
+    name,
+    promo_code: promo,
+    stripe_coupon_id: $('affStripeCouponId').value.trim() || null,
+    contact_email: $('affContactEmail').value.trim() || null,
+    notes: $('affNotes').value.trim() || null,
+    is_active: $('affActive').checked
+  };
+  try {
+    if (editingAffiliateId) {
+      await api(`/api/admin/affiliates/${editingAffiliateId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: body.name,
+          stripe_coupon_id: body.stripe_coupon_id,
+          contact_email: body.contact_email,
+          notes: body.notes,
+          is_active: body.is_active
+        })
+      });
+    } else {
+      await api('/api/admin/affiliates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+    }
+    toast('Saved', 'ok');
+    $('affiliateModal').classList.remove('open');
+    await loadAffiliates();
+  } catch (e) { toast(e.message || 'Save failed', 'err'); }
+}
+
+async function showAffiliateEvents(id) {
+  const ap = allAffiliates.find(x => x.id === id);
+  $('affiliateEventsTitle').textContent = 'Events — ' + (ap && ap.name ? ap.name : ('#' + id));
+  const tbody = $('affiliateEventsBody');
+  const empty = $('affiliateEventsEmpty');
+  tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted)">Loading…</td></tr>';
+  empty.style.display = 'none';
+  $('affiliateEventsModal').classList.add('open');
+  try {
+    const data = await api('/api/admin/affiliates/' + id + '/events?limit=200');
+    const evs = data.events || [];
+    if (!evs.length) {
+      tbody.innerHTML = '';
+      empty.style.display = '';
+      return;
+    }
+    empty.style.display = 'none';
+    tbody.innerHTML = evs.map(ev => {
+      const amt = ev.event_type === 'purchase' && ev.amount != null
+        ? ('$' + Number(ev.amount).toFixed(2) + ' ' + (ev.currency || '').toUpperCase())
+        : '—';
+      const who = ev.user_email || ev.user_name || ('#' + ev.user_id);
+      return `<tr>
+        <td style="font-size:11px;white-space:nowrap">${esc(ev.created_at || '')}</td>
+        <td>${esc(ev.event_type || '')}</td>
+        <td style="font-size:12px">${esc(who)}</td>
+        <td>${esc(amt)}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = '';
+    toast(e.message || 'Failed to load events', 'err');
+  }
 }
 
 function openAssignSubModal(userId, userName) {

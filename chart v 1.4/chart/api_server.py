@@ -195,6 +195,9 @@ SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").strip().lowe
 SESSION_COOKIE_SAMESITE = (os.getenv("SESSION_COOKIE_SAMESITE", "lax").strip().lower() or "lax")
 SESSION_COOKIE_MAX_AGE_SECONDS = int(os.getenv("SESSION_COOKIE_MAX_AGE_SECONDS", "1209600"))
 
+AFFILIATE_COOKIE_NAME = (os.getenv("AFFILIATE_COOKIE_NAME", "talaria_aff").strip() or "talaria_aff")
+AFFILIATE_COOKIE_MAX_AGE_SECONDS = int(os.getenv("AFFILIATE_COOKIE_MAX_AGE_SECONDS", str(90 * 24 * 3600)))
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def _sqlite_path_from_url(url: str) -> Path | None:
@@ -503,6 +506,50 @@ class SupportThreadRead(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class Affiliate(Base):
+    """Partner profile: promo code matches Stripe promotion code for checkout + tracking."""
+
+    __tablename__ = "affiliates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False)
+    contact_email = Column(String(255), nullable=True)
+    promo_code = Column(String(64), nullable=False, unique=True, index=True)
+    stripe_coupon_id = Column(String(100), nullable=True)
+    notes = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AffiliateAttribution(Base):
+    """First-touch: which affiliate referred this user (one row per user)."""
+
+    __tablename__ = "affiliate_attributions"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_affiliate_attr_user"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    affiliate_id = Column(Integer, ForeignKey("affiliates.id"), index=True, nullable=False)
+    source = Column(String(32), nullable=False, default="cookie")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AffiliateEvent(Base):
+    """signup | login | purchase events for reporting."""
+
+    __tablename__ = "affiliate_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    affiliate_id = Column(Integer, ForeignKey("affiliates.id"), index=True, nullable=False)
+    user_id = Column(Integer, index=True, nullable=False)
+    event_type = Column(String(32), nullable=False)
+    payment_id = Column(Integer, ForeignKey("payments.id"), nullable=True, index=True)
+    amount = Column(Float, nullable=True)
+    currency = Column(String(8), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 # Create chart-specific tables only — exclude 'users' (managed by journal-backend).
 _CHART_TABLES = [
     CSVFile.__table__,
@@ -517,6 +564,9 @@ _CHART_TABLES = [
     SupportAttachment.__table__,
     Notification.__table__,
     SupportThreadRead.__table__,
+    Affiliate.__table__,
+    AffiliateAttribution.__table__,
+    AffiliateEvent.__table__,
 ]
 Base.metadata.create_all(bind=engine, tables=_CHART_TABLES)
 
@@ -586,6 +636,143 @@ def _set_session_cookie(response: Response, session_id: str, request: Request | 
 
 def _clear_session_cookie(response: Response):
     response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
+
+
+def _normalize_affiliate_code(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    s = raw.strip().upper()
+    if len(s) < 2 or len(s) > 64:
+        return None
+    if not re.match(r"^[A-Z0-9][A-Z0-9_-]*$", s):
+        return None
+    return s
+
+
+def _set_affiliate_cookie(response: Response, code: str, request: Request | None = None):
+    normalized = _normalize_affiliate_code(code)
+    if not normalized:
+        return
+    secure_flag = SESSION_COOKIE_SECURE
+    if _is_https_request(request):
+        secure_flag = True
+    elif request is not None:
+        secure_flag = False
+    response.set_cookie(
+        key=AFFILIATE_COOKIE_NAME,
+        value=normalized,
+        max_age=AFFILIATE_COOKIE_MAX_AGE_SECONDS,
+        httponly=True,
+        secure=secure_flag,
+        samesite=SESSION_COOKIE_SAMESITE,
+        path="/",
+    )
+
+
+def _clear_affiliate_cookie(response: Response):
+    response.delete_cookie(key=AFFILIATE_COOKIE_NAME, path="/")
+
+
+def _affiliate_code_from_request(request: Request) -> str | None:
+    return _normalize_affiliate_code(request.cookies.get(AFFILIATE_COOKIE_NAME))
+
+
+def _affiliate_record_login_if_needed(db, affiliate_id: int, user_id: int) -> None:
+    day_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    exists = (
+        db.query(AffiliateEvent)
+        .filter(
+            AffiliateEvent.affiliate_id == affiliate_id,
+            AffiliateEvent.user_id == user_id,
+            AffiliateEvent.event_type == "login",
+            AffiliateEvent.created_at >= day_start,
+        )
+        .first()
+    )
+    if exists:
+        return
+    db.add(
+        AffiliateEvent(
+            affiliate_id=affiliate_id,
+            user_id=user_id,
+            event_type="login",
+            amount=None,
+            currency=None,
+        )
+    )
+
+
+def _affiliate_sync_purchases(db, user_id: int) -> None:
+    att = db.query(AffiliateAttribution).filter(AffiliateAttribution.user_id == user_id).first()
+    if not att:
+        return
+    paid = (
+        db.query(Payment)
+        .filter(
+            Payment.user_id == user_id,
+            Payment.status == "succeeded",
+            Payment.refunded == False,
+        )
+        .all()
+    )
+    if not paid:
+        return
+    existing_pids = {
+        e[0]
+        for e in db.query(AffiliateEvent.payment_id)
+        .filter(
+            AffiliateEvent.user_id == user_id,
+            AffiliateEvent.event_type == "purchase",
+            AffiliateEvent.payment_id.isnot(None),
+        )
+        .all()
+    }
+    for p in paid:
+        if p.id in existing_pids:
+            continue
+        db.add(
+            AffiliateEvent(
+                affiliate_id=att.affiliate_id,
+                user_id=user_id,
+                event_type="purchase",
+                payment_id=p.id,
+                amount=float(p.amount) if p.amount is not None else None,
+                currency=(p.currency or "usd").lower(),
+            )
+        )
+
+
+def _affiliate_post_auth(db, user: User, request: Request, explicit_code: str | None, *, is_signup: bool) -> None:
+    code = _normalize_affiliate_code(explicit_code) or _affiliate_code_from_request(request)
+    aff = None
+    if code:
+        aff = db.query(Affiliate).filter(Affiliate.promo_code == code, Affiliate.is_active == True).first()
+    existing = db.query(AffiliateAttribution).filter(AffiliateAttribution.user_id == user.id).first()
+    src = "body" if _normalize_affiliate_code(explicit_code) else "cookie"
+
+    if aff and not existing:
+        db.add(
+            AffiliateAttribution(
+                user_id=user.id,
+                affiliate_id=aff.id,
+                source=src,
+            )
+        )
+        db.flush()
+        db.add(
+            AffiliateEvent(
+                affiliate_id=aff.id,
+                user_id=user.id,
+                event_type="signup" if is_signup else "login",
+                amount=None,
+                currency=None,
+            )
+        )
+    elif existing and not is_signup:
+        _affiliate_record_login_if_needed(db, existing.affiliate_id, user.id)
+
+    _affiliate_sync_purchases(db, user.id)
+
 
 def _get_user_from_request(request: Request):
     session_id = request.cookies.get(SESSION_COOKIE_NAME)
@@ -1016,7 +1203,11 @@ async def auth_middleware(request: Request, call_next):
         protected = True
     if path in {"/index.html", "/backtesting.html"}:
         protected = True
-    if path.startswith("/api/") and not (path == "/api/status" or path.startswith("/api/auth/")):
+    if path.startswith("/api/") and not (
+        path == "/api/status"
+        or path.startswith("/api/auth/")
+        or path.startswith("/api/affiliate/")
+    ):
         protected = True
 
     if not protected:
@@ -2971,10 +3162,12 @@ class SignUpIn(BaseModel):
     name: str
     email: str
     password: str
+    affiliate_code: str | None = None
 
 class LoginIn(BaseModel):
     email: str
     password: str
+    affiliate_code: str | None = None
 
 class BootcampRegistrationIn(BaseModel):
     full_name: str
@@ -3616,7 +3809,7 @@ def _dataset_settings_public_dict(settings: DatasetSettings | None, file_obj: CS
     }
 
 @app.post("/api/auth/signup")
-async def auth_signup(payload: SignUpIn):
+async def auth_signup(payload: SignUpIn, request: Request):
     email = payload.email.strip().lower()
     name = payload.name.strip()
     if not email or not name or not payload.password:
@@ -3638,6 +3831,11 @@ async def auth_signup(payload: SignUpIn):
         db.add(user)
         db.commit()
         db.refresh(user)
+        try:
+            _affiliate_post_auth(db, user, request, payload.affiliate_code, is_signup=True)
+            db.commit()
+        except Exception:
+            db.rollback()
         return {"success": True, "user": _user_public_dict(user)}
     finally:
         db.close()
@@ -3681,9 +3879,31 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
         db.commit()
 
         _set_session_cookie(response, session_id, request=request)
+        try:
+            _affiliate_post_auth(db, user, request, payload.affiliate_code, is_signup=False)
+            db.commit()
+        except Exception:
+            db.rollback()
         return {"success": True, "user": _user_public_dict(user)}
     finally:
         db.close()
+
+
+@app.get("/api/affiliate/click")
+async def affiliate_click_redirect(
+    request: Request,
+    response: Response,
+    code: str = Query(...),
+    next: str = Query("/"),
+):
+    """Set affiliate tracking cookie and redirect. Use: /api/affiliate/click?code=PROMO&next=/register/"""
+    normalized = _normalize_affiliate_code(code)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Invalid code")
+    safe_next = next if (next.startswith("/") and not next.startswith("//")) else "/"
+    _set_affiliate_cookie(response, normalized, request=request)
+    return RedirectResponse(url=safe_next, status_code=302)
+
 
 @app.post("/api/auth/logout")
 async def auth_logout(request: Request, response: Response):
@@ -5316,6 +5536,186 @@ async def admin_delete_coupon(coupon_id: str, request: Request):
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  ADMIN — Affiliates (promo code + login / purchase tracking)
+# ═══════════════════════════════════════════════════════════════════
+
+
+class AffiliateCreateIn(BaseModel):
+    name: str = Field(..., max_length=200)
+    promo_code: str = Field(..., max_length=64)
+    stripe_coupon_id: str | None = Field(None, max_length=100)
+    contact_email: str | None = Field(None, max_length=255)
+    notes: str | None = None
+    is_active: bool = True
+
+
+class AffiliateUpdateIn(BaseModel):
+    name: str | None = Field(None, max_length=200)
+    stripe_coupon_id: str | None = Field(None, max_length=100)
+    contact_email: str | None = Field(None, max_length=255)
+    notes: str | None = None
+    is_active: bool | None = None
+
+
+def _affiliate_row_dict(db, a: Affiliate) -> dict:
+    aid = int(a.id)
+    signups = (
+        db.query(AffiliateEvent)
+        .filter(AffiliateEvent.affiliate_id == aid, AffiliateEvent.event_type == "signup")
+        .count()
+    )
+    logins = (
+        db.query(AffiliateEvent)
+        .filter(AffiliateEvent.affiliate_id == aid, AffiliateEvent.event_type == "login")
+        .count()
+    )
+    purchases = (
+        db.query(AffiliateEvent)
+        .filter(AffiliateEvent.affiliate_id == aid, AffiliateEvent.event_type == "purchase")
+        .count()
+    )
+    rev = (
+        db.query(func.coalesce(func.sum(AffiliateEvent.amount), 0))
+        .filter(AffiliateEvent.affiliate_id == aid, AffiliateEvent.event_type == "purchase")
+        .scalar()
+        or 0
+    )
+    users_attributed = db.query(AffiliateAttribution).filter(AffiliateAttribution.affiliate_id == aid).count()
+    return {
+        "id": a.id,
+        "name": a.name,
+        "contact_email": a.contact_email,
+        "promo_code": a.promo_code,
+        "stripe_coupon_id": a.stripe_coupon_id,
+        "notes": a.notes,
+        "is_active": bool(a.is_active),
+        "created_at": a.created_at.isoformat() if a.created_at else None,
+        "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+        "stats": {
+            "users_attributed": users_attributed,
+            "signups": signups,
+            "logins": logins,
+            "purchases": purchases,
+            "revenue": round(float(rev), 2),
+        },
+    }
+
+
+@app.get("/api/admin/affiliates")
+async def admin_list_affiliates(request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        rows = db.query(Affiliate).order_by(Affiliate.id.desc()).all()
+        return {"affiliates": [_affiliate_row_dict(db, a) for a in rows]}
+    finally:
+        db.close()
+
+
+@app.post("/api/admin/affiliates")
+async def admin_create_affiliate(payload: AffiliateCreateIn, request: Request):
+    _require_admin(request)
+    code = _normalize_affiliate_code(payload.promo_code)
+    if not code:
+        raise HTTPException(status_code=400, detail="Invalid promo code (use letters, numbers, - or _)")
+    db = SessionLocal()
+    try:
+        clash = db.query(Affiliate).filter(Affiliate.promo_code == code).first()
+        if clash:
+            raise HTTPException(status_code=400, detail="Promo code already in use")
+        a = Affiliate(
+            name=payload.name.strip(),
+            contact_email=(payload.contact_email or "").strip() or None,
+            promo_code=code,
+            stripe_coupon_id=(payload.stripe_coupon_id or "").strip() or None,
+            notes=payload.notes,
+            is_active=payload.is_active,
+        )
+        db.add(a)
+        db.commit()
+        db.refresh(a)
+        return {"affiliate": _affiliate_row_dict(db, a)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+
+@app.patch("/api/admin/affiliates/{affiliate_id}")
+async def admin_update_affiliate(affiliate_id: int, payload: AffiliateUpdateIn, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        a = db.query(Affiliate).filter(Affiliate.id == affiliate_id).first()
+        if not a:
+            raise HTTPException(status_code=404, detail="Affiliate not found")
+        if payload.name is not None:
+            a.name = payload.name.strip()
+        if payload.stripe_coupon_id is not None:
+            a.stripe_coupon_id = payload.stripe_coupon_id.strip() or None
+        if payload.contact_email is not None:
+            a.contact_email = payload.contact_email.strip() or None
+        if payload.notes is not None:
+            a.notes = payload.notes
+        if payload.is_active is not None:
+            a.is_active = payload.is_active
+        a.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(a)
+        return {"affiliate": _affiliate_row_dict(db, a)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+
+@app.get("/api/admin/affiliates/{affiliate_id}/events")
+async def admin_affiliate_events(
+    affiliate_id: int,
+    request: Request,
+    limit: int = Query(100, ge=1, le=500),
+):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        a = db.query(Affiliate).filter(Affiliate.id == affiliate_id).first()
+        if not a:
+            raise HTTPException(status_code=404, detail="Affiliate not found")
+        evs = (
+            db.query(AffiliateEvent)
+            .filter(AffiliateEvent.affiliate_id == affiliate_id)
+            .order_by(AffiliateEvent.id.desc())
+            .limit(limit)
+            .all()
+        )
+        out = []
+        for e in evs:
+            u = db.query(User).filter(User.id == e.user_id).first()
+            out.append(
+                {
+                    "id": e.id,
+                    "event_type": e.event_type,
+                    "user_id": e.user_id,
+                    "user_email": u.email if u else None,
+                    "user_name": u.name if u else None,
+                    "payment_id": e.payment_id,
+                    "amount": e.amount,
+                    "currency": e.currency,
+                    "created_at": e.created_at.isoformat() if e.created_at else None,
+                }
+            )
+        return {"events": out}
+    finally:
+        db.close()
 
 
 # ═══════════════════════════════════════════════════════════════════
