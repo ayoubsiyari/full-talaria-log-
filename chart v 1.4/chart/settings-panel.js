@@ -38,8 +38,8 @@ window._spPanels = {};
     }
 
     window._spLoad = function(type, el) {
-        /* update active state */
-        panel.querySelectorAll('.sp-nav-item').forEach(function(n){ n.classList.remove('active'); });
+        /* update active state (scope to settings nav only — other panels also use .sp-nav-item) */
+        panel.querySelectorAll('.sp-nav-item[data-settings]').forEach(function(n){ n.classList.remove('active'); });
         if (el) el.classList.add('active');
         loadSection(type);
     };
@@ -51,7 +51,7 @@ window._spPanels = {};
         item.addEventListener('click', function(e){
             e.stopPropagation();
             var type = this.dataset.settings;
-            panel.querySelectorAll('.sp-nav-item').forEach(function(n){ n.classList.remove('active'); });
+            panel.querySelectorAll('.sp-nav-item[data-settings]').forEach(function(n){ n.classList.remove('active'); });
             this.classList.add('active');
             loadSection(type);
         });
@@ -63,27 +63,29 @@ window._spPanels = {};
             if (typeof window._openProfileHelpPanel === 'function') window._openProfileHelpPanel();
             return;
         }
-        console.log('[SP] loadSection:', type, '| panel registered:', !!window._spPanels[type], '| contEl:', !!contEl);
+        /* Match index.html: canvas tab uses the same panel builder as symbol */
+        if (type === 'canvas') type = 'symbol';
+        /* Prefer window.P (rich Chart/Trading/… builders in index.html), then _spPanels from this file + ext */
+        var def = (window.P && window.P[type]) || (window._spPanels && window._spPanels[type]);
+        console.log('[SP] loadSection:', type, '| panel:', !!def, '| contEl:', !!contEl);
         currentType = type;
         var titles = { general:'General Settings', chart:'Chart Settings', project:'Project Settings', leverage:'Leverage', symbol:'Symbol Properties', commissions:'Commissions' };
         if (titleEl) titleEl.textContent = titles[type] || type;
-        panel.querySelectorAll('.sp-nav-item').forEach(function(n){
+        panel.querySelectorAll('.sp-nav-item[data-settings]').forEach(function(n){
             n.classList.toggle('active', n.dataset.settings === type);
         });
         /* re-query contEl in case DOM changed */
         var el = document.getElementById('settingsPanelContent');
         if (!el) { console.warn('[SP] settingsPanelContent not found'); return; }
         try {
-            var p = window._spPanels[type];
-            el.innerHTML = p ? p.build() : '<p style="color:#787b86;padding:20px 0;">Coming soon — <b>'+type+'</b></p>';
+            el.innerHTML = def ? def.build() : '<p style="color:#787b86;padding:20px 0;">Coming soon — <b>'+type+'</b></p>';
             console.log('[SP] content set, length:', el.innerHTML.length);
         } catch(e) {
             el.innerHTML = '<p style="color:#f23645;padding:20px;">Build error: '+e.message+'</p>';
             console.error('[SP] build error:', e);
         }
         try {
-            var p2 = window._spPanels[type];
-            if (p2 && p2.wire) p2.wire();
+            if (def && def.wire) def.wire();
         } catch(e) { console.error('[SP] wire error:', e); }
     }
 
@@ -308,7 +310,7 @@ window._spPanels = {};
     /* ── _spOpen: open panel on a specific section ── */
     window._spOpen = function(section) {
         if (!panel) return;
-        panel.querySelectorAll('.sp-nav-item').forEach(function(n){ n.classList.remove('active'); });
+        panel.querySelectorAll('.sp-nav-item[data-settings]').forEach(function(n){ n.classList.remove('active'); });
         var navItem = panel.querySelector('.sp-nav-item[data-settings="'+section+'"]');
         if (navItem) navItem.classList.add('active');
         if (panel.classList.contains('open')) {

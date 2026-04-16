@@ -33,6 +33,11 @@ class PropFirmTracker {
         this.loadSession();
     }
 
+    /** Only prop-firm evaluation sessions should run challenge rules, modals, and toolbar updates. */
+    _isPropFirmChallenge() {
+        return !!(this.sessionData && this.sessionData.type === 'propfirm');
+    }
+
     // Load prop firm session from localStorage
     loadSession() {
         try {
@@ -48,43 +53,51 @@ class PropFirmTracker {
             }
 
             const session = userStorage.getItem('backtestingSession');
-            if (session) {
-                this.sessionData = JSON.parse(session);
-                
-                if (this.sessionData.type === 'propfirm') {
-                    const sb = Number.parseFloat(this.sessionData.startBalance ?? this.sessionData.balance);
-                    this.startBalance = Number.isFinite(sb) && sb > 0 ? sb : 10000;
-                    this.currentBalance = this.startBalance;
-                    this.peakBalance = this.startBalance;
-                    
-                    const md = this.sessionData.maxDailyLoss || {};
-                    const mt = this.sessionData.maxTotalLoss || {};
-                    const mdp = Number(md.percent);
-                    const mtp = Number(mt.percent);
-                    const mdd = Number(md.dollar);
-                    const mtd = Number(mt.dollar);
-                    const dailyPct = Number.isFinite(mdp) ? mdp : 5;
-                    const totalPct = Number.isFinite(mtp) ? mtp : 10;
-                    this.rules = {
-                        minTradingDays: this.sessionData.minTradingDays ?? 1,
-                        profitTarget: this.sessionData.profitTarget || 10,
-                        maxDailyLoss: dailyPct,
-                        maxTotalLoss: totalPct,
-                        maxDailyLossUsd: Number.isFinite(mdd) ? mdd : (this.startBalance * dailyPct / 100),
-                        maxTotalLossUsd: Number.isFinite(mtd) ? mtd : (this.startBalance * totalPct / 100)
-                    };
-                    
-                    console.log('✅ Prop Firm Tracker initialized:', {
-                        startBalance: this.startBalance,
-                        rules: this.rules
-                    });
-                    return true;
-                }
+            if (!session) {
+                this.sessionData = null;
+                return false;
             }
+
+            const parsed = JSON.parse(session);
+            if (parsed.type !== 'propfirm') {
+                // Personal / standard backtest sessions share the same key; do not treat them as challenges.
+                this.sessionData = null;
+                return false;
+            }
+
+            this.sessionData = parsed;
+            const sb = Number.parseFloat(this.sessionData.startBalance ?? this.sessionData.balance);
+            this.startBalance = Number.isFinite(sb) && sb > 0 ? sb : 10000;
+            this.currentBalance = this.startBalance;
+            this.peakBalance = this.startBalance;
+
+            const md = this.sessionData.maxDailyLoss || {};
+            const mt = this.sessionData.maxTotalLoss || {};
+            const mdp = Number(md.percent);
+            const mtp = Number(mt.percent);
+            const mdd = Number(md.dollar);
+            const mtd = Number(mt.dollar);
+            const dailyPct = Number.isFinite(mdp) ? mdp : 5;
+            const totalPct = Number.isFinite(mtp) ? mtp : 10;
+            this.rules = {
+                minTradingDays: this.sessionData.minTradingDays ?? 1,
+                profitTarget: this.sessionData.profitTarget || 10,
+                maxDailyLoss: dailyPct,
+                maxTotalLoss: totalPct,
+                maxDailyLossUsd: Number.isFinite(mdd) ? mdd : (this.startBalance * dailyPct / 100),
+                maxTotalLossUsd: Number.isFinite(mtd) ? mtd : (this.startBalance * totalPct / 100)
+            };
+
+            console.log('✅ Prop Firm Tracker initialized:', {
+                startBalance: this.startBalance,
+                rules: this.rules
+            });
+            return true;
         } catch (e) {
             console.error('Error loading prop firm session:', e);
+            this.sessionData = null;
+            return false;
         }
-        return false;
     }
 
     // Record a trade
@@ -264,6 +277,9 @@ class PropFirmTracker {
 
     // Check all rules and update violations
     checkRules(skipModalTrigger = false) {
+        if (!this._isPropFirmChallenge()) {
+            return true;
+        }
         const dailyBreached = this.isDailyLossBreached();
         const totalBreached = this.isTotalLossBreached();
         this.violations.dailyLoss = dailyBreached;
@@ -417,6 +433,9 @@ class PropFirmTracker {
 
     // Update UI with current progress
     updateUI() {
+        if (!this._isPropFirmChallenge()) {
+            return;
+        }
         const summary = this.getProgressSummary();
         
         console.log('📊 Updating Challenge Progress UI:', summary);
@@ -561,6 +580,9 @@ class PropFirmTracker {
 
     // Update balance (called externally when balance changes)
     updateBalance(newBalance) {
+        if (!this._isPropFirmChallenge()) {
+            return;
+        }
         console.log(`💰 Balance updated: $${this.currentBalance.toFixed(2)} → $${newBalance.toFixed(2)}`);
         this.currentBalance = newBalance;
         this.peakBalance = Math.max(this.peakBalance, this.currentBalance);
@@ -570,6 +592,9 @@ class PropFirmTracker {
 
     // Show challenge failed modal
     showChallengeFailedModal(ruleName) {
+        if (!this._isPropFirmChallenge()) {
+            return;
+        }
         // Don't show if already shown
         if (this.failedModalShown) {
             console.log('⚠️ Failed modal already shown, skipping');
@@ -614,6 +639,9 @@ class PropFirmTracker {
 
     // Show challenge passed modal
     showChallengePassedModal() {
+        if (!this._isPropFirmChallenge()) {
+            return;
+        }
         // Don't show if already shown (but this is already handled by profitTargetReachedShown flag)
         const modal = document.getElementById('challengePassedModal');
         if (!modal) return;
@@ -647,6 +675,9 @@ class PropFirmTracker {
 
     // Reset tracker (for new day, new challenge, etc.)
     reset() {
+        if (!this._isPropFirmChallenge()) {
+            return;
+        }
         this.currentBalance = this.startBalance;
         this.peakBalance = this.startBalance;
         this.tradingDays.clear();
