@@ -1129,11 +1129,19 @@ select { cursor: pointer; }
   <div class="modal" style="max-width:520px">
     <h2 id="affiliateModalTitle">New affiliate</h2>
     <p class="text-muted" style="font-size:12px;color:var(--text-muted);margin:-8px 0 12px;line-height:1.45">
-      Use the <strong>same promo code</strong> you create under Coupons &amp; Stripe so checkout discounts match tracking.
+      Use the <strong>exact same promo code</strong> as in <em>Subscriptions → New Coupon</em>. That flow already creates the code in Stripe — we match it automatically when you save or refresh the Affiliates list. No second Stripe setup needed.
     </p>
     <div class="form-grid">
       <div class="field fg-full"><label>Display name</label><input type="text" id="affName" placeholder="Partner or campaign name" maxlength="200"></div>
-      <div class="field fg-full"><label>Promo code</label><input type="text" id="affPromoCode" placeholder="e.g. PARTNER20" style="text-transform:uppercase" maxlength="64"></div>
+      <div class="field fg-full"><label>Promo code</label><input type="text" id="affPromoCode" placeholder="Same as coupon code (e.g. PARTNER20)" style="text-transform:uppercase" maxlength="64"></div>
+      <details class="fg-full" id="affStripeCreateWrap" style="grid-column:1/-1">
+        <summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">Advanced — create Stripe coupon from here (only if you do not use Coupons)</summary>
+        <div class="field fg-full" style="margin-top:10px">
+          <label>% off (creates Stripe coupon + code)</label>
+          <input type="number" id="affStripePct" min="0" max="100" step="1" placeholder="e.g. 20" style="max-width:220px">
+          <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:4px">New affiliate only. Prefer creating the code under Coupons first.</span>
+        </div>
+      </details>
       <div class="field fg-full"><label>Stripe coupon ID (optional)</label><input type="text" id="affStripeCouponId" placeholder="e.g. jTeqLdG8 — copy from Stripe or list above" maxlength="100"></div>
       <div class="field fg-full"><label>Contact email (optional)</label><input type="email" id="affContactEmail" placeholder="partner@example.com" maxlength="255"></div>
       <div class="field fg-full"><label>Notes</label><textarea id="affNotes" rows="2" placeholder="Internal notes"></textarea></div>
@@ -1606,8 +1614,8 @@ select { cursor: pointer; }
             </button>
           </div>
           <div class="card-body" style="font-size:13px;line-height:1.5;color:var(--text-secondary)">
-            <p style="margin:0 0 8px">Create a profile with the <strong>same promo code</strong> as in <em>Subscriptions → Coupons</em> so Stripe applies the discount and attribution matches.</p>
-            <p style="margin:0">Share a tracking link (sets a cookie, then sends users to signup or pricing):</p>
+            <p style="margin:0 0 8px">Your <strong>Coupons</strong> flow already creates codes in Stripe. Enter the <strong>same</strong> promo string here for tracking; opening this page refreshes the link to Stripe automatically.</p>
+            <p style="margin:0">Share a tracking link (cookie, then signup/pricing). Checkout must use the same Stripe account as this API (<code>STRIPE_SECRET_KEY</code>).</p>
             <code id="affiliateLinkHelp" style="display:block;margin-top:8px;padding:10px 12px;background:var(--surface-raised);border-radius:var(--radius-sm);font-size:11px;word-break:break-all;color:var(--accent)">/api/affiliate/click?code=YOURCODE&amp;next=/register/</code>
           </div>
         </div>
@@ -1624,7 +1632,7 @@ select { cursor: pointer; }
                 <tr>
                   <th>Name</th>
                   <th>Promo</th>
-                  <th>Stripe coupon</th>
+                  <th>Stripe</th>
                   <th>Users</th>
                   <th>Signups</th>
                   <th>Logins</th>
@@ -3023,10 +3031,11 @@ function renderAffiliates() {
   tbody.innerHTML = allAffiliates.map(a => {
     const st = a.stats || {};
     const sc = a.stripe_coupon_id || '—';
+    const ok = a.checkout_ready ? '<span title="Stripe linked" style="color:var(--ok)">●</span> ' : '<span title="Not linked — Sync or recreate with %" style="color:var(--warn)">●</span> ';
     return `<tr>
       <td>${esc(a.name || '')}</td>
       <td><code style="font-size:11px">${esc(a.promo_code || '')}</code></td>
-      <td style="font-size:11px;max-width:120px;word-break:break-all">${esc(sc)}</td>
+      <td style="font-size:11px;max-width:140px;word-break:break-all">${ok}${esc(sc)}</td>
       <td>${st.users_attributed ?? 0}</td>
       <td>${st.signups ?? 0}</td>
       <td>${st.logins ?? 0}</td>
@@ -3034,6 +3043,7 @@ function renderAffiliates() {
       <td>$${Number(st.revenue || 0).toFixed(2)}</td>
       <td style="white-space:nowrap">
         <button type="button" class="btn sm" onclick="openAffiliateModal(${a.id})">Edit</button>
+        <button type="button" class="btn sm" onclick="syncAffiliateStripe(${a.id})" title="Link Stripe coupon id from API">Sync</button>
         <button type="button" class="btn sm" onclick="showAffiliateEvents(${a.id})">Events</button>
       </td>
     </tr>`;
@@ -3044,6 +3054,10 @@ function openAffiliateModal(id) {
   editingAffiliateId = id;
   const title = $('affiliateModalTitle');
   const promo = $('affPromoCode');
+  const wrap = $('affStripeCreateWrap');
+  const pct = $('affStripePct');
+  if (pct) pct.value = '';
+  if (wrap) wrap.style.display = id ? 'none' : '';
   if (id) {
     const a = allAffiliates.find(x => x.id === id);
     if (!a) return;
@@ -3081,6 +3095,11 @@ async function saveAffiliateProfile() {
     notes: $('affNotes').value.trim() || null,
     is_active: $('affActive').checked
   };
+  const pctRaw = $('affStripePct') && $('affStripePct').value.trim();
+  if (!editingAffiliateId && pctRaw !== '') {
+    const p = parseFloat(pctRaw);
+    if (!Number.isNaN(p) && p > 0) body.stripe_discount_percent = p;
+  }
   try {
     if (editingAffiliateId) {
       await api(`/api/admin/affiliates/${editingAffiliateId}`, {
@@ -3105,6 +3124,15 @@ async function saveAffiliateProfile() {
     $('affiliateModal').classList.remove('open');
     await loadAffiliates();
   } catch (e) { toast(e.message || 'Save failed', 'err'); }
+}
+
+async function syncAffiliateStripe(id) {
+  try {
+    const data = await api('/api/admin/affiliates/' + id + '/sync-stripe', { method: 'POST' });
+    const cid = data.stripe && data.stripe.coupon_id ? data.stripe.coupon_id : '';
+    toast(cid ? ('Stripe linked: ' + cid) : 'Stripe linked', 'ok');
+    await loadAffiliates();
+  } catch (e) { toast(e.message || 'Sync failed', 'err'); }
 }
 
 async function showAffiliateEvents(id) {

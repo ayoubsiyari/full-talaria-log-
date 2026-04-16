@@ -5543,6 +5543,114 @@ async def admin_delete_coupon(coupon_id: str, request: Request):
 # ═══════════════════════════════════════════════════════════════════
 
 
+def _stripe_client():
+    import stripe as _stripe
+
+    key = (os.environ.get("STRIPE_SECRET_KEY") or "").strip()
+    if not key:
+        return None
+    _stripe.api_key = key
+    return _stripe
+
+
+def _stripe_all_active_promotion_codes_to_coupon_ids() -> dict[str, str]:
+    """Map UPPERCASE promo code -> Stripe Coupon id for all active promotion codes."""
+    _stripe = _stripe_client()
+    if not _stripe:
+        return {}
+    out: dict[str, str] = {}
+    try:
+        lst = _stripe.PromotionCode.list(active=True, limit=100)
+        stream = lst.auto_paging_iter() if hasattr(lst, "auto_paging_iter") else lst.data
+        for pc in stream:
+            c = (getattr(pc, "code", None) or "").strip().upper()
+            if not c:
+                continue
+            promo = getattr(pc, "promotion", None)
+            cid = promo.coupon if promo else (pc.coupon.id if hasattr(pc, "coupon") and pc.coupon else None)
+            if cid:
+                out[c] = cid
+    except Exception:
+        pass
+    return out
+
+
+def _stripe_lookup_promotion_by_code(code: str) -> dict | None:
+    """If an active Stripe Promotion Code exists for `code`, return coupon_id + metadata."""
+    _stripe = _stripe_client()
+    if not _stripe:
+        return None
+    try:
+        lst = _stripe.PromotionCode.list(code=code, active=True, limit=1)
+        if not lst.data:
+            return None
+        pc = lst.data[0]
+        promo = getattr(pc, "promotion", None)
+        cid = promo.coupon if promo else (pc.coupon.id if hasattr(pc, "coupon") and pc.coupon else None)
+        if not cid:
+            return None
+        return {
+            "coupon_id": cid,
+            "promotion_code_id": pc.id,
+            "code": getattr(pc, "code", None) or code,
+        }
+    except Exception:
+        return None
+
+
+def _stripe_create_coupon_and_promo(
+    promo_code: str,
+    display_name: str,
+    *,
+    percent_off: float | None = None,
+    amount_off_usd: float | None = None,
+    duration: str = "once",
+    duration_in_months: int | None = None,
+    max_redemptions: int | None = None,
+) -> dict:
+    """Create Stripe Coupon + customer-facing Promotion Code (checkout accepts this code)."""
+    _stripe = _stripe_client()
+    if not _stripe:
+        raise HTTPException(status_code=503, detail="Stripe not configured (set STRIPE_SECRET_KEY)")
+    coupon_params: dict = {"name": (display_name or promo_code)[:80], "duration": duration or "once"}
+    if percent_off is not None:
+        coupon_params["percent_off"] = float(percent_off)
+    elif amount_off_usd is not None:
+        coupon_params["amount_off"] = int(round(float(amount_off_usd) * 100))
+        coupon_params["currency"] = "usd"
+    else:
+        raise HTTPException(status_code=400, detail="percent_off or amount_off_usd required to create a Stripe coupon")
+    if duration_in_months:
+        coupon_params["duration_in_months"] = int(duration_in_months)
+    if max_redemptions:
+        coupon_params["max_redemptions"] = int(max_redemptions)
+    coupon = _stripe.Coupon.create(**coupon_params)
+    extra = {"max_redemptions": int(max_redemptions)} if max_redemptions else {}
+    try:
+        promo = _stripe.PromotionCode.create(
+            promotion={"type": "coupon", "coupon": coupon.id},
+            code=promo_code,
+            **extra,
+        )
+    except Exception:
+        promo = _stripe.PromotionCode.create(coupon=coupon.id, code=promo_code, **extra)
+    return {"coupon_id": coupon.id, "promotion_code_id": promo.id, "code": getattr(promo, "code", None) or promo_code}
+
+
+def _affiliate_link_stripe_if_possible(db, a: Affiliate) -> bool:
+    """Set stripe_coupon_id from Stripe API if a promotion code exists for a.promo_code."""
+    if a.stripe_coupon_id:
+        return True
+    found = _stripe_lookup_promotion_by_code(a.promo_code)
+    if not found:
+        return False
+    a.stripe_coupon_id = found["coupon_id"]
+    a.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(a)
+    return True
+
+
 class AffiliateCreateIn(BaseModel):
     name: str = Field(..., max_length=200)
     promo_code: str = Field(..., max_length=64)
@@ -5550,6 +5658,12 @@ class AffiliateCreateIn(BaseModel):
     contact_email: str | None = Field(None, max_length=255)
     notes: str | None = None
     is_active: bool = True
+    # Optional: create Stripe Coupon + Promotion Code in one step (checkout will accept this code).
+    stripe_discount_percent: float | None = Field(None, ge=0, le=100)
+    stripe_discount_amount_usd: float | None = Field(None, ge=0)
+    stripe_coupon_duration: str = Field(default="once")
+    stripe_duration_in_months: int | None = Field(None, ge=1)
+    stripe_max_redemptions: int | None = Field(None, ge=0)
 
 
 class AffiliateUpdateIn(BaseModel):
@@ -5601,15 +5715,37 @@ def _affiliate_row_dict(db, a: Affiliate) -> dict:
             "purchases": purchases,
             "revenue": round(float(rev), 2),
         },
+        # True once we have stored the Stripe Coupon id (see Sync / create discount below).
+        "checkout_ready": bool(a.stripe_coupon_id),
     }
 
 
 @app.get("/api/admin/affiliates")
-async def admin_list_affiliates(request: Request):
+async def admin_list_affiliates(
+    request: Request,
+    auto_link_stripe: bool = Query(
+        True,
+        description="Match promo_code to active Stripe promotion codes (same as Coupons) and store stripe_coupon_id.",
+    ),
+):
     _require_admin(request)
     db = SessionLocal()
     try:
         rows = db.query(Affiliate).order_by(Affiliate.id.desc()).all()
+        if auto_link_stripe and _stripe_client():
+            pmap = _stripe_all_active_promotion_codes_to_coupon_ids()
+            changed = False
+            for a in rows:
+                if a.stripe_coupon_id:
+                    continue
+                key = (a.promo_code or "").strip().upper()
+                if key and key in pmap:
+                    a.stripe_coupon_id = pmap[key]
+                    a.updated_at = datetime.utcnow()
+                    changed = True
+            if changed:
+                db.commit()
+                rows = db.query(Affiliate).order_by(Affiliate.id.desc()).all()
         return {"affiliates": [_affiliate_row_dict(db, a) for a in rows]}
     finally:
         db.close()
@@ -5621,22 +5757,68 @@ async def admin_create_affiliate(payload: AffiliateCreateIn, request: Request):
     code = _normalize_affiliate_code(payload.promo_code)
     if not code:
         raise HTTPException(status_code=400, detail="Invalid promo code (use letters, numbers, - or _)")
+    if payload.stripe_discount_percent is not None and payload.stripe_discount_amount_usd is not None:
+        raise HTTPException(status_code=400, detail="Choose either percent off or amount off for Stripe, not both")
     db = SessionLocal()
     try:
         clash = db.query(Affiliate).filter(Affiliate.promo_code == code).first()
         if clash:
             raise HTTPException(status_code=400, detail="Promo code already in use")
+        manual_sid = (payload.stripe_coupon_id or "").strip() or None
         a = Affiliate(
             name=payload.name.strip(),
             contact_email=(payload.contact_email or "").strip() or None,
             promo_code=code,
-            stripe_coupon_id=(payload.stripe_coupon_id or "").strip() or None,
+            stripe_coupon_id=manual_sid,
             notes=payload.notes,
             is_active=payload.is_active,
         )
         db.add(a)
         db.commit()
         db.refresh(a)
+
+        if not manual_sid and (
+            payload.stripe_discount_percent is not None or payload.stripe_discount_amount_usd is not None
+        ):
+            try:
+                r = _stripe_create_coupon_and_promo(
+                    code,
+                    payload.name.strip(),
+                    percent_off=payload.stripe_discount_percent,
+                    amount_off_usd=payload.stripe_discount_amount_usd,
+                    duration=payload.stripe_coupon_duration or "once",
+                    duration_in_months=payload.stripe_duration_in_months,
+                    max_redemptions=payload.stripe_max_redemptions,
+                )
+                a.stripe_coupon_id = r["coupon_id"]
+                a.updated_at = datetime.utcnow()
+                db.commit()
+                db.refresh(a)
+            except HTTPException:
+                raise
+            except Exception as e:
+                found = _stripe_lookup_promotion_by_code(code)
+                if found:
+                    a.stripe_coupon_id = found["coupon_id"]
+                    a.updated_at = datetime.utcnow()
+                    db.commit()
+                    db.refresh(a)
+                else:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Could not create this code in Stripe (it may already exist). "
+                            f"Create it under Coupons first, then use Sync, or fix the error: {e!s}"
+                        ),
+                    )
+        elif not a.stripe_coupon_id:
+            found = _stripe_lookup_promotion_by_code(code)
+            if found:
+                a.stripe_coupon_id = found["coupon_id"]
+                a.updated_at = datetime.utcnow()
+                db.commit()
+                db.refresh(a)
+
         return {"affiliate": _affiliate_row_dict(db, a)}
     except HTTPException:
         raise
@@ -5669,6 +5851,40 @@ async def admin_update_affiliate(affiliate_id: int, payload: AffiliateUpdateIn, 
         db.commit()
         db.refresh(a)
         return {"affiliate": _affiliate_row_dict(db, a)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+
+@app.post("/api/admin/affiliates/{affiliate_id}/sync-stripe")
+async def admin_affiliate_sync_stripe(affiliate_id: int, request: Request):
+    """Look up promo_code in Stripe and store stripe_coupon_id so checkout can match this affiliate."""
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        a = db.query(Affiliate).filter(Affiliate.id == affiliate_id).first()
+        if not a:
+            raise HTTPException(status_code=404, detail="Affiliate not found")
+        if not _stripe_client():
+            raise HTTPException(status_code=503, detail="Stripe not configured (set STRIPE_SECRET_KEY)")
+        found = _stripe_lookup_promotion_by_code(a.promo_code)
+        if not found:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"No active Stripe promotion code matches '{a.promo_code}'. "
+                    "Create it in Subscriptions → New Coupon (same code), or add a discount when creating the affiliate."
+                ),
+            )
+        a.stripe_coupon_id = found["coupon_id"]
+        a.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(a)
+        return {"affiliate": _affiliate_row_dict(db, a), "stripe": found}
     except HTTPException:
         raise
     except Exception as e:
