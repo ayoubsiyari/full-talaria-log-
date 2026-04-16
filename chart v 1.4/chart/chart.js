@@ -2103,6 +2103,7 @@ class Chart {
             }
         } catch (e) {
             console.warn('⚠️ Failed to save critical trading session state', e);
+            this._notifyJournalNetworkError();
         }
     }
 
@@ -2116,6 +2117,18 @@ class Chart {
         }
         if (typeof this.showNotification === 'function') {
             this.showNotification(msg);
+        }
+    }
+
+    /**
+     * fetch() threw (e.g. TypeError: Failed to fetch) — no HTTP response. Usually: wrong host,
+     * nginx not proxying /api to the chart API, mixed content (HTTPS page → HTTP API), or API down.
+     */
+    _notifyJournalNetworkError() {
+        if (typeof this.showNotification === 'function') {
+            this.showNotification(
+                'Network error — trades not saved. Use one public URL for the app with /api proxied to the chart server (avoid file:// or mixed HTTP/HTTPS).'
+            );
         }
     }
 
@@ -2148,6 +2161,7 @@ class Chart {
             }
         } catch (e) {
             console.warn('⚠️ Failed to save trading session state', e);
+            this._notifyJournalNetworkError();
         }
     }
     
