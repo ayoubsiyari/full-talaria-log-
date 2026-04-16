@@ -2635,19 +2635,24 @@ html.iframe-mode .bt-modal-footer {
         });
 
 
-        // Form submission - Wait for window to load
-        window.addEventListener('load', function() {
-            console.log('📄 Window loaded, attaching form handler...');
-            
+        // Form submission: do NOT rely only on `window` "load". If the document is already complete
+        // when this script runs (iframes, bfcache, fast cache), "load" has already fired and a load
+        // listener never runs — so no submit handler, no preventDefault, no redirect.
+        function attachBacktestingFormSubmit() {
+            if (window.__backtestingFormSubmitAttached) return;
+            window.__backtestingFormSubmitAttached = true;
+
+            console.log('📄 Attaching backtesting form submit handler (readyState=' + document.readyState + ')');
+
             const backtestingForm = document.getElementById('backtestingForm');
             console.log('🔍 Form element found:', backtestingForm);
-            
+
             if (!backtestingForm) {
                 console.error('❌ CRITICAL: Form element not found!');
                 alert('ERROR: Form not found! Please refresh the page.');
                 return;
             }
-            
+
             backtestingForm.addEventListener('submit', async function(e) {
                 console.log('✅ Form submit event fired!');
                 e.preventDefault();
@@ -2827,7 +2832,13 @@ html.iframe-mode .bt-modal-footer {
                     }
                 }, 100);
             });
-        });
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', attachBacktestingFormSubmit);
+        } else {
+            attachBacktestingFormSubmit();
+        }
 
         // Dates will be auto-populated when user selects a file
 
