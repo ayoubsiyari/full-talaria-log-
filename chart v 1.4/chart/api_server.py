@@ -4074,7 +4074,13 @@ async def support_download_attachment(attachment_id: int, request: Request):
         if not path.is_file():
             raise HTTPException(status_code=404, detail="File missing")
         fname = att.original_name or "attachment.jpg"
-        return FileResponse(path, media_type=att.mime_type, filename=fname)
+        # inline so browsers show a full-size preview instead of forcing download
+        return FileResponse(
+            path,
+            media_type=att.mime_type,
+            filename=fname,
+            content_disposition_type="inline",
+        )
     finally:
         db.close()
 
