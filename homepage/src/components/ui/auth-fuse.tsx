@@ -46,6 +46,33 @@ function isJournalPublicNextPath(path: string): boolean {
   );
 }
 
+/**
+ * Same rules as SignInForm after a successful login. Used when the user is already
+ * authenticated (e.g. visits /login/) so we send them to the dashboard instead.
+ */
+export function getPostAuthRedirectUrl(opts: {
+  user: { role?: string; has_journal_access?: boolean };
+  nextPath?: string | null;
+}): string {
+  const raw = opts.nextPath;
+  const safeNext = raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : null;
+  const isAdmin = opts.user.role === "admin";
+  if (isAdmin) {
+    return safeNext || "/dashboard/admin/";
+  }
+  const hasAccess = !!opts.user.has_journal_access;
+  if (!hasAccess) {
+    if (safeNext && isJournalPublicNextPath(safeNext)) {
+      return safeNext;
+    }
+    return "/journal/pricing";
+  }
+  if (safeNext) {
+    return safeNext;
+  }
+  return "/dashboard/";
+}
+
 export interface TypewriterProps {
   text: string | string[];
   speed?: number;
@@ -266,30 +293,15 @@ function SignInForm({ prefillEmail, bannerMessage, nextPath, onForgotPassword }:
         }
       } catch (e) { /* journal login is best-effort */ }
 
-      const isAdmin = body?.user?.role === "admin";
-      const safeNext =
-        nextPath && nextPath.startsWith("/") ? nextPath : null;
-
-      if (isAdmin) {
-        window.location.href = safeNext || "/dashboard/admin/";
-        return;
-      }
-
-      if (!hasAccess) {
-        if (safeNext && isJournalPublicNextPath(safeNext)) {
-          window.location.href = safeNext;
-        } else {
-          window.location.href = "/journal/pricing";
-        }
-        return;
-      }
-
-      if (safeNext) {
-        window.location.href = safeNext;
-        return;
-      }
-
-      window.location.href = "/dashboard/";
+      const safeNext = nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : null;
+      const url = getPostAuthRedirectUrl({
+        user: {
+          role: body?.user?.role,
+          has_journal_access: !!(hasAccess || body?.user?.has_journal_access),
+        },
+        nextPath: safeNext,
+      });
+      window.location.href = url;
     } finally {
       setLoading(false);
     }

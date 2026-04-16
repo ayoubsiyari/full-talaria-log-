@@ -1,6 +1,6 @@
 "use client";
-import { AuthUI } from "@/components/ui/auth-fuse";
-import React from "react";
+import { AuthUI, getPostAuthRedirectUrl } from "@/components/ui/auth-fuse";
+import React, { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLanguage } from "../LanguageProvider";
 import { LanguageToggle } from "@/components/LanguageToggle";
@@ -25,7 +25,43 @@ function LoginPageContent({
   const initialMode = mode === "signup" ? "signup" : "signin";
 
   const next = searchParams.get("next") || "";
-  const nextPath = next.startsWith("/") ? next : undefined;
+  const nextPath = next.startsWith("/") && !next.startsWith("//") ? next : undefined;
+
+  const [sessionChecked, setSessionChecked] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
+        if (!res.ok) {
+          if (alive) setSessionChecked(true);
+          return;
+        }
+        const data = (await res.json().catch(() => null)) as { user?: { role?: string; has_journal_access?: boolean } } | null;
+        const user = data?.user;
+        if (!user) {
+          if (alive) setSessionChecked(true);
+          return;
+        }
+        const url = getPostAuthRedirectUrl({ user, nextPath: nextPath ?? null });
+        window.location.replace(url);
+      } catch {
+        if (alive) setSessionChecked(true);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [nextPath]);
+
+  if (!sessionChecked) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground" aria-live="polite">
+        Loading…
+      </div>
+    );
+  }
 
   return <AuthUI initialMode={initialMode} nextPath={nextPath} signInContent={signInContent} signUpContent={signUpContent} />;
 }
