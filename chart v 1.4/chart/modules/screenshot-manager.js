@@ -314,6 +314,16 @@ class ScreenshotManager {
         }
         this._zainFontLoadPromise = (async () => {
             try {
+                if (typeof document !== 'undefined' && document.fonts) {
+                    await document.fonts.ready;
+                    if (document.fonts.check('900 16px Zain')) {
+                        return true;
+                    }
+                }
+            } catch (e) {
+                /* fall through */
+            }
+            try {
                 const url = this.resolveAssetUrl('../../homepage/font/Zain/Zain-Black.ttf');
                 const face = new FontFace('Zain', `url("${url}")`, { style: 'normal', weight: '900' });
                 await face.load();

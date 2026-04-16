@@ -13,17 +13,20 @@ type LanguageContextValue = {
 
 const LanguageContext = React.createContext<LanguageContextValue | null>(null);
 
-function readInitialLanguage(): AppLanguage {
-  if (typeof window === "undefined") return "ar";
-  try {
-    const saved = window.localStorage.getItem("talaria_language");
-    if (saved === "en" || saved === "ar") return saved;
-  } catch {}
-  return "ar";
-}
+/** Default must match server render — do not read localStorage in useState (causes React #418 hydration mismatch). */
+const DEFAULT_LANGUAGE: AppLanguage = "ar";
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [language, setLanguageState] = React.useState<AppLanguage>(readInitialLanguage);
+  const [language, setLanguageState] = React.useState<AppLanguage>(DEFAULT_LANGUAGE);
+
+  React.useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("talaria_language");
+      if (saved === "en" || saved === "ar") setLanguageState(saved);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const setLanguage = React.useCallback((lang: AppLanguage) => {
     setLanguageState(lang);
