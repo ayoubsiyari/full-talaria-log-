@@ -6111,7 +6111,7 @@ async def admin_refund_payment(payment_id: int, request: Request):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  ADMIN — Bulk email (same SMTP env as journal-backend DOMAIN_EMAIL_*)
+#  ADMIN — Bulk email (DOMAIN_EMAIL_* / GMAIL_* or SMTP_* env names)
 # ═══════════════════════════════════════════════════════════════════
 
 _bulk_email_rate: dict[int, deque] = {}
@@ -6120,13 +6120,42 @@ _BULK_EMAIL_RATE_WINDOW_SEC = 60.0
 
 
 def _bulk_email_smtp_params():
-    server = (os.environ.get("DOMAIN_EMAIL_SMTP_SERVER") or "smtp.gmail.com").strip()
-    port = int((os.environ.get("DOMAIN_EMAIL_SMTP_PORT") or "587").strip() or "587")
-    use_tls = (os.environ.get("DOMAIN_EMAIL_USE_TLS", "true").lower() in {"1", "true", "yes", "on"})
-    use_ssl = (os.environ.get("DOMAIN_EMAIL_USE_SSL", "false").lower() in {"1", "true", "yes", "on"})
-    username = (os.environ.get("DOMAIN_EMAIL_USERNAME") or os.environ.get("GMAIL_USERNAME") or "").strip()
-    password = (os.environ.get("DOMAIN_EMAIL_PASSWORD") or os.environ.get("GMAIL_APP_PASSWORD") or "").strip()
-    envelope_from = username or (os.environ.get("ADMIN_ALERT_EMAIL") or "").strip()
+    """Resolve SMTP settings; supports journal-style DOMAIN_EMAIL_* and common SMTP_* names."""
+    server = (
+        os.environ.get("DOMAIN_EMAIL_SMTP_SERVER")
+        or os.environ.get("SMTP_HOST")
+        or "smtp.gmail.com"
+    ).strip()
+    port_raw = (
+        os.environ.get("DOMAIN_EMAIL_SMTP_PORT")
+        or os.environ.get("SMTP_PORT")
+        or "587"
+    ).strip()
+    port = int(port_raw or "587")
+    use_tls = (
+        os.environ.get("DOMAIN_EMAIL_USE_TLS") or os.environ.get("SMTP_USE_TLS") or "true"
+    ).lower() in {"1", "true", "yes", "on"}
+    use_ssl = (
+        os.environ.get("DOMAIN_EMAIL_USE_SSL") or os.environ.get("SMTP_USE_SSL") or "false"
+    ).lower() in {"1", "true", "yes", "on"}
+    username = (
+        os.environ.get("DOMAIN_EMAIL_USERNAME")
+        or os.environ.get("GMAIL_USERNAME")
+        or os.environ.get("SMTP_USER")
+        or ""
+    ).strip()
+    password = (
+        os.environ.get("DOMAIN_EMAIL_PASSWORD")
+        or os.environ.get("GMAIL_APP_PASSWORD")
+        or os.environ.get("SMTP_PASSWORD")
+        or ""
+    ).strip()
+    envelope_from = (
+        os.environ.get("SMTP_FROM_EMAIL")
+        or os.environ.get("MAIL_FROM")
+        or username
+        or (os.environ.get("ADMIN_ALERT_EMAIL") or "").strip()
+    )
     return server, port, use_tls, use_ssl, username, password, envelope_from
 
 
@@ -6143,13 +6172,14 @@ def _bulk_email_rate_ok(admin_user_id: int) -> bool:
 
 def _send_one_bulk_html_email(to_addr: str, subject: str, html_body: str) -> None:
     server, port, use_tls, use_ssl, user, password, envelope_from = _bulk_email_smtp_params()
-    if not envelope_from or not password:
+    if not password or not username:
         raise HTTPException(
             status_code=503,
-            detail="Email not configured (set DOMAIN_EMAIL_USERNAME and DOMAIN_EMAIL_PASSWORD, or GMAIL_* fallbacks)",
+            detail=(
+                "Email not configured: set SMTP_USER + SMTP_PASSWORD + SMTP_HOST (or DOMAIN_EMAIL_*), "
+                "and optional SMTP_FROM_EMAIL for the visible From address"
+            ),
         )
-    if not user:
-        user = envelope_from
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
@@ -6179,7 +6209,7 @@ class _BulkEmailIn(BaseModel):
 
 @app.post("/api/admin/send-bulk-email")
 async def admin_send_bulk_email(payload: _BulkEmailIn, request: Request):
-    """Send HTML email to many recipients (admin session auth). Uses DOMAIN_EMAIL_* SMTP settings."""
+    """Send HTML email to many recipients (admin session auth). Uses DOMAIN_EMAIL_* or SMTP_* env."""
     admin_user = _require_admin(request)
     if not _bulk_email_rate_ok(int(admin_user.id)):
         raise HTTPException(status_code=429, detail="Too many bulk send requests; try again in a minute")

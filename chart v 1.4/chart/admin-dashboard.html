@@ -1664,7 +1664,7 @@ select { cursor: pointer; }
             <button class="btn sm" type="button" onclick="loadUsers().then(() => renderBulkEmailPanel())">Refresh users</button>
           </div>
           <div class="card-body" style="font-size:13px;line-height:1.55;color:var(--text-secondary)">
-            <p style="margin:0 0 8px">Select recipients, compose an <strong>HTML</strong> message, and send through the same SMTP settings as the journal app (<code>DOMAIN_EMAIL_*</code> on the API server). Rate limit: 5 sends per minute.</p>
+            <p style="margin:0 0 8px">Select recipients, compose an <strong>HTML</strong> message, and send via SMTP. Configure <code>SMTP_HOST</code>, <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code>, optional <code>SMTP_FROM_EMAIL</code>, or <code>DOMAIN_EMAIL_*</code> in <code>chart/.env</code>. Rate limit: 5 sends per minute.</p>
             <p style="margin:0">Uses <code>POST /api/admin/send-bulk-email</code> (session auth). Max 500 recipients per request.</p>
           </div>
         </div>
