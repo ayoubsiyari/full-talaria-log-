@@ -39,6 +39,11 @@ jobs:
         working-directory: ${{ matrix.dir }}
         run: npm ci
 
+      - name: Build chart client bundle
+        if: matrix.name == 'chart'
+        working-directory: ${{ matrix.dir }}
+        run: npm run build:chart-client
+
       - name: npm audit
         working-directory: ${{ matrix.dir }}
         run: npm audit --audit-level=moderate

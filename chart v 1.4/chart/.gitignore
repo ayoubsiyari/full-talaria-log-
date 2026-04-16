@@ -92,3 +92,6 @@ secrets/
 
 # Node modules (if any)
 node_modules/
+
+# Production chart bundle (from `npm run build:chart-client`)
+dist/

@@ -5476,6 +5476,8 @@ async def chart_root_redirect():
 async def chart_root_files(file_name: str):
     if file_name not in CHART_ROOT_FILES:
         raise HTTPException(status_code=404, detail="Not found")
+    if file_name == "index.html" and Path("dist/index.html").is_file():
+        return FileResponse("dist/index.html")
     return FileResponse(file_name)
 
 @app.get("/replay-system.js")
@@ -5489,6 +5491,10 @@ async def order_manager_root_file():
 @app.get("/drawing-tools-manager.js")
 async def drawing_tools_manager_root_file():
     return FileResponse("modules/drawing-tools-manager.js")
+
+_dist_dir = Path("dist")
+if _dist_dir.is_dir():
+    app.mount("/chart/dist", StaticFiles(directory=str(_dist_dir)), name="chart_dist")
 
 app.mount("/chart/modules", StaticFiles(directory="modules"), name="chart_modules")
 app.mount("/chart/indicators", StaticFiles(directory="indicators"), name="chart_indicators")
