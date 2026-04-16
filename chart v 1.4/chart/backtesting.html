@@ -1429,7 +1429,7 @@ html.iframe-mode .bt-modal-footer {
                     p.closeBacktestingIframe();
                 }
             } else {
-                window.location.href = 'index.html';
+                window.location.href = '/chart/index.html';
             }
         }
 
@@ -2801,18 +2801,25 @@ html.iframe-mode .bt-modal-footer {
 
                 // Small delay to ensure localStorage is written
                 setTimeout(() => {
-                    // Redirect to chart with backtesting mode
+                    // Redirect to chart with backtesting mode.
+                    // Must use an absolute path: when this page runs in an iframe (e.g. /backtest modal),
+                    // relative "index.html" resolves against the *parent* URL and becomes /index.html, not /chart/index.html.
                     console.log('🚀 Redirecting to backtesting mode...');
-                    const targetUrl = `index.html?mode=backtest&sessionId=${encodeURIComponent(String(sessionId))}&fileId=${selectedFileId}`;
-                    
-                    // Check if we're in an iframe
-                    const isInIframe = window.self !== window.top;
+                    var qs = new URLSearchParams();
+                    qs.set('mode', 'backtest');
+                    if (sessionId != null && sessionId !== '') {
+                        qs.set('sessionId', String(sessionId));
+                    }
+                    if (selectedFileId != null && selectedFileId !== '') {
+                        qs.set('fileId', String(selectedFileId));
+                    }
+                    var targetUrl = '/chart/index.html?' + qs.toString();
+
+                    var isInIframe = window.self !== window.top;
                     if (isInIframe) {
-                        // If in iframe (opened from sessions.html), redirect parent window
-                        console.log('📱 Running in iframe, redirecting parent window');
+                        console.log('📱 Running in iframe, redirecting parent window to chart');
                         window.top.location.href = targetUrl;
                     } else {
-                        // If standalone page, redirect normally
                         window.location.href = targetUrl;
                     }
                 }, 100);
