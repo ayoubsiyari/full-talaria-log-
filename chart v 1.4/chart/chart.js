@@ -1800,14 +1800,207 @@ class Chart {
         }
     }
 
+    _tradingSessionLocalBackupKey(sessionId) {
+        return `talaria_bt_sess_v1_${String(sessionId)}`;
+    }
+
+    /** Last time PATCH /state reported success — used to prefer fresher local backup when API save fails. */
+    _sessionServerSyncStorageKey(sessionId) {
+        return `talaria_sess_srv_sync_${String(sessionId)}`;
+    }
+
+    _markSessionStateSyncedToServer(sessionId) {
+        try {
+            sessionStorage.setItem(this._sessionServerSyncStorageKey(sessionId), String(Date.now()));
+        } catch (e) {
+            /* ignore */
+        }
+    }
+
+    /** True if account_runtime carries at least one finite balance field (empty {} is not meaningful). */
+    _sessionStateHasMeaningfulAccountRuntime(ar) {
+        if (!ar || typeof ar !== 'object') return false;
+        const b = Number.parseFloat(ar.balance);
+        const e = Number.parseFloat(ar.equity);
+        const ib = Number.parseFloat(ar.initialBalance);
+        return Number.isFinite(b) || Number.isFinite(e) || Number.isFinite(ib);
+    }
+
+    /**
+     * True if state has open/pending orders or a real account snapshot.
+     * Avoid treating account_runtime: {} as authoritative — that caused server branch to wipe local backup.
+     */
+    _sessionStateHasRuntimeOrderState(state) {
+        if (!state || typeof state !== 'object') return false;
+        if (Array.isArray(state.pending_orders) && state.pending_orders.length > 0) return true;
+        if (Array.isArray(state.open_positions) && state.open_positions.length > 0) return true;
+        return this._sessionStateHasMeaningfulAccountRuntime(state.account_runtime);
+    }
+
+    _shouldPreferLocalBackupRuntime(sessionId, backupSnap) {
+        if (!backupSnap || !Number.isFinite(backupSnap.savedAt)) return false;
+        let lastSrv = NaN;
+        try {
+            lastSrv = parseInt(sessionStorage.getItem(this._sessionServerSyncStorageKey(sessionId)), 10);
+        } catch (e) {
+            lastSrv = NaN;
+        }
+        return !Number.isFinite(lastSrv) || backupSnap.savedAt > lastSrv;
+    }
+
+    _getOrderManagerForSessionPersistence() {
+        if (this.orderManager) return this.orderManager;
+        if (typeof window !== 'undefined' && window.chart && window.chart.orderManager) {
+            return window.chart.orderManager;
+        }
+        return null;
+    }
+
+    /**
+     * When PATCH /api/sessions/:id/state fails (Failed to fetch), persist journal + balance in
+     * localStorage so refresh still restores until nginx /api is fixed.
+     */
+    _writeTradingSessionLocalBackup() {
+        const sessionId = this.getActiveTradingSessionId();
+        const om = this._getOrderManagerForSessionPersistence();
+        if (!sessionId || !om) return;
+        try {
+            const safeClone = (arr) => {
+                try {
+                    return JSON.parse(JSON.stringify(Array.isArray(arr) ? arr : []));
+                } catch (e) {
+                    return [];
+                }
+            };
+            const payload = {
+                journal: safeClone(om.tradeJournal),
+                pending_orders: safeClone(om.pendingOrders),
+                open_positions: safeClone(om.openPositions),
+                account_runtime: {
+                    balance: om.balance,
+                    equity: om.equity,
+                    initialBalance: om.initialBalance,
+                    session_current_time:
+                        om.orderService && om.orderService.multiInstrumentSession
+                            ? om.orderService.multiInstrumentSession.current_time
+                            : undefined,
+                },
+                order_counters: {
+                    orderIdCounter: om.orderIdCounter,
+                    tradeGroupIdCounter: om.tradeGroupIdCounter,
+                },
+                savedAt: Date.now(),
+            };
+            if (typeof om.buildPerInstrumentStats === 'function') {
+                try {
+                    payload.per_instrument_stats = om.buildPerInstrumentStats();
+                } catch (e) {
+                    /* ignore */
+                }
+            }
+            if (typeof om.groupJournalByTicker === 'function') {
+                try {
+                    payload.journal_by_ticker = om.groupJournalByTicker();
+                } catch (e) {
+                    /* ignore */
+                }
+            }
+            userStorage.setItem(this._tradingSessionLocalBackupKey(sessionId), JSON.stringify(payload));
+        } catch (e) {
+            console.warn('local session backup write failed', e);
+        }
+    }
+
+    _readTradingSessionLocalBackup(sessionId) {
+        try {
+            const raw = userStorage.getItem(this._tradingSessionLocalBackupKey(sessionId));
+            if (!raw) return null;
+            return JSON.parse(raw);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    /**
+     * GET /state failed or threw — restore journal + runtime from last local snapshot.
+     */
+    _applyTradingSessionFromLocalBackupOnly(sessionId) {
+        const backup = this._readTradingSessionLocalBackup(sessionId);
+        const om = this._getOrderManagerForSessionPersistence();
+        if (!backup || !om) return false;
+        this._restoredFromLocalBackupOnly = true;
+        this._sessionStateLoadedFor = String(sessionId);
+
+        const normalizeJournalTrade = (trade) => {
+            const ticker = String(trade?.ticker || trade?.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
+            return {
+                ...trade,
+                ticker,
+                symbol: trade?.symbol || ticker,
+            };
+        };
+        const tradeKey = (t) => {
+            if (!t || typeof t !== 'object') return null;
+            const id = t.tradeId != null ? t.tradeId : t.id;
+            return id != null ? String(id) : null;
+        };
+        const merged = new Map();
+        (Array.isArray(backup.journal) ? backup.journal : []).map(normalizeJournalTrade).forEach((t) => {
+            const k = tradeKey(t);
+            if (k) merged.set(k, t);
+        });
+        om.tradeJournal = Array.from(merged.values());
+        if (typeof om.normalizeJournalRowsInPlace === 'function') {
+            om.normalizeJournalRowsInPlace();
+        }
+        if (typeof om.restoreIdCountersFromJournal === 'function') {
+            om.restoreIdCountersFromJournal();
+        }
+
+        const backupHasRuntime = this._sessionStateHasRuntimeOrderState(backup);
+        if (backupHasRuntime && typeof om.restoreRuntimeOrderStateFromSession === 'function') {
+            om.restoreRuntimeOrderStateFromSession(backup);
+            if (typeof om._syncReplayHeaderStatsFromAccount === 'function') {
+                om._syncReplayHeaderStatsFromAccount();
+            }
+            const redrawLater = () => {
+                try {
+                    if (typeof om.redrawPreservedTradeMarkers === 'function') {
+                        om.redrawPreservedTradeMarkers();
+                    }
+                } catch (e) {
+                    /* ignore */
+                }
+            };
+            window.addEventListener('chartDataLoaded', redrawLater, { once: true });
+            setTimeout(redrawLater, 500);
+        } else if (typeof om.recomputeAccountFromJournal === 'function') {
+            om.recomputeAccountFromJournal();
+        }
+
+        if (typeof om.updateJournalTab === 'function') {
+            om.updateJournalTab();
+        }
+        if (!backupHasRuntime && typeof om.updatePositionsPanel === 'function') {
+            om.updatePositionsPanel();
+        }
+        if (typeof this.showNotification === 'function') {
+            this.showNotification(
+                'Restored trades from browser backup — API save failed. Configure nginx /api proxy so data syncs to the server.'
+            );
+        }
+        return true;
+    }
+
     async loadTradingSessionStateIfNeeded() {
         const sessionId = this.getActiveTradingSessionId();
         if (!sessionId) return;
         if (this._sessionStateLoadedFor === String(sessionId)) return;
+        this._restoredFromLocalBackupOnly = false;
 
         // Journal merge requires orderManager. Retry briefly so refresh doesn't mark the session
         // "loaded" before OrderManager exists (race with initReplaySystem).
-        if (!this.orderManager) {
+        if (!this._getOrderManagerForSessionPersistence()) {
             this._sessionStateLoadRetryCount = (this._sessionStateLoadRetryCount || 0) + 1;
             if (this._sessionStateLoadRetryCount > 80) {
                 console.warn('⚠️ Trading session state: orderManager not ready after retries; open replay/backtest to restore journal');
@@ -1824,10 +2017,16 @@ class Chart {
 
         try {
             const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, { credentials: 'include' });
-            if (!res.ok) return;
+            if (!res.ok) {
+                this._applyTradingSessionFromLocalBackupOnly(sessionId);
+                return;
+            }
             const payload = await res.json();
             const state = payload && payload.state ? payload.state : null;
-            if (!state) return;
+            if (!state) {
+                this._applyTradingSessionFromLocalBackupOnly(sessionId);
+                return;
+            }
 
             this._sessionStateLoadedFor = String(sessionId);
 
@@ -1870,6 +2069,12 @@ class Chart {
                         merged.set(k, prev ? { ...prev, ...t } : t);
                     }
                 });
+                const backupSnap = this._readTradingSessionLocalBackup(sessionId);
+                const backupJournal = backupSnap && Array.isArray(backupSnap.journal) ? backupSnap.journal.map(normalizeJournalTrade) : [];
+                backupJournal.forEach((t) => {
+                    const k = tradeKey(t);
+                    if (k && !merged.has(k)) merged.set(k, t);
+                });
                 this.orderManager.tradeJournal = Array.from(merged.values());
                 if (typeof this.orderManager.normalizeJournalRowsInPlace === 'function') {
                     this.orderManager.normalizeJournalRowsInPlace();
@@ -1877,19 +2082,26 @@ class Chart {
                 if (typeof this.orderManager.restoreIdCountersFromJournal === 'function') {
                     this.orderManager.restoreIdCountersFromJournal();
                 }
-                if (typeof this.orderManager.persistJournal === 'function') {
+                if (typeof this.orderManager.persistJournal === 'function' && !this._restoredFromLocalBackupOnly) {
                     this.orderManager.persistJournal();
                 }
             }
 
             // Restore open orders + account snapshot so refresh keeps in-progress trades and balance.
-            const hasRuntimeOrderState =
-                state &&
-                ((Array.isArray(state.pending_orders) && state.pending_orders.length > 0) ||
-                    (Array.isArray(state.open_positions) && state.open_positions.length > 0) ||
-                    (state.account_runtime && typeof state.account_runtime === 'object'));
-            if (hasRuntimeOrderState && this.orderManager && typeof this.orderManager.restoreRuntimeOrderStateFromSession === 'function') {
-                this.orderManager.restoreRuntimeOrderStateFromSession(state);
+            const backupSnapForRt = this._readTradingSessionLocalBackup(sessionId);
+            const hasRuntimeOrderState = this._sessionStateHasRuntimeOrderState(state);
+            const backupHasRuntime = backupSnapForRt && this._sessionStateHasRuntimeOrderState(backupSnapForRt);
+            const preferBackupRuntime = this._shouldPreferLocalBackupRuntime(sessionId, backupSnapForRt);
+            let runtimeSource = null;
+            if (preferBackupRuntime && backupHasRuntime) {
+                runtimeSource = backupSnapForRt;
+            } else if (hasRuntimeOrderState) {
+                runtimeSource = state;
+            } else if (backupHasRuntime) {
+                runtimeSource = backupSnapForRt;
+            }
+            if (runtimeSource && this.orderManager && typeof this.orderManager.restoreRuntimeOrderStateFromSession === 'function') {
+                this.orderManager.restoreRuntimeOrderStateFromSession(runtimeSource);
                 if (typeof this.orderManager._syncReplayHeaderStatsFromAccount === 'function') {
                     this.orderManager._syncReplayHeaderStatsFromAccount();
                 }
@@ -1914,7 +2126,7 @@ class Chart {
                 if (typeof this.orderManager.updateJournalTab === 'function') {
                     this.orderManager.updateJournalTab();
                 }
-                if (!hasRuntimeOrderState && typeof this.orderManager.updatePositionsPanel === 'function') {
+                if (!runtimeSource && typeof this.orderManager.updatePositionsPanel === 'function') {
                     this.orderManager.updatePositionsPanel();
                 }
             }
@@ -2002,8 +2214,12 @@ class Chart {
                     this._applyPersistedIndicators();
                 }
             }
+
+            // Server state was applied this load; next refresh compares backup.savedAt to this for stale-server vs fresh-backup.
+            this._markSessionStateSyncedToServer(sessionId);
         } catch (e) {
             console.warn('⚠️ Failed to load trading session state', e);
+            this._applyTradingSessionFromLocalBackupOnly(sessionId);
         }
     }
 
@@ -2050,6 +2266,7 @@ class Chart {
         if (!patch || typeof patch !== 'object') return;
 
         this._pendingSessionStatePatch = Object.assign({}, this._pendingSessionStatePatch || {}, patch);
+        this._writeTradingSessionLocalBackup();
 
         if (this._sessionStateSaveTimer) return;
 
@@ -2065,6 +2282,7 @@ class Chart {
         if (!patch || typeof patch !== 'object') return;
 
         this._pendingCriticalSessionStatePatch = Object.assign({}, this._pendingCriticalSessionStatePatch || {}, patch);
+        this._writeTradingSessionLocalBackup();
         if (this._criticalSessionStateSaveTimer) return;
 
         // Near-immediate (same task turn) so journal reaches the DB quickly without SQLite
@@ -2083,6 +2301,7 @@ class Chart {
         this._pendingCriticalSessionStatePatch = null;
 
         try {
+            this._writeTradingSessionLocalBackup();
             const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
@@ -2100,6 +2319,8 @@ class Chart {
                         'Set env TRUSTED_ORIGINS to your site origin (e.g. http://31.97.192.82) or fix proxy Host / X-Forwarded-* headers.'
                     );
                 }
+            } else {
+                this._markSessionStateSyncedToServer(sessionId);
             }
         } catch (e) {
             console.warn('⚠️ Failed to save critical trading session state', e);
@@ -2141,6 +2362,7 @@ class Chart {
         this._pendingSessionStatePatch = null;
 
         try {
+            this._writeTradingSessionLocalBackup();
             const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
@@ -2158,6 +2380,8 @@ class Chart {
                         'Set env TRUSTED_ORIGINS to your site origin (e.g. http://31.97.192.82) or fix proxy Host / X-Forwarded-* headers.'
                     );
                 }
+            } else {
+                this._markSessionStateSyncedToServer(sessionId);
             }
         } catch (e) {
             console.warn('⚠️ Failed to save trading session state', e);

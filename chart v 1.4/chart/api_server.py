@@ -461,6 +461,21 @@ class TradingSessionState(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class TradingSessionJournalTrade(Base):
+    """One row per backtest journal trade for SQL queries and backups; kept in sync with state_json journal on PATCH."""
+
+    __tablename__ = "trading_session_journal_trades"
+    __table_args__ = (UniqueConstraint("session_id", "client_trade_id", name="uq_tsjt_session_client_trade"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, ForeignKey("trading_sessions.id"), index=True, nullable=False)
+    user_id = Column(Integer, index=True, nullable=False)
+    client_trade_id = Column(String(128), nullable=False, index=True)
+    payload_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class SupportThread(Base):
     __tablename__ = "support_threads"
 
@@ -577,6 +592,7 @@ _CHART_TABLES = [
     UserSession.__table__,
     TradingSession.__table__,
     TradingSessionState.__table__,
+    TradingSessionJournalTrade.__table__,
     SupportThread.__table__,
     SupportMessage.__table__,
     SupportAttachment.__table__,
@@ -3755,6 +3771,48 @@ def _get_or_create_trading_session_state(db, session_id: int, user_id: int) -> T
     db.refresh(st)
     return st
 
+
+def _sync_trading_session_journal_trades(db, session_id: int, user_id: int, journal: list) -> None:
+    """Upsert one DB row per chart journal trade; remove rows no longer present in the canonical journal array."""
+    if not isinstance(journal, list):
+        return
+    incoming_ids: set[str] = set()
+    for raw in journal:
+        if not isinstance(raw, dict):
+            continue
+        tid = str(raw.get("tradeId") or raw.get("id") or "").strip()
+        if not tid:
+            continue
+        incoming_ids.add(tid)
+        payload = json.dumps(raw, separators=(",", ":"))
+        row = (
+            db.query(TradingSessionJournalTrade)
+            .filter(
+                TradingSessionJournalTrade.session_id == session_id,
+                TradingSessionJournalTrade.client_trade_id == tid,
+            )
+            .first()
+        )
+        if row:
+            row.payload_json = payload
+            row.user_id = user_id
+        else:
+            db.add(
+                TradingSessionJournalTrade(
+                    session_id=session_id,
+                    user_id=user_id,
+                    client_trade_id=tid,
+                    payload_json=payload,
+                )
+            )
+
+    q = db.query(TradingSessionJournalTrade).filter(TradingSessionJournalTrade.session_id == session_id)
+    if incoming_ids:
+        q = q.filter(~TradingSessionJournalTrade.client_trade_id.in_(incoming_ids))
+    for orphan in q.all():
+        db.delete(orphan)
+
+
 def _google_sheets_service():
     spreadsheet_id = os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID", "").strip()
     if not spreadsheet_id:
@@ -6421,6 +6479,42 @@ async def get_trading_session_state(session_id: int, request: Request):
     finally:
         db.close()
 
+
+@app.get("/api/sessions/{session_id}/journal-trades")
+async def list_trading_session_journal_trades(session_id: int, request: Request):
+    """Queryable copy of chart journal trades (one row per trade); same data as state.journal, scoped per user."""
+    user = _require_user(request)
+    db = SessionLocal()
+    try:
+        s = db.query(TradingSession).filter(TradingSession.id == session_id).first()
+        if not s:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if not _can_access_trading_session(user, s):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        rows = (
+            db.query(TradingSessionJournalTrade)
+            .filter(TradingSessionJournalTrade.session_id == session_id)
+            .order_by(TradingSessionJournalTrade.updated_at.desc())
+            .all()
+        )
+        out = []
+        for r in rows:
+            try:
+                payload = json.loads(r.payload_json) if r.payload_json else {}
+            except Exception:
+                payload = {}
+            out.append(
+                {
+                    "client_trade_id": r.client_trade_id,
+                    "payload": payload,
+                    "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+                }
+            )
+        return {"session_id": session_id, "trades": out, "count": len(out)}
+    finally:
+        db.close()
+
+
 @app.patch("/api/sessions/{session_id}/state")
 async def patch_trading_session_state(session_id: int, payload: TradingSessionStateUpdateIn, request: Request):
     user = _require_user(request)
@@ -6465,6 +6559,10 @@ async def patch_trading_session_state(session_id: int, payload: TradingSessionSt
             state["propfirm_challenge"] = payload.propfirm_challenge
 
         st.state_json = json.dumps(state, separators=(",", ":"))
+        if payload.journal is not None:
+            j = state.get("journal")
+            if isinstance(j, list):
+                _sync_trading_session_journal_trades(db, session_id=s.id, user_id=s.user_id, journal=j)
         db.commit()
         db.refresh(st)
         return {"success": True}
