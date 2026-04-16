@@ -66,7 +66,15 @@ const COUNTRIES = [
 
 export default function HomePage() {
   const { isArabic, toggleLanguage } = useLanguage();
-  const [user, setUser] = React.useState<{ id: number; name: string; email: string; role?: string; phone?: string; country?: string } | null>(null);
+  const [user, setUser] = React.useState<{
+    id: number;
+    name: string;
+    email: string;
+    role?: string;
+    phone?: string;
+    country?: string;
+    has_journal_access?: boolean;
+  } | null>(null);
   const [showProfile, setShowProfile] = React.useState(false);
   const [editMode, setEditMode] = React.useState(false);
   const [editName, setEditName] = React.useState("");
@@ -83,6 +91,13 @@ export default function HomePage() {
     if (!q) return COUNTRIES;
     return COUNTRIES.filter(c => c.toLowerCase().includes(q));
   }, [countryQuery]);
+
+  /** Same gating as /backtest/: logged-in users without journal access go to pricing, not the app. */
+  const journalTabHref = React.useMemo(() => {
+    if (!user) return "/login/?next=/journal/dashboard";
+    if (user.role === "admin" || user.has_journal_access) return "/journal/dashboard";
+    return "/journal/pricing";
+  }, [user]);
 
   React.useEffect(() => {
     fetch("/api/auth/me", {
@@ -577,7 +592,7 @@ export default function HomePage() {
                   {t.tabs.bootcamp}
                 </Button>
               </Link>
-              <Link href={user ? "/journal/dashboard" : "/login/?next=/journal/dashboard"}>
+              <Link href={journalTabHref}>
                 <Button className="rounded-full text-sm sm:text-base px-4 py-3 sm:px-8 sm:py-6 text-white bg-gradient-to-r from-black via-blue-900 to-blue-600 hover:from-black hover:via-blue-800 hover:to-blue-500 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_18px_45px_rgba(37,99,235,0.25)] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.4),0_22px_55px_rgba(37,99,235,0.32)] transition-all">
                   {t.tabs.journal}
                 </Button>

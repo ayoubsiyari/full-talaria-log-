@@ -779,6 +779,21 @@ class Chart {
         
         if (mode === 'backtest' || mode === 'propfirm') {
             const isPropFirm = mode === 'propfirm';
+
+            // Subscription gate (mirrors api_server auth middleware) — blocks back after pricing, etc.
+            try {
+                const mer = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
+                if (mer.ok) {
+                    const md = await mer.json();
+                    const u = md && md.user;
+                    if (u && u.role !== 'admin' && !u.has_journal_access) {
+                        window.location.replace('/journal/pricing');
+                        return;
+                    }
+                }
+            } catch (e) {
+                /* fall through; server middleware will also redirect on full navigation */
+            }
             
             // Show loading screen
             const loader = document.getElementById('backtestingLoader');

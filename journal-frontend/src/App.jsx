@@ -402,11 +402,26 @@ function ProtectedLayout() {
   const { activeProfile, loading, error } = useProfile();
   const [subChecked, setSubChecked] = useState(false);
   const [hasAccess, setHasAccess] = useState(false);
+  /** Bumped when the page is restored from bfcache so subscription is re-verified (avoids Back-button bypass). */
+  const [accessRecheckNonce, setAccessRecheckNonce] = useState(0);
 
   const isAdminLoginSession = localStorage.getItem('admin_login_session') === 'true';
 
   useEffect(() => {
-    if (!token) return;
+    const onPageShow = (e) => {
+      if (e.persisted && token) setAccessRecheckNonce((n) => n + 1);
+    };
+    if (typeof window === 'undefined') return undefined;
+    window.addEventListener('pageshow', onPageShow);
+    return () => window.removeEventListener('pageshow', onPageShow);
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) {
+      setHasAccess(false);
+      setSubChecked(false);
+      return;
+    }
 
     // Admin bypass via JWT payload
     try {
@@ -418,34 +433,61 @@ function ProtectedLayout() {
       }
     } catch (e) { /* continue */ }
 
-    // Check from localStorage first for fast render, then verify live
     try {
       const cu = JSON.parse(localStorage.getItem('talaria_current_user') || '{}');
-      if (cu.role === 'admin') { setHasAccess(true); setSubChecked(true); return; }
-      if (cu.has_journal_access) { setHasAccess(true); }
+      if (cu.role === 'admin') {
+        setHasAccess(true);
+        setSubChecked(true);
+        return;
+      }
     } catch (e) { /* ignore */ }
 
-    // Live check against backend
+    // Do not trust localStorage for journal access — verify with the server (stale flags allowed bypass after Back).
+    setHasAccess(false);
+    setSubChecked(false);
+
+    let cancelled = false;
     (async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/subscriptions/my-subscription`, {
           headers: { Authorization: `Bearer ${token}` },
         });
+        if (cancelled) return;
         if (res.ok) {
           const data = await res.json();
           const active = (data.has_subscription && ['active', 'trialing'].includes(data.subscription?.status)) || data.has_journal_access === true;
           setHasAccess(active);
-          // Sync localStorage so other parts of the app stay in sync
           try {
             const cu = JSON.parse(localStorage.getItem('talaria_current_user') || '{}');
             cu.has_journal_access = active;
             localStorage.setItem('talaria_current_user', JSON.stringify(cu));
           } catch (e) { /* ignore */ }
+        } else {
+          setHasAccess(false);
+          try {
+            const cu = JSON.parse(localStorage.getItem('talaria_current_user') || '{}');
+            cu.has_journal_access = false;
+            localStorage.setItem('talaria_current_user', JSON.stringify(cu));
+          } catch (e) { /* ignore */ }
         }
-      } catch (e) { /* network error — fall back to localStorage result */ }
-      finally { setSubChecked(true); }
+      } catch (e) {
+        if (!cancelled) {
+          setHasAccess(false);
+          try {
+            const cu = JSON.parse(localStorage.getItem('talaria_current_user') || '{}');
+            cu.has_journal_access = false;
+            localStorage.setItem('talaria_current_user', JSON.stringify(cu));
+          } catch (err) { /* ignore */ }
+        }
+      } finally {
+        if (!cancelled) setSubChecked(true);
+      }
     })();
-  }, [token]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, accessRecheckNonce]);
 
   if (!isInitialized || loading || (token && !subChecked)) {
     return (

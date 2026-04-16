@@ -37,7 +37,7 @@ from pydantic import BaseModel, Field
 from passlib.context import CryptContext
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, urlparse, parse_qs
 import urllib.error
 import urllib.request
 
@@ -867,6 +867,64 @@ def _support_rate_allow_new_thread(uid: int) -> bool:
     return _sliding_window_allow(_support_thread_times, uid, SUPPORT_RATE_THREAD_PER_HOUR, 3600.0)
 
 
+# Public GET /api/affiliate/click — limit abuse (cookie spam / redirect probing). Per worker process.
+AFFILIATE_CLICK_MAX_PER_MINUTE = max(10, int(os.getenv("AFFILIATE_CLICK_MAX_PER_MINUTE", "90")))
+_affiliate_click_ip_times: dict[str, deque] = {}
+_affiliate_click_rate_lock = threading.Lock()
+
+
+def _client_ip_for_rate_limit(request: Request) -> str:
+    xf = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    if xf:
+        return xf[:128]
+    try:
+        if request.client and request.client.host:
+            return str(request.client.host)[:128]
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _affiliate_click_rate_allow(ip: str) -> bool:
+    now = time.monotonic()
+    with _affiliate_click_rate_lock:
+        q = _affiliate_click_ip_times.get(ip)
+        if q is None:
+            q = deque()
+            _affiliate_click_ip_times[ip] = q
+        cutoff = now - 60.0
+        while q and q[0] < cutoff:
+            q.popleft()
+        if len(q) >= AFFILIATE_CLICK_MAX_PER_MINUTE:
+            return False
+        q.append(now)
+        return True
+
+
+# Brute-force / credential-stuffing mitigation (per worker process). Tune via env.
+AUTH_LOGIN_MAX_PER_MINUTE = max(5, int(os.getenv("AUTH_LOGIN_MAX_PER_MINUTE", "30")))
+AUTH_SIGNUP_MAX_PER_MINUTE = max(3, int(os.getenv("AUTH_SIGNUP_MAX_PER_MINUTE", "12")))
+_auth_rate_lock = threading.Lock()
+_auth_login_ip_times: dict[str, deque] = {}
+_auth_signup_ip_times: dict[str, deque] = {}
+
+
+def _auth_ip_rate_allow(bucket: dict[str, deque], ip: str, max_n: int, window_sec: float = 60.0) -> bool:
+    now = time.monotonic()
+    with _auth_rate_lock:
+        q = bucket.get(ip)
+        if q is None:
+            q = deque()
+            bucket[ip] = q
+        cutoff = now - window_sec
+        while q and q[0] < cutoff:
+            q.popleft()
+        if len(q) >= max_n:
+            return False
+        q.append(now)
+        return True
+
+
 def _support_user_can_access_thread(user: User, thread: SupportThread) -> bool:
     if user.role == "admin":
         return True
@@ -1155,6 +1213,29 @@ async def get_trading_session_trade_screenshot(session_id: int, trade_id: str, k
     finally:
         db.close()
 
+def _request_requires_journal_for_backtest(path: str, request: Request) -> bool:
+    """Paths that load backtest / prop-firm replay UI — require subscription (admins exempt)."""
+    if path in (
+        "/chart/backtesting.html",
+        "/chart/propfirm-backtest.html",
+        "/backtesting.html",
+        "/propfirm-backtest.html",
+    ):
+        return True
+    if path.startswith("/backtest"):
+        return True
+    if path not in ("/chart/index.html", "/index.html"):
+        return False
+    try:
+        qs = parse_qs(urlparse(str(request.url)).query)
+        mode = (qs.get("mode") or [""])[0].strip().lower()
+        if mode in ("backtest", "propfirm"):
+            return True
+    except Exception:
+        pass
+    return False
+
+
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     if not AUTH_ENABLED:
@@ -1215,9 +1296,8 @@ async def auth_middleware(request: Request, call_next):
 
     user = _get_user_from_request(request)
     if user is not None:
-        # Gate backtest pages behind active subscription (admins bypass)
-        backtest_paths = ("/chart/backtesting.html", "/chart/propfirm-backtest.html")
-        if path in backtest_paths or path.startswith("/backtest"):
+        # Gate backtest / replay UI (including ?mode=backtest on main chart) behind subscription
+        if _request_requires_journal_for_backtest(path, request):
             if user.role != "admin" and not getattr(user, "has_journal_access", False):
                 return RedirectResponse(url="/journal/pricing")
         return await call_next(request)
@@ -3810,6 +3890,12 @@ def _dataset_settings_public_dict(settings: DatasetSettings | None, file_obj: CS
 
 @app.post("/api/auth/signup")
 async def auth_signup(payload: SignUpIn, request: Request):
+    ip = _client_ip_for_rate_limit(request)
+    if not _auth_ip_rate_allow(_auth_signup_ip_times, ip, AUTH_SIGNUP_MAX_PER_MINUTE):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many signup attempts. Please try again later.",
+        )
     email = payload.email.strip().lower()
     name = payload.name.strip()
     if not email or not name or not payload.password:
@@ -3842,6 +3928,12 @@ async def auth_signup(payload: SignUpIn, request: Request):
 
 @app.post("/api/auth/login")
 async def auth_login(payload: LoginIn, request: Request, response: Response):
+    ip = _client_ip_for_rate_limit(request)
+    if not _auth_ip_rate_allow(_auth_login_ip_times, ip, AUTH_LOGIN_MAX_PER_MINUTE):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many login attempts. Please try again later.",
+        )
     email = payload.email.strip().lower()
 
     if not payload.password:
@@ -3897,6 +3989,12 @@ async def affiliate_click_redirect(
     next: str = Query("/"),
 ):
     """Set affiliate tracking cookie and redirect. Use: /api/affiliate/click?code=PROMO&next=/register/"""
+    ip = _client_ip_for_rate_limit(request)
+    if not _affiliate_click_rate_allow(ip):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests. Please try again later.",
+        )
     normalized = _normalize_affiliate_code(code)
     if not normalized:
         raise HTTPException(status_code=400, detail="Invalid code")

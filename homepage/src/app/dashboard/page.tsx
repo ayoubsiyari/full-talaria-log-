@@ -265,6 +265,8 @@ export default function GlobalDashboard() {
 
   const planName = sub?.plan?.name;
   const hasSub = sub?.has_subscription || sub?.has_journal_access;
+  const journalShortcutHref =
+    user.role === "admin" || hasSub ? "/journal/dashboard" : "/journal/pricing";
   const memberSince = user.created_at
     ? new Date(user.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric" })
     : null;
@@ -319,7 +321,7 @@ export default function GlobalDashboard() {
         <div className="db-shortcuts">
           {[
             { icon: BarChart3, title: "Backtesting", desc: "Historical strategy practice", href: "/backtest/" },
-            { icon: BookOpen, title: "Trade Journal", desc: "Log and review trades", href: "/journal/dashboard" },
+            { icon: BookOpen, title: "Trade Journal", desc: "Log and review trades", href: journalShortcutHref },
             { icon: GraduationCap, title: "Mentorship", desc: "Learn from professionals", href: "/bootcamp/" },
           ].map((item) => (
             <a key={item.title} href={item.href} className="db-shortcut-card">
