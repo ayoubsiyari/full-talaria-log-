@@ -2093,6 +2093,7 @@ class Chart {
             if (!res.ok) {
                 const errText = await res.text().catch(() => '');
                 console.warn('⚠️ Critical session state PATCH failed', res.status, errText);
+                this._notifyJournalSaveFailed(res.status);
                 if (res.status === 403) {
                     console.warn(
                         'Journal not saved: API CSRF middleware blocked this Origin. GET /state still works, so trades disappear after refresh. ' +
@@ -2102,6 +2103,19 @@ class Chart {
             }
         } catch (e) {
             console.warn('⚠️ Failed to save critical trading session state', e);
+        }
+    }
+
+    /** User-visible hint when journal PATCH fails (otherwise trades vanish after refresh). */
+    _notifyJournalSaveFailed(status) {
+        let msg = 'Trades not saved to server — they will disappear after refresh.';
+        if (status === 401) {
+            msg = 'Not logged in — sign in and open the chart from your backtest session again.';
+        } else if (status === 403) {
+            msg = 'Save blocked (403). Set API env TRUSTED_ORIGINS to this site origin, or fix nginx/proxy headers.';
+        }
+        if (typeof this.showNotification === 'function') {
+            this.showNotification(msg);
         }
     }
 
@@ -2124,6 +2138,7 @@ class Chart {
             if (!res.ok) {
                 const errText = await res.text().catch(() => '');
                 console.warn('⚠️ Session state PATCH failed', res.status, errText);
+                this._notifyJournalSaveFailed(res.status);
                 if (res.status === 403) {
                     console.warn(
                         'Journal not saved: API CSRF middleware blocked this Origin. GET /state still works, so trades disappear after refresh. ' +

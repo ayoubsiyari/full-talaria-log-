@@ -10,6 +10,15 @@ ruflo/
 # Temporary / scratch files
 .tmp_drawing_tools_ui_accent_hits.txt
 color.text
+tmp_chunks.txt
+tmp_func.txt
+tmp_func2.txt
+extract_apply.ps1
+extract_checkbox.ps1
+extract_func.ps1
+extract_func2.ps1
+extract_func3.ps1
+extract_panel_cb.ps1
 
 # Planning & documentation (local reference only)
 DESIGN_SYSTEM.md
