@@ -2330,29 +2330,19 @@ class Chart {
         }
     }
 
-    /** User-visible hint when journal PATCH fails (otherwise trades vanish after refresh). */
+    /** Log only — no chart toast (operators use DevTools Network + server logs). */
     _notifyJournalSaveFailed(status) {
-        let msg = 'Trades not saved to server — they will disappear after refresh.';
-        if (status === 401) {
-            msg = 'Not logged in — sign in and open the chart from your backtest session again.';
-        } else if (status === 403) {
-            msg = 'Save blocked (403). Set API env TRUSTED_ORIGINS to this site origin, or fix nginx/proxy headers.';
-        }
-        if (typeof this.showNotification === 'function') {
-            this.showNotification(msg);
-        }
+        let detail = `HTTP ${status}`;
+        if (status === 401) detail = 'HTTP 401 — sign in; open chart with ?sessionId= from your session.';
+        else if (status === 403) detail = 'HTTP 403 — set TRUSTED_ORIGINS / fix proxy Host & X-Forwarded-* headers.';
+        console.warn('⚠️ Session state not saved:', detail);
     }
 
-    /**
-     * fetch() threw (e.g. TypeError: Failed to fetch) — no HTTP response. Usually: wrong host,
-     * nginx not proxying /api to the chart API, mixed content (HTTPS page → HTTP API), or API down.
-     */
+    /** Log only — fetch threw before any HTTP status (proxy down, mixed content, wrong /api route). */
     _notifyJournalNetworkError() {
-        if (typeof this.showNotification === 'function') {
-            this.showNotification(
-                'Network error — trades not saved. Use one public URL for the app with /api proxied to the chart server (avoid file:// or mixed HTTP/HTTPS).'
-            );
-        }
+        console.warn(
+            '⚠️ Session state save failed (network). Check same-origin /api proxy to chart API and mixed HTTP/HTTPS.'
+        );
     }
 
     async flushSessionStateSave() {
