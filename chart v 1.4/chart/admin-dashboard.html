@@ -1209,6 +1209,10 @@ select { cursor: pointer; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
         Affiliates
       </a>
+      <a class="nav-item" data-section="bulk-email" onclick="navigate('bulk-email')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        Bulk email
+      </a>
       <a class="nav-item" data-section="support" onclick="navigate('support')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
         Support
@@ -1651,6 +1655,59 @@ select { cursor: pointer; }
         </div>
       </div>
 
+      <!-- ════════ BULK EMAIL SECTION ════════ -->
+      <div class="section" id="sec-bulk-email">
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <div class="card-title">Send email to users</div>
+            <button class="btn sm" type="button" onclick="loadUsers().then(() => renderBulkEmailPanel())">Refresh users</button>
+          </div>
+          <div class="card-body" style="font-size:13px;line-height:1.55;color:var(--text-secondary)">
+            <p style="margin:0 0 8px">Select recipients, compose an <strong>HTML</strong> message, and send through the same SMTP settings as the journal app (<code>DOMAIN_EMAIL_*</code> on the API server). Rate limit: 5 sends per minute.</p>
+            <p style="margin:0">Uses <code>POST /api/admin/send-bulk-email</code> (session auth). Max 500 recipients per request.</p>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted)"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+            <div class="card-title">Recipients</div>
+            <span class="card-badge" id="bulkEmailSelectedCount">0</span>
+            <span style="font-size:11px;color:var(--text-muted);margin-left:4px">selected · <span id="bulkEmailFilteredCount">0</span> shown</span>
+          </div>
+          <div class="card-body">
+            <div class="search-bar" style="padding:0 0 12px;flex-wrap:wrap;gap:8px">
+              <input type="search" id="bulkEmailSearch" placeholder="Search name or email…" style="min-width:180px;flex:1" oninput="renderBulkEmailPanel()">
+              <select id="bulkEmailFilter" onchange="renderBulkEmailPanel()" style="max-width:160px">
+                <option value="all">All users</option>
+                <option value="journal">Journal access</option>
+                <option value="no-journal">No journal access</option>
+              </select>
+              <button type="button" class="btn sm" onclick="bulkEmailSelectFiltered()">Add all shown</button>
+              <button type="button" class="btn sm" onclick="bulkEmailSelectJournalUsers()">Journal users</button>
+              <button type="button" class="btn sm" onclick="bulkEmailClearSelection()">Clear selection</button>
+            </div>
+            <div id="bulkEmailUserList" style="max-height:min(360px,calc(100vh - 420px));overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-raised)"></div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted)"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            <div class="card-title">Message</div>
+          </div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="field fg-full"><label>Subject</label><input type="text" id="bulkEmailSubject" placeholder="Email subject" maxlength="500"></div>
+              <div class="field fg-full"><label>HTML body</label><textarea id="bulkEmailContent" rows="12" placeholder="&lt;p&gt;Hello,&lt;/p&gt;&lt;p&gt;…&lt;/p&gt;" style="width:100%;font-family:ui-monospace,monospace;font-size:12px"></textarea></div>
+            </div>
+            <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <button type="button" class="btn primary" id="bulkEmailSendBtn" onclick="sendBulkEmailFromAdmin()">Send email</button>
+              <span id="bulkEmailResult" style="font-size:12px;color:var(--text-muted)"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ════════ SUPPORT SECTION ════════ -->
       <div class="section" id="sec-support">
         <div class="support-layout">
@@ -1785,6 +1842,7 @@ const sectionTitles = {
   subscriptions: 'Subscriptions',
   payments: 'Payments',
   affiliates: 'Affiliates',
+  'bulk-email': 'Bulk email',
   support: 'Support',
   settings: 'Settings'
 };
@@ -2139,6 +2197,7 @@ function navigate(section) {
   if (section === 'subscriptions') loadSubscriptionData();
   if (section === 'payments') loadPayments();
   if (section === 'affiliates') loadAffiliates();
+  if (section === 'bulk-email') { loadUsers().then(() => renderBulkEmailPanel()); }
   if (section === 'settings') updateSettingsPage();
   if (section === 'support') loadSupport();
 }
@@ -2298,6 +2357,106 @@ async function loadUsers() {
     renderUsers();
     renderOverview();
   } catch (e) { toast('Failed to load users: ' + e.message, 'err'); }
+}
+
+const bulkEmailSelected = new Set();
+
+function getBulkEmailFilteredUsers() {
+  const q = (($('bulkEmailSearch') && $('bulkEmailSearch').value) || '').toLowerCase();
+  const f = ($('bulkEmailFilter') && $('bulkEmailFilter').value) || 'all';
+  return allUsers.filter(u => {
+    if (f === 'journal' && !u.has_journal_access) return false;
+    if (f === 'no-journal' && u.has_journal_access) return false;
+    if (!q) return true;
+    const name = (u.name || '').toLowerCase();
+    const em = (u.email || '').toLowerCase();
+    return name.includes(q) || em.includes(q);
+  });
+}
+
+function bulkEmailToggle(email) {
+  if (bulkEmailSelected.has(email)) bulkEmailSelected.delete(email);
+  else bulkEmailSelected.add(email);
+  const el = $('bulkEmailSelectedCount');
+  if (el) el.textContent = bulkEmailSelected.size;
+}
+
+function bulkEmailSelectFiltered() {
+  getBulkEmailFilteredUsers().forEach(u => { if (u.email) bulkEmailSelected.add(u.email); });
+  renderBulkEmailPanel();
+}
+
+function bulkEmailSelectJournalUsers() {
+  allUsers.filter(u => u.has_journal_access && u.email).forEach(u => bulkEmailSelected.add(u.email));
+  renderBulkEmailPanel();
+}
+
+function bulkEmailClearSelection() {
+  bulkEmailSelected.clear();
+  renderBulkEmailPanel();
+}
+
+function renderBulkEmailPanel() {
+  const list = $('bulkEmailUserList');
+  const cnt = $('bulkEmailFilteredCount');
+  const sel = $('bulkEmailSelectedCount');
+  if (!list) return;
+  const users = getBulkEmailFilteredUsers();
+  if (cnt) cnt.textContent = users.length;
+  if (sel) sel.textContent = bulkEmailSelected.size;
+  if (!users.length) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">No users match. Load users or adjust filters.</div>';
+    return;
+  }
+  list.innerHTML = users.filter(u => u.email).map(u => {
+    const checked = bulkEmailSelected.has(u.email) ? ' checked' : '';
+    const sub = u.subscription;
+    const tag = sub
+      ? '<span class="badge badge-active" style="font-size:9px;margin-left:6px">' + esc(sub.plan_name || 'Sub') + '</span>'
+      : (u.has_journal_access ? '<span class="badge badge-admin" style="font-size:9px;margin-left:6px">Journal</span>' : '');
+    return '<label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;color:var(--text)">' +
+      '<input type="checkbox"' + checked + ' onchange=\'bulkEmailToggle(' + JSON.stringify(u.email) + ')\'>' +
+      '<span style="flex:1;min-width:0"><span style="font-weight:600">' + esc(u.name || '') + '</span><span style="color:var(--text-muted);font-size:11px;display:block">' + esc(u.email || '') + '</span></span>' + tag + '</label>';
+  }).join('');
+}
+
+async function sendBulkEmailFromAdmin() {
+  const emails = Array.from(bulkEmailSelected);
+  const subjectEl = $('bulkEmailSubject');
+  const contentEl = $('bulkEmailContent');
+  const out = $('bulkEmailResult');
+  const btn = $('bulkEmailSendBtn');
+  if (!emails.length) {
+    toast('Select at least one recipient', 'err');
+    return;
+  }
+  const subject = (subjectEl && subjectEl.value || '').trim();
+  const content = (contentEl && contentEl.value || '').trim();
+  if (!subject || !content) {
+    toast('Subject and HTML body are required', 'err');
+    return;
+  }
+  if (!confirm('Send this email to ' + emails.length + ' recipient(s)?')) return;
+  if (out) out.textContent = '';
+  if (btn) btn.disabled = true;
+  try {
+    const data = await api('/api/admin/send-bulk-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emails, subject, content })
+    });
+    const msg = 'Sent ' + data.sent + ' / ' + data.total + (data.failed ? ' (' + data.failed + ' failed)' : '');
+    toast(msg, data.failed ? 'err' : 'ok');
+    if (out) out.textContent = msg;
+    if (data.sent && subjectEl) subjectEl.value = '';
+    if (data.sent && contentEl) contentEl.value = '';
+    bulkEmailClearSelection();
+  } catch (e) {
+    toast(e.message || 'Send failed', 'err');
+    if (out) out.textContent = e.message || 'Error';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 function renderUsers() {

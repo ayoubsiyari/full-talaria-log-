@@ -32,6 +32,10 @@ import subprocess
 import tempfile
 import time
 import threading
+import smtplib
+import ssl as ssl_module
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from collections import deque
 from pydantic import BaseModel, Field
 from passlib.context import CryptContext
@@ -6090,6 +6094,114 @@ async def admin_refund_payment(payment_id: int, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         db.close()
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  ADMIN — Bulk email (same SMTP env as journal-backend DOMAIN_EMAIL_*)
+# ═══════════════════════════════════════════════════════════════════
+
+_bulk_email_rate: dict[int, deque] = {}
+_BULK_EMAIL_RATE_MAX = 5
+_BULK_EMAIL_RATE_WINDOW_SEC = 60.0
+
+
+def _bulk_email_smtp_params():
+    server = (os.environ.get("DOMAIN_EMAIL_SMTP_SERVER") or "smtp.gmail.com").strip()
+    port = int((os.environ.get("DOMAIN_EMAIL_SMTP_PORT") or "587").strip() or "587")
+    use_tls = (os.environ.get("DOMAIN_EMAIL_USE_TLS", "true").lower() in {"1", "true", "yes", "on"})
+    use_ssl = (os.environ.get("DOMAIN_EMAIL_USE_SSL", "false").lower() in {"1", "true", "yes", "on"})
+    username = (os.environ.get("DOMAIN_EMAIL_USERNAME") or os.environ.get("GMAIL_USERNAME") or "").strip()
+    password = (os.environ.get("DOMAIN_EMAIL_PASSWORD") or os.environ.get("GMAIL_APP_PASSWORD") or "").strip()
+    envelope_from = username or (os.environ.get("ADMIN_ALERT_EMAIL") or "").strip()
+    return server, port, use_tls, use_ssl, username, password, envelope_from
+
+
+def _bulk_email_rate_ok(admin_user_id: int) -> bool:
+    now = time.time()
+    dq = _bulk_email_rate.setdefault(admin_user_id, deque())
+    while dq and dq[0] < now - _BULK_EMAIL_RATE_WINDOW_SEC:
+        dq.popleft()
+    if len(dq) >= _BULK_EMAIL_RATE_MAX:
+        return False
+    dq.append(now)
+    return True
+
+
+def _send_one_bulk_html_email(to_addr: str, subject: str, html_body: str) -> None:
+    server, port, use_tls, use_ssl, user, password, envelope_from = _bulk_email_smtp_params()
+    if not envelope_from or not password:
+        raise HTTPException(
+            status_code=503,
+            detail="Email not configured (set DOMAIN_EMAIL_USERNAME and DOMAIN_EMAIL_PASSWORD, or GMAIL_* fallbacks)",
+        )
+    if not user:
+        user = envelope_from
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"Talaria <{envelope_from}>"
+    msg["To"] = to_addr
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+    raw = msg.as_string()
+
+    if use_ssl:
+        context = ssl_module.create_default_context()
+        with smtplib.SMTP_SSL(server, port, context=context) as smtp:
+            smtp.login(user, password)
+            smtp.sendmail(envelope_from, [to_addr], raw)
+    else:
+        with smtplib.SMTP(server, port) as smtp:
+            if use_tls:
+                smtp.starttls(context=ssl_module.create_default_context())
+            smtp.login(user, password)
+            smtp.sendmail(envelope_from, [to_addr], raw)
+
+
+class _BulkEmailIn(BaseModel):
+    emails: list[str] = Field(..., max_length=500)
+    subject: str = Field(..., min_length=1, max_length=500)
+    content: str = Field(..., min_length=1, max_length=500_000)
+
+
+@app.post("/api/admin/send-bulk-email")
+async def admin_send_bulk_email(payload: _BulkEmailIn, request: Request):
+    """Send HTML email to many recipients (admin session auth). Uses DOMAIN_EMAIL_* SMTP settings."""
+    admin_user = _require_admin(request)
+    if not _bulk_email_rate_ok(int(admin_user.id)):
+        raise HTTPException(status_code=429, detail="Too many bulk send requests; try again in a minute")
+
+    max_n = int(os.environ.get("BULK_EMAIL_MAX_RECIPIENTS", "500"))
+    raw_emails = payload.emails or []
+    unique_emails = list(dict.fromkeys([e.lower().strip() for e in raw_emails if e and isinstance(e, str) and "@" in e]))
+    if not unique_emails:
+        raise HTTPException(status_code=400, detail="No valid email addresses provided")
+    if len(unique_emails) > max_n:
+        raise HTTPException(status_code=400, detail=f"Too many recipients (max {max_n})")
+
+    subject = payload.subject.strip()
+    content = payload.content.strip()
+    if not subject or not content:
+        raise HTTPException(status_code=400, detail="Subject and content are required")
+
+    sent_count = 0
+    failed_emails: list[dict] = []
+    for email in unique_emails:
+        try:
+            _send_one_bulk_html_email(email, subject, content)
+            sent_count += 1
+        except HTTPException:
+            raise
+        except Exception as e:  # noqa: BLE001 — per-recipient failure; continue with rest
+            failed_emails.append({"email": email, "error": str(e)})
+
+    return {
+        "success": True,
+        "sent": sent_count,
+        "total": len(unique_emails),
+        "failed": len(failed_emails),
+        "failed_emails": failed_emails[:25],
+    }
+
 
 @app.get("/api/admin/subscriptions/stats")
 async def admin_subscription_stats(request: Request):

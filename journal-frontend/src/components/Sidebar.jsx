@@ -13,7 +13,6 @@ import {
   Zap,
   GraduationCap,
   Upload,
-  Settings,
   LogOut,
   User,
   Bot,
@@ -29,7 +28,6 @@ import {
   LineChart,
   Target as TargetIcon,
   Clock,
-  CreditCard
 } from 'lucide-react';
 import { useProfile } from '../context/ProfileContext';
 import NewProfileSelector from './NewProfileSelector';
@@ -293,21 +291,7 @@ export default function Sidebar() {
         </div>
 
         <div className="mt-8 space-y-1">
-          {!isCollapsed && <p className="px-3 text-xs font-semibold text-cyan-400/75 uppercase tracking-wider">Settings</p>}
-          
-          {/* Settings */}
-          {isCollapsed ? (
-            <Tooltip content="Settings" position="right">
-              <NavLink to="/settings" className={({ isActive }) => `${isActive ? 'bg-cyan-500/12 border-l-[3px] border-cyan-400 text-cyan-50' : 'text-cyan-100/55'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-cyan-500/10 hover:text-cyan-50 transition-all duration-300`}>
-                <Settings className="h-5 w-5" />
-              </NavLink>
-            </Tooltip>
-          ) : (
-            <NavLink to="/settings" className={({ isActive }) => `${isActive ? 'bg-cyan-500/12 border-l-[3px] border-cyan-400 text-cyan-50' : 'text-cyan-100/55'} flex items-center px-3 py-2 rounded-lg hover:bg-cyan-500/10 hover:text-cyan-50 hover:translate-x-1 transition-all duration-300`}>
-              <Settings className="h-5 w-5" />
-              <span className="font-medium ml-3">Settings</span>
-            </NavLink>
-          )}
+          {!isCollapsed && <p className="px-3 text-xs font-semibold text-cyan-400/75 uppercase tracking-wider">Profile</p>}
 
           {/* Manage Profiles */}
           {isCollapsed ? (
@@ -320,20 +304,6 @@ export default function Sidebar() {
             <NavLink to="/manage-profiles" className={({ isActive }) => `${isActive ? 'bg-cyan-500/12 border-l-[3px] border-cyan-400 text-cyan-50' : 'text-cyan-100/55'} flex items-center px-3 py-2 rounded-lg hover:bg-cyan-500/10 hover:text-cyan-50 hover:translate-x-1 transition-all duration-300`}>
               <User className="h-5 w-5" />
               <span className="font-medium ml-3">Manage Profiles</span>
-            </NavLink>
-          )}
-
-          {/* Pricing / Subscription */}
-          {isCollapsed ? (
-            <Tooltip content="Pricing" position="right">
-              <NavLink to="/pricing" className={({ isActive }) => `${isActive ? 'bg-cyan-500/12 border-l-[3px] border-cyan-400 text-cyan-50' : 'text-cyan-100/55'} flex items-center justify-center px-2 py-2 rounded-lg hover:bg-cyan-500/10 hover:text-cyan-50 transition-all duration-300`}>
-                <CreditCard className="h-5 w-5" />
-              </NavLink>
-            </Tooltip>
-          ) : (
-            <NavLink to="/pricing" className={({ isActive }) => `${isActive ? 'bg-cyan-500/12 border-l-[3px] border-cyan-400 text-cyan-50' : 'text-cyan-100/55'} flex items-center px-3 py-2 rounded-lg hover:bg-cyan-500/10 hover:text-cyan-50 hover:translate-x-1 transition-all duration-300`}>
-              <CreditCard className="h-5 w-5" />
-              <span className="font-medium ml-3">Pricing</span>
             </NavLink>
           )}
 
