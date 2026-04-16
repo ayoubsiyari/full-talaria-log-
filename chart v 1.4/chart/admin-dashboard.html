@@ -770,6 +770,148 @@ select { cursor: pointer; }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── Notifications bell ───────────────────────────── */
+.notif-wrap { position: relative; margin-right: 8px; }
+.notif-bell-btn { position: relative; }
+.notif-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.notif-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 360px;
+  max-height: 400px;
+  overflow-y: auto;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+}
+.notif-dropdown-hdr {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+.notif-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+}
+.notif-item:hover { background: rgba(255,255,255,.04); }
+.notif-item.unread { border-left: 3px solid var(--accent); }
+.notif-item-title { font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.notif-item-body { color: var(--text-muted); font-size: 11px; line-height: 1.4; }
+
+/* ── Support chat ─────────────────────────────────── */
+.support-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) 1fr;
+  gap: 16px;
+  min-height: calc(100vh - 140px);
+}
+@media (max-width: 900px) {
+  .support-layout { grid-template-columns: 1fr; }
+}
+.support-thread-list {
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  padding: 0 !important;
+}
+.support-thread-row {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+  font-size: 12px;
+}
+.support-thread-row:hover { background: rgba(255,255,255,.03); }
+.support-thread-row.active {
+  background: var(--accent-subtle);
+  border-left: 3px solid var(--accent);
+}
+.support-thread-subj { font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.support-thread-meta { font-size: 11px; color: var(--text-muted); }
+.support-main { display: flex; flex-direction: column; min-height: 400px; }
+.support-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 280px;
+  max-height: calc(100vh - 320px);
+  background: rgba(0,0,0,.15);
+}
+.support-msg {
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.support-msg.from-user {
+  align-self: flex-start;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border);
+}
+.support-msg.from-admin {
+  align-self: flex-end;
+  background: var(--accent-subtle);
+  border: 1px solid rgba(139,92,246,.25);
+}
+.support-msg .support-msg-hdr {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.support-composer {
+  display: flex;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  align-items: flex-end;
+}
+.support-composer textarea {
+  flex: 1;
+  min-height: 72px;
+  max-height: 200px;
+  resize: vertical;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 13px;
+}
+.btn.sm { padding: 6px 12px; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -952,6 +1094,10 @@ select { cursor: pointer; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
         Payments
       </a>
+      <a class="nav-item" data-section="support" onclick="navigate('support')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        Support
+      </a>
       <div class="nav-sep"></div>
       <a class="nav-item" data-section="settings" onclick="navigate('settings')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
@@ -973,6 +1119,19 @@ select { cursor: pointer; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
         Back to Chart
       </button>
+      <div class="notif-wrap">
+        <button type="button" class="topbar-btn notif-bell-btn" id="notifBellBtn" onclick="toggleNotifDropdown(event)" aria-label="Notifications" title="Notifications">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+          <span class="notif-badge" id="notifBadge" style="display:none">0</span>
+        </button>
+        <div class="notif-dropdown" id="notifDropdown" style="display:none" onclick="event.stopPropagation()">
+          <div class="notif-dropdown-hdr">
+            <span>Notifications</span>
+            <button type="button" class="btn sm" onclick="markAllNotificationsRead()">Mark all read</button>
+          </div>
+          <div id="notifListInner"></div>
+        </div>
+      </div>
       <div class="topbar-user">
         <span id="topbarName" style="font-weight:500">Admin</span>
         <div class="topbar-avatar" id="topbarAvatar">A</div>
@@ -1328,6 +1487,35 @@ select { cursor: pointer; }
         </div>
       </div>
 
+      <!-- ════════ SUPPORT SECTION ════════ -->
+      <div class="section" id="sec-support">
+        <div class="support-layout">
+          <div class="card" style="margin:0;display:flex;flex-direction:column;max-height:calc(100vh - 120px)">
+            <div class="card-hdr">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+              <div class="card-title">Conversations</div>
+              <button type="button" class="btn sm" onclick="loadSupportThreads()">Refresh</button>
+            </div>
+            <div class="card-body support-thread-list" id="supportThreadList">
+              <div class="empty-state"><p>Loading…</p></div>
+            </div>
+          </div>
+          <div class="card support-main" style="margin:0">
+            <div class="card-hdr" style="flex-wrap:wrap;gap:8px">
+              <div class="card-title" id="supportThreadTitle" style="flex:1;min-width:0">Select a conversation</div>
+              <button type="button" class="btn sm" id="supportCloseBtn" style="display:none" onclick="supportCloseThread()">Close thread</button>
+            </div>
+            <div class="support-messages" id="supportMessages">
+              <div class="empty-state" style="padding:24px"><p class="text-muted" style="color:var(--text-muted)">Choose a thread to view messages</p></div>
+            </div>
+            <div class="support-composer">
+              <textarea id="supportInput" placeholder="Type a reply…" disabled></textarea>
+              <button type="button" class="btn primary" id="supportSendBtn" disabled onclick="sendSupportReply()">Send</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ════════ SETTINGS SECTION ════════ -->
       <div class="section" id="sec-settings">
         <div class="card">
@@ -1417,8 +1605,216 @@ const sectionTitles = {
   datasets: 'Dataset Management',
   subscriptions: 'Subscriptions',
   payments: 'Payments',
+  support: 'Support',
   settings: 'Settings'
 };
+
+let supportThreads = [];
+let selectedSupportId = null;
+let supportMessages = [];
+let supportWs = null;
+let notifDropdownOpen = false;
+
+async function loadNotifications() {
+  try {
+    const data = await api('/api/notifications?limit=30');
+    const n = data.unread_count || 0;
+    const badge = $('notifBadge');
+    if (n > 0) { badge.style.display = 'flex'; badge.textContent = n > 99 ? '99+' : String(n); }
+    else { badge.style.display = 'none'; }
+    const inner = $('notifListInner');
+    if (!inner) return;
+    const list = data.notifications || [];
+    if (!list.length) {
+      inner.innerHTML = '<div class="notif-item" style="cursor:default;color:var(--text-muted)">No notifications</div>';
+      return;
+    }
+    inner.innerHTML = list.map(x => {
+      const unread = !x.read_at;
+      return `<div class="notif-item${unread ? ' unread' : ''}" data-nid="${x.id}" data-tid="${x.thread_id || ''}">
+        <div class="notif-item-title">${esc(x.title || '')}</div>
+        <div class="notif-item-body">${esc(x.body || '')}</div>
+      </div>`;
+    }).join('');
+    inner.querySelectorAll('.notif-item[data-tid]').forEach(el => {
+      el.addEventListener('click', () => {
+        const tid = el.getAttribute('data-tid');
+        const nid = el.getAttribute('data-nid');
+        if (nid) {
+          api('/api/notifications/read', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [parseInt(nid, 10)] }) }).catch(() => {});
+        }
+        $('notifDropdown').style.display = 'none';
+        notifDropdownOpen = false;
+        if (tid) selectedSupportId = parseInt(tid, 10);
+        navigate('support');
+        loadNotifications();
+      });
+    });
+  } catch (e) { /* ignore */ }
+}
+
+function toggleNotifDropdown(ev) {
+  ev.stopPropagation();
+  const dd = $('notifDropdown');
+  notifDropdownOpen = !notifDropdownOpen;
+  dd.style.display = notifDropdownOpen ? 'block' : 'none';
+  if (notifDropdownOpen) loadNotifications();
+}
+
+document.addEventListener('click', () => {
+  if (notifDropdownOpen) {
+    $('notifDropdown').style.display = 'none';
+    notifDropdownOpen = false;
+  }
+});
+
+async function markAllNotificationsRead() {
+  try {
+    await api('/api/notifications/read', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ all: true }) });
+    await loadNotifications();
+    toast('Marked as read', 'ok');
+  } catch (e) { toast(e.message || 'Failed', 'err'); }
+}
+
+function supportWsUrl() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return proto + '//' + location.host + '/ws/support';
+}
+
+function supportDisconnectWs() {
+  if (supportWs) {
+    try { supportWs.close(); } catch (e) {}
+    supportWs = null;
+  }
+}
+
+function supportConnectWs() {
+  supportDisconnectWs();
+  if (!selectedSupportId) return;
+  const ws = new WebSocket(supportWsUrl());
+  supportWs = ws;
+  ws.onopen = () => {
+    try { ws.send(JSON.stringify({ type: 'subscribe', thread_id: selectedSupportId })); } catch (e) {}
+  };
+  ws.onmessage = (ev) => {
+    try {
+      const d = JSON.parse(ev.data);
+      if (d.type === 'message' && d.message && d.thread_id === selectedSupportId) {
+        const mid = d.message.id;
+        if (supportMessages.some(function (x) { return x.id === mid; })) return;
+        supportMessages.push(d.message);
+        renderSupportMessages();
+      }
+    } catch (e) {}
+  };
+  ws.onclose = () => { if (supportWs === ws) supportWs = null; };
+}
+
+async function loadSupportThreads() {
+  const box = $('supportThreadList');
+  try {
+    const data = await api('/api/support/threads');
+    supportThreads = data.threads || [];
+    if (!supportThreads.length) {
+      box.innerHTML = '<div class="empty-state" style="padding:24px"><p>No support threads yet</p></div>';
+      return;
+    }
+    box.innerHTML = supportThreads.map(t => {
+      const active = t.id === selectedSupportId ? ' active' : '';
+      const who = esc(t.user_name || t.user_email || 'User #' + t.user_id);
+      return `<div class="support-thread-row${active}" data-id="${t.id}">
+        <div class="support-thread-subj">${esc(t.subject)} <span style="opacity:.6;font-size:10px">(${esc(t.category)})</span></div>
+        <div class="support-thread-meta">${who} · ${esc(t.status)} · ${timeAgo(t.last_message_at)}</div>
+      </div>`;
+    }).join('');
+    box.querySelectorAll('.support-thread-row').forEach(row => {
+      row.addEventListener('click', () => selectSupportThread(parseInt(row.getAttribute('data-id'), 10)));
+    });
+  } catch (e) {
+    box.innerHTML = '<div class="empty-state"><p>' + esc(e.message || 'Failed to load') + '</p></div>';
+  }
+}
+
+function renderSupportMessages() {
+  const box = $('supportMessages');
+  const th = supportThreads.find(x => x.id === selectedSupportId);
+  const ownerId = th ? th.user_id : null;
+  if (!supportMessages.length) {
+    box.innerHTML = '<div class="empty-state" style="padding:24px"><p style="color:var(--text-muted)">No messages</p></div>';
+    return;
+  }
+  box.innerHTML = supportMessages.map(m => {
+    const isOwner = ownerId != null && m.sender_user_id === ownerId;
+    const cls = isOwner ? 'from-user' : 'from-admin';
+    const label = isOwner ? 'User' : 'Support';
+    return `<div class="support-msg ${cls}"><div class="support-msg-hdr">${esc(label)} · ${esc(m.sender_name || '')}</div>${esc(m.body || '')}</div>`;
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+async function selectSupportThread(id) {
+  selectedSupportId = id;
+  $('supportInput').disabled = false;
+  $('supportSendBtn').disabled = false;
+  const th = supportThreads.find(x => x.id === id);
+  $('supportThreadTitle').textContent = th ? th.subject : 'Thread #' + id;
+  const closeBtn = $('supportCloseBtn');
+  if (th && th.status === 'closed') {
+    closeBtn.style.display = 'none';
+    $('supportInput').disabled = true;
+    $('supportSendBtn').disabled = true;
+  } else {
+    closeBtn.style.display = '';
+  }
+  try {
+    const data = await api('/api/support/threads/' + id + '/messages?limit=200');
+    supportMessages = data.messages || [];
+    renderSupportMessages();
+  } catch (e) {
+    toast(e.message || 'Failed to load messages', 'err');
+  }
+  document.querySelectorAll('.support-thread-row').forEach(r => {
+    r.classList.toggle('active', parseInt(r.getAttribute('data-id'), 10) === id);
+  });
+  supportConnectWs();
+}
+
+async function sendSupportReply() {
+  const ta = $('supportInput');
+  const body = (ta.value || '').trim();
+  if (!body || !selectedSupportId) return;
+  try {
+    await api('/api/support/threads/' + selectedSupportId + '/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body })
+    });
+    ta.value = '';
+    const data = await api('/api/support/threads/' + selectedSupportId + '/messages?limit=200');
+    supportMessages = data.messages || [];
+    renderSupportMessages();
+    await loadSupportThreads();
+  } catch (e) { toast(e.message || 'Send failed', 'err'); }
+}
+
+async function supportCloseThread() {
+  if (!selectedSupportId) return;
+  try {
+    await api('/api/support/threads/' + selectedSupportId, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'closed' })
+    });
+    toast('Thread closed', 'ok');
+    await loadSupportThreads();
+    selectSupportThread(selectedSupportId);
+  } catch (e) { toast(e.message || 'Failed', 'err'); }
+}
+
+async function loadSupport() {
+  await loadSupportThreads();
+  if (selectedSupportId) await selectSupportThread(selectedSupportId);
+}
 
 function navigate(section) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -1429,10 +1825,12 @@ function navigate(section) {
   if (nav) nav.classList.add('active');
   $('pageTitle').textContent = sectionTitles[section] || section;
   window.location.hash = section;
+  if (section !== 'support') supportDisconnectWs();
   if (section === 'sessions') loadSessions();
   if (section === 'subscriptions') loadSubscriptionData();
   if (section === 'payments') loadPayments();
   if (section === 'settings') updateSettingsPage();
+  if (section === 'support') loadSupport();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1471,6 +1869,9 @@ let dsPollTimer = null;
 
     await Promise.all([loadUsers(), loadSessions(), loadDatasets(), loadSubStats()]);
     renderOverview();
+
+    loadNotifications();
+    setInterval(loadNotifications, 25000);
 
     setInterval(loadSessions, 10000);
 

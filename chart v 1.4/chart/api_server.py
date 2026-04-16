@@ -2,7 +2,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Response,
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Float, text, func
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Float, text, func, nulls_last
 from sqlalchemy.orm import sessionmaker, declarative_base
 from datetime import datetime, timedelta
 import os
@@ -18,7 +18,7 @@ import subprocess
 import tempfile
 import time
 import threading
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from passlib.context import CryptContext
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -422,6 +422,44 @@ class TradingSessionState(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
+class SupportThread(Base):
+    __tablename__ = "support_threads"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    subject = Column(String(500), nullable=False)
+    category = Column(String(32), nullable=False, default="other")  # bug | error | other
+    status = Column(String(32), nullable=False, default="open")  # open | closed
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_message_at = Column(DateTime, nullable=True, index=True)
+
+
+class SupportMessage(Base):
+    __tablename__ = "support_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    thread_id = Column(Integer, ForeignKey("support_threads.id"), index=True, nullable=False)
+    sender_user_id = Column(Integer, index=True, nullable=False)
+    body = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    type = Column(String(64), nullable=False, default="support_message")
+    thread_id = Column(Integer, index=True, nullable=True)
+    message_id = Column(Integer, nullable=True)
+    title = Column(String(300), nullable=False)
+    body = Column(Text, nullable=True)
+    read_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # Create chart-specific tables only — exclude 'users' (managed by journal-backend).
 _CHART_TABLES = [
     CSVFile.__table__,
@@ -431,6 +469,9 @@ _CHART_TABLES = [
     UserSession.__table__,
     TradingSession.__table__,
     TradingSessionState.__table__,
+    SupportThread.__table__,
+    SupportMessage.__table__,
+    Notification.__table__,
 ]
 Base.metadata.create_all(bind=engine, tables=_CHART_TABLES)
 
@@ -526,6 +567,75 @@ def _get_user_from_request(request: Request):
         return None
     finally:
         db.close()
+
+
+def _get_user_from_websocket(ws: WebSocket):
+    """Resolve session cookie to User for WebSocket connections (no last_active touch on every message)."""
+    if not AUTH_ENABLED:
+        return _ANON_USER
+    session_id = ws.cookies.get(SESSION_COOKIE_NAME)
+    if not session_id:
+        return None
+    db = SessionLocal()
+    try:
+        sess = db.query(UserSession).filter(UserSession.id == session_id).first()
+        if not sess:
+            return None
+        user = db.query(User).filter(User.id == sess.user_id).first()
+        if not user or not user.is_active:
+            return None
+        if user.role != "admin" and user.access_expires_at and user.access_expires_at < datetime.utcnow():
+            return None
+        return user
+    except Exception:
+        return None
+    finally:
+        db.close()
+
+
+SUPPORT_SUBJECT_MAX = 500
+SUPPORT_BODY_MAX = 8000
+
+
+def _support_user_can_access_thread(user: User, thread: SupportThread) -> bool:
+    if user.role == "admin":
+        return True
+    return int(thread.user_id) == int(user.id)
+
+
+class SupportConnectionManager:
+    """WebSocket connections subscribed to a support thread."""
+
+    def __init__(self):
+        self.by_thread: dict[int, set] = {}
+
+    def subscribe(self, ws: WebSocket, thread_id: int):
+        """Register an already-accepted socket for a thread."""
+        if thread_id not in self.by_thread:
+            self.by_thread[thread_id] = set()
+        self.by_thread[thread_id].add(ws)
+
+    def disconnect(self, ws: WebSocket, thread_id: int):
+        if thread_id in self.by_thread:
+            self.by_thread[thread_id].discard(ws)
+            if not self.by_thread[thread_id]:
+                del self.by_thread[thread_id]
+
+    async def broadcast(self, thread_id: int, message: dict):
+        if thread_id not in self.by_thread:
+            return
+        dead = []
+        for w in self.by_thread[thread_id]:
+            try:
+                await w.send_json(message)
+            except Exception:
+                dead.append(w)
+        for w in dead:
+            self.by_thread[thread_id].discard(w)
+
+
+support_ws_manager = SupportConnectionManager()
+
 
 @app.get("/api/sessions/{session_id}/analytics")
 async def get_trading_session_analytics(session_id: int, request: Request):
@@ -3476,6 +3586,357 @@ async def auth_me(request: Request):
         return {"user": _user_public_dict(user, db=db)}
     finally:
         db.close()
+
+
+class SupportCreateThreadIn(BaseModel):
+    subject: str = Field(..., max_length=SUPPORT_SUBJECT_MAX)
+    category: str = Field(default="other")
+    body: str = Field(..., max_length=SUPPORT_BODY_MAX)
+
+
+class SupportAppendMessageIn(BaseModel):
+    body: str = Field(..., max_length=SUPPORT_BODY_MAX)
+
+
+class SupportPatchThreadIn(BaseModel):
+    status: str | None = None  # open | closed
+
+
+class NotificationsReadIn(BaseModel):
+    ids: list[int] | None = None
+    all: bool | None = None
+
+
+def _support_msg_dict(db, m: SupportMessage) -> dict:
+    sender = db.query(User).filter(User.id == m.sender_user_id).first()
+    return {
+        "id": m.id,
+        "thread_id": m.thread_id,
+        "sender_user_id": m.sender_user_id,
+        "sender_name": (sender.name if sender else None),
+        "sender_email": (sender.email if sender else None),
+        "body": m.body,
+        "created_at": m.created_at.isoformat() if m.created_at else None,
+    }
+
+
+def _support_thread_dict(db, t: SupportThread, last_preview: str | None = None) -> dict:
+    u = db.query(User).filter(User.id == t.user_id).first()
+    return {
+        "id": t.id,
+        "user_id": t.user_id,
+        "user_name": u.name if u else None,
+        "user_email": u.email if u else None,
+        "subject": t.subject,
+        "category": t.category,
+        "status": t.status,
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+        "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+        "last_message_at": t.last_message_at.isoformat() if t.last_message_at else None,
+        "last_message_preview": last_preview,
+    }
+
+
+def _notify_support_recipients(db, thread: SupportThread, msg: SupportMessage, sender: User):
+    preview = (msg.body or "")[:200]
+    if sender.role == "admin":
+        n = Notification(
+            user_id=thread.user_id,
+            type="support_message",
+            thread_id=thread.id,
+            message_id=msg.id,
+            title="Reply from support",
+            body=preview,
+        )
+        db.add(n)
+    else:
+        admins = db.query(User).filter(User.role == "admin", User.is_active == True).all()
+        subj = (thread.subject or "")[:80]
+        for a in admins:
+            if a.id == sender.id:
+                continue
+            db.add(
+                Notification(
+                    user_id=a.id,
+                    type="support_message",
+                    thread_id=thread.id,
+                    message_id=msg.id,
+                    title=f"Support: {subj}",
+                    body=preview,
+                )
+            )
+
+
+@app.post("/api/support/threads")
+async def support_create_thread(payload: SupportCreateThreadIn, request: Request):
+    user = _require_user(request)
+    cat = (payload.category or "other").strip().lower()
+    if cat not in ("bug", "error", "other"):
+        raise HTTPException(status_code=400, detail="Invalid category")
+    subj = payload.subject.strip()
+    if not subj:
+        raise HTTPException(status_code=400, detail="Subject is required")
+    body = payload.body.strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="Message is required")
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        t = SupportThread(
+            user_id=user.id,
+            subject=subj[: SUPPORT_SUBJECT_MAX],
+            category=cat,
+            status="open",
+            last_message_at=now,
+        )
+        db.add(t)
+        db.commit()
+        db.refresh(t)
+        m = SupportMessage(thread_id=t.id, sender_user_id=user.id, body=body[:SUPPORT_BODY_MAX])
+        db.add(m)
+        db.commit()
+        db.refresh(m)
+        _notify_support_recipients(db, t, m, user)
+        db.commit()
+        await support_ws_manager.broadcast(
+            t.id,
+            {"type": "message", "thread_id": t.id, "message": _support_msg_dict(db, m)},
+        )
+        return {"thread": _support_thread_dict(db, t, last_preview=body[:160]), "message": _support_msg_dict(db, m)}
+    finally:
+        db.close()
+
+
+@app.get("/api/support/threads")
+async def support_list_threads(
+    request: Request,
+    status: str | None = None,
+    q: str | None = None,
+):
+    user = _require_user(request)
+    db = SessionLocal()
+    try:
+        query = db.query(SupportThread)
+        if user.role != "admin":
+            query = query.filter(SupportThread.user_id == user.id)
+        else:
+            if status and status in ("open", "closed"):
+                query = query.filter(SupportThread.status == status)
+            if q and q.strip():
+                like = f"%{q.strip()}%"
+                query = query.filter(SupportThread.subject.ilike(like))
+        rows = (
+            query.order_by(nulls_last(SupportThread.last_message_at.desc()), SupportThread.id.desc())
+            .limit(500)
+            .all()
+        )
+        out = []
+        for t in rows:
+            last = (
+                db.query(SupportMessage)
+                .filter(SupportMessage.thread_id == t.id)
+                .order_by(SupportMessage.id.desc())
+                .first()
+            )
+            preview = (last.body[:160] + "…") if last and len(last.body or "") > 160 else (last.body if last else None)
+            out.append(_support_thread_dict(db, t, last_preview=preview))
+        return {"threads": out}
+    finally:
+        db.close()
+
+
+@app.get("/api/support/threads/{thread_id}/messages")
+async def support_list_messages(
+    thread_id: int,
+    request: Request,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    user = _require_user(request)
+    db = SessionLocal()
+    try:
+        t = db.query(SupportThread).filter(SupportThread.id == thread_id).first()
+        if not t:
+            raise HTTPException(status_code=404, detail="Thread not found")
+        if not _support_user_can_access_thread(user, t):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        total = db.query(SupportMessage).filter(SupportMessage.thread_id == thread_id).count()
+        msgs = (
+            db.query(SupportMessage)
+            .filter(SupportMessage.thread_id == thread_id)
+            .order_by(SupportMessage.id.asc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        return {
+            "messages": [_support_msg_dict(db, m) for m in msgs],
+            "total": total,
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/support/threads/{thread_id}/messages")
+async def support_post_message(thread_id: int, payload: SupportAppendMessageIn, request: Request):
+    user = _require_user(request)
+    body = payload.body.strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="Message is required")
+    db = SessionLocal()
+    try:
+        t = db.query(SupportThread).filter(SupportThread.id == thread_id).first()
+        if not t:
+            raise HTTPException(status_code=404, detail="Thread not found")
+        if not _support_user_can_access_thread(user, t):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        if t.status == "closed":
+            raise HTTPException(status_code=400, detail="Thread is closed")
+        now = datetime.utcnow()
+        m = SupportMessage(thread_id=t.id, sender_user_id=user.id, body=body[:SUPPORT_BODY_MAX])
+        db.add(m)
+        t.last_message_at = now
+        t.updated_at = now
+        db.commit()
+        db.refresh(m)
+        _notify_support_recipients(db, t, m, user)
+        db.commit()
+        await support_ws_manager.broadcast(
+            t.id,
+            {"type": "message", "thread_id": t.id, "message": _support_msg_dict(db, m)},
+        )
+        return {"message": _support_msg_dict(db, m)}
+    finally:
+        db.close()
+
+
+@app.patch("/api/support/threads/{thread_id}")
+async def support_patch_thread(thread_id: int, payload: SupportPatchThreadIn, request: Request):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        t = db.query(SupportThread).filter(SupportThread.id == thread_id).first()
+        if not t:
+            raise HTTPException(status_code=404, detail="Thread not found")
+        if payload.status is not None:
+            st = payload.status.strip().lower()
+            if st not in ("open", "closed"):
+                raise HTTPException(status_code=400, detail="Invalid status")
+            t.status = st
+            t.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(t)
+        return {"thread": _support_thread_dict(db, t)}
+    finally:
+        db.close()
+
+
+@app.get("/api/notifications")
+async def notifications_list(
+    request: Request,
+    limit: int = Query(50, ge=1, le=200),
+    unread_only: bool = False,
+):
+    user = _require_user(request)
+    db = SessionLocal()
+    try:
+        q = db.query(Notification).filter(Notification.user_id == user.id)
+        if unread_only:
+            q = q.filter(Notification.read_at.is_(None))
+        rows = q.order_by(Notification.id.desc()).limit(limit).all()
+        unread = (
+            db.query(Notification)
+            .filter(Notification.user_id == user.id, Notification.read_at.is_(None))
+            .count()
+        )
+        return {
+            "notifications": [
+                {
+                    "id": n.id,
+                    "type": n.type,
+                    "thread_id": n.thread_id,
+                    "message_id": n.message_id,
+                    "title": n.title,
+                    "body": n.body,
+                    "read_at": n.read_at.isoformat() if n.read_at else None,
+                    "created_at": n.created_at.isoformat() if n.created_at else None,
+                }
+                for n in rows
+            ],
+            "unread_count": unread,
+        }
+    finally:
+        db.close()
+
+
+@app.patch("/api/notifications/read")
+async def notifications_mark_read(payload: NotificationsReadIn, request: Request):
+    user = _require_user(request)
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        if payload.all:
+            db.query(Notification).filter(Notification.user_id == user.id, Notification.read_at.is_(None)).update(
+                {Notification.read_at: now}, synchronize_session=False
+            )
+        elif payload.ids:
+            for nid in payload.ids:
+                n = (
+                    db.query(Notification)
+                    .filter(Notification.id == nid, Notification.user_id == user.id)
+                    .first()
+                )
+                if n and n.read_at is None:
+                    n.read_at = now
+        else:
+            raise HTTPException(status_code=400, detail="Specify ids or all: true")
+        db.commit()
+        return {"success": True}
+    finally:
+        db.close()
+
+
+@app.websocket("/ws/support")
+async def ws_support(websocket: WebSocket):
+    await websocket.accept()
+    user = _get_user_from_websocket(websocket)
+    if user is None:
+        await websocket.close(code=4401)
+        return
+    subscribed_tid: int | None = None
+    try:
+        while True:
+            data = await websocket.receive_json()
+            mt = data.get("type", "")
+            if mt == "ping":
+                await websocket.send_json({"type": "pong"})
+            elif mt == "subscribe":
+                try:
+                    tid = int(data.get("thread_id", 0))
+                except (TypeError, ValueError):
+                    await websocket.send_json({"type": "error", "detail": "Invalid thread_id"})
+                    continue
+                db = SessionLocal()
+                try:
+                    t = db.query(SupportThread).filter(SupportThread.id == tid).first()
+                    if not t or not _support_user_can_access_thread(user, t):
+                        await websocket.send_json({"type": "error", "detail": "Forbidden"})
+                        continue
+                finally:
+                    db.close()
+                if subscribed_tid is not None and subscribed_tid != tid:
+                    support_ws_manager.disconnect(websocket, subscribed_tid)
+                support_ws_manager.subscribe(websocket, tid)
+                subscribed_tid = tid
+                await websocket.send_json({"type": "subscribed", "thread_id": tid})
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        if subscribed_tid is not None:
+            support_ws_manager.disconnect(websocket, subscribed_tid)
+
 
 @app.get("/api/admin/users")
 async def admin_list_users(request: Request):

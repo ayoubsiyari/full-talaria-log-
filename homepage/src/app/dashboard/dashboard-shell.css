@@ -120,6 +120,43 @@
   padding: 28px 32px 48px;
 }
 
+/* Support page two-column layout */
+.db-support-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 300px) 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .db-support-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.db-field-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #e8e4dc;
+  font-family: inherit;
+  font-size: 13px;
+}
+.db-field-input:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.35);
+}
+.db-field-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #3d3b42;
+  margin-bottom: 6px;
+}
+
 /* Full-width content (e.g. COT dashboard) — no 80rem cap */
 .db-main-wrap.db-main-wrap--full {
   max-width: none;
