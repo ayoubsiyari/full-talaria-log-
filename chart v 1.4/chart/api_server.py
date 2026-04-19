@@ -276,6 +276,17 @@ DUKASCOPY_JOB_TTL_SECONDS = int(os.getenv("DUKASCOPY_JOB_TTL_SECONDS", "21600"))
 DUKASCOPY_JOBS_DIR = UPLOAD_DIR / "dukascopy_jobs"
 DUKASCOPY_JOBS_DIR.mkdir(exist_ok=True)
 
+BINANCE_MAX_TICKERS = int(os.getenv("BINANCE_MAX_TICKERS", "5"))
+BINANCE_MAX_TOTAL_DAYS = int(os.getenv("BINANCE_MAX_TOTAL_DAYS", "7300"))
+BINANCE_JOB_TTL_SECONDS = int(os.getenv("BINANCE_JOB_TTL_SECONDS", "21600"))
+BINANCE_JOBS_DIR = UPLOAD_DIR / "binance_jobs"
+BINANCE_JOBS_DIR.mkdir(exist_ok=True)
+# Must match BinanceDataDumper._DATA_FREQUENCY_ENUM (binance-historical-data)
+BINANCE_ALLOWED_FREQUENCIES = frozenset({
+    "1s", "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h",
+    "1d", "3d", "1w", "1mo",
+})
+
 # Conservative data-sanity smoothing for isolated bad ticks.
 # Enabled by default; tuned to only touch obvious one-bar anomalies where
 # surrounding candles are stable and the middle bar is far away.
@@ -1720,6 +1731,263 @@ def _start_dukascopy_fetch_job(instrument: str, from_dt: datetime, to_dt: dateti
             "chunk_days": DUKASCOPY_MAX_RANGE_DAYS,
             "chunk_count": total_chunks,
         }
+    }
+
+# ── Binance historical (binance-historical-data) jobs ─────────────────────
+
+def _binance_job_path(job_id: str) -> Path:
+    safe_job_id = re.sub(r"[^a-zA-Z0-9_-]", "", (job_id or ""))
+    if not safe_job_id:
+        safe_job_id = "invalid"
+    return BINANCE_JOBS_DIR / f"{safe_job_id}.json"
+
+
+def _binance_cleanup_jobs() -> None:
+    cutoff = time.time() - max(60, BINANCE_JOB_TTL_SECONDS)
+    for p in BINANCE_JOBS_DIR.glob("*.json"):
+        try:
+            if p.stat().st_mtime < cutoff:
+                p.unlink()
+        except Exception:
+            pass
+
+
+def _binance_write_job(job_id: str, state: dict) -> None:
+    p = _binance_job_path(job_id)
+    state["updated_at"] = datetime.utcnow().isoformat()
+    tmp = p.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(state, f)
+    tmp.replace(p)
+
+
+def _binance_read_job(job_id: str) -> dict | None:
+    p = _binance_job_path(job_id)
+    if not p.exists():
+        return None
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _normalize_binance_tickers_required(raw: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for t in raw:
+        s = (t or "").strip().upper()
+        if not s:
+            continue
+        if not re.fullmatch(r"[A-Z0-9]{4,20}", s):
+            raise HTTPException(status_code=400, detail=f"Invalid ticker: {t!r} (e.g. BTCUSDT)")
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    if not out:
+        raise HTTPException(status_code=400, detail="At least one ticker is required")
+    if len(out) > BINANCE_MAX_TICKERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many tickers ({len(out)}). Max per request is {BINANCE_MAX_TICKERS}.",
+        )
+    return out
+
+
+def _normalize_binance_exclude_tickers(raw: list[str] | None) -> list[str] | None:
+    if not raw:
+        return None
+    out: list[str] = []
+    seen: set[str] = set()
+    for t in raw:
+        s = (t or "").strip().upper()
+        if not s:
+            continue
+        if not re.fullmatch(r"[A-Z0-9]{4,20}", s):
+            raise HTTPException(status_code=400, detail=f"Invalid tickers_to_exclude entry: {t!r}")
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out or None
+
+
+def _collect_binance_kline_csvs(dump_root: Path, asset_class: str, ticker: str, data_frequency: str) -> list[Path]:
+    if asset_class in ("um", "cm"):
+        base = dump_root / "futures" / asset_class
+    else:
+        base = dump_root / asset_class
+    found: list[Path] = []
+    for period in ("monthly", "daily"):
+        d = base / period / "klines" / ticker / data_frequency
+        if d.is_dir():
+            found.extend(p for p in d.iterdir() if p.suffix.lower() == ".csv" and p.is_file())
+    return sorted(found, key=lambda p: p.name)
+
+
+def _merge_binance_kline_csvs_to_file(csv_paths: list[Path], out_path: Path) -> int:
+    import csv as csv_mod
+
+    def _parse_ts(cell: str) -> int | None:
+        raw = str(cell or "").strip()
+        if not raw:
+            return None
+        try:
+            return int(float(raw))
+        except (ValueError, TypeError):
+            return None
+
+    rows_by_ts: dict[int, tuple[float, float, float, float, float]] = {}
+    for p in csv_paths:
+        try:
+            with open(p, "r", encoding="utf-8-sig", errors="replace", newline="") as f:
+                reader = csv_mod.reader(f)
+                for row in reader:
+                    if len(row) < 6:
+                        continue
+                    ts = _parse_ts(row[0])
+                    if ts is None:
+                        continue
+                    try:
+                        o, h, l, c, v = float(row[1]), float(row[2]), float(row[3]), float(row[4]), float(row[5])
+                    except (ValueError, TypeError):
+                        continue
+                    rows_by_ts[ts] = (o, h, l, c, v)
+        except OSError:
+            continue
+
+    if not rows_by_ts:
+        return 0
+
+    sorted_ts = sorted(rows_by_ts.keys())
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8", newline="") as f:
+        w = csv_mod.writer(f)
+        w.writerow(["timestamp", "open", "high", "low", "close", "volume"])
+        for ts in sorted_ts:
+            o, h, l, c, v = rows_by_ts[ts]
+            w.writerow([ts, o, h, l, c, v])
+    return len(sorted_ts)
+
+
+def _start_binance_fetch_job(
+    tickers: list[str],
+    asset_class: str,
+    data_frequency: str,
+    from_dt: datetime,
+    to_dt: datetime,
+    is_to_update_existing: bool,
+    tickers_to_exclude: list[str] | None,
+) -> dict:
+    from_str = from_dt.strftime("%Y-%m-%d")
+    to_str = to_dt.strftime("%Y-%m-%d")
+
+    job_id = f"bn_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(4)}"
+    now_iso = datetime.utcnow().isoformat()
+    state = {
+        "job_id": job_id,
+        "status": "queued",
+        "message": "Queued Binance historical download",
+        "tickers": tickers,
+        "asset_class": asset_class,
+        "data_frequency": data_frequency,
+        "from_date": from_str,
+        "to_date": to_str,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+        "result": None,
+        "results": None,
+        "error": None,
+    }
+    _binance_write_job(job_id, state)
+
+    def _worker():
+        try:
+            from binance_historical_data import BinanceDataDumper
+
+            state["status"] = "running"
+            state["message"] = "Downloading from Binance Vision (may take several minutes)…"
+            _binance_write_job(job_id, state)
+
+            with tempfile.TemporaryDirectory(prefix="bn_", dir=str(UPLOAD_DIR.resolve())) as tmp:
+                tmp_path = Path(tmp)
+                dumper = BinanceDataDumper(
+                    path_dir_where_to_dump=str(tmp_path),
+                    asset_class=asset_class,
+                    data_type="klines",
+                    data_frequency=data_frequency,
+                )
+                dumper.dump_data(
+                    tickers=tickers,
+                    date_start=from_dt.date(),
+                    date_end=to_dt.date(),
+                    is_to_update_existing=is_to_update_existing,
+                    tickers_to_exclude=tickers_to_exclude,
+                )
+
+                aggregate_results = []
+                for idx, ticker in enumerate(tickers, start=1):
+                    state["message"] = f"Merging CSV for {ticker} ({idx}/{len(tickers)})…"
+                    _binance_write_job(job_id, state)
+
+                    csv_paths = _collect_binance_kline_csvs(tmp_path, asset_class, ticker, data_frequency)
+                    original_name = f"{ticker}-{data_frequency}-{from_str}-{to_str}.csv"
+                    unique_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(3)}_{original_name}"
+                    output_path = (UPLOAD_DIR / unique_filename).resolve()
+
+                    row_n = _merge_binance_kline_csvs_to_file(csv_paths, output_path)
+                    if row_n <= 0:
+                        if output_path.exists():
+                            try:
+                                output_path.unlink()
+                            except OSError:
+                                pass
+                        raise RuntimeError(
+                            f"No kline rows parsed for {ticker}. "
+                            "Check symbol, interval, dates, and that files exist under Binance public data."
+                        )
+
+                    desc = (
+                        f"Binance {asset_class} {ticker} {data_frequency} {from_str} → {to_str} "
+                        f"(binance-historical-data)"
+                    )
+                    one = _store_dataset_file(
+                        file_path=output_path,
+                        original_name=original_name,
+                        description=desc,
+                    )
+                    one["source"] = "binance-historical-data"
+                    one["ticker"] = ticker
+                    aggregate_results.append(one)
+
+                state["status"] = "done"
+                state["message"] = f"Completed Binance fetch for {len(tickers)} ticker(s)"
+                state["results"] = aggregate_results
+                state["result"] = aggregate_results[-1] if aggregate_results else None
+                state["finished_at"] = datetime.utcnow().isoformat()
+                _binance_write_job(job_id, state)
+        except Exception as exc:
+            err_text = str(exc) or "Unknown Binance job error"
+            state["status"] = "failed"
+            state["message"] = err_text
+            state["error"] = err_text
+            state["finished_at"] = datetime.utcnow().isoformat()
+            _binance_write_job(job_id, state)
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+
+    return {
+        "success": True,
+        "job_id": job_id,
+        "status": "queued",
+        "params": {
+            "tickers": tickers,
+            "asset_class": asset_class,
+            "data_frequency": data_frequency,
+            "from_date": from_str,
+            "to_date": to_str,
+            "is_to_update_existing": is_to_update_existing,
+        },
     }
 
 def file_response_if_exists(path: str):
@@ -3333,6 +3601,15 @@ class AdminDukascopyFetchIn(BaseModel):
     instrument: str
     from_date: str
     to_date: str
+
+class AdminBinanceFetchIn(BaseModel):
+    tickers: list[str]
+    asset_class: str = "spot"
+    data_frequency: str = "1m"
+    from_date: str
+    to_date: str
+    is_to_update_existing: bool = False
+    tickers_to_exclude: list[str] | None = None
 
 class _AnonymousUser:
     """Dummy user object used when AUTH_ENABLED is False."""
@@ -5212,7 +5489,58 @@ async def admin_fetch_dataset_from_dukascopy_status(job_id: str, request: Reques
     state = _dukascopy_read_job(job_id)
     if not state:
         raise HTTPException(status_code=404, detail="Dukascopy job not found or expired")
-    return state
+    out = dict(state)
+    out["state"] = state.get("status")
+    return out
+
+
+@app.post("/api/admin/datasets/fetch-binance")
+async def admin_fetch_dataset_from_binance(payload: AdminBinanceFetchIn, request: Request):
+    _require_admin(request)
+
+    tickers = _normalize_binance_tickers_required(payload.tickers)
+    asset_class = (payload.asset_class or "spot").strip().lower()
+    if asset_class not in ("spot", "um", "cm"):
+        raise HTTPException(status_code=400, detail="asset_class must be spot, um, or cm")
+    data_frequency = (payload.data_frequency or "1m").strip()
+    if data_frequency not in BINANCE_ALLOWED_FREQUENCIES:
+        raise HTTPException(status_code=400, detail=f"Unsupported data_frequency: {data_frequency}")
+
+    from_dt = _parse_iso_date(payload.from_date, "from_date")
+    to_dt = _parse_iso_date(payload.to_date, "to_date")
+    if from_dt > to_dt:
+        raise HTTPException(status_code=400, detail="from_date must be earlier than or equal to to_date")
+
+    range_days = (to_dt - from_dt).days + 1
+    if range_days > BINANCE_MAX_TOTAL_DAYS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Date range too large ({range_days} days). Max allowed per request is {BINANCE_MAX_TOTAL_DAYS} days.",
+        )
+
+    excl = _normalize_binance_exclude_tickers(payload.tickers_to_exclude)
+    _binance_cleanup_jobs()
+    return _start_binance_fetch_job(
+        tickers=tickers,
+        asset_class=asset_class,
+        data_frequency=data_frequency,
+        from_dt=from_dt,
+        to_dt=to_dt,
+        is_to_update_existing=bool(payload.is_to_update_existing),
+        tickers_to_exclude=excl,
+    )
+
+
+@app.get("/api/admin/datasets/fetch-binance/{job_id}/status")
+async def admin_fetch_binance_status(job_id: str, request: Request):
+    _require_admin(request)
+    _binance_cleanup_jobs()
+    state = _binance_read_job(job_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Binance job not found or expired")
+    out = dict(state)
+    out["state"] = state.get("status")
+    return out
 
 @app.patch("/api/admin/datasets/{file_id}/settings")
 async def admin_update_dataset_settings(file_id: int, payload: AdminDatasetSettingsIn, request: Request):

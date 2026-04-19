@@ -1447,6 +1447,57 @@ select { cursor: pointer; }
                 </div>
               </div>
             </div>
+            <!-- Binance Vision (historical klines via binance-historical-data) -->
+            <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border)">
+              <div style="font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                Fetch from Binance (historical)
+              </div>
+              <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
+                Uses <a href="https://pypi.org/project/binance-historical-data/" target="_blank" rel="noopener noreferrer" style="color:var(--accent)">binance-historical-data</a> against Binance public data. Up to 5 symbols per request.
+              </p>
+              <div class="form-grid">
+                <div class="field fg-full"><label>Tickers (comma-separated)</label><input id="bn_tickers" type="text" placeholder="BTCUSDT" style="text-transform:uppercase"></div>
+                <div class="field"><label>Asset class</label>
+                  <select id="bn_asset">
+                    <option value="spot" selected>Spot</option>
+                    <option value="um">USD-M Futures (um)</option>
+                    <option value="cm">COIN-M Futures (cm)</option>
+                  </select>
+                </div>
+                <div class="field"><label>Interval</label>
+                  <select id="bn_freq">
+                    <option value="1m" selected>1m</option>
+                    <option value="3m">3m</option>
+                    <option value="5m">5m</option>
+                    <option value="15m">15m</option>
+                    <option value="30m">30m</option>
+                    <option value="1h">1h</option>
+                    <option value="2h">2h</option>
+                    <option value="4h">4h</option>
+                    <option value="6h">6h</option>
+                    <option value="8h">8h</option>
+                    <option value="12h">12h</option>
+                    <option value="1d">1d</option>
+                  </select>
+                </div>
+                <div class="field"><label>From</label><input id="bn_from" type="date"></div>
+                <div class="field"><label>To</label><input id="bn_to" type="date"></div>
+                <div class="field fg-full" style="display:flex;align-items:center;gap:8px">
+                  <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+                    <input type="checkbox" id="bn_update_existing">
+                    Update existing downloaded files (incremental)
+                  </label>
+                </div>
+                <div class="fg-full" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                  <button class="btn primary" id="bnFetchBtn" onclick="fetchBinance()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Fetch klines
+                  </button>
+                  <span id="bnProgress" style="font-size:12px;color:var(--text-muted)"></span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <!-- Dataset List + Settings -->
@@ -2857,17 +2908,88 @@ async function waitForDukascopyJob(jobId) {
     await sleep(2000);
     try {
       const status = await api(`/api/admin/datasets/fetch-dukascopy/${jobId}/status`);
-      if (status.state === 'done' || status.state === 'completed') {
+      const st = status.state || status.status;
+      if (st === 'done' || st === 'completed') {
         label.textContent = 'Done!';
         toast('Dukascopy fetch complete', 'ok');
         await loadDatasets();
         return;
-      } else if (status.state === 'failed' || status.state === 'error') {
+      } else if (st === 'failed' || st === 'error') {
         label.textContent = 'Failed: ' + (status.error || 'Unknown error');
         toast('Dukascopy fetch failed', 'err');
         return;
       }
-      label.textContent = status.message || status.state || 'Processing...';
+      label.textContent = status.message || st || 'Processing...';
+    } catch (e) { break; }
+  }
+}
+
+function setDefaultBinanceDates() {
+  const today = new Date();
+  const from = new Date(today);
+  from.setFullYear(from.getFullYear() - 1);
+  if ($('bn_from')) $('bn_from').value = from.toISOString().slice(0, 10);
+  if ($('bn_to')) $('bn_to').value = today.toISOString().slice(0, 10);
+}
+setDefaultBinanceDates();
+
+async function fetchBinance() {
+  const raw = ($('bn_tickers') && $('bn_tickers').value) ? $('bn_tickers').value.trim() : '';
+  const tickers = raw.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
+  const fromDate = $('bn_from') && $('bn_from').value;
+  const toDate = $('bn_to') && $('bn_to').value;
+  const assetClass = ($('bn_asset') && $('bn_asset').value) || 'spot';
+  const dataFrequency = ($('bn_freq') && $('bn_freq').value) || '1m';
+  const isToUpdateExisting = $('bn_update_existing') && $('bn_update_existing').checked;
+  if (!tickers.length || !fromDate || !toDate) return toast('Enter at least one ticker and date range', 'err');
+  const btn = $('bnFetchBtn');
+  const label = $('bnProgress');
+  if (btn) btn.disabled = true;
+  if (label) label.textContent = 'Starting…';
+  try {
+    const data = await api('/api/admin/datasets/fetch-binance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tickers,
+        asset_class: assetClass,
+        data_frequency: dataFrequency,
+        from_date: fromDate,
+        to_date: toDate,
+        is_to_update_existing: isToUpdateExisting
+      })
+    });
+    if (data.job_id) {
+      await waitForBinanceJob(data.job_id);
+    } else {
+      toast('Fetch started', 'ok');
+      await loadDatasets();
+    }
+  } catch (e) {
+    toast(e.message || String(e), 'err');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function waitForBinanceJob(jobId) {
+  const label = $('bnProgress');
+  for (let i = 0; i < 600; i++) {
+    await sleep(2000);
+    try {
+      const status = await api(`/api/admin/datasets/fetch-binance/${jobId}/status`);
+      const st = status.state || status.status;
+      if (st === 'done' || st === 'completed') {
+        if (label) label.textContent = 'Done!';
+        toast('Binance fetch complete', 'ok');
+        await loadDatasets();
+        return;
+      } else if (st === 'failed' || st === 'error') {
+        if (label) label.textContent = 'Failed: ' + (status.error || 'Unknown error');
+        toast('Binance fetch failed', 'err');
+        return;
+      }
+      if (label) label.textContent = status.message || st || 'Processing…';
     } catch (e) { break; }
   }
 }

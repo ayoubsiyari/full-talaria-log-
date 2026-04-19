@@ -13,3 +13,4 @@ google-auth-httplib2==0.2.0
 msgpack==1.0.7
 stripe
 pytest
+binance-historical-data==0.1.14
