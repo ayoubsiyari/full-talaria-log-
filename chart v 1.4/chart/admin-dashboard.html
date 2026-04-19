@@ -1475,7 +1475,7 @@ select { cursor: pointer; }
                 CME-style futures (Yahoo)
               </div>
               <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
-                <strong>ES=F, NQ=F, CL=F, etc.</strong> are Yahoo&rsquo;s <em>continuous</em> CME-style future series (not individual expiries). This is <strong>not</strong> CME DataMine; for exchange-tape or contract-level data you need a licensed CME feed. Intraday (especially 1m) is limited by Yahoo; long ranges at 1m may be slow or rate-limited.
+                <strong>ES=F, NQ=F, CL=F, etc.</strong> are Yahoo&rsquo;s <em>continuous</em> CME-style future series (not individual expiries). This is <strong>not</strong> CME DataMine; for exchange-tape or contract-level data you need a licensed CME feed. Long pulls are downloaded in <strong>many small date chunks</strong> with delays between requests (same idea as Dukascopy forex); status shows chunk progress. If Yahoo still throttles you, shorten the range or increase sleep via env <code style="font-size:10px">YAHOO_CME_CHUNK_SLEEP_SECONDS</code>.
               </p>
               <div class="form-grid">
                 <div class="field fg-full">

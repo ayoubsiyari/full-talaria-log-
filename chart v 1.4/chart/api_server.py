@@ -46,6 +46,7 @@ import urllib.error
 import urllib.request
 
 import math
+import random
 
 # Chart directory — load .env next to api_server.py for local dev (Docker Compose also injects env).
 # Python does not read .env by itself; we merge KEY=value lines into os.environ if not already set.
@@ -341,9 +342,13 @@ _BINANCE_SYMBOLS_CACHE: dict[str, tuple[float, list[str]]] = {}
 # This is not CME DataMine or exchange-native contract rolls; data is aggregated by Yahoo.
 YAHOO_CME_JOB_TTL_SECONDS = int(os.getenv("YAHOO_CME_JOB_TTL_SECONDS", "21600"))
 YAHOO_CME_MAX_TOTAL_DAYS = int(os.getenv("YAHOO_CME_MAX_TOTAL_DAYS", "7300"))
-YAHOO_CME_MAX_CHUNKS = int(os.getenv("YAHOO_CME_MAX_CHUNKS", "450"))
+# Large ranges at 1m/d need many small Yahoo calls; keep high enough that daily-year chunks are not blocked.
+YAHOO_CME_MAX_CHUNKS = int(os.getenv("YAHOO_CME_MAX_CHUNKS", "2500"))
 YAHOO_CME_JOBS_DIR = UPLOAD_DIR / "yahoo_cme_jobs"
 YAHOO_CME_JOBS_DIR.mkdir(exist_ok=True)
+# Pause between Yahoo requests (same idea as Dukascopy time-chunking — avoids rate limits).
+YAHOO_CME_CHUNK_SLEEP_SECONDS = float(os.getenv("YAHOO_CME_CHUNK_SLEEP_SECONDS", "2.5"))
+YAHOO_CME_CHUNK_SLEEP_JITTER_SECONDS = float(os.getenv("YAHOO_CME_CHUNK_SLEEP_JITTER_SECONDS", "1.0"))
 
 YAHOO_CME_ALLOWED_INTERVALS = frozenset({"1m", "2m", "5m", "15m", "30m", "60m", "1d"})
 YAHOO_CME_INTERVAL_ALIASES = {"1h": "60m"}
@@ -2143,19 +2148,23 @@ def _normalize_yahoo_cme_interval(value: str) -> str:
 
 
 def _yahoo_cme_chunk_days(interval: str) -> int:
-    """Calendar days per yfinance request; smaller chunks avoid Yahoo truncation on intraday."""
+    """
+    Calendar days per Yahoo request — small windows (like Dukascopy forex chunks) to avoid
+    truncation, empty responses, and rate limits on long ranges. Tunable via env.
+    """
     i = interval.lower()
     if i == "1m":
-        return 7
+        return max(1, int(os.getenv("YAHOO_CME_CHUNK_DAYS_1M", "5")))
     if i in ("2m", "5m"):
-        return 30
+        return max(1, int(os.getenv("YAHOO_CME_CHUNK_DAYS_2M_5M", "14")))
     if i in ("15m", "30m"):
-        return 90
+        return max(1, int(os.getenv("YAHOO_CME_CHUNK_DAYS_15M_30M", "45")))
     if i in ("60m", "1h"):
-        return 365
+        return max(1, int(os.getenv("YAHOO_CME_CHUNK_DAYS_60M", "180")))
     if i == "1d":
-        return 10_000
-    return 30
+        # Single multi-year daily calls often fail or return partial data on Yahoo.
+        return max(1, int(os.getenv("YAHOO_CME_CHUNK_DAYS_1D", "365")))
+    return max(1, int(os.getenv("YAHOO_CME_CHUNK_DAYS_DEFAULT", "14")))
 
 
 def _yahoo_cme_date_chunks(
@@ -2242,7 +2251,7 @@ def _yahoo_cme_df_to_csv_file(df, out_path: Path) -> int:
 
 
 def _yf_download_chunk(ticker: str, start_d: datetime.date, end_exclusive: datetime.date, interval: str):
-    """Single yfinance download; retries on Yahoo rate-limit errors."""
+    """Single yfinance download; retries on Yahoo rate limits and transient empty frames."""
     import time
 
     import yfinance as yf
@@ -2250,7 +2259,7 @@ def _yf_download_chunk(ticker: str, start_d: datetime.date, end_exclusive: datet
     start_s = start_d.strftime("%Y-%m-%d")
     end_s = end_exclusive.strftime("%Y-%m-%d")
     last_exc: Exception | None = None
-    for attempt in range(6):
+    for attempt in range(10):
         try:
             df = yf.download(
                 ticker,
@@ -2261,12 +2270,33 @@ def _yf_download_chunk(ticker: str, start_d: datetime.date, end_exclusive: datet
                 progress=False,
                 threads=False,
             )
+            if df is not None and not df.empty:
+                return df
+            # Yahoo sometimes returns an empty frame under load — treat like a soft failure.
+            if attempt < 7:
+                time.sleep(min(90.0, 6.0 + 5.0 * attempt + (attempt ** 1.5)))
+                continue
             return df
         except Exception as exc:
             last_exc = exc
             err = str(exc).lower()
-            if "rate" in err or "too many" in err or "429" in err:
-                time.sleep(min(90.0, 2.5**attempt))
+            if any(
+                x in err
+                for x in (
+                    "rate",
+                    "too many",
+                    "429",
+                    "limited",
+                    "limit",
+                    "timeout",
+                    "temporar",
+                    "yahoo",
+                    "blocked",
+                    "503",
+                    "502",
+                )
+            ):
+                time.sleep(min(120.0, 5.0 * (2 ** min(attempt, 7))))
             else:
                 raise
     raise last_exc if last_exc else RuntimeError("Yahoo Finance download failed")
@@ -2278,33 +2308,63 @@ def _yahoo_cme_fetch_and_write(
     to_dt: datetime,
     interval: str,
     output_path: Path,
+    job_id: str | None = None,
 ) -> int:
-    """Download all chunks, merge, write CSV. Returns row count."""
+    """Download all chunks (small date windows), merge, write CSV. Returns row count."""
     import time
 
     import pandas as pd
 
     chunk_days = _yahoo_cme_chunk_days(interval)
     ranges = _yahoo_cme_date_chunks(from_dt, to_dt, chunk_days)
-    if len(ranges) > YAHOO_CME_MAX_CHUNKS:
+    total = len(ranges)
+    if total > YAHOO_CME_MAX_CHUNKS:
         raise ValueError(
-            f"Download would require {len(ranges)} Yahoo requests (max {YAHOO_CME_MAX_CHUNKS}). "
-            "Use a shorter date range or a coarser interval (for example 1d)."
+            f"Download would require {total} Yahoo requests (max {YAHOO_CME_MAX_CHUNKS}). "
+            "Use a shorter date range or a coarser interval (for example 1d), "
+            "or raise YAHOO_CME_MAX_CHUNKS / widen YAHOO_CME_CHUNK_DAYS_* env vars."
         )
-    dfs = []
+
+    def _progress(current: int, a: datetime.date, b: datetime.date) -> None:
+        if not job_id:
+            return
+        st = _yahoo_cme_read_job(job_id)
+        if not st:
+            return
+        st["status"] = "running"
+        st["phase"] = "download"
+        st["completed_chunks"] = current
+        st["chunk_count"] = total
+        st["current_chunk"] = current
+        st["message"] = f"Yahoo chunk {current}/{total} ({a.isoformat()} → {b.isoformat()})"
+        _yahoo_cme_write_job(job_id, st)
+
+    dfs: list = []
+    base_sleep = max(0.0, YAHOO_CME_CHUNK_SLEEP_SECONDS)
+    jitter_max = max(0.0, YAHOO_CME_CHUNK_SLEEP_JITTER_SECONDS)
+
     for idx, (a, b) in enumerate(ranges, start=1):
         end_excl = b + timedelta(days=1)
+        _progress(idx, a, b)
         df = _yf_download_chunk(ticker, a, end_excl, interval)
         df = _yahoo_cme_flatten_columns(df)
         if df is not None and not df.empty:
             dfs.append(df)
-        if idx < len(ranges):
-            time.sleep(1.2)
+        if idx < total:
+            delay = base_sleep + (random.uniform(0, jitter_max) if jitter_max > 0 else 0.0)
+            if delay > 0:
+                time.sleep(delay)
     if not dfs:
         raise ValueError("Yahoo Finance returned no rows (check ticker, dates, and rate limits)")
     merged = pd.concat(dfs, axis=0)
     merged = merged[~merged.index.duplicated(keep="last")]
     merged = merged.sort_index()
+    if job_id:
+        st = _yahoo_cme_read_job(job_id)
+        if st:
+            st["phase"] = "merge"
+            st["message"] = "Merging Yahoo chunks and writing CSV…"
+            _yahoo_cme_write_job(job_id, st)
     return _yahoo_cme_df_to_csv_file(merged, output_path)
 
 
@@ -2369,12 +2429,15 @@ def _start_yahoo_cme_fetch_job(ticker: str, from_dt: datetime, to_dt: datetime, 
     state = {
         "job_id": job_id,
         "status": "queued",
-        "message": f"Queued Yahoo Finance download ({chunk_n} request chunk{'s' if chunk_n != 1 else ''})",
+        "phase": "queued",
+        "message": f"Queued Yahoo Finance download ({chunk_n} date chunk{'s' if chunk_n != 1 else ''})",
         "ticker": ticker,
         "interval": interval,
         "from_date": from_str,
         "to_date": to_str,
         "chunk_count": chunk_n,
+        "completed_chunks": 0,
+        "current_chunk": 0,
         "created_at": now_iso,
         "updated_at": now_iso,
         "result": None,
@@ -2385,10 +2448,22 @@ def _start_yahoo_cme_fetch_job(ticker: str, from_dt: datetime, to_dt: datetime, 
     def _worker():
         try:
             state["status"] = "running"
-            state["message"] = "Downloading from Yahoo Finance…"
+            state["phase"] = "download"
+            state["completed_chunks"] = 0
+            state["message"] = "Downloading from Yahoo Finance (small date ranges)…"
             _yahoo_cme_write_job(job_id, state)
 
-            rows = _yahoo_cme_fetch_and_write(ticker, from_dt, to_dt, interval, output_path)
+            rows = _yahoo_cme_fetch_and_write(
+                ticker, from_dt, to_dt, interval, output_path, job_id=job_id
+            )
+
+            latest = _yahoo_cme_read_job(job_id)
+            if latest:
+                state.update(latest)
+            state["phase"] = "store"
+            state["message"] = "Saving dataset and building binary timeframes…"
+            _yahoo_cme_write_job(job_id, state)
+
             desc = (
                 f"Yahoo Finance CME continuous future {ticker} {interval} {from_str} → {to_str} "
                 f"({rows} rows)"
@@ -2406,6 +2481,7 @@ def _start_yahoo_cme_fetch_job(ticker: str, from_dt: datetime, to_dt: datetime, 
                 "interval": interval,
             }
             state["status"] = "done"
+            state["phase"] = "done"
             state["message"] = f"Completed Yahoo download ({rows} candles)"
             state["result"] = result
             state["finished_at"] = datetime.utcnow().isoformat()
@@ -2418,6 +2494,7 @@ def _start_yahoo_cme_fetch_job(ticker: str, from_dt: datetime, to_dt: datetime, 
                 except OSError:
                     pass
             state["status"] = "failed"
+            state["phase"] = "failed"
             state["message"] = err_text
             state["error"] = err_text
             state["finished_at"] = datetime.utcnow().isoformat()
@@ -6107,7 +6184,8 @@ async def admin_yahoo_cme_instruments(request: Request):
         "allowed_intervals": sorted(YAHOO_CME_ALLOWED_INTERVALS),
         "note": (
             "Symbols ending in =F are Yahoo continuous futures (rolled). "
-            "Intraday history is limited by Yahoo; long 1m ranges require many chunks and may hit rate limits."
+            "Downloads are split into small date windows with pauses between requests (like Dukascopy forex chunking); "
+            "tune YAHOO_CME_CHUNK_DAYS_* / YAHOO_CME_CHUNK_SLEEP_SECONDS if Yahoo still rate-limits."
         ),
     }
 
