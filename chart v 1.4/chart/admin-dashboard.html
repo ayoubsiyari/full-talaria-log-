@@ -595,6 +595,39 @@ select { cursor: pointer; }
 .tf-card.pending { border-color: rgba(245,158,11,.3); color: var(--warn); }
 .tf-card.missing { color: var(--text-muted); }
 
+.ds-tab-row { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; align-items: center; }
+.ds-analytics { max-height: 62vh; overflow-y: auto; padding-right: 4px; }
+.ds-analytics .stat-cards { margin-bottom: 16px; }
+.ds-analytics table { width: 100%; font-size: 12px; border-collapse: collapse; }
+.ds-analytics th, .ds-analytics td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+.ds-analytics th { color: var(--text-muted); font-weight: 600; }
+.ds-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+@media (max-width: 900px) { .ds-charts { grid-template-columns: 1fr; } }
+.ds-chart-box {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+.ds-chart-box h4 { font-size: 12px; color: var(--text-secondary); margin-bottom: 10px; }
+.ds-bar-row { display: grid; grid-template-columns: 44px 1fr 70px; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11px; }
+.ds-bar-label { color: var(--text-muted); font-weight: 600; }
+.ds-bar-val { text-align: right; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.ds-bar-track {
+  height: 8px; background: rgba(255,255,255,.06); border-radius: 4px; overflow: hidden;
+}
+.ds-bar-fill { height: 100%; border-radius: 4px; transition: width .25s ease; min-width: 2px; }
+.ds-pipeline {
+  font-size: 12px; color: var(--text-secondary); line-height: 1.55;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-top: 12px;
+}
+.ds-pipeline ul { margin: 8px 0 0 18px; }
+.ds-pipeline code { font-size: 10px; color: var(--accent); }
+
 /* ── Toast ──────────────────────────────────────── */
 #toast {
   position: fixed;
@@ -1619,9 +1652,14 @@ select { cursor: pointer; }
           <div class="card" id="dsSettingsCard" style="display:none">
             <div class="card-hdr">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-              <div class="card-title" id="dsSettingsTitle">Dataset Settings</div>
+              <div class="card-title" id="dsSettingsTitle">Dataset</div>
+              <div class="ds-tab-row">
+                <button type="button" class="btn sm primary" id="dsTabSettings" onclick="setDsTab('settings')">Settings</button>
+                <button type="button" class="btn sm" id="dsTabAnalytics" onclick="setDsTab('analytics')">Analytics</button>
+              </div>
             </div>
             <div class="card-body">
+              <div id="dsPanelSettings">
               <form id="settingsForm" onsubmit="return saveDatasetSettings(event)">
                 <div class="form-grid">
                   <div class="field"><label>Display Name</label><input id="ds_name" type="text"></div>
@@ -1649,6 +1687,12 @@ select { cursor: pointer; }
                 </div>
               </form>
               <div id="tfGrid" class="tf-grid" style="margin-top:16px"></div>
+              </div>
+              <div id="dsPanelAnalytics" style="display:none" class="ds-analytics">
+                <div id="dsAnalyticsContent">
+                  <p style="font-size:12px;color:var(--text-muted)">Select a dataset and open the Analytics tab for storage breakdown, coverage, and charts.</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -2861,12 +2905,113 @@ function selectDs(ds) {
   $('ds_notes').value = s.notes || '';
 
   const tfGrid = $('tfGrid');
-  const tfs = ds.timeframes || [];
-  if (tfs.length === 0) { tfGrid.innerHTML = '<span style="font-size:12px;color:var(--text-muted)">No timeframe data</span>'; return; }
-  tfGrid.innerHTML = tfs.map(tf => {
-    const cls = tf.ready ? 'ready' : (tf.row_count > 0 ? 'pending' : 'missing');
-    return `<div class="tf-card ${cls}">${tf.name || tf.timeframe}</div>`;
+  const tfMap = ds.timeframes;
+  const entries = tfMap && typeof tfMap === 'object' && !Array.isArray(tfMap) ? Object.entries(tfMap) : [];
+  if (!entries.length) { tfGrid.innerHTML = '<span style="font-size:12px;color:var(--text-muted)">No timeframe data</span>'; }
+  else {
+    tfGrid.innerHTML = entries.map(function (kv) {
+      const k = kv[0];
+      const tf = kv[1] || {};
+      const st = (tf.status || 'missing').toLowerCase();
+      const cls = st === 'ready' ? 'ready' : (st === 'pending' || (tf.row_count > 0)) ? 'pending' : 'missing';
+      return '<div class="tf-card ' + cls + '">' + esc(k) + '</div>';
+    }).join('');
+  }
+
+  setDsTab('settings', true);
+}
+
+function setDsTab(which, noLoad) {
+  const sb = $('dsTabSettings');
+  const ab = $('dsTabAnalytics');
+  if (sb) sb.classList.toggle('primary', which === 'settings');
+  if (ab) ab.classList.toggle('primary', which === 'analytics');
+  const pS = $('dsPanelSettings');
+  const pA = $('dsPanelAnalytics');
+  if (pS) pS.style.display = which === 'settings' ? '' : 'none';
+  if (pA) pA.style.display = which === 'analytics' ? '' : 'none';
+  if (which === 'analytics' && selectedDsId && !noLoad) loadDatasetAnalytics(selectedDsId);
+}
+
+async function loadDatasetAnalytics(id) {
+  const host = $('dsAnalyticsContent');
+  if (!host) return;
+  host.innerHTML = '<p style="font-size:12px;color:var(--text-muted)">Loading analytics…</p>';
+  try {
+    const data = await api('/api/admin/datasets/' + id + '/analytics');
+    host.innerHTML = renderDatasetAnalyticsHtml(data);
+  } catch (e) {
+    host.innerHTML = '<p style="color:var(--danger)">' + esc(e.message || String(e)) + '</p>';
+  }
+}
+
+function renderDatasetAnalyticsHtml(data) {
+  const cov = data.coverage || {};
+  const covBlock = cov.start_iso
+    ? '<p style="font-size:12px;margin-bottom:12px"><strong>Coverage (1m)</strong> ' + esc(cov.start_iso) + ' → ' + esc(cov.end_iso) +
+      ' · ~<strong>' + esc(String(cov.span_days)) + '</strong> days · <strong>' + fmtN(cov.candle_count_1m) + '</strong> candles</p>'
+    : '<p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Coverage: no 1m aggregate bounds yet (rebuild may still be running).</p>';
+
+  const integOk = data.integrity_ok;
+  const issues = (data.integrity_issues || []).join('; ');
+  const integLine = integOk
+    ? '<p style="font-size:12px;color:var(--ok);margin-bottom:12px">Integrity: chart pipeline complete (binaries + tile meta for all TFs).</p>'
+    : '<p style="font-size:12px;color:var(--warn);margin-bottom:12px">Integrity issues: ' + esc(issues || 'see timeframes') + '</p>';
+
+  const tfs = data.timeframes || [];
+  const tableRows = tfs.map(function (tf) {
+    return '<tr><td><code style="font-size:11px">' + esc(tf.timeframe) + '</code></td><td>' + esc(tf.status) + '</td><td style="text-align:right">' + fmtN(tf.row_count) + '</td>' +
+      '<td style="text-align:right">' + esc(tf.binary_human || '—') + '</td><td style="font-size:11px;color:var(--text-muted)">' +
+      (tf.start_iso ? esc(tf.start_iso) + ' … ' : '') + (tf.end_iso ? esc(tf.end_iso) : '—') + '</td></tr>';
   }).join('');
+
+  const chartS = data.chart_storage_bytes || [];
+  const maxB = Math.max(1, ...chartS.map(function (x) { return x.bytes || 0; }));
+  const barsStorage = chartS.map(function (x) {
+    const pct = Math.min(100, Math.round(100 * (x.bytes || 0) / maxB));
+    const det = tfs.find(function (t) { return t.timeframe === x.timeframe; });
+    const hum = det && det.binary_human ? det.binary_human : fmtN(x.bytes) + ' B';
+    return '<div class="ds-bar-row"><span class="ds-bar-label">' + esc(x.timeframe) + '</span><div class="ds-bar-track">' +
+      '<div class="ds-bar-fill" style="width:' + pct + '%;background:linear-gradient(90deg,var(--accent),#6366f1)"></div></div>' +
+      '<span class="ds-bar-val">' + esc(hum) + '</span></div>';
+  }).join('');
+
+  const chartR = data.chart_rows || [];
+  const maxR = Math.max(1, ...chartR.map(function (x) { return x.rows || 0; }));
+  const barsRows = chartR.map(function (x) {
+    const pct = Math.min(100, Math.round(100 * (x.rows || 0) / maxR));
+    return '<div class="ds-bar-row"><span class="ds-bar-label">' + esc(x.timeframe) + '</span><div class="ds-bar-track">' +
+      '<div class="ds-bar-fill" style="width:' + pct + '%;background:linear-gradient(90deg,var(--ok),#34d399)"></div></div>' +
+      '<span class="ds-bar-val">' + fmtN(x.rows) + '</span></div>';
+  }).join('');
+
+  const jobs = data.recent_build_jobs || [];
+  const jobLines = jobs.length
+    ? '<ul style="margin:8px 0 0 18px;font-size:11px;color:var(--text-secondary)">' + jobs.map(function (j) {
+      return '<li>#' + j.id + ' · ' + esc(j.status) + ' · ' + esc(j.trigger || '') +
+        (j.error ? ' · <span style="color:var(--danger)">' + esc(j.error) + '</span>' : '') + '</li>';
+    }).join('') + '</ul>'
+    : '<p style="font-size:11px;color:var(--text-muted)">No build jobs recorded.</p>';
+
+  const pipe = (data.pipeline && data.pipeline.steps) ? data.pipeline.steps.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') : '';
+
+  return '<div class="stat-cards" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr))">' +
+    '<div class="stat-card accent"><div class="label">Total storage</div><div class="value" style="font-size:22px">' + esc(data.total_storage_human || '—') + '</div><div class="sub">CSV + bins + tiles</div></div>' +
+    '<div class="stat-card ok"><div class="label">Source CSV</div><div class="value" style="font-size:22px">' + esc((data.csv && data.csv.human) || '—') + '</div><div class="sub">' + fmtN(data.csv_storage_rows_stored) + ' rows (stored)</div></div>' +
+    '<div class="stat-card warn"><div class="label">Binaries</div><div class="value" style="font-size:22px">' + esc(data.binaries_total_human || '—') + '</div><div class="sub">' + fmtN(data.ready_timeframes) + '/' + fmtN(data.total_timeframes) + ' ready</div></div>' +
+    '<div class="stat-card accent"><div class="label">Tiles</div><div class="value" style="font-size:22px">' + esc(data.tiles_total_human || '—') + '</div><div class="sub"><code>' + esc(data.tiles_path_hint || '') + '</code></div></div>' +
+    '</div>' +
+    '<p style="font-size:11px;color:var(--text-muted);margin-bottom:10px">' +
+    '<strong>File:</strong> ' + esc(data.original_name || '') + ' · id <strong>' + esc(String(data.file_id)) + '</strong>' +
+    (data.upload_date ? ' · uploaded ' + esc(data.upload_date) : '') +
+    (data.description ? '<br><strong>Description:</strong> ' + esc(data.description) : '') + '</p>' +
+    covBlock + integLine +
+    '<div class="ds-charts"><div class="ds-chart-box"><h4>Binary size by timeframe</h4>' + barsStorage + '</div>' +
+    '<div class="ds-chart-box"><h4>Rows by timeframe</h4>' + barsRows + '</div></div>' +
+    '<table><thead><tr><th>TF</th><th>Status</th><th style="text-align:right">Rows</th><th style="text-align:right">.bin size</th><th>Range (UTC)</th></tr></thead><tbody>' + tableRows + '</tbody></table>' +
+    '<div class="ds-pipeline"><strong>How this dataset powers the chart</strong><ul>' + pipe + '</ul>' +
+    '<p style="margin-top:10px;font-size:11px;color:var(--text-muted)">' + esc((data.pipeline && data.pipeline.format) || '') + '</p>' +
+    '<strong style="font-size:11px">Recent binary builds</strong>' + jobLines + '</div>';
 }
 
 async function saveDatasetSettings(e) {
@@ -2908,7 +3053,11 @@ function startPolling(id) {
     if (!ds) { clearInterval(dsPollTimer); return; }
     const ready = ds.ready_timeframes || 0;
     const total = ds.total_timeframes || 0;
-    if (ready >= total && total > 0) clearInterval(dsPollTimer);
+    if (ready >= total && total > 0) {
+      clearInterval(dsPollTimer);
+      const pa = $('dsPanelAnalytics');
+      if (selectedDsId === id && pa && pa.style.display !== 'none') loadDatasetAnalytics(id);
+    }
   }, 3000);
 }
 

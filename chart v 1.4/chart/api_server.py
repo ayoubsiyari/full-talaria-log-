@@ -3613,6 +3613,49 @@ def _resolve_dataset_csv_path(filename: str) -> Path:
 def _resolve_dataset_csv_for_file(db_file: CSVFile) -> Path:
     return _resolve_dataset_csv_path(db_file.filename)
 
+
+def _human_bytes(num: int) -> str:
+    n = max(0, int(num or 0))
+    if n < 1024:
+        return f"{n} B"
+    v = n / 1024.0
+    if v < 1024:
+        return f"{v:.1f} KiB"
+    v /= 1024.0
+    if v < 1024:
+        return f"{v:.2f} MiB"
+    v /= 1024.0
+    return f"{v:.2f} GiB"
+
+
+def _path_disk_bytes(path: Path) -> int:
+    try:
+        if path.is_file():
+            return int(path.stat().st_size)
+        if path.is_dir():
+            s = 0
+            for p in path.rglob("*"):
+                if p.is_file():
+                    try:
+                        s += int(p.stat().st_size)
+                    except OSError:
+                        pass
+            return s
+    except OSError:
+        pass
+    return 0
+
+
+def _epoch_ms_to_iso_utc(ms: float | None) -> str | None:
+    if ms is None:
+        return None
+    try:
+        v = float(ms) / 1000.0
+        return datetime.utcfromtimestamp(v).strftime("%Y-%m-%d %H:%M:%S") + " UTC"
+    except Exception:
+        return None
+
+
 def _delete_dataset_source_csv(filename: str):
     for candidate in (UPLOAD_DIR / filename, CSV_ARCHIVE_DIR / filename):
         if candidate.exists():
@@ -6029,6 +6072,145 @@ async def admin_list_datasets(request: Request):
         }
     finally:
         db.close()
+
+
+@app.get("/api/admin/datasets/{file_id}/analytics")
+async def admin_dataset_analytics(file_id: int, request: Request):
+    """
+    Disk usage, row counts per timeframe, coverage dates, and pipeline summary for one dataset.
+    """
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        db_file = db.query(CSVFile).filter(CSVFile.id == file_id).first()
+        if not db_file:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
+        csv_path = _resolve_dataset_csv_for_file(db_file)
+        csv_exists = csv_path.exists()
+        csv_bytes = _path_disk_bytes(csv_path) if csv_exists else 0
+
+        aggs_list = db.query(CSVAggregate).filter(CSVAggregate.file_id == file_id).all()
+        agg_by_tf = {str(a.timeframe): a for a in aggs_list}
+
+        tiles_root = TILES_DIR / str(file_id)
+        tiles_bytes = _path_disk_bytes(tiles_root) if tiles_root.exists() else 0
+
+        bin_total = 0
+        ready_tf = 0
+        timeframes_detail: list[dict] = []
+        for tf in DATASET_TIMEFRAMES:
+            agg = agg_by_tf.get(tf)
+            fname = agg.agg_filename if agg and agg.agg_filename else f"bin_{file_id}_{tf}.bin"
+            bp = BIN_DIR / fname
+            bsz = int(bp.stat().st_size) if bp.exists() else 0
+            bin_total += bsz
+            st = str(agg.status or "") if agg else ""
+            if not agg and bp.exists():
+                st = "ready"
+            elif not agg:
+                st = "missing"
+            if st == "ready":
+                ready_tf += 1
+
+            rc = int(agg.row_count or 0) if agg else 0
+            timeframes_detail.append(
+                {
+                    "timeframe": tf,
+                    "status": st,
+                    "row_count": rc,
+                    "binary_filename": fname,
+                    "binary_bytes": bsz,
+                    "binary_human": _human_bytes(bsz),
+                    "binary_exists": bp.exists(),
+                    "start_ts_ms": float(agg.start_ts) if agg and agg.start_ts is not None else None,
+                    "end_ts_ms": float(agg.end_ts) if agg and agg.end_ts is not None else None,
+                    "start_iso": _epoch_ms_to_iso_utc(float(agg.start_ts)) if agg and agg.start_ts is not None else None,
+                    "end_iso": _epoch_ms_to_iso_utc(float(agg.end_ts)) if agg and agg.end_ts is not None else None,
+                }
+            )
+
+        total_storage = csv_bytes + bin_total + tiles_bytes
+
+        one_m = agg_by_tf.get("1m")
+        coverage = None
+        if one_m and one_m.start_ts is not None and one_m.end_ts is not None:
+            span_ms = float(one_m.end_ts) - float(one_m.start_ts)
+            coverage = {
+                "start_iso": _epoch_ms_to_iso_utc(float(one_m.start_ts)),
+                "end_iso": _epoch_ms_to_iso_utc(float(one_m.end_ts)),
+                "span_days": round(span_ms / 86400000.0, 4),
+                "candle_count_1m": int(one_m.row_count or 0),
+            }
+
+        ok, integrity_issues = _dataset_binary_integrity(db, file_id)
+
+        jobs = (
+            db.query(BinaryBuildJob)
+            .filter(BinaryBuildJob.file_id == file_id)
+            .order_by(BinaryBuildJob.id.desc())
+            .limit(8)
+            .all()
+        )
+        recent_build_jobs = [
+            {
+                "id": int(j.id),
+                "status": str(j.status or ""),
+                "trigger": str(j.trigger or ""),
+                "attempt_count": int(j.attempt_count or 0),
+                "error": (j.error or "")[:500] if j.error else None,
+                "created_at": j.created_at.isoformat() if j.created_at else None,
+                "finished_at": j.finished_at.isoformat() if j.finished_at else None,
+            }
+            for j in jobs
+        ]
+
+        chart_storage = [{"timeframe": x["timeframe"], "bytes": x["binary_bytes"]} for x in timeframes_detail]
+        chart_rows = [{"timeframe": x["timeframe"], "rows": x["row_count"]} for x in timeframes_detail]
+
+        return {
+            "success": True,
+            "file_id": file_id,
+            "original_name": db_file.original_name,
+            "description": db_file.description,
+            "upload_date": db_file.upload_date.isoformat() if db_file.upload_date else None,
+            "csv_storage_rows_stored": int(db_file.row_count or 0),
+            "csv": {
+                "filename": db_file.filename,
+                "resolved_path_hint": csv_path.name,
+                "exists": csv_exists,
+                "bytes": csv_bytes,
+                "human": _human_bytes(csv_bytes),
+            },
+            "binaries_total_bytes": bin_total,
+            "binaries_total_human": _human_bytes(bin_total),
+            "tiles_total_bytes": tiles_bytes,
+            "tiles_total_human": _human_bytes(tiles_bytes),
+            "tiles_path_hint": f"tiles/{file_id}/",
+            "total_storage_bytes": total_storage,
+            "total_storage_human": _human_bytes(total_storage),
+            "ready_timeframes": ready_tf,
+            "total_timeframes": len(DATASET_TIMEFRAMES),
+            "coverage": coverage,
+            "integrity_ok": ok,
+            "integrity_issues": integrity_issues,
+            "timeframes": timeframes_detail,
+            "chart_storage_bytes": chart_storage,
+            "chart_rows": chart_rows,
+            "recent_build_jobs": recent_build_jobs,
+            "pipeline": {
+                "format": "Each candle is 6 × float64 (time, O, H, L, C, V) = 48 bytes in .bin files.",
+                "steps": [
+                    "CSV ingested under uploads/ (then optionally archived after all timeframes are ready).",
+                    "Rows parsed once; 1m series is the canonical bucket; higher TFs are aggregated.",
+                    "Per-timeframe binaries live under uploads/bin/; chart tiles under uploads/tiles/{id}/{tf}/.",
+                    "The chart reads binaries/tiles — not the CSV at runtime — for speed.",
+                ],
+            },
+        }
+    finally:
+        db.close()
+
 
 @app.post("/api/admin/datasets/upload")
 async def admin_upload_dataset(request: Request, csvFile: UploadFile = File(...)):
