@@ -1475,7 +1475,7 @@ select { cursor: pointer; }
                 CME-style futures (Yahoo)
               </div>
               <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
-                <strong>ES=F, NQ=F, CL=F, etc.</strong> are Yahoo&rsquo;s <em>continuous</em> CME-style future series (not individual expiries). This is <strong>not</strong> CME DataMine; for exchange-tape or contract-level data you need a licensed CME feed. Long pulls are downloaded in <strong>many small date chunks</strong> with delays between requests (same idea as Dukascopy forex); status shows chunk progress. If Yahoo still throttles you, shorten the range or increase sleep via env <code style="font-size:10px">YAHOO_CME_CHUNK_SLEEP_SECONDS</code>.
+                <strong>ES=F, NQ=F, CL=F, etc.</strong> are Yahoo&rsquo;s <em>continuous</em> CME-style future series (not individual expiries). This is <strong>not</strong> CME DataMine; for exchange-tape or contract-level data you need a licensed CME feed. The download runs <strong>on the server</strong> (VPS); refreshing this page does not cancel it — the dashboard reconnects and keeps polling. Long pulls use many small date chunks with delays (like Dukascopy forex). If Yahoo throttles you, shorten the range or raise <code style="font-size:10px">YAHOO_CME_CHUNK_SLEEP_SECONDS</code>.
               </p>
               <div class="form-grid">
                 <div class="field fg-full">
@@ -3085,7 +3085,35 @@ async function loadYahooCmeInstruments() {
     toast(e.message || String(e), 'err');
   }
 }
-loadYahooCmeInstruments();
+let ycmeWatchInProgress = false;
+let ycmeWatchingJobId = null;
+
+(async function initYahooCmePanel() {
+  await loadYahooCmeInstruments();
+  await resumeYahooCmeIfNeeded();
+})();
+
+async function resumeYahooCmeIfNeeded() {
+  try {
+    const act = await api('/api/admin/datasets/yahoo-cme/active');
+    let jid = act && act.job && act.job.job_id;
+    if (!jid) {
+      try { jid = sessionStorage.getItem('ycme_active_job_id'); } catch (e) {}
+    }
+    if (!jid) return;
+    const chk = await api('/api/admin/datasets/fetch-yahoo-cme/' + encodeURIComponent(jid) + '/status');
+    const st = chk.state || chk.status;
+    if (st === 'done' || st === 'completed' || st === 'failed' || st === 'error') {
+      try { sessionStorage.removeItem('ycme_active_job_id'); } catch (e) {}
+      return;
+    }
+    if ($('ycmeProgress')) $('ycmeProgress').textContent = chk.message || 'Reconnecting to server job…';
+    toast('Reconnecting to Yahoo download on server…', 'ok');
+    await waitForYahooCmeJob(jid);
+  } catch (e) {
+    /* ignore — no active job or offline */
+  }
+}
 
 async function fetchYahooCme() {
   const ticker = ($('ycme_ticker') && $('ycme_ticker').value || '').trim().toUpperCase();
@@ -3095,6 +3123,19 @@ async function fetchYahooCme() {
   if (!ticker || !fromDate || !toDate) return toast('Fill in Yahoo futures fields', 'err');
   const btn = $('ycmeFetchBtn');
   const prog = $('ycmeProgress');
+  try {
+    const existing = await api('/api/admin/datasets/yahoo-cme/active');
+    if (existing && existing.job && existing.job.job_id) {
+      const js = existing.job.status;
+      if (js === 'queued' || js === 'running') {
+        toast('A download is already running on the server — attaching to it.', 'ok');
+        if (prog) prog.textContent = existing.job.message || 'In progress…';
+        if (btn) btn.disabled = true;
+        await waitForYahooCmeJob(existing.job.job_id);
+        return;
+      }
+    }
+  } catch (e) { /* continue to start new */ }
   if (btn) btn.disabled = true;
   if (prog) prog.textContent = 'Starting…';
   try {
@@ -3109,31 +3150,65 @@ async function fetchYahooCme() {
       await loadDatasets();
     }
   } catch (e) {
-    toast(e.message || String(e), 'err');
+    const msg = e.message || String(e);
+    if (msg.indexOf('already running') >= 0 || msg.indexOf('Reload') >= 0) {
+      toast(msg, 'err');
+      try {
+        const active = await api('/api/admin/datasets/yahoo-cme/active');
+        if (active && active.job && active.job.job_id) await waitForYahooCmeJob(active.job.job_id);
+      } catch (e2) {}
+      return;
+    }
+    toast(msg, 'err');
   } finally {
     if (btn) btn.disabled = false;
   }
 }
 
 async function waitForYahooCmeJob(jobId) {
+  if (ycmeWatchInProgress) {
+    if (ycmeWatchingJobId === jobId) return;
+    toast('This tab is already tracking a Yahoo download.', 'err');
+    return;
+  }
+  ycmeWatchInProgress = true;
+  ycmeWatchingJobId = jobId;
   const label = $('ycmeProgress');
-  for (let i = 0; i < 600; i++) {
-    await sleep(2000);
-    try {
-      const status = await api(`/api/admin/datasets/fetch-yahoo-cme/${encodeURIComponent(jobId)}/status`);
-      const st = status.state || status.status;
-      if (st === 'done' || st === 'completed') {
-        if (label) label.textContent = 'Done!';
-        toast('Yahoo futures fetch complete', 'ok');
-        await loadDatasets();
-        return;
-      } else if (st === 'failed' || st === 'error') {
-        if (label) label.textContent = 'Failed: ' + (status.error || status.message || 'Unknown error');
-        toast('Yahoo futures fetch failed', 'err');
-        return;
+  const btn = $('ycmeFetchBtn');
+  try {
+    try { sessionStorage.setItem('ycme_active_job_id', jobId); } catch (e) {}
+    if (btn) btn.disabled = true;
+    const deadline = Date.now() + 48 * 60 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await sleep(2000);
+      try {
+        const status = await api('/api/admin/datasets/fetch-yahoo-cme/' + encodeURIComponent(jobId) + '/status');
+        const st = status.state || status.status;
+        if (st === 'done' || st === 'completed') {
+          if (label) label.textContent = 'Done!';
+          try { sessionStorage.removeItem('ycme_active_job_id'); } catch (e) {}
+          toast('Yahoo futures fetch complete', 'ok');
+          await loadDatasets();
+          return;
+        } else if (st === 'failed' || st === 'error') {
+          if (label) label.textContent = 'Failed: ' + (status.error || status.message || 'Unknown error');
+          try { sessionStorage.removeItem('ycme_active_job_id'); } catch (e) {}
+          toast('Yahoo futures fetch failed', 'err');
+          return;
+        }
+        if (label) label.textContent = status.message || st || 'Processing…';
+      } catch (e) {
+        /* transient network — keep polling until deadline */
       }
-      if (label) label.textContent = status.message || st || 'Processing…';
-    } catch (e) { break; }
+    }
+    if (label) {
+      label.textContent = 'Stopped updating this tab (download may still run on server — refresh to reconnect).';
+    }
+    toast('Browser watch timed out (server may still be downloading). Refresh the page.', 'err');
+  } finally {
+    ycmeWatchInProgress = false;
+    ycmeWatchingJobId = null;
+    if (btn) btn.disabled = false;
   }
 }
 

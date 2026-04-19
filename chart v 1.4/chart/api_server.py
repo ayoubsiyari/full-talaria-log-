@@ -2405,6 +2405,29 @@ def _yahoo_cme_read_job(job_id: str) -> dict | None:
         return None
 
 
+def _yahoo_cme_find_latest_active_job() -> dict | None:
+    """
+    Newest queued/running Yahoo job on disk — used so the admin UI can reconnect after refresh.
+    The download worker runs in a server thread; losing the browser tab does not cancel it.
+    """
+    best: dict | None = None
+    best_updated = ""
+    _yahoo_cme_cleanup_jobs()
+    for p in YAHOO_CME_JOBS_DIR.glob("*.json"):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                st = json.load(f)
+        except Exception:
+            continue
+        if st.get("status") not in ("queued", "running"):
+            continue
+        u = str(st.get("updated_at") or st.get("created_at") or "")
+        if u >= best_updated:
+            best_updated = u
+            best = st
+    return best
+
+
 def _start_yahoo_cme_fetch_job(ticker: str, from_dt: datetime, to_dt: datetime, interval: str) -> dict:
     from_str = from_dt.strftime("%Y-%m-%d")
     to_str = to_dt.strftime("%Y-%m-%d")
@@ -6190,6 +6213,16 @@ async def admin_yahoo_cme_instruments(request: Request):
     }
 
 
+@app.get("/api/admin/datasets/yahoo-cme/active")
+async def admin_yahoo_cme_active_job(request: Request):
+    """
+    Latest in-progress Yahoo job so the dashboard can resume status polling after a page reload.
+    """
+    _require_admin(request)
+    job = _yahoo_cme_find_latest_active_job()
+    return {"success": True, "job": job}
+
+
 @app.post("/api/admin/datasets/fetch-yahoo-cme")
 async def admin_fetch_yahoo_cme(payload: AdminYahooCmeFetchIn, request: Request):
     """
@@ -6220,6 +6253,16 @@ async def admin_fetch_yahoo_cme(payload: AdminYahooCmeFetchIn, request: Request)
             status_code=500,
             detail="yfinance/pandas are required for Yahoo futures download. Install chart requirements.txt.",
         ) from exc
+
+    pending = _yahoo_cme_find_latest_active_job()
+    if pending and pending.get("status") in ("queued", "running"):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "A Yahoo futures download is already running on the server. "
+                "Reload this page to reconnect to live progress without starting a second job."
+            ),
+        )
 
     _yahoo_cme_cleanup_jobs()
     return _start_yahoo_cme_fetch_job(ticker=ticker, from_dt=from_dt, to_dt=to_dt, interval=interval)
