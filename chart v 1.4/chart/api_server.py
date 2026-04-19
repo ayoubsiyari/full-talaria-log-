@@ -286,6 +286,8 @@ BINANCE_ALLOWED_FREQUENCIES = frozenset({
     "1s", "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h",
     "1d", "3d", "1w", "1mo",
 })
+BINANCE_SYMBOLS_CACHE_TTL = float(os.getenv("BINANCE_SYMBOLS_CACHE_TTL", "300"))
+_BINANCE_SYMBOLS_CACHE: dict[str, tuple[float, list[str]]] = {}
 
 # Conservative data-sanity smoothing for isolated bad ticks.
 # Enabled by default; tuned to only touch obvious one-bar anomalies where
@@ -5520,6 +5522,38 @@ async def admin_fetch_dataset_from_dukascopy_status(job_id: str, request: Reques
     out = dict(state)
     out["state"] = state.get("status")
     return out
+
+
+@app.get("/api/admin/datasets/binance-symbols")
+async def admin_binance_exchange_symbols(request: Request, asset_class: str = Query("spot")):
+    """
+    List tradable symbols for the given Binance asset class (spot / um / cm).
+    Uses the same source as binance-historical-data (Binance public exchangeInfo). Cached briefly.
+    """
+    _require_admin(request)
+    ac = (asset_class or "spot").strip().lower()
+    if ac not in ("spot", "um", "cm"):
+        raise HTTPException(status_code=400, detail="asset_class must be spot, um, or cm")
+    now = time.time()
+    cached = _BINANCE_SYMBOLS_CACHE.get(ac)
+    if cached and (now - cached[0]) < BINANCE_SYMBOLS_CACHE_TTL:
+        return {"success": True, "asset_class": ac, "symbols": cached[1], "cached": True}
+
+    try:
+        from binance_historical_data import BinanceDataDumper
+
+        dumper = BinanceDataDumper(
+            path_dir_where_to_dump=str(UPLOAD_DIR.resolve()),
+            asset_class=ac,
+            data_type="klines",
+            data_frequency="1m",
+        )
+        raw = dumper.get_list_all_trading_pairs()
+        symbols = sorted({str(s).strip().upper() for s in (raw or []) if s})
+        _BINANCE_SYMBOLS_CACHE[ac] = (now, symbols)
+        return {"success": True, "asset_class": ac, "symbols": symbols, "cached": False}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Could not load Binance symbols: {exc}") from exc
 
 
 @app.post("/api/admin/datasets/fetch-binance")

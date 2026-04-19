@@ -1457,13 +1457,18 @@ select { cursor: pointer; }
                 Uses <a href="https://pypi.org/project/binance-historical-data/" target="_blank" rel="noopener noreferrer" style="color:var(--accent)">binance-historical-data</a> against Binance public data. Up to 5 symbols per request.
               </p>
               <div class="form-grid">
-                <div class="field fg-full"><label>Tickers (comma-separated)</label><input id="bn_tickers" type="text" placeholder="BTCUSDT" style="text-transform:uppercase"></div>
-                <div class="field"><label>Asset class</label>
-                  <select id="bn_asset">
+                <div class="field fg-full"><label>Asset class</label>
+                  <select id="bn_asset" onchange="loadBinanceSymbolOptions(true)">
                     <option value="spot" selected>Spot</option>
                     <option value="um">USD-M Futures (um)</option>
                     <option value="cm">COIN-M Futures (cm)</option>
                   </select>
+                </div>
+                <div class="field fg-full">
+                  <label>Symbols</label>
+                  <input type="search" id="bn_symbol_filter" placeholder="Filter symbols (e.g. BTC)" autocomplete="off" style="width:100%;margin-bottom:8px;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text)">
+                  <select id="bn_tickers_select" multiple size="12" style="width:100%;font-family:ui-monospace,monospace;font-size:12px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text)"></select>
+                  <span id="bn_symbols_hint" style="font-size:11px;color:var(--text-muted);display:block;margin-top:6px">Loading symbol list…</span>
                 </div>
                 <div class="field"><label>Interval</label>
                   <select id="bn_freq">
@@ -2924,6 +2929,50 @@ async function waitForDukascopyJob(jobId) {
   }
 }
 
+let bnSymbolsFull = [];
+
+function renderBinanceSymbolSelect(filterText, clearSelection) {
+  const sel = $('bn_tickers_select');
+  if (!sel) return;
+  if (!bnSymbolsFull.length) {
+    sel.innerHTML = '<option disabled>(no symbols)</option>';
+    return;
+  }
+  const q = (filterText || '').trim().toUpperCase();
+  const list = q ? bnSymbolsFull.filter(function (s) { return s.indexOf(q) >= 0; }) : bnSymbolsFull;
+  const prev = clearSelection ? new Set() : new Set(Array.from(sel.selectedOptions).map(function (o) { return o.value; }));
+  sel.innerHTML = list.map(function (s) {
+    var selected = prev.has(s) ? ' selected' : '';
+    return '<option value="' + esc(s) + '"' + selected + '>' + esc(s) + '</option>';
+  }).join('');
+  if (!list.length) sel.innerHTML = '<option disabled>(no matches)</option>';
+}
+
+async function loadBinanceSymbolOptions(clearSelection) {
+  const sel = $('bn_tickers_select');
+  const hint = $('bn_symbols_hint');
+  const ac = ($('bn_asset') && $('bn_asset').value) || 'spot';
+  if (!sel) return;
+  if (clearSelection && $('bn_symbol_filter')) $('bn_symbol_filter').value = '';
+  sel.innerHTML = '<option disabled>Loading…</option>';
+  if (hint) hint.textContent = 'Loading symbol list…';
+  try {
+    const data = await api('/api/admin/datasets/binance-symbols?asset_class=' + encodeURIComponent(ac));
+    bnSymbolsFull = data.symbols || [];
+    if (hint) {
+      var c = data.cached ? ' (cached)' : '';
+      hint.textContent = bnSymbolsFull.length + ' symbols' + c + ' · select up to 5 (Ctrl/⌘-click) · filter to search';
+    }
+    var fil = ($('bn_symbol_filter') && $('bn_symbol_filter').value) || '';
+    renderBinanceSymbolSelect(fil, !!clearSelection);
+  } catch (e) {
+    sel.innerHTML = '';
+    bnSymbolsFull = [];
+    if (hint) hint.textContent = 'Failed to load symbols';
+    toast(e.message || String(e), 'err');
+  }
+}
+
 function setDefaultBinanceDates() {
   const today = new Date();
   const from = new Date(today);
@@ -2932,16 +2981,23 @@ function setDefaultBinanceDates() {
   if ($('bn_to')) $('bn_to').value = today.toISOString().slice(0, 10);
 }
 setDefaultBinanceDates();
+if ($('bn_symbol_filter')) {
+  $('bn_symbol_filter').addEventListener('input', function () {
+    renderBinanceSymbolSelect(this.value, false);
+  });
+}
+loadBinanceSymbolOptions(true);
 
 async function fetchBinance() {
-  const raw = ($('bn_tickers') && $('bn_tickers').value) ? $('bn_tickers').value.trim() : '';
-  const tickers = raw.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
+  const sel = $('bn_tickers_select');
+  const tickers = sel ? Array.from(sel.selectedOptions).map(function (o) { return o.value; }).filter(Boolean) : [];
   const fromDate = $('bn_from') && $('bn_from').value;
   const toDate = $('bn_to') && $('bn_to').value;
   const assetClass = ($('bn_asset') && $('bn_asset').value) || 'spot';
   const dataFrequency = ($('bn_freq') && $('bn_freq').value) || '1m';
   const isToUpdateExisting = $('bn_update_existing') && $('bn_update_existing').checked;
-  if (!tickers.length || !fromDate || !toDate) return toast('Enter at least one ticker and date range', 'err');
+  if (tickers.length > 5) return toast('Select at most 5 symbols', 'err');
+  if (!tickers.length || !fromDate || !toDate) return toast('Select at least one symbol and date range', 'err');
   const btn = $('bnFetchBtn');
   const label = $('bnProgress');
   if (btn) btn.disabled = true;
