@@ -276,6 +276,49 @@ DUKASCOPY_JOB_TTL_SECONDS = int(os.getenv("DUKASCOPY_JOB_TTL_SECONDS", "21600"))
 DUKASCOPY_JOBS_DIR = UPLOAD_DIR / "dukascopy_jobs"
 DUKASCOPY_JOBS_DIR.mkdir(exist_ok=True)
 
+# Curated Dukascopy instrument ids for admin UI (indices / commodities / forex).
+# These are Dukascopy CFD / cash-index symbols — not exchange-listed futures like CME NQ or CL.
+DUKASCOPY_INSTRUMENT_GROUPS: dict[str, list[dict[str, str]]] = {
+    "us_indices": [
+        {
+            "id": "usa500idxusd",
+            "label": "USA 500 index (S&P 500–style cash index CFD)",
+        },
+        {
+            "id": "usatechidxusd",
+            "label": "USA 100 Tech index (Nasdaq-100–style cash index CFD)",
+        },
+        {"id": "usa30idxusd", "label": "USA 30 index (Dow-style cash index CFD)"},
+        {"id": "dollaridxusd", "label": "US Dollar index"},
+    ],
+    "energy": [
+        {"id": "lightcmdusd", "label": "US Light crude oil (WTI-style CFD)"},
+        {"id": "brentcmdusd", "label": "Brent crude oil (CFD)"},
+        {"id": "gascmdusd", "label": "Natural gas (CFD)"},
+        {"id": "dieselcmdusd", "label": "Gas oil (CFD)"},
+    ],
+    "world_indices": [
+        {"id": "fraidxeur", "label": "France 40 index"},
+        {"id": "deuidxeur", "label": "Germany 40 index"},
+        {"id": "gbridxgbp", "label": "UK 100 index"},
+        {"id": "eusidxeur", "label": "Europe 50 index"},
+        {"id": "jpnidxjpy", "label": "Japan 225 index"},
+        {"id": "hkgidxhkd", "label": "Hong Kong 40 index"},
+    ],
+    "forex": [
+        {"id": "eurusd", "label": "EUR/USD"},
+        {"id": "gbpusd", "label": "GBP/USD"},
+        {"id": "usdjpy", "label": "USD/JPY"},
+        {"id": "audusd", "label": "AUD/USD"},
+        {"id": "nzdusd", "label": "NZD/USD"},
+        {"id": "usdcad", "label": "USD/CAD"},
+        {"id": "usdchf", "label": "USD/CHF"},
+        {"id": "eurgbp", "label": "EUR/GBP"},
+        {"id": "eurjpy", "label": "EUR/JPY"},
+        {"id": "gbpjpy", "label": "GBP/JPY"},
+    ],
+}
+
 BINANCE_MAX_TICKERS = int(os.getenv("BINANCE_MAX_TICKERS", "5"))
 BINANCE_MAX_TOTAL_DAYS = int(os.getenv("BINANCE_MAX_TOTAL_DAYS", "7300"))
 BINANCE_JOB_TTL_SECONDS = int(os.getenv("BINANCE_JOB_TTL_SECONDS", "21600"))
@@ -286,8 +329,70 @@ BINANCE_ALLOWED_FREQUENCIES = frozenset({
     "1s", "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h",
     "1d", "3d", "1w", "1mo",
 })
+# Subset validated against BinanceDataDumper; only OHLC-like CSVs go through merge → datasets.
+BINANCE_FETCH_DATA_TYPES_SPOT = frozenset({"klines"})
+BINANCE_FETCH_DATA_TYPES_FUTURES = frozenset({
+    "klines", "indexPriceKlines", "markPriceKlines", "premiumIndexKlines",
+})
 BINANCE_SYMBOLS_CACHE_TTL = float(os.getenv("BINANCE_SYMBOLS_CACHE_TTL", "300"))
 _BINANCE_SYMBOLS_CACHE: dict[str, tuple[float, list[str]]] = {}
+
+# Yahoo Finance — CME-style continuous futures (root symbols ending in =F).
+# This is not CME DataMine or exchange-native contract rolls; data is aggregated by Yahoo.
+YAHOO_CME_JOB_TTL_SECONDS = int(os.getenv("YAHOO_CME_JOB_TTL_SECONDS", "21600"))
+YAHOO_CME_MAX_TOTAL_DAYS = int(os.getenv("YAHOO_CME_MAX_TOTAL_DAYS", "7300"))
+YAHOO_CME_MAX_CHUNKS = int(os.getenv("YAHOO_CME_MAX_CHUNKS", "450"))
+YAHOO_CME_JOBS_DIR = UPLOAD_DIR / "yahoo_cme_jobs"
+YAHOO_CME_JOBS_DIR.mkdir(exist_ok=True)
+
+YAHOO_CME_ALLOWED_INTERVALS = frozenset({"1m", "2m", "5m", "15m", "30m", "60m", "1d"})
+YAHOO_CME_INTERVAL_ALIASES = {"1h": "60m"}
+
+# Curated Yahoo tickers (continuous futures); users may also pass any valid =F symbol.
+YAHOO_CME_INSTRUMENT_GROUPS: dict[str, list[dict[str, str]]] = {
+    "equity_index": [
+        {"ticker": "ES=F", "label": "E-mini S&P 500"},
+        {"ticker": "MES=F", "label": "Micro E-mini S&P 500"},
+        {"ticker": "NQ=F", "label": "E-mini Nasdaq-100"},
+        {"ticker": "MNQ=F", "label": "Micro E-mini Nasdaq-100"},
+        {"ticker": "YM=F", "label": "E-mini Dow"},
+        {"ticker": "MYM=F", "label": "Micro E-mini Dow"},
+        {"ticker": "RTY=F", "label": "E-mini Russell 2000"},
+        {"ticker": "M2K=F", "label": "Micro E-mini Russell 2000"},
+    ],
+    "energy": [
+        {"ticker": "CL=F", "label": "Crude oil (WTI)"},
+        {"ticker": "MCL=F", "label": "Micro WTI crude oil"},
+        {"ticker": "NG=F", "label": "Natural gas"},
+        {"ticker": "RB=F", "label": "RBOB gasoline"},
+        {"ticker": "HO=F", "label": "Heating oil"},
+    ],
+    "metals": [
+        {"ticker": "GC=F", "label": "Gold"},
+        {"ticker": "MGC=F", "label": "Micro gold"},
+        {"ticker": "SI=F", "label": "Silver"},
+        {"ticker": "HG=F", "label": "Copper"},
+    ],
+    "rates": [
+        {"ticker": "ZB=F", "label": "30-Year T-Bond"},
+        {"ticker": "ZN=F", "label": "10-Year T-Note"},
+        {"ticker": "ZF=F", "label": "5-Year T-Note"},
+        {"ticker": "ZT=F", "label": "2-Year T-Note"},
+    ],
+    "fx": [
+        {"ticker": "6E=F", "label": "Euro FX"},
+        {"ticker": "6B=F", "label": "British pound FX"},
+        {"ticker": "6J=F", "label": "Japanese yen FX"},
+        {"ticker": "6A=F", "label": "Australian dollar FX"},
+        {"ticker": "6C=F", "label": "Canadian dollar FX"},
+        {"ticker": "6S=F", "label": "Swiss franc FX"},
+    ],
+    "ag": [
+        {"ticker": "ZC=F", "label": "Corn"},
+        {"ticker": "ZS=F", "label": "Soybeans"},
+        {"ticker": "ZW=F", "label": "Wheat"},
+    ],
+}
 
 # Conservative data-sanity smoothing for isolated bad ticks.
 # Enabled by default; tuned to only touch obvious one-bar anomalies where
@@ -1491,8 +1596,9 @@ def _normalize_dukascopy_instrument(value: str) -> str:
     instrument = (value or "").strip().lower()
     if not instrument:
         raise HTTPException(status_code=400, detail="instrument is required")
-    if not re.fullmatch(r"[a-z0-9]{3,20}", instrument):
-        raise HTTPException(status_code=400, detail="instrument must contain only letters/numbers (3-20 chars)")
+    # dukascopy-node instrument keys are lowercase alphanumerics (max observed length 14).
+    if not re.fullmatch(r"[a-z0-9]{3,24}", instrument):
+        raise HTTPException(status_code=400, detail="instrument must contain only letters/numbers (3-24 chars)")
     return instrument
 
 def _split_dukascopy_date_ranges(from_dt: datetime, to_dt: datetime, chunk_days: int) -> list[tuple[datetime, datetime]]:
@@ -1813,14 +1919,21 @@ def _normalize_binance_exclude_tickers(raw: list[str] | None) -> list[str] | Non
     return out or None
 
 
-def _collect_binance_kline_csvs(dump_root: Path, asset_class: str, ticker: str, data_frequency: str) -> list[Path]:
+def _collect_binance_kline_csvs(
+    dump_root: Path,
+    asset_class: str,
+    ticker: str,
+    data_frequency: str,
+    data_type: str = "klines",
+) -> list[Path]:
     if asset_class in ("um", "cm"):
         base = dump_root / "futures" / asset_class
     else:
         base = dump_root / asset_class
+    dt_folder = (data_type or "klines").strip() or "klines"
     found: list[Path] = []
     for period in ("monthly", "daily"):
-        d = base / period / "klines" / ticker / data_frequency
+        d = base / period / dt_folder / ticker / data_frequency
         if d.is_dir():
             found.extend(p for p in d.iterdir() if p.suffix.lower() == ".csv" and p.is_file())
     return sorted(found, key=lambda p: p.name)
@@ -1875,6 +1988,7 @@ def _start_binance_fetch_job(
     tickers: list[str],
     asset_class: str,
     data_frequency: str,
+    data_type: str,
     from_dt: datetime,
     to_dt: datetime,
     is_to_update_existing: bool,
@@ -1892,6 +2006,7 @@ def _start_binance_fetch_job(
         "tickers": tickers,
         "asset_class": asset_class,
         "data_frequency": data_frequency,
+        "data_type": data_type,
         "from_date": from_str,
         "to_date": to_str,
         "created_at": now_iso,
@@ -1915,7 +2030,7 @@ def _start_binance_fetch_job(
                 dumper = BinanceDataDumper(
                     path_dir_where_to_dump=str(tmp_path),
                     asset_class=asset_class,
-                    data_type="klines",
+                    data_type=data_type,
                     data_frequency=data_frequency,
                 )
                 dumper.dump_data(
@@ -1931,8 +2046,15 @@ def _start_binance_fetch_job(
                     state["message"] = f"Merging CSV for {ticker} ({idx}/{len(tickers)})…"
                     _binance_write_job(job_id, state)
 
-                    csv_paths = _collect_binance_kline_csvs(tmp_path, asset_class, ticker, data_frequency)
-                    original_name = f"{ticker}-{data_frequency}-{from_str}-{to_str}.csv"
+                    csv_paths = _collect_binance_kline_csvs(
+                        tmp_path, asset_class, ticker, data_frequency, data_type=data_type
+                    )
+                    type_slug = data_type if data_type != "klines" else ""
+                    original_name = (
+                        f"{ticker}-{data_type}-{data_frequency}-{from_str}-{to_str}.csv"
+                        if type_slug
+                        else f"{ticker}-{data_frequency}-{from_str}-{to_str}.csv"
+                    )
                     unique_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(3)}_{original_name}"
                     output_path = (UPLOAD_DIR / unique_filename).resolve()
 
@@ -1949,7 +2071,7 @@ def _start_binance_fetch_job(
                         )
 
                     desc = (
-                        f"Binance {asset_class} {ticker} {data_frequency} {from_str} → {to_str} "
+                        f"Binance {asset_class} {data_type} {ticker} {data_frequency} {from_str} → {to_str} "
                         f"(binance-historical-data)"
                     )
                     one = _store_dataset_file(
@@ -1986,11 +2108,336 @@ def _start_binance_fetch_job(
             "tickers": tickers,
             "asset_class": asset_class,
             "data_frequency": data_frequency,
+            "data_type": data_type,
             "from_date": from_str,
             "to_date": to_str,
             "is_to_update_existing": is_to_update_existing,
         },
     }
+
+
+# ── Yahoo Finance CME-style continuous futures (ES=F, NQ=F, …) ───────────────
+
+def _normalize_yahoo_cme_ticker(value: str) -> str:
+    t = (value or "").strip().upper()
+    if not t:
+        raise HTTPException(status_code=400, detail="ticker is required")
+    # Yahoo continuous futures use "ROOT=F" (may include digits, e.g. 6E=F).
+    if not re.fullmatch(r"[A-Z0-9]{1,6}=F", t):
+        raise HTTPException(
+            status_code=400,
+            detail='ticker must look like a Yahoo continuous future (e.g. ES=F, NQ=F, 6E=F).',
+        )
+    return t
+
+
+def _normalize_yahoo_cme_interval(value: str) -> str:
+    raw = (value or "1d").strip().lower()
+    iv = YAHOO_CME_INTERVAL_ALIASES.get(raw, raw)
+    if iv not in YAHOO_CME_ALLOWED_INTERVALS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"interval must be one of: {', '.join(sorted(YAHOO_CME_ALLOWED_INTERVALS))}",
+        )
+    return iv
+
+
+def _yahoo_cme_chunk_days(interval: str) -> int:
+    """Calendar days per yfinance request; smaller chunks avoid Yahoo truncation on intraday."""
+    i = interval.lower()
+    if i == "1m":
+        return 7
+    if i in ("2m", "5m"):
+        return 30
+    if i in ("15m", "30m"):
+        return 90
+    if i in ("60m", "1h"):
+        return 365
+    if i == "1d":
+        return 10_000
+    return 30
+
+
+def _yahoo_cme_date_chunks(
+    from_dt: datetime,
+    to_dt: datetime,
+    chunk_days: int,
+) -> list[tuple[datetime.date, datetime.date]]:
+    ranges: list[tuple[datetime.date, datetime.date]] = []
+    step = max(1, int(chunk_days))
+    cursor = from_dt.date()
+    end_d = to_dt.date()
+    while cursor <= end_d:
+        chunk_end = min(cursor + timedelta(days=step - 1), end_d)
+        ranges.append((cursor, chunk_end))
+        cursor = chunk_end + timedelta(days=1)
+    return ranges
+
+
+def _yahoo_cme_flatten_columns(df):
+    import pandas as pd
+
+    if df is None or df.empty:
+        return df
+    if isinstance(df.columns, pd.MultiIndex):
+        df = df.copy()
+        df.columns = [str(c[0]) for c in df.columns]
+    return df
+
+
+def _yahoo_cme_index_to_epoch_ms(index) -> "object":
+    import numpy as np
+    import pandas as pd
+
+    idx = pd.DatetimeIndex(index)
+    if idx.tz is None:
+        idx = idx.tz_localize("America/New_York", ambiguous="infer", nonexistent="shift_forward")
+    utc = idx.tz_convert("UTC")
+    return (utc.astype(np.int64) // 1_000_000).astype(np.int64)
+
+
+def _yahoo_cme_df_to_csv_file(df, out_path: Path) -> int:
+    import csv as csv_mod
+
+    import pandas as pd
+
+    df = _yahoo_cme_flatten_columns(df)
+    if df is None or df.empty:
+        raise ValueError("No rows returned from Yahoo Finance")
+    rename = {}
+    for c in df.columns:
+        cl = str(c).lower()
+        if cl in ("open", "high", "low", "close", "volume"):
+            rename[c] = cl
+    df2 = df.rename(columns=rename)
+    for need in ("open", "high", "low", "close"):
+        if need not in df2.columns:
+            raise ValueError(f"Missing column {need} in Yahoo response")
+    vol_col = "volume" if "volume" in df2.columns else None
+    ts_ms = _yahoo_cme_index_to_epoch_ms(df2.index)
+    n = len(df2)
+    with open(out_path, "w", encoding="utf-8", newline="") as f:
+        w = csv_mod.writer(f)
+        w.writerow(["timestamp", "open", "high", "low", "close", "volume"])
+        for i in range(n):
+            if vol_col:
+                vraw = df2["volume"].iloc[i]
+                try:
+                    vrow = 0.0 if pd.isna(vraw) else float(vraw)
+                except Exception:
+                    vrow = 0.0
+            else:
+                vrow = 0.0
+            w.writerow(
+                [
+                    int(ts_ms[i]),
+                    float(df2["open"].iloc[i]),
+                    float(df2["high"].iloc[i]),
+                    float(df2["low"].iloc[i]),
+                    float(df2["close"].iloc[i]),
+                    vrow,
+                ]
+            )
+    return n
+
+
+def _yf_download_chunk(ticker: str, start_d: datetime.date, end_exclusive: datetime.date, interval: str):
+    """Single yfinance download; retries on Yahoo rate-limit errors."""
+    import time
+
+    import yfinance as yf
+
+    start_s = start_d.strftime("%Y-%m-%d")
+    end_s = end_exclusive.strftime("%Y-%m-%d")
+    last_exc: Exception | None = None
+    for attempt in range(6):
+        try:
+            df = yf.download(
+                ticker,
+                start=start_s,
+                end=end_s,
+                interval=interval,
+                auto_adjust=False,
+                progress=False,
+                threads=False,
+            )
+            return df
+        except Exception as exc:
+            last_exc = exc
+            err = str(exc).lower()
+            if "rate" in err or "too many" in err or "429" in err:
+                time.sleep(min(90.0, 2.5**attempt))
+            else:
+                raise
+    raise last_exc if last_exc else RuntimeError("Yahoo Finance download failed")
+
+
+def _yahoo_cme_fetch_and_write(
+    ticker: str,
+    from_dt: datetime,
+    to_dt: datetime,
+    interval: str,
+    output_path: Path,
+) -> int:
+    """Download all chunks, merge, write CSV. Returns row count."""
+    import time
+
+    import pandas as pd
+
+    chunk_days = _yahoo_cme_chunk_days(interval)
+    ranges = _yahoo_cme_date_chunks(from_dt, to_dt, chunk_days)
+    if len(ranges) > YAHOO_CME_MAX_CHUNKS:
+        raise ValueError(
+            f"Download would require {len(ranges)} Yahoo requests (max {YAHOO_CME_MAX_CHUNKS}). "
+            "Use a shorter date range or a coarser interval (for example 1d)."
+        )
+    dfs = []
+    for idx, (a, b) in enumerate(ranges, start=1):
+        end_excl = b + timedelta(days=1)
+        df = _yf_download_chunk(ticker, a, end_excl, interval)
+        df = _yahoo_cme_flatten_columns(df)
+        if df is not None and not df.empty:
+            dfs.append(df)
+        if idx < len(ranges):
+            time.sleep(1.2)
+    if not dfs:
+        raise ValueError("Yahoo Finance returned no rows (check ticker, dates, and rate limits)")
+    merged = pd.concat(dfs, axis=0)
+    merged = merged[~merged.index.duplicated(keep="last")]
+    merged = merged.sort_index()
+    return _yahoo_cme_df_to_csv_file(merged, output_path)
+
+
+def _yahoo_cme_job_path(job_id: str) -> Path:
+    safe_job_id = re.sub(r"[^a-zA-Z0-9_-]", "", (job_id or ""))
+    if not safe_job_id:
+        safe_job_id = "invalid"
+    return YAHOO_CME_JOBS_DIR / f"{safe_job_id}.json"
+
+
+def _yahoo_cme_cleanup_jobs() -> None:
+    cutoff = time.time() - max(60, YAHOO_CME_JOB_TTL_SECONDS)
+    for p in YAHOO_CME_JOBS_DIR.glob("*.json"):
+        try:
+            if p.stat().st_mtime < cutoff:
+                p.unlink()
+        except Exception:
+            pass
+
+
+def _yahoo_cme_write_job(job_id: str, state: dict) -> None:
+    p = _yahoo_cme_job_path(job_id)
+    state["updated_at"] = datetime.utcnow().isoformat()
+    tmp = p.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(state, f)
+    tmp.replace(p)
+
+
+def _yahoo_cme_read_job(job_id: str) -> dict | None:
+    p = _yahoo_cme_job_path(job_id)
+    if not p.exists():
+        return None
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _start_yahoo_cme_fetch_job(ticker: str, from_dt: datetime, to_dt: datetime, interval: str) -> dict:
+    from_str = from_dt.strftime("%Y-%m-%d")
+    to_str = to_dt.strftime("%Y-%m-%d")
+    original_name = f"{ticker}-{interval}-{from_str}-{to_str}.csv"
+    unique_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(3)}_{original_name}"
+    output_path = (UPLOAD_DIR / unique_filename).resolve()
+
+    job_id = f"ycm_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(4)}"
+    now_iso = datetime.utcnow().isoformat()
+    chunk_days = _yahoo_cme_chunk_days(interval)
+    ranges = _yahoo_cme_date_chunks(from_dt, to_dt, chunk_days)
+    chunk_n = len(ranges)
+    if chunk_n > YAHOO_CME_MAX_CHUNKS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"This range/interval needs {chunk_n} Yahoo requests (limit {YAHOO_CME_MAX_CHUNKS}). "
+                "Narrow the dates or use a larger interval."
+            ),
+        )
+
+    state = {
+        "job_id": job_id,
+        "status": "queued",
+        "message": f"Queued Yahoo Finance download ({chunk_n} request chunk{'s' if chunk_n != 1 else ''})",
+        "ticker": ticker,
+        "interval": interval,
+        "from_date": from_str,
+        "to_date": to_str,
+        "chunk_count": chunk_n,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+        "result": None,
+        "error": None,
+    }
+    _yahoo_cme_write_job(job_id, state)
+
+    def _worker():
+        try:
+            state["status"] = "running"
+            state["message"] = "Downloading from Yahoo Finance…"
+            _yahoo_cme_write_job(job_id, state)
+
+            rows = _yahoo_cme_fetch_and_write(ticker, from_dt, to_dt, interval, output_path)
+            desc = (
+                f"Yahoo Finance CME continuous future {ticker} {interval} {from_str} → {to_str} "
+                f"({rows} rows)"
+            )
+            result = _store_dataset_file(
+                file_path=output_path,
+                original_name=original_name,
+                description=desc,
+            )
+            result["source"] = "yahoo-finance-cme"
+            result["params"] = {
+                "ticker": ticker,
+                "from_date": from_str,
+                "to_date": to_str,
+                "interval": interval,
+            }
+            state["status"] = "done"
+            state["message"] = f"Completed Yahoo download ({rows} candles)"
+            state["result"] = result
+            state["finished_at"] = datetime.utcnow().isoformat()
+            _yahoo_cme_write_job(job_id, state)
+        except Exception as exc:
+            err_text = str(exc) or "Unknown Yahoo CME job error"
+            if output_path.exists():
+                try:
+                    output_path.unlink()
+                except OSError:
+                    pass
+            state["status"] = "failed"
+            state["message"] = err_text
+            state["error"] = err_text
+            state["finished_at"] = datetime.utcnow().isoformat()
+            _yahoo_cme_write_job(job_id, state)
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+
+    return {
+        "success": True,
+        "job_id": job_id,
+        "status": "queued",
+        "params": {
+            "ticker": ticker,
+            "from_date": from_str,
+            "to_date": to_str,
+            "interval": interval,
+        },
+    }
+
 
 def file_response_if_exists(path: str):
     p = Path(path)
@@ -3635,11 +4082,20 @@ class AdminDukascopyFetchIn(BaseModel):
 class AdminBinanceFetchIn(BaseModel):
     tickers: list[str]
     asset_class: str = "spot"
+    data_type: str = "klines"
     data_frequency: str = "1m"
     from_date: str
     to_date: str
     is_to_update_existing: bool = False
     tickers_to_exclude: list[str] | None = None
+
+
+class AdminYahooCmeFetchIn(BaseModel):
+    ticker: str
+    from_date: str
+    to_date: str
+    interval: str = "1d"
+
 
 class _AnonymousUser:
     """Dummy user object used when AUTH_ENABLED is False."""
@@ -5479,6 +5935,23 @@ async def admin_upload_dataset(request: Request, csvFile: UploadFile = File(...)
     _require_admin(request)
     return await upload_csv(request, csvFile)
 
+@app.get("/api/admin/datasets/dukascopy-instruments")
+async def admin_dukascopy_instruments(request: Request):
+    """
+    Curated instrument groups for the admin Dukascopy picker (indices, energy, forex).
+    These are Dukascopy symbols (CFD / cash index), not crypto or CME futures contracts.
+    """
+    _require_admin(request)
+    return {
+        "success": True,
+        "groups": {k: list(v) for k, v in DUKASCOPY_INSTRUMENT_GROUPS.items()},
+        "note": (
+            "Dukascopy lists cash index and commodity CFDs (e.g. usa500idxusd, lightcmdusd). "
+            "They track major benchmarks but are not the same instruments as CME ES/NQ/CL futures."
+        ),
+    }
+
+
 @app.post("/api/admin/datasets/fetch-dukascopy")
 async def admin_fetch_dataset_from_dukascopy(payload: AdminDukascopyFetchIn, request: Request):
     _require_admin(request)
@@ -5568,6 +6041,21 @@ async def admin_fetch_dataset_from_binance(payload: AdminBinanceFetchIn, request
     if data_frequency not in BINANCE_ALLOWED_FREQUENCIES:
         raise HTTPException(status_code=400, detail=f"Unsupported data_frequency: {data_frequency}")
 
+    data_type = (payload.data_type or "klines").strip() or "klines"
+    if asset_class == "spot":
+        if data_type not in BINANCE_FETCH_DATA_TYPES_SPOT:
+            raise HTTPException(
+                status_code=400,
+                detail="For spot, data_type must be klines (futures series are not available on spot).",
+            )
+    else:
+        if data_type not in BINANCE_FETCH_DATA_TYPES_FUTURES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid data_type for futures: {data_type}. "
+                f"Use one of: {', '.join(sorted(BINANCE_FETCH_DATA_TYPES_FUTURES))}.",
+            )
+
     from_dt = _parse_iso_date(payload.from_date, "from_date")
     to_dt = _parse_iso_date(payload.to_date, "to_date")
     if from_dt > to_dt:
@@ -5586,6 +6074,7 @@ async def admin_fetch_dataset_from_binance(payload: AdminBinanceFetchIn, request
         tickers=tickers,
         asset_class=asset_class,
         data_frequency=data_frequency,
+        data_type=data_type,
         from_dt=from_dt,
         to_dt=to_dt,
         is_to_update_existing=bool(payload.is_to_update_existing),
@@ -5603,6 +6092,72 @@ async def admin_fetch_binance_status(job_id: str, request: Request):
     out = dict(state)
     out["state"] = state.get("status")
     return out
+
+
+@app.get("/api/admin/datasets/yahoo-cme-instruments")
+async def admin_yahoo_cme_instruments(request: Request):
+    """
+    Curated Yahoo Finance tickers for CME-style continuous futures (=F).
+    Data is from Yahoo/ICE/Barchart aggregation — not CME DataMine tape.
+    """
+    _require_admin(request)
+    return {
+        "success": True,
+        "groups": {k: list(v) for k, v in YAHOO_CME_INSTRUMENT_GROUPS.items()},
+        "allowed_intervals": sorted(YAHOO_CME_ALLOWED_INTERVALS),
+        "note": (
+            "Symbols ending in =F are Yahoo continuous futures (rolled). "
+            "Intraday history is limited by Yahoo; long 1m ranges require many chunks and may hit rate limits."
+        ),
+    }
+
+
+@app.post("/api/admin/datasets/fetch-yahoo-cme")
+async def admin_fetch_yahoo_cme(payload: AdminYahooCmeFetchIn, request: Request):
+    """
+    Download historical OHLC for a Yahoo CME continuous future into the normal dataset pipeline.
+    """
+    _require_admin(request)
+
+    ticker = _normalize_yahoo_cme_ticker(payload.ticker)
+    interval = _normalize_yahoo_cme_interval(payload.interval)
+    from_dt = _parse_iso_date(payload.from_date, "from_date")
+    to_dt = _parse_iso_date(payload.to_date, "to_date")
+
+    if from_dt > to_dt:
+        raise HTTPException(status_code=400, detail="from_date must be earlier than or equal to to_date")
+
+    range_days = (to_dt - from_dt).days + 1
+    if range_days > YAHOO_CME_MAX_TOTAL_DAYS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Date range too large ({range_days} days). Max allowed per request is {YAHOO_CME_MAX_TOTAL_DAYS} days.",
+        )
+
+    try:
+        import pandas  # noqa: F401 — ensure stack matches requirements before starting background job
+        import yfinance  # noqa: F401
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="yfinance/pandas are required for Yahoo futures download. Install chart requirements.txt.",
+        ) from exc
+
+    _yahoo_cme_cleanup_jobs()
+    return _start_yahoo_cme_fetch_job(ticker=ticker, from_dt=from_dt, to_dt=to_dt, interval=interval)
+
+
+@app.get("/api/admin/datasets/fetch-yahoo-cme/{job_id}/status")
+async def admin_fetch_yahoo_cme_status(job_id: str, request: Request):
+    _require_admin(request)
+    _yahoo_cme_cleanup_jobs()
+    state = _yahoo_cme_read_job(job_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Yahoo futures job not found or expired")
+    out = dict(state)
+    out["state"] = state.get("status")
+    return out
+
 
 @app.patch("/api/admin/datasets/{file_id}/settings")
 async def admin_update_dataset_settings(file_id: int, payload: AdminDatasetSettingsIn, request: Request):

@@ -1433,8 +1433,29 @@ select { cursor: pointer; }
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9m-9 9a9 9 0 019-9"/></svg>
                 Fetch from Dukascopy
               </div>
+              <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
+                Use <strong>indices / oil</strong> here for traditional benchmarks (S&amp;P- and Nasdaq-style cash indices, WTI/Brent CFDs).
+                Dukascopy does not ship CME micro futures as separate root symbols; pick the matching CFD/index id below or enter any valid
+                <a href="https://www.dukascopy-node.app/instruments" target="_blank" rel="noopener noreferrer" style="color:var(--accent)">dukascopy-node instrument</a> manually.
+              </p>
               <div class="form-grid">
-                <div class="field"><label>Pair</label><input id="dk_pair" type="text" value="EURUSD" style="text-transform:uppercase"></div>
+                <div class="field fg-full">
+                  <label>Category</label>
+                  <div id="dk_cat_tabs" style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button type="button" class="dk-cat-tab btn sm primary" data-group="us_indices" onclick="setDukascopyGroup('us_indices')">US indices</button>
+                    <button type="button" class="dk-cat-tab btn sm" data-group="energy" onclick="setDukascopyGroup('energy')">Oil &amp; energy</button>
+                    <button type="button" class="dk-cat-tab btn sm" data-group="world_indices" onclick="setDukascopyGroup('world_indices')">World indices</button>
+                    <button type="button" class="dk-cat-tab btn sm" data-group="forex" onclick="setDukascopyGroup('forex')">Forex</button>
+                  </div>
+                </div>
+                <div class="field fg-full">
+                  <label for="dk_instrument_select">Instrument</label>
+                  <select id="dk_instrument_select" class="input" style="width:100%;max-width:100%" onchange="onDukascopySelectChange()"></select>
+                </div>
+                <div class="field fg-full">
+                  <label for="dk_pair">Instrument id (manual)</label>
+                  <input id="dk_pair" type="text" value="usa500idxusd" placeholder="e.g. usa500idxusd" style="font-family:ui-monospace,monospace;font-size:12px" spellcheck="false">
+                </div>
                 <div class="field"><label>Timeframe</label><input disabled value="M1 (auto-aggregated)" style="opacity:.4"></div>
                 <div class="field"><label>From</label><input id="dk_from" type="date"></div>
                 <div class="field"><label>To</label><input id="dk_to" type="date"></div>
@@ -1447,6 +1468,58 @@ select { cursor: pointer; }
                 </div>
               </div>
             </div>
+            <!-- CME-style continuous futures (Yahoo Finance, =F roots) -->
+            <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border)">
+              <div style="font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted)"><path d="M3 3h7v7H3V3zM14 3h7v4h-7V3zM14 9h7v12h-7V9zM3 14h7v7H3v-7z"/></svg>
+                CME-style futures (Yahoo)
+              </div>
+              <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
+                <strong>ES=F, NQ=F, CL=F, etc.</strong> are Yahoo&rsquo;s <em>continuous</em> CME-style future series (not individual expiries). This is <strong>not</strong> CME DataMine; for exchange-tape or contract-level data you need a licensed CME feed. Intraday (especially 1m) is limited by Yahoo; long ranges at 1m may be slow or rate-limited.
+              </p>
+              <div class="form-grid">
+                <div class="field fg-full">
+                  <label>Category</label>
+                  <div id="ycme_cat_tabs" style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button type="button" class="ycme-cat-tab btn sm primary" data-group="equity_index" onclick="setYcmeGroup('equity_index')">Equity index</button>
+                    <button type="button" class="ycme-cat-tab btn sm" data-group="energy" onclick="setYcmeGroup('energy')">Energy</button>
+                    <button type="button" class="ycme-cat-tab btn sm" data-group="metals" onclick="setYcmeGroup('metals')">Metals</button>
+                    <button type="button" class="ycme-cat-tab btn sm" data-group="rates" onclick="setYcmeGroup('rates')">Rates</button>
+                    <button type="button" class="ycme-cat-tab btn sm" data-group="fx" onclick="setYcmeGroup('fx')">FX</button>
+                    <button type="button" class="ycme-cat-tab btn sm" data-group="ag" onclick="setYcmeGroup('ag')">Ags</button>
+                  </div>
+                </div>
+                <div class="field fg-full">
+                  <label for="ycme_instrument_select">Root (Yahoo)</label>
+                  <select id="ycme_instrument_select" class="input" style="width:100%;max-width:100%" onchange="onYcmeSelectChange()"></select>
+                </div>
+                <div class="field fg-full">
+                  <label for="ycme_ticker">Ticker (manual)</label>
+                  <input id="ycme_ticker" type="text" value="ES=F" placeholder="e.g. NQ=F" style="font-family:ui-monospace,monospace;font-size:12px" spellcheck="false">
+                </div>
+                <div class="field">
+                  <label for="ycme_interval">Interval</label>
+                  <select id="ycme_interval">
+                    <option value="1d" selected>Daily</option>
+                    <option value="60m">1 hour</option>
+                    <option value="30m">30 minutes</option>
+                    <option value="15m">15 minutes</option>
+                    <option value="5m">5 minutes</option>
+                    <option value="2m">2 minutes</option>
+                    <option value="1m">1 minute</option>
+                  </select>
+                </div>
+                <div class="field"><label>From</label><input id="ycme_from" type="date"></div>
+                <div class="field"><label>To</label><input id="ycme_to" type="date"></div>
+                <div class="fg-full" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                  <button class="btn primary" id="ycmeFetchBtn" onclick="fetchYahooCme()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Fetch Yahoo futures
+                  </button>
+                  <span id="ycmeProgress" style="font-size:12px;color:var(--text-muted)"></span>
+                </div>
+              </div>
+            </div>
             <!-- Binance Vision (historical klines via binance-historical-data) -->
             <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border)">
               <div style="font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px">
@@ -1454,15 +1527,31 @@ select { cursor: pointer; }
                 Fetch from Binance (historical)
               </div>
               <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
-                Uses <a href="https://pypi.org/project/binance-historical-data/" target="_blank" rel="noopener noreferrer" style="color:var(--accent)">binance-historical-data</a> against Binance public data. Up to 5 symbols per request.
+                <strong>Spot and futures</strong> use the same download job, merge, and dataset storage as Dukascopy/forex. Data is read from
+                <a href="https://data.binance.vision/?prefix=data/" target="_blank" rel="noopener noreferrer" style="color:var(--accent)">Binance Vision</a> via
+                <a href="https://pypi.org/project/binance-historical-data/" target="_blank" rel="noopener noreferrer" style="color:var(--accent)">binance-historical-data</a>.
+                (The <a href="https://github.com/public-apis/public-apis" target="_blank" rel="noopener noreferrer" style="color:var(--text-muted)">public-apis</a> list is a general API catalog, not a data source — we do not use it for market files.) Up to 5 symbols per request.
               </p>
               <div class="form-grid">
-                <div class="field fg-full"><label>Asset class</label>
-                  <select id="bn_asset" onchange="loadBinanceSymbolOptions(true)">
-                    <option value="spot" selected>Spot</option>
-                    <option value="um">USD-M Futures (um)</option>
-                    <option value="cm">COIN-M Futures (cm)</option>
+                <div class="field fg-full">
+                  <label>Market</label>
+                  <input type="hidden" id="bn_asset" value="spot">
+                  <div id="bn_market_tabs" style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button type="button" class="bn-market-tab btn sm primary" data-asset="spot" onclick="setBinanceMarket('spot')" title="Spot trading pairs">Spot</button>
+                    <button type="button" class="bn-market-tab btn sm" data-asset="um" onclick="setBinanceMarket('um')" title="USD-Margined futures">USD‑M futures</button>
+                    <button type="button" class="bn-market-tab btn sm" data-asset="cm" onclick="setBinanceMarket('cm')" title="Coin-margined futures">COIN‑M futures</button>
+                  </div>
+                  <span style="font-size:11px;color:var(--text-muted);margin-top:6px;display:block">Pick a market, then symbols below reload from Binance <code style="font-size:10px">exchangeInfo</code>.</span>
+                </div>
+                <div class="field fg-full" id="bn_data_type_wrap" style="display:none">
+                  <label>Futures OHLC series</label>
+                  <select id="bn_data_type">
+                    <option value="klines" selected>Trading / delivery klines</option>
+                    <option value="markPriceKlines">Mark price</option>
+                    <option value="indexPriceKlines">Index price</option>
+                    <option value="premiumIndexKlines">Premium index</option>
                   </select>
+                  <span style="font-size:11px;color:var(--text-muted);margin-top:6px;display:block">Same CSV → dataset pipeline as spot; folder layout on Vision differs per series.</span>
                 </div>
                 <div class="field fg-full">
                   <label>Symbols</label>
@@ -2881,8 +2970,175 @@ function setDefaultDukascopyDates() {
 }
 setDefaultDukascopyDates();
 
+let dukaActiveGroup = 'us_indices';
+let dukaGroups = {};
+
+function setDukascopyGroup(group) {
+  dukaActiveGroup = group;
+  document.querySelectorAll('#dk_cat_tabs .dk-cat-tab').forEach(function (b) {
+    const on = b.getAttribute('data-group') === group;
+    if (on) { b.classList.add('primary'); } else { b.classList.remove('primary'); }
+  });
+  renderDukascopySelect(true);
+}
+
+function renderDukascopySelect(resetToFirst) {
+  const sel = $('dk_instrument_select');
+  if (!sel) return;
+  const list = dukaGroups[dukaActiveGroup];
+  if (!list || !list.length) {
+    sel.innerHTML = '<option disabled>(loading…)</option>';
+    return;
+  }
+  if (resetToFirst) {
+    $('dk_pair').value = list[0].id;
+  }
+  const cur = ($('dk_pair').value || '').trim().toLowerCase();
+  sel.innerHTML = list.map(function (row) {
+    const id = row.id || '';
+    const label = row.label || id;
+    const selected = (id.toLowerCase() === cur) ? ' selected' : '';
+    return '<option value="' + esc(id) + '"' + selected + '>' + esc(label) + '</option>';
+  }).join('');
+  const has = list.some(function (r) { return (r.id || '').toLowerCase() === cur; });
+  if (has) sel.value = cur;
+  else if (list.length) { $('dk_pair').value = list[0].id; sel.value = list[0].id; }
+}
+
+function onDukascopySelectChange() {
+  const sel = $('dk_instrument_select');
+  if (!sel) return;
+  $('dk_pair').value = sel.value;
+}
+
+async function loadDukascopyInstrumentGroups() {
+  try {
+    const data = await api('/api/admin/datasets/dukascopy-instruments');
+    dukaGroups = data.groups || {};
+    renderDukascopySelect(false);
+  } catch (e) {
+    const sel = $('dk_instrument_select');
+    if (sel) sel.innerHTML = '<option disabled>(failed to load)</option>';
+    toast(e.message || String(e), 'err');
+  }
+}
+loadDukascopyInstrumentGroups();
+
+let ycmeActiveGroup = 'equity_index';
+let ycmeGroups = {};
+
+function setYcmeGroup(group) {
+  ycmeActiveGroup = group;
+  document.querySelectorAll('#ycme_cat_tabs .ycme-cat-tab').forEach(function (b) {
+    const on = b.getAttribute('data-group') === group;
+    if (on) { b.classList.add('primary'); } else { b.classList.remove('primary'); }
+  });
+  renderYcmeSelect(true);
+}
+
+function renderYcmeSelect(resetToFirst) {
+  const sel = $('ycme_instrument_select');
+  if (!sel) return;
+  const list = ycmeGroups[ycmeActiveGroup];
+  if (!list || !list.length) {
+    sel.innerHTML = '<option disabled>(loading…)</option>';
+    return;
+  }
+  if (resetToFirst) {
+    $('ycme_ticker').value = list[0].ticker;
+  }
+  const cur = ($('ycme_ticker').value || '').trim().toUpperCase();
+  sel.innerHTML = list.map(function (row) {
+    const t = row.ticker || '';
+    const label = row.label || t;
+    const selected = (t.toUpperCase() === cur) ? ' selected' : '';
+    return '<option value="' + esc(t) + '"' + selected + '>' + esc(label) + ' (' + esc(t) + ')</option>';
+  }).join('');
+  const has = list.some(function (r) { return (r.ticker || '').toUpperCase() === cur; });
+  if (has) sel.value = cur;
+  else if (list.length) { $('ycme_ticker').value = list[0].ticker; sel.value = list[0].ticker; }
+}
+
+function onYcmeSelectChange() {
+  const s = $('ycme_instrument_select');
+  if (!s) return;
+  $('ycme_ticker').value = s.value;
+}
+
+function setDefaultYcmeDates() {
+  const today = new Date();
+  const from = new Date(today);
+  from.setFullYear(from.getFullYear() - 5);
+  if ($('ycme_from')) $('ycme_from').value = from.toISOString().slice(0, 10);
+  if ($('ycme_to')) $('ycme_to').value = today.toISOString().slice(0, 10);
+}
+setDefaultYcmeDates();
+
+async function loadYahooCmeInstruments() {
+  try {
+    const data = await api('/api/admin/datasets/yahoo-cme-instruments');
+    ycmeGroups = data.groups || {};
+    renderYcmeSelect(false);
+  } catch (e) {
+    const sel = $('ycme_instrument_select');
+    if (sel) sel.innerHTML = '<option disabled>(failed)</option>';
+    toast(e.message || String(e), 'err');
+  }
+}
+loadYahooCmeInstruments();
+
+async function fetchYahooCme() {
+  const ticker = ($('ycme_ticker') && $('ycme_ticker').value || '').trim().toUpperCase();
+  const interval = ($('ycme_interval') && $('ycme_interval').value) || '1d';
+  const fromDate = $('ycme_from') && $('ycme_from').value;
+  const toDate = $('ycme_to') && $('ycme_to').value;
+  if (!ticker || !fromDate || !toDate) return toast('Fill in Yahoo futures fields', 'err');
+  const btn = $('ycmeFetchBtn');
+  const prog = $('ycmeProgress');
+  if (btn) btn.disabled = true;
+  if (prog) prog.textContent = 'Starting…';
+  try {
+    const data = await api('/api/admin/datasets/fetch-yahoo-cme', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticker: ticker, from_date: fromDate, to_date: toDate, interval: interval })
+    });
+    if (data.job_id) await waitForYahooCmeJob(data.job_id);
+    else {
+      toast('Fetch started', 'ok');
+      await loadDatasets();
+    }
+  } catch (e) {
+    toast(e.message || String(e), 'err');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function waitForYahooCmeJob(jobId) {
+  const label = $('ycmeProgress');
+  for (let i = 0; i < 600; i++) {
+    await sleep(2000);
+    try {
+      const status = await api(`/api/admin/datasets/fetch-yahoo-cme/${encodeURIComponent(jobId)}/status`);
+      const st = status.state || status.status;
+      if (st === 'done' || st === 'completed') {
+        if (label) label.textContent = 'Done!';
+        toast('Yahoo futures fetch complete', 'ok');
+        await loadDatasets();
+        return;
+      } else if (st === 'failed' || st === 'error') {
+        if (label) label.textContent = 'Failed: ' + (status.error || status.message || 'Unknown error');
+        toast('Yahoo futures fetch failed', 'err');
+        return;
+      }
+      if (label) label.textContent = status.message || st || 'Processing…';
+    } catch (e) { break; }
+  }
+}
+
 async function fetchDukascopy() {
-  const instrument = $('dk_pair').value.trim().toUpperCase();
+  const instrument = $('dk_pair').value.trim().toLowerCase();
   const fromDate = $('dk_from').value;
   const toDate = $('dk_to').value;
   if (!instrument || !fromDate || !toDate) return toast('Fill in all Dukascopy fields', 'err');
@@ -2930,6 +3186,18 @@ async function waitForDukascopyJob(jobId) {
 }
 
 let bnSymbolsFull = [];
+
+function setBinanceMarket(ac) {
+  var h = $('bn_asset');
+  if (h) h.value = ac;
+  var wrap = $('bn_data_type_wrap');
+  if (wrap) wrap.style.display = ac === 'um' || ac === 'cm' ? '' : 'none';
+  document.querySelectorAll('#bn_market_tabs .bn-market-tab').forEach(function (b) {
+    var on = b.getAttribute('data-asset') === ac;
+    if (on) { b.classList.add('primary'); } else { b.classList.remove('primary'); }
+  });
+  loadBinanceSymbolOptions(true);
+}
 
 function renderBinanceSymbolSelect(filterText, clearSelection) {
   const sel = $('bn_tickers_select');
@@ -2994,6 +3262,10 @@ async function fetchBinance() {
   const fromDate = $('bn_from') && $('bn_from').value;
   const toDate = $('bn_to') && $('bn_to').value;
   const assetClass = ($('bn_asset') && $('bn_asset').value) || 'spot';
+  let dataType = 'klines';
+  if (assetClass === 'um' || assetClass === 'cm') {
+    dataType = (($('bn_data_type') && $('bn_data_type').value) || 'klines').trim();
+  }
   const dataFrequency = ($('bn_freq') && $('bn_freq').value) || '1m';
   const isToUpdateExisting = $('bn_update_existing') && $('bn_update_existing').checked;
   if (tickers.length > 5) return toast('Select at most 5 symbols', 'err');
@@ -3009,6 +3281,7 @@ async function fetchBinance() {
       body: JSON.stringify({
         tickers,
         asset_class: assetClass,
+        data_type: dataType,
         data_frequency: dataFrequency,
         from_date: fromDate,
         to_date: toDate,

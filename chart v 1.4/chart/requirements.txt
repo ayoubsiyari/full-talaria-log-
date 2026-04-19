@@ -14,3 +14,4 @@ msgpack==1.0.7
 stripe
 pytest
 binance-historical-data==0.1.14
+yfinance==0.2.55
