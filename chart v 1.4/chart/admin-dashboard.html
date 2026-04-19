@@ -651,6 +651,53 @@ select { cursor: pointer; }
   font-size: 11px; font-weight: 700; white-space: nowrap;
 }
 
+/* ── Analytics & VPS (insights) ─────────────────── */
+.insights-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .insights-grid { grid-template-columns: 1fr; }
+}
+.insight-hbar-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 140px) 1fr minmax(52px, 72px);
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 11px;
+}
+.insight-hbar-track {
+  height: 10px;
+  background: rgba(255,255,255,.06);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.insight-hbar-fill {
+  height: 100%;
+  border-radius: 5px;
+  min-width: 3px;
+  transition: width .25s ease;
+}
+.insight-stack-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 18px;
+}
+.insight-spark svg {
+  width: 100%;
+  height: 52px;
+  display: block;
+  border-radius: var(--radius-sm);
+  background: rgba(0,0,0,.18);
+  border: 1px solid var(--border);
+}
+
 /* ── Toast ──────────────────────────────────────── */
 #toast {
   position: fixed;
@@ -1256,6 +1303,10 @@ select { cursor: pointer; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
         Dataset registry
       </a>
+      <a class="nav-item" data-section="insights" onclick="navigate('insights')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+        Analytics &amp; VPS
+      </a>
       <div class="nav-sep"></div>
       <a class="nav-item" data-section="subscriptions" onclick="navigate('subscriptions')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H3"/><path d="M18 8H6"/><path d="M19 12H5"/><path d="M16 16H8"/><path d="M13 20h-2"/></svg>
@@ -1763,6 +1814,45 @@ select { cursor: pointer; }
         </div>
       </div>
 
+      <!-- ════════ ANALYTICS & VPS (CHARTS + SERVER) ════════ -->
+      <div class="section" id="sec-insights">
+        <div class="stat-cards" id="insightsQuickStats"></div>
+        <div class="insights-grid">
+          <div class="card">
+            <div class="card-hdr">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+              <div class="card-title">Dataset analytics</div>
+              <button type="button" class="btn sm primary" onclick="loadInsightsDatasetCharts()" style="margin-left:8px">Refresh charts</button>
+            </div>
+            <div class="card-body" id="insightsDatasetChartsHost">
+              <p style="font-size:12px;color:var(--text-muted)">Open this tab to load storage charts from all datasets.</p>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-hdr">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              <div class="card-title">Server (VPS)</div>
+              <label style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-muted);font-weight:500;cursor:pointer">
+                <input type="checkbox" id="insightsLiveToggle" checked> Live poll (4s)
+              </label>
+            </div>
+            <div class="card-body" id="insightsSystemHost">
+              <p style="font-size:12px;color:var(--text-muted)">Loads CPU, memory, disks, and network counters from this host.</p>
+            </div>
+            <div style="padding:0 16px 16px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div>
+                <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">CPU % (session)</div>
+                <div id="insightsCpuSparkWrap"></div>
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Memory %</div>
+                <div id="insightsMemSparkWrap"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ════════ SUBSCRIPTIONS SECTION ════════ -->
       <div class="section" id="sec-subscriptions">
         <div class="stat-cards" id="subStats"></div>
@@ -2109,6 +2199,7 @@ const sectionTitles = {
   sessions: 'Live Sessions',
   datasets: 'Dataset Management',
   'dataset-registry': 'Dataset registry & health',
+  insights: 'Analytics & VPS',
   subscriptions: 'Subscriptions',
   payments: 'Payments',
   affiliates: 'Affiliates',
@@ -2449,6 +2540,7 @@ async function loadSupport() {
 }
 
 function navigate(section) {
+  stopInsightsSystemPoll();
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const sec = $('sec-' + section);
@@ -2465,6 +2557,7 @@ function navigate(section) {
   }
   if (section === 'sessions') loadSessions();
   if (section === 'dataset-registry') loadDatasetRegistry();
+  if (section === 'insights') loadInsightsAnalyticsPage();
   if (section === 'subscriptions') loadSubscriptionData();
   if (section === 'payments') loadPayments();
   if (section === 'affiliates') loadAffiliates();
@@ -2493,6 +2586,10 @@ let currentEditMode = 'unlimited';
 let selectedDsId = null;
 let dsPollTimer = null;
 let datasetRegistrySnapshot = null;
+let insightsSystemPollTimer = null;
+let insightsCpuHistory = [];
+let insightsMemHistory = [];
+let insightsOverviewCache = null;
 
 // ═══════════════════════════════════════════════════════════
 //  Init
@@ -3189,6 +3286,243 @@ async function goToDatasetFromRegistry(fileId) {
     if (ds) selectDs(ds);
     else toast('Dataset #' + fileId + ' not in list — try Refresh.', 'err');
   } catch (e) { toast(e.message || String(e), 'err'); }
+}
+
+function stopInsightsSystemPoll() {
+  if (insightsSystemPollTimer) {
+    clearInterval(insightsSystemPollTimer);
+    insightsSystemPollTimer = null;
+  }
+}
+
+function fmtInsightsUptime(sec) {
+  sec = Math.max(0, Math.floor(Number(sec) || 0));
+  var d = Math.floor(sec / 86400);
+  var h = Math.floor((sec % 86400) / 3600);
+  var m = Math.floor((sec % 3600) / 60);
+  if (d > 0) return d + 'd ' + h + 'h';
+  if (h > 0) return h + 'h ' + m + 'm';
+  return m + 'm';
+}
+
+function fmtInsightsNetBytes(n) {
+  n = Number(n) || 0;
+  if (n >= 1099511627776) return (n / 1099511627776).toFixed(2) + ' TiB';
+  if (n >= 1073741824) return (n / 1073741824).toFixed(2) + ' GiB';
+  if (n >= 1048576) return (n / 1048576).toFixed(2) + ' MiB';
+  if (n >= 1024) return (n / 1024).toFixed(2) + ' KiB';
+  return fmtN(n) + ' B';
+}
+
+function insightsSparklineSvg(points, strokeHex) {
+  strokeHex = strokeHex || '#8b5cf6';
+  if (!points || !points.length) return '<div class="insight-spark"></div>';
+  var W = 100, H = 36, pad = 2;
+  var minV = 0, maxV = 100;
+  var n = points.length;
+  var step = (W - pad * 2) / Math.max(n - 1, 1);
+  var pts = [];
+  for (var i = 0; i < n; i++) {
+    var v = Math.min(maxV, Math.max(minV, Number(points[i]) || 0));
+    var x = pad + i * step;
+    var t = (v - minV) / (maxV - minV);
+    var y = pad + (1 - t) * (H - pad * 2);
+    pts.push(x + ',' + y);
+  }
+  return '<div class="insight-spark"><svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
+    '<polyline fill="none" stroke="' + strokeHex + '" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" points="' + pts.join(' ') + '"/></svg></div>';
+}
+
+function insightsGaugeBar(label, pct, colorVar) {
+  var p = Math.min(100, Math.max(0, Number(pct) || 0));
+  return '<div style="margin-bottom:12px">' +
+    '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">' +
+    '<span>' + esc(label) + '</span><span style="font-variant-numeric:tabular-nums">' + p.toFixed(1) + '%</span></div>' +
+    '<div style="height:8px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden">' +
+    '<div style="height:100%;width:' + p + '%;background:' + colorVar + ';border-radius:4px"></div></div></div>';
+}
+
+async function loadInsightsAnalyticsPage() {
+  insightsCpuHistory = [];
+  insightsMemHistory = [];
+  stopInsightsSystemPoll();
+  await loadInsightsDatasetCharts();
+  loadInsightsSystemMetrics();
+  insightsSystemPollTimer = setInterval(function () {
+    var box = $('insightsLiveToggle');
+    if (box && !box.checked) return;
+    loadInsightsSystemMetrics();
+  }, 4000);
+}
+
+function fmtInsightsBytes(n) {
+  n = Number(n) || 0;
+  if (n < 1024) return fmtN(n) + ' B';
+  var v = n / 1024;
+  if (v < 1024) return v.toFixed(1) + ' KiB';
+  v /= 1024;
+  if (v < 1024) return v.toFixed(2) + ' MiB';
+  v /= 1024;
+  if (v < 1024) return v.toFixed(2) + ' GiB';
+  return (v / 1024).toFixed(2) + ' TiB';
+}
+
+async function loadInsightsDatasetCharts() {
+  var host = $('insightsDatasetChartsHost');
+  var qs = $('insightsQuickStats');
+  if (!host) return;
+  host.innerHTML = '<p style="color:var(--text-muted);font-size:13px">Loading dataset charts…</p>';
+  try {
+    var data = await api('/api/admin/datasets/overview');
+    insightsOverviewCache = data;
+    host.innerHTML = renderInsightsDatasetChartsHtml(data);
+    if (qs && data.summary) {
+      var s = data.summary;
+      qs.innerHTML =
+        '<div class="stat-card accent"><div class="label">Datasets</div><div class="value">' + fmtN(s.dataset_count || 0) + '</div></div>' +
+        '<div class="stat-card warn"><div class="label">Total disk (all)</div><div class="value" style="font-size:18px">' + esc(s.total_storage_human || '—') + '</div></div>' +
+        '<div class="stat-card ok"><div class="label">Healthy</div><div class="value">' + fmtN(s.healthy_count || 0) + '</div></div>' +
+        '<div class="stat-card danger"><div class="label">Needs attention</div><div class="value">' + fmtN(s.needs_attention_count || 0) + '</div></div>';
+    }
+  } catch (e) {
+    host.innerHTML = '<p style="color:var(--danger)">' + esc(e.message || String(e)) + '</p>';
+  }
+}
+
+function renderInsightsDatasetChartsHtml(data) {
+  var rows = (data.datasets || []).slice().sort(function (a, b) {
+    return (b.total_storage_bytes || 0) - (a.total_storage_bytes || 0);
+  });
+  var sumCsv = 0, sumBin = 0, sumTiles = 0;
+  rows.forEach(function (ds) {
+    sumCsv += ds.csv && ds.csv.bytes ? ds.csv.bytes : 0;
+    sumBin += ds.binaries_total_bytes || 0;
+    sumTiles += ds.tiles_total_bytes || 0;
+  });
+  var sumAll = sumCsv + sumBin + sumTiles;
+  if (sumAll < 1) sumAll = 1;
+  function pctPart(n) { return Math.round(100 * n / sumAll); }
+  var stackParts = [
+    { key: 'CSV', v: sumCsv, bg: 'linear-gradient(90deg,#6366f1,#8b5cf6)' },
+    { key: 'Binaries', v: sumBin, bg: 'linear-gradient(90deg,#10b981,#34d399)' },
+    { key: 'Tiles', v: sumTiles, bg: 'linear-gradient(90deg,#f59e0b,#fbbf24)' },
+  ];
+  var stackHtml = '<p style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:10px">Storage mix (all datasets)</p>' +
+    '<div style="display:flex;height:28px;border-radius:8px;overflow:hidden;margin-bottom:10px">' +
+    stackParts.map(function (p) {
+      var flex = Math.max(pctPart(p.v), p.v > 0 ? 0.8 : 0);
+      return '<div title="' + esc(p.key) + ': ' + fmtInsightsBytes(p.v) + '" style="flex:' + flex + ';min-width:' + (p.v > 0 ? '6px' : '0') + ';background:' + p.bg + '"></div>';
+    }).join('') + '</div>' +
+    '<div class="insight-stack-legend">' +
+    stackParts.map(function (p) {
+      return '<span><strong style="color:var(--text)">' + esc(p.key) + '</strong> · ' + fmtInsightsBytes(p.v) + ' · ' + pctPart(p.v) + '%</span>';
+    }).join('') + '</div>';
+
+  var healthCounts = {};
+  rows.forEach(function (ds) {
+    var h = ds.health || 'unknown';
+    healthCounts[h] = (healthCounts[h] || 0) + 1;
+  });
+  var healthOrder = ['healthy', 'partial', 'building', 'failed', 'integrity_issues', 'empty', 'unknown'];
+  var healthLabels = {
+    healthy: 'Healthy',
+    partial: 'Partial TF coverage',
+    building: 'Building',
+    failed: 'Build failed',
+    integrity_issues: 'Integrity / tiles',
+    empty: 'Empty',
+    unknown: 'Other',
+  };
+  var denom = rows.length || 1;
+  var healthHtml = '<p style="font-size:12px;font-weight:600;color:var(--text-secondary);margin:20px 0 10px">Health distribution</p>';
+  healthOrder.forEach(function (key) {
+    var c = healthCounts[key];
+    if (!c) return;
+    var pctH = Math.round(100 * c / denom);
+    healthHtml += '<div class="insight-hbar-row"><span style="color:var(--text-muted)">' + esc(healthLabels[key] || key) + '</span>' +
+      '<div class="insight-hbar-track"><div class="insight-hbar-fill" style="width:' + pctH + '%;background:linear-gradient(90deg,var(--accent),#6366f1)"></div></div>' +
+      '<span style="text-align:right;font-variant-numeric:tabular-nums">' + fmtN(c) + '</span></div>';
+  });
+
+  var maxSt = rows.length ? (rows[0].total_storage_bytes || 1) : 1;
+  var top = rows.slice(0, 18);
+  var barsHtml = '<p style="font-size:12px;font-weight:600;color:var(--text-secondary);margin:20px 0 10px">Largest datasets on disk</p>';
+  top.forEach(function (ds) {
+    var s = ds.settings || {};
+    var name = s.display_name || ds.original_name || ('#' + ds.id);
+    var tb = ds.total_storage_bytes || 0;
+    var pctS = Math.min(100, Math.round(100 * tb / maxSt));
+    barsHtml += '<div class="insight-hbar-row"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(name) + '">' + esc(name) + '</span>' +
+      '<div class="insight-hbar-track"><div class="insight-hbar-fill" style="width:' + pctS + '%;background:linear-gradient(90deg,#3b82f6,#8b5cf6)"></div></div>' +
+      '<span style="text-align:right;font-variant-numeric:tabular-nums;font-size:11px">' + esc(ds.total_storage_human || fmtInsightsBytes(tb)) + '</span></div>';
+  });
+
+  return stackHtml + healthHtml + barsHtml;
+}
+
+function renderInsightsSystemHtml(m) {
+  var parts = [];
+  parts.push('<p style="font-size:11px;color:var(--text-muted);margin-bottom:14px;line-height:1.5">' +
+    '<strong style="color:var(--text-secondary)">' + esc(m.hostname || 'host') + '</strong><br>' +
+    'Uptime ' + fmtInsightsUptime(m.uptime_seconds) + ' · boot ' + esc(m.boot_time_iso || '—') + '<br>' +
+    esc(m.platform || '') + '<br>Python ' + esc(m.python_version || '') + '</p>');
+  if (m.load_average) {
+    parts.push('<p style="font-size:11px;color:var(--text-muted);margin:-8px 0 12px">Load avg: ' +
+      m.load_average['1m'] + ' · ' + m.load_average['5m'] + ' · ' + m.load_average['15m'] + '</p>');
+  }
+  parts.push(insightsGaugeBar('CPU (system)', m.cpu && m.cpu.percent, 'var(--accent)'));
+  parts.push(insightsGaugeBar('Memory', m.memory && m.memory.percent, 'var(--ok)'));
+  if (m.swap && m.swap.total > 0) {
+    parts.push(insightsGaugeBar('Swap', m.swap.percent, 'var(--warn)'));
+  }
+  if (m.process && m.process.rss_human) {
+    parts.push('<p style="font-size:11px;color:var(--text-muted);margin-bottom:12px">API process RSS: <strong style="color:var(--text)">' +
+      esc(m.process.rss_human) + '</strong>' +
+      (m.process.cpu_percent != null ? ' · proc CPU ' + Number(m.process.cpu_percent).toFixed(1) + '%' : '') +
+      (m.process.threads != null ? ' · threads ' + fmtN(m.process.threads) : '') + '</p>');
+  }
+  (m.disks || []).forEach(function (d) {
+    var dp = Math.min(100, Math.max(0, Number(d.percent) || 0));
+    parts.push('<div style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)">' +
+      '<div style="font-size:12px;font-weight:600">' + esc(d.label) + ' <span style="font-weight:500;color:var(--text-muted)">' + esc(String(d.percent)) + '%</span></div>' +
+      '<div style="font-size:10px;color:var(--text-muted);margin:4px 0 8px;word-break:break-all">' + esc(d.path) + '</div>' +
+      '<div style="height:8px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden">' +
+      '<div style="height:100%;width:' + dp + '%;background:var(--blue);border-radius:4px"></div></div>' +
+      '<div style="font-size:11px;color:var(--text-muted);margin-top:6px">' + esc(d.used_human) + ' / ' + esc(d.total_human) + ' · free ' + esc(d.free_human) + '</div></div>');
+  });
+  if (m.network_total) {
+    parts.push('<p style="font-size:11px;color:var(--text-muted);margin-top:4px">Network since boot: ↑ ' +
+      fmtInsightsNetBytes(m.network_total.bytes_sent) + ' · ↓ ' + fmtInsightsNetBytes(m.network_total.bytes_recv) + '</p>');
+  }
+  parts.push('<p style="font-size:10px;color:var(--text-muted);margin-top:12px">Server time (UTC): ' + esc(m.server_time_utc || '') + '</p>');
+  return parts.join('');
+}
+
+async function loadInsightsSystemMetrics() {
+  var host = $('insightsSystemHost');
+  var cw = $('insightsCpuSparkWrap');
+  var mw = $('insightsMemSparkWrap');
+  if (!host) return;
+  try {
+    var m = await api('/api/admin/system/metrics');
+    if (!m.agent_available) {
+      if (cw) cw.innerHTML = '';
+      if (mw) mw.innerHTML = '';
+      host.innerHTML = '<p style="color:var(--warn);font-size:13px">' + esc(m.message || 'Metrics unavailable.') + '</p>';
+      return;
+    }
+    var cpu = m.cpu && m.cpu.percent;
+    var mem = m.memory && m.memory.percent;
+    if (cpu != null) insightsCpuHistory.push(cpu);
+    if (mem != null) insightsMemHistory.push(mem);
+    while (insightsCpuHistory.length > 48) insightsCpuHistory.shift();
+    while (insightsMemHistory.length > 48) insightsMemHistory.shift();
+    if (cw) cw.innerHTML = insightsSparklineSvg(insightsCpuHistory, '#8b5cf6');
+    if (mw) mw.innerHTML = insightsSparklineSvg(insightsMemHistory, '#10b981');
+    host.innerHTML = renderInsightsSystemHtml(m);
+  } catch (e) {
+    host.innerHTML = '<p style="color:var(--danger);font-size:13px">' + esc(e.message || String(e)) + '</p>';
+  }
 }
 
 function renderDatasetAnalyticsHtml(data) {
