@@ -1999,12 +1999,27 @@ function toast(msg, type) {
   toastTimer = setTimeout(() => t.className = '', 3000);
 }
 
+function _httpErrDetail(payload) {
+  const d = payload && payload.detail;
+  if (d == null) return '';
+  if (typeof d === 'string') return d;
+  if (Array.isArray(d)) {
+    return d.map(function (x) {
+      if (!x || typeof x !== 'object') return String(x);
+      return x.msg || x.message || JSON.stringify(x);
+    }).join('; ');
+  }
+  if (typeof d === 'object') return JSON.stringify(d);
+  return String(d);
+}
+
 async function api(url, opts = {}) {
   opts.credentials = 'include';
   const res = await fetch(url, opts);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Error ${res.status}`);
+    const msg = _httpErrDetail(err) || `Error ${res.status}`;
+    throw new Error(msg);
   }
   return res.json();
 }
@@ -2418,33 +2433,54 @@ let dsPollTimer = null;
   try {
     const data = await api('/api/auth/me');
     if (!data || !data.user || data.user.role !== 'admin') {
-      $('accessDenied').style.display = 'flex';
+      const ad = $('accessDenied');
+      if (ad) ad.style.display = 'flex';
       return;
     }
     currentUser = data.user;
-    $('appShell').style.display = 'flex';
-    $('sidebarUser').textContent = currentUser.name;
-    $('topbarName').textContent = currentUser.name;
-    $('topbarAvatar').textContent = (currentUser.name || 'A')[0].toUpperCase();
+    const shell = $('appShell');
+    if (shell) shell.style.display = 'flex';
+    if ($('sidebarUser')) $('sidebarUser').textContent = currentUser.name;
+    if ($('topbarName')) $('topbarName').textContent = currentUser.name;
+    if ($('topbarAvatar')) $('topbarAvatar').textContent = (currentUser.name || 'A')[0].toUpperCase();
 
     const affHelp = $('affiliateLinkHelp');
     if (affHelp && typeof window.location.origin === 'string') {
       affHelp.textContent = window.location.origin + '/api/affiliate/click?code=YOURCODE&next=/register/';
     }
 
-    await Promise.all([loadUsers(), loadSessions(), loadDatasets(), loadSubStats()]);
-    renderOverview();
+    await Promise.all([
+      loadUsers().catch(function (e) { console.error('loadUsers', e); }),
+      loadSessions().catch(function (e) { console.error('loadSessions', e); }),
+      loadDatasets().catch(function (e) { console.error('loadDatasets', e); }),
+      loadSubStats().catch(function (e) { console.error('loadSubStats', e); }),
+    ]);
+    try {
+      renderOverview();
+    } catch (e) {
+      console.error('renderOverview', e);
+    }
 
-    loadNotifications();
-    setInterval(loadNotifications, 60000);
-    ensureLiveSupportSocket();
+    try { loadNotifications(); } catch (e) { console.error('loadNotifications', e); }
+    setInterval(function () { try { loadNotifications(); } catch (e) {} }, 60000);
+    try { ensureLiveSupportSocket(); } catch (e) { console.error('support ws', e); }
 
-    setInterval(loadSessions, 10000);
+    setInterval(function () { try { loadSessions(); } catch (e) {} }, 10000);
 
     const hash = window.location.hash.replace('#', '');
-    if (hash && sectionTitles[hash]) navigate(hash);
+    if (hash && sectionTitles[hash]) {
+      try { navigate(hash); } catch (e) { console.error('navigate', e); }
+    }
   } catch (e) {
-    $('accessDenied').style.display = 'flex';
+    console.error('admin init', e);
+    const ad = $('accessDenied');
+    if (ad) {
+      ad.style.display = 'flex';
+      const p = ad.querySelector('h2 + p') || ad.querySelector('p');
+      if (p && e && e.message) {
+        p.textContent = 'The dashboard failed to finish loading. ' + e.message + ' — check the browser console and that the API is running.';
+      }
+    }
   }
 })();
 
