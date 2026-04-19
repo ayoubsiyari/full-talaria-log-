@@ -47,6 +47,12 @@ import urllib.request
 
 import math
 import random
+import platform as _py_platform
+
+try:
+    import psutil
+except ImportError:
+    psutil = None  # type: ignore
 
 # Chart directory — load .env next to api_server.py for local dev (Docker Compose also injects env).
 # Python does not read .env by itself; we merge KEY=value lines into os.environ if not already set.
@@ -7786,6 +7792,143 @@ async def admin_subscription_stats(request: Request):
         }
     finally:
         db.close()
+
+
+def _admin_system_metrics_payload() -> dict:
+    """CPU, memory, disks, and network totals for the VPS hosting this API (requires psutil)."""
+    if psutil is None:
+        return {
+            "success": True,
+            "agent_available": False,
+            "message": "Install psutil on the server to enable system metrics.",
+        }
+
+    cpu_pct = float(psutil.cpu_percent(interval=0.22))
+    cpu_logical = psutil.cpu_count(logical=True) or 1
+    cpu_physical = psutil.cpu_count(logical=False)
+
+    try:
+        la1, la5, la15 = os.getloadavg()
+        load_average = {"1m": round(la1, 3), "5m": round(la5, 3), "15m": round(la15, 3)}
+    except (OSError, AttributeError):
+        load_average = None
+
+    vm = psutil.virtual_memory()
+    sw = psutil.swap_memory()
+
+    disks_out: list[dict] = []
+    seen_resolve: set[str] = set()
+    disk_candidates = [
+        ("Root", "/"),
+        ("Data (uploads: CSV, bin, tiles)", UPLOAD_DIR.resolve()),
+        ("App (this install)", _CHART_DIR.resolve()),
+    ]
+    for label, raw in disk_candidates:
+        try:
+            path = Path(raw).resolve()
+        except Exception:
+            continue
+        key = str(path)
+        if key in seen_resolve:
+            continue
+        try:
+            usage = psutil.disk_usage(str(path))
+        except (PermissionError, OSError):
+            continue
+        seen_resolve.add(key)
+        disks_out.append(
+            {
+                "label": label,
+                "path": key,
+                "total": int(usage.total),
+                "used": int(usage.used),
+                "free": int(usage.free),
+                "percent": round(float(usage.percent), 2),
+                "total_human": _human_bytes(int(usage.total)),
+                "used_human": _human_bytes(int(usage.used)),
+                "free_human": _human_bytes(int(usage.free)),
+            }
+        )
+
+    proc = psutil.Process()
+    try:
+        proc_mem = proc.memory_info()
+        proc_cpu = float(proc.cpu_percent(interval=None))
+    except Exception:
+        proc_mem = None
+        proc_cpu = None
+
+    net_io = None
+    try:
+        n = psutil.net_io_counters()
+        if n:
+            net_io = {
+                "bytes_sent": int(n.bytes_sent),
+                "bytes_recv": int(n.bytes_recv),
+                "packets_sent": int(n.packets_sent),
+                "packets_recv": int(n.packets_recv),
+                "errin": int(n.errin),
+                "errout": int(n.errout),
+            }
+    except Exception:
+        pass
+
+    boot_t = psutil.boot_time()
+    try:
+        boot_iso = datetime.utcfromtimestamp(boot_t).strftime("%Y-%m-%d %H:%M:%S") + " UTC"
+    except Exception:
+        boot_iso = None
+    uptime_s = max(0.0, time.time() - float(boot_t))
+
+    return {
+        "success": True,
+        "agent_available": True,
+        "server_time_utc": datetime.utcnow().isoformat() + "Z",
+        "hostname": _py_platform.node() or None,
+        "platform": _py_platform.platform(),
+        "python_version": _py_platform.python_version(),
+        "boot_time_iso": boot_iso,
+        "uptime_seconds": round(uptime_s, 2),
+        "cpu": {
+            "percent": round(cpu_pct, 2),
+            "logical_cores": int(cpu_logical),
+            "physical_cores": int(cpu_physical) if cpu_physical else None,
+        },
+        "load_average": load_average,
+        "memory": {
+            "total": int(vm.total),
+            "available": int(vm.available),
+            "used": int(vm.used),
+            "percent": round(float(vm.percent), 2),
+            "total_human": _human_bytes(int(vm.total)),
+            "available_human": _human_bytes(int(vm.available)),
+            "used_human": _human_bytes(int(vm.used)),
+        },
+        "swap": {
+            "total": int(sw.total),
+            "used": int(sw.used),
+            "free": int(sw.free),
+            "percent": round(float(sw.percent), 2),
+            "total_human": _human_bytes(int(sw.total)),
+            "used_human": _human_bytes(int(sw.used)),
+        },
+        "disks": disks_out,
+        "process": {
+            "pid": proc.pid,
+            "cpu_percent": round(proc_cpu, 2) if proc_cpu is not None else None,
+            "rss": int(proc_mem.rss) if proc_mem else None,
+            "rss_human": _human_bytes(int(proc_mem.rss)) if proc_mem else None,
+            "threads": proc.num_threads() if hasattr(proc, "num_threads") else None,
+        },
+        "network_total": net_io,
+    }
+
+
+@app.get("/api/admin/system/metrics")
+async def admin_system_metrics(request: Request):
+    _require_admin(request)
+    return _admin_system_metrics_payload()
+
 
 # ═══════════════════════════════════════════════════════════════════
 
