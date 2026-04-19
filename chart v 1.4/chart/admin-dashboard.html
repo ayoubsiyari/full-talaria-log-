@@ -628,6 +628,29 @@ select { cursor: pointer; }
 .ds-pipeline ul { margin: 8px 0 0 18px; }
 .ds-pipeline code { font-size: 10px; color: var(--accent); }
 
+/* ── Dataset registry (all datasets / health) ─────── */
+.dr-registry-wrap table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.dr-registry-wrap th, .dr-registry-wrap td {
+  padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle;
+}
+.dr-registry-wrap th { color: var(--text-muted); font-weight: 600; font-size: 11px; white-space: nowrap; }
+.dr-registry-main { cursor: pointer; }
+.dr-registry-main:hover td { background: rgba(139,92,246,.06); }
+.dr-registry-detail td {
+  padding: 0 !important; background: rgba(0,0,0,.14); border-bottom: 1px solid var(--border);
+}
+.dr-registry-detail-inner { padding: 14px 16px 18px; }
+.dr-registry-mini { width: 100%; border-collapse: collapse; font-size: 11px; }
+.dr-registry-mini th, .dr-registry-mini td {
+  padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left;
+}
+.dr-registry-mini th { color: var(--text-muted); font-weight: 600; }
+.dr-registry-mini td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.dr-health-badge {
+  display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; white-space: nowrap;
+}
+
 /* ── Toast ──────────────────────────────────────── */
 #toast {
   position: fixed;
@@ -1229,6 +1252,10 @@ select { cursor: pointer; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
         Datasets
       </a>
+      <a class="nav-item" data-section="dataset-registry" onclick="navigate('dataset-registry')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        Dataset registry
+      </a>
       <div class="nav-sep"></div>
       <a class="nav-item" data-section="subscriptions" onclick="navigate('subscriptions')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H3"/><path d="M18 8H6"/><path d="M19 12H5"/><path d="M16 16H8"/><path d="M13 20h-2"/></svg>
@@ -1698,6 +1725,44 @@ select { cursor: pointer; }
         </div>
       </div>
 
+      <!-- ════════ DATASET REGISTRY (ALL / HEALTH / SIZING) ════════ -->
+      <div class="section" id="sec-dataset-registry">
+        <div class="stat-cards" id="datasetRegistrySummary"></div>
+        <div class="card">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            <div class="card-title">All datasets</div>
+            <span class="card-badge" id="datasetRegistryCount">0</span>
+            <button type="button" class="btn sm primary" onclick="loadDatasetRegistry()" style="margin-left:8px">Refresh snapshot</button>
+          </div>
+          <div class="card-body dr-registry-wrap" style="padding:0;overflow-x:auto">
+            <p id="datasetRegistryGenerated" style="margin:0;padding:12px 16px;font-size:11px;color:var(--text-muted);border-bottom:1px solid var(--border)"></p>
+            <table id="datasetRegistryTable">
+              <thead>
+                <tr>
+                  <th>Health</th>
+                  <th>ID</th>
+                  <th>Dataset</th>
+                  <th>List</th>
+                  <th style="text-align:right">CSV</th>
+                  <th style="text-align:right">Binaries</th>
+                  <th style="text-align:right">Tiles</th>
+                  <th style="text-align:right">Total</th>
+                  <th style="text-align:center">TFs</th>
+                  <th>Coverage</th>
+                  <th style="text-align:right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="datasetRegistryBody"></tbody>
+            </table>
+            <div class="empty-state" id="datasetRegistryEmpty" style="display:none;padding:32px">
+              <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+              <p>No datasets indexed yet.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ════════ SUBSCRIPTIONS SECTION ════════ -->
       <div class="section" id="sec-subscriptions">
         <div class="stat-cards" id="subStats"></div>
@@ -2043,6 +2108,7 @@ const sectionTitles = {
   users: 'User Management',
   sessions: 'Live Sessions',
   datasets: 'Dataset Management',
+  'dataset-registry': 'Dataset registry & health',
   subscriptions: 'Subscriptions',
   payments: 'Payments',
   affiliates: 'Affiliates',
@@ -2398,6 +2464,7 @@ function navigate(section) {
     }
   }
   if (section === 'sessions') loadSessions();
+  if (section === 'dataset-registry') loadDatasetRegistry();
   if (section === 'subscriptions') loadSubscriptionData();
   if (section === 'payments') loadPayments();
   if (section === 'affiliates') loadAffiliates();
@@ -2425,6 +2492,7 @@ let createAccessModeVal = 'unlimited';
 let currentEditMode = 'unlimited';
 let selectedDsId = null;
 let dsPollTimer = null;
+let datasetRegistrySnapshot = null;
 
 // ═══════════════════════════════════════════════════════════
 //  Init
@@ -2979,6 +3047,150 @@ async function loadDatasetAnalytics(id) {
   } catch (e) {
     host.innerHTML = '<p style="color:var(--danger)">' + esc(e.message || String(e)) + '</p>';
   }
+}
+
+function drHealthBadgeStyle(health) {
+  const palette = {
+    healthy: { label: 'Healthy', fg: '#34d399', bg: 'rgba(52,211,153,.18)' },
+    partial: { label: 'Partial', fg: '#fbbf24', bg: 'rgba(251,191,36,.15)' },
+    building: { label: 'Building', fg: '#a78bfa', bg: 'rgba(139,92,246,.22)' },
+    failed: { label: 'Build failed', fg: '#f87171', bg: 'rgba(248,113,113,.18)' },
+    integrity_issues: { label: 'Integrity', fg: '#f87171', bg: 'rgba(248,113,113,.18)' },
+    empty: { label: 'Empty', fg: 'var(--text-muted)', bg: 'rgba(148,163,184,.12)' },
+  };
+  const x = palette[health] || { label: health || '—', fg: 'var(--text-muted)', bg: 'rgba(148,163,184,.12)' };
+  return '<span class="dr-health-badge" style="color:' + x.fg + ';background:' + x.bg + '">' + esc(x.label) + '</span>';
+}
+
+async function loadDatasetRegistry() {
+  const tbody = $('datasetRegistryBody');
+  const sumEl = $('datasetRegistrySummary');
+  const genEl = $('datasetRegistryGenerated');
+  const badge = $('datasetRegistryCount');
+  const tbl = $('datasetRegistryTable');
+  const emptyEl = $('datasetRegistryEmpty');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="11" style="padding:24px;color:var(--text-muted)">Loading snapshot…</td></tr>';
+  if (tbl) tbl.style.display = '';
+  if (emptyEl) emptyEl.style.display = 'none';
+  try {
+    const data = await api('/api/admin/datasets/overview');
+    datasetRegistrySnapshot = data;
+    const s = data.summary || {};
+    if (badge) badge.textContent = String(s.dataset_count || 0);
+    if (genEl) genEl.textContent = data.generated_at ? ('Server snapshot · ' + data.generated_at + ' UTC') : '';
+    if (sumEl) {
+      sumEl.innerHTML =
+        '<div class="stat-card accent"><div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>' +
+        '<div class="label">Datasets</div><div class="value">' + fmtN(s.dataset_count || 0) + '</div></div>' +
+        '<div class="stat-card warn"><div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg></div>' +
+        '<div class="label">Total disk (all)</div><div class="value" style="font-size:18px">' + esc(s.total_storage_human || '—') + '</div></div>' +
+        '<div class="stat-card ok"><div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>' +
+        '<div class="label">Healthy pipeline</div><div class="value">' + fmtN(s.healthy_count || 0) + '</div></div>' +
+        '<div class="stat-card danger"><div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>' +
+        '<div class="label">Needs attention</div><div class="value">' + fmtN(s.needs_attention_count || 0) + '</div></div>';
+    }
+    renderDatasetRegistryTable(data);
+  } catch (e) {
+    datasetRegistrySnapshot = null;
+    if (tbody) tbody.innerHTML = '<tr><td colspan="11" style="padding:20px;color:var(--danger)">' + esc(e.message || String(e)) + '</td></tr>';
+    toast(e.message || 'Failed to load registry', 'err');
+  }
+}
+
+function toggleDatasetRegistryRow(fileId) {
+  const row = $('dr-detail-' + fileId);
+  if (!row) return;
+  row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+}
+
+function renderDatasetRegistryDetailHtml(ds) {
+  const tfRows = (ds.timeframes || []).map(function (t) {
+    const st = (t.status || '').toLowerCase();
+    const stColor = st === 'ready' ? 'var(--ok)' : (st === 'pending' || st === 'processing') ? 'var(--warn)' : 'var(--danger)';
+    return '<tr><td><code style="font-size:10px">' + esc(t.timeframe) + '</code></td><td style="color:' + stColor + '">' + esc(t.status) + '</td>' +
+      '<td class="num">' + fmtN(t.row_count || 0) + '</td><td class="num">' + esc(t.binary_human || '—') + '</td></tr>';
+  }).join('');
+  const issues = ds.integrity_issues || [];
+  const issueBlock = issues.length
+    ? '<p style="font-size:11px;color:var(--warn);margin:0 0 8px"><strong>Integrity checklist</strong> (' + fmtN(issues.length) + ')</p><ul style="margin:0 0 12px 18px;font-size:11px;color:var(--text-secondary);line-height:1.45">' +
+      issues.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>'
+    : '';
+  const cov = ds.coverage;
+  const covLine = cov
+    ? '<p style="font-size:11px;color:var(--text-secondary);margin:0 0 10px"><strong>1m coverage</strong> · ' + esc(String(cov.span_days)) + ' days · ' + fmtN(cov.candle_count_1m || 0) + ' candles<br><span style="color:var(--text-muted)">' +
+      esc(cov.start_iso || '') + ' → ' + esc(cov.end_iso || '') + '</span></p>'
+    : '<p style="font-size:11px;color:var(--text-muted);margin:0 0 10px">No 1m coverage window yet.</p>';
+  const integOk = ds.integrity_ok;
+  const integLine = integOk
+    ? '<p style="font-size:11px;color:var(--ok);margin:0 0 10px">Integrity: binaries + tile metadata present for chart pipeline.</p>'
+    : '<p style="font-size:11px;color:var(--warn);margin:0 0 10px">Integrity incomplete — see issues below.</p>';
+  const job = ds.build_job;
+  const jobLine = job
+    ? '<p style="font-size:11px;margin:0 0 12px;color:var(--text-secondary)"><strong>Latest build</strong> #' + job.id + ' · ' + esc(job.status || '') +
+      (job.error ? '<br><span style="color:var(--danger)">' + esc(job.error) + '</span>' : '') + '</p>'
+    : '<p style="font-size:11px;color:var(--text-muted);margin:0 0 12px">No binary build job on file.</p>';
+  const notes = ds.settings && ds.settings.notes ? '<p style="font-size:11px;color:var(--text-muted);margin:0 0 10px"><strong>Notes:</strong> ' + esc(ds.settings.notes) + '</p>' : '';
+  const desc = ds.description ? '<p style="font-size:11px;color:var(--text-muted);margin:0 0 10px"><strong>Description:</strong> ' + esc(ds.description) + '</p>' : '';
+  const csvOk = ds.csv && ds.csv.exists;
+  const csvLine = '<p style="font-size:11px;margin:0 0 12px;color:var(--text-secondary)"><strong>Source CSV</strong> · ' +
+    (csvOk ? esc(ds.csv.human || '—') + ' on disk' : '<span style="color:var(--danger)">missing</span>') +
+    ' · rows stored <strong>' + fmtN(ds.csv_storage_rows_stored || 0) + '</strong> · file <code style="font-size:10px">' + esc(ds.filename || '') + '</code></p>';
+
+  return '<div class="dr-registry-detail-inner">' + desc + notes + csvLine + covLine + integLine + issueBlock + jobLine +
+    '<table class="dr-registry-mini"><thead><tr><th>TF</th><th>Status</th><th style="text-align:right">Rows</th><th style="text-align:right">.bin size</th></tr></thead><tbody>' +
+    tfRows + '</tbody></table></div>';
+}
+
+function renderDatasetRegistryTable(data) {
+  const tbody = $('datasetRegistryBody');
+  const tbl = $('datasetRegistryTable');
+  const emptyEl = $('datasetRegistryEmpty');
+  const rows = data.datasets || [];
+  if (!tbody) return;
+  if (!rows.length) {
+    tbody.innerHTML = '';
+    if (tbl) tbl.style.display = 'none';
+    if (emptyEl) emptyEl.style.display = '';
+    return;
+  }
+  if (tbl) tbl.style.display = '';
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  tbody.innerHTML = rows.map(function (ds) {
+    const s = ds.settings || {};
+    const name = s.display_name || ds.original_name || ('Dataset #' + ds.id);
+    const listing = (s.is_active !== false && s.is_active !== 0) ? '● On' : '○ Off';
+    const listingColor = (s.is_active !== false && s.is_active !== 0) ? 'var(--ok)' : 'var(--text-muted)';
+    const cov = ds.coverage;
+    const covShort = cov ? (esc(String(cov.span_days)) + ' d') : '—';
+    const job = ds.build_job;
+    const jobShort = job ? esc(job.status) : '—';
+    return '<tr class="dr-registry-main" onclick="toggleDatasetRegistryRow(' + ds.id + ')">' +
+      '<td>' + drHealthBadgeStyle(ds.health) + '</td>' +
+      '<td style="font-size:11px;color:var(--text-muted)">' + ds.id + '</td>' +
+      '<td style="font-weight:600">' + esc(name) + '</td>' +
+      '<td style="color:' + listingColor + ';font-size:12px">' + listing + '</td>' +
+      '<td style="text-align:right;font-variant-numeric: tabular-nums">' + esc((ds.csv && ds.csv.human) || '—') + '</td>' +
+      '<td style="text-align:right;font-variant-numeric: tabular-nums">' + esc(ds.binaries_total_human || '—') + '</td>' +
+      '<td style="text-align:right;font-variant-numeric: tabular-nums">' + esc(ds.tiles_total_human || '—') + '</td>' +
+      '<td style="text-align:right;font-weight:700;font-variant-numeric: tabular-nums">' + esc(ds.total_storage_human || '—') + '</td>' +
+      '<td style="text-align:center;font-size:12px">' + fmtN(ds.ready_timeframes || 0) + '/' + fmtN(ds.total_timeframes || 0) + '</td>' +
+      '<td style="font-size:11px;color:var(--text-muted)">' + covShort + '</td>' +
+      '<td style="text-align:right" onclick="event.stopPropagation()">' +
+      '<button type="button" class="btn sm primary" onclick="goToDatasetFromRegistry(' + ds.id + ')">Manage</button></td></tr>' +
+      '<tr class="dr-registry-detail" id="dr-detail-' + ds.id + '" style="display:none">' +
+      '<td colspan="11">' + renderDatasetRegistryDetailHtml(ds) + '</td></tr>';
+  }).join('');
+}
+
+async function goToDatasetFromRegistry(fileId) {
+  navigate('datasets');
+  try {
+    await loadDatasets(true);
+    const ds = allDatasets.find(function (d) { return d.id === fileId; });
+    if (ds) selectDs(ds);
+    else toast('Dataset #' + fileId + ' not in list — try Refresh.', 'err');
+  } catch (e) { toast(e.message || String(e), 'err'); }
 }
 
 function renderDatasetAnalyticsHtml(data) {

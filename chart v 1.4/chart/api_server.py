@@ -3685,6 +3685,117 @@ def _dataset_binary_integrity(db, file_id: int) -> tuple[bool, list[str]]:
 
     return len(issues) == 0, issues
 
+
+def _dataset_overview_entry(
+    db,
+    db_file: CSVFile,
+    ds_settings: DatasetSettings | None,
+    latest_job: BinaryBuildJob | None,
+) -> dict:
+    """Disk sizes, readiness, integrity, and per-timeframe breakdown for admin overview."""
+    file_id = int(db_file.id)
+    csv_path = _resolve_dataset_csv_for_file(db_file)
+    csv_exists = csv_path.exists()
+    csv_bytes = _path_disk_bytes(csv_path) if csv_exists else 0
+
+    aggs_list = db.query(CSVAggregate).filter(CSVAggregate.file_id == file_id).all()
+    agg_by_tf = {str(a.timeframe): a for a in aggs_list}
+
+    tiles_root = TILES_DIR / str(file_id)
+    tiles_bytes = _path_disk_bytes(tiles_root) if tiles_root.exists() else 0
+
+    bin_total = 0
+    ready_tf = 0
+    timeframes_detail: list[dict] = []
+    for tf in DATASET_TIMEFRAMES:
+        agg = agg_by_tf.get(tf)
+        fname = agg.agg_filename if agg and agg.agg_filename else f"bin_{file_id}_{tf}.bin"
+        bp = BIN_DIR / fname
+        bsz = int(bp.stat().st_size) if bp.exists() else 0
+        bin_total += bsz
+        st = str(agg.status or "") if agg else ""
+        if not agg and bp.exists():
+            st = "ready"
+        elif not agg:
+            st = "missing"
+        if st == "ready":
+            ready_tf += 1
+        rc = int(agg.row_count or 0) if agg else 0
+        timeframes_detail.append(
+            {
+                "timeframe": tf,
+                "status": st,
+                "row_count": rc,
+                "binary_bytes": bsz,
+                "binary_human": _human_bytes(bsz),
+                "binary_exists": bp.exists(),
+            }
+        )
+
+    total_storage = csv_bytes + bin_total + tiles_bytes
+    ok, integrity_issues = _dataset_binary_integrity(db, file_id)
+
+    one_m = agg_by_tf.get("1m")
+    coverage = None
+    if one_m and one_m.start_ts is not None and one_m.end_ts is not None:
+        span_ms = float(one_m.end_ts) - float(one_m.start_ts)
+        coverage = {
+            "start_iso": _epoch_ms_to_iso_utc(float(one_m.start_ts)),
+            "end_iso": _epoch_ms_to_iso_utc(float(one_m.end_ts)),
+            "span_days": round(span_ms / 86400000.0, 2),
+            "candle_count_1m": int(one_m.row_count or 0),
+        }
+
+    job_status = str(latest_job.status or "").lower() if latest_job else ""
+    if job_status in {"queued", "processing"}:
+        health = "building"
+    elif latest_job and job_status == "failed":
+        health = "failed"
+    elif not ok:
+        health = "integrity_issues"
+    elif ready_tf >= len(DATASET_TIMEFRAMES):
+        health = "healthy"
+    elif ready_tf > 0:
+        health = "partial"
+    else:
+        health = "empty"
+
+    return {
+        "id": file_id,
+        "filename": db_file.filename,
+        "original_name": db_file.original_name,
+        "description": db_file.description or "",
+        "upload_date": db_file.upload_date.isoformat() if db_file.upload_date else None,
+        "settings": _dataset_settings_public_dict(ds_settings, db_file),
+        "csv_storage_rows_stored": int(db_file.row_count or 0),
+        "csv": {"exists": csv_exists, "bytes": csv_bytes, "human": _human_bytes(csv_bytes)},
+        "binaries_total_bytes": bin_total,
+        "binaries_total_human": _human_bytes(bin_total),
+        "tiles_total_bytes": tiles_bytes,
+        "tiles_total_human": _human_bytes(tiles_bytes),
+        "total_storage_bytes": total_storage,
+        "total_storage_human": _human_bytes(total_storage),
+        "ready_timeframes": ready_tf,
+        "total_timeframes": len(DATASET_TIMEFRAMES),
+        "coverage": coverage,
+        "integrity_ok": ok,
+        "integrity_issues": integrity_issues,
+        "integrity_issue_count": len(integrity_issues),
+        "health": health,
+        "timeframes": timeframes_detail,
+        "build_job": (
+            {
+                "id": int(latest_job.id),
+                "status": job_status,
+                "attempt_count": int(latest_job.attempt_count or 0),
+                "error": ((latest_job.error or "")[:400] if latest_job.error else None),
+            }
+            if latest_job
+            else None
+        ),
+    }
+
+
 def _archive_source_csv_if_ready(file_id: int, source_path: Path):
     """Move CSV from hot uploads to archive once binaries/tiles are fully ready."""
     source_path = Path(source_path)
@@ -6069,6 +6180,48 @@ async def admin_list_datasets(request: Request):
         return {
             "datasets": datasets,
             "timeframes": DATASET_TIMEFRAMES,
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/admin/datasets/overview")
+async def admin_datasets_overview(request: Request):
+    """Full-disk and health snapshot for every dataset (admin registry view)."""
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        files = db.query(CSVFile).order_by(CSVFile.upload_date.desc()).all()
+        settings_rows = db.query(DatasetSettings).all()
+        settings_by_file = {int(s.file_id): s for s in settings_rows}
+        jobs = db.query(BinaryBuildJob).order_by(BinaryBuildJob.created_at.desc(), BinaryBuildJob.id.desc()).all()
+        latest_job_by_file: dict[int, BinaryBuildJob] = {}
+        for job in jobs:
+            fid = int(job.file_id)
+            if fid not in latest_job_by_file:
+                latest_job_by_file[fid] = job
+
+        entries = []
+        for f in files:
+            sid = int(f.id)
+            st = settings_by_file.get(sid)
+            j = latest_job_by_file.get(sid)
+            entries.append(_dataset_overview_entry(db, f, st, j))
+
+        total_disk = sum(int(x.get("total_storage_bytes") or 0) for x in entries)
+        healthy_n = sum(1 for x in entries if x.get("health") == "healthy")
+        return {
+            "success": True,
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "summary": {
+                "dataset_count": len(entries),
+                "total_storage_bytes": total_disk,
+                "total_storage_human": _human_bytes(total_disk),
+                "healthy_count": healthy_n,
+                "needs_attention_count": len(entries) - healthy_n,
+            },
+            "datasets": entries,
+            "timeframes": list(DATASET_TIMEFRAMES),
         }
     finally:
         db.close()
