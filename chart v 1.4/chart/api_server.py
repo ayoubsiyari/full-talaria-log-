@@ -2336,6 +2336,34 @@ def _read_bin_range(bin_path, start_idx, count):
             candles.append({'t': int(t), 'o': o, 'h': h, 'l': l, 'c': c, 'v': v})
     return candles
 
+
+def _normalize_epoch_ms(v) -> int | None:
+    """Normalize stored candle timestamps to UTC epoch ms; reject corrupt/out-of-range values."""
+    if v is None:
+        return None
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(x):
+        return None
+    xi = int(x)
+    if xi <= 0:
+        return None
+    # Reject garbage / double-scaled values (would show as year 50k+ in browsers)
+    if xi >= 10**14:
+        return None
+    if xi >= 10**12:
+        ms = xi
+    elif xi >= 10**9:
+        ms = xi * 1000
+    else:
+        return None
+    # Plausible historical market data window (~1990 .. 2100 UTC)
+    if ms < 631_152_000_000 or ms > 4_102_444_800_000:
+        return None
+    return ms
+
 def _bin_total_candles(bin_path):
     """Get total number of candles in a binary file."""
     return os.path.getsize(bin_path) // CANDLE_SIZE
@@ -7413,8 +7441,15 @@ async def get_file_meta(file_id: int):
             if total > 0:
                 first = _read_bin_range(bin_1m, 0, 1)
                 last = _read_bin_range(bin_1m, total - 1, 1)
-                raw_start_ts = first[0]['t'] if first else None
-                raw_end_ts = last[0]['t'] if last else None
+                raw_start_ts = _normalize_epoch_ms(first[0]["t"]) if first else None
+                raw_end_ts = _normalize_epoch_ms(last[0]["t"]) if last else None
+
+        agg_1m = next((a for a in aggs if getattr(a, "timeframe", None) == "1m"), None)
+        if agg_1m:
+            if raw_start_ts is None:
+                raw_start_ts = _normalize_epoch_ms(agg_1m.start_ts)
+            if raw_end_ts is None:
+                raw_end_ts = _normalize_epoch_ms(agg_1m.end_ts)
 
         for agg in aggs:
             timeframes[agg.timeframe] = {

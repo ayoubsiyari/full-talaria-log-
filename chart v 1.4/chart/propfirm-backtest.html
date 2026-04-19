@@ -524,6 +524,20 @@
             
             return null;
         }
+
+        function normalizeEpochMs(raw) {
+            const n = Number(raw);
+            if (!Number.isFinite(n) || n <= 0) return null;
+            if (n >= 1e14) return null;
+            let ms;
+            if (n >= 1e12) ms = n;
+            else if (n >= 1e9) ms = n * 1000;
+            else return null;
+            const MIN = 631152000000;
+            const MAX = 4102444800000;
+            if (ms < MIN || ms > MAX) return null;
+            return ms;
+        }
         
         // Selected files array
         let selectedFilesArray = [];
@@ -872,7 +886,7 @@
                     return;
                 }
                 
-                const header = lines[0].split(',');
+                const header = lines[0].split(',').map(function (h) { return h.replace(/^\uFEFF/g, '').trim(); });
                 const firstRowValues = lines[1].split(',');
                 
                 const firstRow = {};
@@ -882,8 +896,10 @@
                 
                 let firstTimestamp = null;
                 
-                // Try standard timestamp fields
-                if (firstRow.t) {
+                // Try standard timestamp fields (Binance CSV: numeric "timestamp" ms)
+                if (firstRow.timestamp !== undefined && firstRow.timestamp !== '' && /^\d+$/.test(String(firstRow.timestamp).trim())) {
+                    firstTimestamp = parseInt(String(firstRow.timestamp).trim(), 10);
+                } else if (firstRow.t) {
                     firstTimestamp = firstRow.t;
                 } else if (firstRow.time) {
                     firstTimestamp = firstRow.time;
@@ -923,7 +939,8 @@
                     firstTimestamp = parseInt(firstTimestamp, 10);
                 }
                 
-                const firstDate = new Date(firstTimestamp);
+                const normFirst = normalizeEpochMs(firstTimestamp);
+                const firstDate = new Date(normFirst != null ? normFirst : firstTimestamp);
                 if (isNaN(firstDate.getTime())) {
                     console.error('❌ Invalid first row timestamp');
                     return;
@@ -949,7 +966,9 @@
                         
                         let lastTimestamp = null;
                         
-                        if (lastRow.t) {
+                        if (lastRow.timestamp !== undefined && lastRow.timestamp !== '' && /^\d+$/.test(String(lastRow.timestamp).trim())) {
+                            lastTimestamp = parseInt(String(lastRow.timestamp).trim(), 10);
+                        } else if (lastRow.t) {
                             lastTimestamp = lastRow.t;
                         } else if (lastRow.time) {
                             lastTimestamp = lastRow.time;
@@ -983,7 +1002,8 @@
                             if (typeof lastTimestamp === 'string' && /^\d+$/.test(String(lastTimestamp).trim())) {
                                 lastTimestamp = parseInt(lastTimestamp, 10);
                             }
-                            lastDate = new Date(lastTimestamp);
+                            const normLast = normalizeEpochMs(lastTimestamp);
+                            lastDate = new Date(normLast != null ? normLast : lastTimestamp);
                             console.log('📅 Last date detected:', lastDate.toLocaleString());
                         }
                     }

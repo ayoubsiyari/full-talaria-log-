@@ -1909,6 +1909,21 @@ html.iframe-mode .bt-modal-footer {
             
             return null;
         }
+
+        /** Normalize API/CSV epoch values to milliseconds for Date(); reject corrupt timestamps. */
+        function normalizeEpochMs(raw) {
+            const n = Number(raw);
+            if (!Number.isFinite(n) || n <= 0) return null;
+            if (n >= 1e14) return null;
+            let ms;
+            if (n >= 1e12) ms = n;
+            else if (n >= 1e9) ms = n * 1000;
+            else return null;
+            const MIN = 631152000000;
+            const MAX = 4102444800000;
+            if (ms < MIN || ms > MAX) return null;
+            return ms;
+        }
         
         // Selected files array
         let selectedFilesArray = [];
@@ -2273,32 +2288,34 @@ html.iframe-mode .bt-modal-footer {
                     const metaResponse = await fetch(`/api/file/${fileId}/meta`);
                     if (metaResponse.ok) {
                         const meta = await metaResponse.json();
-                        const metaStartTs = Number(meta.start_ts);
-                        const metaEndTs = Number(meta.end_ts);
+                        if (meta.start_ts != null && meta.end_ts != null) {
+                            const metaStartTs = normalizeEpochMs(meta.start_ts);
+                            const metaEndTs = normalizeEpochMs(meta.end_ts);
 
-                        if (Number.isFinite(metaStartTs) && Number.isFinite(metaEndTs) && metaEndTs >= metaStartTs) {
-                            const firstDate = new Date(metaStartTs);
-                            const lastDate = new Date(metaEndTs);
+                            if (metaStartTs != null && metaEndTs != null && metaEndTs >= metaStartTs) {
+                                const firstDate = new Date(metaStartTs);
+                                const lastDate = new Date(metaEndTs);
 
-                            const startDateInput = document.getElementById('startDate');
-                            const endDateInput = document.getElementById('endDate');
+                                const startDateInput = document.getElementById('startDate');
+                                const endDateInput = document.getElementById('endDate');
 
-                            startDateInput.min = firstDate.toISOString().slice(0, 16);
-                            startDateInput.max = lastDate.toISOString().slice(0, 16);
-                            endDateInput.min = firstDate.toISOString().slice(0, 16);
-                            endDateInput.max = lastDate.toISOString().slice(0, 16);
+                                startDateInput.min = firstDate.toISOString().slice(0, 16);
+                                startDateInput.max = lastDate.toISOString().slice(0, 16);
+                                endDateInput.min = firstDate.toISOString().slice(0, 16);
+                                endDateInput.max = lastDate.toISOString().slice(0, 16);
 
-                            // Set default values to full available span.
-                            startDateInput.value = firstDate.toISOString().slice(0, 16);
-                            endDateInput.value = lastDate.toISOString().slice(0, 16);
+                                // Set default values to full available span.
+                                startDateInput.value = firstDate.toISOString().slice(0, 16);
+                                endDateInput.value = lastDate.toISOString().slice(0, 16);
 
-                            const hintEl = document.getElementById('testingPeriodHint');
-                            if (hintEl) {
-                                hintEl.textContent = 'Available data: ' + firstDate.toLocaleDateString() + ' — ' + lastDate.toLocaleDateString();
+                                const hintEl = document.getElementById('testingPeriodHint');
+                                if (hintEl) {
+                                    hintEl.textContent = 'Available data: ' + firstDate.toLocaleDateString() + ' — ' + lastDate.toLocaleDateString();
+                                }
+
+                                console.log(`✅ Date range (meta): ${firstDate.toLocaleString()} to ${lastDate.toLocaleString()}`);
+                                return;
                             }
-
-                            console.log(`✅ Date range (meta): ${firstDate.toLocaleString()} to ${lastDate.toLocaleString()}`);
-                            return;
                         }
                     }
                 } catch (metaError) {
@@ -2333,8 +2350,8 @@ html.iframe-mode .bt-modal-footer {
                     return;
                 }
                 
-                // First line is header
-                const header = lines[0].split(',');
+                // First line is header (strip BOM so "timestamp" matches Binance-exported CSVs)
+                const header = lines[0].split(',').map(function (h) { return h.replace(/^\uFEFF/g, '').trim(); });
                 console.log('📊 CSV Headers:', header);
                 
                 // Second line is first data row
@@ -2350,8 +2367,10 @@ html.iframe-mode .bt-modal-footer {
                 
                 let firstTimestamp = null;
                 
-                // Strategy 1: Try standard timestamp fields
-                if (firstRow.t) {
+                // Strategy 1: Numeric epoch ms (Binance merged CSV uses "timestamp")
+                if (firstRow.timestamp !== undefined && firstRow.timestamp !== '' && /^\d+$/.test(String(firstRow.timestamp).trim())) {
+                    firstTimestamp = parseInt(String(firstRow.timestamp).trim(), 10);
+                } else if (firstRow.t) {
                     firstTimestamp = firstRow.t;
                 } else if (firstRow.time) {
                     firstTimestamp = firstRow.time;
@@ -2398,7 +2417,13 @@ html.iframe-mode .bt-modal-footer {
                     firstTimestamp = parseInt(firstTimestamp, 10);
                 }
                 
-                const firstDate = new Date(firstTimestamp);
+                const normFirstMs = normalizeEpochMs(firstTimestamp);
+                const firstDate = new Date(normFirstMs != null ? normFirstMs : firstTimestamp);
+                if (isNaN(firstDate.getTime())) {
+                    console.error('❌ Invalid first row timestamp');
+                    alert('Cannot read valid dates from this dataset file.');
+                    return;
+                }
                 console.log('📅 First date detected:', firstDate.toLocaleString());
                 
                 // Use reported total row count to get the last row (no hardcoded fallback).
@@ -2428,7 +2453,9 @@ html.iframe-mode .bt-modal-footer {
                         let lastTimestamp = null;
                         
                         // Use same detection logic as first date
-                        if (lastRow.t) {
+                        if (lastRow.timestamp !== undefined && lastRow.timestamp !== '' && /^\d+$/.test(String(lastRow.timestamp).trim())) {
+                            lastTimestamp = parseInt(String(lastRow.timestamp).trim(), 10);
+                        } else if (lastRow.t) {
                             lastTimestamp = lastRow.t;
                         } else if (lastRow.time) {
                             lastTimestamp = lastRow.time;
@@ -2463,7 +2490,8 @@ html.iframe-mode .bt-modal-footer {
                             if (typeof lastTimestamp === 'string' && /^\d+$/.test(lastTimestamp)) {
                                 lastTimestamp = parseInt(lastTimestamp, 10);
                             }
-                            lastDate = new Date(lastTimestamp);
+                            const normLastMs = normalizeEpochMs(lastTimestamp);
+                            lastDate = new Date(normLastMs != null ? normLastMs : lastTimestamp);
                             console.log('📅 Last date detected:', lastDate.toLocaleString());
                         }
                     }
