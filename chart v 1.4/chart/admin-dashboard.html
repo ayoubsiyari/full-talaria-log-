@@ -1579,14 +1579,14 @@ select { cursor: pointer; }
                 </div>
               </div>
             </div>
-            <!-- FirstRate Data FX (official vendor ZIP → chart datasets) -->
+            <!-- FirstRate Data (official vendor ZIP → chart datasets) -->
             <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border)">
               <div style="font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>
-                FirstRate Data (FX bundle)
+                FirstRate Data (vendor ZIP)
               </div>
               <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
-                Downloads the vendor <strong>ZIP</strong> from FirstRate&rsquo;s API (same pipeline as CSV upload → binaries/tiles).
+                Downloads the vendor <strong>ZIP</strong> from FirstRate&rsquo;s <code style="font-size:10px">data_file</code> API (same pipeline as CSV upload → binaries/tiles).
                 Set server env <code style="font-size:10px">FIrstrate_USERID</code> to your customer userid.
                 <code style="font-size:10px">period=full</code> can be very large and slow.
                 Wiping existing datasets breaks saved sessions that reference old <code style="font-size:10px">fileId</code> values.
@@ -1612,17 +1612,126 @@ select { cursor: pointer; }
                   </select>
                 </div>
                 <div class="field fg-full">
+                  <label for="fr_type">Instrument type</label>
+                  <select id="fr_type" class="input" onchange="frInstrumentTypeChanged()">
+                    <option value="fx" selected>fx</option>
+                    <option value="stock">stock</option>
+                    <option value="etf">etf</option>
+                    <option value="futures">futures</option>
+                    <option value="crypto">crypto</option>
+                    <option value="index">index</option>
+                    <option value="options">options</option>
+                  </select>
+                </div>
+                <div class="field fg-full" id="fr_adjustment_wrap" style="display:none">
+                  <label for="fr_adjustment">Adjustment (stock / etf)</label>
+                  <select id="fr_adjustment" class="input">
+                    <option value="">(API default)</option>
+                    <option value="adj_split">adj_split</option>
+                    <option value="adj_splitdiv">adj_splitdiv</option>
+                    <option value="UNADJUSTED">UNADJUSTED</option>
+                  </select>
+                </div>
+                <div class="field fg-full">
+                  <label for="fr_pairs">Tickers / pairs (optional)</label>
+                  <textarea id="fr_pairs" rows="2" class="input" style="resize:vertical;font-family:ui-monospace,monospace;font-size:12px" placeholder="EURUSD AAPL ES — comma, space, or newline. Empty = every CSV in the ZIP."></textarea>
+                  <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:6px">
+                    Matched against each file&rsquo;s stem after download (FX pairs, equities, etc.).
+                  </span>
+                </div>
+                <div class="field fg-full" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                  <span style="font-size:11px;color:var(--text-muted)">Quick add:</span>
+                  <button type="button" class="btn sm" onclick="frPairsAdd('EURUSD GBPUSD USDJPY AUDUSD USDCAD')">majors</button>
+                  <button type="button" class="btn sm" onclick="frPairsAdd('EURJPY GBPJPY EURGBP')">crosses</button>
+                  <button type="button" class="btn sm" onclick="document.getElementById('fr_pairs').value=''">clear</button>
+                </div>
+                <div class="field fg-full">
                   <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
                     <input type="checkbox" id="fr_delete_first">
                     Delete all existing datasets first (requires confirmation phrase)
                   </label>
                 </div>
+                <div class="field fg-full">
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                    <input type="checkbox" id="fr_upsert">
+                    Upsert by symbol (match filename stem — replaces CSV + rebuilds binaries instead of new dataset ids)
+                  </label>
+                </div>
                 <div class="fg-full" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
                   <button type="button" class="btn primary" id="frSyncBtn" onclick="syncFirstrateFx()">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Sync FirstRate FX
+                    Sync FirstRate
                   </button>
                   <span id="frProgress" style="font-size:12px;color:var(--text-muted)"></span>
+                </div>
+                <div class="field fg-full" style="margin-top:16px;padding-top:16px;border-top:1px dashed var(--border)">
+                  <div style="font-weight:600;font-size:12px;margin-bottom:10px;color:var(--text)">VPS automatic sync</div>
+                  <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.45">
+                    Runs on the server process in the background (checks about every minute). Tune interval vs FirstRate update times.
+                    Uses upsert by default so pair ids stay stable. Settings are saved to <code style="font-size:10px">uploads/firstrate_schedule.json</code>.
+                  </p>
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
+                    <input type="checkbox" id="fr_sched_enabled">
+                    Enable automatic downloads on this VPS
+                  </label>
+                  <div class="field fg-full">
+                    <label for="fr_sched_pairs">Tickers / pairs (optional, same as manual)</label>
+                    <textarea id="fr_sched_pairs" rows="2" class="input" style="resize:vertical;font-family:ui-monospace,monospace;font-size:12px" placeholder="Leave empty for all symbols in the vendor ZIP"></textarea>
+                  </div>
+                  <div class="form-grid" style="margin-bottom:10px">
+                    <div class="field fg-full">
+                      <label for="fr_sched_type">Instrument type</label>
+                      <select id="fr_sched_type" class="input" onchange="frSchedInstrumentTypeChanged()">
+                        <option value="fx" selected>fx</option>
+                        <option value="stock">stock</option>
+                        <option value="etf">etf</option>
+                        <option value="futures">futures</option>
+                        <option value="crypto">crypto</option>
+                        <option value="index">index</option>
+                        <option value="options">options</option>
+                      </select>
+                    </div>
+                    <div class="field fg-full" id="fr_sched_adjustment_wrap" style="display:none">
+                      <label for="fr_sched_adjustment">Adjustment</label>
+                      <select id="fr_sched_adjustment" class="input">
+                        <option value="">(API default)</option>
+                        <option value="adj_split">adj_split</option>
+                        <option value="adj_splitdiv">adj_splitdiv</option>
+                        <option value="UNADJUSTED">UNADJUSTED</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label for="fr_sched_interval">Interval (minutes)</label>
+                      <input type="number" id="fr_sched_interval" class="input" min="15" max="10080" value="1440" step="15">
+                    </div>
+                    <div class="field">
+                      <label for="fr_sched_period">Period</label>
+                      <select id="fr_sched_period" class="input">
+                        <option value="day" selected>day</option>
+                        <option value="week">week</option>
+                        <option value="month">month</option>
+                        <option value="full">full</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label for="fr_sched_tf">Timeframe</label>
+                      <select id="fr_sched_tf" class="input">
+                        <option value="1min" selected>1min</option>
+                        <option value="5min">5min</option>
+                        <option value="30min">30min</option>
+                        <option value="1hour">1hour</option>
+                        <option value="1day">1day</option>
+                      </select>
+                    </div>
+                  </div>
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
+                    <input type="checkbox" id="fr_sched_upsert" checked>
+                    Scheduled runs: upsert existing pairs (recommended)
+                  </label>
+                  <div class="fg-full" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                    <button type="button" class="btn sm primary" id="frSchedSaveBtn" onclick="saveFirstrateSchedule()">Save schedule</button>
+                    <span id="frSchedStatus" style="font-size:12px;color:var(--text-muted)"></span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1752,6 +1861,22 @@ select { cursor: pointer; }
             </div>
           </div>
         </div>
+        <!-- Live FirstRate import status (polls VPS job files) -->
+        <div class="card" id="frLiveImportCard" style="margin-bottom:16px;border-color:color-mix(in oklab, var(--accent) 35%, var(--border))">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <div class="card-title">FirstRate download / import</div>
+            <span class="card-badge" id="frLiveBadge" style="background:var(--panel);color:var(--text-muted)">idle</span>
+          </div>
+          <div class="card-body" style="padding-top:0">
+            <p id="frLiveSummary" style="margin:0 0 10px;font-size:12px;color:var(--text-muted)">Connecting…</p>
+            <div style="height:8px;background:var(--border);border-radius:6px;overflow:hidden;margin-bottom:10px">
+              <div id="frLiveBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),color-mix(in oklab,var(--accent) 70%,white));transition:width .35s ease"></div>
+            </div>
+            <div id="frLiveDetail" style="font-size:11px;font-family:ui-monospace,monospace;color:var(--text-muted);line-height:1.5;white-space:pre-wrap;max-height:120px;overflow-y:auto"></div>
+          </div>
+        </div>
+
         <!-- Dataset List + Settings -->
         <div class="grid-2">
           <div class="card">
@@ -2666,7 +2791,9 @@ let insightsOverviewCache = null;
       loadSessions().catch(function (e) { console.error('loadSessions', e); }),
       loadDatasets().catch(function (e) { console.error('loadDatasets', e); }),
       loadSubStats().catch(function (e) { console.error('loadSubStats', e); }),
+      loadFirstrateSchedule().catch(function (e) { console.error('loadFirstrateSchedule', e); }),
     ]);
+    try { ensureFirstrateLivePoll(); } catch (e) { console.error('ensureFirstrateLivePoll', e); }
     try {
       renderOverview();
     } catch (e) {
@@ -4054,7 +4181,21 @@ async function syncFirstrateFx() {
   btn.disabled = true;
   label.textContent = 'Starting…';
   try {
-    const body = { period: period, timeframe: timeframe, delete_existing_first: deleteFirst };
+    const inst = $('fr_type') ? $('fr_type').value : 'fx';
+    let adj = null;
+    if (inst === 'stock' || inst === 'etf') {
+      const sel = $('fr_adjustment');
+      if (sel && sel.value) adj = sel.value;
+    }
+    const body = {
+      instrument_type: inst,
+      period: period,
+      timeframe: timeframe,
+      delete_existing_first: deleteFirst,
+      upsert_existing: !!($('fr_upsert') && $('fr_upsert').checked),
+      pairs: parsePairsFromTextarea('fr_pairs'),
+    };
+    if (adj) body.adjustment = adj;
     if (deleteFirst) body.purge_confirmation = purge_confirmation;
     const data = await api('/api/admin/datasets/firstrate-fx/sync', {
       method: 'POST',
@@ -4093,6 +4234,175 @@ async function waitForFirstrateJob(jobId) {
     }
   }
   label.textContent = 'Stopped polling (still running on server — refresh datasets later)';
+}
+
+function frInstrumentTypeChanged() {
+  const w = $('fr_adjustment_wrap');
+  const t = $('fr_type');
+  if (!w || !t) return;
+  const v = t.value || 'fx';
+  w.style.display = (v === 'stock' || v === 'etf') ? '' : 'none';
+}
+
+function frSchedInstrumentTypeChanged() {
+  const w = $('fr_sched_adjustment_wrap');
+  const t = $('fr_sched_type');
+  if (!w || !t) return;
+  const v = t.value || 'fx';
+  w.style.display = (v === 'stock' || v === 'etf') ? '' : 'none';
+}
+
+function parsePairsFromTextarea(elId) {
+  const el = $(elId);
+  const raw = el && el.value ? String(el.value) : '';
+  return raw.split(/[\s,;]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+}
+
+function frPairsAdd(line) {
+  const el = $('fr_pairs');
+  if (!el) return;
+  const cur = el.value.replace(/\s+$/, '');
+  const add = line.trim();
+  el.value = cur ? (cur + ' ' + add) : add;
+}
+
+let _frLivePrevJobId = null;
+
+function ensureFirstrateLivePoll() {
+  if (window._frLivePollId) return;
+  window._frLivePollId = setInterval(updateFirstrateLivePanel, 2000);
+  updateFirstrateLivePanel();
+}
+
+async function updateFirstrateLivePanel() {
+  const badge = $('frLiveBadge');
+  const summary = $('frLiveSummary');
+  const bar = $('frLiveBar');
+  const detail = $('frLiveDetail');
+  if (!badge || !summary || !bar || !detail) return;
+  try {
+    const d = await api('/api/admin/datasets/firstrate-fx/live-status');
+    const uidOk = d.has_firstrate_userid !== false;
+    const primary = d.primary_job || (d.active_jobs && d.active_jobs[0]) || null;
+    const sched = d.schedule || {};
+    const recent = (d.recent_jobs && d.recent_jobs[0]) || null;
+
+    if (!uidOk) {
+      badge.textContent = 'no userid';
+      summary.textContent = 'Set FIrstrate_USERID on the VPS to enable FirstRate downloads.';
+      bar.style.width = '0%';
+      detail.textContent = '';
+      return;
+    }
+
+    if (primary) {
+      const st = primary.status || '';
+      badge.textContent = st === 'running' ? 'running' : st;
+      const total = parseInt(primary.files_total, 10) || 0;
+      const done = parseInt(primary.files_done, 10) || 0;
+      const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : (st === 'running' ? 12 : 0);
+      bar.style.width = pct + '%';
+      const pf = primary.pairs_filter;
+      const pairsHint = (pf && pf.length) ? (' · filter [' + pf.join(', ') + ']') : '';
+      summary.textContent =
+        (primary.phase || st || '…') + pairsHint +
+        ' · files ' + done + '/' + total +
+        (primary.instrument_type ? (' · ' + primary.instrument_type) : '') +
+        (primary.period ? (' · ' + primary.period + ' ' + (primary.timeframe || '')) : '');
+      detail.textContent = (primary.message || '') + (primary.error ? ('\n' + primary.error) : '');
+      if (primary.job_id && primary.job_id !== _frLivePrevJobId && st === 'done') {
+        _frLivePrevJobId = primary.job_id;
+        try { await loadDatasets(true); } catch (e) {}
+        try { await loadDatasetRegistry(); } catch (e) {}
+      }
+      return;
+    }
+
+    badge.textContent = 'idle';
+    bar.style.width = '0%';
+    const bits = [];
+    if (sched.enabled) {
+      bits.push('Auto-sync ON · every ' + (sched.interval_minutes || '?') + ' min · ' + (sched.instrument_type || 'fx') + ' · ' + (sched.period || '') + ' ' + (sched.timeframe || ''));
+    } else {
+      bits.push('Auto-sync off');
+    }
+    if (sched.pairs && sched.pairs.length) bits.push('tickers: ' + sched.pairs.join(', '));
+    if (recent) {
+      bits.push('Last job: ' + (recent.status || '') + ' @ ' + (recent.updated_at || ''));
+    }
+    summary.textContent = bits.join(' · ');
+    detail.textContent = (sched && sched.last_error) ? ('Schedule: ' + sched.last_error) : (recent && recent.message ? String(recent.message).slice(0, 300) : '');
+    if (recent && recent.status === 'failed') {
+      badge.textContent = 'failed';
+    }
+  } catch (e) {
+    summary.textContent = 'Could not load live status';
+    detail.textContent = String(e.message || e);
+  }
+}
+
+async function loadFirstrateSchedule() {
+  const hint = $('frSchedStatus');
+  try {
+    const data = await api('/api/admin/datasets/firstrate-fx/schedule');
+    const s = (data && data.schedule) ? data.schedule : {};
+    if ($('fr_sched_enabled')) $('fr_sched_enabled').checked = !!s.enabled;
+    if ($('fr_sched_interval')) $('fr_sched_interval').value = String(Math.max(15, parseInt(s.interval_minutes, 10) || 1440));
+    if ($('fr_sched_period') && s.period) $('fr_sched_period').value = s.period;
+    if ($('fr_sched_tf') && s.timeframe) $('fr_sched_tf').value = s.timeframe;
+    if ($('fr_sched_type')) $('fr_sched_type').value = (s.instrument_type || 'fx');
+    if ($('fr_sched_adjustment')) $('fr_sched_adjustment').value = (s.adjustment || '');
+    frSchedInstrumentTypeChanged();
+    if ($('fr_sched_upsert')) $('fr_sched_upsert').checked = s.upsert_existing !== false;
+    if ($('fr_sched_pairs') && Array.isArray(s.pairs) && s.pairs.length) {
+      $('fr_sched_pairs').value = s.pairs.join(', ');
+    } else if ($('fr_sched_pairs')) {
+      $('fr_sched_pairs').value = '';
+    }
+    const uidOk = data.has_firstrate_userid !== false;
+    const bits = [];
+    bits.push(s.enabled ? 'Scheduler ON' : 'Scheduler OFF');
+    if (!uidOk) bits.push('set FIrstrate_USERID on server');
+    if (s.last_run_finished_at) bits.push('last run: ' + s.last_run_finished_at);
+    if (s.last_status) bits.push('last: ' + s.last_status);
+    if (s.last_error) bits.push('error: ' + String(s.last_error).slice(0, 120));
+    if (hint) hint.textContent = bits.join(' · ');
+  } catch (e) {
+    if (hint) hint.textContent = 'Could not load schedule';
+  }
+}
+
+async function saveFirstrateSchedule() {
+  const hint = $('frSchedStatus');
+  const btn = $('frSchedSaveBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const st = $('fr_sched_type') ? $('fr_sched_type').value : 'fx';
+    const selAdj = $('fr_sched_adjustment');
+    const payload = {
+      enabled: !!($('fr_sched_enabled') && $('fr_sched_enabled').checked),
+      interval_minutes: parseInt($('fr_sched_interval').value, 10) || 1440,
+      instrument_type: st,
+      period: $('fr_sched_period').value,
+      timeframe: $('fr_sched_tf').value,
+      upsert_existing: !!($('fr_sched_upsert') && $('fr_sched_upsert').checked),
+      pairs: parsePairsFromTextarea('fr_sched_pairs'),
+      adjustment: (st === 'stock' || st === 'etf')
+        ? ((selAdj && selAdj.value) ? selAdj.value : '')
+        : '',
+    };
+    await api('/api/admin/datasets/firstrate-fx/schedule', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    toast('Schedule saved — VPS will sync per interval', 'ok');
+    await loadFirstrateSchedule();
+  } catch (e) {
+    toast(e.message || String(e), 'err');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 let bnSymbolsFull = [];

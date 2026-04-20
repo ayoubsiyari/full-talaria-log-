@@ -21,12 +21,17 @@ from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 # FirstRate documents FX timestamps in US Eastern (see _readme/fx.txt).
+# Stock/ETF/index/futures/options readmes: US Eastern. Crypto often documented as UTC.
 _FX_TZ = ZoneInfo("America/New_York")
+_UTC_TZ = ZoneInfo("UTC")
 
 _FIrestratE_DEFAULT_BASE = "https://firstratedata.com/api/data_file"
 
 VALID_PERIODS = frozenset({"full", "month", "week", "day"})
 VALID_TIMEFRAMES = frozenset({"1min", "5min", "30min", "1hour", "1day"})
+VALID_INSTRUMENT_TYPES = frozenset({"stock", "etf", "futures", "crypto", "index", "fx", "options"})
+# Stock/ETF historical data_file requests support `adjustment` (see FirstRate API docs).
+VALID_STOCK_ADJUSTMENTS = frozenset({"adj_split", "adj_splitdiv", "UNADJUSTED"})
 
 
 def get_firstrate_userid() -> str:
@@ -40,6 +45,7 @@ def build_firstrate_data_file_url(
     period: str = "week",
     timeframe: str = "1min",
     ticker_range: str | None = None,
+    adjustment: str | None = None,
 ) -> str:
     if not userid:
         raise ValueError("userid is required")
@@ -50,8 +56,8 @@ def build_firstrate_data_file_url(
         raise ValueError(f"period must be one of {sorted(VALID_PERIODS)}")
     if tf not in VALID_TIMEFRAMES:
         raise ValueError(f"timeframe must be one of {sorted(VALID_TIMEFRAMES)}")
-    if t not in {"stock", "etf", "futures", "crypto", "index", "fx", "options"}:
-        raise ValueError("invalid instrument type")
+    if t not in VALID_INSTRUMENT_TYPES:
+        raise ValueError(f"type must be one of {sorted(VALID_INSTRUMENT_TYPES)}")
     base = (os.getenv("FIrstrate_API_BASE") or _FIrestratE_DEFAULT_BASE).strip().rstrip("/")
     q: dict[str, str] = {
         "type": t,
@@ -64,6 +70,11 @@ def build_firstrate_data_file_url(
         if len(tr) != 1 or tr not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
             raise ValueError("ticker_range must be a single letter A-Z")
         q["ticker_range"] = tr
+    if adjustment and t in {"stock", "etf"}:
+        adj = str(adjustment).strip()
+        if adj not in VALID_STOCK_ADJUSTMENTS:
+            raise ValueError(f"adjustment must be one of {sorted(VALID_STOCK_ADJUSTMENTS)}")
+        q["adjustment"] = adj
     return f"{base}?{urlencode(q)}"
 
 
@@ -117,6 +128,13 @@ def _map_header_indices(header: list[str]) -> dict[str, int]:
 
 
 def _epoch_ms_from_firstrate_date_time(date_cell: str, time_cell: str) -> int | None:
+    return _epoch_ms_from_firstrate_date_time_tz(date_cell, time_cell, _FX_TZ)
+
+
+def _epoch_ms_from_firstrate_date_time_tz(
+    date_cell: str, time_cell: str, tz: ZoneInfo
+) -> int | None:
+    """Same as FX split date/time parsing but with an explicit timezone."""
     ds = str(date_cell or "").strip()
     ts = str(time_cell or "").strip()
     if not ds:
@@ -155,10 +173,142 @@ def _epoch_ms_from_firstrate_date_time(date_cell: str, time_cell: str) -> int | 
                 second = int(digits[4:6])
 
     try:
-        dt_loc = datetime(year, month, day, hour, minute, second, tzinfo=_FX_TZ)
+        dt_loc = datetime(year, month, day, hour, minute, second, tzinfo=tz)
         return int(dt_loc.timestamp() * 1000)
     except ValueError:
         return None
+
+
+def _epoch_ms_from_combined_datetime(cell: str, tz: ZoneInfo) -> int | None:
+    cell = str(cell or "").strip()
+    if not cell:
+        return None
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M:%S.%f",
+        "%Y-%m-%d %H:%M",
+        "%m/%d/%Y %H:%M:%S",
+        "%m/%d/%Y %H:%M",
+        "%d.%m.%Y %H:%M:%S",
+        "%d.%m.%Y %H:%M",
+    ):
+        try:
+            dt_naive = datetime.strptime(cell, fmt)
+            return int(dt_naive.replace(tzinfo=tz).timestamp() * 1000)
+        except ValueError:
+            continue
+    # Date-only rows
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d.%m.%Y"):
+        try:
+            dt_naive = datetime.strptime(cell, fmt)
+            dt_loc = datetime(
+                dt_naive.year, dt_naive.month, dt_naive.day, 0, 0, 0, tzinfo=tz
+            )
+            return int(dt_loc.timestamp() * 1000)
+        except ValueError:
+            continue
+    return None
+
+
+def _find_col_by_substrings(fieldnames: list[str], *substrs: str) -> str | None:
+    for fn in fieldnames:
+        low = (fn or "").strip().lower()
+        for s in substrs:
+            if s in low:
+                return fn
+    return None
+
+
+def _find_exact_column(fieldnames: list[str], exact: str) -> str | None:
+    el = (exact or "").strip().lower()
+    for fn in fieldnames:
+        if (fn or "").strip().lower() == el:
+            return fn
+    return None
+
+
+def normalize_firstrate_stocklike_csv_to_standard(src: Path, dest: Path, *, tz: ZoneInfo) -> int:
+    """
+    FirstRate stock.txt format: DateTime (yyyy-MM-dd HH:mm:ss), O, H, L, C, V — US Eastern.
+    Also handles separate Date + Time columns (same as FX layout) using `tz`.
+    """
+    rows_out = 0
+    tmp = dest.with_suffix(dest.suffix + ".tmp")
+    with open(src, "r", encoding="utf-8-sig", errors="replace", newline="") as inf:
+        reader = csv.DictReader(inf)
+        fieldnames = list(reader.fieldnames or [])
+        rows = list(reader)
+    if not rows or not fieldnames:
+        return 0
+
+    dt_col = None
+    for fn in fieldnames:
+        low = (fn or "").strip().lower()
+        if "datetime" in low or low == "date time":
+            dt_col = fn
+            break
+    if dt_col:
+        date_col = None
+        time_col = None
+    else:
+        # Avoid matching "time"/"date" inside "DateTime" via substring search.
+        date_col = _find_exact_column(fieldnames, "date")
+        time_col = _find_exact_column(fieldnames, "time") if date_col else None
+
+    open_col = _find_col_by_substrings(fieldnames, "open")
+    high_col = _find_col_by_substrings(fieldnames, "high")
+    low_col = _find_col_by_substrings(fieldnames, "low")
+    close_col = _find_col_by_substrings(fieldnames, "close", "adj close", "adjclose")
+    vol_col = _find_col_by_substrings(fieldnames, "volume", "vol")
+
+    if not all([open_col, high_col, low_col, close_col]):
+        raise ValueError(f"Missing OHLC columns in {src}")
+
+    with open(tmp, "w", encoding="utf-8", newline="") as outf:
+        w = csv.writer(outf)
+        w.writerow(["timestamp", "open", "high", "low", "close", "volume"])
+
+        for row in rows:
+            t_ms = None
+            if dt_col:
+                t_ms = _epoch_ms_from_combined_datetime(row.get(dt_col) or "", tz)
+            elif date_col:
+                dc = row.get(date_col) or ""
+                tc = row.get(time_col) or "" if time_col else ""
+                if tc:
+                    t_ms = _epoch_ms_from_firstrate_date_time_tz(dc, tc, tz)
+                else:
+                    t_ms = _epoch_ms_from_combined_datetime(str(dc).strip(), tz)
+            if t_ms is None:
+                continue
+            try:
+                o = float(row.get(open_col) or 0)
+                h = float(row.get(high_col) or 0)
+                l = float(row.get(low_col) or 0)
+                c = float(row.get(close_col) or 0)
+                v = float(row.get(vol_col) or 0) if vol_col else 0.0
+            except (ValueError, TypeError):
+                continue
+            w.writerow([t_ms, o, h, l, c, v])
+            rows_out += 1
+
+    tmp.replace(dest)
+    return rows_out
+
+
+def normalize_firstrate_csv_to_standard(src: Path, dest: Path, instrument_type: str) -> int:
+    """
+    Normalize FirstRate vendor CSV to canonical chart CSV (epoch-ms OHLCV).
+    Dispatches by bundle type; see https://firstratedata.com/about/api-docs
+    """
+    t = (instrument_type or "fx").strip().lower()
+    if t == "fx":
+        return normalize_firstrate_fx_csv_to_standard(src, dest)
+    if t == "crypto":
+        return normalize_firstrate_stocklike_csv_to_standard(src, dest, tz=_UTC_TZ)
+    if t in ("stock", "etf", "index", "futures", "options"):
+        return normalize_firstrate_stocklike_csv_to_standard(src, dest, tz=_FX_TZ)
+    return normalize_firstrate_stocklike_csv_to_standard(src, dest, tz=_FX_TZ)
 
 
 def normalize_firstrate_fx_csv_to_standard(src: Path, dest: Path) -> int:
@@ -274,6 +424,7 @@ def download_firstrate_bundle(
     timeframe: str,
     instrument_type: str = "fx",
     ticker_range: str | None = None,
+    adjustment: str | None = None,
     dest_zip: Path,
     timeout_sec: float = 7200,
 ) -> FirstrateDownloadResult:
@@ -283,6 +434,7 @@ def download_firstrate_bundle(
         period=period,
         timeframe=timeframe,
         ticker_range=ticker_range,
+        adjustment=adjustment,
     )
     n = download_url_to_file(url, dest_zip, timeout_sec=timeout_sec)
     if n < 64:

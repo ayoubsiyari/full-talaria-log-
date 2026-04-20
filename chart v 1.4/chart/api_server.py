@@ -112,11 +112,13 @@ from analytics_engine import (
 )
 
 from firstrate_ingest import (
+    VALID_INSTRUMENT_TYPES,
+    VALID_STOCK_ADJUSTMENTS,
     download_firstrate_bundle,
     extract_zip,
     get_firstrate_userid,
     iter_csv_files,
-    normalize_firstrate_fx_csv_to_standard,
+    normalize_firstrate_csv_to_standard,
 )
 
 # Initialize FastAPI
@@ -297,6 +299,10 @@ FIrstrate_JOBS_DIR = UPLOAD_DIR / "firstrate_jobs"
 FIrstrate_JOBS_DIR.mkdir(exist_ok=True)
 # Required phrase (or env override) when wiping every dataset before a FirstRate re-import.
 DATASET_PURGE_CONFIRMATION = os.getenv("DATASET_PURGE_CONFIRMATION", "DELETE_ALL_CHART_DATASETS")
+
+# VPS auto-sync (editable from admin dashboard). Env FIrstrate_SCHEDULE_ENABLED bootstraps default when file missing.
+FIrstrate_SCHEDULE_PATH = UPLOAD_DIR / "firstrate_schedule.json"
+_firstrate_schedule_lock = threading.Lock()
 
 # Curated Dukascopy instrument ids for admin UI (indices / commodities / forex).
 # These are Dukascopy CFD / cash-index symbols — not exchange-listed futures like CME NQ or CL.
@@ -1611,6 +1617,42 @@ def _store_dataset_file(file_path: Path, original_name: str, description: str | 
     finally:
         db.close()
 
+
+def _upsert_or_create_dataset_from_csv(file_path: Path, original_name: str, description: str | None, upsert: bool) -> dict:
+    """
+    Register a normalized CSV as a dataset, or overwrite an existing dataset with the same original_name when upsert=True.
+    Scheduled FirstRate imports use upsert=True so pairs are refreshed in place (stable file ids when original_name matches).
+    """
+    if upsert:
+        db = SessionLocal()
+        try:
+            db_file = db.query(CSVFile).filter(CSVFile.original_name == original_name).first()
+            if db_file:
+                final_path = _resolve_dataset_csv_for_file(db_file)
+                shutil.copyfile(file_path, final_path)
+                rc = count_csv_rows(str(final_path))
+                db_file.row_count = rc
+                if description:
+                    db_file.description = description
+                db.commit()
+                db.refresh(db_file)
+                build_binary_for_file(db_file.id, final_path, db_file.original_name)
+                try:
+                    if file_path.resolve() != final_path.resolve():
+                        file_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                out = {"success": True, "file": _dataset_file_public_dict(db_file), "upserted": True}
+                return out
+        finally:
+            db.close()
+
+    out = _store_dataset_file(file_path, original_name=original_name, description=description)
+    if isinstance(out, dict):
+        out["upserted"] = False
+    return out
+
+
 def _parse_iso_date(value: str, field_name: str) -> datetime:
     raw = (value or "").strip()
     try:
@@ -1707,6 +1749,220 @@ def _firstrate_read_job(job_id: str) -> dict | None:
             return json.load(f)
     except Exception:
         return None
+
+
+def _normalize_ticker_filter_list(pairs: list[str] | None) -> list[str]:
+    """Normalize ticker / pair tokens (e.g. EURUSD, AAPL). Empty list = no filter."""
+    if not pairs:
+        return []
+    out: list[str] = []
+    for p in pairs:
+        if p is None:
+            continue
+        compact = re.sub(r"[^A-Za-z0-9]", "", str(p).strip()).upper()
+        if not compact:
+            continue
+        out.append(compact[:12])
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for x in out:
+        if x not in seen:
+            seen.add(x)
+            uniq.append(x)
+    return uniq
+
+
+def _token_matches_firstrate_stem(tok: str, stem_compact: str) -> bool:
+    """Match filter token to a filename stem (no extension), alnum-only compacted."""
+    if not tok or not stem_compact:
+        return False
+    if stem_compact == tok:
+        return True
+    if len(tok) <= 1:
+        return False
+    if len(tok) >= 6:
+        return stem_compact.startswith(tok) or (tok in stem_compact)
+    if stem_compact.startswith(tok):
+        rest = stem_compact[len(tok) :]
+        if not rest:
+            return True
+        first = rest[0]
+        if first in "_-." or not first.isalnum():
+            return True
+    return False
+
+
+def _firstrate_filter_csv_paths_by_tickers(paths: list[Path], tokens: list[str]) -> tuple[list[Path], int]:
+    """Keep CSVs whose stem matches at least one token (FX pairs, stock tickers, etc.)."""
+    if not tokens:
+        return paths, 0
+    kept: list[Path] = []
+    for path in paths:
+        stem_compact = re.sub(r"[^A-Za-z0-9]", "", path.stem).upper()
+        if any(_token_matches_firstrate_stem(t, stem_compact) for t in tokens):
+            kept.append(path)
+    return kept, len(paths) - len(kept)
+
+
+def _default_firstrate_schedule() -> dict:
+    """Defaults for automatic VPS sync; first load creates `uploads/firstrate_schedule.json` (overridable via env)."""
+    return {
+        "enabled": os.getenv("FIrstrate_SCHEDULE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"},
+        "interval_minutes": int(os.getenv("FIrstrate_SCHEDULE_INTERVAL_MINUTES", "1440")),
+        "period": (os.getenv("FIrstrate_SCHEDULE_PERIOD", "day").strip() or "day"),
+        "timeframe": (os.getenv("FIrstrate_SCHEDULE_TIMEFRAME", "1min").strip() or "1min"),
+        "upsert_existing": os.getenv("FIrstrate_SCHEDULE_UPSERT", "true").strip().lower() in {"1", "true", "yes", "on"},
+        "delete_existing_first": False,
+        "purge_confirmation": None,
+        "ticker_range": None,
+        "download_timeout_sec": float(os.getenv("FIrstrate_SCHEDULE_DOWNLOAD_TIMEOUT", "7200")),
+        "instrument_type": (os.getenv("FIrstrate_SCHEDULE_TYPE", "fx").strip().lower() or "fx"),
+        "adjustment": os.getenv("FIrstrate_SCHEDULE_ADJUSTMENT", "").strip() or None,
+        "last_run_started_at": None,
+        "last_run_finished_at": None,
+        "last_job_id": None,
+        "last_status": None,
+        "last_error": None,
+        "pairs": [],
+    }
+
+
+def _load_firstrate_schedule() -> dict:
+    with _firstrate_schedule_lock:
+        if not FIrstrate_SCHEDULE_PATH.exists():
+            cfg = _default_firstrate_schedule()
+            try:
+                with open(FIrstrate_SCHEDULE_PATH, "w", encoding="utf-8") as f:
+                    json.dump(cfg, f, indent=2)
+            except OSError:
+                pass
+            return dict(cfg)
+        try:
+            with open(FIrstrate_SCHEDULE_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            return _default_firstrate_schedule()
+        if not isinstance(data, dict):
+            return _default_firstrate_schedule()
+        base = _default_firstrate_schedule()
+        for k in list(base.keys()) + ["purge_confirmation", "pairs", "instrument_type", "adjustment"]:
+            if k in data:
+                base[k] = data[k]
+        return base
+
+
+def _save_firstrate_schedule(cfg: dict) -> None:
+    with _firstrate_schedule_lock:
+        tmp = FIrstrate_SCHEDULE_PATH.with_suffix(".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2)
+        tmp.replace(FIrstrate_SCHEDULE_PATH)
+
+
+def _firstrate_has_active_import_job() -> bool:
+    _firstrate_cleanup_jobs()
+    for p in FIrstrate_JOBS_DIR.glob("*.json"):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                st = json.load(f)
+            if st.get("status") in ("queued", "running"):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _firstrate_schedule_after_job(job_id: str, success: bool, error_message: str | None) -> None:
+    try:
+        st = _firstrate_read_job(job_id)
+        if not st or st.get("trigger") != "schedule":
+            return
+        cfg = _load_firstrate_schedule()
+        cfg["last_run_finished_at"] = datetime.utcnow().isoformat() + "Z"
+        cfg["last_job_id"] = job_id
+        cfg["last_status"] = "done" if success else "failed"
+        cfg["last_error"] = None if success else ((error_message or "")[:2000])
+        _save_firstrate_schedule(cfg)
+    except Exception:
+        pass
+
+
+def _firstrate_scheduler_tick() -> None:
+    try:
+        cfg = _load_firstrate_schedule()
+        if not cfg.get("enabled"):
+            return
+        if not get_firstrate_userid():
+            return
+        if _firstrate_has_active_import_job():
+            return
+
+        interval_min = max(15, int(cfg.get("interval_minutes") or 1440))
+        last_fin = cfg.get("last_run_finished_at")
+        now = datetime.utcnow()
+        should_run = False
+        if not last_fin:
+            should_run = True
+        else:
+            try:
+                raw = str(last_fin).replace("Z", "")
+                lf = datetime.fromisoformat(raw)
+                if lf.tzinfo is not None:
+                    lf = lf.replace(tzinfo=None)
+                if (now - lf).total_seconds() >= interval_min * 60:
+                    should_run = True
+            except Exception:
+                should_run = True
+
+        if not should_run:
+            return
+
+        sched_pairs = cfg.get("pairs")
+        pair_list = sched_pairs if isinstance(sched_pairs, list) else []
+
+        _queue_firstrate_fx_import_job(
+            period=str(cfg.get("period") or "day"),
+            timeframe=str(cfg.get("timeframe") or "1min"),
+            instrument_type=str(cfg.get("instrument_type") or "fx"),
+            adjustment=cfg.get("adjustment"),
+            delete_existing_first=bool(cfg.get("delete_existing_first", False)),
+            purge_confirmation=cfg.get("purge_confirmation"),
+            ticker_range=cfg.get("ticker_range"),
+            download_timeout_sec=float(cfg.get("download_timeout_sec") or 7200),
+            upsert_existing=bool(cfg.get("upsert_existing", True)),
+            trigger="schedule",
+            pairs=pair_list,
+        )
+        cfg2 = _load_firstrate_schedule()
+        cfg2["last_run_started_at"] = datetime.utcnow().isoformat() + "Z"
+        cfg2["last_error"] = None
+        _save_firstrate_schedule(cfg2)
+    except ValueError as e:
+        try:
+            cfg2 = _load_firstrate_schedule()
+            cfg2["last_error"] = str(e)[:2000]
+            _save_firstrate_schedule(cfg2)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def _firstrate_scheduler_loop() -> None:
+    while True:
+        try:
+            _firstrate_scheduler_tick()
+        except Exception:
+            pass
+        time.sleep(60)
+
+
+def _start_firstrate_scheduler_thread() -> None:
+    if os.getenv("FIrstrate_SCHEDULE_DISABLE", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return
+    if APP_ROLE == "worker":
+        return
+    threading.Thread(target=_firstrate_scheduler_loop, daemon=True, name="firstrate-scheduler").start()
 
 
 def _start_dukascopy_fetch_job(instrument: str, from_dt: datetime, to_dt: datetime, node_binary: str) -> dict:
@@ -4085,7 +4341,7 @@ def build_binary_for_file(file_id: int, file_path, original_filename: str, run_a
 
 
 def _run_firstrate_import_job(job_id: str) -> None:
-    """Background: optional purge → download FirstRate FX ZIP → normalize CSVs → register datasets → binary build."""
+    """Background: optional purge → download FirstRate ZIP → normalize CSVs → register datasets → binary build."""
     tmp_root: Path | None = None
     try:
         state = _firstrate_read_job(job_id)
@@ -4095,6 +4351,18 @@ def _run_firstrate_import_job(job_id: str) -> None:
         uid = get_firstrate_userid()
         if not uid:
             raise RuntimeError("Set FIrstrate_USERID in the server environment (FirstRate customer userid).")
+
+        instrument_type = (state.get("instrument_type") or "fx").strip().lower()
+        if instrument_type not in VALID_INSTRUMENT_TYPES:
+            raise ValueError(f"Invalid instrument_type {instrument_type!r}")
+        adj_raw = state.get("adjustment")
+        adjustment: str | None = None
+        if adj_raw is not None and str(adj_raw).strip():
+            adjustment = str(adj_raw).strip()
+            if instrument_type not in {"stock", "etf"}:
+                raise ValueError("adjustment is only valid for stock and etf")
+            if adjustment not in VALID_STOCK_ADJUSTMENTS:
+                raise ValueError(f"adjustment must be one of {sorted(VALID_STOCK_ADJUSTMENTS)}")
 
         state["status"] = "running"
         state["phase"] = "init"
@@ -4126,8 +4394,9 @@ def _run_firstrate_import_job(job_id: str) -> None:
             userid=uid,
             period=period,
             timeframe=timeframe,
-            instrument_type="fx",
+            instrument_type=instrument_type,
             ticker_range=ticker_range,
+            adjustment=adjustment,
             dest_zip=zip_path,
             timeout_sec=timeout_sec,
         )
@@ -4136,12 +4405,26 @@ def _run_firstrate_import_job(job_id: str) -> None:
         extract_zip(zip_path, extract_dir)
 
         csv_paths = iter_csv_files(extract_dir)
+        pairs_norm = _normalize_ticker_filter_list(state.get("pairs") if isinstance(state.get("pairs"), list) else None)
+        if pairs_norm:
+            before_n = len(csv_paths)
+            csv_paths, skipped_pair_n = _firstrate_filter_csv_paths_by_tickers(csv_paths, pairs_norm)
+            state["pairs_filter"] = pairs_norm
+            state["files_skipped_by_pair_filter"] = skipped_pair_n
+            state["message"] = (
+                f"Ticker filter {len(csv_paths)}/{before_n} CSV(s) for [{', '.join(pairs_norm)}] "
+                f"(skipped {skipped_pair_n}) — processing {len(csv_paths)} file(s)"
+            )
+        else:
+            state["pairs_filter"] = []
+            state["files_skipped_by_pair_filter"] = 0
+            state["message"] = f"Normalizing {len(csv_paths)} CSV file(s)"
+
         state["phase"] = "normalize"
         state["files_total"] = len(csv_paths)
         state["files_done"] = 0
         state["datasets_created"] = []
         state["skipped_files"] = []
-        state["message"] = f"Normalizing {len(csv_paths)} CSV file(s)"
         _firstrate_write_job(job_id, state)
 
         ts_prefix = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -4154,7 +4437,7 @@ def _run_firstrate_import_job(job_id: str) -> None:
             out_name = f"{ts_prefix}_{idx:04d}_firstrate_{stem_safe}_{timeframe}.csv"
             dest_csv = UPLOAD_DIR / out_name
             try:
-                n = normalize_firstrate_fx_csv_to_standard(src, dest_csv)
+                n = normalize_firstrate_csv_to_standard(src, dest_csv, instrument_type)
             except Exception as exc:
                 skipped.append({"file": src.name, "error": str(exc)[:800]})
                 state["files_done"] = idx + 1
@@ -4175,10 +4458,12 @@ def _run_firstrate_import_job(job_id: str) -> None:
                 continue
 
             original_label = f"{stem_safe}_{timeframe}.csv"
-            info = _store_dataset_file(
+            upsert = bool(state.get("upsert_existing"))
+            info = _upsert_or_create_dataset_from_csv(
                 dest_csv,
                 original_name=original_label,
-                description=f"FirstRate FX ({period}, {timeframe})",
+                description=f"FirstRate {instrument_type} ({period}, {timeframe})",
+                upsert=upsert,
             )
             entry = info.get("file") if isinstance(info, dict) else None
             if entry:
@@ -4193,6 +4478,7 @@ def _run_firstrate_import_job(job_id: str) -> None:
         state["phase"] = "done"
         state["message"] = f"Complete — {len(created)} dataset(s), {len(skipped)} skipped"
         _firstrate_write_job(job_id, state)
+        _firstrate_schedule_after_job(job_id, success=True, error_message=None)
 
     except Exception as exc:
         err = _firstrate_read_job(job_id) or {}
@@ -4201,6 +4487,7 @@ def _run_firstrate_import_job(job_id: str) -> None:
         err["message"] = str(exc)[:2000]
         err["error"] = str(exc)[:4000]
         _firstrate_write_job(job_id, err)
+        _firstrate_schedule_after_job(job_id, success=False, error_message=str(exc))
     finally:
         if tmp_root is not None:
             try:
@@ -4209,28 +4496,40 @@ def _run_firstrate_import_job(job_id: str) -> None:
                 pass
 
 
-def _start_firstrate_fx_import_job(
+def _queue_firstrate_fx_import_job(
     *,
     period: str,
     timeframe: str,
+    instrument_type: str = "fx",
+    adjustment: str | None = None,
     delete_existing_first: bool,
     purge_confirmation: str | None,
     ticker_range: str | None,
     download_timeout_sec: float | None,
+    upsert_existing: bool,
+    trigger: str,
+    pairs: list[str] | None = None,
 ) -> dict:
     uid = get_firstrate_userid()
     if not uid:
-        raise HTTPException(
-            status_code=400,
-            detail="Set FIrstrate_USERID in the server environment (FirstRate customer userid).",
-        )
+        raise ValueError("Set FIrstrate_USERID in the server environment (FirstRate customer userid).")
+
+    it = (instrument_type or "fx").strip().lower()
+    if it not in VALID_INSTRUMENT_TYPES:
+        raise ValueError(f"type must be one of {sorted(VALID_INSTRUMENT_TYPES)}")
+    adj_clean: str | None = None
+    if adjustment is not None and str(adjustment).strip():
+        adj_clean = str(adjustment).strip()
+        if it not in {"stock", "etf"}:
+            raise ValueError("adjustment is only valid for stock and etf bundles")
+        if adj_clean not in VALID_STOCK_ADJUSTMENTS:
+            raise ValueError(f"adjustment must be one of {sorted(VALID_STOCK_ADJUSTMENTS)}")
 
     if delete_existing_first:
         expected = (DATASET_PURGE_CONFIRMATION or "").strip()
         if (purge_confirmation or "").strip() != expected:
-            raise HTTPException(
-                status_code=400,
-                detail=f"When delete_existing_first is true, purge_confirmation must exactly equal {expected!r}",
+            raise ValueError(
+                f"When delete_existing_first is true, purge_confirmation must exactly equal {expected!r}"
             )
 
     _firstrate_cleanup_jobs()
@@ -4239,22 +4538,59 @@ def _start_firstrate_fx_import_job(
         "job_id": job_id,
         "status": "queued",
         "phase": "queued",
-        "message": "Queued FirstRate FX import",
+        "message": "Queued FirstRate import",
+        "instrument_type": it,
+        "adjustment": adj_clean,
         "period": period,
         "timeframe": timeframe,
         "delete_existing_first": bool(delete_existing_first),
         "ticker_range": ticker_range,
         "download_timeout_sec": float(download_timeout_sec or 7200),
+        "upsert_existing": bool(upsert_existing),
+        "trigger": trigger,
         "created_at": datetime.utcnow().isoformat(),
         "updated_at": datetime.utcnow().isoformat(),
         "files_total": 0,
         "files_done": 0,
         "datasets_created": [],
         "skipped_files": [],
+        "pairs": list(pairs) if pairs else [],
     }
     _firstrate_write_job(job_id, state)
     threading.Thread(target=lambda: _run_firstrate_import_job(job_id), daemon=True).start()
     return {"success": True, "job_id": job_id}
+
+
+def _start_firstrate_fx_import_job(
+    *,
+    period: str,
+    timeframe: str,
+    instrument_type: str = "fx",
+    adjustment: str | None = None,
+    delete_existing_first: bool,
+    purge_confirmation: str | None,
+    ticker_range: str | None,
+    download_timeout_sec: float | None,
+    upsert_existing: bool = False,
+    trigger: str = "manual",
+    pairs: list[str] | None = None,
+) -> dict:
+    try:
+        return _queue_firstrate_fx_import_job(
+            period=period,
+            timeframe=timeframe,
+            instrument_type=instrument_type,
+            adjustment=adjustment,
+            delete_existing_first=delete_existing_first,
+            purge_confirmation=purge_confirmation,
+            ticker_range=ticker_range,
+            download_timeout_sec=download_timeout_sec,
+            upsert_existing=upsert_existing,
+            trigger=trigger,
+            pairs=pairs,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 def _claim_next_binary_build_job() -> dict | None:
@@ -4615,13 +4951,33 @@ class AdminDukascopyFetchIn(BaseModel):
 
 
 class AdminFirstrateFxSyncIn(BaseModel):
-    """FirstRate `data_file` API: type=fx, see https://firstratedata.com/about/api-docs"""
+    """FirstRate `data_file` API — see https://firstratedata.com/about/api-docs"""
+    instrument_type: str = "fx"
+    adjustment: str | None = None
     period: str = "week"  # full | month | week | day
     timeframe: str = "1min"  # 1min | 5min | 30min | 1hour | 1day
     delete_existing_first: bool = False
     purge_confirmation: str | None = None
     ticker_range: str | None = None
     download_timeout_sec: float | None = 7200
+    upsert_existing: bool = False
+    pairs: list[str] | None = None
+
+
+class AdminFirstrateScheduleIn(BaseModel):
+    """Persisted VPS auto-sync settings (`uploads/firstrate_schedule.json`)."""
+    enabled: bool | None = None
+    interval_minutes: int | None = Field(default=None, ge=15, le=10080)
+    instrument_type: str | None = None
+    adjustment: str | None = None
+    period: str | None = None
+    timeframe: str | None = None
+    upsert_existing: bool | None = None
+    delete_existing_first: bool | None = None
+    purge_confirmation: str | None = None
+    ticker_range: str | None = None
+    download_timeout_sec: float | None = Field(default=None, ge=60.0, le=86400.0)
+    pairs: list[str] | None = None
 
 
 class AdminPurgeDatasetsIn(BaseModel):
@@ -6738,21 +7094,154 @@ async def admin_firstrate_fx_sync(payload: AdminFirstrateFxSyncIn, request: Requ
     _require_admin(request)
     period = (payload.period or "week").strip().lower()
     timeframe = (payload.timeframe or "1min").strip().lower()
+    it = (payload.instrument_type or "fx").strip().lower()
     valid_p = {"full", "month", "week", "day"}
     valid_tf = {"1min", "5min", "30min", "1hour", "1day"}
     if period not in valid_p:
         raise HTTPException(status_code=400, detail=f"period must be one of {sorted(valid_p)}")
     if timeframe not in valid_tf:
         raise HTTPException(status_code=400, detail=f"timeframe must be one of {sorted(valid_tf)}")
+    if it not in VALID_INSTRUMENT_TYPES:
+        raise HTTPException(status_code=400, detail=f"instrument_type must be one of {sorted(VALID_INSTRUMENT_TYPES)}")
+    adj_in = payload.adjustment
+    adj_s: str | None = None
+    if adj_in is not None and str(adj_in).strip():
+        adj_s = str(adj_in).strip()
+        if it not in {"stock", "etf"}:
+            raise HTTPException(status_code=400, detail="adjustment is only valid for stock and etf")
+        if adj_s not in VALID_STOCK_ADJUSTMENTS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"adjustment must be one of {sorted(VALID_STOCK_ADJUSTMENTS)}",
+            )
+    pair_list = list(payload.pairs) if payload.pairs else []
     return _start_firstrate_fx_import_job(
         period=period,
         timeframe=timeframe,
+        instrument_type=it,
+        adjustment=adj_s,
         delete_existing_first=bool(payload.delete_existing_first),
         purge_confirmation=payload.purge_confirmation,
         ticker_range=payload.ticker_range,
         download_timeout_sec=payload.download_timeout_sec,
+        upsert_existing=bool(payload.upsert_existing),
+        trigger="manual",
+        pairs=pair_list,
     )
 
+
+@app.get("/api/admin/datasets/firstrate-fx/live-status")
+async def admin_firstrate_fx_live_status(request: Request):
+    """
+    Poll for active FirstRate import jobs + recent completions (for admin dashboard live progress).
+    """
+    _require_admin(request)
+    _firstrate_cleanup_jobs()
+    active: list[dict] = []
+    recent: list[dict] = []
+    paths = sorted(FIrstrate_JOBS_DIR.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True)
+    for p in paths[:80]:
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                st = json.load(f)
+            st["job_file"] = p.name
+            st["_mtime"] = p.stat().st_mtime
+            st_status = str(st.get("status") or "")
+            if st_status in ("queued", "running"):
+                active.append(st)
+            elif st_status in ("done", "failed"):
+                recent.append(st)
+        except Exception:
+            continue
+    active.sort(key=lambda x: str(x.get("updated_at") or ""), reverse=True)
+    recent = sorted(recent, key=lambda x: float(x.get("_mtime") or 0), reverse=True)[:8]
+    sch = _load_firstrate_schedule()
+    primary = active[0] if active else None
+    return {
+        "success": True,
+        "has_firstrate_userid": bool(get_firstrate_userid()),
+        "active_jobs": active,
+        "recent_jobs": recent,
+        "primary_job": primary,
+        "schedule": sch,
+    }
+
+
+@app.get("/api/admin/datasets/firstrate-fx/schedule")
+async def admin_firstrate_fx_schedule_get(request: Request):
+    """Read auto-sync settings (VPS). File: uploads/firstrate_schedule.json"""
+    _require_admin(request)
+    cfg = _load_firstrate_schedule()
+    return {
+        "success": True,
+        "schedule": cfg,
+        "has_firstrate_userid": bool(get_firstrate_userid()),
+    }
+
+
+@app.put("/api/admin/datasets/firstrate-fx/schedule")
+async def admin_firstrate_fx_schedule_put(payload: AdminFirstrateScheduleIn, request: Request):
+    """Update auto-sync; changes apply on the next scheduler tick (within ~1 minute)."""
+    _require_admin(request)
+    valid_p = {"full", "month", "week", "day"}
+    valid_tf = {"1min", "5min", "30min", "1hour", "1day"}
+    cur = _load_firstrate_schedule()
+    p = payload
+    if p.enabled is not None:
+        cur["enabled"] = bool(p.enabled)
+    if p.interval_minutes is not None:
+        cur["interval_minutes"] = int(p.interval_minutes)
+    if p.period is not None:
+        pl = p.period.strip().lower()
+        if pl not in valid_p:
+            raise HTTPException(status_code=400, detail=f"period must be one of {sorted(valid_p)}")
+        cur["period"] = pl
+    if p.timeframe is not None:
+        tf = p.timeframe.strip().lower()
+        if tf not in valid_tf:
+            raise HTTPException(status_code=400, detail=f"timeframe must be one of {sorted(valid_tf)}")
+        cur["timeframe"] = tf
+    if p.instrument_type is not None:
+        il = p.instrument_type.strip().lower()
+        if il not in VALID_INSTRUMENT_TYPES:
+            raise HTTPException(status_code=400, detail=f"instrument_type must be one of {sorted(VALID_INSTRUMENT_TYPES)}")
+        cur["instrument_type"] = il
+    if p.adjustment is not None:
+        raw_adj = str(p.adjustment).strip()
+        if not raw_adj:
+            cur["adjustment"] = None
+        else:
+            il2 = str(cur.get("instrument_type") or "fx").strip().lower()
+            if il2 not in {"stock", "etf"}:
+                raise HTTPException(status_code=400, detail="adjustment is only stored for stock and etf schedules")
+            if raw_adj not in VALID_STOCK_ADJUSTMENTS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"adjustment must be one of {sorted(VALID_STOCK_ADJUSTMENTS)}",
+                )
+            cur["adjustment"] = raw_adj
+    if p.upsert_existing is not None:
+        cur["upsert_existing"] = bool(p.upsert_existing)
+    if p.delete_existing_first is not None:
+        cur["delete_existing_first"] = bool(p.delete_existing_first)
+    if p.purge_confirmation is not None:
+        cur["purge_confirmation"] = p.purge_confirmation.strip() or None
+    if p.ticker_range is not None:
+        tr = p.ticker_range.strip()
+        cur["ticker_range"] = tr[:1].upper() if tr else None
+    if p.download_timeout_sec is not None:
+        cur["download_timeout_sec"] = float(p.download_timeout_sec)
+    if p.pairs is not None:
+        cur["pairs"] = [str(x).strip() for x in p.pairs if str(x).strip()]
+    if cur.get("delete_existing_first") and not (cur.get("purge_confirmation") or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="delete_existing_first in the schedule requires a stored purge_confirmation; set it in this request.",
+        )
+    if str(cur.get("instrument_type") or "fx").strip().lower() not in {"stock", "etf"}:
+        cur["adjustment"] = None
+    _save_firstrate_schedule(cur)
+    return {"success": True, "schedule": cur}
 
 @app.get("/api/admin/datasets/firstrate-fx/{job_id}/status")
 async def admin_firstrate_fx_job_status(job_id: str, request: Request):
@@ -9342,6 +9831,12 @@ if ninjatrader_assets_dir.exists():
 homepage_dir = Path("homepage/out")
 if homepage_dir.exists():
     app.mount("/", StaticFiles(directory=str(homepage_dir), html=True), name="homepage")
+
+@app.on_event("startup")
+async def _firstrate_scheduler_app_startup():
+    """Background thread: periodically queues FirstRate FX sync per uploads/firstrate_schedule.json."""
+    _start_firstrate_scheduler_thread()
+
 
 if __name__ == "__main__":
     import uvicorn
