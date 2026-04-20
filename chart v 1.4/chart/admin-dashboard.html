@@ -1565,6 +1565,7 @@ select { cursor: pointer; }
                     <option value="index">index</option>
                     <option value="options">options</option>
                   </select>
+                  <div id="fr_subscription_warn" style="display:none;margin-top:8px;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.5"></div>
                 </div>
                 <div id="fr_ticker_range_wrap" class="field fg-full" style="display:none">
                   <label for="fr_ticker_range">Ticker-range letter (advanced override)</label>
@@ -4072,6 +4073,47 @@ function updateFrFullPeriodUi() {
   if (!wrap || !p) return;
   const lettered = t && ['stock', 'etf', 'futures', 'options'].includes((t.value || '').toLowerCase());
   wrap.style.display = (p.value === 'full' && lettered) ? '' : 'none';
+  updateFrSubscriptionWarning();
+}
+
+// Vendor-subscription matrix observed on this account (diagnostic probe 2026-04).
+// Keys = FirstRate instrument types; values describe what's allowed.
+//   blocked:       true  → every period is blocked by the vendor ("no datafile found").
+//   blockedPeriods: Set<string> of period values this subscription rejects.
+// Update this table if the FirstRate subscription changes.
+const FR_SUBSCRIPTION_LIMITS = {
+  futures: { blocked: true, message:
+    'Your FirstRate subscription does <strong>not</strong> include the futures bundle — the vendor returns <em>“no datafile found”</em> for every futures request (day/week/month/full, any letter). ' +
+    'Pick <strong>fx, stock, etf, crypto,</strong> or <strong>index</strong>, or upgrade your FirstRate plan to add futures.' },
+  options: { blocked: true, message:
+    'Options bundles are typically not on the default FirstRate plan. If downloads fail with “no datafile found”, the subscription needs to be upgraded.' },
+  crypto: { blockedPeriods: new Set(['full']), message:
+    'Crypto <code style="font-size:10px">period=full</code> is not available on this subscription — it returns “no datafile found”. Use <strong>day / week / month</strong> instead (all three work).' },
+};
+
+function updateFrSubscriptionWarning() {
+  const box = $('fr_subscription_warn');
+  const t = $('fr_type');
+  const p = $('fr_period');
+  if (!box || !t) return;
+  const type = (t.value || '').toLowerCase();
+  const period = (p && p.value || '').toLowerCase();
+  const cfg = FR_SUBSCRIPTION_LIMITS[type];
+  let html = '';
+  let kind = '';
+  if (cfg) {
+    if (cfg.blocked) { html = cfg.message; kind = 'err'; }
+    else if (cfg.blockedPeriods && cfg.blockedPeriods.has(period)) { html = cfg.message; kind = 'warn'; }
+  }
+  if (!html) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const palette = kind === 'err'
+    ? { bg: 'rgba(239,68,68,.10)', fg: '#f87171', bd: 'rgba(239,68,68,.35)' }
+    : { bg: 'rgba(245,158,11,.10)', fg: '#fbbf24', bd: 'rgba(245,158,11,.35)' };
+  box.style.background = palette.bg;
+  box.style.color = palette.fg;
+  box.style.border = '1px solid ' + palette.bd;
+  box.innerHTML = html;
+  box.style.display = '';
 }
 
 function updateFirstrateInstrumentUi() {
