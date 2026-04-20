@@ -481,13 +481,18 @@ def normalize_firstrate_fx_csv_to_standard(src: Path, dest: Path) -> int:
 
 
 def iter_csv_files(root: Path) -> list[Path]:
+    """
+    Collect CSV-like data files from an extracted FirstRate bundle.
+    FirstRate ships CSV-formatted data with `.txt` extensions (e.g. `EURUSD_day_1min.txt`),
+    so both `.csv` and `.txt` are accepted. Returns a de-duplicated, sorted list.
+    """
     out: list[Path] = []
-    for p in sorted(root.rglob("*.csv")):
-        if p.is_file():
-            out.append(p)
-    for p in sorted(root.rglob("*.CSV")):
-        if p.is_file() and p not in out:
-            out.append(p)
+    seen: set[Path] = set()
+    for pattern in ("*.csv", "*.CSV", "*.txt", "*.TXT"):
+        for p in sorted(root.rglob(pattern)):
+            if p.is_file() and p not in seen:
+                out.append(p)
+                seen.add(p)
     return out
 
 

@@ -4342,8 +4342,47 @@ def build_binary_for_file(file_id: int, file_path, original_filename: str, run_a
     return _run()
 
 
+_INSTRUMENT_TYPES_NEEDING_LETTER_FOR_FULL = {"stock", "etf", "futures", "options"}
+
+
+def _firstrate_plan_ticker_ranges(
+    *,
+    instrument_type: str,
+    period: str,
+    explicit_range: str | None,
+    pairs_norm: list[str],
+) -> list[str | None]:
+    """
+    Decide which `ticker_range` letters to request from FirstRate for this job.
+
+    FirstRate splits `period=full` bundles alphabetically for stock/etf/futures/options
+    (one ZIP per letter). For everything else (fx/crypto/index, or non-full periods),
+    a single request with `ticker_range=None` returns the whole dataset.
+
+    Rules:
+    - Explicit letter from the UI (A–Z) → always honored, single bundle.
+    - Non-letter-split type, or period != "full" → [None] (single bundle).
+    - Letter-split type + period == "full":
+        * if pairs provided → one letter per unique first-letter of the pairs.
+        * else → full A..Z sweep (expensive; only if user intentionally left pairs empty).
+    """
+    if explicit_range:
+        return [explicit_range]
+    if period != "full" or instrument_type not in _INSTRUMENT_TYPES_NEEDING_LETTER_FOR_FULL:
+        return [None]
+    if pairs_norm:
+        letters = sorted({p[0].upper() for p in pairs_norm if p and p[0].isalpha()})
+        return list(letters) if letters else [None]
+    return [chr(c) for c in range(ord("A"), ord("Z") + 1)]
+
+
 def _run_firstrate_import_job(job_id: str) -> None:
-    """Background: optional purge → download FirstRate ZIP → normalize CSVs → register datasets → binary build."""
+    """Background: optional purge → download FirstRate ZIP(s) → normalize CSVs → register datasets → binary build.
+
+    When `period=full` and the instrument type is split alphabetically (stock/etf/futures/options),
+    the job automatically iterates over the letters derived from the selected pairs, so a single
+    click downloads *full* history for every requested symbol with no manual letter picking.
+    """
     tmp_root: Path | None = None
     try:
         state = _firstrate_read_job(job_id)
@@ -4379,161 +4418,206 @@ def _run_firstrate_import_job(job_id: str) -> None:
             _firstrate_write_job(job_id, state)
 
         tmp_root = Path(tempfile.mkdtemp(prefix="firstrate_", dir=str(UPLOAD_DIR.resolve())))
-        zip_path = tmp_root / "firstrate_bundle.zip"
 
         period = (state.get("period") or "week").strip().lower()
         timeframe = (state.get("timeframe") or "1min").strip().lower()
-        ticker_range = state.get("ticker_range")
-        if isinstance(ticker_range, str):
-            ticker_range = ticker_range.strip().upper()[:1] or None
+        explicit_range = state.get("ticker_range")
+        if isinstance(explicit_range, str):
+            explicit_range = explicit_range.strip().upper()[:1] or None
 
-        state["phase"] = "download"
-        state["message"] = "Downloading ZIP from FirstRate — starting…"
-        state["download_bytes_received"] = 0
-        state["download_bytes_total"] = None
-        state["download_percent"] = None
-        _firstrate_write_job(job_id, state)
-
-        timeout_sec = float(state.get("download_timeout_sec") or 7200)
-
-        _dl_prog = {"last_t": 0.0, "last_n": -1}
-
-        def _firstrate_download_progress(written: int, total: int | None) -> None:
-            now = time.monotonic()
-            done = total is not None and total > 0 and written >= total
-            if written > 0 and not done:
-                if (
-                    now - _dl_prog["last_t"] < 0.9
-                    and written - _dl_prog["last_n"] < 8 * 1024 * 1024
-                ):
-                    return
-            _dl_prog["last_t"] = now
-            _dl_prog["last_n"] = written
-            st = _firstrate_read_job(job_id)
-            if not st:
-                return
-            pct: int | None = None
-            if total is not None and total > 0:
-                pct = min(100, int((100 * written) / total))
-            msg_parts = [
-                "Downloading ZIP from FirstRate",
-                f"{written / (1024 * 1024):.1f} MiB received",
-            ]
-            if total:
-                msg_parts.append(f"/ {total / (1024 * 1024):.1f} MiB total")
-                if pct is not None:
-                    msg_parts.append(f"({pct}%)")
-            elif written == 0:
-                msg_parts.append("(connected — streaming…)")
-            else:
-                msg_parts.append("(total size not reported — bytes only)")
-            st["phase"] = "download"
-            st["download_bytes_received"] = written
-            st["download_bytes_total"] = total
-            st["download_percent"] = pct
-            st["message"] = " — ".join(msg_parts)
-            _firstrate_write_job(job_id, st)
-
-        download_firstrate_bundle(
-            userid=uid,
-            period=period,
-            timeframe=timeframe,
-            instrument_type=instrument_type,
-            ticker_range=ticker_range,
-            adjustment=adjustment,
-            dest_zip=zip_path,
-            timeout_sec=timeout_sec,
-            progress_callback=_firstrate_download_progress,
+        pairs_norm = _normalize_ticker_filter_list(
+            state.get("pairs") if isinstance(state.get("pairs"), list) else None
         )
-
-        state = _firstrate_read_job(job_id)
-        if state:
-            state["phase"] = "extract"
-            state["message"] = "Unpacking ZIP archive…"
-            for _k in ("download_bytes_received", "download_bytes_total", "download_percent"):
-                state.pop(_k, None)
-            _firstrate_write_job(job_id, state)
-
-        extract_dir = tmp_root / "extracted"
-        extract_zip(zip_path, extract_dir)
-
-        state = _firstrate_read_job(job_id)
-        if not state:
-            return
-
-        csv_paths = iter_csv_files(extract_dir)
-        pairs_norm = _normalize_ticker_filter_list(state.get("pairs") if isinstance(state.get("pairs"), list) else None)
-        if pairs_norm:
-            before_n = len(csv_paths)
-            csv_paths, skipped_pair_n = _firstrate_filter_csv_paths_by_tickers(csv_paths, pairs_norm)
-            state["pairs_filter"] = pairs_norm
-            state["files_skipped_by_pair_filter"] = skipped_pair_n
-            state["message"] = (
-                f"Ticker filter {len(csv_paths)}/{before_n} CSV(s) for [{', '.join(pairs_norm)}] "
-                f"(skipped {skipped_pair_n}) — processing {len(csv_paths)} file(s)"
-            )
-        else:
-            state["pairs_filter"] = []
-            state["files_skipped_by_pair_filter"] = 0
-            state["message"] = f"Normalizing {len(csv_paths)} CSV file(s)"
-
-        state["phase"] = "normalize"
-        state["files_total"] = len(csv_paths)
+        ranges_to_fetch = _firstrate_plan_ticker_ranges(
+            instrument_type=instrument_type,
+            period=period,
+            explicit_range=explicit_range,
+            pairs_norm=pairs_norm,
+        )
+        state["planned_ticker_ranges"] = [r for r in ranges_to_fetch if r]
+        state["pairs_filter"] = pairs_norm
+        state["files_total"] = 0
         state["files_done"] = 0
+        state["files_skipped_by_pair_filter"] = 0
         state["datasets_created"] = []
         state["skipped_files"] = []
         _firstrate_write_job(job_id, state)
 
+        timeout_sec = float(state.get("download_timeout_sec") or 7200)
         ts_prefix = datetime.now().strftime("%Y%m%d_%H%M%S")
         created: list[dict] = []
         skipped: list[dict] = []
+        total_skipped_by_filter = 0
 
-        for idx, src in enumerate(csv_paths):
-            stem_raw = src.stem
-            stem_safe = re.sub(r"[^A-Za-z0-9_\-]+", "_", stem_raw).strip("_")[:96] or "instrument"
-            out_name = f"{ts_prefix}_{idx:04d}_firstrate_{stem_safe}_{timeframe}.csv"
-            dest_csv = UPLOAD_DIR / out_name
-            try:
-                n = normalize_firstrate_csv_to_standard(src, dest_csv, instrument_type)
-            except Exception as exc:
-                skipped.append({"file": src.name, "error": str(exc)[:800]})
-                state["files_done"] = idx + 1
-                state["skipped_files"] = list(skipped)
-                state["message"] = f"Normalize error on {src.name}"
-                _firstrate_write_job(job_id, state)
-                continue
-
-            if n < 1:
-                try:
-                    dest_csv.unlink(missing_ok=True)
-                except Exception:
-                    pass
-                skipped.append({"file": src.name, "error": "no rows parsed"})
-                state["files_done"] = idx + 1
-                state["skipped_files"] = list(skipped)
-                _firstrate_write_job(job_id, state)
-                continue
-
-            original_label = f"{stem_safe}_{timeframe}.csv"
-            upsert = bool(state.get("upsert_existing"))
-            info = _upsert_or_create_dataset_from_csv(
-                dest_csv,
-                original_name=original_label,
-                description=f"FirstRate {instrument_type} ({period}, {timeframe})",
-                upsert=upsert,
+        for bundle_idx, current_range in enumerate(ranges_to_fetch, start=1):
+            bundle_label = (
+                f" [letter {current_range}, bundle {bundle_idx}/{len(ranges_to_fetch)}]"
+                if current_range
+                else ""
             )
-            entry = info.get("file") if isinstance(info, dict) else None
-            if entry:
-                created.append(entry)
-            state["files_done"] = idx + 1
-            state["datasets_created"] = list(created)
-            state["skipped_files"] = list(skipped)
-            state["message"] = f"Imported {len(created)} / {len(csv_paths)} dataset(s)"
-            _firstrate_write_job(job_id, state)
+            zip_path = tmp_root / f"firstrate_bundle_{bundle_idx:02d}.zip"
 
+            st = _firstrate_read_job(job_id) or state
+            st["phase"] = "download"
+            st["current_bundle"] = {"index": bundle_idx, "total": len(ranges_to_fetch), "letter": current_range}
+            st["message"] = f"Downloading ZIP from FirstRate{bundle_label} — starting…"
+            st["download_bytes_received"] = 0
+            st["download_bytes_total"] = None
+            st["download_percent"] = None
+            _firstrate_write_job(job_id, st)
+
+            _dl_prog = {"last_t": 0.0, "last_n": -1}
+
+            def _firstrate_download_progress(written: int, total: int | None, _label: str = bundle_label) -> None:
+                now = time.monotonic()
+                done = total is not None and total > 0 and written >= total
+                if written > 0 and not done:
+                    if (
+                        now - _dl_prog["last_t"] < 0.9
+                        and written - _dl_prog["last_n"] < 8 * 1024 * 1024
+                    ):
+                        return
+                _dl_prog["last_t"] = now
+                _dl_prog["last_n"] = written
+                sti = _firstrate_read_job(job_id)
+                if not sti:
+                    return
+                pct: int | None = None
+                if total is not None and total > 0:
+                    pct = min(100, int((100 * written) / total))
+                msg_parts = [
+                    f"Downloading ZIP from FirstRate{_label}",
+                    f"{written / (1024 * 1024):.1f} MiB received",
+                ]
+                if total:
+                    msg_parts.append(f"/ {total / (1024 * 1024):.1f} MiB total")
+                    if pct is not None:
+                        msg_parts.append(f"({pct}%)")
+                elif written == 0:
+                    msg_parts.append("(connected — streaming…)")
+                else:
+                    msg_parts.append("(total size not reported — bytes only)")
+                sti["phase"] = "download"
+                sti["download_bytes_received"] = written
+                sti["download_bytes_total"] = total
+                sti["download_percent"] = pct
+                sti["message"] = " — ".join(msg_parts)
+                _firstrate_write_job(job_id, sti)
+
+            try:
+                download_firstrate_bundle(
+                    userid=uid,
+                    period=period,
+                    timeframe=timeframe,
+                    instrument_type=instrument_type,
+                    ticker_range=current_range,
+                    adjustment=adjustment,
+                    dest_zip=zip_path,
+                    timeout_sec=timeout_sec,
+                    progress_callback=_firstrate_download_progress,
+                )
+            except Exception as exc:
+                # Missing-letter bundles are common when auto-sweeping A..Z: skip quietly.
+                msg = str(exc)
+                if len(ranges_to_fetch) > 1 and "no datafile" in msg.lower():
+                    skipped.append({"bundle_letter": current_range, "error": "vendor: no datafile (skipped)"})
+                    continue
+                raise
+
+            st = _firstrate_read_job(job_id) or state
+            st["phase"] = "extract"
+            st["message"] = f"Unpacking ZIP archive{bundle_label}…"
+            for _k in ("download_bytes_received", "download_bytes_total", "download_percent"):
+                st.pop(_k, None)
+            _firstrate_write_job(job_id, st)
+
+            extract_dir = tmp_root / f"extracted_{bundle_idx:02d}"
+            extract_zip(zip_path, extract_dir)
+            try:
+                zip_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+            csv_paths = iter_csv_files(extract_dir)
+            if pairs_norm:
+                before_n = len(csv_paths)
+                csv_paths, skipped_pair_n = _firstrate_filter_csv_paths_by_tickers(csv_paths, pairs_norm)
+                total_skipped_by_filter += skipped_pair_n
+                filter_msg = (
+                    f"Ticker filter kept {len(csv_paths)}/{before_n} CSV(s){bundle_label}"
+                )
+            else:
+                filter_msg = f"Normalizing {len(csv_paths)} CSV file(s){bundle_label}"
+
+            st = _firstrate_read_job(job_id) or state
+            st["phase"] = "normalize"
+            st["files_total"] = int(st.get("files_total") or 0) + len(csv_paths)
+            st["files_skipped_by_pair_filter"] = total_skipped_by_filter
+            st["message"] = filter_msg
+            _firstrate_write_job(job_id, st)
+
+            for src_idx, src in enumerate(csv_paths):
+                stem_raw = src.stem
+                stem_safe = re.sub(r"[^A-Za-z0-9_\-]+", "_", stem_raw).strip("_")[:96] or "instrument"
+                out_name = f"{ts_prefix}_b{bundle_idx:02d}_{src_idx:04d}_firstrate_{stem_safe}_{timeframe}.csv"
+                dest_csv = UPLOAD_DIR / out_name
+                try:
+                    n = normalize_firstrate_csv_to_standard(src, dest_csv, instrument_type)
+                except Exception as exc:
+                    skipped.append({"file": src.name, "error": str(exc)[:800]})
+                    st = _firstrate_read_job(job_id) or state
+                    st["files_done"] = int(st.get("files_done") or 0) + 1
+                    st["skipped_files"] = list(skipped)
+                    st["message"] = f"Normalize error on {src.name}"
+                    _firstrate_write_job(job_id, st)
+                    continue
+
+                if n < 1:
+                    try:
+                        dest_csv.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    skipped.append({"file": src.name, "error": "no rows parsed"})
+                    st = _firstrate_read_job(job_id) or state
+                    st["files_done"] = int(st.get("files_done") or 0) + 1
+                    st["skipped_files"] = list(skipped)
+                    _firstrate_write_job(job_id, st)
+                    continue
+
+                original_label = f"{stem_safe}_{timeframe}.csv"
+                upsert = bool(state.get("upsert_existing"))
+                info = _upsert_or_create_dataset_from_csv(
+                    dest_csv,
+                    original_name=original_label,
+                    description=f"FirstRate {instrument_type} ({period}, {timeframe})",
+                    upsert=upsert,
+                )
+                entry = info.get("file") if isinstance(info, dict) else None
+                if entry:
+                    created.append(entry)
+                st = _firstrate_read_job(job_id) or state
+                st["files_done"] = int(st.get("files_done") or 0) + 1
+                st["datasets_created"] = list(created)
+                st["skipped_files"] = list(skipped)
+                st["message"] = (
+                    f"Imported {len(created)} dataset(s){bundle_label}"
+                )
+                _firstrate_write_job(job_id, st)
+
+            # Free extracted files between bundles.
+            try:
+                shutil.rmtree(extract_dir, ignore_errors=True)
+            except Exception:
+                pass
+
+        state = _firstrate_read_job(job_id) or state
         state["status"] = "done"
         state["phase"] = "done"
-        state["message"] = f"Complete — {len(created)} dataset(s), {len(skipped)} skipped"
+        state["current_bundle"] = None
+        state["message"] = (
+            f"Complete — {len(created)} dataset(s), {len(skipped)} skipped across "
+            f"{len(ranges_to_fetch)} bundle(s)"
+        )
         _firstrate_write_job(job_id, state)
         _firstrate_schedule_after_job(job_id, success=True, error_message=None)
 

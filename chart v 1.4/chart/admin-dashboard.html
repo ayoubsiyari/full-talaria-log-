@@ -1521,76 +1521,19 @@ select { cursor: pointer; }
 
       <!-- ════════ DATASETS SECTION ════════ -->
       <div class="section" id="sec-datasets">
-        <!-- Upload -->
+        <!-- FirstRate Data — sole dataset source -->
         <div class="card" style="margin-bottom:16px">
           <div class="card-hdr">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            <div class="card-title">Upload Dataset</div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <div class="card-title">Download dataset (FirstRate Data)</div>
           </div>
           <div class="card-body">
-            <div class="drop-zone" id="dropZone">
-              <input type="file" id="fileInput" accept=".csv,.txt" style="display:none">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:12px;opacity:.4"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              <p style="font-size:14px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Drop CSV file here or click to browse</p>
-              <p style="font-size:12px">Supports .csv and .txt files</p>
-            </div>
-            <div class="pbar-wrap" id="uploadProgress">
-              <div class="pbar-outer"><div class="pbar-inner" id="pbar"></div></div>
-              <div class="pbar-label" id="pbarLabel"></div>
-            </div>
-            <!-- Dukascopy Section -->
-            <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border)">
-              <div style="font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9m-9 9a9 9 0 019-9"/></svg>
-                Fetch from Dukascopy
-              </div>
-              <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
-                Use <strong>indices / oil</strong> here for traditional benchmarks (S&amp;P- and Nasdaq-style cash indices, WTI/Brent CFDs).
-                Dukascopy does not ship CME micro futures as separate root symbols; pick the matching CFD/index id below or enter any valid
-                <a href="https://www.dukascopy-node.app/instruments" target="_blank" rel="noopener noreferrer" style="color:var(--accent)">dukascopy-node instrument</a> manually.
-              </p>
-              <div class="form-grid">
-                <div class="field fg-full">
-                  <label>Category</label>
-                  <div id="dk_cat_tabs" style="display:flex;gap:8px;flex-wrap:wrap">
-                    <button type="button" class="dk-cat-tab btn sm primary" data-group="us_indices" onclick="setDukascopyGroup('us_indices')">US indices</button>
-                    <button type="button" class="dk-cat-tab btn sm" data-group="energy" onclick="setDukascopyGroup('energy')">Oil &amp; energy</button>
-                    <button type="button" class="dk-cat-tab btn sm" data-group="world_indices" onclick="setDukascopyGroup('world_indices')">World indices</button>
-                    <button type="button" class="dk-cat-tab btn sm" data-group="forex" onclick="setDukascopyGroup('forex')">Forex</button>
-                  </div>
-                </div>
-                <div class="field fg-full">
-                  <label for="dk_instrument_select">Instrument</label>
-                  <select id="dk_instrument_select" class="input" style="width:100%;max-width:100%" onchange="onDukascopySelectChange()"></select>
-                </div>
-                <div class="field fg-full">
-                  <label for="dk_pair">Instrument id (manual)</label>
-                  <input id="dk_pair" type="text" value="usa500idxusd" placeholder="e.g. usa500idxusd" style="font-family:ui-monospace,monospace;font-size:12px" spellcheck="false">
-                </div>
-                <div class="field"><label>Timeframe</label><input disabled value="M1 (auto-aggregated)" style="opacity:.4"></div>
-                <div class="field"><label>From</label><input id="dk_from" type="date"></div>
-                <div class="field"><label>To</label><input id="dk_to" type="date"></div>
-                <div class="fg-full" style="display:flex;gap:10px;align-items:center">
-                  <button class="btn primary" id="dkFetchBtn" onclick="fetchDukascopy()">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Fetch Data
-                  </button>
-                  <span id="dukaProgress" style="font-size:12px;color:var(--text-muted)"></span>
-                </div>
-              </div>
-            </div>
             <!-- FirstRate Data (official vendor ZIP → chart datasets) -->
-            <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border)">
-              <div style="font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>
-                FirstRate Data (vendor ZIP)
-              </div>
-              <p style="font-size:11px;color:var(--text-muted);margin-bottom:14px;line-height:1.55">
-                Choose <strong>instrument, period, timeframe, and tickers</strong> once below. Then either <strong>run a single import</strong> or <strong>save automatic repeats</strong> — both use the same settings (no duplicated forms).
-                Requires env <code style="font-size:10px">FIrstrate_USERID</code>.
-                <code style="font-size:10px">period=full</code> is large and slow; wiping datasets breaks sessions that reference old <code style="font-size:10px">fileId</code>.
+            <div>
+              <p style="font-size:12px;color:var(--text-muted);margin:0 0 16px;line-height:1.55">
+                Pick an instrument type, a period, a timeframe, and optionally the tickers you want — then hit <strong>Download &amp; import now</strong>. Each matching symbol in the vendor ZIP becomes a dataset you can chart.
+                Requires <code style="font-size:10px">FIrstrate_USERID</code> on the server.
               </p>
-              <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:10px">1 · What to download</div>
               <div class="form-grid">
                 <div class="field">
                   <label for="fr_period">Period</label>
@@ -1624,13 +1567,13 @@ select { cursor: pointer; }
                   </select>
                 </div>
                 <div id="fr_ticker_range_wrap" class="field fg-full" style="display:none">
-                  <label for="fr_ticker_range">Ticker-range letter (full archive)</label>
+                  <label for="fr_ticker_range">Ticker-range letter (advanced override)</label>
                   <select id="fr_ticker_range" class="input">
-                    <option value="">— none —</option>
+                    <option value="">— auto (recommended) —</option>
                     <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option><option value="F">F</option><option value="G">G</option><option value="H">H</option><option value="I">I</option><option value="J">J</option><option value="K">K</option><option value="L">L</option><option value="M">M</option><option value="N">N</option><option value="O">O</option><option value="P">P</option><option value="Q">Q</option><option value="R">R</option><option value="S">S</option><option value="T">T</option><option value="U">U</option><option value="V">V</option><option value="W">W</option><option value="X">X</option><option value="Y">Y</option><option value="Z">Z</option>
                   </select>
                   <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:6px;line-height:1.45">
-                    FirstRate maps <code style="font-size:10px">period=full</code> stock/ETF downloads to one letter (<code style="font-size:10px">ticker_range</code>). Missing letter → vendor error <em>no datafile found</em>. Import AAPL → use <strong>C</strong>; run other letters separately as needed.
+                    For <code style="font-size:10px">period=full</code>, FirstRate splits stock / ETF / futures / options into one ZIP per letter. Leave on <strong>auto</strong> and list your tickers below — the server downloads every needed letter automatically (e.g. <code style="font-size:10px">AAPL, TSLA</code> → letters A + T). With no tickers listed, auto sweeps the full A–Z (slow). Pick a single letter only to restrict manually.
                   </span>
                 </div>
                 <div class="field fg-full" id="fr_adjustment_wrap" style="display:none">
@@ -1676,175 +1619,48 @@ select { cursor: pointer; }
                     <button type="button" class="btn sm" onclick="document.getElementById('fr_pairs').value=''">clear</button>
                   </div>
                 </div>
-                <div class="field fg-full" style="margin-top:4px;padding-top:14px;border-top:1px dashed var(--border)">
-                  <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:10px">2 · Run once</div>
-                  <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;line-height:1.45">
-                    Options below apply only to this immediate import (not the scheduler).
-                  </p>
-                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px">
-                    <input type="checkbox" id="fr_delete_first">
-                    Delete all existing datasets first (requires confirmation phrase)
+                <div class="field fg-full" style="margin-top:8px;padding-top:16px;border-top:1px dashed var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                  <button type="button" class="btn primary" id="frSyncBtn" onclick="syncFirstrateFx()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Download &amp; import now
+                  </button>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text-muted)">
+                    <input type="checkbox" id="fr_upsert" checked>
+                    Overwrite existing datasets by symbol
                   </label>
-                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:12px">
-                    <input type="checkbox" id="fr_upsert">
-                    Upsert by symbol (match filename stem — replaces CSV + rebuilds binaries instead of new dataset ids)
-                  </label>
-                  <div class="fg-full" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-                    <button type="button" class="btn primary" id="frSyncBtn" onclick="syncFirstrateFx()">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                      Download &amp; import now
-                    </button>
-                    <span id="frProgress" style="font-size:12px;color:var(--text-muted)"></span>
-                  </div>
+                  <span id="frProgress" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
                 </div>
-                <div class="field fg-full" style="margin-top:4px;padding-top:14px;border-top:1px dashed var(--border)">
-                  <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:8px">3 · Automatic schedule (same settings as §1)</div>
-                  <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.45">
-                    Saved to <code style="font-size:10px">uploads/firstrate_schedule.json</code>. The worker checks about every minute; set interval vs FirstRate&rsquo;s daily update window.
-                  </p>
-                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
-                    <input type="checkbox" id="fr_sched_enabled">
-                    Enable scheduled imports on this VPS
-                  </label>
-                  <div class="form-grid" style="margin-bottom:10px">
-                    <div class="field">
-                      <label for="fr_sched_interval">Repeat every (minutes)</label>
-                      <input type="number" id="fr_sched_interval" class="input" min="15" max="10080" value="1440" step="15">
+                <details class="field fg-full" style="margin-top:12px;border-top:1px dashed var(--border);padding-top:12px">
+                  <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;user-select:none">Advanced &middot; automatic schedule &amp; dataset purge</summary>
+                  <div style="padding:14px 4px 4px">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px;color:var(--danger,#ff6b6b);font-size:12px">
+                      <input type="checkbox" id="fr_delete_first">
+                      Wipe all existing datasets before this import (requires confirmation phrase)
+                    </label>
+                    <div style="height:1px;background:var(--border);margin:10px 0"></div>
+                    <p style="font-size:11px;color:var(--text-muted);margin:0 0 10px;line-height:1.45">
+                      Scheduler uses the same instrument / period / timeframe / tickers you picked above, and runs on the VPS every N minutes.
+                    </p>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px;font-size:12px">
+                      <input type="checkbox" id="fr_sched_enabled">
+                      Enable scheduled imports on this VPS
+                    </label>
+                    <div class="form-grid" style="margin-bottom:10px">
+                      <div class="field">
+                        <label for="fr_sched_interval">Repeat every (minutes)</label>
+                        <input type="number" id="fr_sched_interval" class="input" min="15" max="10080" value="1440" step="15">
+                      </div>
+                    </div>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px;font-size:12px">
+                      <input type="checkbox" id="fr_sched_upsert" checked>
+                      On scheduled runs: overwrite by symbol
+                    </label>
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                      <button type="button" class="btn sm primary" id="frSchedSaveBtn" onclick="saveFirstrateSchedule()">Save schedule</button>
+                      <span id="frSchedStatus" style="font-size:12px;color:var(--text-muted)"></span>
                     </div>
                   </div>
-                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
-                    <input type="checkbox" id="fr_sched_upsert" checked>
-                    On scheduled runs: upsert by symbol (recommended)
-                  </label>
-                  <div class="fg-full" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-                    <button type="button" class="btn sm primary" id="frSchedSaveBtn" onclick="saveFirstrateSchedule()">Save schedule</button>
-                    <span id="frSchedStatus" style="font-size:12px;color:var(--text-muted)"></span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <!-- CME-style continuous futures (Yahoo Finance, =F roots) -->
-            <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border)">
-              <div style="font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted)"><path d="M3 3h7v7H3V3zM14 3h7v4h-7V3zM14 9h7v12h-7V9zM3 14h7v7H3v-7z"/></svg>
-                CME-style futures (Yahoo)
-              </div>
-              <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
-                <strong>ES=F, NQ=F, CL=F, etc.</strong> are Yahoo&rsquo;s <em>continuous</em> CME-style future series (not individual expiries). This is <strong>not</strong> CME DataMine; for exchange-tape or contract-level data you need a licensed CME feed. The download runs <strong>on the server</strong> (VPS); refreshing this page does not cancel it — the dashboard reconnects and keeps polling. Long pulls use many small date chunks with delays (like Dukascopy forex). If Yahoo throttles you, shorten the range or raise <code style="font-size:10px">YAHOO_CME_CHUNK_SLEEP_SECONDS</code>.
-              </p>
-              <div class="form-grid">
-                <div class="field fg-full">
-                  <label>Category</label>
-                  <div id="ycme_cat_tabs" style="display:flex;gap:8px;flex-wrap:wrap">
-                    <button type="button" class="ycme-cat-tab btn sm primary" data-group="equity_index" onclick="setYcmeGroup('equity_index')">Equity index</button>
-                    <button type="button" class="ycme-cat-tab btn sm" data-group="energy" onclick="setYcmeGroup('energy')">Energy</button>
-                    <button type="button" class="ycme-cat-tab btn sm" data-group="metals" onclick="setYcmeGroup('metals')">Metals</button>
-                    <button type="button" class="ycme-cat-tab btn sm" data-group="rates" onclick="setYcmeGroup('rates')">Rates</button>
-                    <button type="button" class="ycme-cat-tab btn sm" data-group="fx" onclick="setYcmeGroup('fx')">FX</button>
-                    <button type="button" class="ycme-cat-tab btn sm" data-group="ag" onclick="setYcmeGroup('ag')">Ags</button>
-                  </div>
-                </div>
-                <div class="field fg-full">
-                  <label for="ycme_instrument_select">Root (Yahoo)</label>
-                  <select id="ycme_instrument_select" class="input" style="width:100%;max-width:100%" onchange="onYcmeSelectChange()"></select>
-                </div>
-                <div class="field fg-full">
-                  <label for="ycme_ticker">Ticker (manual)</label>
-                  <input id="ycme_ticker" type="text" value="ES=F" placeholder="e.g. NQ=F" style="font-family:ui-monospace,monospace;font-size:12px" spellcheck="false">
-                </div>
-                <div class="field">
-                  <label for="ycme_interval">Interval</label>
-                  <select id="ycme_interval">
-                    <option value="1d" selected>Daily</option>
-                    <option value="60m">1 hour</option>
-                    <option value="30m">30 minutes</option>
-                    <option value="15m">15 minutes</option>
-                    <option value="5m">5 minutes</option>
-                    <option value="2m">2 minutes</option>
-                    <option value="1m">1 minute</option>
-                  </select>
-                </div>
-                <div class="field"><label>From</label><input id="ycme_from" type="date"></div>
-                <div class="field"><label>To</label><input id="ycme_to" type="date"></div>
-                <div class="fg-full" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-                  <button class="btn primary" id="ycmeFetchBtn" onclick="fetchYahooCme()">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Fetch Yahoo futures
-                  </button>
-                  <span id="ycmeProgress" style="font-size:12px;color:var(--text-muted)"></span>
-                </div>
-              </div>
-            </div>
-            <!-- Binance Vision (historical klines via binance-historical-data) -->
-            <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border)">
-              <div style="font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                Fetch from Binance (historical)
-              </div>
-              <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
-                <strong>Spot and futures</strong> use the same download job, merge, and dataset storage as Dukascopy/forex. Data is read from
-                <a href="https://data.binance.vision/?prefix=data/" target="_blank" rel="noopener noreferrer" style="color:var(--accent)">Binance Vision</a> via
-                <a href="https://pypi.org/project/binance-historical-data/" target="_blank" rel="noopener noreferrer" style="color:var(--accent)">binance-historical-data</a>.
-                (The <a href="https://github.com/public-apis/public-apis" target="_blank" rel="noopener noreferrer" style="color:var(--text-muted)">public-apis</a> list is a general API catalog, not a data source — we do not use it for market files.) Up to 5 symbols per request.
-              </p>
-              <div class="form-grid">
-                <div class="field fg-full">
-                  <label>Market</label>
-                  <input type="hidden" id="bn_asset" value="spot">
-                  <div id="bn_market_tabs" style="display:flex;gap:8px;flex-wrap:wrap">
-                    <button type="button" class="bn-market-tab btn sm primary" data-asset="spot" onclick="setBinanceMarket('spot')" title="Spot trading pairs">Spot</button>
-                    <button type="button" class="bn-market-tab btn sm" data-asset="um" onclick="setBinanceMarket('um')" title="USD-Margined futures">USD‑M futures</button>
-                    <button type="button" class="bn-market-tab btn sm" data-asset="cm" onclick="setBinanceMarket('cm')" title="Coin-margined futures">COIN‑M futures</button>
-                  </div>
-                  <span style="font-size:11px;color:var(--text-muted);margin-top:6px;display:block">Pick a market, then symbols below reload from Binance <code style="font-size:10px">exchangeInfo</code>.</span>
-                </div>
-                <div class="field fg-full" id="bn_data_type_wrap" style="display:none">
-                  <label>Futures OHLC series</label>
-                  <select id="bn_data_type">
-                    <option value="klines" selected>Trading / delivery klines</option>
-                    <option value="markPriceKlines">Mark price</option>
-                    <option value="indexPriceKlines">Index price</option>
-                    <option value="premiumIndexKlines">Premium index</option>
-                  </select>
-                  <span style="font-size:11px;color:var(--text-muted);margin-top:6px;display:block">Same CSV → dataset pipeline as spot; folder layout on Vision differs per series.</span>
-                </div>
-                <div class="field fg-full">
-                  <label>Symbols</label>
-                  <input type="search" id="bn_symbol_filter" placeholder="Filter symbols (e.g. BTC)" autocomplete="off" style="width:100%;margin-bottom:8px;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text)">
-                  <select id="bn_tickers_select" multiple size="12" style="width:100%;font-family:ui-monospace,monospace;font-size:12px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text)"></select>
-                  <span id="bn_symbols_hint" style="font-size:11px;color:var(--text-muted);display:block;margin-top:6px">Loading symbol list…</span>
-                </div>
-                <div class="field"><label>Interval</label>
-                  <select id="bn_freq">
-                    <option value="1m" selected>1m</option>
-                    <option value="3m">3m</option>
-                    <option value="5m">5m</option>
-                    <option value="15m">15m</option>
-                    <option value="30m">30m</option>
-                    <option value="1h">1h</option>
-                    <option value="2h">2h</option>
-                    <option value="4h">4h</option>
-                    <option value="6h">6h</option>
-                    <option value="8h">8h</option>
-                    <option value="12h">12h</option>
-                    <option value="1d">1d</option>
-                  </select>
-                </div>
-                <div class="field"><label>From</label><input id="bn_from" type="date"></div>
-                <div class="field"><label>To</label><input id="bn_to" type="date"></div>
-                <div class="field fg-full" style="display:flex;align-items:center;gap:8px">
-                  <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
-                    <input type="checkbox" id="bn_update_existing">
-                    Update existing downloaded files (incremental)
-                  </label>
-                </div>
-                <div class="fg-full" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-                  <button class="btn primary" id="bnFetchBtn" onclick="fetchBinance()">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Fetch klines
-                  </button>
-                  <span id="bnProgress" style="font-size:12px;color:var(--text-muted)"></span>
-                </div>
+                </details>
               </div>
             </div>
           </div>
@@ -3808,14 +3624,16 @@ function startPolling(id) {
   }, 3000);
 }
 
-// Upload
+// Upload (drag-drop CSV) — removed in FirstRate-only mode. Guard for any remnants.
 const dropZone = $('dropZone');
 const fileInput = $('fileInput');
-dropZone.addEventListener('click', () => fileInput.click());
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]); });
-fileInput.addEventListener('change', () => { if (fileInput.files.length) uploadFile(fileInput.files[0]); });
+if (dropZone && fileInput) {
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]); });
+  fileInput.addEventListener('change', () => { if (fileInput.files.length) uploadFile(fileInput.files[0]); });
+}
 
 async function uploadFile(file) {
   const prog = $('uploadProgress');
@@ -3856,13 +3674,16 @@ async function uploadFile(file) {
   } catch (e) { label.textContent = 'Upload failed'; toast(e.message, 'err'); }
 }
 
-// Dukascopy
+// Dukascopy (panel removed in FirstRate-only mode; guard to avoid null crashes).
 function setDefaultDukascopyDates() {
+  const fromEl = $('dk_from');
+  const toEl = $('dk_to');
+  if (!fromEl || !toEl) return;
   const today = new Date();
   const from = new Date(today);
   from.setFullYear(from.getFullYear() - 1);
-  $('dk_from').value = from.toISOString().slice(0, 10);
-  $('dk_to').value = today.toISOString().slice(0, 10);
+  fromEl.value = from.toISOString().slice(0, 10);
+  toEl.value = today.toISOString().slice(0, 10);
 }
 setDefaultDukascopyDates();
 
@@ -4247,8 +4068,10 @@ window._frCatalogRows = [];
 function updateFrFullPeriodUi() {
   const wrap = $('fr_ticker_range_wrap');
   const p = $('fr_period');
+  const t = $('fr_type');
   if (!wrap || !p) return;
-  wrap.style.display = p.value === 'full' ? '' : 'none';
+  const lettered = t && ['stock', 'etf', 'futures', 'options'].includes((t.value || '').toLowerCase());
+  wrap.style.display = (p.value === 'full' && lettered) ? '' : 'none';
 }
 
 function updateFirstrateInstrumentUi() {
@@ -4262,17 +4085,19 @@ function updateFirstrateInstrumentUi() {
   if (hint) {
     if (v === 'stock' || v === 'etf') {
       hint.innerHTML =
-        'Use <strong>Browse symbols</strong> to load the vendor catalog for this type, or type tickers manually. Rows match CSV filenames after download.';
+        'Use <strong>Browse symbols</strong> to load the vendor catalog, or type tickers manually (e.g. <code style="font-size:10px">AAPL, MSFT</code>). ' +
+        'For <code style="font-size:10px">period=full</code> the server downloads one bundle per first letter automatically — no manual A–Z picking needed.';
     } else if (v === 'futures') {
       hint.innerHTML =
-        'FirstRate does <strong>not</strong> expose a ticker-list API for futures (see their <a href="https://firstratedata.com/about/api-docs" target="_blank" rel="noopener">docs</a>). ' +
-        'Leave the box empty to import <strong>everything</strong> in the ZIP, or type roots (ES, NQ, …) to filter by filename.';
+        'Type roots like <code style="font-size:10px">ES, NQ, CL</code>. For <code style="font-size:10px">period=full</code> the server auto-fetches each needed letter bundle from the tickers listed here. ' +
+        'Empty list + full period sweeps A–Z (slow).';
     } else if (v === 'fx') {
       hint.innerHTML =
-        'Leave empty for all FX files in the ZIP, or list symbols as they appear in filenames. Use Quick add below.';
+        'Leave empty for all FX pairs in the ZIP, or list symbols as they appear in filenames. FX is a single bundle — no letter split.';
     } else {
       hint.innerHTML =
-        'Leave empty for every file in this bundle, or type symbols to filter by filename stem after download.';
+        'Leave empty for every file in this bundle, or type symbols to filter by filename stem after download. ' +
+        'For <code style="font-size:10px">period=full</code> on letter-split types, the server auto-downloads one bundle per unique first letter.';
     }
   }
 
