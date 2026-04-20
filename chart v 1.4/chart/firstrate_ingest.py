@@ -526,7 +526,15 @@ def download_firstrate_bundle(
     )
     n = download_url_to_file(url, dest_zip, timeout_sec=timeout_sec, progress_callback=progress_callback)
     if n < 64:
-        raise ValueError("Download too small — check userid, subscription, or API response (not a valid zip).")
+        sniff = dest_zip.read_bytes()[:400] if dest_zip.exists() else b""
+        txt = sniff.decode("utf-8", errors="replace").replace("\n", " ").strip()
+        hint = (" Server said: " + txt[:280]) if txt else " Empty response."
+        raise ValueError(
+            "Download too small (< 64 bytes) — not a ZIP from FirstRate. "
+            "Check FIrstrate_USERID, bundle subscription, and URL parameters "
+            "(e.g. stock/etf often need `adjustment`; `period=full` often needs `ticker_range=A`–`Z`)."
+            + hint
+        )
     if not zipfile.is_zipfile(dest_zip):
         head = dest_zip.read_bytes()[:200]
         text_head = head.decode("utf-8", errors="replace")
