@@ -1613,7 +1613,7 @@ select { cursor: pointer; }
                 </div>
                 <div class="field fg-full">
                   <label for="fr_type">Instrument type</label>
-                  <select id="fr_type" class="input" onchange="frInstrumentTypeChanged()">
+                  <select id="fr_type" class="input" onchange="updateFirstrateInstrumentUi()">
                     <option value="fx" selected>fx</option>
                     <option value="stock">stock</option>
                     <option value="etf">etf</option>
@@ -1635,15 +1635,36 @@ select { cursor: pointer; }
                 <div class="field fg-full">
                   <label for="fr_pairs">Tickers / pairs (optional)</label>
                   <textarea id="fr_pairs" rows="2" class="input" style="resize:vertical;font-family:ui-monospace,monospace;font-size:12px" placeholder="EURUSD AAPL ES — comma, space, or newline. Empty = every CSV in the ZIP."></textarea>
-                  <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:6px">
-                    Matched against each file&rsquo;s stem after download (FX pairs, equities, etc.).
-                  </span>
+                  <p id="fr_ticker_hint" style="font-size:11px;color:var(--text-muted);margin:8px 0 0;line-height:1.5"></p>
                 </div>
                 <div class="field fg-full" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                  <button type="button" class="btn sm primary" id="fr_load_tickers_btn" style="display:none" onclick="loadFirstrateTickerCatalog()">Browse symbols (FirstRate API)</button>
+                  <span id="fr_load_tickers_note" style="font-size:11px;color:var(--text-muted)"></span>
+                </div>
+                <div id="fr_ticker_catalog_wrap" class="field fg-full" style="display:none;margin-top:4px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--panel)">
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+                    <input type="search" id="fr_catalog_filter" class="input" placeholder="Filter by symbol or name…" style="flex:1;min-width:180px" oninput="frCatalogFilterInput()">
+                    <button type="button" class="btn sm" onclick="frApplyTickerCatalogSelection()">Add selected to box</button>
+                    <button type="button" class="btn sm" onclick="frCloseTickerCatalog()">Close list</button>
+                  </div>
+                  <select id="fr_catalog_select" multiple size="14" class="input" style="width:100%;font-family:ui-monospace,monospace;font-size:11px"></select>
+                  <div id="fr_catalog_status" style="font-size:11px;color:var(--text-muted);margin-top:8px"></div>
+                </div>
+                <div id="fr_quickadd_fx" class="field fg-full" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                   <span style="font-size:11px;color:var(--text-muted)">Quick add (FX):</span>
                   <button type="button" class="btn sm" onclick="frPairsAdd('EURUSD GBPUSD USDJPY AUDUSD USDCAD')">majors</button>
                   <button type="button" class="btn sm" onclick="frPairsAdd('EURJPY GBPJPY EURGBP')">crosses</button>
                   <button type="button" class="btn sm" onclick="document.getElementById('fr_pairs').value=''">clear</button>
+                </div>
+                <div id="fr_quickadd_fut" class="field fg-full" style="display:none">
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <span style="font-size:11px;color:var(--text-muted)">Quick add (common roots):</span>
+                    <button type="button" class="btn sm" onclick="frPairsAdd('ES NQ RTY YM')">equity index</button>
+                    <button type="button" class="btn sm" onclick="frPairsAdd('CL NG RB HO')">energy</button>
+                    <button type="button" class="btn sm" onclick="frPairsAdd('GC SI HG PL')">metals</button>
+                    <button type="button" class="btn sm" onclick="frPairsAdd('ZN ZB ZF ZT')">rates</button>
+                    <button type="button" class="btn sm" onclick="document.getElementById('fr_pairs').value=''">clear</button>
+                  </div>
                 </div>
                 <div class="field fg-full" style="margin-top:4px;padding-top:14px;border-top:1px dashed var(--border)">
                   <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:10px">2 · Run once</div>
@@ -2731,6 +2752,7 @@ let insightsOverviewCache = null;
       if (ad) ad.style.display = 'flex';
       return;
     }
+    updateFirstrateInstrumentUi();
     currentUser = data.user;
     const shell = $('appShell');
     if (shell) shell.style.display = 'flex';
@@ -4193,12 +4215,169 @@ async function waitForFirstrateJob(jobId) {
   label.textContent = 'Stopped polling (still running on server — refresh datasets later)';
 }
 
-function frInstrumentTypeChanged() {
+window._frCatalogRows = [];
+
+function updateFirstrateInstrumentUi() {
   const w = $('fr_adjustment_wrap');
   const t = $('fr_type');
-  if (!w || !t) return;
-  const v = t.value || 'fx';
-  w.style.display = (v === 'stock' || v === 'etf') ? '' : 'none';
+  if (!t) return;
+  const v = (t.value || 'fx').toLowerCase();
+  if (w) w.style.display = (v === 'stock' || v === 'etf') ? '' : 'none';
+
+  const hint = $('fr_ticker_hint');
+  if (hint) {
+    if (v === 'stock' || v === 'etf') {
+      hint.innerHTML =
+        'Use <strong>Browse symbols</strong> to load the vendor catalog for this type, or type tickers manually. Rows match CSV filenames after download.';
+    } else if (v === 'futures') {
+      hint.innerHTML =
+        'FirstRate does <strong>not</strong> expose a ticker-list API for futures (see their <a href="https://firstratedata.com/about/api-docs" target="_blank" rel="noopener">docs</a>). ' +
+        'Leave the box empty to import <strong>everything</strong> in the ZIP, or type roots (ES, NQ, …) to filter by filename.';
+    } else if (v === 'fx') {
+      hint.innerHTML =
+        'Leave empty for all FX files in the ZIP, or list symbols as they appear in filenames. Use Quick add below.';
+    } else {
+      hint.innerHTML =
+        'Leave empty for every file in this bundle, or type symbols to filter by filename stem after download.';
+    }
+  }
+
+  const catalogOk = v === 'stock' || v === 'etf';
+  const btn = $('fr_load_tickers_btn');
+  const note = $('fr_load_tickers_note');
+  if (btn) btn.style.display = catalogOk ? '' : 'none';
+  if (note) {
+    note.textContent = catalogOk
+      ? ''
+      : 'Browse list is only available for stock / ETF (FirstRate ticker_listing API).';
+  }
+
+  const fxq = $('fr_quickadd_fx');
+  const futq = $('fr_quickadd_fut');
+  if (fxq) fxq.style.display = v === 'fx' ? 'flex' : 'none';
+  if (futq) futq.style.display = v === 'futures' ? 'block' : 'none';
+
+  const cat = $('fr_ticker_catalog_wrap');
+  if (cat && !catalogOk) {
+    window._frCatalogRows = [];
+    frCloseTickerCatalog(true);
+  }
+}
+
+function frInstrumentTypeChanged() {
+  updateFirstrateInstrumentUi();
+}
+
+function frCloseTickerCatalog(silent) {
+  const wrap = $('fr_ticker_catalog_wrap');
+  const sel = $('fr_catalog_select');
+  const st = $('fr_catalog_status');
+  const flt = $('fr_catalog_filter');
+  if (wrap) wrap.style.display = 'none';
+  if (sel) sel.innerHTML = '';
+  if (st) st.textContent = '';
+  if (flt) flt.value = '';
+  if (!silent) window._frCatalogRows = [];
+}
+
+function frCatalogFilterInput() {
+  frRenderCatalogOptions();
+}
+
+function frRenderCatalogOptions() {
+  const sel = $('fr_catalog_select');
+  const st = $('fr_catalog_status');
+  const flt = $('fr_catalog_filter');
+  if (!sel || !window._frCatalogRows || !window._frCatalogRows.length) return;
+  const q = (flt && flt.value ? String(flt.value) : '').trim().toUpperCase();
+  const rows = window._frCatalogRows;
+  const matches = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const tick = (r.ticker || '').toUpperCase();
+    const nm = (r.name || '').toUpperCase();
+    if (!q || tick.indexOf(q) >= 0 || nm.indexOf(q) >= 0) matches.push(r);
+  }
+  const MAX_SHOWN = 4000;
+  const slice = matches.slice(0, MAX_SHOWN);
+  sel.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (let j = 0; j < slice.length; j++) {
+    const r = slice[j];
+    const opt = document.createElement('option');
+    opt.value = r.ticker || '';
+    let lab = r.ticker || '';
+    if (r.name) lab += ' — ' + String(r.name).slice(0, 96);
+    opt.textContent = lab;
+    frag.appendChild(opt);
+  }
+  sel.appendChild(frag);
+  if (st) {
+    st.textContent =
+      'Showing ' +
+      slice.length +
+      ' of ' +
+      matches.length +
+      ' matches (' +
+      rows.length +
+      ' loaded)' +
+      (matches.length > MAX_SHOWN ? ' — narrow filter to see more.' : '');
+  }
+}
+
+async function loadFirstrateTickerCatalog() {
+  const inst = $('fr_type') ? $('fr_type').value : '';
+  const wrap = $('fr_ticker_catalog_wrap');
+  const st = $('fr_catalog_status');
+  const btn = $('fr_load_tickers_btn');
+  if (inst !== 'stock' && inst !== 'etf') {
+    toast('Browse symbols is only wired for stock and ETF (FirstRate ticker_listing API).', 'err');
+    return;
+  }
+  if (btn) btn.disabled = true;
+  if (st) st.textContent = 'Loading…';
+  if (wrap) wrap.style.display = '';
+  try {
+    const data = await api(
+      '/api/admin/datasets/firstrate-fx/ticker-listing?instrument_type=' + encodeURIComponent(inst)
+    );
+    window._frCatalogRows = data.rows || [];
+    if ($('fr_catalog_filter')) $('fr_catalog_filter').value = '';
+    frRenderCatalogOptions();
+    if (st && data.truncated) {
+      st.textContent =
+        (st.textContent ? st.textContent + ' — ' : '') +
+        'Server capped response at ' +
+        (data.returned || '') +
+        ' rows.';
+    }
+    toast('Loaded ' + (data.count || window._frCatalogRows.length) + ' symbols', 'ok');
+  } catch (e) {
+    window._frCatalogRows = [];
+    frCloseTickerCatalog(true);
+    toast(e.message || String(e), 'err');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function frApplyTickerCatalogSelection() {
+  const sel = $('fr_catalog_select');
+  const ta = $('fr_pairs');
+  if (!sel || !ta) return;
+  const picked = Array.from(sel.selectedOptions)
+    .map(function (o) {
+      return o.value;
+    })
+    .filter(Boolean);
+  if (!picked.length) {
+    toast('Select one or more symbols in the list', 'err');
+    return;
+  }
+  const cur = ta.value.replace(/\s+$/, '');
+  const add = picked.join(' ');
+  ta.value = cur ? cur + ' ' + add : add;
+  toast('Added ' + picked.length + ' symbol(s)', 'ok');
 }
 
 function parsePairsFromTextarea(elId) {
@@ -4301,7 +4480,7 @@ async function loadFirstrateSchedule() {
     if ($('fr_tf') && s.timeframe) $('fr_tf').value = s.timeframe;
     if ($('fr_type')) $('fr_type').value = (s.instrument_type || 'fx');
     if ($('fr_adjustment')) $('fr_adjustment').value = (s.adjustment || '');
-    frInstrumentTypeChanged();
+    updateFirstrateInstrumentUi();
     if ($('fr_sched_upsert')) $('fr_sched_upsert').checked = s.upsert_existing !== false;
     if ($('fr_pairs') && Array.isArray(s.pairs) && s.pairs.length) {
       $('fr_pairs').value = s.pairs.join(', ');

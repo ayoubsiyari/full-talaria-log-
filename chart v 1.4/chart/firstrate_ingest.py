@@ -11,11 +11,13 @@ FX format readme: https://firstratedata.com/_readme/fx.txt
 from __future__ import annotations
 
 import csv
+import io
 import os
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
@@ -26,6 +28,10 @@ _FX_TZ = ZoneInfo("America/New_York")
 _UTC_TZ = ZoneInfo("UTC")
 
 _FIrestratE_DEFAULT_BASE = "https://firstratedata.com/api/data_file"
+_FIrestratE_TICKER_LISTING = "https://firstratedata.com/api/ticker_listing"
+
+# Parsed row cap (admin JSON); full CSV can be larger.
+MAX_TICKER_LISTING_RETURN = 50_000
 
 VALID_PERIODS = frozenset({"full", "month", "week", "day"})
 VALID_TIMEFRAMES = frozenset({"1min", "5min", "30min", "1hour", "1day"})
@@ -36,6 +42,65 @@ VALID_STOCK_ADJUSTMENTS = frozenset({"adj_split", "adj_splitdiv", "UNADJUSTED"})
 
 def get_firstrate_userid() -> str:
     return (os.getenv("FIrstrate_USERID") or os.getenv("FIRSTRATE_USERID") or "").strip()
+
+
+def _parse_ticker_listing_csv(text: str) -> list[dict[str, str]]:
+    """
+    FirstRate ticker_listing body: CSV {ticker},{name},{startDate},{endDate}
+    Docs: https://firstratedata.com/about/api-docs (ticker listing; supported types vary by subscription)
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return []
+    head_snip = raw[:800].lower()
+    if "<html" in head_snip or "<!doctype" in head_snip:
+        raise ValueError(
+            "FirstRate returned HTML instead of CSV — check FIrstrate_USERID, subscription, or type parameter."
+        )
+    buf = io.StringIO(raw)
+    reader = csv.reader(buf)
+    rows_raw = list(reader)
+    if not rows_raw:
+        return []
+    start_i = 0
+    join0 = ",".join(rows_raw[0]).lower()
+    if "ticker" in join0 or join0.startswith("symbol"):
+        start_i = 1
+    out: list[dict[str, str]] = []
+    for row in rows_raw[start_i:]:
+        if not row:
+            continue
+        sym = (row[0] or "").strip()
+        if not sym or sym.lower() in ("ticker", "symbol"):
+            continue
+        name = (row[1] or "").strip() if len(row) > 1 else ""
+        sd = (row[2] or "").strip() if len(row) > 2 else ""
+        ed = (row[3] or "").strip() if len(row) > 3 else ""
+        out.append({"ticker": sym, "name": name, "start_date": sd, "end_date": ed})
+    return out
+
+
+def fetch_firstrate_ticker_listing_rows(
+    *,
+    userid: str,
+    instrument_type: str,
+    timeout_sec: float = 120,
+) -> list[dict[str, str]]:
+    """GET ticker_listing from FirstRate; returns parsed rows (may be large)."""
+    if not userid:
+        raise ValueError("userid is required")
+    t = (instrument_type or "").strip().lower()
+    if t not in VALID_INSTRUMENT_TYPES:
+        raise ValueError(f"type must be one of {sorted(VALID_INSTRUMENT_TYPES)}")
+    url = f"{_FIrestratE_TICKER_LISTING}?{urlencode({'type': t, 'userid': userid, 'html': 'false'})}"
+    req = Request(url, headers={"User-Agent": "TalariaFirstrateImporter/1.0"})
+    try:
+        with urlopen(req, timeout=timeout_sec) as resp:
+            body = resp.read().decode("utf-8-sig", errors="replace")
+    except HTTPError as e:
+        tail = e.read().decode("utf-8", errors="replace")[:2500]
+        raise ValueError(f"FirstRate HTTP {e.code}: {tail}") from e
+    return _parse_ticker_listing_csv(body)
 
 
 def build_firstrate_data_file_url(

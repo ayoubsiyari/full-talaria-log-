@@ -112,10 +112,12 @@ from analytics_engine import (
 )
 
 from firstrate_ingest import (
+    MAX_TICKER_LISTING_RETURN,
     VALID_INSTRUMENT_TYPES,
     VALID_STOCK_ADJUSTMENTS,
     download_firstrate_bundle,
     extract_zip,
+    fetch_firstrate_ticker_listing_rows,
     get_firstrate_userid,
     iter_csv_files,
     normalize_firstrate_csv_to_standard,
@@ -7242,6 +7244,36 @@ async def admin_firstrate_fx_schedule_put(payload: AdminFirstrateScheduleIn, req
         cur["adjustment"] = None
     _save_firstrate_schedule(cur)
     return {"success": True, "schedule": cur}
+
+
+@app.get("/api/admin/datasets/firstrate-fx/ticker-listing")
+async def admin_firstrate_fx_ticker_listing(request: Request, instrument_type: str = "stock"):
+    """
+    Proxy FirstRate `ticker_listing` (CSV) → JSON for the admin UI.
+    Official docs list stock + etf; other types may error at the vendor.
+    """
+    _require_admin(request)
+    uid = get_firstrate_userid()
+    if not uid:
+        raise HTTPException(status_code=503, detail="FIrstrate_USERID is not configured on this server.")
+    it = (instrument_type or "stock").strip().lower()
+    if it not in VALID_INSTRUMENT_TYPES:
+        raise HTTPException(status_code=400, detail=f"instrument_type must be one of {sorted(VALID_INSTRUMENT_TYPES)}")
+    try:
+        rows = fetch_firstrate_ticker_listing_rows(userid=uid, instrument_type=it)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    total = len(rows)
+    capped = rows[:MAX_TICKER_LISTING_RETURN]
+    return {
+        "success": True,
+        "instrument_type": it,
+        "count": total,
+        "returned": len(capped),
+        "truncated": total > len(capped),
+        "rows": capped,
+    }
+
 
 @app.get("/api/admin/datasets/firstrate-fx/{job_id}/status")
 async def admin_firstrate_fx_job_status(job_id: str, request: Request):
