@@ -1574,17 +1574,15 @@ select { cursor: pointer; }
                     <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option><option value="F">F</option><option value="G">G</option><option value="H">H</option><option value="I">I</option><option value="J">J</option><option value="K">K</option><option value="L">L</option><option value="M">M</option><option value="N">N</option><option value="O">O</option><option value="P">P</option><option value="Q">Q</option><option value="R">R</option><option value="S">S</option><option value="T">T</option><option value="U">U</option><option value="V">V</option><option value="W">W</option><option value="X">X</option><option value="Y">Y</option><option value="Z">Z</option>
                   </select>
                   <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:6px;line-height:1.45">
-                    For <code style="font-size:10px">period=full</code>, FirstRate splits stock / ETF / futures / options into one ZIP per letter. Leave on <strong>auto</strong> and list your tickers below — the server downloads every needed letter automatically (e.g. <code style="font-size:10px">AAPL, TSLA</code> → letters A + T). With no tickers listed, auto sweeps the full A–Z (slow). Pick a single letter only to restrict manually.
+                    For <code style="font-size:10px">period=full</code>, FirstRate splits stock / ETF / options into one ZIP per letter. Leave on <strong>auto</strong> and list your tickers below — the server downloads every needed letter automatically (e.g. <code style="font-size:10px">AAPL, TSLA</code> → letters A + T). With no tickers listed, auto sweeps the full A–Z (slow). Pick a single letter only to restrict manually. Futures use continuous-contract bundles instead of letter shards (select the adjustment below).
                   </span>
                 </div>
                 <div class="field fg-full" id="fr_adjustment_wrap" style="display:none">
-                  <label for="fr_adjustment">Adjustment (stock / etf)</label>
+                  <label for="fr_adjustment"><span id="fr_adjustment_label">Adjustment</span></label>
                   <select id="fr_adjustment" class="input">
-                    <option value="">(API default)</option>
-                    <option value="adj_split">adj_split</option>
-                    <option value="adj_splitdiv">adj_splitdiv</option>
-                    <option value="UNADJUSTED">UNADJUSTED</option>
+                    <!-- options injected by updateFirstrateInstrumentUi() based on instrument type -->
                   </select>
+                  <span id="fr_adjustment_hint" style="font-size:11px;color:var(--text-muted);display:block;margin-top:6px;line-height:1.45"></span>
                 </div>
                 <div class="field fg-full">
                   <label for="fr_pairs">Tickers / pairs (optional)</label>
@@ -4071,7 +4069,8 @@ function updateFrFullPeriodUi() {
   const p = $('fr_period');
   const t = $('fr_type');
   if (!wrap || !p) return;
-  const lettered = t && ['stock', 'etf', 'futures', 'options'].includes((t.value || '').toLowerCase());
+  // Futures are continuous-contract bundles (adjustment param), not letter shards.
+  const lettered = t && ['stock', 'etf', 'options'].includes((t.value || '').toLowerCase());
   wrap.style.display = (p.value === 'full' && lettered) ? '' : 'none';
   updateFrSubscriptionWarning();
 }
@@ -4082,11 +4081,6 @@ function updateFrFullPeriodUi() {
 //   blockedPeriods: Set<string> of period values this subscription rejects.
 // Update this table if the FirstRate subscription changes.
 const FR_SUBSCRIPTION_LIMITS = {
-  futures: { blocked: true, message:
-    'Your FirstRate subscription does <strong>not</strong> include the futures bundle — the vendor returns <em>“no datafile found”</em> for every futures request (day/week/month/full, any letter). ' +
-    'Pick <strong>fx, stock, etf, crypto,</strong> or <strong>index</strong>, or upgrade your FirstRate plan to add futures.' },
-  options: { blocked: true, message:
-    'Options bundles are typically not on the default FirstRate plan. If downloads fail with “no datafile found”, the subscription needs to be upgraded.' },
   crypto: { blockedPeriods: new Set(['full']), message:
     'Crypto <code style="font-size:10px">period=full</code> is not available on this subscription — it returns “no datafile found”. Use <strong>day / week / month</strong> instead (all three work).' },
 };
@@ -4116,12 +4110,59 @@ function updateFrSubscriptionWarning() {
   box.style.display = '';
 }
 
+// Populate <select id="fr_adjustment"> with the values FirstRate accepts for the given type.
+// Returns true if the adjustment control should be visible, false if hidden.
+function _frRenderAdjustmentOptions(type) {
+  const sel = $('fr_adjustment');
+  const label = $('fr_adjustment_label');
+  const hint = $('fr_adjustment_hint');
+  if (!sel) return false;
+  const prev = sel.value;
+  let opts = null;
+  let labelText = 'Adjustment';
+  let hintHtml = '';
+  if (type === 'stock' || type === 'etf') {
+    opts = [
+      { v: '',            t: '(API default)' },
+      { v: 'adj_split',    t: 'adj_split' },
+      { v: 'adj_splitdiv', t: 'adj_splitdiv' },
+      { v: 'UNADJUSTED',   t: 'UNADJUSTED' },
+    ];
+    labelText = 'Adjustment (stock / etf)';
+    hintHtml = 'Split / split+dividend handling for equities. Leave blank for the vendor default.';
+  } else if (type === 'futures') {
+    opts = [
+      { v: 'contin_UNadj',         t: 'contin_UNadj — raw unadjusted continuous series' },
+      { v: 'contin_adj_ratio',     t: 'contin_adj_ratio — ratio-adjusted (no roll-date jumps)' },
+      { v: 'contin_adj_absolute',  t: 'contin_adj_absolute — absolute-adjusted' },
+    ];
+    labelText = 'Continuous-contract adjustment (required for futures)';
+    hintHtml =
+      'FirstRate serves futures as stitched continuous contracts (front-month rolled forward). ' +
+      'See the <a href="https://firstratedata.com/about/api-docs" target="_blank" rel="noopener" style="color:var(--accent)">API docs</a> — ' +
+      'this parameter is required. <strong>contin_UNadj</strong> is the usual starting point.';
+  } else {
+    if (sel) sel.innerHTML = '';
+    if (label) label.textContent = labelText;
+    if (hint) hint.innerHTML = '';
+    return false;
+  }
+  sel.innerHTML = opts.map(o => `<option value="${o.v}">${o.t}</option>`).join('');
+  // Preserve prior value if still valid, else default to first option (futures: contin_UNadj).
+  if (opts.some(o => o.v === prev)) sel.value = prev;
+  else sel.value = opts[0].v;
+  if (label) label.textContent = labelText;
+  if (hint) hint.innerHTML = hintHtml;
+  return true;
+}
+
 function updateFirstrateInstrumentUi() {
   const w = $('fr_adjustment_wrap');
   const t = $('fr_type');
   if (!t) return;
   const v = (t.value || 'fx').toLowerCase();
-  if (w) w.style.display = (v === 'stock' || v === 'etf') ? '' : 'none';
+  const showAdj = _frRenderAdjustmentOptions(v);
+  if (w) w.style.display = showAdj ? '' : 'none';
 
   const hint = $('fr_ticker_hint');
   if (hint) {
@@ -4131,8 +4172,9 @@ function updateFirstrateInstrumentUi() {
         'For <code style="font-size:10px">period=full</code> the server downloads one bundle per first letter automatically — no manual A–Z picking needed.';
     } else if (v === 'futures') {
       hint.innerHTML =
-        'Type roots like <code style="font-size:10px">ES, NQ, CL</code>. For <code style="font-size:10px">period=full</code> the server auto-fetches each needed letter bundle from the tickers listed here. ' +
-        'Empty list + full period sweeps A–Z (slow).';
+        'Futures bundles come pre-stitched by FirstRate (one continuous series per root). ' +
+        'Type roots like <code style="font-size:10px">ES, NQ, CL</code> to filter by filename, or leave empty for every futures symbol in the adjustment series. ' +
+        'The ticker-range letter does <em>not</em> apply here — pick the continuous-adjustment value below instead.';
     } else if (v === 'fx') {
       hint.innerHTML =
         'Leave empty for all FX pairs in the ZIP, or list symbols as they appear in filenames. FX is a single bundle — no letter split.';

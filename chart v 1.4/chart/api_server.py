@@ -113,6 +113,7 @@ from analytics_engine import (
 
 from firstrate_ingest import (
     MAX_TICKER_LISTING_RETURN,
+    VALID_FUTURES_ADJUSTMENTS,
     VALID_INSTRUMENT_TYPES,
     VALID_STOCK_ADJUSTMENTS,
     download_firstrate_bundle,
@@ -4342,7 +4343,10 @@ def build_binary_for_file(file_id: int, file_path, original_filename: str, run_a
     return _run()
 
 
-_INSTRUMENT_TYPES_NEEDING_LETTER_FOR_FULL = {"stock", "etf", "futures", "options"}
+# Instrument types whose `period=full` archives are sharded by first letter (one ZIP per A–Z bucket).
+# Futures are NOT in this set — FirstRate ships futures as continuous-contract bundles selected via
+# the `adjustment` parameter (contin_UNadj / contin_adj_ratio / contin_adj_absolute), not by letter.
+_INSTRUMENT_TYPES_NEEDING_LETTER_FOR_FULL = {"stock", "etf", "options"}
 
 
 def _firstrate_plan_ticker_ranges(
@@ -4397,13 +4401,30 @@ def _run_firstrate_import_job(job_id: str) -> None:
         if instrument_type not in VALID_INSTRUMENT_TYPES:
             raise ValueError(f"Invalid instrument_type {instrument_type!r}")
         adj_raw = state.get("adjustment")
+        adj_in = str(adj_raw).strip() if adj_raw is not None and str(adj_raw).strip() else None
         adjustment: str | None = None
-        if adj_raw is not None and str(adj_raw).strip():
-            adjustment = str(adj_raw).strip()
-            if instrument_type not in {"stock", "etf"}:
-                raise ValueError("adjustment is only valid for stock and etf")
-            if adjustment not in VALID_STOCK_ADJUSTMENTS:
-                raise ValueError(f"adjustment must be one of {sorted(VALID_STOCK_ADJUSTMENTS)}")
+        if instrument_type in {"stock", "etf"}:
+            if adj_in is not None:
+                if adj_in not in VALID_STOCK_ADJUSTMENTS:
+                    raise ValueError(f"adjustment for stock/etf must be one of {sorted(VALID_STOCK_ADJUSTMENTS)}")
+                adjustment = adj_in
+        elif instrument_type == "futures":
+            # FirstRate rejects futures data_file calls without a continuous-contract adjustment.
+            # Default to contin_UNadj (raw unadjusted continuous series) when user leaves it blank.
+            if adj_in is None:
+                adjustment = "contin_UNadj"
+            else:
+                if adj_in not in VALID_FUTURES_ADJUSTMENTS:
+                    raise ValueError(
+                        f"adjustment for futures must be one of {sorted(VALID_FUTURES_ADJUSTMENTS)}"
+                    )
+                adjustment = adj_in
+        else:
+            if adj_in is not None:
+                raise ValueError(
+                    f"adjustment is only valid for stock/etf (split/div handling) or futures "
+                    f"(continuous-contract stitching) — not for {instrument_type}"
+                )
 
         state["status"] = "running"
         state["phase"] = "init"

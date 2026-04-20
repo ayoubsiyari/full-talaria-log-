@@ -39,6 +39,11 @@ VALID_TIMEFRAMES = frozenset({"1min", "5min", "30min", "1hour", "1day"})
 VALID_INSTRUMENT_TYPES = frozenset({"stock", "etf", "futures", "crypto", "index", "fx", "options"})
 # Stock/ETF historical data_file requests support `adjustment` (see FirstRate API docs).
 VALID_STOCK_ADJUSTMENTS = frozenset({"adj_split", "adj_splitdiv", "UNADJUSTED"})
+# Futures historical data_file requests REQUIRE `adjustment` — the three continuous-contract series
+# FirstRate publishes (see https://firstratedata.com/about/api-docs and the Futures Adjustment Info Page).
+VALID_FUTURES_ADJUSTMENTS = frozenset({"contin_UNadj", "contin_adj_ratio", "contin_adj_absolute"})
+# Default adjustment applied when caller omits it for futures (raw unadjusted continuous series).
+DEFAULT_FUTURES_ADJUSTMENT = "contin_UNadj"
 
 
 def get_firstrate_userid() -> str:
@@ -131,15 +136,28 @@ def build_firstrate_data_file_url(
         "timeframe": tf,
         "userid": userid,
     }
-    if ticker_range:
+    # Futures use continuous-contract bundles, not alphabetical letter splits. Ignore any stray
+    # letter the caller may have supplied to avoid sending a param FirstRate doesn't accept here.
+    if ticker_range and t != "futures":
         tr = ticker_range.strip().upper()
         if len(tr) != 1 or tr not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
             raise ValueError("ticker_range must be a single letter A-Z")
         q["ticker_range"] = tr
-    if adjustment and t in {"stock", "etf"}:
-        adj = str(adjustment).strip()
-        if adj not in VALID_STOCK_ADJUSTMENTS:
-            raise ValueError(f"adjustment must be one of {sorted(VALID_STOCK_ADJUSTMENTS)}")
+    if t in {"stock", "etf"}:
+        if adjustment:
+            adj = str(adjustment).strip()
+            if adj not in VALID_STOCK_ADJUSTMENTS:
+                raise ValueError(f"adjustment must be one of {sorted(VALID_STOCK_ADJUSTMENTS)}")
+            q["adjustment"] = adj
+    elif t == "futures":
+        # FirstRate REQUIRES a continuous-adjustment value for futures data_file calls. Without it
+        # the vendor returns HTML "no datafile found" regardless of period/timeframe.
+        adj = (str(adjustment).strip() if adjustment else DEFAULT_FUTURES_ADJUSTMENT)
+        if adj not in VALID_FUTURES_ADJUSTMENTS:
+            raise ValueError(
+                f"adjustment for futures must be one of {sorted(VALID_FUTURES_ADJUSTMENTS)} "
+                f"(see FirstRate API docs — continuous contract stitching)"
+            )
         q["adjustment"] = adj
     return f"{base}?{urlencode(q)}"
 
