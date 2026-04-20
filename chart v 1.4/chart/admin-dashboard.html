@@ -1594,7 +1594,7 @@ select { cursor: pointer; }
               <div class="form-grid">
                 <div class="field">
                   <label for="fr_period">Period</label>
-                  <select id="fr_period" class="input">
+                  <select id="fr_period" class="input" onchange="updateFrFullPeriodUi()">
                     <option value="week" selected>week</option>
                     <option value="day">day</option>
                     <option value="month">month</option>
@@ -1622,6 +1622,16 @@ select { cursor: pointer; }
                     <option value="index">index</option>
                     <option value="options">options</option>
                   </select>
+                </div>
+                <div id="fr_ticker_range_wrap" class="field fg-full" style="display:none">
+                  <label for="fr_ticker_range">Ticker-range letter (full archive)</label>
+                  <select id="fr_ticker_range" class="input">
+                    <option value="">— none —</option>
+                    <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option><option value="F">F</option><option value="G">G</option><option value="H">H</option><option value="I">I</option><option value="J">J</option><option value="K">K</option><option value="L">L</option><option value="M">M</option><option value="N">N</option><option value="O">O</option><option value="P">P</option><option value="Q">Q</option><option value="R">R</option><option value="S">S</option><option value="T">T</option><option value="U">U</option><option value="V">V</option><option value="W">W</option><option value="X">X</option><option value="Y">Y</option><option value="Z">Z</option>
+                  </select>
+                  <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:6px;line-height:1.45">
+                    FirstRate maps <code style="font-size:10px">period=full</code> stock/ETF downloads to one letter (<code style="font-size:10px">ticker_range</code>). Missing letter → vendor error <em>no datafile found</em>. Import AAPL → use <strong>C</strong>; run other letters separately as needed.
+                  </span>
                 </div>
                 <div class="field fg-full" id="fr_adjustment_wrap" style="display:none">
                   <label for="fr_adjustment">Adjustment (stock / etf)</label>
@@ -4179,7 +4189,19 @@ async function syncFirstrateFx() {
       pairs: parsePairsFromTextarea('fr_pairs'),
     };
     if (adj) body.adjustment = adj;
+    const trEl = $('fr_ticker_range');
+    if (trEl && trEl.value) body.ticker_range = trEl.value;
     if (deleteFirst) body.purge_confirmation = purge_confirmation;
+    if (
+      period === 'full' &&
+      (inst === 'stock' || inst === 'etf') &&
+      !(trEl && trEl.value)
+    ) {
+      toast(
+        'FirstRate usually needs a ticker-range letter (A–Z) for full stock/ETF archives — without it you get “no datafile found”. Pick the first letter of symbols you want (e.g. C for CRWD), or use day/week/month.',
+        ''
+      );
+    }
     const data = await api('/api/admin/datasets/firstrate-fx/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -4221,6 +4243,13 @@ async function waitForFirstrateJob(jobId) {
 }
 
 window._frCatalogRows = [];
+
+function updateFrFullPeriodUi() {
+  const wrap = $('fr_ticker_range_wrap');
+  const p = $('fr_period');
+  if (!wrap || !p) return;
+  wrap.style.display = p.value === 'full' ? '' : 'none';
+}
 
 function updateFirstrateInstrumentUi() {
   const w = $('fr_adjustment_wrap');
@@ -4267,6 +4296,7 @@ function updateFirstrateInstrumentUi() {
     window._frCatalogRows = [];
     frCloseTickerCatalog(true);
   }
+  updateFrFullPeriodUi();
 }
 
 function frInstrumentTypeChanged() {
@@ -4541,6 +4571,12 @@ async function loadFirstrateSchedule() {
     } else if ($('fr_pairs') && (!s.pairs || !s.pairs.length)) {
       $('fr_pairs').value = '';
     }
+    if ($('fr_ticker_range')) {
+      var tr = s.ticker_range;
+      $('fr_ticker_range').value =
+        tr && String(tr).trim() ? String(tr).trim().toUpperCase().slice(0, 1) : '';
+    }
+    updateFrFullPeriodUi();
     const uidOk = data.has_firstrate_userid !== false;
     const bits = [];
     bits.push(s.enabled ? 'Scheduler ON' : 'Scheduler OFF');
@@ -4571,6 +4607,9 @@ async function saveFirstrateSchedule() {
       pairs: parsePairsFromTextarea('fr_pairs'),
       adjustment: (st === 'stock' || st === 'etf')
         ? ((selAdj && selAdj.value) ? selAdj.value : '')
+        : '',
+      ticker_range: ($('fr_ticker_range') && $('fr_ticker_range').value)
+        ? $('fr_ticker_range').value
         : '',
     };
     await api('/api/admin/datasets/firstrate-fx/schedule', {
