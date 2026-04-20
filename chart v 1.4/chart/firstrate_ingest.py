@@ -204,6 +204,27 @@ def _looks_like_yyyymmdd(cell: str) -> bool:
     return len(s) == 8 and s.isdigit()
 
 
+def _looks_like_date_cell(cell: str) -> bool:
+    """
+    True if the cell is clearly a date (or datetime) that FirstRate might emit in column 0 of a
+    headerless file. Used to distinguish headerless stocklike files (`2023-01-03 09:30:00,...`) from
+    header rows (`DateTime,Open,High,...`). Accepts both compact FX (`20230103`) and dashed/slashed
+    forms with optional time component.
+    """
+    s = str(cell or "").strip()
+    if not s:
+        return False
+    if _looks_like_yyyymmdd(s):
+        return True
+    head = s.split(" ", 1)[0]
+    # YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD (10 chars) or MM/DD/YYYY, DD.MM.YYYY.
+    if len(head) == 10 and head[4] in "-/." and head[7] in "-/.":
+        return head[:4].isdigit() and head[5:7].isdigit() and head[8:10].isdigit()
+    if len(head) == 10 and head[2] in "/." and head[5] in "/.":
+        return head[:2].isdigit() and head[3:5].isdigit() and head[6:10].isdigit()
+    return False
+
+
 def _parse_fixed_cells(row: list[str]) -> tuple[str, str, str, str, str, str, str] | None:
     """First data row when there is no header; FirstRate fx.txt column order."""
     if len(row) < 7:
@@ -332,70 +353,142 @@ def _find_exact_column(fieldnames: list[str], exact: str) -> str | None:
     return None
 
 
+def _firstrate_stocklike_row_to_ohlcv(row: list[str], tz: ZoneInfo) -> tuple[int, float, float, float, float, float] | None:
+    """
+    Parse one positional FirstRate stocklike/futures/crypto row → (t_ms, O, H, L, C, V) or None.
+
+    Accepted shapes (per https://firstratedata.com/about/api-docs):
+      6 cols: DateTime, O, H, L, C, V                 — intraday stock/etf/crypto/futures
+      7 cols: DateTime, O, H, L, C, V, OpenInterest   — futures 1day (OI ignored — not modeled in the
+                                                        canonical OHLCV schema)
+      7 cols: Date, Time, O, H, L, C, V               — occasional legacy layout (split date/time)
+    DateTime may be `YYYY-MM-DD HH:MM:SS` or date-only `YYYY-MM-DD` (1day bars).
+    """
+    if not row:
+        return None
+    cells = [str(x or "").strip() for x in row]
+    n = len(cells)
+    if n < 6:
+        return None
+    try:
+        # Heuristic: if cell[1] contains a colon, it's a split "Date, Time, O, H, L, C, V" layout.
+        if n >= 7 and ":" in cells[1] and any(ch.isdigit() for ch in cells[1]):
+            t_ms = _epoch_ms_from_firstrate_date_time_tz(cells[0], cells[1], tz)
+            o, h, l, c, v = cells[2], cells[3], cells[4], cells[5], cells[6]
+        else:
+            # Combined DateTime in cell[0] (optionally with an extra OI column we ignore).
+            t_ms = _epoch_ms_from_combined_datetime(cells[0], tz)
+            o, h, l, c, v = cells[1], cells[2], cells[3], cells[4], cells[5]
+        if t_ms is None:
+            return None
+        return (t_ms, float(o), float(h), float(l), float(c), float(v or 0))
+    except (ValueError, TypeError, IndexError):
+        return None
+
+
 def normalize_firstrate_stocklike_csv_to_standard(src: Path, dest: Path, *, tz: ZoneInfo) -> int:
     """
-    FirstRate stock.txt format: DateTime (yyyy-MM-dd HH:mm:ss), O, H, L, C, V — US Eastern.
-    Also handles separate Date + Time columns (same as FX layout) using `tz`.
+    Normalize FirstRate stock / etf / crypto / index / futures / options CSV to canonical OHLCV.
+
+    FirstRate ships these bundles as HEADERLESS `.txt` files in CSV format. Each line is either
+    `YYYY-MM-DD HH:MM:SS,O,H,L,C,V` (intraday) or `YYYY-MM-DD,O,H,L,C,V[,OpenInterest]` (1day, with
+    OI for futures). A small number of files carry a human-friendly header row — we detect that
+    by sniffing whether the first cell parses as a date and fall back to DictReader when it does not.
     """
     rows_out = 0
     tmp = dest.with_suffix(dest.suffix + ".tmp")
+
     with open(src, "r", encoding="utf-8-sig", errors="replace", newline="") as inf:
-        reader = csv.DictReader(inf)
-        fieldnames = list(reader.fieldnames or [])
-        rows = list(reader)
-    if not rows or not fieldnames:
-        return 0
+        reader = csv.reader(inf)
+        first = next(reader, None)
+        if not first:
+            return 0
 
-    dt_col = None
-    for fn in fieldnames:
-        low = (fn or "").strip().lower()
-        if "datetime" in low or low == "date time":
-            dt_col = fn
-            break
-    if dt_col:
-        date_col = None
-        time_col = None
-    else:
-        # Avoid matching "time"/"date" inside "DateTime" via substring search.
-        date_col = _find_exact_column(fieldnames, "date")
-        time_col = _find_exact_column(fieldnames, "time") if date_col else None
+        # If the very first cell looks like YYYY[-/.]MM[-/.]DD (possibly followed by time), this file
+        # has no header line — parse positionally. Otherwise treat the first row as column names.
+        use_positional = _looks_like_date_cell(first[0]) if first and first[0] else False
 
-    open_col = _find_col_by_substrings(fieldnames, "open")
-    high_col = _find_col_by_substrings(fieldnames, "high")
-    low_col = _find_col_by_substrings(fieldnames, "low")
-    close_col = _find_col_by_substrings(fieldnames, "close", "adj close", "adjclose")
-    vol_col = _find_col_by_substrings(fieldnames, "volume", "vol")
+        with open(tmp, "w", encoding="utf-8", newline="") as outf:
+            w = csv.writer(outf)
+            w.writerow(["timestamp", "open", "high", "low", "close", "volume"])
 
-    if not all([open_col, high_col, low_col, close_col]):
-        raise ValueError(f"Missing OHLC columns in {src}")
-
-    with open(tmp, "w", encoding="utf-8", newline="") as outf:
-        w = csv.writer(outf)
-        w.writerow(["timestamp", "open", "high", "low", "close", "volume"])
-
-        for row in rows:
-            t_ms = None
-            if dt_col:
-                t_ms = _epoch_ms_from_combined_datetime(row.get(dt_col) or "", tz)
-            elif date_col:
-                dc = row.get(date_col) or ""
-                tc = row.get(time_col) or "" if time_col else ""
-                if tc:
-                    t_ms = _epoch_ms_from_firstrate_date_time_tz(dc, tc, tz)
+            if use_positional:
+                # Row we already consumed IS real data — parse it, then stream the rest.
+                parsed = _firstrate_stocklike_row_to_ohlcv(first, tz)
+                if parsed is not None:
+                    w.writerow(parsed)
+                    rows_out += 1
+                for row in reader:
+                    if not row or all(str(x).strip() == "" for x in row):
+                        continue
+                    parsed = _firstrate_stocklike_row_to_ohlcv(row, tz)
+                    if parsed is not None:
+                        w.writerow(parsed)
+                        rows_out += 1
+            else:
+                # Header-driven path — mirror the original DictReader logic for legacy/headered files.
+                fieldnames = [str(x or "").strip() for x in first]
+                dt_col_i = None
+                for i, fn in enumerate(fieldnames):
+                    low = fn.lower()
+                    if "datetime" in low or low == "date time":
+                        dt_col_i = i
+                        break
+                if dt_col_i is None:
+                    date_col_i = next(
+                        (i for i, fn in enumerate(fieldnames) if fn.lower() == "date"), None
+                    )
+                    time_col_i = next(
+                        (i for i, fn in enumerate(fieldnames) if fn.lower() == "time"), None
+                    ) if date_col_i is not None else None
                 else:
-                    t_ms = _epoch_ms_from_combined_datetime(str(dc).strip(), tz)
-            if t_ms is None:
-                continue
-            try:
-                o = float(row.get(open_col) or 0)
-                h = float(row.get(high_col) or 0)
-                l = float(row.get(low_col) or 0)
-                c = float(row.get(close_col) or 0)
-                v = float(row.get(vol_col) or 0) if vol_col else 0.0
-            except (ValueError, TypeError):
-                continue
-            w.writerow([t_ms, o, h, l, c, v])
-            rows_out += 1
+                    date_col_i = None
+                    time_col_i = None
+
+                def _idx_sub(*subs: str) -> int | None:
+                    for i, fn in enumerate(fieldnames):
+                        low = fn.lower()
+                        for s in subs:
+                            if s in low:
+                                return i
+                    return None
+
+                open_i = _idx_sub("open")
+                high_i = _idx_sub("high")
+                low_i = _idx_sub("low")
+                close_i = _idx_sub("close", "adj close", "adjclose")
+                vol_i = _idx_sub("volume", "vol")
+                if None in (open_i, high_i, low_i, close_i):
+                    raise ValueError(f"Missing OHLC columns in {src}")
+
+                for row in reader:
+                    if not row or all(str(x).strip() == "" for x in row):
+                        continue
+                    if dt_col_i is not None:
+                        t_ms = _epoch_ms_from_combined_datetime(
+                            row[dt_col_i] if dt_col_i < len(row) else "", tz
+                        )
+                    elif date_col_i is not None:
+                        dc = row[date_col_i] if date_col_i < len(row) else ""
+                        tc = row[time_col_i] if (time_col_i is not None and time_col_i < len(row)) else ""
+                        if tc:
+                            t_ms = _epoch_ms_from_firstrate_date_time_tz(dc, tc, tz)
+                        else:
+                            t_ms = _epoch_ms_from_combined_datetime(str(dc).strip(), tz)
+                    else:
+                        continue
+                    if t_ms is None:
+                        continue
+                    try:
+                        o = float(row[open_i] or 0)
+                        h = float(row[high_i] or 0)
+                        l = float(row[low_i] or 0)
+                        c = float(row[close_i] or 0)
+                        v = float((row[vol_i] if vol_i is not None and vol_i < len(row) else "") or 0)
+                    except (ValueError, TypeError, IndexError):
+                        continue
+                    w.writerow([t_ms, o, h, l, c, v])
+                    rows_out += 1
 
     tmp.replace(dest)
     return rows_out
