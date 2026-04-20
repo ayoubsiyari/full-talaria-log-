@@ -1775,34 +1775,53 @@ def _normalize_ticker_filter_list(pairs: list[str] | None) -> list[str]:
     return uniq
 
 
-def _token_matches_firstrate_stem(tok: str, stem_compact: str) -> bool:
-    """Match filter token to a filename stem (no extension), alnum-only compacted."""
-    if not tok or not stem_compact:
+def _token_matches_firstrate_stem(tok: str, stem: str) -> bool:
+    """
+    Match a filter token against a FirstRate CSV filename stem.
+
+    FirstRate filenames carry several pieces separated by `_`, `-`, or `.`, e.g.:
+        EURUSD_full_1min.txt                     (FX)
+        AAPL_full_1min_adj_split.txt             (stock)
+        ES_full_1min_contin_UNadj.txt            (futures, continuous)
+        BTCUSD_full_1min.txt                     (crypto)
+    We split the stem on non-alphanumerics into segments and consider a token to match if:
+      * any segment equals the token exactly (`ES` matches `ES_continuous…`, not `ESM2024`), OR
+      * the first segment starts with the token and is only a little longer than it
+        (handles contract-coded futures like `ESM2024.txt` when the user typed `ES`), OR
+      * for longer tokens (>=6 chars) the alnum-compacted stem contains the token as prefix
+        or substring (handles `EURUSD`, `GBPJPY`, etc. against any FirstRate naming style).
+    """
+    if not tok or not stem:
         return False
-    if stem_compact == tok:
+    tok_up = tok.upper()
+    stem_up = stem.upper()
+    segments = [s for s in re.split(r"[^A-Za-z0-9]+", stem_up) if s]
+    if tok_up in segments:
         return True
-    if len(tok) <= 1:
-        return False
-    if len(tok) >= 6:
-        return stem_compact.startswith(tok) or (tok in stem_compact)
-    if stem_compact.startswith(tok):
-        rest = stem_compact[len(tok) :]
+    if len(tok_up) >= 6:
+        compact = "".join(segments)
+        return compact.startswith(tok_up) or (tok_up in compact)
+    # Short root tokens (2–5 chars, e.g. futures roots "ES", "NQ", metal "GC") should also match
+    # continuous contract codes like `ESM2024` / `CLH25` where the root prefixes the first segment.
+    if segments and segments[0].startswith(tok_up):
+        rest = segments[0][len(tok_up):]
         if not rest:
             return True
-        first = rest[0]
-        if first in "_-." or not first.isalnum():
+        # Accept extensions like ESM2024 (alphanumeric contract code) but avoid false positives
+        # (e.g. token "ES" against "ESTOX50" — length diff > 7 is unlikely to be a futures code).
+        if len(rest) <= 6:
             return True
     return False
 
 
 def _firstrate_filter_csv_paths_by_tickers(paths: list[Path], tokens: list[str]) -> tuple[list[Path], int]:
-    """Keep CSVs whose stem matches at least one token (FX pairs, stock tickers, etc.)."""
+    """Keep CSVs whose stem matches at least one token (FX pairs, stock tickers, futures roots, etc.)."""
     if not tokens:
         return paths, 0
     kept: list[Path] = []
     for path in paths:
-        stem_compact = re.sub(r"[^A-Za-z0-9]", "", path.stem).upper()
-        if any(_token_matches_firstrate_stem(t, stem_compact) for t in tokens):
+        stem = path.stem
+        if any(_token_matches_firstrate_stem(t, stem) for t in tokens):
             kept.append(path)
     return kept, len(paths) - len(kept)
 
