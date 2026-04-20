@@ -1579,6 +1579,53 @@ select { cursor: pointer; }
                 </div>
               </div>
             </div>
+            <!-- FirstRate Data FX (official vendor ZIP → chart datasets) -->
+            <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border)">
+              <div style="font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>
+                FirstRate Data (FX bundle)
+              </div>
+              <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
+                Downloads the vendor <strong>ZIP</strong> from FirstRate&rsquo;s API (same pipeline as CSV upload → binaries/tiles).
+                Set server env <code style="font-size:10px">FIrstrate_USERID</code> to your customer userid.
+                <code style="font-size:10px">period=full</code> can be very large and slow.
+                Wiping existing datasets breaks saved sessions that reference old <code style="font-size:10px">fileId</code> values.
+              </p>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="fr_period">Period</label>
+                  <select id="fr_period" class="input">
+                    <option value="week" selected>week</option>
+                    <option value="day">day</option>
+                    <option value="month">month</option>
+                    <option value="full">full (large)</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="fr_tf">Timeframe</label>
+                  <select id="fr_tf" class="input">
+                    <option value="1min" selected>1min</option>
+                    <option value="5min">5min</option>
+                    <option value="30min">30min</option>
+                    <option value="1hour">1hour</option>
+                    <option value="1day">1day</option>
+                  </select>
+                </div>
+                <div class="field fg-full">
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                    <input type="checkbox" id="fr_delete_first">
+                    Delete all existing datasets first (requires confirmation phrase)
+                  </label>
+                </div>
+                <div class="fg-full" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                  <button type="button" class="btn primary" id="frSyncBtn" onclick="syncFirstrateFx()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Sync FirstRate FX
+                  </button>
+                  <span id="frProgress" style="font-size:12px;color:var(--text-muted)"></span>
+                </div>
+              </div>
+            </div>
             <!-- CME-style continuous futures (Yahoo Finance, =F roots) -->
             <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border)">
               <div style="font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px">
@@ -3987,6 +4034,65 @@ async function waitForDukascopyJob(jobId) {
       label.textContent = status.message || st || 'Processing...';
     } catch (e) { break; }
   }
+}
+
+async function syncFirstrateFx() {
+  const period = $('fr_period').value;
+  const timeframe = $('fr_tf').value;
+  const deleteFirst = $('fr_delete_first').checked;
+  let purge_confirmation = null;
+  if (deleteFirst) {
+    purge_confirmation = window.prompt(
+      'Enter purge confirmation exactly (default phrase: DELETE_ALL_CHART_DATASETS):'
+    );
+    if (purge_confirmation === null) return;
+    purge_confirmation = purge_confirmation.trim();
+    if (!purge_confirmation) return toast('Purge confirmation required when deleting existing datasets', 'err');
+  }
+  const btn = $('frSyncBtn');
+  const label = $('frProgress');
+  btn.disabled = true;
+  label.textContent = 'Starting…';
+  try {
+    const body = { period: period, timeframe: timeframe, delete_existing_first: deleteFirst };
+    if (deleteFirst) body.purge_confirmation = purge_confirmation;
+    const data = await api('/api/admin/datasets/firstrate-fx/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (data.job_id) await waitForFirstrateJob(data.job_id);
+    await loadDatasets();
+  } catch (e) {
+    toast(e.message || String(e), 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function waitForFirstrateJob(jobId) {
+  const label = $('frProgress');
+  for (let i = 0; i < 7200; i++) {
+    await sleep(2000);
+    try {
+      const status = await api(`/api/admin/datasets/firstrate-fx/${jobId}/status`);
+      const st = status.state || status.status;
+      if (st === 'done') {
+        label.textContent = status.message || 'Done';
+        toast('FirstRate import complete', 'ok');
+        return;
+      }
+      if (st === 'failed') {
+        label.textContent = status.message || 'Failed';
+        toast(status.message || 'FirstRate import failed', 'err');
+        return;
+      }
+      label.textContent = status.message || st || 'Working…';
+    } catch (e) {
+      break;
+    }
+  }
+  label.textContent = 'Stopped polling (still running on server — refresh datasets later)';
 }
 
 let bnSymbolsFull = [];

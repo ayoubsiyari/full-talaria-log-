@@ -111,6 +111,14 @@ from analytics_engine import (
     compute_equity_summary,
 )
 
+from firstrate_ingest import (
+    download_firstrate_bundle,
+    extract_zip,
+    get_firstrate_userid,
+    iter_csv_files,
+    normalize_firstrate_fx_csv_to_standard,
+)
+
 # Initialize FastAPI
 app = FastAPI(title="Trading Chart API")
 
@@ -282,6 +290,13 @@ DUKASCOPY_MAX_TOTAL_DAYS = int(os.getenv("DUKASCOPY_MAX_TOTAL_DAYS", "7300"))
 DUKASCOPY_JOB_TTL_SECONDS = int(os.getenv("DUKASCOPY_JOB_TTL_SECONDS", "21600"))
 DUKASCOPY_JOBS_DIR = UPLOAD_DIR / "dukascopy_jobs"
 DUKASCOPY_JOBS_DIR.mkdir(exist_ok=True)
+
+# FirstRate Data bundle imports (ZIP → CSV → chart binaries). Jobs mirror Dukascopy JSON files.
+FIrstrate_JOB_TTL_SECONDS = int(os.getenv("FIrstrate_JOB_TTL_SECONDS", "86400"))
+FIrstrate_JOBS_DIR = UPLOAD_DIR / "firstrate_jobs"
+FIrstrate_JOBS_DIR.mkdir(exist_ok=True)
+# Required phrase (or env override) when wiping every dataset before a FirstRate re-import.
+DATASET_PURGE_CONFIRMATION = os.getenv("DATASET_PURGE_CONFIRMATION", "DELETE_ALL_CHART_DATASETS")
 
 # Curated Dukascopy instrument ids for admin UI (indices / commodities / forex).
 # These are Dukascopy CFD / cash-index symbols — not exchange-listed futures like CME NQ or CL.
@@ -1655,6 +1670,44 @@ def _dukascopy_read_job(job_id: str) -> dict | None:
             return json.load(f)
     except Exception:
         return None
+
+
+def _firstrate_job_path(job_id: str) -> Path:
+    safe_job_id = re.sub(r"[^a-zA-Z0-9_-]", "", (job_id or ""))
+    if not safe_job_id:
+        safe_job_id = "invalid"
+    return FIrstrate_JOBS_DIR / f"{safe_job_id}.json"
+
+
+def _firstrate_cleanup_jobs() -> None:
+    cutoff = time.time() - max(60, FIrstrate_JOB_TTL_SECONDS)
+    for p in FIrstrate_JOBS_DIR.glob("*.json"):
+        try:
+            if p.stat().st_mtime < cutoff:
+                p.unlink()
+        except Exception:
+            pass
+
+
+def _firstrate_write_job(job_id: str, state: dict) -> None:
+    p = _firstrate_job_path(job_id)
+    state["updated_at"] = datetime.utcnow().isoformat()
+    tmp = p.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(state, f)
+    tmp.replace(p)
+
+
+def _firstrate_read_job(job_id: str) -> dict | None:
+    p = _firstrate_job_path(job_id)
+    if not p.exists():
+        return None
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
 
 def _start_dukascopy_fetch_job(instrument: str, from_dt: datetime, to_dt: datetime, node_binary: str) -> dict:
     chunk_ranges = _split_dukascopy_date_ranges(from_dt, to_dt, DUKASCOPY_MAX_RANGE_DAYS)
@@ -3670,6 +3723,54 @@ def _delete_dataset_source_csv(filename: str):
             except Exception:
                 pass
 
+
+def _purge_dataset_rows(db, db_file: CSVFile) -> None:
+    """Remove on-disk dataset assets and DB rows for one csv_files record (caller commits)."""
+    file_id = int(db_file.id)
+    _delete_dataset_source_csv(db_file.filename)
+
+    aggs = db.query(CSVAggregate).filter(CSVAggregate.file_id == file_id).all()
+    for agg in aggs:
+        for d in (BIN_DIR, AGG_DIR):
+            p = d / agg.agg_filename
+            if p.exists():
+                p.unlink()
+        db.delete(agg)
+
+    for tf in DATASET_TIMEFRAMES:
+        p = BIN_DIR / f"bin_{file_id}_{tf}.bin"
+        if p.exists():
+            p.unlink()
+
+    tile_file_dir = TILES_DIR / str(file_id)
+    if tile_file_dir.exists():
+        for tp in tile_file_dir.rglob("tile_*.bin"):
+            _mmap_cache.invalidate(tp)
+        shutil.rmtree(tile_file_dir, ignore_errors=True)
+
+    db.query(DatasetSettings).filter(DatasetSettings.file_id == file_id).delete()
+    db.query(BinaryBuildJob).filter(BinaryBuildJob.file_id == file_id).delete()
+    db.delete(db_file)
+
+
+def _purge_all_chart_datasets() -> dict:
+    """Delete every registered dataset. Destructive — invalidates stored client fileId references."""
+    db = SessionLocal()
+    deleted_ids: list[int] = []
+    try:
+        rows = db.query(CSVFile).order_by(CSVFile.id.asc()).all()
+        for db_file in rows:
+            deleted_ids.append(int(db_file.id))
+            _purge_dataset_rows(db, db_file)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+    return {"deleted_count": len(deleted_ids), "deleted_ids": deleted_ids}
+
+
 def _dataset_binary_integrity(db, file_id: int) -> tuple[bool, list[str]]:
     """Validate that required TF binaries + tile metadata are all ready for a dataset."""
     issues: list[str] = []
@@ -3981,6 +4082,179 @@ def build_binary_for_file(file_id: int, file_path, original_filename: str, run_a
         t.start()
         return True
     return _run()
+
+
+def _run_firstrate_import_job(job_id: str) -> None:
+    """Background: optional purge → download FirstRate FX ZIP → normalize CSVs → register datasets → binary build."""
+    tmp_root: Path | None = None
+    try:
+        state = _firstrate_read_job(job_id)
+        if not state:
+            return
+
+        uid = get_firstrate_userid()
+        if not uid:
+            raise RuntimeError("Set FIrstrate_USERID in the server environment (FirstRate customer userid).")
+
+        state["status"] = "running"
+        state["phase"] = "init"
+        state["message"] = "Starting FirstRate import"
+        _firstrate_write_job(job_id, state)
+
+        if state.get("delete_existing_first"):
+            purge = _purge_all_chart_datasets()
+            state["purge"] = purge
+            state["phase"] = "purge"
+            state["message"] = f"Removed {purge.get('deleted_count', 0)} dataset(s)"
+            _firstrate_write_job(job_id, state)
+
+        tmp_root = Path(tempfile.mkdtemp(prefix="firstrate_", dir=str(UPLOAD_DIR.resolve())))
+        zip_path = tmp_root / "firstrate_bundle.zip"
+
+        period = (state.get("period") or "week").strip().lower()
+        timeframe = (state.get("timeframe") or "1min").strip().lower()
+        ticker_range = state.get("ticker_range")
+        if isinstance(ticker_range, str):
+            ticker_range = ticker_range.strip().upper()[:1] or None
+
+        state["phase"] = "download"
+        state["message"] = "Downloading ZIP from FirstRate (this can take a long time for period=full)"
+        _firstrate_write_job(job_id, state)
+
+        timeout_sec = float(state.get("download_timeout_sec") or 7200)
+        download_firstrate_bundle(
+            userid=uid,
+            period=period,
+            timeframe=timeframe,
+            instrument_type="fx",
+            ticker_range=ticker_range,
+            dest_zip=zip_path,
+            timeout_sec=timeout_sec,
+        )
+
+        extract_dir = tmp_root / "extracted"
+        extract_zip(zip_path, extract_dir)
+
+        csv_paths = iter_csv_files(extract_dir)
+        state["phase"] = "normalize"
+        state["files_total"] = len(csv_paths)
+        state["files_done"] = 0
+        state["datasets_created"] = []
+        state["skipped_files"] = []
+        state["message"] = f"Normalizing {len(csv_paths)} CSV file(s)"
+        _firstrate_write_job(job_id, state)
+
+        ts_prefix = datetime.now().strftime("%Y%m%d_%H%M%S")
+        created: list[dict] = []
+        skipped: list[dict] = []
+
+        for idx, src in enumerate(csv_paths):
+            stem_raw = src.stem
+            stem_safe = re.sub(r"[^A-Za-z0-9_\-]+", "_", stem_raw).strip("_")[:96] or "instrument"
+            out_name = f"{ts_prefix}_{idx:04d}_firstrate_{stem_safe}_{timeframe}.csv"
+            dest_csv = UPLOAD_DIR / out_name
+            try:
+                n = normalize_firstrate_fx_csv_to_standard(src, dest_csv)
+            except Exception as exc:
+                skipped.append({"file": src.name, "error": str(exc)[:800]})
+                state["files_done"] = idx + 1
+                state["skipped_files"] = list(skipped)
+                state["message"] = f"Normalize error on {src.name}"
+                _firstrate_write_job(job_id, state)
+                continue
+
+            if n < 1:
+                try:
+                    dest_csv.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                skipped.append({"file": src.name, "error": "no rows parsed"})
+                state["files_done"] = idx + 1
+                state["skipped_files"] = list(skipped)
+                _firstrate_write_job(job_id, state)
+                continue
+
+            original_label = f"{stem_safe}_{timeframe}.csv"
+            info = _store_dataset_file(
+                dest_csv,
+                original_name=original_label,
+                description=f"FirstRate FX ({period}, {timeframe})",
+            )
+            entry = info.get("file") if isinstance(info, dict) else None
+            if entry:
+                created.append(entry)
+            state["files_done"] = idx + 1
+            state["datasets_created"] = list(created)
+            state["skipped_files"] = list(skipped)
+            state["message"] = f"Imported {len(created)} / {len(csv_paths)} dataset(s)"
+            _firstrate_write_job(job_id, state)
+
+        state["status"] = "done"
+        state["phase"] = "done"
+        state["message"] = f"Complete — {len(created)} dataset(s), {len(skipped)} skipped"
+        _firstrate_write_job(job_id, state)
+
+    except Exception as exc:
+        err = _firstrate_read_job(job_id) or {}
+        err["status"] = "failed"
+        err["phase"] = "failed"
+        err["message"] = str(exc)[:2000]
+        err["error"] = str(exc)[:4000]
+        _firstrate_write_job(job_id, err)
+    finally:
+        if tmp_root is not None:
+            try:
+                shutil.rmtree(tmp_root, ignore_errors=True)
+            except Exception:
+                pass
+
+
+def _start_firstrate_fx_import_job(
+    *,
+    period: str,
+    timeframe: str,
+    delete_existing_first: bool,
+    purge_confirmation: str | None,
+    ticker_range: str | None,
+    download_timeout_sec: float | None,
+) -> dict:
+    uid = get_firstrate_userid()
+    if not uid:
+        raise HTTPException(
+            status_code=400,
+            detail="Set FIrstrate_USERID in the server environment (FirstRate customer userid).",
+        )
+
+    if delete_existing_first:
+        expected = (DATASET_PURGE_CONFIRMATION or "").strip()
+        if (purge_confirmation or "").strip() != expected:
+            raise HTTPException(
+                status_code=400,
+                detail=f"When delete_existing_first is true, purge_confirmation must exactly equal {expected!r}",
+            )
+
+    _firstrate_cleanup_jobs()
+    job_id = f"fr_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(4)}"
+    state = {
+        "job_id": job_id,
+        "status": "queued",
+        "phase": "queued",
+        "message": "Queued FirstRate FX import",
+        "period": period,
+        "timeframe": timeframe,
+        "delete_existing_first": bool(delete_existing_first),
+        "ticker_range": ticker_range,
+        "download_timeout_sec": float(download_timeout_sec or 7200),
+        "created_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.utcnow().isoformat(),
+        "files_total": 0,
+        "files_done": 0,
+        "datasets_created": [],
+        "skipped_files": [],
+    }
+    _firstrate_write_job(job_id, state)
+    threading.Thread(target=lambda: _run_firstrate_import_job(job_id), daemon=True).start()
+    return {"success": True, "job_id": job_id}
 
 
 def _claim_next_binary_build_job() -> dict | None:
@@ -4338,6 +4612,21 @@ class AdminDukascopyFetchIn(BaseModel):
     instrument: str
     from_date: str
     to_date: str
+
+
+class AdminFirstrateFxSyncIn(BaseModel):
+    """FirstRate `data_file` API: type=fx, see https://firstratedata.com/about/api-docs"""
+    period: str = "week"  # full | month | week | day
+    timeframe: str = "1min"  # 1min | 5min | 30min | 1hour | 1day
+    delete_existing_first: bool = False
+    purge_confirmation: str | None = None
+    ticker_range: str | None = None
+    download_timeout_sec: float | None = 7200
+
+
+class AdminPurgeDatasetsIn(BaseModel):
+    """Wipe all chart datasets (DB + binaries + tiles + source CSVs)."""
+    confirmation: str
 
 class AdminBinanceFetchIn(BaseModel):
     tickers: list[str]
@@ -6438,6 +6727,62 @@ async def admin_fetch_dataset_from_dukascopy_status(job_id: str, request: Reques
     return out
 
 
+@app.post("/api/admin/datasets/firstrate-fx/sync")
+async def admin_firstrate_fx_sync(payload: AdminFirstrateFxSyncIn, request: Request):
+    """
+    Download FirstRate FX bundle (ZIP of CSVs), normalize to canonical OHLCV, register each pair as a dataset,
+    and queue binary tile builds — same pipeline as CSV upload.
+
+    Requires env FIrstrate_USERID. Optionally wipes all existing datasets first (see purge_confirmation).
+    """
+    _require_admin(request)
+    period = (payload.period or "week").strip().lower()
+    timeframe = (payload.timeframe or "1min").strip().lower()
+    valid_p = {"full", "month", "week", "day"}
+    valid_tf = {"1min", "5min", "30min", "1hour", "1day"}
+    if period not in valid_p:
+        raise HTTPException(status_code=400, detail=f"period must be one of {sorted(valid_p)}")
+    if timeframe not in valid_tf:
+        raise HTTPException(status_code=400, detail=f"timeframe must be one of {sorted(valid_tf)}")
+    return _start_firstrate_fx_import_job(
+        period=period,
+        timeframe=timeframe,
+        delete_existing_first=bool(payload.delete_existing_first),
+        purge_confirmation=payload.purge_confirmation,
+        ticker_range=payload.ticker_range,
+        download_timeout_sec=payload.download_timeout_sec,
+    )
+
+
+@app.get("/api/admin/datasets/firstrate-fx/{job_id}/status")
+async def admin_firstrate_fx_job_status(job_id: str, request: Request):
+    _require_admin(request)
+    _firstrate_cleanup_jobs()
+    state = _firstrate_read_job(job_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="FirstRate job not found or expired")
+    out = dict(state)
+    out["state"] = state.get("status")
+    return out
+
+
+@app.post("/api/admin/datasets/purge-all")
+async def admin_purge_all_datasets(payload: AdminPurgeDatasetsIn, request: Request):
+    """
+    Delete every dataset from the registry (same as deleting each csv_files row). Useful before a full FirstRate re-import.
+    """
+    _require_admin(request)
+    expected = (DATASET_PURGE_CONFIRMATION or "").strip()
+    if (payload.confirmation or "").strip() != expected:
+        raise HTTPException(
+            status_code=400,
+            detail=f"confirmation must exactly equal {expected!r}",
+        )
+    summary = _purge_all_chart_datasets()
+    summary["success"] = True
+    return summary
+
+
 @app.get("/api/admin/datasets/binance-symbols")
 async def admin_binance_exchange_symbols(request: Request, asset_class: str = Query("spot")):
     """
@@ -6708,33 +7053,7 @@ async def admin_delete_dataset(file_id: int, request: Request):
         if not db_file:
             raise HTTPException(status_code=404, detail="File not found")
 
-        _delete_dataset_source_csv(db_file.filename)
-
-        aggs = db.query(CSVAggregate).filter(CSVAggregate.file_id == file_id).all()
-        for agg in aggs:
-            for d in [BIN_DIR, AGG_DIR]:
-                p = d / agg.agg_filename
-                if p.exists():
-                    p.unlink()
-            db.delete(agg)
-
-        # Remove any known timeframe binaries even if aggregate rows are missing.
-        for tf in DATASET_TIMEFRAMES:
-            p = BIN_DIR / f"bin_{file_id}_{tf}.bin"
-            if p.exists():
-                p.unlink()
-
-        # Remove tile directory for this file (also invalidate mmap handles for those tiles)
-        tile_file_dir = TILES_DIR / str(file_id)
-        if tile_file_dir.exists():
-            for tp in tile_file_dir.rglob("tile_*.bin"):
-                _mmap_cache.invalidate(tp)
-            import shutil as _shutil
-            _shutil.rmtree(tile_file_dir, ignore_errors=True)
-
-        db.query(DatasetSettings).filter(DatasetSettings.file_id == file_id).delete()
-        db.query(BinaryBuildJob).filter(BinaryBuildJob.file_id == file_id).delete()
-        db.delete(db_file)
+        _purge_dataset_rows(db, db_file)
         db.commit()
 
         return {"success": True}
