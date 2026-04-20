@@ -4388,10 +4388,52 @@ def _run_firstrate_import_job(job_id: str) -> None:
             ticker_range = ticker_range.strip().upper()[:1] or None
 
         state["phase"] = "download"
-        state["message"] = "Downloading ZIP from FirstRate (this can take a long time for period=full)"
+        state["message"] = "Downloading ZIP from FirstRate — starting…"
+        state["download_bytes_received"] = 0
+        state["download_bytes_total"] = None
+        state["download_percent"] = None
         _firstrate_write_job(job_id, state)
 
         timeout_sec = float(state.get("download_timeout_sec") or 7200)
+
+        _dl_prog = {"last_t": 0.0, "last_n": -1}
+
+        def _firstrate_download_progress(written: int, total: int | None) -> None:
+            now = time.monotonic()
+            done = total is not None and total > 0 and written >= total
+            if written > 0 and not done:
+                if (
+                    now - _dl_prog["last_t"] < 0.9
+                    and written - _dl_prog["last_n"] < 8 * 1024 * 1024
+                ):
+                    return
+            _dl_prog["last_t"] = now
+            _dl_prog["last_n"] = written
+            st = _firstrate_read_job(job_id)
+            if not st:
+                return
+            pct: int | None = None
+            if total is not None and total > 0:
+                pct = min(100, int((100 * written) / total))
+            msg_parts = [
+                "Downloading ZIP from FirstRate",
+                f"{written / (1024 * 1024):.1f} MiB received",
+            ]
+            if total:
+                msg_parts.append(f"/ {total / (1024 * 1024):.1f} MiB total")
+                if pct is not None:
+                    msg_parts.append(f"({pct}%)")
+            elif written == 0:
+                msg_parts.append("(connected — streaming…)")
+            else:
+                msg_parts.append("(total size not reported — bytes only)")
+            st["phase"] = "download"
+            st["download_bytes_received"] = written
+            st["download_bytes_total"] = total
+            st["download_percent"] = pct
+            st["message"] = " — ".join(msg_parts)
+            _firstrate_write_job(job_id, st)
+
         download_firstrate_bundle(
             userid=uid,
             period=period,
@@ -4401,10 +4443,23 @@ def _run_firstrate_import_job(job_id: str) -> None:
             adjustment=adjustment,
             dest_zip=zip_path,
             timeout_sec=timeout_sec,
+            progress_callback=_firstrate_download_progress,
         )
+
+        state = _firstrate_read_job(job_id)
+        if state:
+            state["phase"] = "extract"
+            state["message"] = "Unpacking ZIP archive…"
+            for _k in ("download_bytes_received", "download_bytes_total", "download_percent"):
+                state.pop(_k, None)
+            _firstrate_write_job(job_id, state)
 
         extract_dir = tmp_root / "extracted"
         extract_zip(zip_path, extract_dir)
+
+        state = _firstrate_read_job(job_id)
+        if not state:
+            return
 
         csv_paths = iter_csv_files(extract_dir)
         pairs_norm = _normalize_ticker_filter_list(state.get("pairs") if isinstance(state.get("pairs"), list) else None)

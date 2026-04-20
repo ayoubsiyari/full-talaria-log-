@@ -1847,11 +1847,15 @@ select { cursor: pointer; }
             <span class="card-badge" id="frLiveBadge" style="background:var(--panel);color:var(--text-muted)">idle</span>
           </div>
           <div class="card-body" style="padding-top:0">
-            <p id="frLiveSummary" style="margin:0 0 10px;font-size:12px;color:var(--text-muted)">Connecting…</p>
+            <p id="frLiveSummary" style="margin:0 0 8px;font-size:12px;color:var(--text-muted)">Connecting…</p>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <span id="frLiveStage" style="font-size:11px;color:var(--text-muted)"></span>
+              <span id="frLivePctLabel" style="font-size:11px;font-weight:600;color:var(--accent);font-variant-numeric:tabular-nums"></span>
+            </div>
             <div style="height:8px;background:var(--border);border-radius:6px;overflow:hidden;margin-bottom:10px">
               <div id="frLiveBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),color-mix(in oklab,var(--accent) 70%,white));transition:width .35s ease"></div>
             </div>
-            <div id="frLiveDetail" style="font-size:11px;font-family:ui-monospace,monospace;color:var(--text-muted);line-height:1.5;white-space:pre-wrap;max-height:120px;overflow-y:auto"></div>
+            <div id="frLiveDetail" style="font-size:11px;font-family:ui-monospace,monospace;color:var(--text-muted);line-height:1.5;white-space:pre-wrap;max-height:140px;overflow-y:auto"></div>
           </div>
         </div>
 
@@ -4192,27 +4196,28 @@ async function syncFirstrateFx() {
 
 async function waitForFirstrateJob(jobId) {
   const label = $('frProgress');
+  if (label) label.textContent = 'Queued — requesting status…';
   for (let i = 0; i < 7200; i++) {
-    await sleep(2000);
     try {
       const status = await api(`/api/admin/datasets/firstrate-fx/${jobId}/status`);
       const st = status.state || status.status;
       if (st === 'done') {
-        label.textContent = status.message || 'Done';
+        if (label) label.textContent = status.message || 'Done';
         toast('FirstRate import complete', 'ok');
         return;
       }
       if (st === 'failed') {
-        label.textContent = status.message || 'Failed';
+        if (label) label.textContent = status.message || 'Failed';
         toast(status.message || 'FirstRate import failed', 'err');
         return;
       }
-      label.textContent = status.message || st || 'Working…';
+      if (label) label.textContent = status.message || st || 'Working…';
     } catch (e) {
       break;
     }
+    await sleep(1100);
   }
-  label.textContent = 'Stopped polling (still running on server — refresh datasets later)';
+  if (label) label.textContent = 'Stopped polling (still running on server — check “FirstRate download / import” card)';
 }
 
 window._frCatalogRows = [];
@@ -4398,7 +4403,7 @@ let _frLivePrevJobId = null;
 
 function ensureFirstrateLivePoll() {
   if (window._frLivePollId) return;
-  window._frLivePollId = setInterval(updateFirstrateLivePanel, 2000);
+  window._frLivePollId = setInterval(updateFirstrateLivePanel, 1200);
   updateFirstrateLivePanel();
 }
 
@@ -4407,6 +4412,8 @@ async function updateFirstrateLivePanel() {
   const summary = $('frLiveSummary');
   const bar = $('frLiveBar');
   const detail = $('frLiveDetail');
+  const stageEl = $('frLiveStage');
+  const pctEl = $('frLivePctLabel');
   if (!badge || !summary || !bar || !detail) return;
   try {
     const d = await api('/api/admin/datasets/firstrate-fx/live-status');
@@ -4420,24 +4427,69 @@ async function updateFirstrateLivePanel() {
       summary.textContent = 'Set FIrstrate_USERID on the VPS to enable FirstRate downloads.';
       bar.style.width = '0%';
       detail.textContent = '';
+      if (stageEl) stageEl.textContent = '';
+      if (pctEl) pctEl.textContent = '';
       return;
     }
 
     if (primary) {
       const st = primary.status || '';
       badge.textContent = st === 'running' ? 'running' : st;
-      const total = parseInt(primary.files_total, 10) || 0;
-      const done = parseInt(primary.files_done, 10) || 0;
-      const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : (st === 'running' ? 12 : 0);
+      const phase = String(primary.phase || '').toLowerCase();
+      let pct = 0;
+      let stageLabel = '';
+      let pctLabel = '';
+
+      if (phase === 'download') {
+        stageLabel = 'ZIP download';
+        var dpp = primary.download_percent;
+        if (dpp != null && dpp !== '' && !isNaN(Number(dpp))) {
+          pct = Math.min(100, Number(dpp));
+          pctLabel = Math.round(pct) + '%';
+        } else {
+          var br = Number(primary.download_bytes_received) || 0;
+          pct = br > 0 ? Math.min(90, 10 + Math.log10(Math.max(br, 10)) * 14) : 6;
+          pctLabel =
+            br > 0 ? (br / (1024 * 1024)).toFixed(1) + ' MiB' + (primary.download_bytes_total ? '' : ' · …') : 'Starting…';
+        }
+      } else if (phase === 'extract') {
+        stageLabel = 'Unpack ZIP';
+        pct = 93;
+        pctLabel = '…';
+      } else if (phase === 'purge') {
+        stageLabel = 'Purge old datasets';
+        pct = 8;
+        pctLabel = '';
+      } else if (phase === 'normalize') {
+        stageLabel = 'Normalize & register';
+        var total = parseInt(primary.files_total, 10) || 0;
+        var done = parseInt(primary.files_done, 10) || 0;
+        pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : st === 'running' ? 18 : 0;
+        pctLabel = total > 0 ? done + '/' + total + ' files · ' + pct + '%' : '';
+      } else if (phase === 'done') {
+        stageLabel = 'Done';
+        pct = 100;
+        pctLabel = '100%';
+      } else {
+        stageLabel = phase || 'Working';
+        pct = st === 'running' ? 15 : 0;
+      }
+
       bar.style.width = pct + '%';
+      if (stageEl) stageEl.textContent = stageLabel;
+      if (pctEl) pctEl.textContent = pctLabel;
+
       const pf = primary.pairs_filter;
-      const pairsHint = (pf && pf.length) ? (' · filter [' + pf.join(', ') + ']') : '';
+      const pairsHint = pf && pf.length ? ' · filter [' + pf.join(', ') + ']' : '';
+      var ft = parseInt(primary.files_total, 10) || 0;
+      var fd = parseInt(primary.files_done, 10) || 0;
       summary.textContent =
-        (primary.phase || st || '…') + pairsHint +
-        ' · files ' + done + '/' + total +
-        (primary.instrument_type ? (' · ' + primary.instrument_type) : '') +
-        (primary.period ? (' · ' + primary.period + ' ' + (primary.timeframe || '')) : '');
-      detail.textContent = (primary.message || '') + (primary.error ? ('\n' + primary.error) : '');
+        (primary.phase || st || '…') +
+        pairsHint +
+        ((phase === 'normalize' || phase === 'done') ? (' · files ' + fd + '/' + ft) : '') +
+        (primary.instrument_type ? ' · ' + primary.instrument_type : '') +
+        (primary.period ? ' · ' + primary.period + ' ' + (primary.timeframe || '') : '');
+      detail.textContent = (primary.message || '') + (primary.error ? '\n' + primary.error : '');
       if (primary.job_id && primary.job_id !== _frLivePrevJobId && st === 'done') {
         _frLivePrevJobId = primary.job_id;
         try { await loadDatasets(true); } catch (e) {}
@@ -4448,6 +4500,8 @@ async function updateFirstrateLivePanel() {
 
     badge.textContent = 'idle';
     bar.style.width = '0%';
+    if (stageEl) stageEl.textContent = '';
+    if (pctEl) pctEl.textContent = '';
     const bits = [];
     if (sched.enabled) {
       bits.push('Auto-sync ON · every ' + (sched.interval_minutes || '?') + ' min · ' + (sched.instrument_type || 'fx') + ' · ' + (sched.period || '') + ' ' + (sched.timeframe || ''));

@@ -13,6 +13,7 @@ from __future__ import annotations
 import csv
 import io
 import os
+from collections.abc import Callable
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime
@@ -143,12 +144,31 @@ def build_firstrate_data_file_url(
     return f"{base}?{urlencode(q)}"
 
 
-def download_url_to_file(url: str, dest: Path, *, timeout_sec: float = 7200, chunk_bytes: int = 1 << 20) -> int:
-    """Stream download to disk. Returns bytes written."""
+def download_url_to_file(
+    url: str,
+    dest: Path,
+    *,
+    timeout_sec: float = 7200,
+    chunk_bytes: int = 1 << 20,
+    progress_callback: Callable[[int, int | None], None] | None = None,
+) -> int:
+    """Stream download to disk. Returns bytes written.
+
+    progress_callback(written_so_far, total_bytes_or_none) — total from Content-Length when present.
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
     req = Request(url, headers={"User-Agent": "TalariaFirstrateImporter/1.0"})
     written = 0
     with urlopen(req, timeout=timeout_sec) as resp:
+        total: int | None = None
+        cl = resp.headers.get("Content-Length")
+        if cl:
+            try:
+                total = int(cl)
+            except ValueError:
+                total = None
+        if progress_callback:
+            progress_callback(0, total)
         with open(dest, "wb") as out:
             while True:
                 chunk = resp.read(chunk_bytes)
@@ -156,6 +176,8 @@ def download_url_to_file(url: str, dest: Path, *, timeout_sec: float = 7200, chu
                     break
                 out.write(chunk)
                 written += len(chunk)
+                if progress_callback:
+                    progress_callback(written, total)
     return written
 
 
@@ -492,6 +514,7 @@ def download_firstrate_bundle(
     adjustment: str | None = None,
     dest_zip: Path,
     timeout_sec: float = 7200,
+    progress_callback: Callable[[int, int | None], None] | None = None,
 ) -> FirstrateDownloadResult:
     url = build_firstrate_data_file_url(
         userid=userid,
@@ -501,7 +524,7 @@ def download_firstrate_bundle(
         ticker_range=ticker_range,
         adjustment=adjustment,
     )
-    n = download_url_to_file(url, dest_zip, timeout_sec=timeout_sec)
+    n = download_url_to_file(url, dest_zip, timeout_sec=timeout_sec, progress_callback=progress_callback)
     if n < 64:
         raise ValueError("Download too small — check userid, subscription, or API response (not a valid zip).")
     if not zipfile.is_zipfile(dest_zip):
