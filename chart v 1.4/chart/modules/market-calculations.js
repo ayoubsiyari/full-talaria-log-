@@ -552,10 +552,52 @@ class MarketCalculationEngine {
     }
 
     /**
+     * Resolve a symbol string to an actual registry key, handling suffixed dataset filenames.
+     *
+     * FirstRate / Dukascopy / user uploads store compound names as the chart `currentSymbol`, e.g.:
+     *     ES_week_1min_1min          (FirstRate futures)
+     *     AAPL_full_1min_adj_split   (FirstRate stock)
+     *     BTCUSD_full_1min           (FirstRate crypto)
+     *     EURUSD_full_1min_1min      (FirstRate FX)
+     *     20251028_194229_GBPUSD     (Dukascopy upload)
+     *
+     * The naive `_normalize` collapses these to `ESWEEK1MIN1MIN`, which misses the registry and
+     * silently falls back to forex defaults — leading to wrong pip size, wrong P&L, wrong lot size.
+     *
+     * Strategy: split on common separators and try each segment against the registry, preferring
+     * the LONGEST match first (so `BTCUSD_full_1min` matches `BTCUSD`, not `BTC`), with a final
+     * compact fallback for symbols that may have been written without separators (e.g. `EURUSD`).
+     *
+     * @returns {string} registry-normalized key (may not exist in the registry if nothing matched)
+     */
+    _resolveRegistryKey(symbol) {
+        if (!symbol) return '';
+        // 1. Direct compact match wins (covers most user-typed tickers and Dukascopy names).
+        const compact = this._normalize(symbol);
+        if (this._registry[compact]) return compact;
+        // 2. Try individual segments, longest first, for compound filenames.
+        const segments = String(symbol)
+            .split(/[/\-_.\s]+/)
+            .map(s => (s || '').toUpperCase())
+            .filter(s => /^[A-Z0-9]{2,}$/.test(s));
+        const sorted = [...segments].sort((a, b) => b.length - a.length);
+        for (const seg of sorted) {
+            if (this._registry[seg]) return seg;
+        }
+        // 3. Try pairs of adjacent segments concatenated (handles `BTC_USD` → `BTCUSD`).
+        for (let i = 0; i < segments.length - 1; i++) {
+            const joined = segments[i] + segments[i + 1];
+            if (this._registry[joined]) return joined;
+        }
+        // 4. Nothing matched — return the compact form so the fallback logic can still run.
+        return compact;
+    }
+
+    /**
      * Lookup specs in registry; build a reasonable fallback if unknown.
      */
     getSpecs(symbol, fallbackType) {
-        const key  = this._normalize(symbol);
+        const key = this._resolveRegistryKey(symbol);
         const spec = this._registry[key];
         if (spec) return spec;
         const ft = fallbackType || MarketCalculationEngine.detectMarketType(symbol);
@@ -718,6 +760,11 @@ class MarketCalculationEngine {
     /**
      * Heuristically detect market type from a symbol string.
      * Used as fallback when symbol is not in the registry.
+     *
+     * Also inspects individual filename segments so that FirstRate dataset names like
+     *   `ES_week_1min_1min`, `AAPL_full_1min_adj_split`, `BTCUSD_full_1min`
+     * classify correctly instead of silently defaulting to forex (which would apply a
+     * 0.0001-pip × 100 k-lot model to an ES contract — catastrophically wrong P&L).
      */
     static detectMarketType(symbol) {
         if (!symbol) return 'forex';
@@ -729,17 +776,35 @@ class MarketCalculationEngine {
             'ZB','ZN','ZF','ZT','ZC','ZW','ZS',
             '6E','6B','6J','6A','6C','6S',
         ];
-        if (futuresSymbols.includes(s)) return 'futures';
-
-        if (s.endsWith('USDT') || s.endsWith('PERP') ||
-            ['BTCUSD','ETHUSD','SOLUSD','XBTUSD'].includes(s)) return 'crypto';
-
         const stockSymbols = [
             'AAPL','TSLA','NVDA','MSFT','AMZN','GOOGL','META',
             'NFLX','AMD','INTC','SPY','QQQ','IWM','DIA',
         ];
+        const cryptoSpot = ['BTCUSD','ETHUSD','SOLUSD','XBTUSD','LTCUSD','BCHUSD','XRPUSD'];
+
+        // 1. Compact match (user-typed `EURUSD`, `ES`, `BTCUSDT`)
+        if (futuresSymbols.includes(s)) return 'futures';
+        if (s.endsWith('USDT') || s.endsWith('PERP') || cryptoSpot.includes(s)) return 'crypto';
         if (stockSymbols.includes(s)) return 'stocks';
 
+        // 2. Segment scan — handle FirstRate / compound filenames without stripping structure.
+        //    `ES_week_1min_1min` → segments ["ES","WEEK","1MIN","1MIN"] → finds "ES" → futures.
+        const segments = String(symbol)
+            .split(/[/\-_.\s]+/)
+            .map(seg => (seg || '').toUpperCase())
+            .filter(seg => /^[A-Z0-9]{1,8}$/.test(seg));
+        for (const seg of segments) {
+            if (futuresSymbols.includes(seg)) return 'futures';
+            if (stockSymbols.includes(seg)) return 'stocks';
+            if (cryptoSpot.includes(seg) || seg.endsWith('USDT') || seg.endsWith('PERP')) return 'crypto';
+        }
+        // Classic FX heuristic on the longest 6–8 char segment (covers EURUSD, GBPUSD, etc.).
+        const fxCcys = ['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','CNH','HKD','SEK','NOK','MXN','ZAR'];
+        for (const seg of segments) {
+            if (seg.length === 6 && fxCcys.includes(seg.slice(0,3)) && fxCcys.includes(seg.slice(3))) {
+                return 'forex';
+            }
+        }
         return 'forex';
     }
 

@@ -2123,7 +2123,13 @@ class OrderManager {
         let inRegistry   = false;
 
         if (window.marketCalcEngine) {
-            const norm  = sym.replace(/[/\-_\s]/g, '').toUpperCase();
+            // Use the engine's resolver so FirstRate / suffixed dataset names like
+            // `ES_week_1min_1min` correctly resolve to the `ES` registry entry instead
+            // of failing the direct compact lookup and defaulting to forex.
+            const resolve = typeof window.marketCalcEngine._resolveRegistryKey === 'function'
+                ? window.marketCalcEngine._resolveRegistryKey.bind(window.marketCalcEngine)
+                : (s) => (s || '').replace(/[/\-_\s]/g, '').toUpperCase();
+            const norm = resolve(sym);
             const specs = window.marketCalcEngine._registry[norm];
             if (specs) {
                 detectedType = specs.type;
