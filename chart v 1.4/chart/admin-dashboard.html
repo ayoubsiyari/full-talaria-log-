@@ -1618,6 +1618,16 @@ select { cursor: pointer; }
                     <button type="button" class="btn sm" onclick="document.getElementById('fr_pairs').value=''">clear</button>
                   </div>
                 </div>
+                <div id="fr_quickadd_crypto" class="field fg-full" style="display:none">
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <span style="font-size:11px;color:var(--text-muted)">Quick add (crypto):</span>
+                    <button type="button" class="btn sm" onclick="frPairsAdd('BTCUSD ETHUSD')">majors</button>
+                    <button type="button" class="btn sm" onclick="frPairsAdd('SOLUSD XRPUSD ADAUSD DOGEUSD LTCUSD BCHUSD')">large caps</button>
+                    <button type="button" class="btn sm" onclick="frPairsAdd('LINKUSD DOTUSD AVAXUSD MATICUSD UNIUSD ATOMUSD')">altcoins</button>
+                    <button type="button" class="btn sm" onclick="frPairsAdd('BTCUSDT ETHUSDT SOLUSDT XRPUSDT')">USDT perps</button>
+                    <button type="button" class="btn sm" onclick="document.getElementById('fr_pairs').value=''">clear</button>
+                  </div>
+                </div>
                 <div class="field fg-full" style="margin-top:8px;padding-top:16px;border-top:1px dashed var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
                   <button type="button" class="btn primary" id="frSyncBtn" onclick="syncFirstrateFx()">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -4178,6 +4188,11 @@ function updateFirstrateInstrumentUi() {
     } else if (v === 'fx') {
       hint.innerHTML =
         'Leave empty for all FX pairs in the ZIP, or list symbols as they appear in filenames. FX is a single bundle — no letter split.';
+    } else if (v === 'crypto') {
+      hint.innerHTML =
+        'FirstRate crypto bundles ship as one ZIP per period (<strong>day / week / month</strong> — <code style="font-size:10px">full</code> is disabled on this subscription). ' +
+        'Type symbols as they appear in filenames (e.g. <code style="font-size:10px">BTCUSD, ETHUSD, SOLUSD</code>) or use the quick-add buttons / <strong>Browse symbols</strong>. ' +
+        'Timestamps are treated as UTC per FirstRate\'s crypto readme.';
     } else {
       hint.innerHTML =
         'Leave empty for every file in this bundle, or type symbols to filter by filename stem after download. ' +
@@ -4185,20 +4200,27 @@ function updateFirstrateInstrumentUi() {
     }
   }
 
-  const catalogOk = v === 'stock' || v === 'etf';
+  // Browse-symbols catalog is wired for stock/etf (vendor-backed) and crypto (bundled fallback list).
+  const catalogOk = v === 'stock' || v === 'etf' || v === 'crypto';
   const btn = $('fr_load_tickers_btn');
   const note = $('fr_load_tickers_note');
   if (btn) btn.style.display = catalogOk ? '' : 'none';
   if (note) {
-    note.textContent = catalogOk
-      ? ''
-      : 'Browse list is only available for stock / ETF (FirstRate ticker_listing API).';
+    if (!catalogOk) {
+      note.textContent = 'Browse list is available for stock / ETF / crypto. For FX and futures, type symbols manually.';
+    } else if (v === 'crypto') {
+      note.textContent = 'Crypto list combines the vendor catalog (if available) with a bundled list of common symbols.';
+    } else {
+      note.textContent = '';
+    }
   }
 
   const fxq = $('fr_quickadd_fx');
   const futq = $('fr_quickadd_fut');
-  if (fxq) fxq.style.display = v === 'fx' ? 'flex' : 'none';
+  const cryq = $('fr_quickadd_crypto');
+  if (fxq)  fxq.style.display  = v === 'fx'      ? 'flex'  : 'none';
   if (futq) futq.style.display = v === 'futures' ? 'block' : 'none';
+  if (cryq) cryq.style.display = v === 'crypto'  ? 'block' : 'none';
 
   const cat = $('fr_ticker_catalog_wrap');
   if (cat && !catalogOk) {
@@ -4269,33 +4291,114 @@ function frRenderCatalogOptions() {
   }
 }
 
+// Bundled fallback catalog for crypto. FirstRate's `ticker_listing` is documented for
+// stock/etf; for crypto it may return an empty list or HTML on this subscription. We always
+// try the vendor first, then merge this list so the admin always sees something selectable.
+const FR_CRYPTO_BUILTIN_CATALOG = [
+  { ticker: 'BTCUSD',   name: 'Bitcoin / USD' },
+  { ticker: 'ETHUSD',   name: 'Ethereum / USD' },
+  { ticker: 'SOLUSD',   name: 'Solana / USD' },
+  { ticker: 'XRPUSD',   name: 'Ripple / USD' },
+  { ticker: 'ADAUSD',   name: 'Cardano / USD' },
+  { ticker: 'DOGEUSD',  name: 'Dogecoin / USD' },
+  { ticker: 'LTCUSD',   name: 'Litecoin / USD' },
+  { ticker: 'BCHUSD',   name: 'Bitcoin Cash / USD' },
+  { ticker: 'LINKUSD',  name: 'Chainlink / USD' },
+  { ticker: 'DOTUSD',   name: 'Polkadot / USD' },
+  { ticker: 'AVAXUSD',  name: 'Avalanche / USD' },
+  { ticker: 'MATICUSD', name: 'Polygon / USD' },
+  { ticker: 'UNIUSD',   name: 'Uniswap / USD' },
+  { ticker: 'ATOMUSD',  name: 'Cosmos / USD' },
+  { ticker: 'ALGOUSD',  name: 'Algorand / USD' },
+  { ticker: 'XLMUSD',   name: 'Stellar / USD' },
+  { ticker: 'TRXUSD',   name: 'Tron / USD' },
+  { ticker: 'FILUSD',   name: 'Filecoin / USD' },
+  { ticker: 'ETCUSD',   name: 'Ethereum Classic / USD' },
+  { ticker: 'XMRUSD',   name: 'Monero / USD' },
+  { ticker: 'AAVEUSD',  name: 'Aave / USD' },
+  { ticker: 'SUSHIUSD', name: 'SushiSwap / USD' },
+  { ticker: 'COMPUSD',  name: 'Compound / USD' },
+  { ticker: 'YFIUSD',   name: 'yearn.finance / USD' },
+  { ticker: 'SNXUSD',   name: 'Synthetix / USD' },
+  { ticker: 'MKRUSD',   name: 'Maker / USD' },
+  // USDT-margined linear perps (common subset)
+  { ticker: 'BTCUSDT',  name: 'Bitcoin / USDT (perp)' },
+  { ticker: 'ETHUSDT',  name: 'Ethereum / USDT (perp)' },
+  { ticker: 'SOLUSDT',  name: 'Solana / USDT (perp)' },
+  { ticker: 'XRPUSDT',  name: 'Ripple / USDT (perp)' },
+  { ticker: 'ADAUSDT',  name: 'Cardano / USDT (perp)' },
+  { ticker: 'DOGEUSDT', name: 'Dogecoin / USDT (perp)' },
+  { ticker: 'LINKUSDT', name: 'Chainlink / USDT (perp)' },
+  { ticker: 'AVAXUSDT', name: 'Avalanche / USDT (perp)' },
+  { ticker: 'MATICUSDT',name: 'Polygon / USDT (perp)' },
+  { ticker: 'DOTUSDT',  name: 'Polkadot / USDT (perp)' },
+];
+
+/**
+ * Merge two ticker-listing arrays, deduped by uppercase ticker. Vendor rows win over bundled ones.
+ */
+function _frMergeCatalogRows(primary, fallback) {
+  const seen = new Set();
+  const out = [];
+  const push = (rows) => {
+    for (const r of (rows || [])) {
+      const k = String(r && r.ticker || '').trim().toUpperCase();
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      out.push(r);
+    }
+  };
+  push(primary);
+  push(fallback);
+  return out;
+}
+
 async function loadFirstrateTickerCatalog() {
   const inst = $('fr_type') ? $('fr_type').value : '';
   const wrap = $('fr_ticker_catalog_wrap');
   const st = $('fr_catalog_status');
   const btn = $('fr_load_tickers_btn');
-  if (inst !== 'stock' && inst !== 'etf') {
-    toast('Browse symbols is only wired for stock and ETF (FirstRate ticker_listing API).', 'err');
+  if (inst !== 'stock' && inst !== 'etf' && inst !== 'crypto') {
+    toast('Browse symbols is only wired for stock, ETF, and crypto.', 'err');
     return;
   }
   if (btn) btn.disabled = true;
   if (st) st.textContent = 'Loading…';
   if (wrap) wrap.style.display = '';
   try {
-    const data = await api(
-      '/api/admin/datasets/firstrate-fx/ticker-listing?instrument_type=' + encodeURIComponent(inst)
-    );
-    window._frCatalogRows = data.rows || [];
+    let vendorRows = [];
+    let vendorOk = false;
+    let vendorTruncated = false;
+    let vendorReturned = 0;
+    try {
+      const data = await api(
+        '/api/admin/datasets/firstrate-fx/ticker-listing?instrument_type=' + encodeURIComponent(inst)
+      );
+      vendorRows = data.rows || [];
+      vendorOk = true;
+      vendorTruncated = !!data.truncated;
+      vendorReturned = data.returned || vendorRows.length;
+    } catch (vendorErr) {
+      // Crypto: fall back silently to the bundled list. Stock/ETF: re-throw so user sees the error.
+      if (inst !== 'crypto') throw vendorErr;
+    }
+    const fallback = inst === 'crypto' ? FR_CRYPTO_BUILTIN_CATALOG : [];
+    window._frCatalogRows = _frMergeCatalogRows(vendorRows, fallback);
     if ($('fr_catalog_filter')) $('fr_catalog_filter').value = '';
     frRenderCatalogOptions();
-    if (st && data.truncated) {
-      st.textContent =
-        (st.textContent ? st.textContent + ' — ' : '') +
-        'Server capped response at ' +
-        (data.returned || '') +
-        ' rows.';
+    if (st) {
+      const parts = [];
+      if (vendorOk) {
+        parts.push('Vendor: ' + vendorRows.length + ' symbols');
+        if (vendorTruncated) parts.push('server capped at ' + vendorReturned);
+      } else if (inst === 'crypto') {
+        parts.push('Vendor list unavailable on this subscription — showing bundled crypto list only');
+      }
+      if (inst === 'crypto') parts.push('bundled: ' + fallback.length);
+      parts.push('total: ' + window._frCatalogRows.length);
+      st.textContent = parts.join(' · ');
     }
-    toast('Loaded ' + (data.count || window._frCatalogRows.length) + ' symbols', 'ok');
+    toast('Loaded ' + window._frCatalogRows.length + ' symbols', 'ok');
   } catch (e) {
     window._frCatalogRows = [];
     frCloseTickerCatalog(true);
