@@ -1585,12 +1585,12 @@ select { cursor: pointer; }
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>
                 FirstRate Data (vendor ZIP)
               </div>
-              <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
-                Downloads the vendor <strong>ZIP</strong> from FirstRate&rsquo;s <code style="font-size:10px">data_file</code> API (same pipeline as CSV upload → binaries/tiles).
-                Set server env <code style="font-size:10px">FIrstrate_USERID</code> to your customer userid.
-                <code style="font-size:10px">period=full</code> can be very large and slow.
-                Wiping existing datasets breaks saved sessions that reference old <code style="font-size:10px">fileId</code> values.
+              <p style="font-size:11px;color:var(--text-muted);margin-bottom:14px;line-height:1.55">
+                Choose <strong>instrument, period, timeframe, and tickers</strong> once below. Then either <strong>run a single import</strong> or <strong>save automatic repeats</strong> — both use the same settings (no duplicated forms).
+                Requires env <code style="font-size:10px">FIrstrate_USERID</code>.
+                <code style="font-size:10px">period=full</code> is large and slow; wiping datasets breaks sessions that reference old <code style="font-size:10px">fileId</code>.
               </p>
+              <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:10px">1 · What to download</div>
               <div class="form-grid">
                 <div class="field">
                   <label for="fr_period">Period</label>
@@ -1640,93 +1640,50 @@ select { cursor: pointer; }
                   </span>
                 </div>
                 <div class="field fg-full" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                  <span style="font-size:11px;color:var(--text-muted)">Quick add:</span>
+                  <span style="font-size:11px;color:var(--text-muted)">Quick add (FX):</span>
                   <button type="button" class="btn sm" onclick="frPairsAdd('EURUSD GBPUSD USDJPY AUDUSD USDCAD')">majors</button>
                   <button type="button" class="btn sm" onclick="frPairsAdd('EURJPY GBPJPY EURGBP')">crosses</button>
                   <button type="button" class="btn sm" onclick="document.getElementById('fr_pairs').value=''">clear</button>
                 </div>
-                <div class="field fg-full">
-                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                <div class="field fg-full" style="margin-top:4px;padding-top:14px;border-top:1px dashed var(--border)">
+                  <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:10px">2 · Run once</div>
+                  <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;line-height:1.45">
+                    Options below apply only to this immediate import (not the scheduler).
+                  </p>
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px">
                     <input type="checkbox" id="fr_delete_first">
                     Delete all existing datasets first (requires confirmation phrase)
                   </label>
-                </div>
-                <div class="field fg-full">
-                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:12px">
                     <input type="checkbox" id="fr_upsert">
                     Upsert by symbol (match filename stem — replaces CSV + rebuilds binaries instead of new dataset ids)
                   </label>
+                  <div class="fg-full" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                    <button type="button" class="btn primary" id="frSyncBtn" onclick="syncFirstrateFx()">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      Download &amp; import now
+                    </button>
+                    <span id="frProgress" style="font-size:12px;color:var(--text-muted)"></span>
+                  </div>
                 </div>
-                <div class="fg-full" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-                  <button type="button" class="btn primary" id="frSyncBtn" onclick="syncFirstrateFx()">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Sync FirstRate
-                  </button>
-                  <span id="frProgress" style="font-size:12px;color:var(--text-muted)"></span>
-                </div>
-                <div class="field fg-full" style="margin-top:16px;padding-top:16px;border-top:1px dashed var(--border)">
-                  <div style="font-weight:600;font-size:12px;margin-bottom:10px;color:var(--text)">VPS automatic sync</div>
+                <div class="field fg-full" style="margin-top:4px;padding-top:14px;border-top:1px dashed var(--border)">
+                  <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:8px">3 · Automatic schedule (same settings as §1)</div>
                   <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.45">
-                    Runs on the server process in the background (checks about every minute). Tune interval vs FirstRate update times.
-                    Uses upsert by default so pair ids stay stable. Settings are saved to <code style="font-size:10px">uploads/firstrate_schedule.json</code>.
+                    Saved to <code style="font-size:10px">uploads/firstrate_schedule.json</code>. The worker checks about every minute; set interval vs FirstRate&rsquo;s daily update window.
                   </p>
                   <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
                     <input type="checkbox" id="fr_sched_enabled">
-                    Enable automatic downloads on this VPS
+                    Enable scheduled imports on this VPS
                   </label>
-                  <div class="field fg-full">
-                    <label for="fr_sched_pairs">Tickers / pairs (optional, same as manual)</label>
-                    <textarea id="fr_sched_pairs" rows="2" class="input" style="resize:vertical;font-family:ui-monospace,monospace;font-size:12px" placeholder="Leave empty for all symbols in the vendor ZIP"></textarea>
-                  </div>
                   <div class="form-grid" style="margin-bottom:10px">
-                    <div class="field fg-full">
-                      <label for="fr_sched_type">Instrument type</label>
-                      <select id="fr_sched_type" class="input" onchange="frSchedInstrumentTypeChanged()">
-                        <option value="fx" selected>fx</option>
-                        <option value="stock">stock</option>
-                        <option value="etf">etf</option>
-                        <option value="futures">futures</option>
-                        <option value="crypto">crypto</option>
-                        <option value="index">index</option>
-                        <option value="options">options</option>
-                      </select>
-                    </div>
-                    <div class="field fg-full" id="fr_sched_adjustment_wrap" style="display:none">
-                      <label for="fr_sched_adjustment">Adjustment</label>
-                      <select id="fr_sched_adjustment" class="input">
-                        <option value="">(API default)</option>
-                        <option value="adj_split">adj_split</option>
-                        <option value="adj_splitdiv">adj_splitdiv</option>
-                        <option value="UNADJUSTED">UNADJUSTED</option>
-                      </select>
-                    </div>
                     <div class="field">
-                      <label for="fr_sched_interval">Interval (minutes)</label>
+                      <label for="fr_sched_interval">Repeat every (minutes)</label>
                       <input type="number" id="fr_sched_interval" class="input" min="15" max="10080" value="1440" step="15">
-                    </div>
-                    <div class="field">
-                      <label for="fr_sched_period">Period</label>
-                      <select id="fr_sched_period" class="input">
-                        <option value="day" selected>day</option>
-                        <option value="week">week</option>
-                        <option value="month">month</option>
-                        <option value="full">full</option>
-                      </select>
-                    </div>
-                    <div class="field">
-                      <label for="fr_sched_tf">Timeframe</label>
-                      <select id="fr_sched_tf" class="input">
-                        <option value="1min" selected>1min</option>
-                        <option value="5min">5min</option>
-                        <option value="30min">30min</option>
-                        <option value="1hour">1hour</option>
-                        <option value="1day">1day</option>
-                      </select>
                     </div>
                   </div>
                   <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
                     <input type="checkbox" id="fr_sched_upsert" checked>
-                    Scheduled runs: upsert existing pairs (recommended)
+                    On scheduled runs: upsert by symbol (recommended)
                   </label>
                   <div class="fg-full" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
                     <button type="button" class="btn sm primary" id="frSchedSaveBtn" onclick="saveFirstrateSchedule()">Save schedule</button>
@@ -4244,14 +4201,6 @@ function frInstrumentTypeChanged() {
   w.style.display = (v === 'stock' || v === 'etf') ? '' : 'none';
 }
 
-function frSchedInstrumentTypeChanged() {
-  const w = $('fr_sched_adjustment_wrap');
-  const t = $('fr_sched_type');
-  if (!w || !t) return;
-  const v = t.value || 'fx';
-  w.style.display = (v === 'stock' || v === 'etf') ? '' : 'none';
-}
-
 function parsePairsFromTextarea(elId) {
   const el = $(elId);
   const raw = el && el.value ? String(el.value) : '';
@@ -4348,16 +4297,16 @@ async function loadFirstrateSchedule() {
     const s = (data && data.schedule) ? data.schedule : {};
     if ($('fr_sched_enabled')) $('fr_sched_enabled').checked = !!s.enabled;
     if ($('fr_sched_interval')) $('fr_sched_interval').value = String(Math.max(15, parseInt(s.interval_minutes, 10) || 1440));
-    if ($('fr_sched_period') && s.period) $('fr_sched_period').value = s.period;
-    if ($('fr_sched_tf') && s.timeframe) $('fr_sched_tf').value = s.timeframe;
-    if ($('fr_sched_type')) $('fr_sched_type').value = (s.instrument_type || 'fx');
-    if ($('fr_sched_adjustment')) $('fr_sched_adjustment').value = (s.adjustment || '');
-    frSchedInstrumentTypeChanged();
+    if ($('fr_period') && s.period) $('fr_period').value = s.period;
+    if ($('fr_tf') && s.timeframe) $('fr_tf').value = s.timeframe;
+    if ($('fr_type')) $('fr_type').value = (s.instrument_type || 'fx');
+    if ($('fr_adjustment')) $('fr_adjustment').value = (s.adjustment || '');
+    frInstrumentTypeChanged();
     if ($('fr_sched_upsert')) $('fr_sched_upsert').checked = s.upsert_existing !== false;
-    if ($('fr_sched_pairs') && Array.isArray(s.pairs) && s.pairs.length) {
-      $('fr_sched_pairs').value = s.pairs.join(', ');
-    } else if ($('fr_sched_pairs')) {
-      $('fr_sched_pairs').value = '';
+    if ($('fr_pairs') && Array.isArray(s.pairs) && s.pairs.length) {
+      $('fr_pairs').value = s.pairs.join(', ');
+    } else if ($('fr_pairs') && (!s.pairs || !s.pairs.length)) {
+      $('fr_pairs').value = '';
     }
     const uidOk = data.has_firstrate_userid !== false;
     const bits = [];
@@ -4377,16 +4326,16 @@ async function saveFirstrateSchedule() {
   const btn = $('frSchedSaveBtn');
   if (btn) btn.disabled = true;
   try {
-    const st = $('fr_sched_type') ? $('fr_sched_type').value : 'fx';
-    const selAdj = $('fr_sched_adjustment');
+    const st = $('fr_type') ? $('fr_type').value : 'fx';
+    const selAdj = $('fr_adjustment');
     const payload = {
       enabled: !!($('fr_sched_enabled') && $('fr_sched_enabled').checked),
       interval_minutes: parseInt($('fr_sched_interval').value, 10) || 1440,
       instrument_type: st,
-      period: $('fr_sched_period').value,
-      timeframe: $('fr_sched_tf').value,
+      period: $('fr_period').value,
+      timeframe: $('fr_tf').value,
       upsert_existing: !!($('fr_sched_upsert') && $('fr_sched_upsert').checked),
-      pairs: parsePairsFromTextarea('fr_sched_pairs'),
+      pairs: parsePairsFromTextarea('fr_pairs'),
       adjustment: (st === 'stock' || st === 'etf')
         ? ((selAdj && selAdj.value) ? selAdj.value : '')
         : '',
