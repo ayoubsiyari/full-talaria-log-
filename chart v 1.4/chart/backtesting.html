@@ -2148,31 +2148,66 @@ html.iframe-mode .bt-modal-footer {
         }
         
         // Update file list checkboxes
-        // Extract clean pair name from CSV filename
+        // Extract clean pair name from CSV filename.
+        //
+        // Dataset files arrive with various naming schemes:
+        //   EURUSD.csv                                       (raw FX upload)
+        //   20260217_182920_GBPUSD.csv                       (timestamped legacy upload)
+        //   BTC_full_1min_1min.csv                           (FirstRate crypto, implicit USD)
+        //   BTC-EUR_full_1min_1min.csv                       (FirstRate crypto, explicit quote)
+        //   ES_full_1min_1min.csv                            (FirstRate futures, 2-letter root)
+        //   AAPL_full_1min_adj_split_1min.csv                (FirstRate stock)
+        //
+        // The old implementation used a greedy /[a-zA-Z]{3,5}/ scan, which skipped short
+        // roots like `ES` (2 letters) and latched onto the next alpha run — usually `full`
+        // — so 2-letter-ticker files displayed as "FULL". The new implementation takes the
+        // first underscore-separated segment as the canonical ticker, treats hyphenated
+        // crypto pairs (`BTC-EUR`) specially, and skips FirstRate meta-words if a mis-split
+        // ever produces one as segment 0.
         function cleanPairName(rawName) {
             if (!rawName) return 'Unknown';
-            // Remove path, extension, timestamps, prefixes
+            // Strip path and extension, then common prefixes the pipeline may add.
             let name = rawName.replace(/^.*[\/\\]/, '').replace(/\.csv$/i, '');
-            // Remove common prefixes like dates: 20260217_182920_
-            name = name.replace(/^\d{8}_\d{6}_/, '');
-            // Extract 6-letter pair from patterns like "eurusd_data", "eurusd-m1-bid-2022...", "GBPUSD"
-            const currencies = ['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','HKD','SGD','SEK','NOK','DKK','ZAR','TRY','MXN','BTC','ETH','XAU','XAG'];
-            const pairMatch = name.match(/([a-zA-Z]{6})/);
-            if (pairMatch) {
-                const pair = pairMatch[1].toUpperCase();
-                const base = pair.substring(0, 3);
-                const quote = pair.substring(3, 6);
-                if (currencies.includes(base) || currencies.includes(quote)) {
+            name = name.replace(/^\d{8}_\d{6}_/, '');                          // 20260217_182920_
+            name = name.replace(/^b\d{2}_\d{4}_firstrate_/, '');               // b01_0003_firstrate_
+            name = name.replace(/^firstrate_/, '');                            // firstrate_
+
+            const CURRENCIES = ['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','HKD','SGD','SEK','NOK','DKK','ZAR','TRY','MXN','CNY','BTC','ETH','XAU','XAG'];
+            const META = new Set([
+                'FULL','DAY','WEEK','MONTH','YEAR','HOUR','MIN',
+                'ADJ','UNADJ','CONTIN','CONTINUOUS','SPLIT','DIV','RATIO','ABSOLUTE',
+                '1MIN','5MIN','15MIN','30MIN','1HOUR','1DAY','1WEEK','1MONTH','1H','4H','1D','1W','1MO'
+            ]);
+
+            const parts = name.split('_').filter(Boolean);
+            if (!parts.length) return (rawName || 'Unknown').toUpperCase();
+
+            // Pick the first non-meta, non-numeric segment as the ticker candidate.
+            let seg = parts.find(p => {
+                const u = p.toUpperCase();
+                return !META.has(u) && !/^\d+$/.test(p);
+            }) || parts[0];
+
+            // Hyphenated crypto pair like BTC-EUR → BTC/EUR
+            if (/^[A-Za-z]{2,5}-[A-Za-z]{2,5}$/.test(seg)) {
+                const halves = seg.toUpperCase().split('-');
+                return halves[0] + '/' + halves[1];
+            }
+
+            const segU = seg.toUpperCase();
+
+            // Six-letter FX pair like EURUSD → EUR/USD (only when the halves are real currencies)
+            if (/^[A-Z]{6}$/.test(segU)) {
+                const base = segU.substring(0, 3);
+                const quote = segU.substring(3, 6);
+                if (CURRENCIES.includes(base) || CURRENCIES.includes(quote)) {
                     return base + '/' + quote;
                 }
             }
-            // Try 3-letter match for indices/commodities (e.g. "NAS", "SPX")
-            const indexMatch = name.match(/([a-zA-Z]{3,5})/);
-            if (indexMatch) {
-                return indexMatch[1].toUpperCase();
-            }
-            // Fallback: clean up the name
-            return name.replace(/[-_]/g, ' ').trim() || rawName;
+
+            // Otherwise return the segment verbatim (strips hyphens for clean display of
+            // futures contract codes, tickers, crypto base symbols, etc.).
+            return segU;
         }
 
         function formatRowCount(count) {
