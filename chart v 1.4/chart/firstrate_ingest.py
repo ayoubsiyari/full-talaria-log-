@@ -607,10 +607,49 @@ def iter_csv_files(root: Path) -> list[Path]:
     return out
 
 
-def extract_zip(zip_path: Path, dest_dir: Path) -> None:
+def extract_zip(zip_path: Path, dest_dir: Path, *, max_depth: int = 4) -> None:
+    """
+    Extract a FirstRate bundle ZIP, recursively unpacking any inner ZIPs.
+
+    FirstRate ships some bundle types (notably crypto, and certain futures/options archives)
+    as a ZIP-of-ZIPs — one inner ZIP per symbol — so a single-level ``extractall`` leaves the
+    CSVs hidden inside the inner zips and ``iter_csv_files`` (which only globs ``*.csv`` / ``*.txt``)
+    silently finds nothing. FX and stock/ETF bundles are already flat, so they are unaffected
+    by this recursion.
+
+    ``max_depth`` bounds the recursion to protect against pathological / malicious nesting (zip
+    bombs). In practice FirstRate never nests more than two levels.
+    """
     dest_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_path, "r") as zf:
         zf.extractall(dest_dir)
+
+    # After the top-level extract, walk the tree; for each inner zip, extract it into a
+    # sibling subfolder named after its stem, then delete the inner zip so the walker
+    # doesn't try to reprocess it on the next pass.
+    for _ in range(max_depth):
+        inner_zips = [p for p in dest_dir.rglob("*") if p.is_file() and p.suffix.lower() == ".zip"]
+        if not inner_zips:
+            return
+        for inner in inner_zips:
+            try:
+                if not zipfile.is_zipfile(inner):
+                    # Sometimes FirstRate ships a `.zip`-named readme or other non-zip artifact;
+                    # skip those so we don't raise for the whole bundle.
+                    continue
+                sub_dest = inner.parent / inner.stem
+                sub_dest.mkdir(parents=True, exist_ok=True)
+                with zipfile.ZipFile(inner, "r") as zf2:
+                    zf2.extractall(sub_dest)
+            except Exception:
+                # Ignore individual inner-zip failures — the surrounding normalize/ticker filter
+                # step will surface any resulting empty-dataset condition to the user.
+                continue
+            finally:
+                try:
+                    inner.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
 
 @dataclass

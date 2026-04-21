@@ -2201,6 +2201,16 @@ class OrderManager {
                         && Number.isFinite(s.tickValue) && s.tickValue > 0) {
                         pip = s.tickSize;
                         pvl = s.tickValue;
+                    } else if (s.type === 'crypto' || s.type === 'stocks') {
+                        // Crypto/stocks have no pip/tick in the registry. Derive a synthetic "pip"
+                        // from price precision so stale FX values from the previous symbol don't
+                        // leak into UI readouts or step controls. P&L still goes through the engine,
+                        // so these values are only used for cosmetic pip-distance displays.
+                        const precision = Number.isFinite(s.precision) ? s.precision : 2;
+                        pip = Math.pow(10, -precision);
+                        // For linear crypto / stocks, $1 move × contractSize == $1 per unit.
+                        const cs = Number.isFinite(s.contractSize) && s.contractSize > 0 ? s.contractSize : 1;
+                        pvl = pip * cs;
                     }
                 }
             } catch (e) { /* keep existing */ }
@@ -12109,11 +12119,26 @@ class OrderManager {
             lotSizeSuffix.textContent = config.positionLabel;
         }
         
-        // Update step size for lot size input based on market type
+        // Update step size for lot size input based on market type. Prefer the per-symbol
+        // qtyStep / minQty from the registry (so XRP=1, DOGE=1, BTC=0.001, ETH=0.01 etc.),
+        // and only fall back to the generic marketConfig defaults when the registry has nothing.
         const lotSizeInput = document.getElementById('lotSizeAmount');
         if (lotSizeInput) {
-            lotSizeInput.step = config.sizeStep;
-            lotSizeInput.min = config.minSize;
+            let step = config.sizeStep;
+            let min  = config.minSize;
+            try {
+                if (window.marketCalcEngine && typeof window.marketCalcEngine.getCalculator === 'function') {
+                    const sym = this._getSymbol();
+                    if (sym) {
+                        const calc = window.marketCalcEngine.getCalculator(sym, this.marketType);
+                        const s = calc && typeof calc.getSpecs === 'function' ? calc.getSpecs() : null;
+                        if (s && Number.isFinite(s.sizeStep) && s.sizeStep > 0) step = s.sizeStep;
+                        if (s && Number.isFinite(s.minSize) && s.minSize > 0) min = s.minSize;
+                    }
+                }
+            } catch (_) { /* keep defaults */ }
+            lotSizeInput.step = step;
+            lotSizeInput.min  = min;
         }
         
         // Update instrument settings hint based on market type

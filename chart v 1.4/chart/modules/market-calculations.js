@@ -407,14 +407,35 @@ class CryptoCalculator {
         const { contractType, contractSize } = this.specs;
         if (!sl || !riskUSD || Math.abs(entry - sl) < 1e-10) return 0;
 
+        let raw;
         if (contractType === 'inverse') {
             const riskPerContract = Math.abs(1 / sl - 1 / entry) * contractSize * entry;
-            return riskPerContract === 0 ? 0 : riskUSD / riskPerContract;
+            raw = riskPerContract === 0 ? 0 : riskUSD / riskPerContract;
+        } else {
+            // Linear / Spot
+            const priceDist = Math.abs(entry - sl);
+            raw = riskUSD / (priceDist * contractSize);
         }
+        // Snap DOWN to an exchange-legal qty so sizing never exceeds risk budget, and enforce minQty.
+        // Without this, BTC sizing returns e.g. 0.318472 which is illegal on exchanges with 0.001 step
+        // and confuses the UI input (`step=0.001` expects a snapped value).
+        return this.snapQty(raw);
+    }
 
-        // Linear / Spot
-        const priceDist = Math.abs(entry - sl);
-        return riskUSD / (priceDist * contractSize);
+    /**
+     * Snap a raw qty down to the exchange step (respecting minQty). Returns 0 when the input is
+     * below minQty — the caller decides whether to surface a "min size not met" message.
+     */
+    snapQty(rawQty) {
+        const step = Number(this.specs.qtyStep) > 0 ? Number(this.specs.qtyStep) : 1e-8;
+        const min  = Number(this.specs.minQty)  > 0 ? Number(this.specs.minQty)  : step;
+        const q = Number(rawQty);
+        if (!Number.isFinite(q) || q <= 0) return 0;
+        const snapped = Math.floor(q / step) * step;
+        if (snapped + 1e-12 < min) return 0;
+        // Fix float drift (e.g. 0.1 * 3 = 0.30000000000000004) using the step's decimal places.
+        const decimals = step >= 1 ? 0 : Math.min(10, Math.max(0, Math.ceil(-Math.log10(step))));
+        return Number(snapped.toFixed(decimals));
     }
 
     /**
