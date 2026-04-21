@@ -1775,6 +1775,15 @@ def _normalize_ticker_filter_list(pairs: list[str] | None) -> list[str]:
     return uniq
 
 
+_FIRSTRATE_META_SEGMENTS = {
+    "FULL", "DAY", "WEEK", "MONTH", "YEAR", "HOUR", "MIN",
+    "ADJ", "UNADJ", "CONTIN", "SPLIT", "DIV", "RATIO", "ABSOLUTE",
+}
+# Common quote currencies that appear trailing on user-typed crypto tickers.
+# Ordered longest-first so `USDT`/`USDC` are stripped before the shorter `USD`.
+_FIRSTRATE_CRYPTO_QUOTE_ALIASES = ("USDT", "USDC", "USD", "EUR", "GBP", "JPY", "BTC", "ETH")
+
+
 def _token_matches_firstrate_stem(tok: str, stem: str) -> bool:
     """
     Match a filter token against a FirstRate CSV filename stem.
@@ -1783,13 +1792,18 @@ def _token_matches_firstrate_stem(tok: str, stem: str) -> bool:
         EURUSD_full_1min.txt                     (FX)
         AAPL_full_1min_adj_split.txt             (stock)
         ES_full_1min_contin_UNadj.txt            (futures, continuous)
-        BTCUSD_full_1min.txt                     (crypto)
+        BTC_full_1min.txt                        (crypto, implicit USD quote)
+        BTC-EUR_full_1min.txt                    (crypto, explicit non-USD quote)
     We split the stem on non-alphanumerics into segments and consider a token to match if:
       * any segment equals the token exactly (`ES` matches `ES_continuous…`, not `ESM2024`), OR
       * the first segment starts with the token and is only a little longer than it
         (handles contract-coded futures like `ESM2024.txt` when the user typed `ES`), OR
       * for longer tokens (>=6 chars) the alnum-compacted stem contains the token as prefix
-        or substring (handles `EURUSD`, `GBPJPY`, etc. against any FirstRate naming style).
+        or substring (handles `EURUSD`, `GBPJPY`, etc. against any FirstRate naming style), OR
+      * [crypto] the token ends with a known quote currency (USD/USDT/USDC/EUR/...) and its
+        base matches the first segment — FirstRate's crypto bundle names files by base asset
+        only for USD-quoted pairs (`BTC_full_1min` means BTC/USD), so users typing `BTCUSD` or
+        `BTCUSDT` still resolve to the right file.
     """
     if not tok or not stem:
         return False
@@ -1800,7 +1814,8 @@ def _token_matches_firstrate_stem(tok: str, stem: str) -> bool:
         return True
     if len(tok_up) >= 6:
         compact = "".join(segments)
-        return compact.startswith(tok_up) or (tok_up in compact)
+        if compact.startswith(tok_up) or (tok_up in compact):
+            return True
     # Short root tokens (2–5 chars, e.g. futures roots "ES", "NQ", metal "GC") should also match
     # continuous contract codes like `ESM2024` / `CLH25` where the root prefixes the first segment.
     if segments and segments[0].startswith(tok_up):
@@ -1810,6 +1825,30 @@ def _token_matches_firstrate_stem(tok: str, stem: str) -> bool:
         # Accept extensions like ESM2024 (alphanumeric contract code) but avoid false positives
         # (e.g. token "ES" against "ESTOX50" — length diff > 7 is unlikely to be a futures code).
         if len(rest) <= 6:
+            return True
+    # Crypto pair fallback — FirstRate ships crypto as `<BASE>_full_1min.txt` (implicit USD) or
+    # `<BASE>-<QUOTE>_full_1min.txt` (explicit non-USD). Accept common user-typed suffixes.
+    for quote in _FIRSTRATE_CRYPTO_QUOTE_ALIASES:
+        if not tok_up.endswith(quote) or len(tok_up) <= len(quote):
+            continue
+        base = tok_up[: -len(quote)]
+        if not segments or segments[0] != base:
+            continue
+        # Look at the segment right after the base to see whether the stem carries an
+        # explicit quote (e.g. `BTC-EUR_…`) or is a pure base-only stem (`BTC_…`).
+        sibling = segments[1] if len(segments) >= 2 else None
+        sibling_is_quote = (
+            sibling is not None
+            and sibling.isalpha()
+            and 3 <= len(sibling) <= 5
+            and sibling not in _FIRSTRATE_META_SEGMENTS
+        )
+        if not sibling_is_quote:
+            # Base-only stem → default quote is USD. Accept USD and its stablecoin aliases,
+            # since FirstRate does not separately ship USDT/USDC-quoted bundles for these.
+            if quote in {"USD", "USDT", "USDC"}:
+                return True
+        elif sibling == quote:
             return True
     return False
 
