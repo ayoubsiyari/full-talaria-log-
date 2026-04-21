@@ -4579,6 +4579,41 @@ def _run_firstrate_import_job(job_id: str) -> None:
                 pass
 
             csv_paths = iter_csv_files(extract_dir)
+
+            # Diagnostic: if the bundle produced no CSVs, capture what files DID land in the
+            # extract dir so the admin can see (in the live job status + server logs) whether
+            # the archive nested differently than expected. Without this hint, crypto / futures
+            # ZIP-of-ZIPs failures look like silent "0 datasets" completions.
+            if not csv_paths:
+                try:
+                    all_files = [p for p in extract_dir.rglob("*") if p.is_file()]
+                except Exception:
+                    all_files = []
+                exts: dict[str, int] = {}
+                for p in all_files:
+                    key = (p.suffix or "(no-ext)").lower()
+                    exts[key] = exts.get(key, 0) + 1
+                sample_names = [p.relative_to(extract_dir).as_posix() for p in all_files[:25]]
+                diag = {
+                    "bundle_letter": current_range,
+                    "bundle_index": bundle_idx,
+                    "total_files_extracted": len(all_files),
+                    "extensions": exts,
+                    "sample_paths": sample_names,
+                }
+                print(
+                    f"[firstrate][{job_id}] extract produced 0 CSV/TXT in {extract_dir} — "
+                    f"files={len(all_files)} exts={exts} sample={sample_names[:10]}"
+                )
+                skipped.append({
+                    "bundle_letter": current_range,
+                    "error": (
+                        "archive contained no CSV/TXT files after recursive extract — "
+                        f"saw {len(all_files)} file(s), extensions: {exts}"
+                    ),
+                    "diagnostic": diag,
+                })
+
             if pairs_norm:
                 before_n = len(csv_paths)
                 csv_paths, skipped_pair_n = _firstrate_filter_csv_paths_by_tickers(csv_paths, pairs_norm)
@@ -4586,6 +4621,24 @@ def _run_firstrate_import_job(job_id: str) -> None:
                 filter_msg = (
                     f"Ticker filter kept {len(csv_paths)}/{before_n} CSV(s){bundle_label}"
                 )
+                if before_n > 0 and not csv_paths:
+                    # All files present but the token filter dropped everything — useful to log.
+                    try:
+                        before_paths = iter_csv_files(extract_dir)
+                        sample_stems = [p.stem for p in before_paths[:25]]
+                    except Exception:
+                        sample_stems = []
+                    print(
+                        f"[firstrate][{job_id}] ticker filter dropped ALL {before_n} file(s); "
+                        f"tokens={pairs_norm} first-stems={sample_stems}"
+                    )
+                    skipped.append({
+                        "bundle_letter": current_range,
+                        "error": (
+                            f"ticker filter {pairs_norm} matched 0 of {before_n} CSVs — "
+                            f"check spelling. Sample filenames in bundle: {sample_stems[:8]}"
+                        ),
+                    })
             else:
                 filter_msg = f"Normalizing {len(csv_paths)} CSV file(s){bundle_label}"
 
