@@ -2217,6 +2217,38 @@ html.iframe-mode .bt-modal-footer {
             return count.toString();
         }
 
+        // Classify a single file into Futures / Crypto / Forex / Stocks for grouping
+        // in the dropdown. Mirrors detectAssetClassFromFiles() but per-file, and adds
+        // a Stocks fallback so AAPL-style tickers don't silently fall into Forex.
+        function classifyFile(file) {
+            const FUTURES = new Set(['ES','NQ','YM','RTY','MES','MNQ','M2K','CL','GC','SI','NG','ZB','ZN','MCL','MGC','MSI','MNG','HG','PL','PA','ZC','ZS','ZW','ZL','ZM','6E','6B','6J','6A','6C','6S','6N']);
+            const CRYPTO = new Set(['BTC','ETH','SOL','XRP','ADA','DOGE','BNB','LTC','AVAX','ATOM','DOT','LINK','MATIC','UNI','BCH','ETC','FIL','NEAR','ALGO','XLM','TRX','SHIB','APT','ARB','OP']);
+            const CURRENCIES = new Set(['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','HKD','SGD','SEK','NOK','DKK','ZAR','TRY','MXN','CNY','XAU','XAG']);
+
+            const raw = cleanPairName(file.original_name || file.name || file.filename || '');
+            const token = String(raw || '').replace('/', '').toUpperCase();
+            if (!token) return 'Other';
+
+            if (FUTURES.has(token)) return 'Futures';
+
+            // Pair-like tokens: treat each half independently
+            if (token.length >= 6) {
+                const base = token.slice(0, 3);
+                const quote = token.slice(3, 6);
+                if (CRYPTO.has(base) || CRYPTO.has(quote)) return 'Crypto';
+                if (CURRENCIES.has(base) && CURRENCIES.has(quote)) return 'Forex';
+            }
+
+            // Single-token tickers
+            if (CRYPTO.has(token)) return 'Crypto';
+            if (CURRENCIES.has(token)) return 'Forex';
+
+            // 1–5 letter alpha-only symbols that aren't currencies → assume stock ticker
+            if (/^[A-Z]{1,5}$/.test(token)) return 'Stocks';
+
+            return 'Other';
+        }
+
         function updateFileListUI() {
             const fileList = document.getElementById('fileList');
             if (availableFilesCache.length === 0) return;
@@ -2228,8 +2260,19 @@ html.iframe-mode .bt-modal-footer {
                 const pair = cleanPairName(raw);
                 pairCounts[pair] = (pairCounts[pair] || 0) + 1;
             });
-            
-            fileList.innerHTML = availableFilesCache.map(function (file) {
+
+            // Group files by asset class so the dropdown shows
+            //   Futures → Crypto → Forex → Stocks → Other
+            // sections (empty groups are skipped). Within a group the existing
+            // alphabetical order from availableFilesCache is preserved.
+            const GROUP_ORDER = ['Futures', 'Crypto', 'Forex', 'Stocks', 'Other'];
+            const groups = { Futures: [], Crypto: [], Forex: [], Stocks: [], Other: [] };
+            availableFilesCache.forEach(function (file) {
+                const g = classifyFile(file);
+                (groups[g] || groups.Other).push(file);
+            });
+
+            function renderRow(file) {
                 const isSelected = selectedFilesArray.some(function (f) { return sameFileId(f.id, file.id); });
                 const rawName = file.original_name || file.name || file.filename || file.symbol || ('File ' + file.id);
                 const pairName = cleanPairName(rawName);
@@ -2245,7 +2288,28 @@ html.iframe-mode .bt-modal-footer {
                     '<span class="bt-file-row-meta">' + (rows ? rows + ' candles' : '') + '</span>' +
                     '</div></label>'
                 );
-            }).join('');
+            }
+
+            const html = GROUP_ORDER
+                .filter(function (g) { return groups[g] && groups[g].length > 0; })
+                .map(function (g) {
+                    const header = (
+                        '<div class="bt-file-group-header" ' +
+                        'style="padding:6px 12px;margin-top:4px;' +
+                        'font-size:10px;font-weight:700;letter-spacing:0.08em;' +
+                        'text-transform:uppercase;color:#94a3b8;' +
+                        'background:rgba(148,163,184,0.06);' +
+                        'border-top:1px solid rgba(148,163,184,0.12);' +
+                        'border-bottom:1px solid rgba(148,163,184,0.12);' +
+                        'position:sticky;top:0;z-index:1;">' +
+                        g + ' <span style="opacity:0.6;font-weight:500;">· ' + groups[g].length + '</span>' +
+                        '</div>'
+                    );
+                    return header + groups[g].map(renderRow).join('');
+                })
+                .join('');
+
+            fileList.innerHTML = html;
         }
         
         // Load available files on page load
