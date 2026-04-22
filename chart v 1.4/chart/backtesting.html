@@ -2298,10 +2298,13 @@ html.iframe-mode .bt-modal-footer {
                         'style="padding:6px 12px;margin-top:4px;' +
                         'font-size:10px;font-weight:700;letter-spacing:0.08em;' +
                         'text-transform:uppercase;color:#94a3b8;' +
-                        'background:rgba(148,163,184,0.06);' +
-                        'border-top:1px solid rgba(148,163,184,0.12);' +
-                        'border-bottom:1px solid rgba(148,163,184,0.12);' +
-                        'position:sticky;top:0;z-index:1;">' +
+                        // Opaque background + border so rows don't bleed through
+                        // the sticky header when the user scrolls the list.
+                        'background:#0b1220;' +
+                        'border-top:1px solid rgba(148,163,184,0.18);' +
+                        'border-bottom:1px solid rgba(148,163,184,0.18);' +
+                        'box-shadow:0 1px 0 rgba(0,0,0,0.4);' +
+                        'position:sticky;top:0;z-index:5;">' +
                         g + ' <span style="opacity:0.6;font-weight:500;">· ' + groups[g].length + '</span>' +
                         '</div>'
                     );
