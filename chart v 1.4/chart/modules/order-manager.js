@@ -20931,7 +20931,9 @@ class OrderManager {
         
         const currentPrice = currentCandle.c;
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
-        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || currentPrice);
+        // `let` (not `const`) — tick-grid snap below re-assigns this value so all
+        // downstream order-creation paths use the snapped price.
+        let entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || currentPrice);
         const activeTicker = this._getActiveTicker();
         const activeInstrumentSettings = this._getActiveInstrumentSettings();
         
@@ -20959,7 +20961,36 @@ class OrderManager {
                 slPrice = slPriceInput;
             }
         }
-        
+
+        // Tick-grid snap the three order prices once, centrally, before any
+        // downstream code paths (single market, single pending, multi-entry,
+        // split-entry cloning, journal, SL/TP labels, etc.) read them.
+        //
+        // Why here and not per-path:
+        //   • `entryPrice` comes from either the panel input or the forming
+        //     candle's `c`. During replay tick animation on an instrument whose
+        //     tick registry spec is unresolved (unknown futures month code,
+        //     etc.), the forming `c` can be an interpolated off-grid float —
+        //     which then shows up on the SL/TP labels as e.g. NQ `2064.73`
+        //     instead of the valid `2064.75`.
+        //   • User-typed SL/TP values from the panel are free-form floats.
+        //   • `_snapOrderPriceToTick` is null-safe: it returns the original
+        //     price when there's no chart, no symbol, or no tick registry
+        //     (forex with unknown pair, etc.), so this is a no-op on
+        //     instruments that legitimately have no tick grid.
+        {
+            const snappedEntry = this._snapOrderPriceToTick(entryPrice);
+            if (Number.isFinite(snappedEntry)) entryPrice = snappedEntry;
+            if (tpPrice > 0) {
+                const snappedTp = this._snapOrderPriceToTick(tpPrice);
+                if (Number.isFinite(snappedTp)) tpPrice = snappedTp;
+            }
+            if (slPrice > 0) {
+                const snappedSl = this._snapOrderPriceToTick(slPrice);
+                if (Number.isFinite(snappedSl)) slPrice = snappedSl;
+            }
+        }
+
         // Get auto breakeven setting
         const autoBreakeven = document.getElementById('autoBreakevenToggle')?.checked || false;
         let breakevenSettings = null;
