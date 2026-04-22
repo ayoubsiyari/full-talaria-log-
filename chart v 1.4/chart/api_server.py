@@ -118,6 +118,7 @@ from firstrate_ingest import (
     VALID_STOCK_ADJUSTMENTS,
     download_firstrate_bundle,
     extract_zip,
+    fetch_firstrate_last_update,
     fetch_firstrate_ticker_listing_rows,
     get_firstrate_userid,
     iter_csv_files,
@@ -7544,6 +7545,39 @@ async def admin_firstrate_fx_ticker_listing(request: Request, instrument_type: s
         "truncated": total > len(capped),
         "rows": capped,
     }
+
+
+@app.get("/api/admin/datasets/firstrate-fx/last-update")
+async def admin_firstrate_last_update(
+    request: Request,
+    instrument_type: str = Query("crypto", description="stock, etf, futures, crypto, index, or fx"),
+    is_full_update: bool = Query(False, description="True → date of last full-history rebuild; False → rolling update bundles"),
+):
+    """
+    Proxy FirstRate `last_update` so the admin UI can check whether a fresh
+    download is worth making before kicking off an import. Returns the vendor's
+    raw date plus an ISO-normalized version when parseable.
+
+    Docs: https://firstratedata.com/about/api-docs  (section "Last Update")
+    Example: /api/admin/datasets/firstrate-fx/last-update?instrument_type=crypto
+    """
+    _require_admin(request)
+    uid = get_firstrate_userid()
+    if not uid:
+        raise HTTPException(status_code=503, detail="FIrstrate_USERID is not configured on this server.")
+    try:
+        info = fetch_firstrate_last_update(
+            userid=uid,
+            instrument_type=instrument_type,
+            is_full_update=bool(is_full_update),
+        )
+    except ValueError as e:
+        # Bad `type` → client error; vendor errors → upstream bad-gateway.
+        msg = str(e)
+        if msg.startswith("type must be"):
+            raise HTTPException(status_code=400, detail=msg) from e
+        raise HTTPException(status_code=502, detail=msg) from e
+    return {"success": True, **info}
 
 
 @app.get("/api/admin/datasets/firstrate-fx/{job_id}/status")

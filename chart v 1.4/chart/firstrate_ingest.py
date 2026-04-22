@@ -30,6 +30,14 @@ _UTC_TZ = ZoneInfo("UTC")
 
 _FIrestratE_DEFAULT_BASE = "https://firstratedata.com/api/data_file"
 _FIrestratE_TICKER_LISTING = "https://firstratedata.com/api/ticker_listing"
+# Lightweight endpoint that returns the publication date of the most recent
+# update bundle for a given instrument type — useful for checking whether a
+# fresh download is worth making. See:
+#   https://firstratedata.com/about/api-docs  (section "Last Update")
+_FIrestratE_LAST_UPDATE = "https://firstratedata.com/api/last_update"
+# FirstRate's last_update endpoint supports these instrument types (per docs).
+# `options` is notably absent.
+VALID_LAST_UPDATE_TYPES = frozenset({"stock", "etf", "futures", "crypto", "index", "fx"})
 
 # Parsed row cap (admin JSON); full CSV can be larger.
 MAX_TICKER_LISTING_RETURN = 50_000
@@ -107,6 +115,96 @@ def fetch_firstrate_ticker_listing_rows(
         tail = e.read().decode("utf-8", errors="replace")[:2500]
         raise ValueError(f"FirstRate HTTP {e.code}: {tail}") from e
     return _parse_ticker_listing_csv(body)
+
+
+def _parse_last_update_body(text: str) -> str:
+    """
+    FirstRate `last_update` returns raw text, typically a single line of the
+    form `YYYY-MM-DD` (occasionally with a surrounding quote or trailing
+    newline). We strip and return the first non-empty line, leaving the exact
+    formatting to the caller so downstream code can choose to parse or display
+    verbatim. Empty bodies raise — a silent blank would mislead freshness checks.
+    """
+    raw = (text or "").strip().strip('"').strip("'")
+    if not raw:
+        raise ValueError("FirstRate last_update returned an empty body.")
+    head_snip = raw[:400].lower()
+    if "<html" in head_snip or "<!doctype" in head_snip:
+        raise ValueError(
+            "FirstRate last_update returned HTML instead of a date — "
+            "check FIrstrate_USERID or the `type` parameter."
+        )
+    # Take the first line only; some responses include a trailing blank line.
+    first = raw.splitlines()[0].strip()
+    return first
+
+
+def fetch_firstrate_last_update(
+    *,
+    userid: str,
+    instrument_type: str,
+    is_full_update: bool = False,
+    timeout_sec: float = 30,
+) -> dict[str, object]:
+    """
+    Call FirstRate `last_update` for an instrument type and return the publication
+    date of the most recent bundle.
+
+    When `is_full_update=False` (default) the date reflects the rolling
+    day/week/month update bundles. When `is_full_update=True` it reflects the
+    full historical dataset rebuild — useful for deciding whether to re-download
+    the `period=full` archives.
+
+    Docs: https://firstratedata.com/about/api-docs  (section "Last Update")
+
+    Returns a dict:
+      {
+        "instrument_type": "crypto",
+        "is_full_update": False,
+        "last_update": "2026-04-21",      # raw vendor string
+        "last_update_iso": "2026-04-21",  # ISO-8601 if parseable, else None
+        "fetched_at": "2026-04-22T22:10:00+00:00",
+      }
+    """
+    if not userid:
+        raise ValueError("userid is required")
+    t = (instrument_type or "").strip().lower()
+    if t not in VALID_LAST_UPDATE_TYPES:
+        raise ValueError(
+            f"type must be one of {sorted(VALID_LAST_UPDATE_TYPES)} (got {instrument_type!r})"
+        )
+    params: dict[str, str] = {"type": t, "userid": userid}
+    if is_full_update:
+        # Vendor accepts literal lowercase `true`/`false`.
+        params["is_full_update"] = "true"
+    url = f"{_FIrestratE_LAST_UPDATE}?{urlencode(params)}"
+    req = Request(url, headers={"User-Agent": "TalariaFirstrateImporter/1.0"})
+    try:
+        with urlopen(req, timeout=timeout_sec) as resp:
+            body = resp.read().decode("utf-8-sig", errors="replace")
+    except HTTPError as e:
+        tail = e.read().decode("utf-8", errors="replace")[:2500]
+        raise ValueError(f"FirstRate HTTP {e.code}: {tail}") from e
+
+    raw_date = _parse_last_update_body(body)
+
+    iso: str | None = None
+    # Best-effort parse to ISO-8601 so callers can compare dates without sniffing
+    # the vendor format. Kept permissive: a bad parse just leaves iso=None.
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y%m%d", "%m/%d/%Y", "%d-%m-%Y"):
+        try:
+            iso = datetime.strptime(raw_date, fmt).date().isoformat()
+            break
+        except ValueError:
+            continue
+
+    return {
+        "instrument_type": t,
+        "is_full_update": bool(is_full_update),
+        "last_update": raw_date,
+        "last_update_iso": iso,
+        "fetched_at": datetime.now(_UTC_TZ).isoformat(timespec="seconds"),
+    }
 
 
 def build_firstrate_data_file_url(

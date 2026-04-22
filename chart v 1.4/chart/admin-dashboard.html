@@ -1591,6 +1591,11 @@ select { cursor: pointer; }
                 </div>
                 <div class="field fg-full" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                   <button type="button" class="btn sm primary" id="fr_load_tickers_btn" style="display:none" onclick="loadFirstrateTickerCatalog()">Browse symbols (FirstRate API)</button>
+                  <button type="button" class="btn sm" id="fr_last_update_btn" onclick="checkFirstrateLastUpdate()" title="Ask FirstRate for the publication date of the most recent update bundle for the selected instrument type. Use this before downloading to confirm there is fresh data available.">Check last update</button>
+                  <label style="font-size:11px;color:var(--text-muted);display:inline-flex;align-items:center;gap:4px;cursor:pointer" title="When on, asks for the date of the last full-history rebuild instead of the rolling day/week/month update.">
+                    <input type="checkbox" id="fr_last_update_full"> full-history
+                  </label>
+                  <span id="fr_last_update_note" style="font-size:11px;color:var(--text-muted)"></span>
                   <span id="fr_load_tickers_note" style="font-size:11px;color:var(--text-muted)"></span>
                 </div>
                 <div id="fr_ticker_catalog_wrap" class="field fg-full" style="display:none;margin-top:4px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--panel)">
@@ -4351,6 +4356,54 @@ function _frMergeCatalogRows(primary, fallback) {
   push(primary);
   push(fallback);
   return out;
+}
+
+// Query FirstRate's `last_update` endpoint for the currently selected instrument
+// type and surface the returned date next to the button. Lets the admin confirm
+// there is fresh vendor data before kicking off a (potentially slow) import.
+//
+// Docs: https://firstratedata.com/about/api-docs  ("Last Update" section)
+async function checkFirstrateLastUpdate() {
+  const typeSel = $('fr_type');
+  const btn = $('fr_last_update_btn');
+  const note = $('fr_last_update_note');
+  const full = $('fr_last_update_full');
+  const inst = typeSel ? String(typeSel.value || '').trim().toLowerCase() : '';
+  if (!inst) {
+    if (note) { note.textContent = 'Pick an instrument type first.'; note.style.color = 'var(--err, #f87171)'; }
+    return;
+  }
+  if (btn) btn.disabled = true;
+  if (note) { note.textContent = 'Checking…'; note.style.color = 'var(--text-muted)'; }
+  try {
+    const qs = new URLSearchParams({
+      instrument_type: inst,
+      is_full_update: full && full.checked ? 'true' : 'false',
+    });
+    const data = await api('/api/admin/datasets/firstrate-fx/last-update?' + qs.toString());
+    const date = data.last_update_iso || data.last_update || '—';
+    const scope = full && full.checked ? 'full history' : 'rolling update';
+    // Days-stale badge when we could normalize the date to ISO.
+    let stale = '';
+    if (data.last_update_iso) {
+      const d = new Date(data.last_update_iso + 'T00:00:00Z');
+      if (!isNaN(d)) {
+        const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+        stale = ' · ' + (days <= 0 ? 'today' : (days + 'd old'));
+      }
+    }
+    if (note) {
+      note.textContent = inst + ' ' + scope + ': ' + date + stale;
+      note.style.color = 'var(--text)';
+    }
+  } catch (e) {
+    if (note) {
+      note.textContent = 'Failed: ' + (e && e.message ? e.message : String(e));
+      note.style.color = 'var(--err, #f87171)';
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 async function loadFirstrateTickerCatalog() {
