@@ -3498,6 +3498,45 @@ class ReplaySystem {
         for (let i = 0; i < n; i++) path[i] = Math.max(low, Math.min(high, path[i]));
         path[n - 1] = close;
         path[0] = open;
+
+        // ── Tick-grid snap ────────────────────────────────────────────────────
+        // Futures/crypto only trade at discrete tick increments (NQ = 0.25, GC = 0.10,
+        // CL = 0.01, BTCUSD = 0.1, USDJPY = 0.001, …). The state-machine walk above
+        // produces continuous floats; without snapping, the forming candle's `close`
+        // slides through values that never exist on a real exchange (e.g. NQ at
+        // `20150.34` or `20151.02`). Snapping here makes the live price LINE advance
+        // in realistic ticks: `20150.25 → 20150.50 → 20150.75 → …`.
+        //
+        // Guards:
+        //   1. Only snap when the chart actually has a registered instrument — the
+        //      fallback tick (`10^-precision`) on unknown symbols would introduce
+        //      float-quantisation noise for data already stored at the native precision.
+        //   2. Keep open/close EXACTLY as provided by the data (path endpoints are
+        //      what everything else references; altering them would desync OHLC stats).
+        //   3. Skip if tick ≥ half the candle range (would collapse the path to a
+        //      single value and kill all intra-candle animation).
+        try {
+            const chart = this.chart;
+            const tick = (chart && typeof chart.getTickSize === 'function') ? chart.getTickSize() : null;
+            const hasRegistrySpec = !!(
+                chart && chart.currentSymbol && typeof window !== 'undefined' && window.marketCalcEngine
+                && (() => {
+                    try {
+                        const calc = window.marketCalcEngine.getCalculator(chart.currentSymbol);
+                        return !!(calc && calc.specs
+                            && (Number.isFinite(calc.specs.tickSize) || Number.isFinite(calc.specs.pipSize)));
+                    } catch (_) { return false; }
+                })()
+            );
+            if (hasRegistrySpec && Number.isFinite(tick) && tick > 0 && tick < range * 0.5) {
+                for (let i = 1; i < n - 1; i++) {
+                    const snapped = Math.round(path[i] / tick) * tick;
+                    // Clamp inside OHLC range after snapping (edge points could round past high/low).
+                    path[i] = Math.max(low, Math.min(high, snapped));
+                }
+            }
+        } catch (_) { /* registry lookup failed — leave path unsnapped */ }
+
         return path;
     }
     

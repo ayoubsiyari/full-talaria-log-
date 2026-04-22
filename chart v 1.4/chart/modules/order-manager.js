@@ -10814,6 +10814,41 @@ class OrderManager {
     }
 
     /**
+     * Snap a price to the active instrument's tick grid.
+     *
+     * Real futures/crypto only trade at discrete tick increments (NQ = 0.25,
+     * ES = 0.25, GC = 0.10, CL = 0.01, BTCUSD = 0.1, USDJPY = 0.001, etc.). Any
+     * order-related price that comes from a mouse drag (entry/SL/TP line pulled
+     * with the cursor) or free-form user input must be aligned to the grid so we
+     * don't send / display / fill orders at impossible prices (`NQ @ 20150.37`).
+     *
+     * Only snaps when the active symbol resolves to a registered instrument with
+     * a real `tickSize` / `pipSize` — otherwise returns the price untouched, so
+     * arbitrary datasets without a registry entry keep their native precision
+     * instead of being quantised to the fallback `10^-5`.
+     *
+     * The chart-level `snapPriceToTick` is the source of truth; this wrapper is
+     * just a safe entry point that handles the missing-chart / missing-registry
+     * edge cases that order-manager code paths run into during init.
+     */
+    _snapOrderPriceToTick(price) {
+        if (!Number.isFinite(price)) return price;
+        const ctx = this.chart;
+        if (!ctx || typeof ctx.snapPriceToTick !== 'function' || !ctx.currentSymbol) return price;
+        if (typeof window === 'undefined' || !window.marketCalcEngine) return price;
+        try {
+            const calc = window.marketCalcEngine.getCalculator(ctx.currentSymbol);
+            const specs = calc && calc.specs;
+            const hasRegistryTick = !!(specs && (Number.isFinite(specs.tickSize) || Number.isFinite(specs.pipSize)));
+            if (!hasRegistryTick) return price;
+            const snapped = ctx.snapPriceToTick(price);
+            return Number.isFinite(snapped) ? snapped : price;
+        } catch (_) {
+            return price;
+        }
+    }
+
+    /**
      * Apply the current pair's price precision to every price input in the order panel.
      * Sets `step` and enforces the max decimal count live on every keystroke.
      */
@@ -25736,11 +25771,22 @@ class OrderManager {
             
             // Get current line Y position
             const lineY = parseFloat(line.attr('y1'));
-            const newY = lineY + deltaY;
-            
+            // `newY` is reassigned below whenever a clamp or snap adjusts the price,
+            // so it must be `let`, not `const` (was silently failing on TP/SL clamp
+            // paths before tick-snapping made reassignment routine).
+            let newY = lineY + deltaY;
+
             // Convert Y position to price using inverse scale
             if (ctx.scales && ctx.scales.yScale) {
                 let newPrice = ctx.scales.yScale.invert(newY);
+                // Tick-grid snap FIRST so the OHLC/TP/SL clamps below operate on
+                // already-valid tick prices (NQ 0.25, GC 0.10, etc.). Keeps the SL/TP
+                // line visually locked to the grid while dragging.
+                const snappedDrag = self._snapOrderPriceToTick(newPrice);
+                if (snappedDrag !== newPrice) {
+                    newPrice = snappedDrag;
+                    newY = ctx.scales.yScale(newPrice);
+                }
                 if (lineType === 'tp') {
                     const c = self._clampTpDragPrice(order.type, newPrice, order.openPrice, order.stopLoss, self.pipSize);
                     if (c !== newPrice) {
@@ -26130,11 +26176,19 @@ class OrderManager {
             
             // Get current line Y position
             const lineY = parseFloat(line.attr('y1'));
-            const newY = lineY + deltaY;
-            
+            // `let` (not `const`) — both the tick snap below and the TP clamp reassign `newY`.
+            let newY = lineY + deltaY;
+
             // Convert Y position to price using inverse scale
             if (ctx.scales && ctx.scales.yScale) {
                 let newPrice = ctx.scales.yScale.invert(newY);
+                // Snap to the instrument's tick grid before clamping so multi-TP levels
+                // land on valid futures/crypto tick prices.
+                const snappedDrag = self._snapOrderPriceToTick(newPrice);
+                if (snappedDrag !== newPrice) {
+                    newPrice = snappedDrag;
+                    newY = ctx.scales.yScale(newPrice);
+                }
                 const cTp = self._clampTpDragPrice(order.type, newPrice, order.openPrice, order.stopLoss, self.pipSize);
                 if (cTp !== newPrice) {
                     newPrice = cTp;
@@ -29626,6 +29680,13 @@ class OrderManager {
                 const chartHeight = ch.h || 500;
                 let clampedY = Math.max(0, Math.min(chartHeight, event.y));
                 let newPrice = ch.scales.yScale.invert(clampedY);
+                // Snap pending TP/SL to the instrument's tick grid before any side-clamp.
+                const snappedDrag = self._snapOrderPriceToTick(newPrice);
+                if (snappedDrag !== newPrice) {
+                    newPrice = snappedDrag;
+                    const ay = ch.scales.yScale(newPrice);
+                    clampedY = Math.max(0, Math.min(chartHeight, ay));
+                }
                 if (target.type === 'TP') {
                     const c = self._clampTpDragPrice(
                         pendingOrder.direction,

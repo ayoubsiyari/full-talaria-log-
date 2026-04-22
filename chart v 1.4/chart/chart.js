@@ -16049,6 +16049,41 @@ class Chart {
                 crosshairY = closestPx;
             }
         }
+
+        // Tick-grid snap for instruments with a known tick size (NQ/ES → 0.25, GC → 0.10,
+        // CL → 0.01, USDJPY → 0.001, etc.). Real futures/crypto only trade at discrete tick
+        // increments, so the crosshair readout should reflect that instead of showing a
+        // free-floating `20150.68342`-style interpolation from `yScale.invert(y)`. The
+        // horizontal line snaps to the tick's pixel position too so the visual matches.
+        //
+        // Suppressed when the user is actively drawing (tool/drag) — drawings need sub-tick
+        // precision for price alignment on zoomed-in charts. The OHLC magnet above already
+        // handles OHLC snapping; for registered instruments OHLC values are themselves on
+        // the tick grid, so this second pass is a no-op there.
+        if (this.yScale && Number.isFinite(crosshairPrice)
+            && typeof this.getTickSize === 'function'
+            && !(_dm && (_dm.currentTool || _dm.isDrawing || _dm.isDragging))) {
+            const tick = this.getTickSize();
+            // Only snap for registered instruments — unregistered symbols return a 10^-precision
+            // fallback tick that would force weird rounding on arbitrary price data.
+            const hasRegistrySpec = this.currentSymbol
+                && typeof window !== 'undefined'
+                && window.marketCalcEngine
+                && (() => {
+                    try {
+                        const calc = window.marketCalcEngine.getCalculator(this.currentSymbol);
+                        return !!(calc && calc.specs
+                            && (Number.isFinite(calc.specs.tickSize) || Number.isFinite(calc.specs.pipSize)));
+                    } catch (_) { return false; }
+                })();
+            if (hasRegistrySpec && Number.isFinite(tick) && tick > 0) {
+                const snappedPrice = Math.round(crosshairPrice / tick) * tick;
+                if (Number.isFinite(snappedPrice)) {
+                    crosshairPrice = snappedPrice;
+                    crosshairY = this.yScale(snappedPrice);
+                }
+            }
+        }
         
         // Show crosshair lines for 'cross' cursor type, eraser, drawing tool active, or drawing selected/moved
         // DON'T show lines for 'dot' or 'arrow' cursor types
