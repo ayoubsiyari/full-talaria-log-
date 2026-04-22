@@ -3635,7 +3635,82 @@ class OrderManager {
     getMarketConfig() {
         return this.marketConfigs[this.marketType] || this.marketConfigs.forex;
     }
-    
+
+    /**
+     * Resolve the effective quantity step for the current symbol/market.
+     * Prefers the per-symbol `sizeStep` from the market-calc registry (so
+     * BTC=0.001, ETH=0.01, XRP=1, ES=1, NQ=1, EURUSD=0.01 …) and falls back
+     * to the generic marketConfig default. Used to pick display precision
+     * and to snap user/risk-derived quantities to valid exchange increments.
+     */
+    _getQtyStep() {
+        const cfg = this.getMarketConfig();
+        let step = (cfg && Number.isFinite(cfg.sizeStep) && cfg.sizeStep > 0) ? cfg.sizeStep : 0.01;
+        try {
+            if (window.marketCalcEngine && typeof window.marketCalcEngine.getCalculator === 'function') {
+                const sym = (typeof this._getSymbol === 'function') ? this._getSymbol() : this.chart?.currentSymbol;
+                if (sym) {
+                    const calc = window.marketCalcEngine.getCalculator(sym, this.marketType);
+                    const s = calc && typeof calc.getSpecs === 'function' ? calc.getSpecs() : null;
+                    if (s && Number.isFinite(s.sizeStep) && s.sizeStep > 0) step = s.sizeStep;
+                }
+            }
+        } catch (_) { /* keep default */ }
+        return step;
+    }
+
+    /** Minimum quantity for the current instrument (per-symbol → marketConfig fallback). */
+    _getQtyMin() {
+        const cfg = this.getMarketConfig();
+        let min = (cfg && Number.isFinite(cfg.minSize) && cfg.minSize > 0) ? cfg.minSize : 0.01;
+        try {
+            if (window.marketCalcEngine && typeof window.marketCalcEngine.getCalculator === 'function') {
+                const sym = (typeof this._getSymbol === 'function') ? this._getSymbol() : this.chart?.currentSymbol;
+                if (sym) {
+                    const calc = window.marketCalcEngine.getCalculator(sym, this.marketType);
+                    const s = calc && typeof calc.getSpecs === 'function' ? calc.getSpecs() : null;
+                    if (s && Number.isFinite(s.minSize) && s.minSize > 0) min = s.minSize;
+                }
+            }
+        } catch (_) { /* keep default */ }
+        return min;
+    }
+
+    /** Decimals appropriate for displaying a quantity on this instrument (step=1 → 0 dp, 0.01 → 2 dp, 0.001 → 3 dp). */
+    _getQtyDecimals() {
+        const step = this._getQtyStep();
+        if (step >= 1) return 0;
+        const s = String(step);
+        const dot = s.indexOf('.');
+        return dot < 0 ? 0 : Math.min(8, s.length - dot - 1);
+    }
+
+    /** Format a quantity for display on the current instrument (integer for futures, 2dp for forex, …). */
+    _formatQty(qty) {
+        const n = Number(qty);
+        if (!Number.isFinite(n)) return '0';
+        return n.toFixed(this._getQtyDecimals());
+    }
+
+    /**
+     * Snap a raw quantity (e.g. risk-derived position size) DOWN to the
+     * instrument's lot step, with the per-symbol minimum as the floor.
+     * Using floor (not round) is deliberate: rounding up can exceed the
+     * user's risk budget on instruments with a coarse step (futures = 1
+     * contract). For futures this turns 1.37 contracts → 1 contract.
+     */
+    _roundQtyToStep(qty) {
+        const n = Number(qty);
+        if (!Number.isFinite(n) || n <= 0) return 0;
+        const step = this._getQtyStep();
+        const min = this._getQtyMin();
+        let out = Math.floor(n / step) * step;
+        if (out < min) out = 0;
+        // Guard against binary-float crud like 1.3000000000000003.
+        const dec = this._getQtyDecimals();
+        return parseFloat(out.toFixed(Math.max(dec, 6)));
+    }
+
     /**
      * Initialize order execution sounds
      */
@@ -13515,16 +13590,16 @@ class OrderManager {
                 placeBtn.disabled = true;
                 placeBtn.style.opacity = '0.5';
                 placeBtn.style.cursor = 'not-allowed';
-                placeBtn.textContent = `${action} 0.00 ${positionLabel} - ${reason}`;
+                placeBtn.textContent = `${action} ${this._formatQty(0)} ${positionLabel} - ${reason}`;
             } else {
                 placeBtn.disabled = false;
                 placeBtn.style.opacity = '1';
                 placeBtn.style.cursor = 'pointer';
                 
                 if (symbol) {
-                    placeBtn.textContent = `${action} ${quantity.toFixed(2)} ${symbol}`;
+                    placeBtn.textContent = `${action} ${this._formatQty(quantity)} ${symbol}`;
                 } else {
-                    placeBtn.textContent = `${action} ${quantity.toFixed(2)} ${positionLabel}`;
+                    placeBtn.textContent = `${action} ${this._formatQty(quantity)} ${positionLabel}`;
                 }
             }
         }
@@ -13680,11 +13755,11 @@ class OrderManager {
                 return;
             }
             
-            // Update orderQuantity
+            // Update orderQuantity (instrument-aware formatting: futures = integer contracts)
             const qtyInput = document.getElementById('orderQuantity');
             if (qtyInput) {
-                qtyInput.value = lotSize.toFixed(2);
-                console.log(`📊 Lot Size Mode: Setting orderQuantity to ${lotSize.toFixed(2)}`);
+                qtyInput.value = this._formatQty(lotSize);
+                console.log(`📊 Lot Size Mode: Setting orderQuantity to ${this._formatQty(lotSize)}`);
             }
             
             // Update preview lines to show new lot size on Entry label
@@ -13768,11 +13843,15 @@ class OrderManager {
         console.log(`   Position Size: ${positionSize.toFixed(2)} lots`);
         console.log(`   Verification: ${slDistanceInPips.toFixed(2)} pips × ${positionSize.toFixed(2)} lots × $${this.pipValuePerLot} = $${(slDistanceInPips * positionSize * this.pipValuePerLot).toFixed(2)} risk`);
         
+        // Snap risk-derived qty to the instrument's lot step (futures=1 contract, BTC=0.001, …).
+        // Floor-snap so we never exceed the user's risk budget on coarse-step instruments.
+        const snappedQty = this._roundQtyToStep(positionSize);
+
         // Update orderQuantity value for order placement
         const qtyInput = document.getElementById('orderQuantity');
         if (qtyInput) {
-            qtyInput.value = positionSize.toFixed(2);
-            console.log(`📊 Risk Mode: Setting orderQuantity to ${positionSize.toFixed(2)}`);
+            qtyInput.value = this._formatQty(snappedQty);
+            console.log(`📊 Risk Mode: Setting orderQuantity to ${this._formatQty(snappedQty)} (raw ${positionSize.toFixed(4)}, step ${this._getQtyStep()})`);
         }
         
         // Update preview lines to show new lot size on Entry label
@@ -13812,10 +13891,10 @@ class OrderManager {
         // Calculate position size
         const positionSize = riskAmount / priceDiff;
         
-        // Update quantity field
+        // Update quantity field (snap to instrument lot step so futures stay integer).
         const quantityInput = document.getElementById('orderQuantity');
         if (quantityInput) {
-            quantityInput.value = positionSize.toFixed(2);
+            quantityInput.value = this._formatQty(this._roundQtyToStep(positionSize));
         }
         
         // Update max risk fields
@@ -14187,7 +14266,7 @@ class OrderManager {
                     distText = `${dist.toFixed(cfg.symbolPrecision ?? 5)} pts`;
                 }
                 slPipsDisplay.textContent = distText;
-                slQuantityDisplay.textContent = `${qtyForReward.toFixed(2)} ${cfg.positionLabel}`;
+                slQuantityDisplay.textContent = `${this._formatQty(qtyForReward)} ${cfg.positionLabel}`;
                 if (modeSL === 'lot-size' && slRiskUsdDisplay && slRiskPctDisplay) {
                     const rOk = risk > 0 && Number.isFinite(risk);
                     slRiskUsdDisplay.textContent = rOk ? `$${risk.toFixed(2)}` : '$0.00';
