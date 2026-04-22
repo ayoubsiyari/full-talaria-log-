@@ -338,6 +338,10 @@ class Chart {
         /** Bumps on each server timeframe load so stale async responses are ignored. */
         this._timeframeLoadSeq = 0;
         this.currentSymbol = null; // Store detected symbol from CSV
+        // Tracks the last symbol we resolved precision for. When currentSymbol changes
+        // we drop the cached precision so the registry is re-queried for the new tick
+        // size (prevents NQ inheriting EURUSD's 5dp when switching symbols mid-session).
+        this._symbolPrecisionResolvedFor = null;
         this._RAW_DATA_CAP = 300_000; // ring buffer: max candles in memory
         /**
          * Backtest: first GET /smart batch size (capped 5k–100k server-side).
@@ -11634,8 +11638,19 @@ class Chart {
     }
 
     /**
-     * Get appropriate decimal places based on price range.
-     * Priority: manual override > per-symbol registry > price-range heuristic.
+     * Get appropriate decimal places for price display.
+     *
+     * Priority:
+     *   1. Manual user override in chart settings (explicit intent wins).
+     *   2. INSTRUMENT_REGISTRY via marketCalcEngine — always re-resolved against the
+     *      CURRENT symbol so switching from FX (5dp) → futures (2dp for NQ, 0dp for YM,
+     *      etc.) updates the axis immediately. Previously this was gated behind a
+     *      pre-synced `_symbolPrecision` cache that could be stuck at 5 (FX default) if
+     *      order-manager ran before the symbol had resolved, leaving NQ showing
+     *      `1340.80000` instead of `1340.75`.
+     *   3. The `_symbolPrecision` snapshot set by order-manager (e.g. for dataset-level
+     *      overrides pushed from `/api/admin/datasets/{id}/settings`).
+     *   4. Range-based heuristic for unregistered symbols.
      */
     getPriceDecimals(priceRange) {
         const override = this.chartSettings && this.chartSettings.pricePrecision;
@@ -11643,26 +11658,85 @@ class Chart {
             const n = parseInt(override, 10);
             if (!isNaN(n)) return n;
         }
-        // Per-symbol precision synced from INSTRUMENT_REGISTRY via order-manager
+        // If the active symbol changed since we last resolved, drop the cached value so
+        // the registry is consulted fresh (prevents FX-default 5dp leaking into NQ/ES/GC).
+        if (this._symbolPrecisionResolvedFor !== this.currentSymbol) {
+            this._symbolPrecision = undefined;
+            this._symbolPrecisionResolvedFor = this.currentSymbol;
+        }
+        // Always consult the registry first — for a known symbol its tick size IS the
+        // correct decimal count, and it beats any cached value or range guess.
+        if (this.currentSymbol && typeof window !== 'undefined' && window.marketCalcEngine) {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(this.currentSymbol);
+                const specs = calc && calc.specs;
+                if (specs) {
+                    // Prefer explicit `precision`; derive from `tickSize` if only that is set
+                    // (some futures specs use tickSize as the source of truth).
+                    if (Number.isFinite(specs.precision) && specs.precision >= 0) {
+                        this._symbolPrecision = specs.precision;
+                        return specs.precision;
+                    }
+                    if (Number.isFinite(specs.tickSize) && specs.tickSize > 0) {
+                        const s = String(specs.tickSize);
+                        let dec;
+                        if (s.includes('e-')) {
+                            dec = parseInt(s.split('e-')[1], 10) || 0;
+                        } else {
+                            const dot = s.indexOf('.');
+                            dec = dot === -1 ? 0 : s.length - dot - 1;
+                        }
+                        this._symbolPrecision = dec;
+                        return dec;
+                    }
+                }
+            } catch (_) { /* registry miss — fall through */ }
+        }
         if (Number.isFinite(this._symbolPrecision) && this._symbolPrecision >= 0) {
             return this._symbolPrecision;
         }
-        // Fallback: try marketCalcEngine directly
-        if (this.currentSymbol && window.marketCalcEngine) {
-            try {
-                const calc = window.marketCalcEngine.getCalculator(this.currentSymbol);
-                if (calc && calc.specs && Number.isFinite(calc.specs.precision)) {
-                    this._symbolPrecision = calc.specs.precision;
-                    return calc.specs.precision;
-                }
-            } catch (_) {}
-        }
         if (priceRange < 0.01) return 6;
-        if (priceRange < 0.1) return 4;
-        if (priceRange < 1) return 3;
-        if (priceRange < 10) return 2;
+        if (priceRange < 0.1)  return 4;
+        if (priceRange < 1)    return 3;
+        if (priceRange < 10)   return 2;
         if (priceRange < 1000) return 2;
         return 0;
+    }
+
+    /**
+     * Resolve the instrument's tick size (minimum price increment) from the registry.
+     * Used by the axis, crosshair, order drag-snap, and SL/TP input step. Falls back
+     * to `10^-precision` when the registry only carries precision.
+     *
+     * Examples: NQ/ES → 0.25, GC → 0.10, CL → 0.01, EURUSD → 0.00001, USDJPY → 0.001.
+     */
+    getTickSize() {
+        if (this.currentSymbol && typeof window !== 'undefined' && window.marketCalcEngine) {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(this.currentSymbol);
+                const specs = calc && calc.specs;
+                if (specs) {
+                    if (Number.isFinite(specs.tickSize) && specs.tickSize > 0) return specs.tickSize;
+                    if (Number.isFinite(specs.pipSize)  && specs.pipSize  > 0) return specs.pipSize;
+                    if (Number.isFinite(specs.precision) && specs.precision >= 0) {
+                        return Math.pow(10, -specs.precision);
+                    }
+                }
+            } catch (_) { /* fall through */ }
+        }
+        const dec = (Number.isFinite(this._symbolPrecision) && this._symbolPrecision >= 0)
+            ? this._symbolPrecision
+            : 5;
+        return Math.pow(10, -dec);
+    }
+
+    /** Snap an arbitrary price to the instrument's tick grid (round-half-away-from-zero). */
+    snapPriceToTick(price) {
+        const p = Number(price);
+        if (!Number.isFinite(p)) return p;
+        const tick = this.getTickSize();
+        if (!Number.isFinite(tick) || tick <= 0) return p;
+        return Math.round(p / tick) * tick;
     }
 
     /**
