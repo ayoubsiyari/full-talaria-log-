@@ -12249,6 +12249,23 @@ class OrderManager {
             } catch (_) { /* keep defaults */ }
             lotSizeInput.step = step;
             lotSizeInput.min  = min;
+
+            // Keep the ± stepper buttons in sync with the instrument's lot step so
+            // futures increment by 1 contract (not 0.1) and crypto/forex keep their
+            // native fine-grained steps. Applies to the main panel and RR mirror.
+            document.querySelectorAll('.input-stepper[data-target="lotSizeAmount"], .input-stepper[data-target="rrMirror_lotSizeAmount"]').forEach(btn => {
+                const sign = btn.dataset.step && parseFloat(btn.dataset.step) < 0 ? -1 : 1;
+                btn.dataset.step = (sign * step).toString();
+            });
+
+            // If the current value is below min or not on-step (e.g. 1.7 left over
+            // from a previous symbol), snap it so it is valid for the new instrument.
+            const cur = parseFloat(lotSizeInput.value);
+            if (Number.isFinite(cur) && cur > 0) {
+                const snapped = this._roundQtyToStep(cur);
+                const safe = snapped > 0 ? snapped : min;
+                lotSizeInput.value = this._formatQty(safe);
+            }
         }
         
         // Update instrument settings hint based on market type
@@ -12926,8 +12943,11 @@ class OrderManager {
                 newValue = Math.max(0.1, newValue);
                 newValue = parseFloat(newValue.toFixed(1));
             } else if (bareId === 'lotSizeAmount') {
-                newValue = Math.max(0.01, newValue);
-                newValue = parseFloat(newValue.toFixed(2));
+                // Clamp to instrument minimum and format to the instrument's lot
+                // decimals (0 for futures, 2 for forex, 3 for crypto, …) so the
+                // stepper never produces invalid values like 1.7 contracts.
+                newValue = Math.max(this._getQtyMin(), newValue);
+                newValue = parseFloat(this._formatQty(newValue));
             } else if (bareId === 'maxRiskPercent') {
                 newValue = Math.max(0, newValue);
                 newValue = parseFloat(newValue.toFixed(1));
