@@ -16364,6 +16364,14 @@ class OrderManager {
                 let clampedY = Math.max(0, Math.min(chartHeight, event.y));
                 let newPrice = ch.scales.yScale.invert(clampedY);
 
+                // Tick-grid snap preview Entry / SL / TP lines while dragging so
+                // futures/crypto labels land on valid exchange increments
+                // (NQ 0.25, GC 0.10, CL 0.01, …). No-op on instruments with no
+                // tick registry. Happens before the SL/TP side clamps so all
+                // subsequent validation works on already-snapped prices.
+                const snappedDrag = self._snapOrderPriceToTick(newPrice);
+                if (snappedDrag !== newPrice) newPrice = snappedDrag;
+
                 // BUY: entries must stay above SL; SELL: entries must stay below SL
                 const enableSL = document.getElementById('enableSL')?.checked;
                 const pip = self.pipSize || 0.0001;
@@ -17148,7 +17156,10 @@ class OrderManager {
                     if (event.sourceEvent && ch.updateCrosshair) ch.updateCrosshair(event.sourceEvent);
                     const chartH = Number(ch.h ?? ch.svg?.attr('height') ?? 0) || 0;
                     const clampedY = Math.max(0, Math.min(chartH, event.y));
-                    const newPrice = ch.scales.yScale.invert(clampedY);
+                    let newPrice = ch.scales.yScale.invert(clampedY);
+                    // Snap multi-TP badge drag to instrument tick grid.
+                    const snappedDrag = self._snapOrderPriceToTick(newPrice);
+                    if (snappedDrag !== newPrice) newPrice = snappedDrag;
 
                     target.price = parseFloat(newPrice.toFixed(self.getPricePrecision()));
 
@@ -17221,6 +17232,13 @@ class OrderManager {
                 const chartHeight = Number(chartHeightRaw) || 0;
                 let clampedY = Math.max(0, Math.min(chartHeight, event.y));
                 let newPrice = ch.scales.yScale.invert(clampedY);
+                // Snap preview TP/SL badge drag to instrument tick grid BEFORE
+                // the SL-vs-TP clamp so the clamp operates on a valid price.
+                const snappedBadgeDrag = self._snapOrderPriceToTick(newPrice);
+                if (snappedBadgeDrag !== newPrice) {
+                    newPrice = snappedBadgeDrag;
+                    clampedY = Math.max(0, Math.min(chartHeight, ch.scales.yScale(newPrice)));
+                }
                 if (label === 'SL' && document.getElementById('enableSL')?.checked) {
                     const tpRef = self._getPreviewTpReferenceForSlClamp();
                     if (tpRef != null) {
@@ -28894,6 +28912,13 @@ class OrderManager {
                 const chartHeight = chart.h || 500;
                 const clampedY = Math.max(0, Math.min(chartHeight, event.y));
                 let newPrice = chart.scales.yScale.invert(clampedY);
+
+                // Tick-grid snap FIRST so the LIMIT/STOP entry label shows a valid
+                // exchange price while dragging (NQ/ES 0.25, GC 0.10, CL 0.01, …).
+                // Matches the SL/TP drag behaviour; null-safe for instruments with
+                // no tick registry.
+                const snappedDrag = self._snapOrderPriceToTick(newPrice);
+                if (snappedDrag !== newPrice) newPrice = snappedDrag;
 
                 // Keep placed lot size; move risk $ with entry.
                 pendingOrder.quantity = dragStartQty;
