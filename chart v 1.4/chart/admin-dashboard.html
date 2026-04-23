@@ -1585,8 +1585,8 @@ select { cursor: pointer; }
                   <span id="fr_adjustment_hint" style="font-size:11px;color:var(--text-muted);display:block;margin-top:6px;line-height:1.45"></span>
                 </div>
                 <div class="field fg-full">
-                  <label for="fr_pairs">Tickers / pairs (optional)</label>
-                  <textarea id="fr_pairs" rows="2" class="input" style="resize:vertical;font-family:ui-monospace,monospace;font-size:12px" placeholder="EURUSD AAPL ES — comma, space, or newline. Empty = every CSV in the ZIP."></textarea>
+                  <label for="fr_pairs" style="display:block;font-size:11px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-muted)">Tickers / pairs (optional)</label>
+                  <textarea id="fr_pairs" rows="8" class="input" style="resize:vertical;font-family:ui-monospace,'JetBrains Mono',monospace;font-size:12px;line-height:1.45;min-height:140px" placeholder="EURUSD, GBPUSD, … — comma, space, or newline. Empty = every CSV in the ZIP."></textarea>
                   <p id="fr_ticker_hint" style="font-size:11px;color:var(--text-muted);margin:8px 0 0;line-height:1.5"></p>
                 </div>
                 <div class="field fg-full" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -1609,6 +1609,7 @@ select { cursor: pointer; }
                 </div>
                 <div id="fr_quickadd_fx" class="field fg-full" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                   <span style="font-size:11px;color:var(--text-muted)">Quick add (FX):</span>
+                  <button type="button" class="btn sm primary" onclick="frPairsFillAllForex()" title="Replace contents with a broad retail/institutional FX symbol list (G10 grid + common USD exotics & crosses)">All FX (market list)</button>
                   <button type="button" class="btn sm" onclick="frPairsAdd('EURUSD GBPUSD USDJPY AUDUSD USDCAD')">majors</button>
                   <button type="button" class="btn sm" onclick="frPairsAdd('EURJPY GBPJPY EURGBP')">crosses</button>
                   <button type="button" class="btn sm" onclick="document.getElementById('fr_pairs').value=''">clear</button>
@@ -2770,6 +2771,7 @@ let insightsOverviewCache = null;
       loadFirstrateSchedule().catch(function (e) { console.error('loadFirstrateSchedule', e); }),
       refreshFirstrateNightlyHealth().catch(function (e) { console.error('refreshFirstrateNightlyHealth', e); }),
     ]);
+    try { seedDefaultForexPairsIfNeeded(); } catch (e) { console.error('seedDefaultForexPairsIfNeeded', e); }
     try { ensureFirstrateLivePoll(); } catch (e) { console.error('ensureFirstrateLivePoll', e); }
     try {
       renderOverview();
@@ -4346,7 +4348,7 @@ function updateFirstrateInstrumentUi() {
         'The ticker-range letter does <em>not</em> apply here — pick the continuous-adjustment value below instead.';
     } else if (v === 'fx') {
       hint.innerHTML =
-        'Leave empty for all FX pairs in the ZIP, or list symbols as they appear in filenames. FX is a single bundle — no letter split.';
+        'When this box is <strong>empty</strong>, the import matches <em>every</em> FX file in the ZIP. When it is <strong>filled</strong> (default list after load: full G10 grid + common exotics/crosses), only those stems are kept — remove symbols your bundle does not ship. FX is one bundle — no letter split.';
     } else if (v === 'crypto') {
       hint.innerHTML =
         'FirstRate crypto bundles ship as one ZIP per period (<strong>day / week / month</strong> — <code style="font-size:10px">full</code> is disabled on this subscription). ' +
@@ -4632,6 +4634,65 @@ function frApplyTickerCatalogSelection() {
   const add = picked.join(' ');
   ta.value = cur ? cur + ' ' + add : add;
   toast('Added ' + picked.length + ' symbol(s)', 'ok');
+}
+
+/** Broad FX symbol list for admin prepopulation: full G10 grid + common USD exotics & crosses (vendor filenames are usually 6-letter roots). */
+function buildDefaultForexTickerList() {
+  const majorsUsd = [
+    'EURUSD', 'GBPUSD', 'AUDUSD', 'NZDUSD', 'USDCAD', 'USDCHF', 'USDJPY',
+  ];
+  const g10Crosses = [
+    'EURGBP', 'EURJPY', 'EURAUD', 'EURCAD', 'EURCHF', 'EURNZD',
+    'GBPJPY', 'GBPAUD', 'GBPCAD', 'GBPCHF', 'GBPNZD',
+    'AUDJPY', 'AUDCAD', 'AUDCHF', 'AUDNZD',
+    'NZDJPY', 'NZDCAD', 'NZDCHF',
+    'CADJPY', 'CADCHF',
+    'CHFJPY',
+  ];
+  const usdExotics = [
+    'USDSEK', 'USDNOK', 'USDDKK',
+    'USDMXN', 'USDZAR', 'USDTRY',
+    'USDPLN', 'USDHUF', 'USDCZK',
+    'USDSGD', 'USDHKD', 'USDILS',
+    'USDTHB', 'USDCNH', 'USDINR', 'USDKRW', 'USDPHP', 'USDMYR', 'USDIDR', 'USDBRL',
+    'USDCLP',
+  ];
+  const extraCrosses = [
+    'EURSEK', 'EURNOK', 'EURDKK', 'EURPLN', 'EURTRY', 'EURHUF', 'EURCZK',
+    'GBPSEK', 'GBPNOK', 'GBPPLN',
+    'AUDSGD', 'NZDSGD', 'CADSGD',
+    'EURMXN', 'GBPMXN', 'EURZAR', 'GBPZAR',
+  ];
+  const uniq = new Set();
+  [].concat(majorsUsd, g10Crosses, usdExotics, extraCrosses).forEach(function (s) {
+    uniq.add(String(s).toUpperCase().trim());
+  });
+  return Array.from(uniq).sort();
+}
+
+function getDefaultAllForexTickersComma() {
+  return buildDefaultForexTickerList().join(', ');
+}
+
+/** After schedule loads: if FX is selected and no explicit pairs were saved, show the full market-style list. */
+function seedDefaultForexPairsIfNeeded() {
+  const ta = $('fr_pairs');
+  const typ = $('fr_type');
+  if (!ta || !typ || String(typ.value || '').toLowerCase() !== 'fx') return;
+  if (String(ta.value || '').trim()) return;
+  ta.value = getDefaultAllForexTickersComma();
+}
+
+function frPairsFillAllForex() {
+  const ta = $('fr_pairs');
+  if (!ta) return;
+  ta.value = getDefaultAllForexTickersComma();
+  try {
+    const n = parsePairsFromTextarea('fr_pairs').length;
+    toast('Filled ' + n + ' FX symbols (trim in the box if your vendor bundle omits some).', 'ok');
+  } catch (e) {
+    toast('Filled FX market list', 'ok');
+  }
 }
 
 function parsePairsFromTextarea(elId) {
