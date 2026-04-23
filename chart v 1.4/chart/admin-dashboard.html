@@ -1638,9 +1638,9 @@ select { cursor: pointer; }
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     Download &amp; import now
                   </button>
-                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text-muted)">
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text-muted)" title="When on, the newly downloaded candles are merged into the existing dataset with the same symbol: historical bars are preserved and any timestamp appearing in both is replaced with the vendor's freshest print. When off, a new dataset is created and the old one is kept untouched.">
                     <input type="checkbox" id="fr_upsert" checked>
-                    Overwrite existing datasets by symbol
+                    Merge into existing dataset by symbol
                   </label>
                   <span id="frProgress" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
                 </div>
@@ -1652,25 +1652,42 @@ select { cursor: pointer; }
                       Wipe all existing datasets before this import (requires confirmation phrase)
                     </label>
                     <div style="height:1px;background:var(--border);margin:10px 0"></div>
-                    <p style="font-size:11px;color:var(--text-muted);margin:0 0 10px;line-height:1.45">
-                      Scheduler uses the same instrument / period / timeframe / tickers you picked above, and runs on the VPS every N minutes.
+                    <p style="font-size:11px;color:var(--text-muted);margin:0 0 10px;line-height:1.55">
+                      <strong>Nightly auto-sync</strong> pulls the <em>day</em> update bundle from FirstRate once per UTC day, <strong>for every asset class present in the registry</strong> (fx, crypto, futures, stocks), and merges new candles into each existing dataset (historical bars are preserved). No manual action required.
                     </p>
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px;font-size:12px">
                       <input type="checkbox" id="fr_sched_enabled">
-                      Enable scheduled imports on this VPS
+                      Enable nightly auto-sync on this VPS
                     </label>
                     <div class="form-grid" style="margin-bottom:10px">
                       <div class="field">
-                        <label for="fr_sched_interval">Repeat every (minutes)</label>
+                        <label for="fr_sched_nightly_hour">Start at (UTC hour, 0–23)</label>
+                        <input type="number" id="fr_sched_nightly_hour" class="input" min="0" max="23" value="2" step="1">
+                      </div>
+                      <div class="field">
+                        <label for="fr_sched_mode">Mode</label>
+                        <select id="fr_sched_mode" class="input">
+                          <option value="nightly" selected>nightly (once per day)</option>
+                          <option value="interval">interval (legacy)</option>
+                        </select>
+                      </div>
+                      <div class="field" id="fr_sched_interval_wrap" style="display:none">
+                        <label for="fr_sched_interval">Repeat every (minutes, interval mode only)</label>
                         <input type="number" id="fr_sched_interval" class="input" min="15" max="10080" value="1440" step="15">
                       </div>
                     </div>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:6px;font-size:12px" title="When on, the nightly run iterates every fx/crypto/futures/stock dataset you already have. When off, it uses the single instrument_type + pairs from the manual form above.">
+                      <input type="checkbox" id="fr_sched_auto_all" checked>
+                      Pull every asset class I already have data for
+                    </label>
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px;font-size:12px">
                       <input type="checkbox" id="fr_sched_upsert" checked>
-                      On scheduled runs: overwrite by symbol
+                      Merge into existing datasets (recommended — preserves history)
                     </label>
+                    <div id="fr_sched_preview" style="font-size:11px;color:var(--text-muted);margin:6px 0 10px;line-height:1.6;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--panel);font-family:ui-monospace,monospace;white-space:pre-wrap">Next nightly run will cover: …</div>
                     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
                       <button type="button" class="btn sm primary" id="frSchedSaveBtn" onclick="saveFirstrateSchedule()">Save schedule</button>
+                      <button type="button" class="btn sm" id="frSchedRefreshBtn" onclick="refreshFirstrateScheduleStatus()">Refresh preview</button>
                       <span id="frSchedStatus" style="font-size:12px;color:var(--text-muted)"></span>
                     </div>
                   </div>
@@ -1696,6 +1713,55 @@ select { cursor: pointer; }
               <div id="frLiveBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),color-mix(in oklab,var(--accent) 70%,white));transition:width .35s ease"></div>
             </div>
             <div id="frLiveDetail" style="font-size:11px;font-family:ui-monospace,monospace;color:var(--text-muted);line-height:1.5;white-space:pre-wrap;max-height:140px;overflow-y:auto"></div>
+          </div>
+        </div>
+
+        <!-- Nightly sync health — per-asset visualization of the auto-update outcome. -->
+        <div class="card" id="frNightlyHealthCard" style="margin-bottom:16px">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            <div class="card-title">Nightly sync health</div>
+            <span class="card-badge" id="frHealthBadgeSummary" style="background:var(--panel);color:var(--text-muted)">loading…</span>
+            <div style="margin-left:auto;display:flex;gap:6px">
+              <button type="button" class="btn sm" id="frHealthRefreshBtn" onclick="refreshFirstrateNightlyHealth()">Refresh</button>
+              <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted);cursor:pointer" title="Re-poll every 30s so you can watch the nightly run happen live.">
+                <input type="checkbox" id="frHealthAutoRefresh"> auto
+              </label>
+            </div>
+          </div>
+          <div class="card-body" style="padding-top:0">
+            <p id="frHealthHeadline" style="margin:0 0 12px;font-size:12px;color:var(--text-muted);line-height:1.5">Checking last nightly run…</p>
+            <div id="frHealthClassGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:14px"></div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+              <input type="search" id="frHealthFilter" class="input" placeholder="Filter tickers…" style="flex:1;min-width:160px" oninput="_renderFirstrateNightlyHealth()">
+              <select id="frHealthClassFilter" class="input" style="max-width:150px" onchange="_renderFirstrateNightlyHealth()">
+                <option value="">all asset classes</option>
+              </select>
+              <select id="frHealthFreshnessFilter" class="input" style="max-width:140px" onchange="_renderFirstrateNightlyHealth()">
+                <option value="">all states</option>
+                <option value="fresh">fresh only</option>
+                <option value="stale">stale only</option>
+                <option value="missing">missing only</option>
+              </select>
+            </div>
+            <div style="max-height:420px;overflow:auto;border:1px solid var(--border);border-radius:6px">
+              <table id="frHealthTable" style="width:100%;border-collapse:collapse;font-size:12px">
+                <thead style="position:sticky;top:0;background:var(--panel);z-index:1">
+                  <tr style="text-align:left">
+                    <th style="padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600;color:var(--text-muted)">Ticker</th>
+                    <th style="padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600;color:var(--text-muted)">Class</th>
+                    <th style="padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600;color:var(--text-muted)">Last bar (UTC)</th>
+                    <th style="padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600;color:var(--text-muted)">Age</th>
+                    <th style="padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600;color:var(--text-muted)">1m rows</th>
+                    <th style="padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600;color:var(--text-muted)">Last run</th>
+                    <th style="padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600;color:var(--text-muted)">Merged</th>
+                  </tr>
+                </thead>
+                <tbody id="frHealthTableBody">
+                  <tr><td colspan="7" style="padding:14px;color:var(--text-muted);text-align:center">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -2615,6 +2681,7 @@ let insightsOverviewCache = null;
       loadDatasets().catch(function (e) { console.error('loadDatasets', e); }),
       loadSubStats().catch(function (e) { console.error('loadSubStats', e); }),
       loadFirstrateSchedule().catch(function (e) { console.error('loadFirstrateSchedule', e); }),
+      refreshFirstrateNightlyHealth().catch(function (e) { console.error('refreshFirstrateNightlyHealth', e); }),
     ]);
     try { ensureFirstrateLivePoll(); } catch (e) { console.error('ensureFirstrateLivePoll', e); }
     try {
@@ -4618,12 +4685,81 @@ async function updateFirstrateLivePanel() {
   }
 }
 
+// Format the nightly preview block with what the next run will pull
+// (bucketed tickers per asset class) and when it will fire.
+function _renderNightlyPreview(schedule, preview) {
+  const el = document.getElementById('fr_sched_preview');
+  if (!el) return;
+  const s = schedule || {};
+  const p = preview || { buckets: {}, type_count: 0, ticker_count: 0 };
+  const mode = String(s.mode || 'nightly').toLowerCase();
+  if (mode !== 'nightly' || !s.auto_all_types) {
+    // In interval mode or single-type nightly, the preview is trivially
+    // {instrument_type → pairs}; show a short hint.
+    const inst = s.instrument_type || 'fx';
+    const pairs = Array.isArray(s.pairs) ? s.pairs : [];
+    el.textContent = 'Mode: ' + mode +
+      '\nInstrument: ' + inst +
+      (pairs.length ? '\nPairs: ' + pairs.join(', ') : '\nPairs: (all in ZIP)');
+    return;
+  }
+  const lines = [];
+  const hour = String(Math.max(0, Math.min(23, parseInt(s.nightly_utc_hour, 10) || 2))).padStart(2, '0');
+  lines.push('Next nightly run: ' + hour + ':00 UTC (queues one asset class per minute tick)');
+  // Compute a rough "next run" string in the viewer's local time
+  try {
+    const now = new Date();
+    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), parseInt(hour, 10), 0, 0));
+    if (next.getTime() <= now.getTime()) next.setUTCDate(next.getUTCDate() + 1);
+    lines.push('  (' + next.toLocaleString() + ' local)');
+  } catch (_) { /* ignore clock errors */ }
+  lines.push('Covers ' + (p.type_count || 0) + ' asset class(es), ' + (p.ticker_count || 0) + ' ticker(s):');
+  const order = ['futures', 'crypto', 'fx', 'stock'];
+  const seen = new Set();
+  const buckets = p.buckets || {};
+  order.forEach(function (k) {
+    if (!buckets[k] || !buckets[k].length) return;
+    seen.add(k);
+    const list = buckets[k];
+    const head = list.slice(0, 12).join(', ');
+    const rest = list.length > 12 ? ' … +' + (list.length - 12) + ' more' : '';
+    lines.push('  • ' + k + ' (' + list.length + '): ' + head + rest);
+  });
+  Object.keys(buckets).forEach(function (k) {
+    if (seen.has(k) || !buckets[k] || !buckets[k].length) return;
+    const list = buckets[k];
+    lines.push('  • ' + k + ' (' + list.length + '): ' + list.slice(0, 12).join(', ') + (list.length > 12 ? ' …' : ''));
+  });
+  if (s.last_run_date) {
+    const doneToday = Array.isArray(s.last_run_types_today) ? s.last_run_types_today : [];
+    lines.push('Tonight (' + s.last_run_date + ') already queued: ' +
+      (doneToday.length ? doneToday.join(', ') : '(none yet)'));
+  }
+  el.textContent = lines.join('\n');
+}
+
+// Show/hide the interval-minutes field depending on the selected mode.
+function _syncFirstrateScheduleModeUi() {
+  const modeSel = document.getElementById('fr_sched_mode');
+  const wrap = document.getElementById('fr_sched_interval_wrap');
+  if (!modeSel || !wrap) return;
+  wrap.style.display = (modeSel.value === 'interval') ? '' : 'none';
+}
+
+async function refreshFirstrateScheduleStatus() {
+  await loadFirstrateSchedule();
+}
+
 async function loadFirstrateSchedule() {
   const hint = $('frSchedStatus');
   try {
     const data = await api('/api/admin/datasets/firstrate-fx/schedule');
     const s = (data && data.schedule) ? data.schedule : {};
+    const preview = (data && data.nightly_preview) || { buckets: {}, type_count: 0, ticker_count: 0 };
     if ($('fr_sched_enabled')) $('fr_sched_enabled').checked = !!s.enabled;
+    if ($('fr_sched_mode')) $('fr_sched_mode').value = String(s.mode || 'nightly');
+    if ($('fr_sched_nightly_hour')) $('fr_sched_nightly_hour').value = String(Math.max(0, Math.min(23, parseInt(s.nightly_utc_hour, 10) || 2)));
+    if ($('fr_sched_auto_all')) $('fr_sched_auto_all').checked = (s.auto_all_types !== false);
     if ($('fr_sched_interval')) $('fr_sched_interval').value = String(Math.max(15, parseInt(s.interval_minutes, 10) || 1440));
     if ($('fr_period') && s.period) $('fr_period').value = s.period;
     if ($('fr_tf') && s.timeframe) $('fr_tf').value = s.timeframe;
@@ -4642,11 +4778,13 @@ async function loadFirstrateSchedule() {
         tr && String(tr).trim() ? String(tr).trim().toUpperCase().slice(0, 1) : '';
     }
     updateFrFullPeriodUi();
+    _syncFirstrateScheduleModeUi();
+    _renderNightlyPreview(s, preview);
     const uidOk = data.has_firstrate_userid !== false;
     const bits = [];
-    bits.push(s.enabled ? 'Scheduler ON' : 'Scheduler OFF');
+    bits.push(s.enabled ? 'Auto-sync ON' : 'Auto-sync OFF');
     if (!uidOk) bits.push('set FIrstrate_USERID on server');
-    if (s.last_run_finished_at) bits.push('last run: ' + s.last_run_finished_at);
+    if (s.last_run_finished_at) bits.push('last finished: ' + s.last_run_finished_at);
     if (s.last_status) bits.push('last: ' + s.last_status);
     if (s.last_error) bits.push('error: ' + String(s.last_error).slice(0, 120));
     if (hint) hint.textContent = bits.join(' · ');
@@ -4662,9 +4800,13 @@ async function saveFirstrateSchedule() {
   try {
     const st = $('fr_type') ? $('fr_type').value : 'fx';
     const selAdj = $('fr_adjustment');
+    const mode = ($('fr_sched_mode') && $('fr_sched_mode').value) || 'nightly';
     const payload = {
       enabled: !!($('fr_sched_enabled') && $('fr_sched_enabled').checked),
-      interval_minutes: parseInt($('fr_sched_interval').value, 10) || 1440,
+      mode: mode,
+      nightly_utc_hour: parseInt(($('fr_sched_nightly_hour') && $('fr_sched_nightly_hour').value) || '2', 10),
+      auto_all_types: !!($('fr_sched_auto_all') && $('fr_sched_auto_all').checked),
+      interval_minutes: parseInt(($('fr_sched_interval') && $('fr_sched_interval').value) || '1440', 10),
       instrument_type: st,
       period: $('fr_period').value,
       timeframe: $('fr_tf').value,
@@ -4682,7 +4824,9 @@ async function saveFirstrateSchedule() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    toast('Schedule saved — VPS will sync per interval', 'ok');
+    toast(mode === 'nightly'
+      ? 'Schedule saved — VPS will auto-sync every night'
+      : 'Schedule saved — VPS will sync per interval', 'ok');
     await loadFirstrateSchedule();
   } catch (e) {
     toast(e.message || String(e), 'err');
@@ -4690,6 +4834,188 @@ async function saveFirstrateSchedule() {
     if (btn) btn.disabled = false;
   }
 }
+
+// Keep the interval-minutes field in sync when the admin flips the mode dropdown.
+document.addEventListener('change', function (e) {
+  const t = e && e.target;
+  if (t && t.id === 'fr_sched_mode') _syncFirstrateScheduleModeUi();
+});
+
+// ---------------------------------------------------------------------------
+// Nightly sync health card — per-asset visualization.
+//
+// Polls `/api/admin/datasets/firstrate-fx/nightly-health`, caches the result in
+// `_firstrateHealthCache`, and re-renders the summary cards + table whenever
+// the admin changes a filter. Auto-refresh is opt-in via the checkbox so we
+// don't hammer the server during normal dashboard use.
+// ---------------------------------------------------------------------------
+let _firstrateHealthCache = null;
+let _firstrateHealthAutoTimer = null;
+
+function _formatAge(hours) {
+  if (hours == null || !isFinite(hours)) return '—';
+  if (hours < 1) return Math.round(hours * 60) + 'm';
+  if (hours < 48) return hours.toFixed(1) + 'h';
+  return (hours / 24).toFixed(1) + 'd';
+}
+
+function _freshnessColor(f) {
+  if (f === 'fresh') return { bg: 'color-mix(in oklab, #22c55e 18%, transparent)', fg: '#22c55e' };
+  if (f === 'stale') return { bg: 'color-mix(in oklab, #eab308 22%, transparent)', fg: '#eab308' };
+  return { bg: 'color-mix(in oklab, #ef4444 20%, transparent)', fg: '#ef4444' };
+}
+
+function _renderFirstrateNightlyHealth() {
+  const data = _firstrateHealthCache;
+  const tbody = document.getElementById('frHealthTableBody');
+  const grid = document.getElementById('frHealthClassGrid');
+  const headline = document.getElementById('frHealthHeadline');
+  const badge = document.getElementById('frHealthBadgeSummary');
+  const classFilter = document.getElementById('frHealthClassFilter');
+  if (!data || !tbody) return;
+
+  // Populate the asset-class dropdown once per fetch (preserves current value).
+  if (classFilter) {
+    const cur = classFilter.value;
+    const opts = ['<option value="">all asset classes</option>'];
+    (data.classes || []).forEach(function (c) {
+      opts.push('<option value="' + c.asset_class + '">' + c.asset_class + ' (' + c.ticker_count + ')</option>');
+    });
+    classFilter.innerHTML = opts.join('');
+    if (cur) classFilter.value = cur;
+  }
+
+  // Headline: schedule state + last run outcome.
+  const s = data.schedule || {};
+  const sum = data.summary || { dataset_count: 0, fresh_count: 0, stale_count: 0, missing_count: 0 };
+  const onOff = s.enabled ? 'ON' : 'OFF';
+  const hour = (s.nightly_utc_hour == null) ? '2' : String(s.nightly_utc_hour).padStart(2, '0');
+  const modeTxt = (s.mode || 'nightly');
+  const doneToday = Array.isArray(s.last_run_types_today) ? s.last_run_types_today : [];
+  let hl = 'Auto-sync ' + onOff + ' · mode ' + modeTxt + ' · ' + hour + ':00 UTC';
+  if (s.last_run_date) hl += ' · tonight (' + s.last_run_date + '): ' + (doneToday.length ? doneToday.join(', ') : 'pending');
+  if (s.last_status) hl += ' · last: ' + s.last_status;
+  if (s.last_error) hl += ' · ERR: ' + String(s.last_error).slice(0, 120);
+  if (headline) headline.textContent = hl;
+
+  if (badge) {
+    const ok = sum.fresh_count;
+    const bad = sum.stale_count + sum.missing_count;
+    badge.textContent = ok + ' fresh / ' + bad + ' issues';
+    badge.style.background = bad === 0
+      ? 'color-mix(in oklab, #22c55e 25%, var(--panel))'
+      : 'color-mix(in oklab, #eab308 25%, var(--panel))';
+    badge.style.color = bad === 0 ? '#22c55e' : '#eab308';
+  }
+
+  // Per-class cards.
+  if (grid) {
+    grid.innerHTML = (data.classes || []).map(function (c) {
+      const pctFresh = c.ticker_count ? Math.round(100 * c.fresh_count / c.ticker_count) : 0;
+      const job = c.last_job || {};
+      const jobBit = job.status
+        ? ('last job: ' + job.status + (job.updated_at ? ' · ' + String(job.updated_at).slice(0, 16).replace('T', ' ') : ''))
+        : 'no scheduled run yet';
+      return (
+        '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel)">' +
+          '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">' +
+            '<strong style="font-size:13px">' + c.asset_class + '</strong>' +
+            '<span style="font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums">' + c.ticker_count + ' tickers</span>' +
+          '</div>' +
+          '<div style="display:flex;gap:4px;height:6px;border-radius:3px;overflow:hidden;margin-bottom:6px;background:var(--border)">' +
+            '<div style="flex:' + c.fresh_count + ';background:#22c55e"></div>' +
+            '<div style="flex:' + c.stale_count + ';background:#eab308"></div>' +
+            '<div style="flex:' + c.missing_count + ';background:#ef4444"></div>' +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--text-muted);line-height:1.5">' +
+            '<span style="color:#22c55e">' + c.fresh_count + ' fresh</span> · ' +
+            '<span style="color:#eab308">' + c.stale_count + ' stale</span> · ' +
+            '<span style="color:#ef4444">' + c.missing_count + ' missing</span>' +
+            (c.total_new_rows_last_run ? ' · +' + c.total_new_rows_last_run.toLocaleString() + ' bars merged' : '') +
+            '<br>' + jobBit +
+          '</div>' +
+        '</div>'
+      );
+    }).join('') || '<p style="color:var(--text-muted);font-size:12px;grid-column:1/-1;margin:0">No FirstRate-classified datasets detected yet.</p>';
+  }
+
+  // Filtered table rows.
+  const q = (document.getElementById('frHealthFilter') || {}).value || '';
+  const qLower = q.trim().toLowerCase();
+  const classSel = classFilter ? classFilter.value : '';
+  const freshSel = (document.getElementById('frHealthFreshnessFilter') || {}).value || '';
+  const rows = (data.datasets || []).filter(function (d) {
+    if (qLower && d.ticker.toLowerCase().indexOf(qLower) === -1) return false;
+    if (classSel && d.asset_class !== classSel) return false;
+    if (freshSel && d.freshness !== freshSel) return false;
+    return true;
+  });
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="padding:18px;color:var(--text-muted);text-align:center">No matching datasets.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(function (d) {
+    const fc = _freshnessColor(d.freshness);
+    const lastBar = d.last_bar_iso ? String(d.last_bar_iso).replace('T', ' ').slice(0, 16) : '—';
+    const age = _formatAge(d.staleness_hours);
+    const rows1m = (d.row_count_1m || d.row_count || 0).toLocaleString();
+    const job = d.last_job || {};
+    const jobCell = job.status
+      ? ('<span style="color:' + (job.status === 'failed' ? '#ef4444' : (job.status === 'done' ? '#22c55e' : 'var(--text-muted)')) + '">' +
+          job.status + '</span>' +
+          (job.updated_at ? '<br><span style="font-size:10px;color:var(--text-muted)">' + String(job.updated_at).slice(0, 16).replace('T', ' ') + '</span>' : ''))
+      : '<span style="color:var(--text-muted)">never</span>';
+    const merge = d.merge;
+    const mergeCell = merge
+      ? (merge.new_rows_added > 0
+          ? '<span style="color:#22c55e">+' + merge.new_rows_added.toLocaleString() + '</span>'
+          : (merge.merged ? '<span style="color:var(--text-muted)">no new</span>' : '<span style="color:var(--text-muted)">created</span>'))
+      : '<span style="color:var(--text-muted)">—</span>';
+    return (
+      '<tr>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--border);font-family:ui-monospace,monospace;font-weight:600">' + d.ticker + '</td>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--border);color:var(--text-muted)">' + d.asset_class + '</td>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--border);font-family:ui-monospace,monospace;font-size:11px">' + lastBar + '</td>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--border)"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-weight:600;font-size:11px;background:' + fc.bg + ';color:' + fc.fg + '">' + age + '</span></td>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;color:var(--text-muted)">' + rows1m + '</td>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--border)">' + jobCell + '</td>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums">' + mergeCell + '</td>' +
+      '</tr>'
+    );
+  }).join('');
+}
+
+async function refreshFirstrateNightlyHealth() {
+  const btn = document.getElementById('frHealthRefreshBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const data = await api('/api/admin/datasets/firstrate-fx/nightly-health');
+    _firstrateHealthCache = data;
+    _renderFirstrateNightlyHealth();
+  } catch (e) {
+    const tbody = document.getElementById('frHealthTableBody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="padding:14px;color:var(--err,#ef4444);text-align:center">Failed: ' + (e && e.message ? e.message : e) + '</td></tr>';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// Auto-refresh toggle: poll every 30s while the checkbox is on. We clear the
+// timer aggressively on uncheck to avoid background traffic after the admin
+// closes the card's attention window.
+document.addEventListener('change', function (e) {
+  const t = e && e.target;
+  if (!t || t.id !== 'frHealthAutoRefresh') return;
+  if (_firstrateHealthAutoTimer) {
+    clearInterval(_firstrateHealthAutoTimer);
+    _firstrateHealthAutoTimer = null;
+  }
+  if (t.checked) {
+    _firstrateHealthAutoTimer = setInterval(refreshFirstrateNightlyHealth, 30_000);
+  }
+});
 
 let bnSymbolsFull = [];
 

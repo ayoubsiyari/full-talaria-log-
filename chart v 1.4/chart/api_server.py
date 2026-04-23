@@ -19,6 +19,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import sessionmaker, declarative_base
 from datetime import datetime, timedelta
+import csv
 import os
 import sqlite3
 import shutil
@@ -1622,10 +1623,137 @@ def _store_dataset_file(file_path: Path, original_name: str, description: str | 
         db.close()
 
 
+def _merge_canonical_ohlcv_csvs(existing: Path, incoming: Path, dest: Path) -> tuple[int, int]:
+    """
+    Merge two canonical OHLCV CSVs (header `timestamp,open,high,low,close,volume`,
+    ascending epoch-ms timestamps) into `dest`. On timestamp collisions the
+    incoming row wins — the vendor's latest print for that minute replaces any
+    partial/preliminary bar we may have imported before.
+
+    Inputs are expected to be already sorted (they are when produced by
+    `normalize_firstrate_csv_to_standard`). If one of them turns out not to be,
+    we fall back to a dict-based merge that sorts in Python — slower but safe.
+
+    Returns `(rows_out, new_rows_added)` where `new_rows_added` is how many of
+    the incoming timestamps were not already present in `existing` (useful for
+    progress messages / deciding whether the merge was worthwhile).
+    """
+    import heapq
+
+    header = ["timestamp", "open", "high", "low", "close", "volume"]
+
+    def iter_rows(path: Path, priority: int):
+        # priority=0 → incoming (wins on tie), priority=1 → existing
+        with open(path, "r", newline="", encoding="utf-8") as f:
+            r = csv.reader(f)
+            next(r, None)  # discard header
+            for row in r:
+                if not row:
+                    continue
+                try:
+                    ts = int(float(row[0]))
+                except (ValueError, IndexError):
+                    continue
+                yield ts, priority, row
+
+    # Track which incoming timestamps were already present so we can report
+    # how many genuinely-new bars the merge added.
+    existing_ts: set[int] = set()
+    try:
+        # Fast path: sorted streaming merge. Raises if either input is not sorted.
+        tmp = dest.with_suffix(dest.suffix + ".merge.tmp")
+        rows_out = 0
+        last_ts: int | None = None
+        with open(tmp, "w", newline="", encoding="utf-8") as outf:
+            w = csv.writer(outf)
+            w.writerow(header)
+            merged = heapq.merge(
+                iter_rows(incoming, 0),
+                iter_rows(existing, 1),
+            )
+            for ts, prio, row in merged:
+                if prio == 1:
+                    existing_ts.add(ts)
+                if last_ts is not None and ts == last_ts:
+                    # Duplicate timestamp — heapq.merge already emitted the
+                    # winning (lower-priority-number) row.
+                    continue
+                if last_ts is not None and ts < last_ts:
+                    raise ValueError("csv-not-sorted")
+                w.writerow(row)
+                last_ts = ts
+                rows_out += 1
+        tmp.replace(dest)
+    except ValueError:
+        # Fallback: load both into a dict keyed by timestamp. Incoming wins on
+        # collision. Sort the union and re-emit.
+        merged_map: dict[int, list[str]] = {}
+        existing_ts.clear()
+        with open(existing, "r", newline="", encoding="utf-8") as f:
+            r = csv.reader(f)
+            next(r, None)
+            for row in r:
+                if not row:
+                    continue
+                try:
+                    ts = int(float(row[0]))
+                except (ValueError, IndexError):
+                    continue
+                merged_map[ts] = row
+                existing_ts.add(ts)
+        with open(incoming, "r", newline="", encoding="utf-8") as f:
+            r = csv.reader(f)
+            next(r, None)
+            for row in r:
+                if not row:
+                    continue
+                try:
+                    ts = int(float(row[0]))
+                except (ValueError, IndexError):
+                    continue
+                merged_map[ts] = row  # incoming wins
+        tmp = dest.with_suffix(dest.suffix + ".merge.tmp")
+        rows_out = 0
+        with open(tmp, "w", newline="", encoding="utf-8") as outf:
+            w = csv.writer(outf)
+            w.writerow(header)
+            for ts in sorted(merged_map):
+                w.writerow(merged_map[ts])
+                rows_out += 1
+        tmp.replace(dest)
+
+    # Count newly-added timestamps (present in incoming but not in existing).
+    new_rows_added = 0
+    with open(incoming, "r", newline="", encoding="utf-8") as f:
+        r = csv.reader(f)
+        next(r, None)
+        for row in r:
+            if not row:
+                continue
+            try:
+                ts = int(float(row[0]))
+            except (ValueError, IndexError):
+                continue
+            if ts not in existing_ts:
+                new_rows_added += 1
+    return rows_out, new_rows_added
+
+
 def _upsert_or_create_dataset_from_csv(file_path: Path, original_name: str, description: str | None, upsert: bool) -> dict:
     """
-    Register a normalized CSV as a dataset, or overwrite an existing dataset with the same original_name when upsert=True.
-    Scheduled FirstRate imports use upsert=True so pairs are refreshed in place (stable file ids when original_name matches).
+    Register a normalized CSV as a dataset, or **merge** the incoming CSV into
+    an existing dataset with the same original_name when `upsert=True`.
+
+    Merge semantics: the existing CSV is preserved, the incoming candles are
+    unioned in by epoch-ms timestamp, and any timestamp appearing in both is
+    replaced by the incoming row (vendor's freshest print wins). This lets
+    daily update bundles (`period=day`) progressively extend the historical
+    series instead of overwriting it — which was the previous behaviour and
+    would silently destroy old bars when a short-period bundle was imported
+    on top of a long one.
+
+    The dataset row keeps its `file.id`, so downstream references (binary
+    tiles, saved selections) remain stable.
     """
     if upsert:
         db = SessionLocal()
@@ -1633,8 +1761,27 @@ def _upsert_or_create_dataset_from_csv(file_path: Path, original_name: str, desc
             db_file = db.query(CSVFile).filter(CSVFile.original_name == original_name).first()
             if db_file:
                 final_path = _resolve_dataset_csv_for_file(db_file)
-                shutil.copyfile(file_path, final_path)
-                rc = count_csv_rows(str(final_path))
+                new_rows_added = 0
+                if final_path.exists() and count_csv_rows(str(final_path)) > 0:
+                    try:
+                        rc, new_rows_added = _merge_canonical_ohlcv_csvs(
+                            existing=final_path,
+                            incoming=file_path,
+                            dest=final_path,
+                        )
+                    except Exception as merge_err:
+                        # On unexpected merge failure, do NOT fall back to
+                        # overwrite (that would destroy historical bars). Re-raise
+                        # so the import job is marked failed and the admin notices.
+                        raise RuntimeError(
+                            f"Failed to merge incoming CSV into existing dataset "
+                            f"{original_name!r}: {merge_err}"
+                        ) from merge_err
+                else:
+                    # No existing data (file missing or empty) → plain copy is fine.
+                    shutil.copyfile(file_path, final_path)
+                    rc = count_csv_rows(str(final_path))
+                    new_rows_added = rc
                 db_file.row_count = rc
                 if description:
                     db_file.description = description
@@ -1646,7 +1793,14 @@ def _upsert_or_create_dataset_from_csv(file_path: Path, original_name: str, desc
                         file_path.unlink(missing_ok=True)
                 except Exception:
                     pass
-                out = {"success": True, "file": _dataset_file_public_dict(db_file), "upserted": True}
+                out = {
+                    "success": True,
+                    "file": _dataset_file_public_dict(db_file),
+                    "upserted": True,
+                    "merged": True,
+                    "new_rows_added": int(new_rows_added),
+                    "total_rows": int(rc),
+                }
                 return out
         finally:
             db.close()
@@ -1654,6 +1808,7 @@ def _upsert_or_create_dataset_from_csv(file_path: Path, original_name: str, desc
     out = _store_dataset_file(file_path, original_name=original_name, description=description)
     if isinstance(out, dict):
         out["upserted"] = False
+        out["merged"] = False
     return out
 
 
@@ -1866,10 +2021,146 @@ def _firstrate_filter_csv_paths_by_tickers(paths: list[Path], tokens: list[str])
     return kept, len(paths) - len(kept)
 
 
+# Static symbol tables mirrored from backtesting.html's `classifyFile`. Kept
+# inline (rather than imported from a shared module) because the admin server
+# is otherwise self-contained and the lists rarely change.
+_FIRSTRATE_FUTURES_SYMS = frozenset({
+    "ES","NQ","YM","RTY","MES","MNQ","M2K","CL","GC","SI","NG","ZB","ZN",
+    "MCL","MGC","MSI","MNG","HG","PL","PA","ZC","ZS","ZW","ZL","ZM",
+    "6E","6B","6J","6A","6C","6S","6N",
+})
+_FIRSTRATE_CRYPTO_SYMS = frozenset({
+    "BTC","ETH","SOL","XRP","ADA","DOGE","BNB","LTC","AVAX","ATOM","DOT",
+    "LINK","MATIC","UNI","BCH","ETC","FIL","NEAR","ALGO","XLM","TRX",
+    "SHIB","APT","ARB","OP",
+})
+_FIRSTRATE_CURRENCY_SYMS = frozenset({
+    "USD","EUR","GBP","JPY","AUD","NZD","CAD","CHF","HKD","SGD","SEK",
+    "NOK","DKK","ZAR","TRY","MXN","CNY","XAU","XAG",
+})
+# FirstRate bucket name for each classified instrument. These are the `type`
+# values the vendor's data_file / last_update endpoints accept.
+_FIRSTRATE_INSTRUMENT_TYPE_CANON = {
+    "futures": "futures",
+    "crypto":  "crypto",
+    "fx":      "fx",
+    "stock":   "stock",
+}
+# "Meta" filename segments added by the FirstRate pipeline that should be
+# ignored when pulling the ticker out of `original_name`.
+_FIRSTRATE_FILENAME_META = frozenset({
+    "FULL","DAY","WEEK","MONTH","YEAR","HOUR","MIN",
+    "ADJ","UNADJ","CONTIN","CONTINUOUS","SPLIT","DIV","RATIO","ABSOLUTE",
+    "1MIN","5MIN","15MIN","30MIN","1HOUR","1DAY","1WEEK","1MONTH",
+    "1H","4H","1D","1W","1MO",
+})
+
+
+def _firstrate_extract_ticker_from_filename(raw_name: str) -> str:
+    """
+    Mirror of JS `cleanPairName` in backtesting.html. Pulls a canonical ticker
+    out of a dataset filename like `BTC_full_1min_1min.csv`,
+    `20260217_182920_GBPUSD.csv`, or `b01_0003_firstrate_EURUSD_full_1min_1min.csv`.
+    Returns empty string on anything we can't confidently classify.
+    """
+    if not raw_name:
+        return ""
+    # Strip any path + extension, then the common FirstRate-pipeline prefixes.
+    name = re.sub(r"^.*[\\/]", "", str(raw_name))
+    name = re.sub(r"\.csv$", "", name, flags=re.IGNORECASE)
+    name = re.sub(r"^\d{8}_\d{6}_", "", name)
+    name = re.sub(r"^b\d{2}_\d{4}_firstrate_", "", name)
+    name = re.sub(r"^firstrate_", "", name)
+    parts = [p for p in name.split("_") if p]
+    if not parts:
+        return ""
+    seg = next(
+        (p for p in parts
+         if p.upper() not in _FIRSTRATE_FILENAME_META and not p.isdigit()),
+        parts[0],
+    )
+    if re.fullmatch(r"[A-Za-z]{2,5}-[A-Za-z]{2,5}", seg):
+        a, b = seg.upper().split("-")
+        return a + b
+    return seg.upper()
+
+
+def _firstrate_classify_ticker(ticker: str) -> str | None:
+    """
+    Bucket a canonical ticker into one of `futures | crypto | fx | stock`,
+    matching the grouping used in the backtesting dropdown. Returns None for
+    tickers we don't recognize (so they can be safely skipped by the
+    auto-nightly loop rather than sent to the wrong FirstRate endpoint).
+    """
+    t = (ticker or "").upper().replace("/", "").replace("-", "")
+    if not t:
+        return None
+    if t in _FIRSTRATE_FUTURES_SYMS:
+        return "futures"
+    if len(t) >= 6:
+        base, quote = t[:3], t[3:6]
+        if base in _FIRSTRATE_CRYPTO_SYMS or quote in _FIRSTRATE_CRYPTO_SYMS:
+            return "crypto"
+        if base in _FIRSTRATE_CURRENCY_SYMS and quote in _FIRSTRATE_CURRENCY_SYMS:
+            return "fx"
+    if t in _FIRSTRATE_CRYPTO_SYMS:
+        return "crypto"
+    if t in _FIRSTRATE_CURRENCY_SYMS:
+        return "fx"
+    if t.isalpha() and 1 <= len(t) <= 5:
+        return "stock"
+    return None
+
+
+def _firstrate_classify_existing_datasets() -> dict[str, list[str]]:
+    """
+    Walk the dataset registry and bucket every CSV into the FirstRate instrument
+    type it came from. Used by the nightly auto-sync to decide which
+    `data_file?type=…` calls to make and with which pairs.
+
+    Returns `{"fx": ["EURUSD", …], "crypto": ["BTC", …], …}` with sorted,
+    deduplicated ticker lists. Instrument types with zero datasets are omitted.
+    """
+    buckets: dict[str, set[str]] = {}
+    db = SessionLocal()
+    try:
+        rows = db.query(CSVFile).all()
+    finally:
+        db.close()
+    for row in rows:
+        ticker = _firstrate_extract_ticker_from_filename(row.original_name or "")
+        if not ticker:
+            continue
+        cls = _firstrate_classify_ticker(ticker)
+        if not cls:
+            continue
+        canon = _FIRSTRATE_INSTRUMENT_TYPE_CANON.get(cls)
+        if not canon:
+            continue
+        buckets.setdefault(canon, set()).add(ticker)
+    return {k: sorted(v) for k, v in buckets.items() if v}
+
+
 def _default_firstrate_schedule() -> dict:
-    """Defaults for automatic VPS sync; first load creates `uploads/firstrate_schedule.json` (overridable via env)."""
+    """
+    Defaults for automatic VPS sync; first load creates
+    `uploads/firstrate_schedule.json` (overridable via env).
+
+    Two modes:
+      * `nightly`  — fire once per day at `nightly_utc_hour`, iterating every
+                     asset class present in the dataset registry (or just
+                     `instrument_type` if `auto_all_types` is off).
+      * `interval` — legacy behaviour: fire every `interval_minutes`, single
+                     `instrument_type` only.
+
+    `nightly` is the default now because it matches what traders actually want
+    (one delta pull per asset class per night, merged into existing history).
+    """
     return {
         "enabled": os.getenv("FIrstrate_SCHEDULE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"},
+        "mode": (os.getenv("FIrstrate_SCHEDULE_MODE", "nightly").strip().lower() or "nightly"),
+        "nightly_utc_hour": int(os.getenv("FIrstrate_SCHEDULE_NIGHTLY_UTC_HOUR", "2")),
+        "auto_all_types": os.getenv("FIrstrate_SCHEDULE_AUTO_ALL_TYPES", "true").strip().lower() in {"1", "true", "yes", "on"},
         "interval_minutes": int(os.getenv("FIrstrate_SCHEDULE_INTERVAL_MINUTES", "1440")),
         "period": (os.getenv("FIrstrate_SCHEDULE_PERIOD", "day").strip() or "day"),
         "timeframe": (os.getenv("FIrstrate_SCHEDULE_TIMEFRAME", "1min").strip() or "1min"),
@@ -1885,6 +2176,8 @@ def _default_firstrate_schedule() -> dict:
         "last_job_id": None,
         "last_status": None,
         "last_error": None,
+        "last_run_date": None,            # YYYY-MM-DD UTC; resets per-day completion list
+        "last_run_types_today": [],       # list of instrument_types already queued tonight
         "pairs": [],
     }
 
@@ -1949,6 +2242,39 @@ def _firstrate_schedule_after_job(job_id: str, success: bool, error_message: str
         pass
 
 
+def _firstrate_default_adjustment_for(instrument_type: str) -> str | None:
+    """Pick a safe default `adjustment` value for vendor types that require one."""
+    t = (instrument_type or "").strip().lower()
+    if t == "futures":
+        # FirstRate requires a continuous-contract adjustment on every futures
+        # data_file call; `contin_UNadj` is the raw unadjusted stitched series.
+        return DEFAULT_FUTURES_ADJUSTMENT
+    return None
+
+
+def _firstrate_pending_types_for_nightly(cfg: dict) -> tuple[dict[str, list[str]], list[str]]:
+    """
+    Compute `(buckets_to_run, already_done_today)` for the nightly auto-sync.
+
+    - If `auto_all_types` is on: walks the dataset registry and buckets every
+      registered CSV into fx/crypto/futures/stock so every asset class the user
+      has data for gets a delta pull.
+    - If off: honours the legacy single `instrument_type` + `pairs` config.
+
+    Only buckets with at least one ticker are returned.
+    """
+    if bool(cfg.get("auto_all_types", True)):
+        buckets = _firstrate_classify_existing_datasets()
+    else:
+        inst = str(cfg.get("instrument_type") or "fx").strip().lower()
+        pairs = cfg.get("pairs") if isinstance(cfg.get("pairs"), list) else []
+        buckets = {inst: list(pairs)} if inst else {}
+    # Strip empties so we don't queue a no-op job for a class with no tickers.
+    buckets = {k: v for k, v in buckets.items() if v}
+    done = list(cfg.get("last_run_types_today") or [])
+    return buckets, done
+
+
 def _firstrate_scheduler_tick() -> None:
     try:
         cfg = _load_firstrate_schedule()
@@ -1956,12 +2282,70 @@ def _firstrate_scheduler_tick() -> None:
             return
         if not get_firstrate_userid():
             return
+        # Only one FirstRate import can run at a time; wait for the current one
+        # to finish before queueing the next asset class.
         if _firstrate_has_active_import_job():
             return
 
+        mode = str(cfg.get("mode") or "nightly").strip().lower()
+        now = datetime.utcnow()
+        today_str = now.strftime("%Y-%m-%d")
+
+        # --- Nightly mode: once per day, after the configured UTC hour, ------
+        # progressively queue one instrument type per tick until every asset
+        # class present in the registry has been pulled for the day.
+        if mode == "nightly":
+            target_hour = int(cfg.get("nightly_utc_hour", 2) or 0)
+            target_hour = max(0, min(23, target_hour))
+            if now.hour < target_hour:
+                return
+
+            # Reset the per-day done-list when a new UTC day starts.
+            if str(cfg.get("last_run_date") or "") != today_str:
+                cfg["last_run_date"] = today_str
+                cfg["last_run_types_today"] = []
+                _save_firstrate_schedule(cfg)
+
+            buckets, done_today = _firstrate_pending_types_for_nightly(cfg)
+            pending = [t for t in buckets if t not in done_today]
+            if not pending:
+                return
+
+            next_type = pending[0]
+            pair_list = list(buckets[next_type])
+            adjustment = _firstrate_default_adjustment_for(next_type)
+
+            _queue_firstrate_fx_import_job(
+                period=str(cfg.get("period") or "day"),
+                timeframe=str(cfg.get("timeframe") or "1min"),
+                instrument_type=next_type,
+                adjustment=adjustment,
+                delete_existing_first=False,
+                purge_confirmation=None,
+                ticker_range=None,
+                download_timeout_sec=float(cfg.get("download_timeout_sec") or 7200),
+                upsert_existing=True,  # always merge in nightly mode
+                trigger="schedule",
+                pairs=pair_list,
+            )
+
+            # Mark this type as attempted tonight — whether or not the job
+            # eventually succeeds, we don't retry it on the same UTC day so a
+            # vendor-side outage can't cause runaway retries.
+            cfg2 = _load_firstrate_schedule()
+            done = list(cfg2.get("last_run_types_today") or [])
+            if next_type not in done:
+                done.append(next_type)
+            cfg2["last_run_types_today"] = done
+            cfg2["last_run_date"] = today_str
+            cfg2["last_run_started_at"] = datetime.utcnow().isoformat() + "Z"
+            cfg2["last_error"] = None
+            _save_firstrate_schedule(cfg2)
+            return
+
+        # --- Legacy interval mode (kept for back-compat; single instrument) --
         interval_min = max(15, int(cfg.get("interval_minutes") or 1440))
         last_fin = cfg.get("last_run_finished_at")
-        now = datetime.utcnow()
         should_run = False
         if not last_fin:
             should_run = True
@@ -1975,13 +2359,11 @@ def _firstrate_scheduler_tick() -> None:
                     should_run = True
             except Exception:
                 should_run = True
-
         if not should_run:
             return
 
         sched_pairs = cfg.get("pairs")
         pair_list = sched_pairs if isinstance(sched_pairs, list) else []
-
         _queue_firstrate_fx_import_job(
             period=str(cfg.get("period") or "day"),
             timeframe=str(cfg.get("timeframe") or "1min"),
@@ -4732,6 +5114,20 @@ def _run_firstrate_import_job(job_id: str) -> None:
                 st["files_done"] = int(st.get("files_done") or 0) + 1
                 st["datasets_created"] = list(created)
                 st["skipped_files"] = list(skipped)
+                # Record per-ticker merge stats so the nightly-health UI can show
+                # how many bars each dataset picked up on this run. Keyed by
+                # original_label (e.g. `EURUSD_1min.csv`) so a ticker imported
+                # across multiple bundles aggregates correctly.
+                merge_map = st.get("merge_summary") or {}
+                if isinstance(info, dict):
+                    merge_map[original_label] = {
+                        "ticker": stem_safe,
+                        "merged": bool(info.get("merged")),
+                        "upserted": bool(info.get("upserted")),
+                        "new_rows_added": int(info.get("new_rows_added") or 0),
+                        "total_rows": int(info.get("total_rows") or 0),
+                    }
+                st["merge_summary"] = merge_map
                 st["message"] = (
                     f"Imported {len(created)} dataset(s){bundle_label}"
                 )
@@ -5241,6 +5637,13 @@ class AdminFirstrateFxSyncIn(BaseModel):
 class AdminFirstrateScheduleIn(BaseModel):
     """Persisted VPS auto-sync settings (`uploads/firstrate_schedule.json`)."""
     enabled: bool | None = None
+    # nightly | interval — nightly is the supported default; interval kept for back-compat.
+    mode: str | None = None
+    # Hour-of-day (UTC) at which nightly sync starts queuing jobs; 0–23.
+    nightly_utc_hour: int | None = Field(default=None, ge=0, le=23)
+    # When true, nightly mode pulls every asset class present in the registry
+    # (ignores `instrument_type` / `pairs`).
+    auto_all_types: bool | None = None
     interval_minutes: int | None = Field(default=None, ge=15, le=10080)
     instrument_type: str | None = None
     adjustment: str | None = None
@@ -7441,15 +7844,213 @@ async def admin_firstrate_fx_live_status(request: Request):
     }
 
 
+@app.get("/api/admin/datasets/firstrate-fx/nightly-health")
+async def admin_firstrate_fx_nightly_health(request: Request):
+    """
+    Per-asset visualization of the nightly auto-sync outcome.
+
+    For every FirstRate-classified dataset in the registry, reports:
+      * canonical ticker + asset class
+      * latest 1m-bar timestamp (from the CSVAggregate row — no CSV scan)
+      * staleness in hours vs. now (UTC)
+      * most recent scheduled import job touching the dataset's asset class,
+        and the per-ticker merge stats recorded by that job
+
+    Also aggregates per-asset-class summary counts (fresh / stale / missing)
+    so the admin UI can render badge totals without re-bucketing client-side.
+
+    "fresh"   = staleness ≤ 48 h  (a nightly job ran recently and merged bars)
+    "stale"   = 48 h < staleness ≤ 7 d
+    "missing" = staleness > 7 d or no 1m coverage at all
+    """
+    _require_admin(request)
+    now = datetime.utcnow()
+    now_ms = now.timestamp() * 1000.0
+    cfg = _load_firstrate_schedule()
+
+    # --- Index the most recent FirstRate jobs per instrument_type. ----------
+    # We only care about the job files that went through `_firstrate_write_job`
+    # so they all carry `instrument_type`, `trigger`, and (now) `merge_summary`.
+    latest_job_by_type: dict[str, dict] = {}
+    try:
+        job_paths = sorted(
+            FIrstrate_JOBS_DIR.glob("*.json"),
+            key=lambda x: x.stat().st_mtime,
+            reverse=True,
+        )
+    except Exception:
+        job_paths = []
+    for jp in job_paths[:200]:
+        try:
+            with open(jp, "r", encoding="utf-8") as f:
+                st = json.load(f)
+        except Exception:
+            continue
+        it = str(st.get("instrument_type") or "").strip().lower()
+        if not it:
+            continue
+        if it in latest_job_by_type:
+            continue  # paths are pre-sorted newest-first
+        latest_job_by_type[it] = st
+
+    # --- Walk the dataset registry and join against 1m aggregates. ----------
+    db = SessionLocal()
+    try:
+        files = db.query(CSVFile).all()
+        aggs = (
+            db.query(CSVAggregate)
+            .filter(CSVAggregate.timeframe == "1m")
+            .all()
+        )
+    finally:
+        db.close()
+    agg_by_file = {int(a.file_id): a for a in aggs}
+
+    datasets: list[dict] = []
+    for f in files:
+        ticker = _firstrate_extract_ticker_from_filename(f.original_name or "")
+        asset_class = _firstrate_classify_ticker(ticker) if ticker else None
+        if not asset_class:
+            continue  # skip uploads we can't confidently place
+
+        agg = agg_by_file.get(int(f.id))
+        last_ts = None
+        row_count_1m = 0
+        if agg is not None and agg.end_ts is not None:
+            try:
+                last_ts = float(agg.end_ts)
+                row_count_1m = int(agg.row_count or 0)
+            except (TypeError, ValueError):
+                last_ts = None
+
+        staleness_hours: float | None = None
+        if last_ts is not None:
+            staleness_hours = max(0.0, (now_ms - last_ts) / 3_600_000.0)
+
+        # Freshness bucket (see docstring above).
+        if staleness_hours is None or staleness_hours > 24 * 7:
+            freshness = "missing"
+        elif staleness_hours > 48:
+            freshness = "stale"
+        else:
+            freshness = "fresh"
+
+        # Pull merge stats for this dataset out of the latest matching job.
+        job = latest_job_by_type.get(asset_class)
+        merge_info = None
+        if job and isinstance(job.get("merge_summary"), dict):
+            # Jobs key merge rows by `<ticker>_<timeframe>.csv`; scan for any
+            # entry that matches the dataset's original_name or ticker stem.
+            target_name = (f.original_name or "").lower()
+            for k, v in job["merge_summary"].items():
+                if not isinstance(v, dict):
+                    continue
+                if str(k).lower() == target_name or (
+                    v.get("ticker") and str(v["ticker"]).lower() == ticker.lower()
+                ):
+                    merge_info = v
+                    break
+
+        datasets.append({
+            "id": int(f.id),
+            "ticker": ticker,
+            "asset_class": asset_class,
+            "original_name": f.original_name,
+            "row_count": int(f.row_count or 0),
+            "row_count_1m": row_count_1m,
+            "last_bar_iso": _epoch_ms_to_iso_utc(last_ts) if last_ts is not None else None,
+            "last_bar_ms": last_ts,
+            "staleness_hours": round(staleness_hours, 2) if staleness_hours is not None else None,
+            "freshness": freshness,
+            "last_job": (
+                {
+                    "job_id": job.get("job_id"),
+                    "status": job.get("status"),
+                    "trigger": job.get("trigger"),
+                    "updated_at": job.get("updated_at"),
+                    "period": job.get("period"),
+                    "timeframe": job.get("timeframe"),
+                    "message": (job.get("message") or "")[:300],
+                    "error": (job.get("error") or "")[:300] or None,
+                }
+                if job else None
+            ),
+            "merge": merge_info,
+        })
+
+    # Sort so unhealthy rows float to the top of each class.
+    freshness_rank = {"missing": 0, "stale": 1, "fresh": 2}
+    datasets.sort(key=lambda d: (d["asset_class"], freshness_rank.get(d["freshness"], 3), d["ticker"]))
+
+    # --- Per-class summary. --------------------------------------------------
+    classes: dict[str, dict] = {}
+    for d in datasets:
+        c = d["asset_class"]
+        slot = classes.setdefault(c, {
+            "asset_class": c,
+            "ticker_count": 0,
+            "fresh_count": 0,
+            "stale_count": 0,
+            "missing_count": 0,
+            "total_new_rows_last_run": 0,
+            "last_job": None,
+        })
+        slot["ticker_count"] += 1
+        slot[f"{d['freshness']}_count"] += 1
+        if d.get("merge"):
+            slot["total_new_rows_last_run"] += int(d["merge"].get("new_rows_added") or 0)
+        if slot["last_job"] is None and d.get("last_job"):
+            slot["last_job"] = d["last_job"]
+
+    return {
+        "success": True,
+        "generated_at": now.isoformat() + "Z",
+        "schedule": {
+            "enabled": bool(cfg.get("enabled")),
+            "mode": cfg.get("mode"),
+            "nightly_utc_hour": cfg.get("nightly_utc_hour"),
+            "auto_all_types": cfg.get("auto_all_types"),
+            "last_run_date": cfg.get("last_run_date"),
+            "last_run_types_today": cfg.get("last_run_types_today") or [],
+            "last_run_started_at": cfg.get("last_run_started_at"),
+            "last_run_finished_at": cfg.get("last_run_finished_at"),
+            "last_status": cfg.get("last_status"),
+            "last_error": cfg.get("last_error"),
+        },
+        "summary": {
+            "dataset_count": len(datasets),
+            "fresh_count": sum(c["fresh_count"] for c in classes.values()),
+            "stale_count": sum(c["stale_count"] for c in classes.values()),
+            "missing_count": sum(c["missing_count"] for c in classes.values()),
+            "asset_class_count": len(classes),
+        },
+        "classes": sorted(classes.values(), key=lambda c: c["asset_class"]),
+        "datasets": datasets,
+    }
+
+
 @app.get("/api/admin/datasets/firstrate-fx/schedule")
 async def admin_firstrate_fx_schedule_get(request: Request):
-    """Read auto-sync settings (VPS). File: uploads/firstrate_schedule.json"""
+    """
+    Read auto-sync settings (VPS). File: uploads/firstrate_schedule.json
+
+    Also returns a `nightly_preview` summary so the admin UI can show what the
+    next nightly run will pull (bucketed tickers per asset class) without
+    having to call the vendor.
+    """
     _require_admin(request)
     cfg = _load_firstrate_schedule()
+    buckets = _firstrate_classify_existing_datasets()
+    total_tickers = sum(len(v) for v in buckets.values())
     return {
         "success": True,
         "schedule": cfg,
         "has_firstrate_userid": bool(get_firstrate_userid()),
+        "nightly_preview": {
+            "buckets": buckets,                 # {"fx": [...], "crypto": [...], ...}
+            "type_count": len(buckets),
+            "ticker_count": total_tickers,
+        },
     }
 
 
@@ -7463,6 +8064,15 @@ async def admin_firstrate_fx_schedule_put(payload: AdminFirstrateScheduleIn, req
     p = payload
     if p.enabled is not None:
         cur["enabled"] = bool(p.enabled)
+    if p.mode is not None:
+        m = str(p.mode).strip().lower()
+        if m not in {"nightly", "interval"}:
+            raise HTTPException(status_code=400, detail="mode must be 'nightly' or 'interval'")
+        cur["mode"] = m
+    if p.nightly_utc_hour is not None:
+        cur["nightly_utc_hour"] = int(p.nightly_utc_hour)
+    if p.auto_all_types is not None:
+        cur["auto_all_types"] = bool(p.auto_all_types)
     if p.interval_minutes is not None:
         cur["interval_minutes"] = int(p.interval_minutes)
     if p.period is not None:
