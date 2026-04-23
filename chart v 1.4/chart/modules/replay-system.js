@@ -2173,6 +2173,37 @@ class ReplaySystem {
         return Math.min(idx, n - 1);
     }
 
+    /**
+     * Wall-clock ms for the replay toolbar / virtual-time events — aligned with what the chart shows
+     * on the current timeframe (resampled candle), not only the underlying raw bar at currentIndex.
+     */
+    _getReplayDisplayTimestampMs() {
+        if (this.animatingCandle && (this.tickProgress || 0) > 0 && this.animatingCandle.target) {
+            const tgt = this.animatingCandle.target;
+            if (tgt && Number.isFinite(tgt.t)) {
+                const elapsed = Number.isFinite(this.tickElapsedMs) ? this.tickElapsedMs : 0;
+                return tgt.t + elapsed;
+            }
+        }
+
+        if (this.chart && Array.isArray(this.chart.data) && this.chart.data.length > 0) {
+            const fi =
+                typeof this._resolveFocusResampledIndex === 'function'
+                    ? this._resolveFocusResampledIndex(this.chart)
+                    : this.chart.data.length - 1;
+            const dc = this.chart.data[Math.min(Math.max(0, fi), this.chart.data.length - 1)];
+            if (dc && Number.isFinite(dc.t)) return dc.t;
+        }
+
+        const currentBar =
+            Array.isArray(this.fullRawData) && this.fullRawData.length > 0
+                ? this.fullRawData[this.currentIndex]
+                : null;
+        if (currentBar && Number.isFinite(currentBar.t)) return currentBar.t;
+
+        return Number.isFinite(this.replayTimestamp) ? this.replayTimestamp : null;
+    }
+
     getReplayAutoScrollState(chartInstance = this.chart) {
         if (!chartInstance || !Array.isArray(chartInstance.data)) return null;
 
@@ -4465,25 +4496,22 @@ class ReplaySystem {
             return;
         }
 
-        const currentBar = this.fullRawData[this.currentIndex];
-        if (!currentBar || !currentBar.t) {
+        const displayTs = this._getReplayDisplayTimestampMs();
+        if (!Number.isFinite(displayTs)) {
             return;
         }
 
         // Use timezone manager if available
         if (window.timezoneManager) {
-            const timeStr = window.timezoneManager.formatTime(currentBar.t, 'full');
+            const timeStr = window.timezoneManager.formatTime(displayTs, 'full');
             this.timeLabel.textContent = timeStr;
             try {
-                const ts = Number.isFinite(this.replayTimestamp)
-                    ? this.replayTimestamp
-                    : currentBar.t;
-                if (Number.isFinite(ts)) {
+                if (Number.isFinite(displayTs)) {
                     const sym = this.chart && this.chart.currentSymbol
                         ? String(this.chart.currentSymbol)
                         : '';
                     window.dispatchEvent(new CustomEvent('replayVirtualTimeChanged', {
-                        detail: { timestamp: ts, symbol: sym }
+                        detail: { timestamp: displayTs, symbol: sym }
                     }));
                 }
             } catch (e) { /* ignore */ }
@@ -4491,7 +4519,7 @@ class ReplaySystem {
         }
 
         // Fallback to local time
-        const date = new Date(currentBar.t);
+        const date = new Date(displayTs);
         
         // Get day of week abbreviation
         const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -4513,15 +4541,12 @@ class ReplaySystem {
 
         // Forex news panel: virtual time + symbol for period-matched headlines (TradingView-style)
         try {
-            const ts = Number.isFinite(this.replayTimestamp)
-                ? this.replayTimestamp
-                : (currentBar && currentBar.t);
-            if (Number.isFinite(ts)) {
+            if (Number.isFinite(displayTs)) {
                 const sym = this.chart && this.chart.currentSymbol
                     ? String(this.chart.currentSymbol)
                     : '';
                 window.dispatchEvent(new CustomEvent('replayVirtualTimeChanged', {
-                    detail: { timestamp: ts, symbol: sym }
+                    detail: { timestamp: displayTs, symbol: sym }
                 }));
             }
         } catch (e) { /* ignore */ }
