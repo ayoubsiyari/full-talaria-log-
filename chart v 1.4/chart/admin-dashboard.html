@@ -1617,6 +1617,7 @@ select { cursor: pointer; }
                 <div id="fr_quickadd_fut" class="field fg-full" style="display:none">
                   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                     <span style="font-size:11px;color:var(--text-muted)">Quick add (common roots):</span>
+                    <button type="button" class="btn sm primary" onclick="frPairsFillAllFutures()" title="Replace contents with curated CME-style continuous roots (FX forwards, equity index, energy, metals, micros — trim to match your vendor filenames)">All futures (screenshot list)</button>
                     <button type="button" class="btn sm" onclick="frPairsAdd('ES NQ RTY YM')">equity index</button>
                     <button type="button" class="btn sm" onclick="frPairsAdd('CL NG RB HO')">energy</button>
                     <button type="button" class="btn sm" onclick="frPairsAdd('GC SI HG PL')">metals</button>
@@ -2771,7 +2772,7 @@ let insightsOverviewCache = null;
       loadFirstrateSchedule().catch(function (e) { console.error('loadFirstrateSchedule', e); }),
       refreshFirstrateNightlyHealth().catch(function (e) { console.error('refreshFirstrateNightlyHealth', e); }),
     ]);
-    try { seedDefaultForexPairsIfNeeded(); } catch (e) { console.error('seedDefaultForexPairsIfNeeded', e); }
+    try { seedDefaultInstrumentPairsIfNeeded(); } catch (e) { console.error('seedDefaultInstrumentPairsIfNeeded', e); }
     try { ensureFirstrateLivePoll(); } catch (e) { console.error('ensureFirstrateLivePoll', e); }
     try {
       renderOverview();
@@ -4344,8 +4345,8 @@ function updateFirstrateInstrumentUi() {
     } else if (v === 'futures') {
       hint.innerHTML =
         'Futures bundles come pre-stitched by FirstRate (one continuous series per root). ' +
-        'Type roots like <code style="font-size:10px">ES, NQ, CL</code> to filter by filename, or leave empty for every futures symbol in the adjustment series. ' +
-        'The ticker-range letter does <em>not</em> apply here — pick the continuous-adjustment value below instead.';
+        'When this box is <strong>empty</strong>, imports can match every root in the bundle (see server behavior for your adjustment). When <strong>filled</strong> (default list after load: curated FX forwards + index / micro / energy / metals / rates roots), only those stems are kept — trim to your filenames. ' +
+        'The ticker-range letter does <em>not</em> apply — pick the continuous-adjustment value below.';
     } else if (v === 'fx') {
       hint.innerHTML =
         'When this box is <strong>empty</strong>, the import matches <em>every</em> FX file in the ZIP. When it is <strong>filled</strong> (default list after load: full G10 grid + common exotics/crosses), only those stems are kept — remove symbols your bundle does not ship. FX is one bundle — no letter split.';
@@ -4681,6 +4682,51 @@ function seedDefaultForexPairsIfNeeded() {
   if (!ta || !typ || String(typ.value || '').toLowerCase() !== 'fx') return;
   if (String(ta.value || '').trim()) return;
   ta.value = getDefaultAllForexTickersComma();
+}
+
+/** Curated futures roots from admin UI lists (FX futures, index, micros, energy, metals, rates). Matches typical FirstRate continuous-contract stems — trim symbols your bundle omits. */
+function buildDefaultFuturesTickerList() {
+  const roots = [
+    '6A', '6B', '6E', '6J',
+    'CL', 'ES', 'GC',
+    'HG', 'M2K', 'M6E', 'MBT', 'MCL', 'MES', 'MGC',
+    'MHG', 'MNQ', 'MYM', 'NG', 'NKD', 'NQ',
+    'PL', 'RTY', 'SI', 'SIL', 'YM', 'ZB',
+  ];
+  const uniq = new Set();
+  roots.forEach(function (s) {
+    uniq.add(String(s).toUpperCase().trim());
+  });
+  return Array.from(uniq).sort();
+}
+
+function getDefaultAllFuturesTickersComma() {
+  return buildDefaultFuturesTickerList().join(', ');
+}
+
+function seedDefaultFuturesPairsIfNeeded() {
+  const ta = $('fr_pairs');
+  const typ = $('fr_type');
+  if (!ta || !typ || String(typ.value || '').toLowerCase() !== 'futures') return;
+  if (String(ta.value || '').trim()) return;
+  ta.value = getDefaultAllFuturesTickersComma();
+}
+
+function seedDefaultInstrumentPairsIfNeeded() {
+  seedDefaultForexPairsIfNeeded();
+  seedDefaultFuturesPairsIfNeeded();
+}
+
+function frPairsFillAllFutures() {
+  const ta = $('fr_pairs');
+  if (!ta) return;
+  ta.value = getDefaultAllFuturesTickersComma();
+  try {
+    const n = parsePairsFromTextarea('fr_pairs').length;
+    toast('Filled ' + n + ' futures roots (adjust for your vendor / adjustment series).', 'ok');
+  } catch (e) {
+    toast('Filled futures list', 'ok');
+  }
 }
 
 function frPairsFillAllForex() {
