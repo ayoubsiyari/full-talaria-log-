@@ -20,6 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import sessionmaker, declarative_base
 from datetime import datetime, timedelta
 import csv
+import gzip
 import os
 import sqlite3
 import shutil
@@ -449,6 +450,18 @@ APP_ROLE = (os.getenv("APP_ROLE", "api").strip().lower() or "api")
 # CSV archival support (cold storage on same filesystem/volume by default)
 CSV_ARCHIVE_DIR = UPLOAD_DIR / "archive"
 CSV_ARCHIVE_DIR.mkdir(exist_ok=True)
+
+# Trading-session state guardrails (protects the 200 GB VPS disk from runaway
+# drawings / journals stored in the single `TradingSessionState.state_json`
+# column). Enforced by PATCH /api/sessions/:id/state — SOFT returns a warning
+# in the response, HARD 413s the write (but only if the payload is also
+# larger than the previous version, so an oversize user can still shrink).
+SESSION_STATE_SOFT_LIMIT_BYTES = int(os.getenv("SESSION_STATE_SOFT_LIMIT_BYTES", str(4 * 1024 * 1024)))
+SESSION_STATE_HARD_LIMIT_BYTES = int(os.getenv("SESSION_STATE_HARD_LIMIT_BYTES", str(16 * 1024 * 1024)))
+# Directory for compressed, admin-triggered archives of stale trading-session
+# state (see /api/admin/system/archive-stale-sessions).
+SESSION_ARCHIVE_DIR = UPLOAD_DIR / "session_archive"
+SESSION_ARCHIVE_DIR.mkdir(exist_ok=True)
 
 # Optional tile CDN redirect mode
 TILE_CDN_BASE_URL = os.getenv("TILE_CDN_BASE_URL", "").strip().rstrip("/")
@@ -9776,6 +9789,516 @@ async def admin_system_metrics(request: Request):
     return _admin_system_metrics_payload()
 
 
+def _dir_size_bytes(path: Path, *, max_depth: int = 6) -> int:
+    """
+    Sum file sizes under `path` without following symlinks. Cheap enough for
+    the 200 GB VPS (uploads/ is the biggest tree and walks in <1 s). Capped
+    depth so a symlinked /proc can't take us down.
+    """
+    total = 0
+    try:
+        root_depth = len(path.parts)
+        for root, _dirs, files in os.walk(path, followlinks=False):
+            rp = Path(root)
+            if len(rp.parts) - root_depth > max_depth:
+                _dirs[:] = []
+                continue
+            for fn in files:
+                try:
+                    total += (rp / fn).stat(follow_symlinks=False).st_size
+                except Exception:
+                    continue
+    except Exception:
+        return total
+    return total
+
+
+@app.get("/api/admin/system/disk-health")
+async def admin_system_disk_health(request: Request, sample_limit: int = 10):
+    """
+    Application-level disk health — complements `/metrics` which reports the
+    raw filesystem view. Lets an admin answer:
+      * What subdirs of `uploads/` are eating space? (FirstRate bundles, binary
+        tiles, session archives, support attachments, job JSONs.)
+      * Which trading-session states are close to the soft/hard caps?
+      * Are there large / ancient support attachments worth pruning?
+
+    READ-ONLY. Never deletes or mutates anything. Purely diagnostic so you can
+    decide whether to run the archive / retention endpoints manually.
+
+    `sample_limit` caps how many "largest N" rows are returned per category so
+    the response stays bounded for a very large registry.
+    """
+    _require_admin(request)
+    sample_limit = max(1, min(100, int(sample_limit or 10)))
+
+    # --- Filesystem rollup of the uploads tree, bucketed by subdir. -------
+    uploads_breakdown = []
+    if UPLOAD_DIR.exists():
+        for child in sorted(UPLOAD_DIR.iterdir(), key=lambda p: p.name):
+            try:
+                if child.is_symlink():
+                    continue
+                size = _dir_size_bytes(child) if child.is_dir() else child.stat().st_size
+            except Exception:
+                size = 0
+            uploads_breakdown.append({
+                "name": child.name,
+                "is_dir": child.is_dir(),
+                "bytes": size,
+                "human": _human_bytes(size),
+            })
+    uploads_total = sum(row["bytes"] for row in uploads_breakdown)
+    uploads_breakdown.sort(key=lambda r: r["bytes"], reverse=True)
+
+    # --- Filesystem usage for the volume that holds `uploads/`. -----------
+    try:
+        du = shutil.disk_usage(str(UPLOAD_DIR.resolve()))
+        disk = {
+            "total": int(du.total), "used": int(du.used), "free": int(du.free),
+            "percent": round(du.used / du.total * 100.0, 2) if du.total else 0.0,
+            "total_human": _human_bytes(int(du.total)),
+            "used_human": _human_bytes(int(du.used)),
+            "free_human": _human_bytes(int(du.free)),
+        }
+    except Exception:
+        disk = None
+
+    # --- Session-state hotspots + journal-trade row counts. ---------------
+    db = SessionLocal()
+    top_session_states: list[dict] = []
+    oversize_soft = 0
+    oversize_hard = 0
+    total_state_bytes = 0
+    state_count = 0
+    journal_trade_rows = 0
+    attachments_total_bytes = 0
+    attachments_count = 0
+    oldest_attachment_iso = None
+    top_attachments: list[dict] = []
+    try:
+        # state_json size distribution — use Postgres `octet_length` so we
+        # don't pull every row into Python. Falls back to SQLite LENGTH() if
+        # the app happens to run on SQLite (dev only).
+        try:
+            rows = db.execute(text(
+                "SELECT session_id, user_id, octet_length(state_json) AS sz, updated_at "
+                "FROM trading_session_states"
+            )).fetchall()
+        except Exception:
+            rows = db.execute(text(
+                "SELECT session_id, user_id, LENGTH(state_json) AS sz, updated_at "
+                "FROM trading_session_states"
+            )).fetchall()
+        state_count = len(rows)
+        for r in rows:
+            sz = int(r[2] or 0)
+            total_state_bytes += sz
+            if sz > SESSION_STATE_HARD_LIMIT_BYTES:
+                oversize_hard += 1
+            elif sz > SESSION_STATE_SOFT_LIMIT_BYTES:
+                oversize_soft += 1
+        # Top-N largest rows
+        rows_sorted = sorted(rows, key=lambda r: int(r[2] or 0), reverse=True)[:sample_limit]
+        for r in rows_sorted:
+            sz = int(r[2] or 0)
+            top_session_states.append({
+                "session_id": int(r[0]),
+                "user_id": int(r[1]),
+                "bytes": sz,
+                "human": _human_bytes(sz),
+                "updated_at": r[3].isoformat() + "Z" if r[3] else None,
+                "bucket": "hard" if sz > SESSION_STATE_HARD_LIMIT_BYTES
+                          else "soft" if sz > SESSION_STATE_SOFT_LIMIT_BYTES
+                          else "ok",
+            })
+
+        # Journal-trade mirror row count (informational; expected to scale
+        # linearly with users × trades-per-session).
+        try:
+            journal_trade_rows = int(db.execute(text(
+                "SELECT COUNT(*) FROM trading_session_journal_trades"
+            )).scalar() or 0)
+        except Exception:
+            journal_trade_rows = 0
+
+        # Support attachments — bytes + count + oldest + top-N.
+        try:
+            atts = db.query(SupportAttachment).all()
+            attachments_count = len(atts)
+            attachments_total_bytes = sum(int(a.size_bytes or 0) for a in atts)
+            if atts:
+                oldest = min((a.created_at for a in atts if a.created_at), default=None)
+                if oldest is not None:
+                    oldest_attachment_iso = oldest.isoformat() + "Z"
+            atts_sorted = sorted(atts, key=lambda a: int(a.size_bytes or 0), reverse=True)[:sample_limit]
+            for a in atts_sorted:
+                top_attachments.append({
+                    "id": int(a.id),
+                    "user_id": int(a.user_id),
+                    "bytes": int(a.size_bytes or 0),
+                    "human": _human_bytes(int(a.size_bytes or 0)),
+                    "mime_type": a.mime_type,
+                    "created_at": a.created_at.isoformat() + "Z" if a.created_at else None,
+                })
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+    # --- Alert flags — easy booleans for UI / monitoring cron. ------------
+    alerts = {
+        "disk_over_80pct": bool(disk and disk["percent"] >= 80.0),
+        "disk_over_90pct": bool(disk and disk["percent"] >= 90.0),
+        "session_state_hard_breaches": oversize_hard,
+        "session_state_soft_breaches": oversize_soft,
+    }
+
+    return {
+        "success": True,
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "limits": {
+            "session_state_soft_bytes": SESSION_STATE_SOFT_LIMIT_BYTES,
+            "session_state_hard_bytes": SESSION_STATE_HARD_LIMIT_BYTES,
+        },
+        "disk": disk,
+        "uploads": {
+            "path": str(UPLOAD_DIR.resolve()),
+            "total_bytes": uploads_total,
+            "total_human": _human_bytes(uploads_total),
+            "breakdown": uploads_breakdown,
+        },
+        "session_states": {
+            "row_count": state_count,
+            "total_bytes": total_state_bytes,
+            "total_human": _human_bytes(total_state_bytes),
+            "avg_bytes": int(total_state_bytes / state_count) if state_count else 0,
+            "soft_breach_count": oversize_soft,
+            "hard_breach_count": oversize_hard,
+            "top": top_session_states,
+        },
+        "journal_trade_rows": journal_trade_rows,
+        "support_attachments": {
+            "count": attachments_count,
+            "total_bytes": attachments_total_bytes,
+            "total_human": _human_bytes(attachments_total_bytes),
+            "oldest": oldest_attachment_iso,
+            "top": top_attachments,
+        },
+        "alerts": alerts,
+    }
+
+
+def _session_archive_path(session_id: int) -> Path:
+    return SESSION_ARCHIVE_DIR / f"session_{int(session_id)}_state.json.gz"
+
+
+class AdminArchiveStaleSessionsIn(BaseModel):
+    """
+    Controls for `/api/admin/system/archive-stale-sessions`.
+
+    `older_than_days` — only archive sessions whose `TradingSessionState.updated_at`
+    is older than this many days (default 90).
+    `min_state_bytes` — skip sessions whose state_json is smaller than this
+    (no point compressing 2 KB rows; default 256 KB).
+    `dry_run` — when true, computes what *would* be archived and returns the
+    plan without touching the DB or filesystem. Always the safe first call.
+    `limit` — bound the number of rows processed in one call so the worst-case
+    DB write storm is predictable (default 200).
+    """
+    older_than_days: int = Field(default=90, ge=1, le=3650)
+    min_state_bytes: int = Field(default=256 * 1024, ge=1024, le=64 * 1024 * 1024)
+    dry_run: bool = True
+    limit: int = Field(default=200, ge=1, le=5000)
+
+
+@app.post("/api/admin/system/archive-stale-sessions")
+async def admin_archive_stale_sessions(payload: AdminArchiveStaleSessionsIn, request: Request):
+    """
+    Move `TradingSessionState.state_json` for stale, large sessions into
+    gzip'd files on disk (`uploads/session_archive/`) and null out the DB
+    column. The `TradingSession` row itself is **not** deleted — the user
+    still sees the session in their list and can restore it on demand via
+    `/api/admin/system/restore-archived-session`.
+
+    Why this exists: a single backtest session accumulates drawings + journal
+    entries in the `state_json` column indefinitely. At 10 MB × 1000 stale
+    sessions that's 10 GB of Postgres bloat on a 200 GB VPS. Gzipped on disk
+    those same blobs shrink ~10× and leave the hot DB table small.
+
+    Always run `dry_run=true` first (default) — you'll get back the exact
+    list of sessions that would be touched and the reclaimed-bytes total.
+    """
+    _require_admin(request)
+    cutoff = datetime.utcnow() - timedelta(days=int(payload.older_than_days))
+
+    db = SessionLocal()
+    plan: list[dict] = []
+    archived_bytes = 0
+    errors: list[dict] = []
+    try:
+        # Join state ↔ session so we can include user/name in the report.
+        try:
+            rows = db.execute(text(
+                "SELECT st.session_id, st.user_id, st.updated_at, "
+                "       octet_length(st.state_json) AS sz, s.name "
+                "FROM trading_session_states st "
+                "JOIN trading_sessions s ON s.id = st.session_id "
+                "WHERE st.updated_at < :cutoff "
+                "  AND octet_length(st.state_json) >= :min_sz "
+                "ORDER BY octet_length(st.state_json) DESC "
+                "LIMIT :lim"
+            ), {
+                "cutoff": cutoff,
+                "min_sz": int(payload.min_state_bytes),
+                "lim": int(payload.limit),
+            }).fetchall()
+        except Exception:
+            # SQLite fallback for local dev
+            rows = db.execute(text(
+                "SELECT st.session_id, st.user_id, st.updated_at, "
+                "       LENGTH(st.state_json) AS sz, s.name "
+                "FROM trading_session_states st "
+                "JOIN trading_sessions s ON s.id = st.session_id "
+                "WHERE st.updated_at < :cutoff "
+                "  AND LENGTH(st.state_json) >= :min_sz "
+                "ORDER BY LENGTH(st.state_json) DESC "
+                "LIMIT :lim"
+            ), {
+                "cutoff": cutoff,
+                "min_sz": int(payload.min_state_bytes),
+                "lim": int(payload.limit),
+            }).fetchall()
+
+        for r in rows:
+            sid = int(r[0])
+            plan.append({
+                "session_id": sid,
+                "user_id": int(r[1]),
+                "updated_at": r[2].isoformat() + "Z" if r[2] else None,
+                "bytes": int(r[3] or 0),
+                "human": _human_bytes(int(r[3] or 0)),
+                "name": r[4],
+            })
+
+        if payload.dry_run:
+            return {
+                "success": True,
+                "dry_run": True,
+                "cutoff_utc": cutoff.isoformat() + "Z",
+                "would_archive_count": len(plan),
+                "would_reclaim_bytes": sum(p["bytes"] for p in plan),
+                "would_reclaim_human": _human_bytes(sum(p["bytes"] for p in plan)),
+                "sample": plan[:25],
+            }
+
+        # Not a dry run — actually archive. We do one session at a time with
+        # per-row commits so a later failure doesn't lose earlier progress.
+        for p in plan:
+            sid = p["session_id"]
+            try:
+                st = db.query(TradingSessionState).filter(
+                    TradingSessionState.session_id == sid
+                ).first()
+                if not st or not st.state_json:
+                    continue
+                archive_path = _session_archive_path(sid)
+                # Don't clobber an existing archive — suffix with timestamp so
+                # admin can re-run without losing earlier snapshots.
+                if archive_path.exists():
+                    archive_path = SESSION_ARCHIVE_DIR / (
+                        f"session_{sid}_state_{datetime.utcnow().strftime('%Y%m%dT%H%M%S')}.json.gz"
+                    )
+                with gzip.open(archive_path, "wb") as fh:
+                    fh.write(st.state_json.encode("utf-8"))
+                reclaimed = len(st.state_json.encode("utf-8"))
+                # Replace with empty object so the app still gets a valid row.
+                st.state_json = "{}"
+                st.updated_at = datetime.utcnow()
+                db.commit()
+                archived_bytes += reclaimed
+            except Exception as exc:
+                db.rollback()
+                errors.append({"session_id": sid, "error": str(exc)[:300]})
+    finally:
+        db.close()
+
+    return {
+        "success": True,
+        "dry_run": False,
+        "cutoff_utc": cutoff.isoformat() + "Z",
+        "archived_count": len(plan) - len(errors),
+        "reclaimed_bytes": archived_bytes,
+        "reclaimed_human": _human_bytes(archived_bytes),
+        "archive_dir": str(SESSION_ARCHIVE_DIR.resolve()),
+        "errors": errors,
+    }
+
+
+class AdminPruneAttachmentsIn(BaseModel):
+    """
+    Controls for `/api/admin/system/prune-support-attachments`.
+
+    `older_than_days` — only target attachments attached to support messages
+    older than this (default 180). Joins `support_messages.created_at` so a
+    recently-uploaded image on an old thread is still protected.
+    `closed_threads_only` — when true (default), skip attachments whose thread
+    is still `open`. Prevents surprising an active user.
+    `dry_run` — when true (default), reports what would be deleted and stops.
+    `limit` — max attachments touched per call (default 500).
+    """
+    older_than_days: int = Field(default=180, ge=30, le=3650)
+    closed_threads_only: bool = True
+    dry_run: bool = True
+    limit: int = Field(default=500, ge=1, le=10000)
+
+
+@app.post("/api/admin/system/prune-support-attachments")
+async def admin_prune_support_attachments(payload: AdminPruneAttachmentsIn, request: Request):
+    """
+    Delete old support-thread image attachments from disk + DB to reclaim
+    space. Dry-run by default.
+
+    What gets targeted:
+      * Attachment rows where the parent `SupportMessage.created_at` is older
+        than `older_than_days`.
+      * If `closed_threads_only` is on, the parent `SupportThread.status`
+        must be 'closed' as well.
+
+    The parent `SupportMessage` / `SupportThread` are **not** deleted — the
+    text conversation stays intact for audit. Only the image payload + its
+    DB attachment row are removed.
+
+    Run dry-run first and eyeball the sample before setting `dry_run=false`.
+    """
+    _require_admin(request)
+    cutoff = datetime.utcnow() - timedelta(days=int(payload.older_than_days))
+
+    db = SessionLocal()
+    plan: list[dict] = []
+    deleted_count = 0
+    reclaimed_bytes = 0
+    errors: list[dict] = []
+    try:
+        # Join attachments ↔ messages ↔ threads so we can filter on message
+        # age + thread status in one query.
+        q = (
+            db.query(SupportAttachment, SupportMessage, SupportThread)
+            .join(SupportMessage, SupportAttachment.message_id == SupportMessage.id)
+            .join(SupportThread, SupportMessage.thread_id == SupportThread.id)
+            .filter(SupportMessage.created_at < cutoff)
+        )
+        if payload.closed_threads_only:
+            q = q.filter(SupportThread.status == "closed")
+        q = q.order_by(SupportMessage.created_at.asc()).limit(int(payload.limit))
+        rows = q.all()
+
+        for att, msg, thr in rows:
+            plan.append({
+                "attachment_id": int(att.id),
+                "message_id": int(msg.id),
+                "thread_id": int(thr.id),
+                "user_id": int(att.user_id),
+                "bytes": int(att.size_bytes or 0),
+                "human": _human_bytes(int(att.size_bytes or 0)),
+                "mime_type": att.mime_type,
+                "thread_status": thr.status,
+                "message_created_at": msg.created_at.isoformat() + "Z" if msg.created_at else None,
+            })
+
+        if payload.dry_run:
+            return {
+                "success": True,
+                "dry_run": True,
+                "cutoff_utc": cutoff.isoformat() + "Z",
+                "closed_threads_only": bool(payload.closed_threads_only),
+                "would_delete_count": len(plan),
+                "would_reclaim_bytes": sum(p["bytes"] for p in plan),
+                "would_reclaim_human": _human_bytes(sum(p["bytes"] for p in plan)),
+                "sample": plan[:25],
+            }
+
+        # Live mode — walk the same list, unlink file + delete DB row.
+        for att, _msg, _thr in rows:
+            try:
+                fpath = SUPPORT_UPLOAD_DIR / att.stored_name
+                size = int(att.size_bytes or 0)
+                if fpath.is_file():
+                    fpath.unlink()
+                db.delete(att)
+                db.commit()
+                deleted_count += 1
+                reclaimed_bytes += size
+            except Exception as exc:
+                db.rollback()
+                errors.append({"attachment_id": int(att.id), "error": str(exc)[:300]})
+    finally:
+        db.close()
+
+    return {
+        "success": True,
+        "dry_run": False,
+        "cutoff_utc": cutoff.isoformat() + "Z",
+        "deleted_count": deleted_count,
+        "reclaimed_bytes": reclaimed_bytes,
+        "reclaimed_human": _human_bytes(reclaimed_bytes),
+        "errors": errors,
+    }
+
+
+@app.post("/api/admin/system/restore-archived-session/{session_id}")
+async def admin_restore_archived_session(session_id: int, request: Request):
+    """
+    Reverse of `/archive-stale-sessions`: pull the gzipped state back from
+    `uploads/session_archive/` into `TradingSessionState.state_json` so the
+    session is hot again. Skips if the session is already populated (> 2
+    bytes — beyond the default `{}`), so we never clobber fresh user edits.
+    """
+    _require_admin(request)
+    archive_path = _session_archive_path(session_id)
+    if not archive_path.exists():
+        # Fall back to timestamped snapshots if the canonical path was renamed.
+        candidates = sorted(SESSION_ARCHIVE_DIR.glob(f"session_{int(session_id)}_state*.json.gz"))
+        if not candidates:
+            raise HTTPException(status_code=404, detail="No archive for this session")
+        archive_path = candidates[-1]  # most recent timestamped one
+
+    try:
+        with gzip.open(archive_path, "rb") as fh:
+            raw = fh.read().decode("utf-8")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read archive: {exc}")
+
+    db = SessionLocal()
+    try:
+        st = db.query(TradingSessionState).filter(
+            TradingSessionState.session_id == int(session_id)
+        ).first()
+        if not st:
+            raise HTTPException(status_code=404, detail="Session state row missing")
+        # Guard: don't overwrite a state that has meaningful content (> 64 B
+        # leaves room for `{}` + whitespace but catches any real payload).
+        current = (st.state_json or "").strip()
+        if len(current.encode("utf-8")) > 64:
+            raise HTTPException(
+                status_code=409,
+                detail="Session already has live state; archive left on disk (not restored)",
+            )
+        st.state_json = raw
+        st.updated_at = datetime.utcnow()
+        db.commit()
+    finally:
+        db.close()
+
+    return {
+        "success": True,
+        "session_id": int(session_id),
+        "restored_bytes": len(raw.encode("utf-8")),
+        "restored_human": _human_bytes(len(raw.encode("utf-8"))),
+        "archive_path": str(archive_path.resolve()),
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════
 
 @app.get("/api/sessions")
@@ -9948,14 +10471,49 @@ async def patch_trading_session_state(session_id: int, payload: TradingSessionSt
         if payload.propfirm_challenge is not None:
             state["propfirm_challenge"] = payload.propfirm_challenge
 
-        st.state_json = json.dumps(state, separators=(",", ":"))
+        # Size guard: `TradingSessionState.state_json` is the only per-user row
+        # that can grow unbounded (drawings + journal + per-instrument stats all
+        # live inside it). Without a cap a single user with thousands of
+        # drawings can balloon the row to tens of MB and eventually push
+        # Postgres / our 200 GB VPS disk over the edge. We enforce:
+        #   * HARD cap — reject any write that both exceeds the hard limit AND
+        #     grows the payload (shrinking saves always pass so a user who is
+        #     already over the line isn't locked out and can recover by
+        #     deleting drawings / trades).
+        #   * SOFT cap — pass-through, but surface `warning` in the response
+        #     so the UI can nudge the user before they hit the hard wall.
+        new_state_json = json.dumps(state, separators=(",", ":"))
+        new_size = len(new_state_json.encode("utf-8"))
+        prev_size = len((st.state_json or "").encode("utf-8"))
+        warning = None
+        if new_size > SESSION_STATE_HARD_LIMIT_BYTES and new_size > prev_size:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"Session state too large "
+                    f"({new_size / 1_048_576:.1f} MB; hard limit "
+                    f"{SESSION_STATE_HARD_LIMIT_BYTES / 1_048_576:.0f} MB). "
+                    "Remove some drawings or archive old trades, then try again."
+                ),
+            )
+        if new_size > SESSION_STATE_SOFT_LIMIT_BYTES:
+            warning = (
+                f"Session state is {new_size / 1_048_576:.1f} MB. "
+                f"Soft limit is {SESSION_STATE_SOFT_LIMIT_BYTES / 1_048_576:.0f} MB — "
+                "consider archiving old trades or pruning drawings to stay fast."
+            )
+
+        st.state_json = new_state_json
         if payload.journal is not None:
             j = state.get("journal")
             if isinstance(j, list):
                 _sync_trading_session_journal_trades(db, session_id=s.id, user_id=s.user_id, journal=j)
         db.commit()
         db.refresh(st)
-        return {"success": True}
+        resp = {"success": True, "size_bytes": new_size}
+        if warning:
+            resp["warning"] = warning
+        return resp
     finally:
         db.close()
 

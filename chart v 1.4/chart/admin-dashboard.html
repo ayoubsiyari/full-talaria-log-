@@ -1911,6 +1911,93 @@ select { cursor: pointer; }
             </div>
           </div>
         </div>
+
+        <!-- ─────────────────────────────────────────────────────────────
+             Storage & cleanup card — application-level disk health + the
+             three safety endpoints added in api_server.py:
+               GET  /api/admin/system/disk-health
+               POST /api/admin/system/archive-stale-sessions
+               POST /api/admin/system/prune-support-attachments
+             All mutating actions are dry-run by default; the "Execute"
+             buttons only light up once a dry-run has returned a plan.
+        ─────────────────────────────────────────────────────────────── -->
+        <div class="card" id="storageHealthCard" style="margin-top:16px">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+            <div class="card-title">Storage &amp; cleanup</div>
+            <span class="card-badge" id="storageHealthBadge" style="background:var(--panel);color:var(--text-muted)">not loaded</span>
+            <button type="button" class="btn sm primary" id="storageHealthRefreshBtn" onclick="refreshStorageHealth()" style="margin-left:auto">Load</button>
+          </div>
+          <div class="card-body">
+            <p style="margin:0 0 12px;font-size:12px;color:var(--text-muted);line-height:1.5">
+              Application-level disk footprint + admin-triggered cleanup. Every destructive action dry-runs first so you see the exact plan before any bytes move.
+            </p>
+
+            <!-- Top summary tiles — filled in by refreshStorageHealth() -->
+            <div id="storageHealthSummary" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:16px"></div>
+
+            <!-- uploads/ breakdown -->
+            <div style="margin-bottom:16px">
+              <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">uploads/ breakdown</div>
+              <div id="storageHealthUploadsBreakdown" style="font-size:12px;color:var(--text-muted)">—</div>
+            </div>
+
+            <!-- Top sessions by state_json size -->
+            <div style="margin-bottom:16px">
+              <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">Largest session-state rows</div>
+              <div id="storageHealthTopSessions" style="font-size:12px;color:var(--text-muted)">—</div>
+            </div>
+
+            <!-- Top attachments -->
+            <div style="margin-bottom:16px">
+              <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">Largest support attachments</div>
+              <div id="storageHealthTopAttachments" style="font-size:12px;color:var(--text-muted)">—</div>
+            </div>
+
+            <!-- Action: archive stale sessions -->
+            <div class="card" style="margin:16px 0 12px;background:var(--panel);padding:12px;border:1px solid var(--border)">
+              <div style="font-weight:600;margin-bottom:6px">Archive stale sessions</div>
+              <p style="margin:0 0 10px;font-size:12px;color:var(--text-muted)">Compress <code>state_json</code> for inactive, large sessions to a gzip file on disk. The session row stays; run "Restore" (backend endpoint) if a user opens it again.</p>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+                <label style="font-size:12px;display:flex;align-items:center;gap:4px">older than
+                  <input type="number" id="archSessionsDays" value="90" min="1" max="3650" style="width:64px" class="input sm">
+                  days
+                </label>
+                <label style="font-size:12px;display:flex;align-items:center;gap:4px">min size
+                  <input type="number" id="archSessionsMinKB" value="256" min="1" max="65536" style="width:72px" class="input sm">
+                  KB
+                </label>
+                <label style="font-size:12px;display:flex;align-items:center;gap:4px">limit
+                  <input type="number" id="archSessionsLimit" value="200" min="1" max="5000" style="width:72px" class="input sm">
+                </label>
+                <button type="button" class="btn sm" onclick="runArchiveStaleSessions(true)">Dry-run</button>
+                <button type="button" class="btn sm danger" id="archSessionsExecBtn" onclick="runArchiveStaleSessions(false)" disabled title="Run a dry-run first to unlock">Execute</button>
+              </div>
+              <div id="archSessionsResult" style="font-size:12px;color:var(--text-muted)"></div>
+            </div>
+
+            <!-- Action: prune old support attachments -->
+            <div class="card" style="margin:0 0 4px;background:var(--panel);padding:12px;border:1px solid var(--border)">
+              <div style="font-weight:600;margin-bottom:6px">Prune support attachments</div>
+              <p style="margin:0 0 10px;font-size:12px;color:var(--text-muted)">Delete image attachments on old (optionally closed-only) support threads. Thread + message text stays intact — only the images are removed.</p>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+                <label style="font-size:12px;display:flex;align-items:center;gap:4px">older than
+                  <input type="number" id="pruneAttsDays" value="180" min="30" max="3650" style="width:64px" class="input sm">
+                  days
+                </label>
+                <label style="font-size:12px;display:flex;align-items:center;gap:6px">
+                  <input type="checkbox" id="pruneAttsClosedOnly" checked> closed threads only
+                </label>
+                <label style="font-size:12px;display:flex;align-items:center;gap:4px">limit
+                  <input type="number" id="pruneAttsLimit" value="500" min="1" max="10000" style="width:72px" class="input sm">
+                </label>
+                <button type="button" class="btn sm" onclick="runPruneAttachments(true)">Dry-run</button>
+                <button type="button" class="btn sm danger" id="pruneAttsExecBtn" onclick="runPruneAttachments(false)" disabled title="Run a dry-run first to unlock">Execute</button>
+              </div>
+              <div id="pruneAttsResult" style="font-size:12px;color:var(--text-muted)"></div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- ════════ SUBSCRIPTIONS SECTION ════════ -->
@@ -5055,6 +5142,262 @@ document.addEventListener('DOMContentLoaded', function () {
   if (cb) cb.checked = true;
   _applyFirstrateHealthAutoRefresh(true);
 });
+
+// ═══════════════════════════════════════════════════════════
+// Storage & cleanup card
+//
+// Wraps three backend endpoints:
+//   GET  /api/admin/system/disk-health            (read-only summary)
+//   POST /api/admin/system/archive-stale-sessions (dry-run → execute)
+//   POST /api/admin/system/prune-support-attachments (dry-run → execute)
+//
+// The "Execute" buttons stay disabled until a successful dry-run populates
+// the latest-plan cache. That prevents an accidental click from deleting
+// data the admin hasn't eyeballed.
+// ═══════════════════════════════════════════════════════════
+let _storageHealthCache = null;
+let _archSessionsLastPlan = null;
+let _pruneAttsLastPlan = null;
+
+function _fmtBytesHuman(n) {
+  if (n == null || !isFinite(n)) return '—';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let u = 0, v = Math.abs(Number(n));
+  while (v >= 1024 && u < units.length - 1) { v /= 1024; u++; }
+  return (Math.round(v * 10) / 10) + ' ' + units[u];
+}
+
+function _storageTile(label, value, sub, accent) {
+  const color = accent || 'var(--text-muted)';
+  return `<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel)">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px">${esc(label)}</div>
+    <div style="font-size:16px;font-weight:700;color:${color};line-height:1.2">${esc(String(value))}</div>
+    ${sub ? `<div style="font-size:11px;color:var(--text-muted);margin-top:3px">${esc(sub)}</div>` : ''}
+  </div>`;
+}
+
+function _renderStorageHealth(data) {
+  const sumHost = document.getElementById('storageHealthSummary');
+  const upHost = document.getElementById('storageHealthUploadsBreakdown');
+  const sessHost = document.getElementById('storageHealthTopSessions');
+  const attHost = document.getElementById('storageHealthTopAttachments');
+  const badge = document.getElementById('storageHealthBadge');
+  if (!sumHost) return;
+
+  // Summary tiles — colored red/amber when alerts fire.
+  const alerts = data.alerts || {};
+  const diskPct = data.disk && data.disk.percent;
+  const diskAccent = alerts.disk_over_90pct ? 'var(--danger,#ef4444)'
+                   : alerts.disk_over_80pct ? '#f59e0b'
+                   : 'var(--text)';
+  const stateAccent = (alerts.session_state_hard_breaches > 0) ? 'var(--danger,#ef4444)'
+                    : (alerts.session_state_soft_breaches > 0) ? '#f59e0b'
+                    : 'var(--text)';
+
+  sumHost.innerHTML = [
+    _storageTile('Disk used', (diskPct != null ? diskPct.toFixed(1) + '%' : '—'),
+      data.disk ? `${data.disk.used_human} / ${data.disk.total_human}` : '', diskAccent),
+    _storageTile('uploads/', data.uploads?.total_human || '—',
+      data.uploads?.path || ''),
+    _storageTile('Session states', fmtN(data.session_states?.row_count || 0),
+      `${data.session_states?.total_human || '0 B'} · avg ${_fmtBytesHuman(data.session_states?.avg_bytes || 0)}`,
+      stateAccent),
+    _storageTile('State soft/hard',
+      `${data.session_states?.soft_breach_count || 0} / ${data.session_states?.hard_breach_count || 0}`,
+      `soft ${_fmtBytesHuman(data.limits?.session_state_soft_bytes)} · hard ${_fmtBytesHuman(data.limits?.session_state_hard_bytes)}`,
+      stateAccent),
+    _storageTile('Journal trade rows', fmtN(data.journal_trade_rows || 0), 'one row per backtest trade'),
+    _storageTile('Support attachments',
+      `${fmtN(data.support_attachments?.count || 0)} · ${data.support_attachments?.total_human || '0 B'}`,
+      data.support_attachments?.oldest ? 'oldest ' + (data.support_attachments.oldest || '').slice(0, 10) : ''),
+  ].join('');
+
+  // uploads/ breakdown — bar chart of subdirs.
+  const up = data.uploads?.breakdown || [];
+  const upTotal = Math.max(1, data.uploads?.total_bytes || 0);
+  upHost.innerHTML = up.length
+    ? up.map(row => {
+        const pct = (row.bytes / upTotal * 100);
+        const w = Math.max(2, pct).toFixed(1);
+        return `<div style="display:grid;grid-template-columns:180px 1fr 80px;align-items:center;gap:8px;margin-bottom:3px">
+          <div style="font-family:ui-monospace,monospace;font-size:11px">${esc(row.name)}${row.is_dir ? '/' : ''}</div>
+          <div style="height:8px;background:var(--panel);border-radius:4px;overflow:hidden"><div style="height:100%;width:${w}%;background:linear-gradient(90deg,#6366f1,#8b5cf6)"></div></div>
+          <div style="text-align:right;font-variant-numeric:tabular-nums;font-size:11px;color:var(--text-muted)">${esc(row.human)}</div>
+        </div>`;
+      }).join('')
+    : '<div>empty</div>';
+
+  // Largest sessions.
+  const tops = data.session_states?.top || [];
+  sessHost.innerHTML = tops.length
+    ? `<table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr style="color:var(--text-muted)">
+          <th style="text-align:left;padding:4px 6px">Session</th>
+          <th style="text-align:left;padding:4px 6px">User</th>
+          <th style="text-align:right;padding:4px 6px">Size</th>
+          <th style="text-align:left;padding:4px 6px">Bucket</th>
+          <th style="text-align:left;padding:4px 6px">Updated</th>
+        </tr></thead><tbody>
+        ${tops.map(r => {
+          const col = r.bucket === 'hard' ? 'var(--danger,#ef4444)' : r.bucket === 'soft' ? '#f59e0b' : 'var(--text-muted)';
+          return `<tr>
+            <td style="padding:3px 6px;font-family:ui-monospace,monospace">#${r.session_id}</td>
+            <td style="padding:3px 6px">uid ${r.user_id}</td>
+            <td style="padding:3px 6px;text-align:right;font-variant-numeric:tabular-nums">${esc(r.human)}</td>
+            <td style="padding:3px 6px;color:${col};font-weight:600">${esc(r.bucket)}</td>
+            <td style="padding:3px 6px;color:var(--text-muted);font-family:ui-monospace,monospace">${esc((r.updated_at || '').slice(0, 16).replace('T', ' '))}</td>
+          </tr>`;
+        }).join('')}</tbody></table>`
+    : '<div>none</div>';
+
+  // Largest attachments.
+  const ta = data.support_attachments?.top || [];
+  attHost.innerHTML = ta.length
+    ? `<table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr style="color:var(--text-muted)">
+          <th style="text-align:left;padding:4px 6px">ID</th>
+          <th style="text-align:left;padding:4px 6px">User</th>
+          <th style="text-align:right;padding:4px 6px">Size</th>
+          <th style="text-align:left;padding:4px 6px">Type</th>
+          <th style="text-align:left;padding:4px 6px">Created</th>
+        </tr></thead><tbody>
+        ${ta.map(r => `<tr>
+          <td style="padding:3px 6px;font-family:ui-monospace,monospace">#${r.id}</td>
+          <td style="padding:3px 6px">uid ${r.user_id}</td>
+          <td style="padding:3px 6px;text-align:right;font-variant-numeric:tabular-nums">${esc(r.human)}</td>
+          <td style="padding:3px 6px;color:var(--text-muted)">${esc(r.mime_type || '')}</td>
+          <td style="padding:3px 6px;color:var(--text-muted);font-family:ui-monospace,monospace">${esc((r.created_at || '').slice(0, 16).replace('T', ' '))}</td>
+        </tr>`).join('')}</tbody></table>`
+    : '<div>none</div>';
+
+  // Badge — surfaces the worst alert.
+  if (badge) {
+    if (alerts.disk_over_90pct) { badge.textContent = 'disk >90%'; badge.style.background = '#ef4444'; badge.style.color = '#fff'; }
+    else if (alerts.disk_over_80pct) { badge.textContent = 'disk >80%'; badge.style.background = '#f59e0b'; badge.style.color = '#000'; }
+    else if (alerts.session_state_hard_breaches > 0) { badge.textContent = 'hard breaches'; badge.style.background = '#ef4444'; badge.style.color = '#fff'; }
+    else { badge.textContent = 'healthy'; badge.style.background = 'rgba(16,185,129,0.18)'; badge.style.color = '#10b981'; }
+  }
+}
+
+async function refreshStorageHealth() {
+  const btn = document.getElementById('storageHealthRefreshBtn');
+  const orig = btn ? btn.textContent : null;
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  try {
+    const data = await api('/api/admin/system/disk-health');
+    _storageHealthCache = data;
+    _renderStorageHealth(data);
+  } catch (e) {
+    if (typeof toast === 'function') toast('Failed: ' + (e?.message || e), 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = orig || 'Refresh'; }
+  }
+}
+
+function _renderPlanSummary(hostId, data, dryRun) {
+  const host = document.getElementById(hostId);
+  if (!host) return;
+  if (!data) { host.textContent = ''; return; }
+  if (dryRun) {
+    const count = data.would_archive_count ?? data.would_delete_count ?? 0;
+    const bytes = data.would_reclaim_human || _fmtBytesHuman(data.would_reclaim_bytes || 0);
+    const sample = (data.sample || []).slice(0, 5).map(s =>
+      `#${s.session_id || s.attachment_id} · ${s.human}${s.updated_at ? ' · ' + s.updated_at.slice(0, 10) : ''}`
+    ).join(' · ');
+    host.innerHTML = `<span style="color:#f59e0b;font-weight:600">DRY-RUN</span> · would touch <b>${count}</b> row(s), reclaim <b>${bytes}</b>${sample ? `<br><span style="color:var(--text-muted)">sample: ${esc(sample)}</span>` : ''}`;
+  } else {
+    const count = data.archived_count ?? data.deleted_count ?? 0;
+    const bytes = data.reclaimed_human || _fmtBytesHuman(data.reclaimed_bytes || 0);
+    const errs = (data.errors || []).length;
+    host.innerHTML = `<span style="color:#10b981;font-weight:600">DONE</span> · ${count} row(s), ${bytes} reclaimed${errs ? ` · <span style="color:var(--danger,#ef4444)">${errs} error(s)</span>` : ''}`;
+  }
+}
+
+async function runArchiveStaleSessions(dryRun) {
+  const days = parseInt(document.getElementById('archSessionsDays').value, 10) || 90;
+  const minKB = parseInt(document.getElementById('archSessionsMinKB').value, 10) || 256;
+  const limit = parseInt(document.getElementById('archSessionsLimit').value, 10) || 200;
+
+  // For a live run we additionally require a fresh dry-run in memory so the
+  // admin has just seen the plan — guards against "fat-finger" executes.
+  if (!dryRun) {
+    if (!_archSessionsLastPlan || !_archSessionsLastPlan.would_archive_count) {
+      if (typeof toast === 'function') toast('Run a dry-run first so you see the plan', 'err');
+      return;
+    }
+    const ok = confirm(`Archive ${_archSessionsLastPlan.would_archive_count} session(s) and reclaim ${_archSessionsLastPlan.would_reclaim_human}?\n\nThis gzips state_json to uploads/session_archive/ and replaces the DB value with "{}". Fully reversible via the restore endpoint.`);
+    if (!ok) return;
+  }
+
+  try {
+    const data = await api('/api/admin/system/archive-stale-sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        older_than_days: days,
+        min_state_bytes: minKB * 1024,
+        limit,
+        dry_run: !!dryRun,
+      }),
+    });
+    _renderPlanSummary('archSessionsResult', data, !!dryRun);
+    if (dryRun) {
+      _archSessionsLastPlan = data;
+      const btn = document.getElementById('archSessionsExecBtn');
+      if (btn) { btn.disabled = (data.would_archive_count || 0) === 0; }
+    } else {
+      _archSessionsLastPlan = null;
+      const btn = document.getElementById('archSessionsExecBtn');
+      if (btn) btn.disabled = true;
+      refreshStorageHealth(); // re-read totals after the reclaim
+    }
+  } catch (e) {
+    const host = document.getElementById('archSessionsResult');
+    if (host) host.innerHTML = `<span style="color:var(--danger,#ef4444)">Failed: ${esc(e?.message || e)}</span>`;
+  }
+}
+
+async function runPruneAttachments(dryRun) {
+  const days = parseInt(document.getElementById('pruneAttsDays').value, 10) || 180;
+  const closedOnly = !!document.getElementById('pruneAttsClosedOnly').checked;
+  const limit = parseInt(document.getElementById('pruneAttsLimit').value, 10) || 500;
+
+  if (!dryRun) {
+    if (!_pruneAttsLastPlan || !_pruneAttsLastPlan.would_delete_count) {
+      if (typeof toast === 'function') toast('Run a dry-run first so you see the plan', 'err');
+      return;
+    }
+    const ok = confirm(`Delete ${_pruneAttsLastPlan.would_delete_count} attachment file(s) and reclaim ${_pruneAttsLastPlan.would_reclaim_human}?\n\nThis is NOT reversible. Thread text stays intact — only the images are removed.`);
+    if (!ok) return;
+  }
+
+  try {
+    const data = await api('/api/admin/system/prune-support-attachments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        older_than_days: days,
+        closed_threads_only: closedOnly,
+        limit,
+        dry_run: !!dryRun,
+      }),
+    });
+    _renderPlanSummary('pruneAttsResult', data, !!dryRun);
+    if (dryRun) {
+      _pruneAttsLastPlan = data;
+      const btn = document.getElementById('pruneAttsExecBtn');
+      if (btn) { btn.disabled = (data.would_delete_count || 0) === 0; }
+    } else {
+      _pruneAttsLastPlan = null;
+      const btn = document.getElementById('pruneAttsExecBtn');
+      if (btn) btn.disabled = true;
+      refreshStorageHealth();
+    }
+  } catch (e) {
+    const host = document.getElementById('pruneAttsResult');
+    if (host) host.innerHTML = `<span style="color:var(--danger,#ef4444)">Failed: ${esc(e?.message || e)}</span>`;
+  }
+}
 
 let bnSymbolsFull = [];
 
