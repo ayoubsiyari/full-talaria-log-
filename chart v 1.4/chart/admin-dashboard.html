@@ -5004,17 +5004,36 @@ async function refreshFirstrateNightlyHealth() {
 
 // Auto-refresh toggle: poll every 30s while the checkbox is on. We clear the
 // timer aggressively on uncheck to avoid background traffic after the admin
-// closes the card's attention window.
-document.addEventListener('change', function (e) {
-  const t = e && e.target;
-  if (!t || t.id !== 'frHealthAutoRefresh') return;
+// closes the card's attention window. Preference persisted in localStorage so
+// a page reload doesn't silently turn auto-refresh off.
+const _FR_HEALTH_AUTO_KEY = 'talaria.frHealth.autoRefresh';
+
+function _applyFirstrateHealthAutoRefresh(on) {
   if (_firstrateHealthAutoTimer) {
     clearInterval(_firstrateHealthAutoTimer);
     _firstrateHealthAutoTimer = null;
   }
-  if (t.checked) {
+  if (on) {
     _firstrateHealthAutoTimer = setInterval(refreshFirstrateNightlyHealth, 30_000);
   }
+}
+
+document.addEventListener('change', function (e) {
+  const t = e && e.target;
+  if (!t || t.id !== 'frHealthAutoRefresh') return;
+  try { localStorage.setItem(_FR_HEALTH_AUTO_KEY, t.checked ? '1' : '0'); } catch (_) {}
+  _applyFirstrateHealthAutoRefresh(!!t.checked);
+});
+
+// Restore the toggle state on page load. Runs on DOMContentLoaded because the
+// checkbox lives inside the admin panel and may not be present immediately.
+document.addEventListener('DOMContentLoaded', function () {
+  let saved = null;
+  try { saved = localStorage.getItem(_FR_HEALTH_AUTO_KEY); } catch (_) {}
+  if (saved !== '1') return;
+  const cb = document.getElementById('frHealthAutoRefresh');
+  if (cb) cb.checked = true;
+  _applyFirstrateHealthAutoRefresh(true);
 });
 
 let bnSymbolsFull = [];
