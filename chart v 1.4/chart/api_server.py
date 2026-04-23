@@ -7844,8 +7844,62 @@ async def admin_firstrate_fx_live_status(request: Request):
     }
 
 
+def _tail_csv_last_timestamp_ms(path: Path) -> float | None:
+    """
+    Cheaply read the last non-empty data row from a CSV and parse its first
+    column as a UTC timestamp. Used by the nightly-health Refresh button when
+    `?rescan=1` is set, so an admin can force a live disk check instead of
+    trusting the cached CSVAggregate.end_ts.
+
+    Returns epoch ms or None. Reads at most the final 64 KB of the file, which
+    is always enough for 1m data (avg row ~40 bytes → ~1600 rows tail).
+    """
+    try:
+        sz = path.stat().st_size
+    except Exception:
+        return None
+    if sz <= 0:
+        return None
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(max(0, sz - 65536))
+            chunk = fh.read()
+    except Exception:
+        return None
+    try:
+        text = chunk.decode("utf-8", errors="replace")
+    except Exception:
+        return None
+    for ln in reversed(text.splitlines()):
+        s = ln.strip()
+        if not s:
+            continue
+        first = s.split(",", 1)[0].strip().strip('"').strip("'")
+        if not first or first.lower() in {"timestamp", "datetime", "date", "time"}:
+            continue
+        # Numeric epoch (seconds or ms)
+        try:
+            n = float(first)
+            if n > 1e12:          # already ms
+                return n
+            if n > 1e9:           # seconds → ms
+                return n * 1000.0
+        except ValueError:
+            pass
+        # ISO / "YYYY-MM-DD HH:MM[:SS]"
+        try:
+            iso = first.replace("Z", "+00:00").replace(" ", "T", 1)
+            dt = datetime.fromisoformat(iso)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(tz=None).replace(tzinfo=None)
+            return dt.timestamp() * 1000.0
+        except Exception:
+            return None
+    return None
+
+
 @app.get("/api/admin/datasets/firstrate-fx/nightly-health")
-async def admin_firstrate_fx_nightly_health(request: Request):
+async def admin_firstrate_fx_nightly_health(request: Request, rescan: int = 0):
     """
     Per-asset visualization of the nightly auto-sync outcome.
 
@@ -7862,11 +7916,17 @@ async def admin_firstrate_fx_nightly_health(request: Request):
     "fresh"   = staleness ≤ 48 h  (a nightly job ran recently and merged bars)
     "stale"   = 48 h < staleness ≤ 7 d
     "missing" = staleness > 7 d or no 1m coverage at all
+
+    When `rescan=1`, each dataset's raw 1m CSV is tail-read from disk and the
+    resulting last-bar timestamp is compared against (and overrides) the cached
+    aggregate. The aggregate row is also updated opportunistically so the next
+    non-rescan request sees the fresh value.
     """
     _require_admin(request)
     now = datetime.utcnow()
     now_ms = now.timestamp() * 1000.0
     cfg = _load_firstrate_schedule()
+    force_rescan = bool(rescan)
 
     # --- Index the most recent FirstRate jobs per instrument_type. ----------
     # We only care about the job files that went through `_firstrate_write_job`
@@ -7907,6 +7967,7 @@ async def admin_firstrate_fx_nightly_health(request: Request):
     agg_by_file = {int(a.file_id): a for a in aggs}
 
     datasets: list[dict] = []
+    rescan_updates = 0  # count of aggregates refreshed from disk this call
     for f in files:
         ticker = _firstrate_extract_ticker_from_filename(f.original_name or "")
         asset_class = _firstrate_classify_ticker(ticker) if ticker else None
@@ -7916,12 +7977,39 @@ async def admin_firstrate_fx_nightly_health(request: Request):
         agg = agg_by_file.get(int(f.id))
         last_ts = None
         row_count_1m = 0
+        last_ts_source = "aggregate"
         if agg is not None and agg.end_ts is not None:
             try:
                 last_ts = float(agg.end_ts)
                 row_count_1m = int(agg.row_count or 0)
             except (TypeError, ValueError):
                 last_ts = None
+
+        # Rescan mode: tail the raw CSV to get the authoritative last bar and
+        # opportunistically heal the CSVAggregate if it has drifted.
+        if force_rescan and f.filename:
+            csv_path = UPLOAD_DIR / f.filename
+            disk_ts = _tail_csv_last_timestamp_ms(csv_path)
+            if disk_ts is not None:
+                last_ts_source = "disk"
+                prev_ts = last_ts
+                last_ts = disk_ts
+                # Only persist if we meaningfully drifted (> 30s) and the
+                # aggregate row exists. We don't create new aggregate rows from
+                # here — that's the import pipeline's job.
+                if agg is not None and (prev_ts is None or abs(disk_ts - (prev_ts or 0)) > 30_000):
+                    try:
+                        db2 = SessionLocal()
+                        try:
+                            live = db2.query(CSVAggregate).filter(CSVAggregate.id == agg.id).first()
+                            if live is not None:
+                                live.end_ts = disk_ts
+                                db2.commit()
+                                rescan_updates += 1
+                        finally:
+                            db2.close()
+                    except Exception:
+                        pass
 
         staleness_hours: float | None = None
         if last_ts is not None:
@@ -7960,6 +8048,7 @@ async def admin_firstrate_fx_nightly_health(request: Request):
             "row_count_1m": row_count_1m,
             "last_bar_iso": _epoch_ms_to_iso_utc(last_ts) if last_ts is not None else None,
             "last_bar_ms": last_ts,
+            "last_bar_source": last_ts_source,
             "staleness_hours": round(staleness_hours, 2) if staleness_hours is not None else None,
             "freshness": freshness,
             "last_job": (
@@ -8005,6 +8094,8 @@ async def admin_firstrate_fx_nightly_health(request: Request):
     return {
         "success": True,
         "generated_at": now.isoformat() + "Z",
+        "rescanned": force_rescan,
+        "rescan_updates": rescan_updates,
         "schedule": {
             "enabled": bool(cfg.get("enabled")),
             "mode": cfg.get("mode"),

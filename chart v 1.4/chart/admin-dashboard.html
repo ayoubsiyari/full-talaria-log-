@@ -1723,7 +1723,7 @@ select { cursor: pointer; }
             <div class="card-title">Nightly sync health</div>
             <span class="card-badge" id="frHealthBadgeSummary" style="background:var(--panel);color:var(--text-muted)">loading…</span>
             <div style="margin-left:auto;display:flex;gap:6px">
-              <button type="button" class="btn sm" id="frHealthRefreshBtn" onclick="refreshFirstrateNightlyHealth()">Refresh</button>
+              <button type="button" class="btn sm" id="frHealthRefreshBtn" title="Re-read every 1m CSV from disk and update cached last-bar timestamps" onclick="refreshFirstrateNightlyHealth({rescan:true})">Refresh</button>
               <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted);cursor:pointer" title="Re-poll every 30s so you can watch the nightly run happen live.">
                 <input type="checkbox" id="frHealthAutoRefresh"> auto
               </label>
@@ -4987,18 +4987,38 @@ function _renderFirstrateNightlyHealth() {
   }).join('');
 }
 
-async function refreshFirstrateNightlyHealth() {
+async function refreshFirstrateNightlyHealth(opts) {
+  // `opts.rescan` forces the backend to tail-read every 1m CSV on disk and
+  // heal the CSVAggregate row if it has drifted. Wired to the Refresh button
+  // so a manual click actually re-examines the filesystem; the 30s auto-poll
+  // stays cheap (no rescan) to avoid thrashing disk under normal use.
+  const rescan = !!(opts && opts.rescan);
   const btn = document.getElementById('frHealthRefreshBtn');
-  if (btn) btn.disabled = true;
+  const origLabel = btn ? btn.textContent : null;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = rescan ? 'Rechecking…' : 'Refreshing…';
+  }
   try {
-    const data = await api('/api/admin/datasets/firstrate-fx/nightly-health');
+    const url = '/api/admin/datasets/firstrate-fx/nightly-health' + (rescan ? '?rescan=1' : '');
+    const data = await api(url);
     _firstrateHealthCache = data;
     _renderFirstrateNightlyHealth();
+    if (rescan && typeof toast === 'function') {
+      const upd = Number(data && data.rescan_updates) || 0;
+      toast(upd > 0
+        ? `Rescanned ${data.datasets.length} datasets · healed ${upd} stale aggregate${upd === 1 ? '' : 's'}`
+        : `Rescanned ${data.datasets.length} datasets · all aggregates already in sync`,
+        'ok');
+    }
   } catch (e) {
     const tbody = document.getElementById('frHealthTableBody');
     if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="padding:14px;color:var(--err,#ef4444);text-align:center">Failed: ' + (e && e.message ? e.message : e) + '</td></tr>';
   } finally {
-    if (btn) btn.disabled = false;
+    if (btn) {
+      btn.disabled = false;
+      if (origLabel !== null) btn.textContent = origLabel;
+    }
   }
 }
 
