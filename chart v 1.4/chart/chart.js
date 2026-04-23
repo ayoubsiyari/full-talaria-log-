@@ -6710,17 +6710,88 @@ class Chart {
         return null;
     }
 
+    /**
+     * Classify a ticker into one of fx | crypto | futures | stock. Uses the
+     * centrally-registered `MarketCalculationEngine.detectMarketType` when
+     * available so the same taxonomy drives P&L, icons, and health.
+     */
+    _detectTickerAssetClass(ticker) {
+        if (!ticker) return null;
+        try {
+            const MCE = (typeof window !== 'undefined') ? window.MarketCalculationEngine : null;
+            if (MCE && typeof MCE.detectMarketType === 'function') {
+                const t = MCE.detectMarketType(ticker);
+                if (t === 'forex')   return 'fx';
+                if (t === 'crypto')  return 'crypto';
+                if (t === 'futures') return 'futures';
+                if (t === 'stocks')  return 'stock';
+            }
+        } catch (_) { /* fallthrough to null */ }
+        return null;
+    }
+
+    /**
+     * Extract the crypto "base" symbol from a ticker (e.g. `BTCUSDT` → `BTC`,
+     * `ETH-USD` → `ETH`, `BTC` → `BTC`). Used to look up the icon in CoinCap.
+     */
+    _cryptoBase(ticker) {
+        const clean = String(ticker || '').replace(/[\s\-_\/\.]/g, '').toUpperCase();
+        const stripped = clean
+            .replace(/USDT$|USDC$|BUSD$|DAI$|TUSD$|USD$|EUR$|GBP$|PERP$/i, '')
+            .replace(/PERP$/i, '');
+        return stripped || clean;
+    }
+
+    /**
+     * Build a 30×30 asset-class-appropriate icon for the symbol-selector
+     * dropdown's `.ssd-item-icon` slot. Crypto pulls a real coin logo from
+     * CoinCap's CDN; futures/stock render a gradient badge with the ticker's
+     * leading letters. Falls back to plain initials if classification fails.
+     */
+    _buildAssetClassIconSSD(ticker) {
+        const raw = String(ticker || '');
+        const clean = raw.replace(/[\s\-_\/\.]/g, '').toUpperCase();
+        const cls = this._detectTickerAssetClass(raw);
+
+        if (cls === 'crypto') {
+            const base = this._cryptoBase(raw);
+            const iconUrl = `https://assets.coincap.io/assets/icons/${base.toLowerCase()}@2x.png`;
+            // Gradient badge sits underneath the <img>; if the CDN 404s we hide
+            // the image via onerror so the badge shows through.
+            return `<div class="ssd-item-icon ssd-crypto-icon" style="position:relative;padding:0;border:0;background:linear-gradient(135deg,#f7931a,#ffb347);color:#fff;font-weight:700;font-size:10px;overflow:hidden">
+                <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;letter-spacing:-0.3px">${base.slice(0,3)}</span>
+                <img src="${iconUrl}" alt="${base}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit" onerror="this.style.display='none'" />
+            </div>`;
+        }
+        if (cls === 'futures') {
+            const root = clean.slice(0, Math.min(3, clean.length)) || 'FX';
+            return `<div class="ssd-item-icon ssd-futures-icon" style="background:linear-gradient(135deg,#3b82f6,#6366f1);border-color:rgba(99,102,241,0.55);color:#fff;font-weight:700;font-size:11px">${root}</div>`;
+        }
+        if (cls === 'stock') {
+            const sym = clean.slice(0, Math.min(4, clean.length)) || 'ST';
+            const size = sym.length >= 4 ? '9px' : '11px';
+            return `<div class="ssd-item-icon ssd-stock-icon" style="background:linear-gradient(135deg,#10b981,#14b8a6);border-color:rgba(16,185,129,0.55);color:#fff;font-weight:700;font-size:${size};letter-spacing:-0.3px">${sym}</div>`;
+        }
+        const initials = clean.slice(0, 2).toUpperCase() || '•';
+        return `<div class="ssd-item-icon">${initials}</div>`;
+    }
+
     _buildPairFlagIcon(ticker) {
+        // Route non-FX tickers to asset-class-specific icons first so crypto
+        // pairs like BTCUSD don't accidentally render as broken country flags.
+        const cls = this._detectTickerAssetClass(ticker);
+        if (cls === 'crypto' || cls === 'futures' || cls === 'stock') {
+            return this._buildAssetClassIconSSD(ticker);
+        }
+
         const pair = this._parsePairCurrencies(ticker);
         if (!pair) {
-            const initials = String(ticker || '').replace(/[\s\-_\/\.]/g, '').slice(0, 2).toUpperCase() || '•';
-            return `<div class="ssd-item-icon">${initials}</div>`;
+            return this._buildAssetClassIconSSD(ticker);
         }
         const baseCC = this._currencyToCountry(pair.base);
         const quoteCC = this._currencyToCountry(pair.quote);
         if (!baseCC || !quoteCC) {
-            const initials = String(ticker || '').replace(/[\s\-_\/\.]/g, '').slice(0, 2).toUpperCase() || '•';
-            return `<div class="ssd-item-icon">${initials}</div>`;
+            return this._buildAssetClassIconSSD(ticker);
         }
         const flagUrl = (cc) => {
             if (cc === 'xau') return null;
@@ -7771,19 +7842,64 @@ class Chart {
 
         const dotEl = document.getElementById('ohlcSymbolDot' + idSuffix);
         if (dotEl && symbol) {
-            const pair = this._parsePairCurrencies(symbol);
-            if (pair) {
-                const baseCC = this._currencyToCountry(pair.base);
-                const quoteCC = this._currencyToCountry(pair.quote);
-                if (baseCC && quoteCC && baseCC !== 'xau' && baseCC !== 'xag' && quoteCC !== 'xau' && quoteCC !== 'xag') {
-                    const baseUrl = `https://flagcdn.com/w80/${baseCC}.png`;
-                    const quoteUrl = `https://flagcdn.com/w80/${quoteCC}.png`;
-                    dotEl.innerHTML = `<img class="ohlc-dot-flag ohlc-dot-flag-base" src="${baseUrl}" alt="${pair.base}" onerror="this.style.display='none'" /><img class="ohlc-dot-flag ohlc-dot-flag-quote" src="${quoteUrl}" alt="${pair.quote}" onerror="this.style.display='none'" />`;
-                    dotEl.classList.add('ohlc-dot-flags');
-                    return;
+            // Reset every asset-class modifier before re-applying so toggling
+            // between e.g. EURUSD → BTC → AAPL doesn't leave stale styling.
+            dotEl.classList.remove('ohlc-dot-flags', 'ohlc-dot-asset',
+                'ohlc-dot-crypto', 'ohlc-dot-futures', 'ohlc-dot-stock');
+            dotEl.style.cssText = '';
+            dotEl.innerHTML = '';
+
+            const cls = this._detectTickerAssetClass(symbol);
+
+            // FX dual-flag pair (existing path). Only tried if the ticker
+            // hasn't already classified as crypto/futures/stock so compact
+            // crypto pairs like BTCUSD don't render as broken country flags.
+            if (cls !== 'crypto' && cls !== 'futures' && cls !== 'stock') {
+                const pair = this._parsePairCurrencies(symbol);
+                if (pair) {
+                    const baseCC = this._currencyToCountry(pair.base);
+                    const quoteCC = this._currencyToCountry(pair.quote);
+                    if (baseCC && quoteCC && baseCC !== 'xau' && baseCC !== 'xag' && quoteCC !== 'xau' && quoteCC !== 'xag') {
+                        const baseUrl = `https://flagcdn.com/w80/${baseCC}.png`;
+                        const quoteUrl = `https://flagcdn.com/w80/${quoteCC}.png`;
+                        dotEl.innerHTML = `<img class="ohlc-dot-flag ohlc-dot-flag-base" src="${baseUrl}" alt="${pair.base}" onerror="this.style.display='none'" /><img class="ohlc-dot-flag ohlc-dot-flag-quote" src="${quoteUrl}" alt="${pair.quote}" onerror="this.style.display='none'" />`;
+                        dotEl.classList.add('ohlc-dot-flags');
+                        return;
+                    }
                 }
             }
-            dotEl.classList.remove('ohlc-dot-flags');
+
+            // Crypto: CoinCap coin logo + orange gradient fallback behind.
+            if (cls === 'crypto') {
+                const base = this._cryptoBase(symbol);
+                const iconUrl = `https://assets.coincap.io/assets/icons/${base.toLowerCase()}@2x.png`;
+                dotEl.classList.add('ohlc-dot-asset', 'ohlc-dot-crypto');
+                dotEl.style.cssText = 'background:linear-gradient(135deg,#f7931a,#ffb347);color:#fff;font-weight:700;font-size:9px;overflow:hidden;position:relative;letter-spacing:-0.3px';
+                dotEl.innerHTML = `<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">${base.slice(0,3)}</span><img src="${iconUrl}" alt="${base}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit" onerror="this.style.display='none'" />`;
+                return;
+            }
+
+            // Futures: blue gradient + 2-3 letter root (ES, NQ, CL, ZC…).
+            if (cls === 'futures') {
+                const clean = String(symbol).replace(/[\s\-_\/\.]/g, '').toUpperCase();
+                const root = clean.slice(0, Math.min(3, clean.length)) || 'FX';
+                dotEl.classList.add('ohlc-dot-asset', 'ohlc-dot-futures');
+                dotEl.style.cssText = 'background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;font-weight:700;font-size:10px';
+                dotEl.textContent = root;
+                return;
+            }
+
+            // Stock: green/teal gradient + 3-4 letter ticker (AAPL, MSFT…).
+            if (cls === 'stock') {
+                const clean = String(symbol).replace(/[\s\-_\/\.]/g, '').toUpperCase();
+                const sym = clean.slice(0, Math.min(4, clean.length)) || 'ST';
+                const fs = sym.length >= 4 ? '8px' : '10px';
+                dotEl.classList.add('ohlc-dot-asset', 'ohlc-dot-stock');
+                dotEl.style.cssText = `background:linear-gradient(135deg,#10b981,#14b8a6);color:#fff;font-weight:700;font-size:${fs};letter-spacing:-0.3px`;
+                dotEl.textContent = sym;
+                return;
+            }
+
             dotEl.textContent = '⚡';
         }
     }

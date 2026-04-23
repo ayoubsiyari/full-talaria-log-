@@ -3256,8 +3256,55 @@ class CompareOverlay {
             };
             return map[(ccy || '').toUpperCase()] || null;
         };
+        // ---------------------------------------------------------------
+        // Symbol-icon builder for the compare-overlay legend. Produces an
+        // 18-px circular asset-class badge for every ticker the platform
+        // knows about so the legend matches the chart header / dropdown:
+        //   FX pair  → two overlapping country flags (classic forex look)
+        //   crypto   → coin logo from CoinCap (orange gradient fallback)
+        //   futures  → blue gradient circle + root (ES, NQ, CL…)
+        //   stock    → green gradient circle + ticker (AAPL, MSFT…)
+        // ---------------------------------------------------------------
+        const detectAssetClass = (symbol) => {
+            try {
+                const MCE = (typeof window !== 'undefined') ? window.MarketCalculationEngine : null;
+                if (MCE && typeof MCE.detectMarketType === 'function') {
+                    const t = MCE.detectMarketType(symbol);
+                    if (t === 'forex')   return 'fx';
+                    if (t === 'crypto')  return 'crypto';
+                    if (t === 'futures') return 'futures';
+                    if (t === 'stocks')  return 'stock';
+                }
+            } catch (_) { /* fallthrough */ }
+            return null;
+        };
+        const singleCircle = (inner, gradient) => `
+            <span style="position:relative;display:inline-block;width:28px;height:18px;vertical-align:middle;">
+                <span style="position:absolute;left:5px;top:0;width:18px;height:18px;border-radius:50%;background:${gradient};border:2px solid rgba(203,213,225,0.92);outline:1px solid rgba(5,10,20,0.8);box-shadow:0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:8px;letter-spacing:-0.3px;overflow:hidden">${inner}</span>
+            </span>
+        `;
         const buildOverlayPairFlags = (symbol) => {
-            const clean = String(symbol || '').replace(/[\s\-_\/\.]/g, '').toUpperCase();
+            const raw = String(symbol || '');
+            const clean = raw.replace(/[\s\-_\/\.]/g, '').toUpperCase();
+            const cls = detectAssetClass(raw);
+
+            // Crypto: coin logo on CoinCap, gradient badge behind.
+            if (cls === 'crypto') {
+                const base = clean.replace(/USDT$|USDC$|BUSD$|DAI$|TUSD$|USD$|EUR$|GBP$|PERP$/i, '') || clean;
+                const iconUrl = `https://assets.coincap.io/assets/icons/${base.toLowerCase()}@2x.png`;
+                const inner = `<span style="position:relative;z-index:1">${base.slice(0,3)}</span><img src="${iconUrl}" alt="${base}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit;z-index:2" onerror="this.style.display='none'" />`;
+                return singleCircle(inner, 'linear-gradient(135deg,#f7931a,#ffb347)');
+            }
+            if (cls === 'futures') {
+                const root = clean.slice(0, Math.min(3, clean.length)) || 'FX';
+                return singleCircle(root, 'linear-gradient(135deg,#3b82f6,#6366f1)');
+            }
+            if (cls === 'stock') {
+                const sym = clean.slice(0, Math.min(4, clean.length)) || 'ST';
+                return singleCircle(sym, 'linear-gradient(135deg,#10b981,#14b8a6)');
+            }
+
+            // FX pair path (unchanged): two overlapping country flags.
             if (clean.length < 6) return '';
             const base = clean.slice(0, 3);
             const quote = clean.slice(3, 6);
