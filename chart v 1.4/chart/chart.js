@@ -214,8 +214,6 @@ class Chart {
         this._pendingSessionStatePatch = null;
         this._sessionStateSaveTimer = null;
         this._pendingChartViewSanityCheck = false;
-        /** Full browser reload (F5): show default candle size + chart centered instead of restoring pan/zoom */
-        this._pendingReloadCenteredLayout = Chart._isNavigationReloadFromPerformance();
 
         // ═══════════════════════════════════════════════════════════════════
         // STEP 1 — TradingView State Definition
@@ -2145,8 +2143,8 @@ class Chart {
                 }
             }
 
-            // Restore chart view (pan/zoom position) — skip on full reload so layout resets to defaults + centered
-            if (state.chartView && typeof state.chartView === 'object' && !Chart._isNavigationReloadFromPerformance()) {
+            // Restore chart view (pan/zoom position)
+            if (state.chartView && typeof state.chartView === 'object') {
                 const v = state.chartView;
                 if (typeof v.offsetX === 'number' && Number.isFinite(v.offsetX)) {
                     this.offsetX = v.offsetX;
@@ -7561,54 +7559,6 @@ class Chart {
 	        }
 	    }
     
-    /** @returns {boolean} */
-    static _isNavigationReloadFromPerformance() {
-        try {
-            const nav =
-                typeof performance !== 'undefined' &&
-                performance.getEntriesByType &&
-                performance.getEntriesByType('navigation')[0];
-            return !!(nav && nav.type === 'reload');
-        } catch (e) {
-            return false;
-        }
-    }
-
-    /**
-     * After browser reload only: reset horizontal zoom to defaults and center the series in the plot (object-tree geometry).
-     */
-    _applyReloadDefaultCenteredView() {
-        const m = this.margin;
-        const cw = this.w - m.l - m.r;
-        if (!this.data || this.data.length === 0 || cw <= 0 || this.w <= 0) return;
-
-        this.candleWidth = 8;
-        if (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths)) {
-            const allowedWidths = this.zoomLevel.allowedWidths;
-            let nearestIdx = 0;
-            let minDiff = Math.abs(8 - allowedWidths[0]);
-            for (let i = 1; i < allowedWidths.length; i++) {
-                const diff = Math.abs(8 - allowedWidths[i]);
-                if (diff < minDiff) {
-                    minDiff = diff;
-                    nearestIdx = i;
-                }
-            }
-            this.zoomLevel.candleWidthIndex = nearestIdx;
-        }
-
-        this.priceZoom = 1;
-        this.priceOffset = 0;
-        this.autoScale = true;
-        if (this.priceScale) this.priceScale.autoScale = true;
-
-        const spacing = this.getCandleSpacing();
-        const n = this.data.length;
-        const centerIdx = (n - 1) / 2;
-        this.offsetX = cw / 2 - centerIdx * spacing;
-        this.constrainOffset();
-    }
-
     /**
      * Fit chart to show latest candles on the right edge
      */
@@ -7628,12 +7578,6 @@ class Chart {
         // This prevents the huge gap issue on page reload when layout isn't complete
         if (cw <= 0 || this.w <= 0) {
             console.warn('⚠️ fitToView skipped - canvas dimensions not ready:', { w: this.w, cw });
-            return;
-        }
-
-        if (this._pendingReloadCenteredLayout) {
-            this._pendingReloadCenteredLayout = false;
-            this._applyReloadDefaultCenteredView();
             return;
         }
         

@@ -25,9 +25,6 @@ class ReplaySystem {
         this.replayEndTimestamp = null;   // Ending timestamp of replay data
         this.tickElapsedMs = 0;           // Elapsed milliseconds within current candle animation
 
-        /** Backtest/propfirm: draw the full loaded session on the chart (replay position still advances normally). */
-        this.showFullLoadedHistoryWhileReplay = false;
-
         // Tick animation state
         this.playbackMode = 'tick'; // 'tick' (animated) | 'candle' (no intra-candle animation)
         this.tickAnimationEnabled = true;
@@ -1986,13 +1983,11 @@ class ReplaySystem {
         const isBacktesting = mode === 'backtest' || mode === 'propfirm' || options.startAtBeginning;
         
         if (isBacktesting) {
-            // Logical replay head (first ~11 minutes on 1m). Chart still shows the full loaded range — see updateChartData.
-            this.currentIndex = Math.min(10, this.chart.rawData.length - 1);
-            this.showFullLoadedHistoryWhileReplay = true;
+            // Start at first candle for backtesting
+            this.currentIndex = Math.min(10, this.chart.rawData.length - 1); // Show first 10 candles for context
         } else {
             // Normal replay: start at 10% for context
             this.currentIndex = Math.floor(this.chart.rawData.length * 0.1);
-            this.showFullLoadedHistoryWhileReplay = false;
         }
         
         // Store full datasets
@@ -2037,28 +2032,12 @@ class ReplaySystem {
     }
 
     /**
-     * Prefix length for raw bars shown on the chart during replay.
-     * Backtest draws the whole loaded session so resampled TF (e.g. 5m) is populated.
-     */
-    _getReplayChartSlicePrefixLength() {
-        if (
-            this.showFullLoadedHistoryWhileReplay &&
-            Array.isArray(this.fullRawData) &&
-            this.fullRawData.length > 0
-        ) {
-            return this.fullRawData.length;
-        }
-        return Math.max(this.currentIndex + 1, 1);
-    }
-
-    /**
      * Exit replay mode
      */
     exitReplayMode() {
         
         this.isActive = false;
         this.stop();
-        this.showFullLoadedHistoryWhileReplay = false;
 
         const floatingClone = document.getElementById('replayToolbarClone');
         if (floatingClone) {
@@ -2158,8 +2137,8 @@ class ReplaySystem {
 
         this.updateSliderRange();
         
-        // Slice rawData: default replay hides "future" bars; backtest shows the full loaded buffer for context.
-        const sliceEnd = this._getReplayChartSlicePrefixLength();
+        // Slice rawData to current position (minimum 1 candle)
+        const sliceEnd = Math.max(this.currentIndex + 1, 1);
         this.chart.rawData = this.fullRawData.slice(0, sliceEnd);
         
         if (this.chart.rawData.length === 0) {
@@ -3151,7 +3130,7 @@ class ReplaySystem {
 
         // Keep fast-mode rendering aligned with canonical resampleData()
         // so OHLC is identical to normal replay updates for all timeframes.
-        const sliceEnd = this._getReplayChartSlicePrefixLength();
+        const sliceEnd = Math.max(this.currentIndex + 1, 1);
         const slicedRaw = this.fullRawData.slice(0, sliceEnd);
         this.chart.rawData = slicedRaw;
         this.chart.data = this.chart.resampleData(slicedRaw, this.chart.currentTimeframe);
@@ -3568,6 +3547,13 @@ class ReplaySystem {
     updateChartWithAnimatedCandle() {
         if (!this.animatingCandle || !this.chart) return;
 
+        // Build the base slice once; reuse on subsequent ticks of the same candle.
+        if (!this._animSlice || this._animSliceIdx !== this.currentIndex) {
+            this._animSlice = this.fullRawData.slice(0, this.currentIndex + 1);
+            this._animSlice.push(null); // placeholder for animated candle
+            this._animSliceIdx = this.currentIndex;
+        }
+
         const animatedCandle = {
             t: this.animatingCandle.t,
             o: this.animatingCandle.open,
@@ -3576,44 +3562,21 @@ class ReplaySystem {
             c: this.animatingCandle.close,
             v: this.animatingCandle.volume
         };
+        this._animSlice[this._animSlice.length - 1] = animatedCandle;
 
-        let sliceForPanels;
+        this.chart.rawData = this._animSlice;
 
-        if (this.showFullLoadedHistoryWhileReplay && Array.isArray(this.fullRawData) && this.fullRawData.length > 0) {
-            const base = this.fullRawData.slice();
-            if (this.currentIndex >= 0 && this.currentIndex < base.length) {
-                base[this.currentIndex] = animatedCandle;
-            }
-            this.chart.rawData = base;
-            sliceForPanels = base;
-            this.chart.data = this.chart.resampleData(base, this.chart.currentTimeframe);
-            this._animSlice = null;
-            this._animSliceIdx = -1;
+        // Fast-path: only update the last resampled candle instead of
+        // re-running the full resample loop on every single tick.
+        const chartData = this.chart.data;
+        if (chartData && chartData.length > 0 && this.tickProgress > 1) {
+            const last = chartData[chartData.length - 1];
+            last.h = Math.max(last.h, animatedCandle.h);
+            last.l = Math.min(last.l, animatedCandle.l);
+            last.c = animatedCandle.c;
+            last.v = animatedCandle.v;
         } else {
-            // Build the base slice once; reuse on subsequent ticks of the same candle.
-            if (!this._animSlice || this._animSliceIdx !== this.currentIndex) {
-                this._animSlice = this.fullRawData.slice(0, this.currentIndex + 1);
-                this._animSlice.push(null); // placeholder for animated candle
-                this._animSliceIdx = this.currentIndex;
-            }
-
-            this._animSlice[this._animSlice.length - 1] = animatedCandle;
-
-            this.chart.rawData = this._animSlice;
-            sliceForPanels = this._animSlice;
-
-            // Fast-path: only update the last resampled candle instead of
-            // re-running the full resample loop on every single tick.
-            const chartData = this.chart.data;
-            if (chartData && chartData.length > 0 && this.tickProgress > 1) {
-                const last = chartData[chartData.length - 1];
-                last.h = Math.max(last.h, animatedCandle.h);
-                last.l = Math.min(last.l, animatedCandle.l);
-                last.c = animatedCandle.c;
-                last.v = animatedCandle.v;
-            } else {
-                this.chart.data = this.chart.resampleData(this._animSlice, this.chart.currentTimeframe);
-            }
+            this.chart.data = this.chart.resampleData(this._animSlice, this.chart.currentTimeframe);
         }
 
         if (this.tickProgress % 18 === 0 && this.chart.recalculateAllIndicators) {
@@ -3630,7 +3593,7 @@ class ReplaySystem {
 
         // Keep panels in lockstep with the main chart every tick. Throttling to every 4th tick
         // made order/preview lines and the last candle jump on panel surfaces while the main chart stayed smooth.
-        this.syncPanelChartsWithAnimatedCandle(sliceForPanels, animatedCandle);
+        this.syncPanelChartsWithAnimatedCandle(this._animSlice, animatedCandle);
 
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
             this.chart.orderManager.updatePositions();
@@ -3644,6 +3607,10 @@ class ReplaySystem {
     updateChartWithAnimatedCandleForTimeframeChange() {
         if (!this.animatingCandle || !this.chart) return;
         
+        // Create animated data up to current index plus the forming candle
+        const slicedRaw = this.fullRawData.slice(0, this.currentIndex + 1);
+        
+        // Add the animated candle with its current state
         const animatedCandle = {
             t: this.animatingCandle.t,
             o: this.animatingCandle.open,
@@ -3652,18 +3619,9 @@ class ReplaySystem {
             c: this.animatingCandle.close,
             v: this.animatingCandle.volume
         };
-
-        let slicedRaw;
-        if (this.showFullLoadedHistoryWhileReplay && Array.isArray(this.fullRawData) && this.fullRawData.length > 0) {
-            slicedRaw = this.fullRawData.slice();
-            if (this.currentIndex >= 0 && this.currentIndex < slicedRaw.length) {
-                slicedRaw[this.currentIndex] = animatedCandle;
-            }
-        } else {
-            slicedRaw = this.fullRawData.slice(0, this.currentIndex + 1);
-            slicedRaw.push(animatedCandle);
-        }
-
+        slicedRaw.push(animatedCandle);
+        
+        
         // Update chart data
         this.chart.rawData = slicedRaw;
         this.chart.data = this.chart.resampleData(slicedRaw, this.chart.currentTimeframe);
@@ -4665,7 +4623,7 @@ class ReplaySystem {
             return;
         }
         
-        const sliceEnd = this._getReplayChartSlicePrefixLength();
+        const sliceEnd = Math.max(this.currentIndex + 1, 1);
         const slicedRawData = this.fullRawData.slice(0, sliceEnd);
         const replayTs = this.replayTimestamp;
         
