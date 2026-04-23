@@ -1628,6 +1628,7 @@ select { cursor: pointer; }
                 <div id="fr_quickadd_crypto" class="field fg-full" style="display:none">
                   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                     <span style="font-size:11px;color:var(--text-muted)">Quick add (crypto):</span>
+                    <button type="button" class="btn sm primary" onclick="frPairsFillAllCrypto()" title="Replace contents with bundled + extended USD/USDT stems (trim to match your ZIP filenames)">All crypto (market list)</button>
                     <button type="button" class="btn sm" onclick="frPairsAdd('BTCUSD ETHUSD')">majors</button>
                     <button type="button" class="btn sm" onclick="frPairsAdd('SOLUSD XRPUSD ADAUSD DOGEUSD LTCUSD BCHUSD')">large caps</button>
                     <button type="button" class="btn sm" onclick="frPairsAdd('LINKUSD DOTUSD AVAXUSD MATICUSD UNIUSD ATOMUSD')">altcoins</button>
@@ -4353,8 +4354,8 @@ function updateFirstrateInstrumentUi() {
     } else if (v === 'crypto') {
       hint.innerHTML =
         'FirstRate crypto bundles ship as one ZIP per period (<strong>day / week / month</strong> — <code style="font-size:10px">full</code> is disabled on this subscription). ' +
-        'Type symbols as they appear in filenames (e.g. <code style="font-size:10px">BTCUSD, ETHUSD, SOLUSD</code>) or use the quick-add buttons / <strong>Browse symbols</strong>. ' +
-        'Timestamps are treated as UTC per FirstRate\'s crypto readme.';
+        'When this box is <strong>empty</strong>, you typically match every crypto file in the bundle (see server filters). When <strong>filled</strong> (default after load: bundled catalog + extended USD/USDT stems), only those symbols are used — trim to your filenames. ' +
+        'Use <strong>Browse symbols</strong> for the vendor list when available. Timestamps are UTC per FirstRate\'s crypto readme.';
     } else {
       hint.innerHTML =
         'Leave empty for every file in this bundle, or type symbols to filter by filename stem after download. ' +
@@ -4495,6 +4496,55 @@ const FR_CRYPTO_BUILTIN_CATALOG = [
   { ticker: 'MATICUSDT',name: 'Polygon / USDT (perp)' },
   { ticker: 'DOTUSDT',  name: 'Polkadot / USDT (perp)' },
 ];
+
+/** USD- and USDT-suffixed symbols for admin prepopulation: built-in catalog plus common alt / L2 / DeFi stems (vendor bundles vary — trim as needed). */
+function buildDefaultCryptoTickerList() {
+  const fromCatalog = FR_CRYPTO_BUILTIN_CATALOG.map(function (r) {
+    return r && r.ticker ? String(r.ticker) : '';
+  }).filter(Boolean);
+  const extras = [
+    'BNBUSD', 'SHIBUSD', 'APTUSD', 'ARBUSD', 'OPUSD', 'NEARUSD', 'INJUSD', 'SUIUSD', 'SEIUSD', 'TIAUSD',
+    'STRKUSD', 'WLDUSD', 'LDOUSD', 'CRVUSD', 'DYDXUSD', 'GMXUSD', 'BLURUSD', 'JUPUSD', 'PYTHUSD', 'ORDIUSD',
+    'FTMUSD', 'EOSUSD', 'XTZUSD', 'ICPUSD', 'VETUSD', 'HBARUSD', 'EGLDUSD', 'MINAUSD', 'FLOWUSD', 'THETAUSD',
+    'AXSUSD', 'SANDUSD', 'MANAUSD', 'CHZUSD', 'GALAUSD', 'ENJUSD', 'BATUSD', 'ZRXUSD', 'OMGUSD', 'LRCUSD',
+    'ANKRUSD', 'CELOUSD', 'ONEUSD', 'IOTAUSD', 'RSRUSD', 'STORJUSD', 'KSMUSD', 'ZECUSD', 'DASHUSD', 'PEPEUSD',
+    'WIFUSD', 'FETUSD', 'RENDERUSD', 'RONINUSD', 'RAYUSD', 'GMTUSD',
+    'SOLUSDT', 'DOGEUSDT', 'LTCUSDT', 'BCHUSDT', 'UNIUSDT', 'ATOMUSDT', 'ALGOUSDT', 'XLMUSDT', 'TRXUSDT',
+    'FILUSDT', 'ETCUSDT', 'AAVEUSDT', 'MKRUSDT', 'SNXUSDT', 'COMPUSDT', 'YFIUSDT', 'SHIBUSDT', 'APTUSDT',
+    'ARBUSDT', 'OPUSDT', 'NEARUSDT', 'INJUSDT', 'SUIUSDT', 'TIAUSDT', 'SEIUSDT', 'WLDUSDT', 'LDOUSDT',
+    'PEPEUSDT', 'FETUSDT', 'CRVUSDT', 'DYDXUSDT',
+  ];
+  const uniq = new Set();
+  [].concat(fromCatalog, extras).forEach(function (s) {
+    const k = String(s).toUpperCase().trim();
+    if (k) uniq.add(k);
+  });
+  return Array.from(uniq).sort();
+}
+
+function getDefaultAllCryptoTickersComma() {
+  return buildDefaultCryptoTickerList().join(', ');
+}
+
+function seedDefaultCryptoPairsIfNeeded() {
+  const ta = $('fr_pairs');
+  const typ = $('fr_type');
+  if (!ta || !typ || String(typ.value || '').toLowerCase() !== 'crypto') return;
+  if (String(ta.value || '').trim()) return;
+  ta.value = getDefaultAllCryptoTickersComma();
+}
+
+function frPairsFillAllCrypto() {
+  const ta = $('fr_pairs');
+  if (!ta) return;
+  ta.value = getDefaultAllCryptoTickersComma();
+  try {
+    const n = parsePairsFromTextarea('fr_pairs').length;
+    toast('Filled ' + n + ' crypto symbols (trim symbols your vendor ZIP does not include).', 'ok');
+  } catch (e) {
+    toast('Filled crypto market list', 'ok');
+  }
+}
 
 /**
  * Merge two ticker-listing arrays, deduped by uppercase ticker. Vendor rows win over bundled ones.
@@ -4715,6 +4765,7 @@ function seedDefaultFuturesPairsIfNeeded() {
 function seedDefaultInstrumentPairsIfNeeded() {
   seedDefaultForexPairsIfNeeded();
   seedDefaultFuturesPairsIfNeeded();
+  seedDefaultCryptoPairsIfNeeded();
 }
 
 function frPairsFillAllFutures() {
