@@ -2041,14 +2041,20 @@ class ReplaySystem {
      * Backtest draws the whole loaded session so resampled TF (e.g. 5m) is populated.
      */
     _getReplayChartSlicePrefixLength() {
+        const progressiveEnd = Math.max(this.currentIndex + 1, 1);
         if (
-            this.showFullLoadedHistoryWhileReplay &&
-            Array.isArray(this.fullRawData) &&
-            this.fullRawData.length > 0
+            !this.showFullLoadedHistoryWhileReplay ||
+            !Array.isArray(this.fullRawData) ||
+            this.fullRawData.length === 0
         ) {
-            return this.fullRawData.length;
+            return progressiveEnd;
         }
-        return Math.max(this.currentIndex + 1, 1);
+        // Paused/scrubbing: paint the whole loaded session so higher TFs aren't empty (preview).
+        // Playing: progressive slice only — full resample every tick/frame was freezing tick + candle replay.
+        if (this.isPlaying) {
+            return progressiveEnd;
+        }
+        return this.fullRawData.length;
     }
 
     /**
@@ -3579,7 +3585,12 @@ class ReplaySystem {
 
         let sliceForPanels;
 
-        if (this.showFullLoadedHistoryWhileReplay && Array.isArray(this.fullRawData) && this.fullRawData.length > 0) {
+        if (
+            this.showFullLoadedHistoryWhileReplay &&
+            !this.isPlaying &&
+            Array.isArray(this.fullRawData) &&
+            this.fullRawData.length > 0
+        ) {
             const base = this.fullRawData.slice();
             if (this.currentIndex >= 0 && this.currentIndex < base.length) {
                 base[this.currentIndex] = animatedCandle;
@@ -3654,7 +3665,12 @@ class ReplaySystem {
         };
 
         let slicedRaw;
-        if (this.showFullLoadedHistoryWhileReplay && Array.isArray(this.fullRawData) && this.fullRawData.length > 0) {
+        if (
+            this.showFullLoadedHistoryWhileReplay &&
+            !this.isPlaying &&
+            Array.isArray(this.fullRawData) &&
+            this.fullRawData.length > 0
+        ) {
             slicedRaw = this.fullRawData.slice();
             if (this.currentIndex >= 0 && this.currentIndex < slicedRaw.length) {
                 slicedRaw[this.currentIndex] = animatedCandle;
