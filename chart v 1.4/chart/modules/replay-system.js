@@ -2159,8 +2159,10 @@ class ReplaySystem {
                 const di = chartInstance.data.findIndex((d) => Number(d.t) >= ts);
                 if (di >= 0) focusIdx = di;
             }
-            const lead = Math.max(0, Math.floor(targetVisibleCandles * 0.28));
-            scrollPosition = Math.max(0, Math.min(focusIdx - lead, maxScroll));
+            // Align viewport so the current replay candle is the last visible bar on the right (TradingView-style).
+            const span = targetVisibleCandles;
+            const wantedStart = focusIdx - span + 1;
+            scrollPosition = Math.max(0, Math.min(wantedStart, maxScroll));
         } else {
             scrollPosition = Math.max(0, chartInstance.data.length - targetVisibleCandles);
         }
