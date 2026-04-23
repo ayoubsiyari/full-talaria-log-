@@ -718,6 +718,11 @@ input.mono {
   border-color: rgba(59, 130, 246, 0.22);
 }
 
+.bt-file-dropdown-label.bt-file-row--locked {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
 .bt-file-checkbox {
   appearance: none;
   -webkit-appearance: none;
@@ -736,6 +741,11 @@ input.mono {
 .bt-file-checkbox:hover {
   border-color: rgba(129, 140, 248, 0.55);
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
+}
+
+.bt-file-checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .bt-file-checkbox:checked {
@@ -1985,12 +1995,20 @@ html.iframe-mode .bt-modal-footer {
 
         // Toggle file selection
         function toggleFileSelection(fileId, fileName) {
-            if (selectedFilesArray.length >= 10 && selectedFilesArray.findIndex(function (f) { return sameFileId(f.id, fileId); }) === -1) {
-                alert('Maximum 10 instruments per session.');
-                return;
-            }
             const index = selectedFilesArray.findIndex(function (f) { return sameFileId(f.id, fileId); });
             if (index === -1) {
+                if (selectedFilesArray.length >= 10) {
+                    alert('Maximum 10 instruments per session.');
+                    updateFileListUI();
+                    return;
+                }
+                const locked = selectionLockedGroup();
+                const cached = findCachedFileById(fileId);
+                if (locked && cached && classifyFile(cached) !== locked) {
+                    alert('You can only combine instruments from the same asset group (for example all Futures or all Forex). Remove your current selections to pick a different group.');
+                    updateFileListUI();
+                    return;
+                }
                 selectedFilesArray.push({ id: fileId, name: fileName });
             } else {
                 selectedFilesArray.splice(index, 1);
@@ -2249,6 +2267,18 @@ html.iframe-mode .bt-modal-footer {
             return 'Other';
         }
 
+        function findCachedFileById(fileId) {
+            return availableFilesCache.find(function (f) { return sameFileId(f.id, fileId); });
+        }
+
+        /** While the user has ≥1 symbol selected, all additions must match this asset group. */
+        function selectionLockedGroup() {
+            if (!selectedFilesArray.length) return null;
+            const first = findCachedFileById(selectedFilesArray[0].id);
+            if (!first) return null;
+            return classifyFile(first);
+        }
+
         function updateFileListUI() {
             const fileList = document.getElementById('fileList');
             if (availableFilesCache.length === 0) return;
@@ -2272,17 +2302,31 @@ html.iframe-mode .bt-modal-footer {
                 (groups[g] || groups.Other).push(file);
             });
 
+            const lockedGroup = selectionLockedGroup();
+
             function renderRow(file) {
                 const isSelected = selectedFilesArray.some(function (f) { return sameFileId(f.id, file.id); });
+                const fileGroup = classifyFile(file);
+                const crossLocked = Boolean(lockedGroup && !isSelected && fileGroup !== lockedGroup);
                 const rawName = file.original_name || file.name || file.filename || file.symbol || ('File ' + file.id);
                 const pairName = cleanPairName(rawName);
                 const rows = file.row_count ? formatRowCount(file.row_count) : '';
                 const hasDupes = pairCounts[pairName] > 1;
                 const displayName = hasDupes && rows ? pairName + ' (' + rows + ')' : pairName;
                 const safeName = displayName.replace(/'/g, "\\'");
+                const labelCls =
+                    'bt-file-dropdown-label' +
+                    (isSelected ? ' bt-file-row--selected' : '') +
+                    (crossLocked ? ' bt-file-row--locked' : '');
+                const lockedTitle = crossLocked
+                    ? ' title="Only one asset group per session — clear selection to switch (e.g. Futures vs Forex)."'
+                    : '';
                 return (
-                    '<label class="bt-file-dropdown-label' + (isSelected ? ' bt-file-row--selected' : '') + '">' +
-                    '<input type="checkbox" class="bt-file-checkbox"' + (isSelected ? ' checked' : '') + ' onchange="toggleFileSelection(\'' + file.id + '\', \'' + safeName + '\')">' +
+                    '<label class="' + labelCls + '"' + lockedTitle + '>' +
+                    '<input type="checkbox" class="bt-file-checkbox"' +
+                    (isSelected ? ' checked' : '') +
+                    (crossLocked ? ' disabled' : '') +
+                    ' onchange="toggleFileSelection(\'' + file.id + '\', \'' + safeName + '\')">' +
                     '<div class="bt-file-row-main">' +
                     '<span class="bt-file-row-name">' + pairName + '</span>' +
                     '<span class="bt-file-row-meta">' + (rows ? rows + ' candles' : '') + '</span>' +

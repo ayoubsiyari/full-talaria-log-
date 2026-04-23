@@ -210,6 +210,82 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ───────────────────────────────────────────────────────────────────────
+# Admin audit middleware
+#
+# Auto-logs every mutating request whose path starts with `/api/admin/` so
+# we capture calls the structured `_record_admin_action` helper hasn't been
+# wired into yet (user ban/delete/extend, dataset upload, plan edits…).
+# Intentionally minimal to avoid coupling to individual handlers:
+#   * only POST/PUT/PATCH/DELETE (reads aren't destructive)
+#   * never consumes the body (would break downstream handlers)
+#   * writes AFTER the response so we know the final status code
+#   * attribution via `request.state.admin_user_id` set by `_require_admin`
+#     — if the handler short-circuited with 401/403 we still log it with
+#     status="denied" and no admin_user_id so you see break-in attempts.
+# Log writes are fire-and-forget: any DB failure here is swallowed so a
+# broken audit table never breaks a working admin flow.
+# ───────────────────────────────────────────────────────────────────────
+_AUDIT_MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+@app.middleware("http")
+async def _admin_audit_middleware(request: Request, call_next):
+    path = request.url.path or ""
+    should_audit = (
+        request.method in _AUDIT_MUTATING_METHODS
+        and path.startswith("/api/admin/")
+    )
+    response = await call_next(request)
+    if not should_audit:
+        return response
+    try:
+        admin_user_id = getattr(request.state, "admin_user_id", None)
+        admin_email = getattr(request.state, "admin_email", None)
+        sc = int(getattr(response, "status_code", 0) or 0)
+        if sc in (401, 403):
+            status_label = "denied"
+        elif sc >= 500:
+            status_label = "error"
+        elif sc >= 400:
+            status_label = "error"
+        else:
+            status_label = "ok"
+        # Infer a short `action` from the last non-empty path segment so the
+        # log is searchable (e.g. /api/admin/users/42/ban -> "ban").
+        segs = [s for s in path.split("/") if s]
+        action = "admin_call"
+        if len(segs) >= 3:
+            tail = segs[-1]
+            action = tail if not tail.isdigit() else (segs[-2] if len(segs) >= 2 else tail)
+        action = (action or "admin_call")[:64]
+
+        db = SessionLocal()
+        try:
+            db.add(AdminAuditLog(
+                admin_user_id=admin_user_id,
+                admin_email=(admin_email or None),
+                action=action,
+                method=request.method,
+                path=path[:500],
+                target_type=None,
+                target_id=None,
+                status=status_label,
+                status_code=sc,
+                params_json=None,      # middleware never inspects body
+                result_json=None,
+                error_message=None,
+                ip_address=_client_ip(request),
+                user_agent=(request.headers.get("user-agent") or "")[:500],
+            ))
+            db.commit()
+        finally:
+            db.close()
+    except Exception:
+        # Never let audit failure affect the real response.
+        pass
+    return response
+
 # Database Setup - Use environment variable or default to SQLite
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./db/chart_data.db")
 _APP_DIR = Path(__file__).resolve().parent
@@ -751,6 +827,45 @@ class AffiliateEvent(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+class AdminAuditLog(Base):
+    """
+    Forensic trail of every admin-origin mutation — writes are append-only and
+    survive independently of the resource they mutated. Powers the "who did
+    what and when" view on the admin dashboard + satisfies the user's
+    "never lose data" requirement by making every destructive call visible.
+
+    Populated from two places:
+      1. `_admin_audit_middleware` — auto-logs any mutating request to `/api/admin/*`
+         with method + path + status + ip + admin user id. Zero-config coverage
+         for every existing and future admin endpoint.
+      2. `_record_admin_action(...)` — called explicitly by high-risk handlers
+         (archive / prune / restore / user delete / etc.) with structured
+         `action` + `params` + `result` for richer queries.
+
+    `params_json` / `result_json` MUST NOT contain secrets. We never log
+    request body by default — only explicit param dicts passed by handlers.
+    """
+
+    __tablename__ = "admin_audit_log"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    admin_user_id = Column(Integer, index=True, nullable=True)
+    admin_email = Column(String(255), nullable=True)
+    action = Column(String(64), index=True, nullable=False)  # e.g. archive_stale_sessions
+    method = Column(String(8), nullable=True)                # GET/POST/...
+    path = Column(String(512), nullable=True)
+    target_type = Column(String(64), nullable=True)          # session, attachment, user, ...
+    target_id = Column(String(64), nullable=True)            # string so we can log "42", "uuid-…", or "-"
+    status = Column(String(16), index=True, nullable=False)  # ok | error | denied | dry_run
+    status_code = Column(Integer, nullable=True)
+    params_json = Column(Text, nullable=True)
+    result_json = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+    ip_address = Column(String(64), nullable=True)
+    user_agent = Column(String(512), nullable=True)
+
+
 # Create chart-specific tables only — exclude 'users' (managed by journal-backend).
 _CHART_TABLES = [
     CSVFile.__table__,
@@ -769,6 +884,7 @@ _CHART_TABLES = [
     Affiliate.__table__,
     AffiliateAttribution.__table__,
     AffiliateEvent.__table__,
+    AdminAuditLog.__table__,
 ]
 Base.metadata.create_all(bind=engine, tables=_CHART_TABLES)
 
@@ -5716,11 +5832,106 @@ def _require_user(request: Request):
 
 def _require_admin(request: Request):
     if not AUTH_ENABLED:
+        # Stamp the synthetic anon-admin for the audit middleware anyway.
+        try:
+            request.state.admin_user_id = getattr(_ANON_USER, "id", None)
+            request.state.admin_email = getattr(_ANON_USER, "email", None)
+        except Exception:
+            pass
         return _ANON_USER
     user = _require_user(request)
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
+    # Stash on request.state so `_admin_audit_middleware` can attribute the
+    # call without re-doing the cookie lookup / DB query post-response.
+    try:
+        request.state.admin_user_id = int(user.id)
+        request.state.admin_email = user.email
+    except Exception:
+        pass
     return user
+
+
+def _client_ip(request: Request) -> str | None:
+    """Nginx sits in front so we trust `X-Forwarded-For` (first hop)."""
+    xff = request.headers.get("x-forwarded-for") or ""
+    if xff:
+        return xff.split(",", 1)[0].strip()[:63] or None
+    xr = request.headers.get("x-real-ip")
+    if xr:
+        return xr.strip()[:63] or None
+    try:
+        return (request.client.host or "")[:63] or None
+    except Exception:
+        return None
+
+
+def _audit_truncate(value, max_len: int = 4000) -> str | None:
+    """Safely coerce any JSON-ish value into a bounded text column."""
+    if value is None:
+        return None
+    try:
+        s = value if isinstance(value, str) else json.dumps(value, default=str, separators=(",", ":"))
+    except Exception:
+        s = str(value)
+    if len(s) > max_len:
+        s = s[: max_len - 20] + '…"[truncated]"'
+    return s
+
+
+def _record_admin_action(
+    request: Request,
+    *,
+    action: str,
+    status: str = "ok",
+    status_code: int | None = None,
+    target_type: str | None = None,
+    target_id: str | int | None = None,
+    params: dict | None = None,
+    result: dict | None = None,
+    error: str | None = None,
+) -> None:
+    """
+    Structured audit write from high-risk admin handlers. Never raises — a
+    failing audit MUST NOT break the actual endpoint (that would be worse
+    than no audit at all). Keep params/result small (both truncate to 4 KB)
+    and scrubbed of secrets (we never log request bodies here).
+    """
+    db = None
+    try:
+        admin_user_id = getattr(request.state, "admin_user_id", None) if request else None
+        admin_email = getattr(request.state, "admin_email", None) if request else None
+        entry = AdminAuditLog(
+            admin_user_id=admin_user_id,
+            admin_email=(admin_email or None),
+            action=(action or "unknown")[:64],
+            method=(request.method if request else None),
+            path=(str(request.url.path) if request else None),
+            target_type=(target_type or None),
+            target_id=(str(target_id) if target_id is not None else None),
+            status=(status or "ok")[:16],
+            status_code=status_code,
+            params_json=_audit_truncate(params),
+            result_json=_audit_truncate(result),
+            error_message=_audit_truncate(error, max_len=2000),
+            ip_address=_client_ip(request) if request else None,
+            user_agent=((request.headers.get("user-agent") or "")[:500] if request else None),
+        )
+        db = SessionLocal()
+        db.add(entry)
+        db.commit()
+    except Exception:
+        try:
+            if db is not None:
+                db.rollback()
+        except Exception:
+            pass
+    finally:
+        try:
+            if db is not None:
+                db.close()
+        except Exception:
+            pass
 
 def _can_access_trading_session(user: User, session: TradingSession) -> bool:
     return int(session.user_id) == int(user.id)
@@ -10082,7 +10293,7 @@ async def admin_archive_stale_sessions(payload: AdminArchiveStaleSessionsIn, req
             })
 
         if payload.dry_run:
-            return {
+            resp = {
                 "success": True,
                 "dry_run": True,
                 "cutoff_utc": cutoff.isoformat() + "Z",
@@ -10091,9 +10302,32 @@ async def admin_archive_stale_sessions(payload: AdminArchiveStaleSessionsIn, req
                 "would_reclaim_human": _human_bytes(sum(p["bytes"] for p in plan)),
                 "sample": plan[:25],
             }
+            _record_admin_action(
+                request,
+                action="archive_stale_sessions",
+                status="dry_run",
+                status_code=200,
+                target_type="trading_session_state",
+                params={
+                    "older_than_days": payload.older_than_days,
+                    "min_state_bytes": payload.min_state_bytes,
+                    "limit": payload.limit,
+                },
+                result={
+                    "would_archive_count": resp["would_archive_count"],
+                    "would_reclaim_bytes": resp["would_reclaim_bytes"],
+                },
+            )
+            return resp
 
         # Not a dry run — actually archive. We do one session at a time with
         # per-row commits so a later failure doesn't lose earlier progress.
+        #
+        # Concurrency guard: between listing the plan and processing each row
+        # the user may have re-opened the session and saved fresh drawings.
+        # If `updated_at` has moved past our cutoff we SKIP — the row is no
+        # longer stale and archiving it would clobber the user's latest work
+        # (the gzip would hold it, but the DB row would go back to "{}").
         for p in plan:
             sid = p["session_id"]
             try:
@@ -10101,6 +10335,12 @@ async def admin_archive_stale_sessions(payload: AdminArchiveStaleSessionsIn, req
                     TradingSessionState.session_id == sid
                 ).first()
                 if not st or not st.state_json:
+                    continue
+                if st.updated_at is not None and st.updated_at >= cutoff:
+                    errors.append({
+                        "session_id": sid,
+                        "error": "skipped: session was updated after dry-run cutoff",
+                    })
                     continue
                 archive_path = _session_archive_path(sid)
                 # Don't clobber an existing archive — suffix with timestamp so
@@ -10123,7 +10363,7 @@ async def admin_archive_stale_sessions(payload: AdminArchiveStaleSessionsIn, req
     finally:
         db.close()
 
-    return {
+    resp = {
         "success": True,
         "dry_run": False,
         "cutoff_utc": cutoff.isoformat() + "Z",
@@ -10133,6 +10373,27 @@ async def admin_archive_stale_sessions(payload: AdminArchiveStaleSessionsIn, req
         "archive_dir": str(SESSION_ARCHIVE_DIR.resolve()),
         "errors": errors,
     }
+    _record_admin_action(
+        request,
+        action="archive_stale_sessions",
+        status="error" if errors and archived_bytes == 0 else "ok",
+        status_code=200,
+        target_type="trading_session_state",
+        params={
+            "older_than_days": payload.older_than_days,
+            "min_state_bytes": payload.min_state_bytes,
+            "limit": payload.limit,
+            "dry_run": False,
+        },
+        result={
+            "archived_count": resp["archived_count"],
+            "reclaimed_bytes": resp["reclaimed_bytes"],
+            "error_count": len(errors),
+            "archived_session_ids": [p["session_id"] for p in plan][:50],
+        },
+        error=("; ".join(e.get("error", "") for e in errors[:5]) if errors else None),
+    )
+    return resp
 
 
 class AdminPruneAttachmentsIn(BaseModel):
@@ -10207,7 +10468,7 @@ async def admin_prune_support_attachments(payload: AdminPruneAttachmentsIn, requ
             })
 
         if payload.dry_run:
-            return {
+            resp = {
                 "success": True,
                 "dry_run": True,
                 "cutoff_utc": cutoff.isoformat() + "Z",
@@ -10217,11 +10478,42 @@ async def admin_prune_support_attachments(payload: AdminPruneAttachmentsIn, requ
                 "would_reclaim_human": _human_bytes(sum(p["bytes"] for p in plan)),
                 "sample": plan[:25],
             }
+            _record_admin_action(
+                request,
+                action="prune_support_attachments",
+                status="dry_run",
+                status_code=200,
+                target_type="support_attachment",
+                params={
+                    "older_than_days": payload.older_than_days,
+                    "closed_threads_only": bool(payload.closed_threads_only),
+                    "limit": payload.limit,
+                },
+                result={
+                    "would_delete_count": resp["would_delete_count"],
+                    "would_reclaim_bytes": resp["would_reclaim_bytes"],
+                },
+            )
+            return resp
 
         # Live mode — walk the same list, unlink file + delete DB row.
+        # Defense-in-depth: even though `stored_name` is server-generated via
+        # `secrets.token_urlsafe` (see _support_write_image_file), we verify
+        # the resolved path is still inside SUPPORT_UPLOAD_DIR before unlink.
+        # Cheap, and survives future refactors that might accept user input.
+        support_root = SUPPORT_UPLOAD_DIR.resolve()
         for att, _msg, _thr in rows:
             try:
-                fpath = SUPPORT_UPLOAD_DIR / att.stored_name
+                stored = (att.stored_name or "").strip()
+                if not stored or "/" in stored or "\\" in stored or stored.startswith("."):
+                    errors.append({"attachment_id": int(att.id), "error": "suspicious stored_name; skipped"})
+                    continue
+                fpath = (SUPPORT_UPLOAD_DIR / stored).resolve()
+                try:
+                    fpath.relative_to(support_root)
+                except ValueError:
+                    errors.append({"attachment_id": int(att.id), "error": "path escaped support dir; skipped"})
+                    continue
                 size = int(att.size_bytes or 0)
                 if fpath.is_file():
                     fpath.unlink()
@@ -10235,7 +10527,7 @@ async def admin_prune_support_attachments(payload: AdminPruneAttachmentsIn, requ
     finally:
         db.close()
 
-    return {
+    resp = {
         "success": True,
         "dry_run": False,
         "cutoff_utc": cutoff.isoformat() + "Z",
@@ -10244,6 +10536,26 @@ async def admin_prune_support_attachments(payload: AdminPruneAttachmentsIn, requ
         "reclaimed_human": _human_bytes(reclaimed_bytes),
         "errors": errors,
     }
+    _record_admin_action(
+        request,
+        action="prune_support_attachments",
+        status="error" if errors and deleted_count == 0 else "ok",
+        status_code=200,
+        target_type="support_attachment",
+        params={
+            "older_than_days": payload.older_than_days,
+            "closed_threads_only": bool(payload.closed_threads_only),
+            "limit": payload.limit,
+            "dry_run": False,
+        },
+        result={
+            "deleted_count": deleted_count,
+            "reclaimed_bytes": reclaimed_bytes,
+            "error_count": len(errors),
+        },
+        error=("; ".join(e.get("error", "") for e in errors[:5]) if errors else None),
+    )
+    return resp
 
 
 @app.post("/api/admin/system/restore-archived-session/{session_id}")
@@ -10290,13 +10602,159 @@ async def admin_restore_archived_session(session_id: int, request: Request):
     finally:
         db.close()
 
-    return {
+    resp = {
         "success": True,
         "session_id": int(session_id),
         "restored_bytes": len(raw.encode("utf-8")),
         "restored_human": _human_bytes(len(raw.encode("utf-8"))),
         "archive_path": str(archive_path.resolve()),
     }
+    _record_admin_action(
+        request,
+        action="restore_archived_session",
+        status="ok",
+        status_code=200,
+        target_type="trading_session_state",
+        target_id=int(session_id),
+        params={"session_id": int(session_id)},
+        result={"restored_bytes": resp["restored_bytes"]},
+    )
+    return resp
+
+
+# ───────────────────────────────────────────────────────────────────────
+# Admin audit-log read API
+# ───────────────────────────────────────────────────────────────────────
+
+@app.get("/api/admin/audit-log")
+async def admin_audit_log_list(
+    request: Request,
+    limit: int = 200,
+    offset: int = 0,
+    action: str | None = None,
+    admin_user_id: int | None = None,
+    status: str | None = None,
+    since_days: int | None = None,
+    q: str | None = None,
+):
+    """
+    Paginated, filterable view of `admin_audit_log`. Admin-only.
+
+    Query params:
+      * `limit`         — rows per page, clamped to [1, 500]
+      * `offset`        — row offset for pagination
+      * `action`        — substring match on `action` column
+      * `admin_user_id` — exact match
+      * `status`        — ok | error | denied | dry_run
+      * `since_days`    — only rows created within the last N days
+      * `q`             — free-text substring across path + params + result
+
+    The list itself is read-only; the middleware will not log this call
+    because GET isn't in `_AUDIT_MUTATING_METHODS` (no self-referential noise).
+    """
+    _require_admin(request)
+    limit = max(1, min(500, int(limit or 200)))
+    offset = max(0, int(offset or 0))
+
+    db = SessionLocal()
+    try:
+        qry = db.query(AdminAuditLog)
+        if action:
+            qry = qry.filter(AdminAuditLog.action.ilike(f"%{action[:64]}%"))
+        if admin_user_id:
+            qry = qry.filter(AdminAuditLog.admin_user_id == int(admin_user_id))
+        if status:
+            qry = qry.filter(AdminAuditLog.status == status[:16])
+        if since_days:
+            cutoff = datetime.utcnow() - timedelta(days=max(1, int(since_days)))
+            qry = qry.filter(AdminAuditLog.created_at >= cutoff)
+        if q:
+            needle = f"%{q[:200]}%"
+            qry = qry.filter(
+                (AdminAuditLog.path.ilike(needle))
+                | (AdminAuditLog.params_json.ilike(needle))
+                | (AdminAuditLog.result_json.ilike(needle))
+                | (AdminAuditLog.error_message.ilike(needle))
+            )
+        total = qry.count()
+        rows = (
+            qry.order_by(AdminAuditLog.created_at.desc())
+               .offset(offset).limit(limit).all()
+        )
+        return {
+            "success": True,
+            "total": int(total),
+            "limit": limit,
+            "offset": offset,
+            "entries": [{
+                "id": int(r.id),
+                "created_at": r.created_at.isoformat() + "Z" if r.created_at else None,
+                "admin_user_id": r.admin_user_id,
+                "admin_email": r.admin_email,
+                "action": r.action,
+                "method": r.method,
+                "path": r.path,
+                "target_type": r.target_type,
+                "target_id": r.target_id,
+                "status": r.status,
+                "status_code": r.status_code,
+                "params": r.params_json,
+                "result": r.result_json,
+                "error": r.error_message,
+                "ip_address": r.ip_address,
+                "user_agent": r.user_agent,
+            } for r in rows],
+        }
+    finally:
+        db.close()
+
+
+class AdminAuditLogPruneIn(BaseModel):
+    """
+    Retention for `admin_audit_log`. Default keeps one year. Dry-run by
+    default — shows you how many rows would be dropped before you commit.
+    """
+    older_than_days: int = Field(default=365, ge=30, le=3650)
+    dry_run: bool = True
+
+
+@app.post("/api/admin/audit-log/prune")
+async def admin_audit_log_prune(payload: AdminAuditLogPruneIn, request: Request):
+    """
+    Delete audit-log entries older than N days. Recommended to run rarely
+    (once a quarter) so you retain a long forensic tail.
+    """
+    _require_admin(request)
+    cutoff = datetime.utcnow() - timedelta(days=int(payload.older_than_days))
+    db = SessionLocal()
+    try:
+        qry = db.query(AdminAuditLog).filter(AdminAuditLog.created_at < cutoff)
+        total = qry.count()
+        if payload.dry_run:
+            _record_admin_action(
+                request,
+                action="audit_log_prune",
+                status="dry_run",
+                status_code=200,
+                target_type="admin_audit_log",
+                params={"older_than_days": payload.older_than_days},
+                result={"would_delete": int(total)},
+            )
+            return {"success": True, "dry_run": True, "would_delete": int(total), "cutoff_utc": cutoff.isoformat() + "Z"}
+        deleted = qry.delete(synchronize_session=False)
+        db.commit()
+        _record_admin_action(
+            request,
+            action="audit_log_prune",
+            status="ok",
+            status_code=200,
+            target_type="admin_audit_log",
+            params={"older_than_days": payload.older_than_days, "dry_run": False},
+            result={"deleted": int(deleted or 0)},
+        )
+        return {"success": True, "dry_run": False, "deleted": int(deleted or 0), "cutoff_utc": cutoff.isoformat() + "Z"}
+    finally:
+        db.close()
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -10429,7 +10887,40 @@ async def list_trading_session_journal_trades(session_id: int, request: Request)
 
 
 @app.patch("/api/sessions/{session_id}/state")
-async def patch_trading_session_state(session_id: int, payload: TradingSessionStateUpdateIn, request: Request):
+async def patch_trading_session_state(session_id: int, request: Request):
+    # IMPORTANT: We deliberately DO NOT declare `payload: TradingSessionStateUpdateIn`
+    # in the signature — if we did, FastAPI would eagerly read + JSON-parse the
+    # body before entering this function, defeating the Content-Length guard.
+    # nginx allows up to 100 MB, so a malicious caller can POST a huge JSON
+    # that would otherwise burn RAM/CPU before our 16 MB limit rejects it.
+    try:
+        cl = int(request.headers.get("content-length", "0") or 0)
+    except Exception:
+        cl = 0
+    # Allow some headroom over the hard limit for JSON overhead / re-encoding.
+    _state_max_body = max(SESSION_STATE_HARD_LIMIT_BYTES * 2, 32 * 1024 * 1024)
+    if cl > _state_max_body:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Request body too large ({cl / 1_048_576:.1f} MB). "
+                f"Session state is capped at {SESSION_STATE_HARD_LIMIT_BYTES / 1_048_576:.0f} MB."
+            ),
+        )
+    # Read the body now that we know it's within a sane bound. If the client
+    # lied about Content-Length and streams more, we also truncate-check here.
+    raw = await request.body()
+    if len(raw) > _state_max_body:
+        raise HTTPException(status_code=413, detail="Request body too large")
+    try:
+        body_dict = json.loads(raw or b"{}")
+        if not isinstance(body_dict, dict):
+            raise ValueError("payload must be a JSON object")
+        payload = TradingSessionStateUpdateIn(**body_dict)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     user = _require_user(request)
     db = SessionLocal()
     try:
