@@ -2112,6 +2112,67 @@ class ReplaySystem {
         
     }
 
+    /**
+     * Resampled series index to align with the replay head for scrolling / visibility.
+     * Progressive replay always ends `chart.data` at the playhead → use the last row (never map with
+     * findIndex(t>=ts), which often snapped to bar 0). Full-session paused backtest paints all bars:
+     * then resolve the bar at/before replay time.
+     */
+    _resolveFocusResampledIndex(chartInstance = this.chart) {
+        const data = chartInstance && chartInstance.data;
+        if (!Array.isArray(data) || data.length === 0) return 0;
+        const n = data.length;
+
+        const panelOwnSeries =
+            chartInstance &&
+            chartInstance !== this.chart &&
+            Array.isArray(chartInstance._panelFullRawData) &&
+            chartInstance._panelFullRawData.length > 0;
+
+        if (panelOwnSeries) {
+            return n - 1;
+        }
+
+        let sliceEnd = 0;
+        try {
+            sliceEnd =
+                typeof this._getReplayChartSlicePrefixLength === 'function'
+                    ? this._getReplayChartSlicePrefixLength()
+                    : 0;
+        } catch (e) {
+            sliceEnd = 0;
+        }
+
+        const fullHistoryPaused =
+            this.isActive &&
+            this.showFullLoadedHistoryWhileReplay &&
+            !this.isPlaying &&
+            Array.isArray(this.fullRawData) &&
+            this.fullRawData.length > 0 &&
+            sliceEnd >= this.fullRawData.length;
+
+        if (!fullHistoryPaused) {
+            return n - 1;
+        }
+
+        let ts = Number.isFinite(this.replayTimestamp) ? this.replayTimestamp : null;
+        if (ts == null && Number.isFinite(this.currentIndex)) {
+            const rb =
+                this.fullRawData[
+                    Math.min(Math.max(0, this.currentIndex), this.fullRawData.length - 1)
+                ];
+            if (rb && Number.isFinite(rb.t)) ts = rb.t;
+        }
+        if (!Number.isFinite(ts)) return n - 1;
+
+        const idx =
+            typeof this._findLastRawIndexAtOrBefore === 'function'
+                ? this._findLastRawIndexAtOrBefore(data, ts)
+                : -1;
+        if (idx < 0) return 0;
+        return Math.min(idx, n - 1);
+    }
+
     getReplayAutoScrollState(chartInstance = this.chart) {
         if (!chartInstance || !Array.isArray(chartInstance.data)) return null;
 
@@ -2145,23 +2206,7 @@ class ReplaySystem {
             return null;
         }
 
-        let focusIdx = chartInstance.data.length - 1;
-        if (
-            this.isActive &&
-            Array.isArray(this.fullRawData) &&
-            this.fullRawData.length > 0 &&
-            chartInstance.data.length > 0
-        ) {
-            let ts = Number.isFinite(this.replayTimestamp) ? this.replayTimestamp : null;
-            if (ts == null && Number.isFinite(this.currentIndex)) {
-                const rb = this.fullRawData[Math.min(Math.max(0, this.currentIndex), this.fullRawData.length - 1)];
-                if (rb && Number.isFinite(rb.t)) ts = rb.t;
-            }
-            if (Number.isFinite(ts)) {
-                const di = chartInstance.data.findIndex((d) => Number(d.t) >= ts);
-                if (di >= 0) focusIdx = di;
-            }
-        }
+        const focusIdx = this._resolveFocusResampledIndex(chartInstance);
 
         // Same geometry as Chart.fitToView — pin candle `focusIdx` to the right edge (not index-based scroll).
         const padding = candleSpacing * 5;
@@ -4354,22 +4399,7 @@ class ReplaySystem {
             return true;
         }
 
-        let targetIndex = this.chart.data.length - 1;
-        if (
-            this.isActive &&
-            Array.isArray(this.fullRawData) &&
-            this.fullRawData.length > 0
-        ) {
-            let ts = Number.isFinite(this.replayTimestamp) ? this.replayTimestamp : null;
-            if (ts == null && Number.isFinite(this.currentIndex)) {
-                const rb = this.fullRawData[Math.min(Math.max(0, this.currentIndex), this.fullRawData.length - 1)];
-                if (rb && Number.isFinite(rb.t)) ts = rb.t;
-            }
-            if (Number.isFinite(ts)) {
-                const di = this.chart.data.findIndex((d) => Number(d.t) >= ts);
-                if (di >= 0) targetIndex = di;
-            }
-        }
+        const targetIndex = this._resolveFocusResampledIndex(this.chart);
 
         const spacing = this.chart.getCandleSpacing
             ? this.chart.getCandleSpacing()
