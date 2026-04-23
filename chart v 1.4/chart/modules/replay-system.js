@@ -4321,43 +4321,57 @@ class ReplaySystem {
     enableAutoScroll() {
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
-        
-        // Immediately hide the follow button
-        if (this.followBtn) {
-            this.followBtn.style.display = 'none';
-        }
-        
-        // Scroll to latest position
+
+        // Snap viewport to the same edge as replay auto-scroll (current bar on the right).
         this.updateChartData(true);
-        
-        // Update visual indicator after render completes
+
         requestAnimationFrame(() => {
+            if (typeof this.chart.constrainOffset === 'function') {
+                this.chart.constrainOffset();
+            }
+            this.chart.renderPending = true;
+            if (typeof this.chart.render === 'function') {
+                this.chart.render();
+            }
             this.updateAutoScrollIndicator();
         });
     }
 
     /**
-     * Check if the last candle is visible in the viewport
+     * Check if the "follow" target candle is visible in the viewport.
+     * During replay that is the current replay bar — not necessarily data[data.length-1]
+     * when the full session is painted (chronological end can be far to the right).
      */
     isLastCandleVisible() {
         if (!this.chart || !this.chart.data || this.chart.data.length === 0) {
             return true;
         }
-        
-        const lastIndex = this.chart.data.length - 1;
-        
-        // Use getVisibleEndIndex method if available, otherwise fall back to property
+
+        let targetIndex = this.chart.data.length - 1;
+        if (
+            this.isActive &&
+            Array.isArray(this.fullRawData) &&
+            this.fullRawData.length > 0
+        ) {
+            let ts = Number.isFinite(this.replayTimestamp) ? this.replayTimestamp : null;
+            if (ts == null && Number.isFinite(this.currentIndex)) {
+                const rb = this.fullRawData[Math.min(Math.max(0, this.currentIndex), this.fullRawData.length - 1)];
+                if (rb && Number.isFinite(rb.t)) ts = rb.t;
+            }
+            if (Number.isFinite(ts)) {
+                const di = this.chart.data.findIndex((d) => Number(d.t) >= ts);
+                if (di >= 0) targetIndex = di;
+            }
+        }
+
         let visibleEnd;
         if (typeof this.chart.getVisibleEndIndex === 'function') {
             visibleEnd = this.chart.getVisibleEndIndex();
         } else {
             visibleEnd = this.chart.visibleEndIndex || 0;
         }
-        
-        
-        // Last candle is visible if it's within the visible range (with small buffer)
-        const isVisible = visibleEnd >= (lastIndex - 1);
-        return isVisible;
+
+        return visibleEnd >= (targetIndex - 1);
     }
 
     /**
