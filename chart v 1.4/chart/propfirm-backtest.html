@@ -886,7 +886,7 @@
             }
         }
         
-        var DEFAULT_BACKTEST_PERIOD_MONTHS = 1;
+        var DEFAULT_BACKTEST_PERIOD_MONTHS = 12;
 
         function applyDefaultTestingPeriodBounds(firstDate, lastDate) {
             var startDateInput = document.getElementById('startDate');
@@ -926,7 +926,7 @@
                     firstDate.toLocaleString() +
                     ' — ' +
                     lastDate.toLocaleString() +
-                    '. Default: last month to latest (not the full range) — widen dates for more history.';
+                    '. Default: last year to latest (not the full range) — widen dates for more history.';
             }
         }
 

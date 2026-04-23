@@ -2418,8 +2418,8 @@ html.iframe-mode .bt-modal-footer {
             }
         }
 
-        /** Default testing window: one calendar month ending at min(now, latest bar in file). */
-        var DEFAULT_BACKTEST_PERIOD_MONTHS = 1;
+        /** Default testing window: twelve calendar months (one year) ending at min(now, latest bar in file). */
+        var DEFAULT_BACKTEST_PERIOD_MONTHS = 12;
 
         /**
          * Sets min/max from file bounds and defaults the chosen window to the most recent
@@ -2464,7 +2464,7 @@ html.iframe-mode .bt-modal-footer {
                     firstDate.toLocaleDateString() +
                     ' — ' +
                     lastDate.toLocaleDateString() +
-                    '. Default: last month to latest / today; widen dates for the full file.';
+                    '. Default: last year (~12 months to latest / today); widen dates for the full file.';
             }
         }
 

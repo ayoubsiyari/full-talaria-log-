@@ -2033,20 +2033,6 @@ class ReplaySystem {
         
         // Filter data and render
         this.updateChartData();
-
-        // First paint sometimes runs before chart canvas has width (loader/layout). fitToView / scroll skipped;
-        // re-run once dimensions exist so candles aren't off-screen until axis double‑click.
-        const self = this;
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                if (!self.isActive || !self.chart) return;
-                const m = self.chart.margin || { l: 0, r: 70 };
-                const cw = Math.max(0, (self.chart.w || 0) - (m.l || 0) - (m.r || 0));
-                if (cw > 0 && self.autoScrollEnabled) {
-                    self.updateChartData(true);
-                }
-            });
-        });
         
     }
 
@@ -2055,20 +2041,14 @@ class ReplaySystem {
      * Backtest draws the whole loaded session so resampled TF (e.g. 5m) is populated.
      */
     _getReplayChartSlicePrefixLength() {
-        const progressiveEnd = Math.max(this.currentIndex + 1, 1);
         if (
-            !this.showFullLoadedHistoryWhileReplay ||
-            !Array.isArray(this.fullRawData) ||
-            this.fullRawData.length === 0
+            this.showFullLoadedHistoryWhileReplay &&
+            Array.isArray(this.fullRawData) &&
+            this.fullRawData.length > 0
         ) {
-            return progressiveEnd;
+            return this.fullRawData.length;
         }
-        // Paused/scrubbing: paint the whole loaded session so higher TFs aren't empty (preview).
-        // Playing: progressive slice only — full resample every tick/frame was freezing tick + candle replay.
-        if (this.isPlaying) {
-            return progressiveEnd;
-        }
-        return this.fullRawData.length;
+        return Math.max(this.currentIndex + 1, 1);
     }
 
     /**
@@ -2112,98 +2092,6 @@ class ReplaySystem {
         
     }
 
-    /**
-     * Resampled series index to align with the replay head for scrolling / visibility.
-     * Progressive replay always ends `chart.data` at the playhead → use the last row (never map with
-     * findIndex(t>=ts), which often snapped to bar 0). Full-session paused backtest paints all bars:
-     * then resolve the bar at/before replay time.
-     */
-    _resolveFocusResampledIndex(chartInstance = this.chart) {
-        const data = chartInstance && chartInstance.data;
-        if (!Array.isArray(data) || data.length === 0) return 0;
-        const n = data.length;
-
-        const panelOwnSeries =
-            chartInstance &&
-            chartInstance !== this.chart &&
-            Array.isArray(chartInstance._panelFullRawData) &&
-            chartInstance._panelFullRawData.length > 0;
-
-        if (panelOwnSeries) {
-            return n - 1;
-        }
-
-        let sliceEnd = 0;
-        try {
-            sliceEnd =
-                typeof this._getReplayChartSlicePrefixLength === 'function'
-                    ? this._getReplayChartSlicePrefixLength()
-                    : 0;
-        } catch (e) {
-            sliceEnd = 0;
-        }
-
-        const fullHistoryPaused =
-            this.isActive &&
-            this.showFullLoadedHistoryWhileReplay &&
-            !this.isPlaying &&
-            Array.isArray(this.fullRawData) &&
-            this.fullRawData.length > 0 &&
-            sliceEnd >= this.fullRawData.length;
-
-        if (!fullHistoryPaused) {
-            return n - 1;
-        }
-
-        let ts = Number.isFinite(this.replayTimestamp) ? this.replayTimestamp : null;
-        if (ts == null && Number.isFinite(this.currentIndex)) {
-            const rb =
-                this.fullRawData[
-                    Math.min(Math.max(0, this.currentIndex), this.fullRawData.length - 1)
-                ];
-            if (rb && Number.isFinite(rb.t)) ts = rb.t;
-        }
-        if (!Number.isFinite(ts)) return n - 1;
-
-        const idx =
-            typeof this._findLastRawIndexAtOrBefore === 'function'
-                ? this._findLastRawIndexAtOrBefore(data, ts)
-                : -1;
-        if (idx < 0) return 0;
-        return Math.min(idx, n - 1);
-    }
-
-    /**
-     * Wall-clock ms for the replay toolbar / virtual-time events — aligned with what the chart shows
-     * on the current timeframe (resampled candle), not only the underlying raw bar at currentIndex.
-     */
-    _getReplayDisplayTimestampMs() {
-        if (this.animatingCandle && (this.tickProgress || 0) > 0 && this.animatingCandle.target) {
-            const tgt = this.animatingCandle.target;
-            if (tgt && Number.isFinite(tgt.t)) {
-                const elapsed = Number.isFinite(this.tickElapsedMs) ? this.tickElapsedMs : 0;
-                return tgt.t + elapsed;
-            }
-        }
-
-        if (this.chart && Array.isArray(this.chart.data) && this.chart.data.length > 0) {
-            const fi =
-                typeof this._resolveFocusResampledIndex === 'function'
-                    ? this._resolveFocusResampledIndex(this.chart)
-                    : this.chart.data.length - 1;
-            const dc = this.chart.data[Math.min(Math.max(0, fi), this.chart.data.length - 1)];
-            if (dc && Number.isFinite(dc.t)) return dc.t;
-        }
-
-        const currentBar =
-            Array.isArray(this.fullRawData) && this.fullRawData.length > 0
-                ? this.fullRawData[this.currentIndex]
-                : null;
-        if (currentBar && Number.isFinite(currentBar.t)) return currentBar.t;
-
-        return Number.isFinite(this.replayTimestamp) ? this.replayTimestamp : null;
-    }
-
     getReplayAutoScrollState(chartInstance = this.chart) {
         if (!chartInstance || !Array.isArray(chartInstance.data)) return null;
 
@@ -2232,30 +2120,10 @@ class ReplaySystem {
         const rightGapCandles = Math.max(configuredGapCandles, ratioGapCandles);
 
         const targetVisibleCandles = Math.max(1, numVisibleCandles - rightGapCandles);
-
-        if (chartAreaW <= 0 || chartInstance.w <= 0) {
-            return null;
-        }
-
-        const focusIdx = this._resolveFocusResampledIndex(chartInstance);
-
-        // Same geometry as Chart.fitToView — pin candle `focusIdx` to the right edge (not index-based scroll).
-        const padding = candleSpacing * 5;
-        const focusX = focusIdx * candleSpacing;
-        let offsetX = chartAreaW - focusX - padding;
-
-        const rightMarginCandles = Number.isFinite(chartInstance.timeScale?.rightOffsetCandles)
-            ? chartInstance.timeScale.rightOffsetCandles
-            : 5;
-        const rightMargin = Math.max(0, rightMarginCandles) * candleSpacing;
-        const maxOffset = chartAreaW - rightMargin;
-        const minOffset = -(chartInstance.data.length - 1) * candleSpacing;
-        offsetX = Math.max(minOffset, Math.min(maxOffset, offsetX));
-
-        const scrollPosition = Math.max(0, Math.round(-offsetX / candleSpacing));
+        const scrollPosition = Math.max(0, chartInstance.data.length - targetVisibleCandles);
 
         return {
-            offsetX,
+            offsetX: -scrollPosition * candleSpacing,
             numVisibleCandles,
             rightGapCandles,
             scrollPosition
@@ -2361,12 +2229,6 @@ class ReplaySystem {
         setTimeout(() => {
             this.chart.renderPending = true;
         }, 0);
-
-        queueMicrotask(() => {
-            if (typeof this.updateAutoScrollIndicator === 'function') {
-                this.updateAutoScrollIndicator();
-            }
-        });
         
         requestAnimationFrame(() => {
             this.chart.renderPending = true;
@@ -3328,12 +3190,6 @@ class ReplaySystem {
         this.chart.renderPending = true;
         this.chart.render();
 
-        queueMicrotask(() => {
-            if (typeof this.updateAutoScrollIndicator === 'function') {
-                this.updateAutoScrollIndicator();
-            }
-        });
-
         // Same as updateChartData: floating PnL / SL-TP logic must track the latest candle.
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
             this.chart.orderManager.updatePositions();
@@ -3343,6 +3199,16 @@ class ReplaySystem {
         if (!this._fastSyncCounter) this._fastSyncCounter = 0;
         if (++this._fastSyncCounter % 3 === 0) {
             this.syncPanelCharts();
+        }
+
+        // Keep follow/jump-to-latest button responsive in fast mode too.
+        // Throttle checks to avoid unnecessary work at high replay speeds.
+        if (!this.autoScrollEnabled) {
+            const now = performance.now();
+            if (!this._lastFollowIndicatorCheckTs || now - this._lastFollowIndicatorCheckTs >= 100) {
+                this._lastFollowIndicatorCheckTs = now;
+                this.updateAutoScrollIndicator();
+            }
         }
 
         if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function' && this.isActive) {
@@ -3713,12 +3579,7 @@ class ReplaySystem {
 
         let sliceForPanels;
 
-        if (
-            this.showFullLoadedHistoryWhileReplay &&
-            !this.isPlaying &&
-            Array.isArray(this.fullRawData) &&
-            this.fullRawData.length > 0
-        ) {
+        if (this.showFullLoadedHistoryWhileReplay && Array.isArray(this.fullRawData) && this.fullRawData.length > 0) {
             const base = this.fullRawData.slice();
             if (this.currentIndex >= 0 && this.currentIndex < base.length) {
                 base[this.currentIndex] = animatedCandle;
@@ -3793,12 +3654,7 @@ class ReplaySystem {
         };
 
         let slicedRaw;
-        if (
-            this.showFullLoadedHistoryWhileReplay &&
-            !this.isPlaying &&
-            Array.isArray(this.fullRawData) &&
-            this.fullRawData.length > 0
-        ) {
+        if (this.showFullLoadedHistoryWhileReplay && Array.isArray(this.fullRawData) && this.fullRawData.length > 0) {
             slicedRaw = this.fullRawData.slice();
             if (this.currentIndex >= 0 && this.currentIndex < slicedRaw.length) {
                 slicedRaw[this.currentIndex] = animatedCandle;
@@ -4370,12 +4226,18 @@ class ReplaySystem {
         }
 
         if (centerOnCandle && chart && Array.isArray(chart.data) && chart.data.length > 0) {
-            const st = this.getReplayAutoScrollState(chart);
-            if (st && Number.isFinite(st.offsetX)) {
-                chart.offsetX = st.offsetX;
+            const candleSpacing = typeof chart.getCandleSpacing === 'function'
+                ? chart.getCandleSpacing()
+                : (chart.candleWidth + (chart.candleGap || 2));
+            if (Number.isFinite(candleSpacing) && candleSpacing > 0) {
+                const m = chart.margin || { l: 0, r: 70 };
+                const chartAreaW = Math.max(0, (chart.w || 0) - (m.l || 0) - (m.r || 0));
+                const numVisible = Math.max(1, Math.floor(chartAreaW / candleSpacing));
+                const lastIdx = chart.data.length - 1;
+                const scrollPos = Math.max(0, lastIdx - Math.floor(numVisible * 0.7));
+                chart.offsetX = -scrollPos * candleSpacing;
                 if (typeof chart.constrainOffset === 'function') chart.constrainOffset();
-                chart.renderPending = true;
-                if (typeof chart.render === 'function') chart.render();
+                chart.render();
             }
         }
 
@@ -4404,51 +4266,43 @@ class ReplaySystem {
     enableAutoScroll() {
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
-
-        // Snap viewport to the same edge as replay auto-scroll (current bar on the right).
+        
+        // Immediately hide the follow button
+        if (this.followBtn) {
+            this.followBtn.style.display = 'none';
+        }
+        
+        // Scroll to latest position
         this.updateChartData(true);
-
+        
+        // Update visual indicator after render completes
         requestAnimationFrame(() => {
-            if (typeof this.chart.constrainOffset === 'function') {
-                this.chart.constrainOffset();
-            }
-            this.chart.renderPending = true;
-            if (typeof this.chart.render === 'function') {
-                this.chart.render();
-            }
             this.updateAutoScrollIndicator();
         });
     }
 
     /**
-     * Check if the "follow" target candle is visible in the viewport.
-     * During replay that is the current replay bar — not necessarily data[data.length-1]
-     * when the full session is painted (chronological end can be far to the right).
+     * Check if the last candle is visible in the viewport
      */
     isLastCandleVisible() {
         if (!this.chart || !this.chart.data || this.chart.data.length === 0) {
             return true;
         }
-
-        const targetIndex = this._resolveFocusResampledIndex(this.chart);
-
-        const spacing = this.chart.getCandleSpacing
-            ? this.chart.getCandleSpacing()
-            : (this.chart.candleWidth + (this.chart.candleGap || 2));
-        const m = this.chart.margin || { l: 0, r: 70 };
-        let xLeft;
-        if (typeof this.chart.dataIndexToPixel === 'function') {
-            xLeft = this.chart.dataIndexToPixel(targetIndex);
+        
+        const lastIndex = this.chart.data.length - 1;
+        
+        // Use getVisibleEndIndex method if available, otherwise fall back to property
+        let visibleEnd;
+        if (typeof this.chart.getVisibleEndIndex === 'function') {
+            visibleEnd = this.chart.getVisibleEndIndex();
         } else {
-            xLeft = m.l + targetIndex * spacing + (this.chart.offsetX || 0);
+            visibleEnd = this.chart.visibleEndIndex || 0;
         }
-        const xRight = xLeft + spacing;
-        const plotLeft = m.l;
-        const plotRight = this.chart.w - m.r;
-        // True axis overlap — the old test (xLeft <= plotRight + slack) stayed "visible" when the
-        // candle was entirely past the right edge, so the follow button never appeared after panning.
-        const epsilon = 1;
-        return xRight > plotLeft + epsilon && xLeft < plotRight - epsilon;
+        
+        
+        // Last candle is visible if it's within the visible range (with small buffer)
+        const isVisible = visibleEnd >= (lastIndex - 1);
+        return isVisible;
     }
 
     /**
@@ -4496,22 +4350,25 @@ class ReplaySystem {
             return;
         }
 
-        const displayTs = this._getReplayDisplayTimestampMs();
-        if (!Number.isFinite(displayTs)) {
+        const currentBar = this.fullRawData[this.currentIndex];
+        if (!currentBar || !currentBar.t) {
             return;
         }
 
         // Use timezone manager if available
         if (window.timezoneManager) {
-            const timeStr = window.timezoneManager.formatTime(displayTs, 'full');
+            const timeStr = window.timezoneManager.formatTime(currentBar.t, 'full');
             this.timeLabel.textContent = timeStr;
             try {
-                if (Number.isFinite(displayTs)) {
+                const ts = Number.isFinite(this.replayTimestamp)
+                    ? this.replayTimestamp
+                    : currentBar.t;
+                if (Number.isFinite(ts)) {
                     const sym = this.chart && this.chart.currentSymbol
                         ? String(this.chart.currentSymbol)
                         : '';
                     window.dispatchEvent(new CustomEvent('replayVirtualTimeChanged', {
-                        detail: { timestamp: displayTs, symbol: sym }
+                        detail: { timestamp: ts, symbol: sym }
                     }));
                 }
             } catch (e) { /* ignore */ }
@@ -4519,7 +4376,7 @@ class ReplaySystem {
         }
 
         // Fallback to local time
-        const date = new Date(displayTs);
+        const date = new Date(currentBar.t);
         
         // Get day of week abbreviation
         const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -4541,12 +4398,15 @@ class ReplaySystem {
 
         // Forex news panel: virtual time + symbol for period-matched headlines (TradingView-style)
         try {
-            if (Number.isFinite(displayTs)) {
+            const ts = Number.isFinite(this.replayTimestamp)
+                ? this.replayTimestamp
+                : (currentBar && currentBar.t);
+            if (Number.isFinite(ts)) {
                 const sym = this.chart && this.chart.currentSymbol
                     ? String(this.chart.currentSymbol)
                     : '';
                 window.dispatchEvent(new CustomEvent('replayVirtualTimeChanged', {
-                    detail: { timestamp: displayTs, symbol: sym }
+                    detail: { timestamp: ts, symbol: sym }
                 }));
             }
         } catch (e) { /* ignore */ }
@@ -4663,11 +4523,24 @@ class ReplaySystem {
             this.tickProgress = savedTickProgress;
             this.tickElapsedMs = savedTickElapsedMs;
             
-            // Align viewport with Chart.fitToView / replay auto-scroll — current bar at the right, not centered.
-            const autoSt = this.getReplayAutoScrollState(this.chart);
-            if (autoSt && Number.isFinite(autoSt.offsetX)) {
-                this.chart.offsetX = autoSt.offsetX;
+            // Find containing candle in resampled data (last candle with t <= replay ts)
+            // so timeframe switches never jump to a future candle.
+            const replayTsForMapping = Number.isFinite(savedReplayTimestamp)
+                ? savedReplayTimestamp
+                : (this.replayTimestamp ?? this.fullRawData[this.currentIndex]?.t ?? null);
+            let targetViewIndex = 0;
+            for (let i = 0; i < this.chart.data.length; i++) {
+                if (replayTsForMapping == null || this.chart.data[i].t <= replayTsForMapping) {
+                    targetViewIndex = i;
+                } else {
+                    break;
+                }
             }
+            
+            // Position view
+            const candleSpacing = this.chart.getCandleSpacing ? this.chart.getCandleSpacing() : 
+                                    (this.chart.candleWidth + (this.chart.candleGap || 2));
+            this.chart.offsetX = this.chart.w / 2 - (targetViewIndex * candleSpacing) - candleSpacing / 2;
             this.chart.priceOffset = savedPriceOffset;
             this.chart.priceZoom = savedPriceZoom;
             
