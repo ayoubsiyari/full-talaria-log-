@@ -2418,6 +2418,56 @@ html.iframe-mode .bt-modal-footer {
             }
         }
 
+        /** Default testing window: one calendar month ending at min(now, latest bar in file). */
+        var DEFAULT_BACKTEST_PERIOD_MONTHS = 1;
+
+        /**
+         * Sets min/max from file bounds and defaults the chosen window to the most recent
+         * DEFAULT_BACKTEST_PERIOD_MONTHS months ending at min(now, latest in file).
+         * Chart loads candles only between these dates until the user widens the range.
+         */
+        function applyDefaultTestingPeriodBounds(firstDate, lastDate) {
+            var startDateInput = document.getElementById('startDate');
+            var endDateInput = document.getElementById('endDate');
+            if (!startDateInput || !endDateInput) return;
+
+            var firstMs = firstDate.getTime();
+            var lastMs = lastDate.getTime();
+            var wallNow = Date.now();
+            var endMs = Math.min(wallNow, lastMs);
+            var end = new Date(endMs);
+
+            var start = new Date(endMs);
+            start.setMonth(start.getMonth() - DEFAULT_BACKTEST_PERIOD_MONTHS);
+
+            if (start.getTime() < firstMs) {
+                start = new Date(firstMs);
+            }
+            if (start.getTime() >= endMs) {
+                start = new Date(Math.max(firstMs, endMs - 86400000));
+            }
+
+            var minStr = firstDate.toISOString().slice(0, 16);
+            var maxStr = lastDate.toISOString().slice(0, 16);
+            startDateInput.min = minStr;
+            startDateInput.max = maxStr;
+            endDateInput.min = minStr;
+            endDateInput.max = maxStr;
+
+            startDateInput.value = start.toISOString().slice(0, 16);
+            endDateInput.value = end.toISOString().slice(0, 16);
+
+            var hintEl = document.getElementById('testingPeriodHint');
+            if (hintEl) {
+                hintEl.textContent =
+                    'Available data: ' +
+                    firstDate.toLocaleDateString() +
+                    ' — ' +
+                    lastDate.toLocaleDateString() +
+                    '. Default: last month (to latest / today), not the full file — widen dates to pull more history.';
+            }
+        }
+
         // Load date range from selected file
         async function loadDateRangeFromFile(fileId) {
             if (!fileId) {
@@ -2442,22 +2492,7 @@ html.iframe-mode .bt-modal-footer {
                                 const firstDate = new Date(metaStartTs);
                                 const lastDate = new Date(metaEndTs);
 
-                                const startDateInput = document.getElementById('startDate');
-                                const endDateInput = document.getElementById('endDate');
-
-                                startDateInput.min = firstDate.toISOString().slice(0, 16);
-                                startDateInput.max = lastDate.toISOString().slice(0, 16);
-                                endDateInput.min = firstDate.toISOString().slice(0, 16);
-                                endDateInput.max = lastDate.toISOString().slice(0, 16);
-
-                                // Set default values to full available span.
-                                startDateInput.value = firstDate.toISOString().slice(0, 16);
-                                endDateInput.value = lastDate.toISOString().slice(0, 16);
-
-                                const hintEl = document.getElementById('testingPeriodHint');
-                                if (hintEl) {
-                                    hintEl.textContent = 'Available data: ' + firstDate.toLocaleDateString() + ' — ' + lastDate.toLocaleDateString();
-                                }
+                                applyDefaultTestingPeriodBounds(firstDate, lastDate);
 
                                 console.log(`✅ Date range (meta): ${firstDate.toLocaleString()} to ${lastDate.toLocaleString()}`);
                                 return;
@@ -2643,25 +2678,9 @@ html.iframe-mode .bt-modal-footer {
                     }
                 }
                 
-                // Set min/max and default values
-                const startDateInput = document.getElementById('startDate');
-                const endDateInput = document.getElementById('endDate');
-                
-                startDateInput.min = firstDate.toISOString().slice(0, 16);
-                startDateInput.max = lastDate.toISOString().slice(0, 16);
-                endDateInput.min = firstDate.toISOString().slice(0, 16);
-                endDateInput.max = lastDate.toISOString().slice(0, 16);
-                
-                // Set default values (first date to last date)
-                startDateInput.value = firstDate.toISOString().slice(0, 16);
-                endDateInput.value = lastDate.toISOString().slice(0, 16);
-                
+                applyDefaultTestingPeriodBounds(firstDate, lastDate);
+
                 console.log(`✅ Date range: ${firstDate.toLocaleString()} to ${lastDate.toLocaleString()}`);
-                
-                var hintEl2 = document.getElementById('testingPeriodHint');
-                if (hintEl2) {
-                    hintEl2.textContent = 'Available data: ' + firstDate.toLocaleDateString() + ' — ' + lastDate.toLocaleDateString();
-                }
                 
             } catch (error) {
                 console.error('❌ Error loading date range:', error);
