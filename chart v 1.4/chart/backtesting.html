@@ -598,59 +598,45 @@ input.mono {
 .file-select-area {
   flex: 1;
   position: relative;
-  border: 1px solid rgba(139, 92, 246, 0.22);
-  border-radius: 10px;
-  padding: 10px 14px;
-  padding-right: 38px;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 12px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
   cursor: pointer;
   transition: all 0.15s;
   min-height: 44px;
-  background: rgba(15, 15, 22, 0.85);
 }
 
 .file-select-area:hover {
-  border-color: rgba(167, 139, 250, 0.45);
-  background: rgba(139, 92, 246, 0.06);
-}
-
-.bt-asset-trigger-chevron {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #64748b;
-  pointer-events: none;
-  display: flex;
-}
-
-.bt-asset-trigger-chevron svg {
-  transition: transform 0.18s ease;
-}
-
-.file-select-area.bt-asset-trigger[aria-expanded='true'] .bt-asset-trigger-chevron svg {
-  transform: rotate(180deg);
-}
-
-.file-select-area.bt-asset-trigger[aria-expanded='true'] .bt-asset-trigger-chevron {
-  color: #a78bfa;
-}
-
-.bt-asset-sep {
-  color: #64748b;
-  font-weight: 500;
+  border-color: rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.03);
 }
 
 .file-select-text {
-  font-size: 13px;
-  color: #e2e8f0;
+  font-size: 12px;
+  color: #475569;
   flex: 1;
   min-width: 0;
   padding-right: 8px;
+}
+
+.file-select-btn {
+  padding: 5px 12px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 6px;
+  color: #60a5fa;
+  font-size: 11px;
   font-weight: 500;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  flex-shrink: 0;
+}
+
+.file-select-btn:hover {
+  background: rgba(59, 130, 246, 0.16);
 }
 
 .file-refresh-btn {
@@ -679,8 +665,9 @@ input.mono {
   top: 100%;
   left: 0;
   right: 0;
-  max-height: none;
-  overflow: visible;
+  max-height: 260px;
+  overflow-x: hidden;
+  overflow-y: auto;
   z-index: 200;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
@@ -688,144 +675,13 @@ input.mono {
 
 #fileDropdown {
   display: none;
-  background: #0a0a10 !important;
-  border: 1px solid rgba(139, 92, 246, 0.28) !important;
+  background: #080c14 !important;
+  border: 1px solid rgba(59, 130, 246, 0.22) !important;
   border-radius: 12px !important;
   margin-top: 8px !important;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.72) !important;
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.65) !important;
   scrollbar-width: thin;
-  scrollbar-color: rgba(139, 92, 246, 0.35) transparent;
-}
-
-.bt-asset-picker-inner {
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.bt-asset-search-input {
-  width: 100%;
-  box-sizing: border-box;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 13px;
-  color: #f1f5f9;
-  font-family: 'DM Sans', sans-serif;
-  outline: none;
-}
-
-.bt-asset-search-input::placeholder {
-  color: #475569;
-}
-
-.bt-asset-search-input:focus {
-  border-color: rgba(167, 139, 250, 0.45);
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
-}
-
-.bt-asset-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.bt-asset-tab {
-  padding: 6px 11px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.06);
-  color: #94a3b8;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-  font-family: 'DM Sans', sans-serif;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-
-.bt-asset-tab:hover {
-  background: rgba(255, 255, 255, 0.09);
-  color: #e2e8f0;
-}
-
-.bt-asset-tab.bt-asset-tab--active {
-  background: rgba(91, 33, 182, 0.45);
-  border-color: rgba(167, 139, 250, 0.35);
-  color: #f5f3ff;
-}
-
-.bt-asset-list.bt-file-list {
-  max-height: 300px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 4px 2px 6px;
-  margin: 0 -2px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(139, 92, 246, 0.35) transparent;
-}
-
-.bt-asset-row-label {
-  padding: 11px 12px !important;
-}
-
-.bt-asset-row-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
-}
-
-.bt-asset-row-line {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  flex-wrap: wrap;
-  width: 100%;
-}
-
-.bt-asset-symbol {
-  color: #f8fafc;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-.bt-asset-desc {
-  color: #cbd5e1;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.bt-asset-row-meta {
-  color: #64748b;
-  font-size: 11px;
-  white-space: nowrap;
-  flex-shrink: 0;
-  margin-left: auto;
-  padding-left: 10px;
-}
-
-.bt-asset-row-wrap {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-}
-
-.bt-file-dropdown-label.bt-asset-row-label {
-  align-items: flex-start;
-}
-
-.bt-file-dropdown-label.bt-asset-row-label .bt-file-checkbox {
-  margin-top: 3px;
+  scrollbar-color: rgba(59, 130, 246, 0.35) transparent;
 }
 
 #fileDropdown::-webkit-scrollbar {
@@ -1373,26 +1229,13 @@ html.iframe-mode .bt-modal-footer {
                                 </div>
                                 <div class="file-select-row">
                                     <div style="flex:1;position:relative;">
-                                        <div class="file-select-area bt-asset-trigger" id="fileAreaTrigger" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false">
+                                        <div class="file-select-area" id="fileAreaTrigger" role="button" tabindex="0">
                                             <span class="file-select-text" id="fileAreaSummary">No files selected — select one or more datasets to backtest</span>
-                                            <span class="bt-asset-trigger-chevron" aria-hidden="true">
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-                                            </span>
+                                            <button type="button" id="fileSelectBtn" class="file-select-btn">Browse files</button>
                                         </div>
-                                        <div id="fileDropdown" class="bt-file-dropdown bt-asset-picker-dropdown" style="display: none;">
-                                            <div class="bt-asset-picker-inner">
-                                                <input type="text" id="assetSearchInput" class="bt-asset-search-input" placeholder="Search symbol or name..." autocomplete="off" spellcheck="false">
-                                                <div class="bt-asset-tabs" role="tablist" aria-label="Instrument category">
-                                                    <button type="button" class="bt-asset-tab" data-asset-tab="recent" role="tab">Recently used</button>
-                                                    <button type="button" class="bt-asset-tab bt-asset-tab--active" data-asset-tab="all" role="tab">All</button>
-                                                    <button type="button" class="bt-asset-tab" data-asset-tab="Futures" role="tab">Futures</button>
-                                                    <button type="button" class="bt-asset-tab" data-asset-tab="Forex" role="tab">Forex</button>
-                                                    <button type="button" class="bt-asset-tab" data-asset-tab="Stocks" role="tab">Stocks</button>
-                                                    <button type="button" class="bt-asset-tab" data-asset-tab="Crypto" role="tab">Crypto</button>
-                                                </div>
-                                                <div id="fileList" class="bt-file-list bt-asset-list">
-                                                    <div style="color: #64748b; padding: 12px; text-align: center;">Loading files...</div>
-                                                </div>
+                                        <div id="fileDropdown" class="bt-file-dropdown" style="display: none;">
+                                            <div id="fileList" class="bt-file-list">
+                                                <div style="color: #64748b; padding: 12px; text-align: center;">Loading files...</div>
                                             </div>
                                         </div>
                                     </div>
@@ -2095,292 +1938,42 @@ html.iframe-mode .bt-modal-footer {
         // Selected files array
         let selectedFilesArray = [];
         let availableFilesCache = [];
-        var BT_RECENT_LS = 'bt_backtest_recent_file_ids_v1';
-        var assetFilterTab = 'all';
-        var assetSearchStr = '';
-        var fileMetaHints = {};
-        var updateFileListDebounceTimer = null;
-        var metaPrefetchTimer = null;
-        var metaRequestedIds = new Set();
-
-        function escapeHtml(s) {
-            if (s == null) return '';
-            return String(s)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;');
-        }
-
-        function readRecentFileIds() {
-            try {
-                var raw = localStorage.getItem(BT_RECENT_LS);
-                var arr = raw ? JSON.parse(raw) : [];
-                return Array.isArray(arr) ? arr.map(function (x) { return String(x); }) : [];
-            } catch (e) {
-                return [];
-            }
-        }
-
-        function pushRecentFileId(fileId) {
-            try {
-                var sid = String(fileId);
-                var arr = readRecentFileIds().filter(function (id) { return id !== sid; });
-                arr.unshift(sid);
-                arr = arr.slice(0, 24);
-                localStorage.setItem(BT_RECENT_LS, JSON.stringify(arr));
-            } catch (e) {
-                /* ignore */
-            }
-        }
-
-        function formatHistoryDate(ms) {
-            if (ms == null || !Number.isFinite(ms)) return '';
-            try {
-                return new Date(ms).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                });
-            } catch (e) {
-                return '';
-            }
-        }
-
-        function describeInstrument(file) {
-            var raw = file.original_name || file.name || file.filename || '';
-            var pair = cleanPairName(raw);
-            var cat = classifyFile(file);
-            var token = String(pair || '').replace('/', '').toUpperCase();
-
-            var CUR_NAMES = {
-                USD: 'US Dollar',
-                EUR: 'Euro',
-                GBP: 'British Pound',
-                JPY: 'Japanese Yen',
-                AUD: 'Australian Dollar',
-                NZD: 'New Zealand Dollar',
-                CAD: 'Canadian Dollar',
-                CHF: 'Swiss Franc',
-                HKD: 'Hong Kong Dollar',
-                SGD: 'Singapore Dollar',
-                SEK: 'Swedish Krona',
-                NOK: 'Norwegian Krone',
-                DKK: 'Danish Krone',
-                ZAR: 'South African Rand',
-                TRY: 'Turkish Lira',
-                MXN: 'Mexican Peso',
-                CNY: 'Chinese Yuan',
-                XAU: 'Gold',
-                XAG: 'Silver',
-                BTC: 'Bitcoin',
-                ETH: 'Ethereum',
-            };
-
-            var FUT_NAMES = {
-                '6A': 'Australian Dollar Futures',
-                '6B': 'British Pound Futures',
-                '6C': 'Canadian Dollar Futures',
-                '6E': 'Euro FX Futures',
-                '6J': 'Japanese Yen Futures',
-                '6S': 'Swiss Franc Futures',
-                '6N': 'New Zealand Dollar Futures',
-                ES: 'E-mini S&P 500 Futures',
-                NQ: 'E-mini Nasdaq-100 Futures',
-                YM: 'E-mini Dow Futures',
-                RTY: 'E-mini Russell 2000 Futures',
-                MES: 'Micro E-mini S&P 500 Futures',
-                MNQ: 'Micro E-mini Nasdaq Futures',
-                M2K: 'Micro E-mini Russell Futures',
-                CL: 'Crude Oil Futures',
-                GC: 'Gold Futures',
-                SI: 'Silver Futures',
-                NG: 'Natural Gas Futures',
-                ZB: '30-Year T-Bond Futures',
-                ZN: '10-Year T-Note Futures',
-                MCL: 'Micro Crude Oil Futures',
-                MGC: 'Micro Gold Futures',
-                MSI: 'Micro Silver Futures',
-                HG: 'Copper Futures',
-            };
-
-            if (cat === 'Stocks') {
-                return '';
-            }
-            if (cat === 'Futures') {
-                return FUT_NAMES[token] || 'Futures contract';
-            }
-            if (cat === 'Forex' && token.length === 6) {
-                var base = token.slice(0, 3);
-                var quote = token.slice(3, 6);
-                var bn = CUR_NAMES[base];
-                var qn = CUR_NAMES[quote];
-                if (bn && qn) {
-                    return bn + ' / ' + qn;
-                }
-                return 'Forex';
-            }
-            if (cat === 'Crypto') {
-                if (pair.indexOf('/') >= 0) {
-                    var halves = pair.split('/');
-                    var hb = CUR_NAMES[halves[0].toUpperCase()] || halves[0];
-                    var hq = CUR_NAMES[halves[1].toUpperCase()] || halves[1];
-                    return hb + ' / ' + hq + ' (Crypto)';
-                }
-                return 'Cryptocurrency';
-            }
-            return '';
-        }
-
-        function getFilteredDatasetFiles() {
-            if (!availableFilesCache.length) return [];
-
-            var q = (assetSearchStr || '').trim().toLowerCase();
-            var tab = assetFilterTab || 'all';
-
-            function matchesQuery(file) {
-                if (!q) return true;
-                var rawName = file.original_name || file.name || file.filename || '';
-                var pair = cleanPairName(rawName).toLowerCase();
-                var raw = rawName.toLowerCase();
-                var desc = describeInstrument(file).toLowerCase();
-                return pair.indexOf(q) >= 0 || raw.indexOf(q) >= 0 || desc.indexOf(q) >= 0;
-            }
-
-            if (tab === 'recent') {
-                var order = readRecentFileIds();
-                var out = [];
-                order.forEach(function (rid) {
-                    var f = findCachedFileById(rid);
-                    if (f && matchesQuery(f)) out.push(f);
-                });
-                return out;
-            }
-
-            var pool = availableFilesCache.filter(matchesQuery);
-            if (tab === 'all') return pool;
-
-            return pool.filter(function (f) {
-                return classifyFile(f) === tab;
-            });
-        }
-
-        function schedulePrefetchMetaForVisible() {
-            if (metaPrefetchTimer) clearTimeout(metaPrefetchTimer);
-            metaPrefetchTimer = setTimeout(function () {
-                var files = getFilteredDatasetFiles().slice(0, 40);
-                files.slice(0, 16).forEach(function (file) {
-                    var id = file.id;
-                    if (metaRequestedIds.has(id)) return;
-                    metaRequestedIds.add(id);
-                    fetch('/api/file/' + encodeURIComponent(id) + '/meta')
-                        .then(function (r) {
-                            return r.ok ? r.json() : null;
-                        })
-                        .then(function (meta) {
-                            if (!meta || meta.start_ts == null) {
-                                fileMetaHints[id] = { start_ts: null };
-                            } else {
-                                var ts = normalizeEpochMs(meta.start_ts);
-                                fileMetaHints[id] = { start_ts: ts };
-                            }
-                            if (updateFileListDebounceTimer) clearTimeout(updateFileListDebounceTimer);
-                            updateFileListDebounceTimer = setTimeout(function () {
-                                updateFileListUI();
-                            }, 50);
-                        })
-                        .catch(function () {
-                            fileMetaHints[id] = { start_ts: null };
-                        });
-                });
-            }, 120);
-        }
-
+        
         // Initialize file dropdown when DOM is ready
         function initFileDropdown() {
-            var fileDropdown = document.getElementById('fileDropdown');
-            var fileAreaTrigger = document.getElementById('fileAreaTrigger');
+            const fileSelectBtn = document.getElementById('fileSelectBtn');
+            const fileDropdown = document.getElementById('fileDropdown');
+            const fileAreaTrigger = document.getElementById('fileAreaTrigger');
 
-            if (!fileDropdown) {
+            if (!fileSelectBtn || !fileDropdown) {
                 console.log('File dropdown elements not found, retrying...');
                 setTimeout(initFileDropdown, 100);
                 return;
             }
 
-            function setExpanded(open) {
-                if (fileAreaTrigger) {
-                    fileAreaTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
-                }
-            }
-
             function toggleFileDropdown(e) {
                 if (e) e.stopPropagation();
-                var open = fileDropdown.style.display === 'none';
-                fileDropdown.style.display = open ? 'block' : 'none';
-                setExpanded(open);
-                if (open) {
-                    updateFileListUI();
-                    schedulePrefetchMetaForVisible();
-                    var searchEl = document.getElementById('assetSearchInput');
-                    if (searchEl) {
-                        setTimeout(function () {
-                            searchEl.focus();
-                            searchEl.select();
-                        }, 0);
-                    }
-                }
+                fileDropdown.style.display = fileDropdown.style.display === 'none' ? 'block' : 'none';
             }
+
+            fileSelectBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                toggleFileDropdown(e);
+            });
 
             if (fileAreaTrigger) {
                 fileAreaTrigger.addEventListener('click', function (e) {
+                    if (e.target === fileSelectBtn || (fileSelectBtn && fileSelectBtn.contains(e.target))) return;
                     toggleFileDropdown(e);
-                });
-                fileAreaTrigger.addEventListener('keydown', function (e) {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        toggleFileDropdown(e);
-                    }
-                });
-            }
-
-            var searchInput = document.getElementById('assetSearchInput');
-            if (searchInput && !searchInput._btBound) {
-                searchInput._btBound = true;
-                searchInput.addEventListener('input', function (e) {
-                    assetSearchStr = e.target.value || '';
-                    updateFileListUI();
-                    schedulePrefetchMetaForVisible();
-                });
-                searchInput.addEventListener('click', function (e) {
-                    e.stopPropagation();
-                });
-            }
-
-            var tabBar = document.querySelector('.bt-asset-tabs');
-            if (tabBar && !tabBar._btBound) {
-                tabBar._btBound = true;
-                tabBar.addEventListener('click', function (e) {
-                    var btn = e.target.closest('[data-asset-tab]');
-                    if (!btn) return;
-                    e.stopPropagation();
-                    var t = btn.getAttribute('data-asset-tab');
-                    if (!t) return;
-                    assetFilterTab = t;
-                    tabBar.querySelectorAll('[data-asset-tab]').forEach(function (b) {
-                        b.classList.toggle('bt-asset-tab--active', b.getAttribute('data-asset-tab') === t);
-                    });
-                    updateFileListUI();
-                    schedulePrefetchMetaForVisible();
                 });
             }
 
             document.addEventListener('click', function (e) {
-                var fileArea = document.getElementById('fileAreaTrigger');
+                const fileArea = document.getElementById('fileAreaTrigger');
                 if (fileDropdown.contains(e.target) || (fileArea && fileArea.contains(e.target))) {
                     return;
                 }
                 fileDropdown.style.display = 'none';
-                setExpanded(false);
             });
 
             loadAvailableFiles();
@@ -2417,7 +2010,6 @@ html.iframe-mode .bt-modal-footer {
                     return;
                 }
                 selectedFilesArray.push({ id: fileId, name: fileName });
-                pushRecentFileId(fileId);
             } else {
                 selectedFilesArray.splice(index, 1);
             }
@@ -2689,32 +2281,34 @@ html.iframe-mode .bt-modal-footer {
 
         function updateFileListUI() {
             const fileList = document.getElementById('fileList');
-            if (!fileList) return;
             if (availableFilesCache.length === 0) return;
 
+            // Detect duplicate pair names to add differentiators
             const pairCounts = {};
-            availableFilesCache.forEach(function (file) {
+            availableFilesCache.forEach(file => {
                 const raw = file.original_name || file.name || file.filename || '';
                 const pair = cleanPairName(raw);
                 pairCounts[pair] = (pairCounts[pair] || 0) + 1;
             });
 
-            const lockedGroup = selectionLockedGroup();
-            const visible = getFilteredDatasetFiles();
+            // Group files by asset class so the dropdown shows
+            //   Futures → Crypto → Forex → Stocks → Other
+            // sections (empty groups are skipped). Within a group the existing
+            // alphabetical order from availableFilesCache is preserved.
+            const GROUP_ORDER = ['Futures', 'Crypto', 'Forex', 'Stocks', 'Other'];
+            const groups = { Futures: [], Crypto: [], Forex: [], Stocks: [], Other: [] };
+            availableFilesCache.forEach(function (file) {
+                const g = classifyFile(file);
+                (groups[g] || groups.Other).push(file);
+            });
 
-            if (assetFilterTab === 'recent' && visible.length === 0) {
-                fileList.innerHTML =
-                    '<div style="color:#64748b;padding:18px;text-align:center;font-size:12px;line-height:1.5;">No recently used instruments yet.<br/><span style="opacity:0.85;">Choose datasets under <strong>All</strong> — recent picks appear here.</span></div>';
-                return;
-            }
+            const lockedGroup = selectionLockedGroup();
 
             function renderRow(file) {
-                const isSelected = selectedFilesArray.some(function (f) {
-                    return sameFileId(f.id, file.id);
-                });
+                const isSelected = selectedFilesArray.some(function (f) { return sameFileId(f.id, file.id); });
                 const fileGroup = classifyFile(file);
                 const crossLocked = Boolean(lockedGroup && !isSelected && fileGroup !== lockedGroup);
-                const rawName = file.original_name || file.name || file.filename || file.symbol || 'File ' + file.id;
+                const rawName = file.original_name || file.name || file.filename || file.symbol || ('File ' + file.id);
                 const pairName = cleanPairName(rawName);
                 const rows = file.row_count ? formatRowCount(file.row_count) : '';
                 const hasDupes = pairCounts[pairName] > 1;
@@ -2727,54 +2321,42 @@ html.iframe-mode .bt-modal-footer {
                 const lockedTitle = crossLocked
                     ? ' title="Only one asset group per session — clear selection to switch (e.g. Futures vs Forex)."'
                     : '';
-                const desc = describeInstrument(file);
-                const primaryLine =
-                    '<span class="bt-asset-symbol">' +
-                    escapeHtml(pairName) +
-                    '</span>' +
-                    (desc
-                        ? '<span class="bt-asset-sep"> - </span><span class="bt-asset-desc">' +
-                          escapeHtml(desc) +
-                          '</span>'
-                        : '');
-                const hint = fileMetaHints[file.id];
-                var metaRight = '';
-                if (hint && hint.start_ts != null) {
-                    metaRight = '(from ' + formatHistoryDate(hint.start_ts) + ')';
-                } else if (rows) {
-                    metaRight = rows + ' bars';
-                }
                 return (
-                    '<label class="' +
-                    labelCls +
-                    ' bt-asset-row-label"' +
-                    lockedTitle +
-                    '>' +
+                    '<label class="' + labelCls + '"' + lockedTitle + '>' +
                     '<input type="checkbox" class="bt-file-checkbox"' +
                     (isSelected ? ' checked' : '') +
                     (crossLocked ? ' disabled' : '') +
-                    ' onchange="toggleFileSelection(\'' +
-                    file.id +
-                    "', '" +
-                    safeName +
-                    "')\">" +
-                    '<div class="bt-asset-row-wrap">' +
-                    '<div class="bt-asset-row-main">' +
-                    '<div class="bt-asset-row-line">' +
-                    primaryLine +
-                    '</div>' +
-                    '</div>' +
-                    '<span class="bt-asset-row-meta">' +
-                    escapeHtml(metaRight) +
-                    '</span>' +
+                    ' onchange="toggleFileSelection(\'' + file.id + '\', \'' + safeName + '\')">' +
+                    '<div class="bt-file-row-main">' +
+                    '<span class="bt-file-row-name">' + pairName + '</span>' +
+                    '<span class="bt-file-row-meta">' + (rows ? rows + ' candles' : '') + '</span>' +
                     '</div></label>'
                 );
             }
 
-            fileList.innerHTML =
-                visible.length > 0
-                    ? visible.map(renderRow).join('')
-                    : '<div style="color:#64748b;padding:16px;text-align:center;font-size:12px;">No matching instruments.</div>';
+            const html = GROUP_ORDER
+                .filter(function (g) { return groups[g] && groups[g].length > 0; })
+                .map(function (g) {
+                    const header = (
+                        '<div class="bt-file-group-header" ' +
+                        'style="padding:6px 12px;margin-top:4px;' +
+                        'font-size:10px;font-weight:700;letter-spacing:0.08em;' +
+                        'text-transform:uppercase;color:#94a3b8;' +
+                        // Opaque background + border so rows don't bleed through
+                        // the sticky header when the user scrolls the list.
+                        'background:#0b1220;' +
+                        'border-top:1px solid rgba(148,163,184,0.18);' +
+                        'border-bottom:1px solid rgba(148,163,184,0.18);' +
+                        'box-shadow:0 1px 0 rgba(0,0,0,0.4);' +
+                        'position:sticky;top:0;z-index:5;">' +
+                        g + ' <span style="opacity:0.6;font-weight:500;">· ' + groups[g].length + '</span>' +
+                        '</div>'
+                    );
+                    return header + groups[g].map(renderRow).join('');
+                })
+                .join('');
+
+            fileList.innerHTML = html;
         }
         
         // Load available files on page load
@@ -2827,64 +2409,12 @@ html.iframe-mode .bt-modal-footer {
                 });
                 
                 availableFilesCache = files;
-                fileMetaHints = {};
-                metaRequestedIds.clear();
                 updateFileListUI();
                 
                 console.log(`✅ Successfully loaded ${files.length} files`);
             } catch (error) {
                 console.error('❌ Error loading files:', error);
                 fileList.innerHTML = '<div style="color: #ef4444; padding: 12px; text-align: center;">Error loading files - Click refresh</div>';
-            }
-        }
-
-        /** Default testing window: one calendar month ending at min(now, latest bar in file). */
-        var DEFAULT_BACKTEST_PERIOD_MONTHS = 1;
-
-        /**
-         * Sets min/max from file bounds and defaults the chosen window to the most recent
-         * DEFAULT_BACKTEST_PERIOD_MONTHS months ending at min(now, latest in file).
-         * Chart loads candles only between these dates until the user widens the range.
-         */
-        function applyDefaultTestingPeriodBounds(firstDate, lastDate) {
-            var startDateInput = document.getElementById('startDate');
-            var endDateInput = document.getElementById('endDate');
-            if (!startDateInput || !endDateInput) return;
-
-            var firstMs = firstDate.getTime();
-            var lastMs = lastDate.getTime();
-            var wallNow = Date.now();
-            var endMs = Math.min(wallNow, lastMs);
-            var end = new Date(endMs);
-
-            var start = new Date(endMs);
-            start.setMonth(start.getMonth() - DEFAULT_BACKTEST_PERIOD_MONTHS);
-
-            if (start.getTime() < firstMs) {
-                start = new Date(firstMs);
-            }
-            if (start.getTime() >= endMs) {
-                start = new Date(Math.max(firstMs, endMs - 86400000));
-            }
-
-            var minStr = firstDate.toISOString().slice(0, 16);
-            var maxStr = lastDate.toISOString().slice(0, 16);
-            startDateInput.min = minStr;
-            startDateInput.max = maxStr;
-            endDateInput.min = minStr;
-            endDateInput.max = maxStr;
-
-            startDateInput.value = start.toISOString().slice(0, 16);
-            endDateInput.value = end.toISOString().slice(0, 16);
-
-            var hintEl = document.getElementById('testingPeriodHint');
-            if (hintEl) {
-                hintEl.textContent =
-                    'Available data: ' +
-                    firstDate.toLocaleDateString() +
-                    ' — ' +
-                    lastDate.toLocaleDateString() +
-                    '. Default: last month (to latest / today), not the full file — widen dates to pull more history.';
             }
         }
 
@@ -2912,7 +2442,22 @@ html.iframe-mode .bt-modal-footer {
                                 const firstDate = new Date(metaStartTs);
                                 const lastDate = new Date(metaEndTs);
 
-                                applyDefaultTestingPeriodBounds(firstDate, lastDate);
+                                const startDateInput = document.getElementById('startDate');
+                                const endDateInput = document.getElementById('endDate');
+
+                                startDateInput.min = firstDate.toISOString().slice(0, 16);
+                                startDateInput.max = lastDate.toISOString().slice(0, 16);
+                                endDateInput.min = firstDate.toISOString().slice(0, 16);
+                                endDateInput.max = lastDate.toISOString().slice(0, 16);
+
+                                // Set default values to full available span.
+                                startDateInput.value = firstDate.toISOString().slice(0, 16);
+                                endDateInput.value = lastDate.toISOString().slice(0, 16);
+
+                                const hintEl = document.getElementById('testingPeriodHint');
+                                if (hintEl) {
+                                    hintEl.textContent = 'Available data: ' + firstDate.toLocaleDateString() + ' — ' + lastDate.toLocaleDateString();
+                                }
 
                                 console.log(`✅ Date range (meta): ${firstDate.toLocaleString()} to ${lastDate.toLocaleString()}`);
                                 return;
@@ -3098,9 +2643,25 @@ html.iframe-mode .bt-modal-footer {
                     }
                 }
                 
-                applyDefaultTestingPeriodBounds(firstDate, lastDate);
-
+                // Set min/max and default values
+                const startDateInput = document.getElementById('startDate');
+                const endDateInput = document.getElementById('endDate');
+                
+                startDateInput.min = firstDate.toISOString().slice(0, 16);
+                startDateInput.max = lastDate.toISOString().slice(0, 16);
+                endDateInput.min = firstDate.toISOString().slice(0, 16);
+                endDateInput.max = lastDate.toISOString().slice(0, 16);
+                
+                // Set default values (first date to last date)
+                startDateInput.value = firstDate.toISOString().slice(0, 16);
+                endDateInput.value = lastDate.toISOString().slice(0, 16);
+                
                 console.log(`✅ Date range: ${firstDate.toLocaleString()} to ${lastDate.toLocaleString()}`);
+                
+                var hintEl2 = document.getElementById('testingPeriodHint');
+                if (hintEl2) {
+                    hintEl2.textContent = 'Available data: ' + firstDate.toLocaleDateString() + ' — ' + lastDate.toLocaleDateString();
+                }
                 
             } catch (error) {
                 console.error('❌ Error loading date range:', error);

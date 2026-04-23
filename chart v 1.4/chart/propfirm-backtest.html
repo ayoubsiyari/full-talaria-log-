@@ -886,50 +886,6 @@
             }
         }
         
-        var DEFAULT_BACKTEST_PERIOD_MONTHS = 1;
-
-        function applyDefaultTestingPeriodBounds(firstDate, lastDate) {
-            var startDateInput = document.getElementById('startDate');
-            var endDateInput = document.getElementById('endDate');
-            if (!startDateInput || !endDateInput) return;
-
-            var firstMs = firstDate.getTime();
-            var lastMs = lastDate.getTime();
-            var wallNow = Date.now();
-            var endMs = Math.min(wallNow, lastMs);
-            var end = new Date(endMs);
-
-            var start = new Date(endMs);
-            start.setMonth(start.getMonth() - DEFAULT_BACKTEST_PERIOD_MONTHS);
-
-            if (start.getTime() < firstMs) {
-                start = new Date(firstMs);
-            }
-            if (start.getTime() >= endMs) {
-                start = new Date(Math.max(firstMs, endMs - 86400000));
-            }
-
-            var minStr = firstDate.toISOString().slice(0, 16);
-            var maxStr = lastDate.toISOString().slice(0, 16);
-            startDateInput.min = minStr;
-            startDateInput.max = maxStr;
-            endDateInput.min = minStr;
-            endDateInput.max = maxStr;
-
-            startDateInput.value = start.toISOString().slice(0, 16);
-            endDateInput.value = end.toISOString().slice(0, 16);
-
-            var hintEl = document.getElementById('testingPeriodHint');
-            if (hintEl) {
-                hintEl.textContent =
-                    'Available data in file: ' +
-                    firstDate.toLocaleString() +
-                    ' — ' +
-                    lastDate.toLocaleString() +
-                    '. Default: last month to latest (not the full range) — widen dates for more history.';
-            }
-        }
-
         // Load date range from selected file
         async function loadDateRangeFromFile(fileId) {
             if (!fileId) return;
@@ -1077,12 +1033,26 @@
                     }
                 }
                 
-                var startDateInput = document.getElementById('startDate');
-                var endDateInput = document.getElementById('endDate');
+                // Same behavior as backtesting.html: full datetime range, editable within min/max
+                const startDateInput = document.getElementById('startDate');
+                const endDateInput = document.getElementById('endDate');
+                const hintEl = document.getElementById('testingPeriodHint');
+                
                 if (startDateInput && endDateInput) {
-                    applyDefaultTestingPeriodBounds(firstDate, lastDate);
+                    const minStr = firstDate.toISOString().slice(0, 16);
+                    const maxStr = lastDate.toISOString().slice(0, 16);
+                    startDateInput.min = minStr;
+                    startDateInput.max = maxStr;
+                    endDateInput.min = minStr;
+                    endDateInput.max = maxStr;
+                    startDateInput.value = minStr;
+                    endDateInput.value = maxStr;
                     startDateInput.removeAttribute('disabled');
                     endDateInput.removeAttribute('disabled');
+                    
+                    if (hintEl) {
+                        hintEl.textContent = 'Available data in file: ' + firstDate.toLocaleString() + ' — ' + lastDate.toLocaleString() + '. You can narrow the window; stay within the range above.';
+                    }
                     console.log(`✅ Date range: ${firstDate.toLocaleString()} to ${lastDate.toLocaleString()}`);
                 }
                 
