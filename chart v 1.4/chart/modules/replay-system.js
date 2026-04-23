@@ -2033,6 +2033,20 @@ class ReplaySystem {
         
         // Filter data and render
         this.updateChartData();
+
+        // First paint sometimes runs before chart canvas has width (loader/layout). fitToView / scroll skipped;
+        // re-run once dimensions exist so candles aren't off-screen until axis double‑click.
+        const self = this;
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (!self.isActive || !self.chart) return;
+                const m = self.chart.margin || { l: 0, r: 70 };
+                const cw = Math.max(0, (self.chart.w || 0) - (m.l || 0) - (m.r || 0));
+                if (cw > 0 && self.autoScrollEnabled) {
+                    self.updateChartData(true);
+                }
+            });
+        });
         
     }
 
@@ -2126,7 +2140,30 @@ class ReplaySystem {
         const rightGapCandles = Math.max(configuredGapCandles, ratioGapCandles);
 
         const targetVisibleCandles = Math.max(1, numVisibleCandles - rightGapCandles);
-        const scrollPosition = Math.max(0, chartInstance.data.length - targetVisibleCandles);
+        const maxScroll = Math.max(0, chartInstance.data.length - targetVisibleCandles);
+
+        let scrollPosition;
+        if (
+            this.isActive &&
+            Array.isArray(this.fullRawData) &&
+            this.fullRawData.length > 0 &&
+            chartInstance.data.length > 0
+        ) {
+            let ts = Number.isFinite(this.replayTimestamp) ? this.replayTimestamp : null;
+            if (ts == null && Number.isFinite(this.currentIndex)) {
+                const rb = this.fullRawData[Math.min(Math.max(0, this.currentIndex), this.fullRawData.length - 1)];
+                if (rb && Number.isFinite(rb.t)) ts = rb.t;
+            }
+            let focusIdx = chartInstance.data.length - 1;
+            if (Number.isFinite(ts)) {
+                const di = chartInstance.data.findIndex((d) => Number(d.t) >= ts);
+                if (di >= 0) focusIdx = di;
+            }
+            const lead = Math.max(0, Math.floor(targetVisibleCandles * 0.28));
+            scrollPosition = Math.max(0, Math.min(focusIdx - lead, maxScroll));
+        } else {
+            scrollPosition = Math.max(0, chartInstance.data.length - targetVisibleCandles);
+        }
 
         return {
             offsetX: -scrollPosition * candleSpacing,
