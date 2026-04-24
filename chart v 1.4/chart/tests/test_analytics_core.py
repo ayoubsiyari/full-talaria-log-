@@ -8,6 +8,18 @@ from analytics_core.stats import (
     compute_recent_trades,
     compute_stats,
 )
+from analytics_core.session_series import (
+    compute_balance_equity_metrics,
+    compute_monthly_net_pnl,
+    compute_session_dashboard_extras,
+    compute_sharpe_sortino,
+    compute_weekday_win_rate,
+)
+from datetime import datetime, timezone
+
+
+def _utc_ts(y, m, d, hour=12):
+    return datetime(y, m, d, hour, 0, 0, tzinfo=timezone.utc).timestamp()
 
 
 def _sample_raw_trades():
@@ -139,4 +151,122 @@ def test_stats_playbook_recent_and_equity_summary():
     assert "actual_final" in eq
     assert "simulated_final" in eq
     assert "delta_final" in eq
+
+
+def test_sharpe_sortino_two_trades():
+    pnls = [100.0, -40.0]
+    m = compute_sharpe_sortino(pnls)
+    assert m["sharpe"] is not None
+    assert m["sortino"] is not None
+
+
+def test_monthly_and_weekday_from_timestamps():
+    raw = [
+        {
+            "tradeId": "a",
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "closeTime": _utc_ts(2024, 1, 2, 10),
+            "netPnL": 50,
+            "rMultiple": 1.0,
+            "mae_r": 0.0,
+            "mfe_r": 1.0,
+            "quantity": 1.0,
+            "riskAmount": 50,
+        },
+        {
+            "tradeId": "b",
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "closeTime": _utc_ts(2024, 1, 9, 14),
+            "netPnL": -30,
+            "rMultiple": -0.5,
+            "mae_r": -0.5,
+            "mfe_r": 0.2,
+            "quantity": 1.0,
+            "riskAmount": 60,
+        },
+        {
+            "tradeId": "c",
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "closeTime": _utc_ts(2024, 2, 1, 9),
+            "netPnL": 20,
+            "rMultiple": 0.4,
+            "mae_r": 0.0,
+            "mfe_r": 0.5,
+            "quantity": 1.0,
+            "riskAmount": 50,
+        },
+    ]
+    trades = normalize_trades(raw)
+    monthly = compute_monthly_net_pnl(trades)
+    assert len(monthly) == 2
+    assert monthly[0]["x"] == "2024-01"
+    assert monthly[0]["y"] == 20.0
+    assert monthly[1]["x"] == "2024-02"
+    wd = compute_weekday_win_rate(trades)
+    assert len(wd) == 7
+    tue = next(x for x in wd if x["x"] == "Tue")
+    assert tue["n"] == 2
+
+
+def test_balance_equity_drawdown():
+    raw = [
+        {
+            "tradeId": "1",
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "closeTime": _utc_ts(2024, 3, 1),
+            "netPnL": -200,
+            "rMultiple": -1.0,
+            "mae_r": -1.0,
+            "mfe_r": 0.1,
+            "quantity": 1.0,
+            "riskAmount": 200,
+        },
+        {
+            "tradeId": "2",
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "closeTime": _utc_ts(2024, 3, 2),
+            "netPnL": 100,
+            "rMultiple": 0.5,
+            "mae_r": -0.2,
+            "mfe_r": 0.6,
+            "quantity": 1.0,
+            "riskAmount": 200,
+        },
+    ]
+    trades = normalize_trades(raw)
+    bal = compute_balance_equity_metrics(trades, 10_000.0)
+    assert bal["start_balance"] == 10_000.0
+    assert bal["net_pnl"] == -100.0
+    assert len(bal["equity"]) == 2
+    assert bal["max_drawdown"] is not None
+    assert bal["max_drawdown"] > 0
+    assert bal["recovery_factor"] is not None
+
+
+def test_session_dashboard_extras_bundle():
+    raw = [
+        {
+            "tradeId": "1",
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "closeTime": _utc_ts(2024, 4, 1),
+            "netPnL": 10,
+            "rMultiple": 0.2,
+            "mae_r": 0.0,
+            "mfe_r": 0.3,
+            "quantity": 1.0,
+            "riskAmount": 50,
+        },
+    ]
+    trades = normalize_trades(raw)
+    bundle = compute_session_dashboard_extras(trades, 5000.0)
+    assert "sharpe_sortino" in bundle
+    assert "monthly_pnl" in bundle
+    assert "weekday_winrate" in bundle
+    assert bundle["balance"]["start_balance"] == 5000.0
 

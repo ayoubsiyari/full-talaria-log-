@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Filter, BarChart3 } from "lucide-react";
+import { BacktestSubnav } from "../BacktestSubnav";
+import "../sessions-dashboard.css";
 import {
   ResponsiveContainer,
   BarChart,
@@ -585,6 +587,55 @@ export default function BacktestAnalyticsPage() {
   const heatmapTradesCount = n(whatIfApi?.meta?.heatmap_trades_in_scope);
   const whatIfTradesCount = n(whatIfApi?.meta?.trades_in_scope);
   const equitySummary = whatIfApi?.equity_summary || null;
+
+  const sessionAnalytics = whatIfApi?.session_analytics as
+    | {
+        sharpe_sortino?: { sharpe?: number | null; sortino?: number | null };
+        monthly_pnl?: Array<{ x: string; y: number }>;
+        weekday_winrate?: Array<{ x: string; y: number; n: number }>;
+        balance?: {
+          start_balance?: number | null;
+          net_pnl?: number;
+          equity?: Array<{ x: string; y: number }>;
+          drawdown_pct?: Array<{ x: string; y: number }>;
+          max_drawdown?: number | null;
+          max_drawdown_pct?: number | null;
+          recovery_factor?: number | null;
+        };
+      }
+    | undefined;
+
+  const monthlyPnlChart = useMemo(
+    () =>
+      Array.isArray(sessionAnalytics?.monthly_pnl)
+        ? sessionAnalytics!.monthly_pnl!.map((row, i) => ({ ...row, idx: i + 1 }))
+        : [],
+    [sessionAnalytics]
+  );
+
+  const balanceEquityChart = useMemo(
+    () =>
+      Array.isArray(sessionAnalytics?.balance?.equity)
+        ? sessionAnalytics!.balance!.equity!.map((row: { x: string; y: number }, i: number) => ({
+            idx: i + 1,
+            label: String(row.x || "").slice(0, 10),
+            y: n(row.y),
+          }))
+        : [],
+    [sessionAnalytics]
+  );
+
+  const balanceDrawdownChart = useMemo(
+    () =>
+      Array.isArray(sessionAnalytics?.balance?.drawdown_pct)
+        ? sessionAnalytics!.balance!.drawdown_pct!.map((row: { x: string; y: number }, i: number) => ({
+            idx: i + 1,
+            label: String(row.x || "").slice(0, 10),
+            y: n(row.y),
+          }))
+        : [],
+    [sessionAnalytics]
+  );
   const bestHeatmapValue = bestHeatmap
     ? (heatmapMetric === "USD"
       ? n(bestHeatmap.expectancy_usd ?? bestHeatmap.expectancyUsd)
@@ -625,8 +676,9 @@ export default function BacktestAnalyticsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-background text-foreground">
+      <BacktestSubnav active="analytics" sessionId={selectedSessionId || undefined} />
+      <div className="max-w-6xl mx-auto space-y-6 p-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <a
@@ -756,6 +808,173 @@ export default function BacktestAnalyticsPage() {
               <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Long PnL</div><div className={`text-xl font-bold ${stats.longPnl >= 0 ? "text-green-400" : "text-red-400"}`}>{fmtMoney(stats.longPnl)}</div></div>
               <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Short PnL</div><div className={`text-xl font-bold ${stats.shortPnl >= 0 ? "text-green-400" : "text-red-400"}`}>{fmtMoney(stats.shortPnl)}</div></div>
             </div>
+
+            {sessionAnalytics ? (
+              <div className="space-y-4">
+                <div className="text-sm font-semibold text-white/80">Session analytics</div>
+                <p className="text-xs text-white/45 -mt-2">
+                  Sharpe/Sortino on per-trade PnL; monthly and weekday stats need valid close timestamps. Balance curve uses session start balance when configured.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-3">
+                    <div className="text-[11px] text-white/50">Sharpe (PnL)</div>
+                    <div className="text-lg font-bold">
+                      {sessionAnalytics.sharpe_sortino?.sharpe != null && Number.isFinite(sessionAnalytics.sharpe_sortino.sharpe)
+                        ? sessionAnalytics.sharpe_sortino.sharpe.toFixed(2)
+                        : "—"}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-3">
+                    <div className="text-[11px] text-white/50">Sortino (PnL)</div>
+                    <div className="text-lg font-bold">
+                      {sessionAnalytics.sharpe_sortino?.sortino != null && Number.isFinite(sessionAnalytics.sharpe_sortino.sortino)
+                        ? sessionAnalytics.sharpe_sortino.sortino.toFixed(2)
+                        : "—"}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-3">
+                    <div className="text-[11px] text-white/50">Start balance</div>
+                    <div className="text-lg font-bold">
+                      {sessionAnalytics.balance?.start_balance != null && Number.isFinite(sessionAnalytics.balance.start_balance)
+                        ? fmtMoney(n(sessionAnalytics.balance.start_balance))
+                        : "—"}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-3">
+                    <div className="text-[11px] text-white/50">Max drawdown ($)</div>
+                    <div className="text-lg font-bold text-amber-300/90">
+                      {sessionAnalytics.balance?.max_drawdown != null && Number.isFinite(sessionAnalytics.balance.max_drawdown)
+                        ? fmtMoney(n(sessionAnalytics.balance.max_drawdown))
+                        : "—"}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-3">
+                    <div className="text-[11px] text-white/50">Max DD % of peak</div>
+                    <div className="text-lg font-bold">
+                      {sessionAnalytics.balance?.max_drawdown_pct != null && Number.isFinite(sessionAnalytics.balance.max_drawdown_pct)
+                        ? `${(n(sessionAnalytics.balance.max_drawdown_pct) * 100).toFixed(2)}%`
+                        : "—"}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-3">
+                    <div className="text-[11px] text-white/50">Recovery factor</div>
+                    <div className="text-lg font-bold">
+                      {sessionAnalytics.balance?.recovery_factor != null && Number.isFinite(sessionAnalytics.balance.recovery_factor)
+                        ? n(sessionAnalytics.balance.recovery_factor).toFixed(2)
+                        : "—"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4">
+                    <div className="font-semibold mb-2">Monthly net PnL</div>
+                    <div className="h-64">
+                      {monthlyPnlChart.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={monthlyPnlChart}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                            <XAxis dataKey="x" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 10 }} />
+                            <YAxis tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
+                            <Tooltip
+                              formatter={(v) => [fmtMoney(Number(v ?? 0)), "Net PnL"]}
+                              contentStyle={{ background: "#0b1220", border: "1px solid rgba(148,163,184,0.35)", color: "#e5e7eb" }}
+                            />
+                            <Bar dataKey="y" radius={[4, 4, 0, 0]}>
+                              {monthlyPnlChart.map((entry: { y: number }, idx: number) => (
+                                <Cell key={`mo-${idx}`} fill={entry.y >= 0 ? "#22c55e" : "#ef4444"} />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-full flex items-center justify-center text-white/40 text-sm">
+                          No monthly buckets (add close times on trades, or widen filters)
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4">
+                    <div className="font-semibold mb-2">Win rate by weekday</div>
+                    <div className="text-xs text-white/45 mb-2">% wins · sample n per day</div>
+                    <div className="h-64">
+                      {Array.isArray(sessionAnalytics.weekday_winrate) && sessionAnalytics.weekday_winrate.some((d) => d.n > 0) ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={sessionAnalytics.weekday_winrate}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                            <XAxis dataKey="x" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
+                            <YAxis tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} domain={[0, 100]} />
+                            <Tooltip
+                              formatter={(v, _name, item) => {
+                                const nTrades = (item as { payload?: { n?: number } })?.payload?.n ?? 0;
+                                return [`${Number(v ?? 0).toFixed(1)}% (${nTrades} trades)`, "Win rate"];
+                              }}
+                              contentStyle={{ background: "#0b1220", border: "1px solid rgba(148,163,184,0.35)", color: "#e5e7eb" }}
+                            />
+                            <Bar dataKey="y" fill="#60a5fa" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-full flex items-center justify-center text-white/40 text-sm">
+                          No weekday data for filtered trades
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4">
+                    <div className="font-semibold mb-2">Account equity (from start balance)</div>
+                    <div className="h-64">
+                      {balanceEquityChart.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={balanceEquityChart}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                            <XAxis dataKey="idx" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 10 }} />
+                            <YAxis tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
+                            <Tooltip
+                              formatter={(v) => [fmtMoney(Number(v ?? 0)), "Equity"]}
+                              contentStyle={{ background: "#0b1220", border: "1px solid rgba(148,163,184,0.35)", color: "#e5e7eb" }}
+                            />
+                            <Line type="monotone" dataKey="y" stroke="#38bdf8" strokeWidth={2} dot={{ r: 2 }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-full flex items-center justify-center text-white/40 text-sm text-center px-4">
+                          Set session start balance in backtest config to plot balance-based equity for the filtered trades.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4">
+                    <div className="font-semibold mb-2">Drawdown (% of peak balance)</div>
+                    <div className="h-64">
+                      {balanceDrawdownChart.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={balanceDrawdownChart}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                            <XAxis dataKey="idx" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 10 }} />
+                            <YAxis tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
+                            <Tooltip
+                              formatter={(v) => [`${Number(v ?? 0).toFixed(2)}%`, "Drawdown"]}
+                              contentStyle={{ background: "#0b1220", border: "1px solid rgba(148,163,184,0.35)", color: "#e5e7eb" }}
+                            />
+                            <Line type="monotone" dataKey="y" stroke="#f97316" strokeWidth={2} dot={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-full flex items-center justify-center text-white/40 text-sm">
+                          No drawdown series without start balance and equity points
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 overflow-hidden">
               <div className="px-4 py-3 border-b border-white/10 font-semibold">Per-Pair Breakdown</div>

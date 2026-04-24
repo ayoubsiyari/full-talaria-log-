@@ -111,6 +111,7 @@ from analytics_engine import (
     compute_playbook_breakdown,
     compute_recent_trades,
     compute_equity_summary,
+    compute_session_dashboard_extras,
 )
 
 from firstrate_ingest import (
@@ -1425,6 +1426,10 @@ async def get_backtest_whatif(payload: BacktestWhatIfRequest, request: Request):
         recent_trades = compute_recent_trades(normalized, limit=15)
         equity_summary = compute_equity_summary(equity_curve)
 
+        session_pub = _session_public_dict(s)
+        start_bal = _to_float(session_pub.get("start_balance"))
+        session_analytics = compute_session_dashboard_extras(normalized, start_bal)
+
         return {
             "meta": {
                 "session_id": payload.session_id,
@@ -1446,6 +1451,7 @@ async def get_backtest_whatif(payload: BacktestWhatIfRequest, request: Request):
             "playbook_breakdown": playbook_breakdown,
             "recent_trades": recent_trades,
             "equity_summary": equity_summary,
+            "session_analytics": _sanitize_for_json(session_analytics),
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

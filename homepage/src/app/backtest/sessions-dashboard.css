@@ -159,6 +159,37 @@
   color: #e8e4dc;
 }
 
+.sd-subnav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 32px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: #0c0e12;
+}
+
+.sd-subnav-link {
+  font-family: var(--font-zain), system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #6b6770;
+  text-decoration: none;
+  padding: 14px 4px;
+  margin-right: 12px;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.sd-subnav-link:hover {
+  color: #b8b3bc;
+}
+
+.sd-subnav-link--active {
+  color: #e8e4dc;
+  border-bottom-color: #2563eb;
+}
+
 .sd-main {
   padding: 32px 32px 48px;
   max-width: 1400px;

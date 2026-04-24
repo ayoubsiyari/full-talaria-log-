@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, Trash2, BarChart3, Trophy, X, Shield } from "lucide-react";
 import { LanguageToggle } from "@/components/LanguageToggle";
+import { BacktestSubnav } from "./BacktestSubnav";
 import "./sessions-dashboard.css";
 
 interface Session {
@@ -308,6 +309,8 @@ export default function BacktestSessions() {
           </button>
         </div>
       </header>
+
+      <BacktestSubnav active="sessions" />
 
       {activeSessionId ? (
         <div className="sd-banner">
