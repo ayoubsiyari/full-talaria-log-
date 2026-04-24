@@ -144,14 +144,10 @@ class PanelManager {
                 }, DEBOUNCE_MS);
                 return;
             }
-            // Time: discrete range-by-range sync. Each TARGET panel jumps only when
-            // the bar IT would show at its right edge changes — so a 5m target jumps
-            // once every 5 min of scrolling, a 1m target jumps once per minute.
+            // Time: same bar step → continuous geometry every frame; mixed TF → discrete right-edge jumps.
             if (this.syncSettings.time
                 && Number.isFinite(endTimestamp) && endTimestamp > 0) {
-                const ts = Number.isFinite(d.timeSyncEndTimestamp) && d.timeSyncEndTimestamp > 0
-                    ? d.timeSyncEndTimestamp : endTimestamp;
-                this._discreteTimeSyncToRightEdge(panel, ts);
+                this.syncTimeScrollFromScrolledEvent(panel, d);
             }
         });
     }
@@ -829,60 +825,89 @@ class PanelManager {
         const frac = Number.isFinite(screenFraction) ? screenFraction : 0.5;
         this._positionOtherPanelsOnTimestamp(sourcePanel, timestamp, frac);
     }
-    
+
     /**
-     * Per-target discrete Time sync: for each follower panel, compute which bar index
-     * the source's right-edge timestamp maps to in THAT panel's data. Only update
-     * when that target bar index changes (so 5m targets jump every 5 minutes, 1m every minute).
+     * Apply Time scroll sync from a `chartScrolled` detail: same bar duration as source
+     * uses fractional right-edge index every frame (smooth parity with the dragged chart);
+     * mixed timeframes keep discrete right-edge jumps to avoid constant thrash.
+     * Does not set `_isSyncing` (that would drop coalesced scroll events for ~2 frames).
      */
-    _discreteTimeSyncToRightEdge(sourcePanel, rightEdgeTimestamp) {
-        if (this._isSyncing) return;
+    syncTimeScrollFromScrolledEvent(sourcePanel, detail) {
         if (!this.syncSettings.time || this.currentLayout === '1') return;
-        if (!Number.isFinite(rightEdgeTimestamp)) return;
+        const sourceChart = sourcePanel?.chartInstance;
+        if (!sourceChart?.data?.length) return;
 
-        let anyChanged = false;
-        const toUpdate = [];
+        const m = sourceChart.margin || { l: 0, r: 60 };
+        const spacing = sourceChart.getCandleSpacing ? sourceChart.getCandleSpacing() : (sourceChart.candleWidth + 2);
+        const chartWidth = sourceChart.w - m.l - m.r;
+        if (!Number.isFinite(spacing) || spacing <= 0 || chartWidth <= 0) return;
 
-        const srcDiscrete = sourcePanel?.chartInstance;
-        this.panels.forEach(panel => {
-            if (panel.index === sourcePanel.index) return;
-            const chart = panel.chartInstance;
-            if (!chart?.data?.length) return;
-            if (!this._shouldScrollSyncBetweenCharts(srcDiscrete, chart)) return;
+        const rightEdgePx = sourceChart.w - m.r;
+        const idxFloat = (rightEdgePx - m.l - sourceChart.offsetX) / spacing;
+        const fraction = (idxFloat * spacing + sourceChart.offsetX) / chartWidth;
 
-            const targetIdx = chart.findGoToTargetIndex
-                ? chart.findGoToTargetIndex(chart.data, rightEdgeTimestamp)
-                : this._bsearchTimestamp(chart.data, rightEdgeTimestamp);
+        const ts = Number.isFinite(detail.timeSyncEndTimestamp) && detail.timeSyncEndTimestamp > 0
+            ? detail.timeSyncEndTimestamp
+            : detail.endTimestamp;
+        if (!Number.isFinite(ts) || ts <= 0) return;
 
-            const lastIdx = this._timeSyncLastTargetBar[panel.index];
-            if (lastIdx === targetIdx) return;
+        const srcBarMs = typeof sourceChart.inferBarDurationMs === 'function'
+            ? sourceChart.inferBarDurationMs()
+            : 60000;
 
-            this._timeSyncLastTargetBar[panel.index] = targetIdx;
-            anyChanged = true;
-            toUpdate.push({ chart, targetIdx });
-        });
-
-        if (!anyChanged) return;
-
-        this._isSyncing = true;
+        const toRelease = [];
         try {
-            toUpdate.forEach(({ chart, targetIdx }) => {
+            this.panels.forEach(panel => {
+                if (panel.index === sourcePanel.index) return;
+                const chart = panel.chartInstance;
+                if (!chart?.data?.length) return;
+                if (!this._shouldScrollSyncBetweenCharts(sourceChart, chart)) return;
+
+                const tgtBarMs = typeof chart.inferBarDurationMs === 'function'
+                    ? chart.inferBarDurationMs()
+                    : 60000;
+                const sameBarStep = Math.abs(tgtBarMs - srcBarMs) < 1;
+
+                if (sameBarStep) {
+                    const m2 = chart.margin || { l: 0, r: 60 };
+                    const sp2 = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
+                    const cw2 = chart.w - m2.l - m2.r;
+                    if (cw2 > 0 && Number.isFinite(sp2) && sp2 > 0) {
+                        chart._suppressPanelScrollSync = true;
+                        toRelease.push(chart);
+                        chart.offsetX = cw2 * fraction - idxFloat * sp2;
+                        if (chart.constrainOffset) chart.constrainOffset();
+                        if (chart.scheduleRender) chart.scheduleRender();
+                        else if (chart.render) chart.render();
+                    }
+                    this._timeSyncLastTargetBar[panel.index] = Math.max(0, Math.floor(idxFloat));
+                    return;
+                }
+
+                const targetIdx = chart.findGoToTargetIndex
+                    ? chart.findGoToTargetIndex(chart.data, ts)
+                    : this._bsearchTimestamp(chart.data, ts);
+                const lastIdx = this._timeSyncLastTargetBar[panel.index];
+                if (lastIdx === targetIdx) return;
+
+                this._timeSyncLastTargetBar[panel.index] = targetIdx;
                 chart._suppressPanelScrollSync = true;
+                toRelease.push(chart);
 
-                const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
-                const m = chart.margin || { l: 0, r: 60 };
-                const chartWidth = chart.w - m.l - m.r;
-                const visibleCandles = Math.max(1, Math.floor(chartWidth / spacing));
+                const spacing2 = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
+                const m2 = chart.margin || { l: 0, r: 60 };
+                const chartWidth2 = chart.w - m2.l - m2.r;
+                const visibleCandles = Math.max(1, Math.floor(chartWidth2 / spacing2));
 
-                chart.offsetX = -(targetIdx - visibleCandles + 1) * spacing;
+                chart.offsetX = -(targetIdx - visibleCandles + 1) * spacing2;
                 if (chart.constrainOffset) chart.constrainOffset();
                 if (chart.scheduleRender) chart.scheduleRender();
+                else if (chart.render) chart.render();
             });
         } finally {
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
-                    toUpdate.forEach(({ chart }) => { chart._suppressPanelScrollSync = false; });
-                    this._isSyncing = false;
+                    toRelease.forEach(c => { c._suppressPanelScrollSync = false; });
                 });
             });
         }
