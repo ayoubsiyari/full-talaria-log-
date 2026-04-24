@@ -236,6 +236,8 @@ export default function BacktestAnalyticsPage() {
   const [csvImportBusy, setCsvImportBusy] = useState(false);
   const [csvImportMsg, setCsvImportMsg] = useState<string | null>(null);
   const csvImportRef = useRef<HTMLInputElement>(null);
+  const [heatmap3dUrl, setHeatmap3dUrl] = useState<string | null>(null);
+  const [heatmap3dError, setHeatmap3dError] = useState<string | null>(null);
   const [pairSort, setPairSort] = useState<{ key: string; dir: "asc" | "desc" }>({
     key: "netPnl",
     dir: "desc",
@@ -723,6 +725,69 @@ export default function BacktestAnalyticsPage() {
   );
   const heatmapTradesCount = n(whatIfApi?.meta?.heatmap_trades_in_scope);
   const whatIfTradesCount = n(whatIfApi?.meta?.trades_in_scope);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHeatmap3dError(null);
+    setHeatmap3dUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    if (!whatIfApi || !selectedSessionId || heatmapTradesCount < 1) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    (async () => {
+      try {
+        const res = await fetch(chartApiUrl("/api/analytics/backtest/heatmap-3d-surface"), {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: Number(selectedSessionId),
+            pair_filter: pairFilter,
+            playbook_filter: playbookFilter,
+            outcome_filter: outcomeFilter,
+            heatmap_pair: heatmapPair,
+            metric: heatmapMetric,
+          }),
+        });
+        if (!res.ok) {
+          const t = await res.text();
+          throw new Error(t.slice(0, 280) || `HTTP ${res.status}`);
+        }
+        const blob = await res.blob();
+        if (cancelled) return;
+        const u = URL.createObjectURL(blob);
+        if (cancelled) {
+          URL.revokeObjectURL(u);
+          return;
+        }
+        setHeatmap3dUrl(u);
+      } catch (e) {
+        if (!cancelled) setHeatmap3dError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => {
+      cancelled = true;
+      setHeatmap3dUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    };
+  }, [
+    whatIfApi,
+    selectedSessionId,
+    pairFilter,
+    playbookFilter,
+    outcomeFilter,
+    heatmapPair,
+    heatmapMetric,
+    heatmapTradesCount,
+    journalReloadToken,
+  ]);
+
   const equitySummary = whatIfApi?.equity_summary || null;
 
   const sessionAnalytics = whatIfApi?.session_analytics as
@@ -1585,6 +1650,26 @@ export default function BacktestAnalyticsPage() {
               );
             })()}
           </div>
+        </div>
+
+        <div className="bt-os-chart-card" style={{ marginTop: "12px" }}>
+          <div className="bt-os-chart-title">
+            TP/SL expectancy — 3D surface <span>Matplotlib (Python chart API)</span>
+          </div>
+          {heatmap3dError ? (
+            <div style={{ color: "#fbbf24", fontSize: "0.78rem", padding: "0.5rem 0" }}>{heatmap3dError}</div>
+          ) : null}
+          {heatmap3dUrl ? (
+            <img
+              src={heatmap3dUrl}
+              alt="Expectancy surface over TP and SL grid"
+              style={{ maxWidth: "100%", height: "auto", display: "block", borderRadius: 8 }}
+            />
+          ) : heatmapTradesCount >= 1 && !heatmap3dError ? (
+            <div style={{ color: "#6b7280", fontSize: "0.75rem" }}>Rendering 3D surface…</div>
+          ) : (
+            <div style={{ color: "#6b7280", fontSize: "0.75rem" }}>Load what-if data to render the surface.</div>
+          )}
         </div>
 
             </>

@@ -1,3 +1,4 @@
+import pytest
 from analytics_core.normalization import filter_by_instrument, normalize_trades
 from analytics_core.simulation import simulate_equity_curve, simulate_trade
 from analytics_core.heatmap import build_expectancy_heatmap, build_histogram
@@ -16,6 +17,7 @@ from analytics_core.session_series import (
     compute_weekday_win_rate,
 )
 from analytics_core.csv_journal import parse_trades_csv_text
+from analytics_core.heatmap_surface import heatmap_to_matrices, render_expectancy_heatmap_surface_png
 from datetime import datetime, timezone
 
 
@@ -247,6 +249,22 @@ def test_balance_equity_drawdown():
     assert bal["max_drawdown"] is not None
     assert bal["max_drawdown"] > 0
     assert bal["recovery_factor"] is not None
+
+
+def test_heatmap_surface_matrices():
+    trades = normalize_trades(_sample_raw_trades())
+    hm = build_expectancy_heatmap(trades, tp_levels=[1.0, 1.5], sl_levels=[0.5, 1.0])
+    SL, TP, Z = heatmap_to_matrices(hm, "usd")
+    assert SL.shape == Z.shape == (2, 2)
+
+
+def test_heatmap_surface_png_smoke():
+    pytest.importorskip("matplotlib")
+    trades = normalize_trades(_sample_raw_trades())
+    hm = build_expectancy_heatmap(trades, tp_levels=[1.0, 1.5], sl_levels=[0.5, 1.0])
+    png = render_expectancy_heatmap_surface_png(hm, metric="usd", title="test")
+    assert isinstance(png, bytes) and len(png) > 2000
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
 
 
 def test_parse_trades_csv_minimal():

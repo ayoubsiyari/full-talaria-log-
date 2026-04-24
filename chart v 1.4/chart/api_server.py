@@ -1,7 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, Response
 from sqlalchemy import (
     create_engine,
     Column,
@@ -114,6 +114,7 @@ from analytics_engine import (
     compute_session_dashboard_extras,
 )
 from analytics_core.csv_journal import parse_trades_csv_bytes
+from analytics_core.heatmap_surface import render_expectancy_heatmap_surface_png
 
 from firstrate_ingest import (
     MAX_TICKER_LISTING_RETURN,
@@ -1372,6 +1373,35 @@ def _trade_setup_label(trade: dict) -> str:
     return "General"
 
 
+def _filter_journal_raw_trades(
+    journal: list,
+    pair_filter: str,
+    playbook_filter: str,
+    outcome_filter: str,
+) -> list[dict]:
+    pair_f = str(pair_filter or "ALL").strip().upper().replace("/", "")
+    playbook_f = str(playbook_filter or "ALL").strip()
+    outcome_f = str(outcome_filter or "ALL").strip().upper()
+    out: list[dict] = []
+    for t in journal:
+        if not isinstance(t, dict):
+            continue
+        ticker = str(t.get("ticker") or t.get("symbol") or "UNKNOWN").strip().upper().replace("/", "")
+        pnl = float(t.get("netPnL", t.get("realizedPnL", t.get("pnl", 0.0))) or 0.0)
+        setup = _trade_setup_label(t)
+        pass_pair = pair_f == "ALL" or ticker == pair_f
+        pass_playbook = playbook_f == "ALL" or setup == playbook_f
+        pass_outcome = (
+            outcome_f == "ALL"
+            or (outcome_f == "WINNERS" and pnl > 0)
+            or (outcome_f == "LOSERS" and pnl < 0)
+            or (outcome_f == "BREAKEVEN" and pnl == 0)
+        )
+        if pass_pair and pass_playbook and pass_outcome:
+            out.append(t)
+    return out
+
+
 @app.post("/api/analytics/backtest/whatif")
 async def get_backtest_whatif(payload: BacktestWhatIfRequest, request: Request):
     user = _require_user(request)
@@ -1391,25 +1421,7 @@ async def get_backtest_whatif(payload: BacktestWhatIfRequest, request: Request):
         playbook_filter = str(payload.playbook_filter or "ALL").strip()
         outcome_filter = str(payload.outcome_filter or "ALL").strip().upper()
 
-        filtered_raw = []
-        for t in journal:
-            if not isinstance(t, dict):
-                continue
-
-            ticker = str(t.get("ticker") or t.get("symbol") or "UNKNOWN").strip().upper().replace("/", "")
-            pnl = float(t.get("netPnL", t.get("realizedPnL", t.get("pnl", 0.0))) or 0.0)
-            setup = _trade_setup_label(t)
-
-            pass_pair = pair_filter == "ALL" or ticker == pair_filter
-            pass_playbook = playbook_filter == "ALL" or setup == playbook_filter
-            pass_outcome = (
-                outcome_filter == "ALL"
-                or (outcome_filter == "WINNERS" and pnl > 0)
-                or (outcome_filter == "LOSERS" and pnl < 0)
-                or (outcome_filter == "BREAKEVEN" and pnl == 0)
-            )
-            if pass_pair and pass_playbook and pass_outcome:
-                filtered_raw.append(t)
+        filtered_raw = _filter_journal_raw_trades(journal, pair_filter, playbook_filter, outcome_filter)
 
         normalized = normalize_trades(filtered_raw)
         tp_r = max(0.1, float(payload.tp_r))
@@ -1456,6 +1468,55 @@ async def get_backtest_whatif(payload: BacktestWhatIfRequest, request: Request):
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        db.close()
+
+
+class BacktestHeatmap3dRequest(BaseModel):
+    session_id: int
+    pair_filter: str = "ALL"
+    playbook_filter: str = "ALL"
+    outcome_filter: str = "ALL"
+    heatmap_pair: str = "ALL"
+    metric: str = "USD"
+
+
+@app.post("/api/analytics/backtest/heatmap-3d-surface")
+async def post_backtest_heatmap_3d_surface(payload: BacktestHeatmap3dRequest, request: Request):
+    """PNG Matplotlib 3D surface of TP/SL expectancy (same filters as what-if heatmap)."""
+    user = _require_user(request)
+    db = SessionLocal()
+    try:
+        s = db.query(TradingSession).filter(TradingSession.id == payload.session_id).first()
+        if not s:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if not _can_access_trading_session(user, s):
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
+        state = _parse_json_dict(st.state_json)
+        journal = state.get("journal") if isinstance(state.get("journal"), list) else []
+
+        pair_filter = str(payload.pair_filter or "ALL").strip().upper().replace("/", "")
+        playbook_filter = str(payload.playbook_filter or "ALL").strip()
+        outcome_filter = str(payload.outcome_filter or "ALL").strip().upper()
+        filtered_raw = _filter_journal_raw_trades(journal, pair_filter, playbook_filter, outcome_filter)
+        normalized = normalize_trades(filtered_raw)
+        heatmap_scope = str(payload.heatmap_pair or "ALL").strip().upper().replace("/", "")
+        heatmap_trades = filter_by_instrument(normalized, heatmap_scope)
+        if not heatmap_trades:
+            raise HTTPException(status_code=400, detail="No trades in scope for heatmap")
+        heatmap = build_expectancy_heatmap(heatmap_trades)
+        m = str(payload.metric or "USD").strip().upper()
+        metric = "usd" if m in ("USD", "$", "DOLLAR") else "r"
+        title = f"TP/SL expectancy · {heatmap_scope} · {len(heatmap_trades)} trades · {metric.upper()}"
+        try:
+            png = render_expectancy_heatmap_surface_png(heatmap, metric=metric, title=title)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Matplotlib render failed: {e}") from e
+        return Response(content=png, media_type="image/png")
     finally:
         db.close()
 
