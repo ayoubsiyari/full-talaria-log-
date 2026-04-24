@@ -769,7 +769,7 @@ class Chart {
             }
         }
         if (Array.isArray(session.files)) {
-            const file = session.files.find(f => String(f.id) === fileKey);
+            const file = session.files.find((f) => f && (String(f.id) === fileKey || String(f.fileId) === fileKey));
             if (file && file.name) {
                 return this._formatPairTicker(file.name, null);
             }
@@ -6575,48 +6575,102 @@ class Chart {
     }
 
     getSymbolSwitcherEntries() {
-        const entries = [];
-        const session = this.backtestingSession || this.normalizeBacktestingSession(JSON.parse(userStorage.getItem('backtestingSession') || '{}'));
-
-        if (session && session.instruments && typeof session.instruments === 'object') {
-            Object.keys(session.instruments).forEach((tickerKey) => {
-                const row = session.instruments[tickerKey];
-                if (!row) return;
-                const fileId = row.fileId || row.datasetId || row.sourceFileId;
-                if (!fileId) return;
-                const rawTicker = String(row.ticker || tickerKey || '');
-                const rawName = row.fileName || row.name || '';
-                const displayTicker = this._formatPairTicker(rawTicker, rawName);
-                entries.push({
-                    fileId: String(fileId),
-                    ticker: displayTicker || rawTicker.toUpperCase() || String(fileId),
-                    subtitle: displayTicker !== rawName ? rawName : ''
-                });
+        const byFileId = new Map();
+        const addEntry = (fileId, ticker, subtitle = '') => {
+            if (fileId == null || fileId === '') return;
+            const fid = String(fileId);
+            if (byFileId.has(fid)) return;
+            byFileId.set(fid, {
+                fileId: fid,
+                ticker: String(ticker || fid).trim() || fid,
+                subtitle: String(subtitle || '')
             });
+        };
+
+        const collectFromSession = (sessionRaw) => {
+            if (!sessionRaw || typeof sessionRaw !== 'object') return;
+            let session = sessionRaw;
+            try {
+                session = this.normalizeBacktestingSession(sessionRaw);
+            } catch (e) {
+                return;
+            }
+
+            if (session.instruments && typeof session.instruments === 'object') {
+                Object.keys(session.instruments).forEach((tickerKey) => {
+                    const row = session.instruments[tickerKey];
+                    if (!row) return;
+                    const fileId = row.fileId || row.datasetId || row.sourceFileId;
+                    if (!fileId) return;
+                    const rawTicker = String(row.ticker || tickerKey || '');
+                    const rawName = row.fileName || row.name || '';
+                    const displayTicker = this._formatPairTicker(rawTicker, rawName);
+                    addEntry(
+                        fileId,
+                        displayTicker || rawTicker.toUpperCase() || String(fileId),
+                        displayTicker !== rawName ? rawName : ''
+                    );
+                });
+            }
+
+            // Multi-instrument wizard always saves `files` (+ `symbols`). Some paths shrink
+            // `instruments` to the active chart only — still list every fileId from `files` / `symbols`.
+            if (Array.isArray(session.files)) {
+                session.files.forEach((f) => {
+                    if (!f) return;
+                    const fileId = f.id != null ? f.id : f.fileId;
+                    if (fileId == null) return;
+                    const rawName = String(f.name || f.fileName || '');
+                    const resolved = this.resolveSessionTickerForFileId(session, fileId);
+                    const displayTicker = resolved
+                        || this._formatPairTicker(rawName, '')
+                        || rawName.replace(/\.(csv|CSV)$/i, '').toUpperCase();
+                    addEntry(fileId, displayTicker, displayTicker !== rawName ? rawName : '');
+                });
+            }
+
+            if (Array.isArray(session.symbols)) {
+                session.symbols.forEach((row) => {
+                    if (!row) return;
+                    const fileId = row.fileId;
+                    if (fileId == null) return;
+                    const sym = String(row.symbolName || row.ticker || row.symbol || '').trim();
+                    const rawName = row.fileName || row.name || '';
+                    const displayTicker = this._formatPairTicker(sym, rawName) || sym.toUpperCase() || String(fileId);
+                    addEntry(fileId, displayTicker, displayTicker !== rawName ? rawName : '');
+                });
+            }
+        };
+
+        collectFromSession(this.backtestingSession);
+        try {
+            collectFromSession(JSON.parse(userStorage.getItem('backtestingSession') || '{}'));
+        } catch (e) {
+            /* ignore */
         }
 
+        let entries = Array.from(byFileId.values());
+
         if (entries.length === 0) {
+            const session = this.backtestingSession || {};
             const fileSelect = document.getElementById('fileSelect');
             if (fileSelect) {
                 Array.from(fileSelect.options).forEach((option) => {
                     if (!option.value) return;
                     if (String(option.value).startsWith('local_')) return;
-                    entries.push({
-                        fileId: String(option.value),
-                        ticker: this.resolveSessionTickerForFileId(session, option.value) || option.textContent.split(' ')[0] || String(option.value),
-                        subtitle: option.textContent
-                    });
+                    addEntry(
+                        option.value,
+                        this.resolveSessionTickerForFileId(session, option.value)
+                            || option.textContent.split(' ')[0]
+                            || String(option.value),
+                        option.textContent
+                    );
                 });
+                entries = Array.from(byFileId.values());
             }
         }
 
-        const seen = new Set();
-        return entries.filter((entry) => {
-            if (!entry.fileId) return false;
-            if (seen.has(entry.fileId)) return false;
-            seen.add(entry.fileId);
-            return true;
-        });
+        return entries;
     }
 
     _ssdNormalize(s) {
