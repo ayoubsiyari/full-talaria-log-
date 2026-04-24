@@ -1597,6 +1597,25 @@ class PanelManager {
             this.createPanel(panelConfig[i], i);
         }
 
+        // Second pass: panel Chart instances are created with 0×0 until layout commits — resize all
+        // so replay sync (getReplayAutoScrollState) and candle math use real width/height like the main chart.
+        requestAnimationFrame(() => {
+            if (this.panels && this.panels.length > 0) {
+                this.panels.forEach((panel) => {
+                    const pc = panel.chartInstance;
+                    if (pc && typeof pc.resize === 'function') {
+                        try {
+                            pc._lastResizeDpr = 0;
+                            pc.resize();
+                            if (typeof pc.render === 'function') pc.render();
+                        } catch (e) {
+                            console.warn('Panel resize after layout:', e);
+                        }
+                    }
+                });
+            }
+        });
+
         // After panels exist: park logo on #chart-container (above #chartWrapper paint order)
         this.syncChartBrandPlacement(layout);
         const brandNode = document.querySelector('.chart-brand');

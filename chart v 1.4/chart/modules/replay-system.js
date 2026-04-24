@@ -2065,6 +2065,32 @@ class ReplaySystem {
             
             this.chart.scheduleRender();
         }
+
+        // Multi-panel: restore each panel's full series (replay had been slicing rawData).
+        const pm = typeof window !== 'undefined' ? window.panelManager : null;
+        if (pm && Array.isArray(pm.panels)) {
+            pm.panels.forEach((panel) => {
+                const pc = panel.chartInstance;
+                if (!pc || !pc.isPanel || pc === this.chart) return;
+                try {
+                    if (Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0) {
+                        pc.rawData = [...pc._panelFullRawData];
+                        pc.data = pc.resampleData(pc.rawData, pc.currentTimeframe);
+                    } else if (this.fullRawData && this.fullRawData.length > 0) {
+                        pc.rawData = [...this.fullRawData];
+                        pc.data = pc.resampleData(pc.rawData, pc.currentTimeframe);
+                    }
+                    if (typeof pc.bumpDataVersion === 'function') pc.bumpDataVersion();
+                    if (typeof pc.recalculateIndicators === 'function') {
+                        try { pc.recalculateIndicators(); } catch (_) { /* ignore */ }
+                    }
+                    if (typeof pc.constrainOffset === 'function') pc.constrainOffset();
+                    if (typeof pc.scheduleRender === 'function') pc.scheduleRender();
+                } catch (e) {
+                    console.warn('exitReplayMode: panel restore failed', e);
+                }
+            });
+        }
         
         // Hide control bar
         this.hideToolbar();
@@ -3664,6 +3690,10 @@ class ReplaySystem {
             if (!pc || !pc.isPanel || pc === mainChart) return;
             
             try {
+                if (typeof pc.resize === 'function' && (!Number.isFinite(pc.w) || pc.w < 4 || !Number.isFinite(pc.h) || pc.h < 4)) {
+                    try { pc.resize(); } catch (_) { /* ignore */ }
+                }
+
                 const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
 
                 if (hasOwnData) {
@@ -3691,13 +3721,11 @@ class ReplaySystem {
                     try { pc.recalculateIndicators(); } catch (e) {}
                 }
 
+                // Match main chart replay: adjust horizontal scroll only. fitToView() here reset zoom/pan
+                // every few ticks and made multi-panel replay feel broken vs the primary surface.
                 if (this.autoScrollEnabled && this.tickProgress % 8 === 0) {
-                    if (pc.fitToView) {
-                        pc.fitToView();
-                    } else {
-                        const st = this.getReplayAutoScrollState(pc);
-                        if (st) pc.offsetX = st.offsetX;
-                    }
+                    const st = this.getReplayAutoScrollState(pc);
+                    if (st) pc.offsetX = st.offsetX;
                 }
 
                 if (pc.render) pc.render();
@@ -4572,17 +4600,34 @@ class ReplaySystem {
         let lo = 0, hi = data.length - 1;
         while (lo < hi) {
             const mid = (lo + hi) >>> 1;
-            if ((data[mid].t || 0) < ts) lo = mid + 1;
+            const tm = this._rawBarUnixMs(data[mid]);
+            const t = Number.isFinite(tm) ? tm : 0;
+            if (t < ts) lo = mid + 1;
             else hi = mid;
         }
-        if (lo > 0 && Math.abs((data[lo - 1].t || 0) - ts) < Math.abs((data[lo].t || 0) - ts)) {
+        const tLo = this._rawBarUnixMs(data[lo]);
+        const tPrev = lo > 0 ? this._rawBarUnixMs(data[lo - 1]) : NaN;
+        const a = Number.isFinite(tLo) ? tLo : 0;
+        const b = Number.isFinite(tPrev) ? tPrev : 0;
+        if (lo > 0 && Math.abs(b - ts) < Math.abs(a - ts)) {
             return lo - 1;
         }
         return lo;
     }
 
     /**
-     * Last raw bar index with t <= ts (sorted ascending by .t).
+     * Wall-clock ms for a raw OHLC row (matches Chart._normalizeCandlesFromApi field fallbacks).
+     */
+    _rawBarUnixMs(row) {
+        if (!row || typeof row !== 'object') return NaN;
+        let t = Number(row.t ?? row.timestamp ?? row.time);
+        if (!Number.isFinite(t)) return NaN;
+        if (t > 0 && t < 1e11) t *= 1000;
+        return t;
+    }
+
+    /**
+     * Last raw bar index with t <= ts (sorted ascending by bar time).
      * Used so every pair ends on the same wall-clock cut as main replayTimestamp.
      * @returns {number} index, or -1 if every bar has t > ts (no wall-clock overlap with replay time).
      */
@@ -4594,7 +4639,8 @@ class ReplaySystem {
         let ans = -1;
         while (lo <= hi) {
             const mid = (lo + hi) >>> 1;
-            const t = data[mid]?.t || 0;
+            const tm = this._rawBarUnixMs(data[mid]);
+            const t = Number.isFinite(tm) ? tm : 0;
             if (t <= ts) {
                 ans = mid;
                 lo = mid + 1;
@@ -4637,6 +4683,10 @@ class ReplaySystem {
             if (pc === mainChart) return;
             
             try {
+                if (typeof pc.resize === 'function' && (!Number.isFinite(pc.w) || pc.w < 4 || !Number.isFinite(pc.h) || pc.h < 4)) {
+                    try { pc.resize(); } catch (_) { /* ignore */ }
+                }
+
                 const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
 
                 if (hasOwnData) {
