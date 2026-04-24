@@ -10637,6 +10637,8 @@ class Chart {
 
             this.rawData = [];
             this.data = [];
+            // Avoid carrying small-TF offsetX into larger-TF spacing (sync/resize use a bogus right-edge index).
+            this.offsetX = 0;
             this.totalCandles = result.total;
             this._serverCursors = {
                 firstTs: result.first_cursor,

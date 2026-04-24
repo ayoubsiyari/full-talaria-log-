@@ -700,6 +700,9 @@ class PanelManager {
         if (!this.syncSettings.interval || this.currentLayout === '1') return;
         if (this._syncingInterval) return;
 
+        // Bar grid changes — stale right-edge indices break continuous time sync after TF jumps.
+        this._timeSyncLastTargetBar = {};
+
         /** Wall-clock window on the source chart before followers refetch — avoids blind `fitToView()` on main. */
         let viewportHint = null;
         const srcChart = sourcePanel?.chartInstance;
@@ -827,6 +830,33 @@ class PanelManager {
     }
 
     /**
+     * Valid range for fractional bar index at the plot right edge:
+     * (w - m.r - m.l - offsetX) / spacing over offsetX allowed by Chart#constrainOffset hard bounds.
+     */
+    _scrollIdxFloatBounds(chart) {
+        const n = chart?.data?.length ?? 0;
+        if (n <= 0) return { lo: 0, hi: 0 };
+        const m = chart.margin || { l: 0, r: 60 };
+        const sp = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
+        const cw = chart.w - m.l - m.r;
+        if (!(cw > 0) || !Number.isFinite(sp) || !(sp > 0)) return { lo: 0, hi: Math.max(0, n - 1) };
+        const rmC = Number.isFinite(chart.timeScale?.rightOffsetCandles)
+            ? chart.timeScale.rightOffsetCandles
+            : 5;
+        const rightMargin = Math.max(0, rmC) * sp;
+        const maxOffset = cw - rightMargin;
+        const minOffset = -(n - 1) * sp;
+        const rightEdgePx = chart.w - m.r;
+        const idxAtMax = (rightEdgePx - m.l - maxOffset) / sp;
+        const idxAtMin = (rightEdgePx - m.l - minOffset) / sp;
+        const pad = 4;
+        return {
+            lo: Math.min(idxAtMax, idxAtMin) - pad,
+            hi: Math.max(idxAtMax, idxAtMin) + pad
+        };
+    }
+
+    /**
      * Apply Time scroll sync from a `chartScrolled` detail: same bar duration as source
      * uses fractional right-edge index every frame (smooth parity with the dragged chart);
      * mixed timeframes keep discrete right-edge jumps to avoid constant thrash.
@@ -843,7 +873,11 @@ class PanelManager {
         if (!Number.isFinite(spacing) || spacing <= 0 || chartWidth <= 0) return;
 
         const rightEdgePx = sourceChart.w - m.r;
-        const idxFloat = (rightEdgePx - m.l - sourceChart.offsetX) / spacing;
+        const idxRaw = (rightEdgePx - m.l - sourceChart.offsetX) / spacing;
+        const bSrc = this._scrollIdxFloatBounds(sourceChart);
+        // Stale offsetX after a large timeframe jump (old zoom vs new spacing) blows idxRaw up and breaks followers.
+        if (!Number.isFinite(idxRaw) || idxRaw < bSrc.lo - 64 || idxRaw > bSrc.hi + 64) return;
+        const idxFloat = Math.max(bSrc.lo, Math.min(idxRaw, bSrc.hi));
         const fraction = (idxFloat * spacing + sourceChart.offsetX) / chartWidth;
 
         const ts = Number.isFinite(detail.timeSyncEndTimestamp) && detail.timeSyncEndTimestamp > 0
@@ -875,7 +909,9 @@ class PanelManager {
                     if (cw2 > 0 && Number.isFinite(sp2) && sp2 > 0) {
                         chart._suppressPanelScrollSync = true;
                         toRelease.push(chart);
-                        chart.offsetX = cw2 * fraction - idxFloat * sp2;
+                        const bTgt = this._scrollIdxFloatBounds(chart);
+                        const idxT = Math.max(bTgt.lo, Math.min(idxFloat, bTgt.hi));
+                        chart.offsetX = cw2 * fraction - idxT * sp2;
                         if (chart.constrainOffset) chart.constrainOffset();
                         if (chart.scheduleRender) chart.scheduleRender();
                         else if (chart.render) chart.render();
