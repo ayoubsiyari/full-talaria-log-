@@ -6526,6 +6526,10 @@ class Chart {
                 closeDropdown();
                 return;
             }
+            // Opening fresh: drop stale search text so the full session instrument list
+            // shows (a partial query from last open made the other pair look "gone").
+            const staleSearch = dropdown.querySelector('.ssd-search-input');
+            if (staleSearch) staleSearch.value = '';
             this.renderSymbolSwitcherOptions(dropdown);
             positionDropdown();
             dropdown.classList.add('open');
