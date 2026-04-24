@@ -1391,7 +1391,7 @@ class Chart {
                 String(this.currentFileId) !== String(targetFileId)
             ) {
                 try {
-                    this.drawingManager.saveDrawings();
+                    this.drawingManager.saveDrawings(String(this.currentFileId));
                 } catch (e) {
                     console.warn('⚠️ Failed to save drawings before pair switch', e);
                 }
@@ -1418,12 +1418,14 @@ class Chart {
             this._chartViewRestored = false;
 
             this.currentFileId = targetFileId;
+            // Keep symbol in sync with file id before ingest / loadDrawings / order visuals — otherwise
+            // ticker-based checks briefly see the OLD pair name on the NEW dataset (wrong trade markers).
+            this.currentSymbol = targetTicker || (session.fileName ? session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase() : this.currentSymbol);
+
             this._ingestSmartWindowResult(result, { skipFitToView: true });
             this.loadedRanges.set(0, result.returned);
 
             this._scheduleSmartPrefetchOthers(targetFileId, requestTimeframe, session);
-
-            this.currentSymbol = targetTicker || (session.fileName ? session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase() : this.currentSymbol);
 
             this.updateChartTitle(this.currentSymbol);
 
@@ -1616,11 +1618,11 @@ class Chart {
             if (
                 this.drawingManager &&
                 typeof this.drawingManager.saveDrawings === 'function' &&
-                this.currentFileId != null &&
-                String(this.currentFileId) !== String(targetFileId)
+                outgoingPanelFileId != null &&
+                String(outgoingPanelFileId) !== String(targetFileId)
             ) {
                 try {
-                    this.drawingManager.saveDrawings();
+                    this.drawingManager.saveDrawings(String(outgoingPanelFileId));
                 } catch (e) {
                     console.warn('⚠️ Failed to save drawings before panel pair switch', e);
                 }
@@ -1638,6 +1640,10 @@ class Chart {
             this._panLoading = false;
             this.loadedRanges.clear();
 
+            // Match main chart: file id + symbol before ingest so order/drawing logic never sees a mismatched pair.
+            this.currentFileId = targetFileId;
+            this.currentSymbol = targetTicker || this.currentSymbol;
+
             this._isLoadingOwnPairData = true;
             this._ingestSmartWindowResult(result, { skipFitToView: true });
             this.loadedRanges.set(0, result.returned);
@@ -1647,8 +1653,6 @@ class Chart {
                 mainChart._scheduleSmartPrefetchOthers(targetFileId, requestTimeframe, session);
             }
 
-            this.currentFileId = targetFileId;
-            this.currentSymbol = targetTicker || this.currentSymbol;
             this._panelFullRawData = [...this.rawData];
 
             if (replay && replay.isActive && Number.isFinite(replayTs) && this._panelFullRawData.length > 0) {
@@ -1710,23 +1714,6 @@ class Chart {
             }
 
             this.render();
-
-            // Panel path updates currentFileId after ingest, so _commitLoadedBars does not treat
-            // this as a file change — explicitly reload drawings for the new pair.
-            if (
-                outgoingPanelFileId &&
-                String(outgoingPanelFileId) !== String(targetFileId) &&
-                this.drawingManager &&
-                typeof this.drawingManager.loadDrawings === 'function' &&
-                this.data &&
-                this.data.length > 0
-            ) {
-                this.drawingManager._drawingsLoaded = false;
-                void this.drawingManager.loadDrawings();
-            }
-            if (outgoingPanelFileId && String(outgoingPanelFileId) !== String(targetFileId)) {
-                this._lastLoadedFileId = this.currentFileId;
-            }
 
             requestAnimationFrame(() => {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;

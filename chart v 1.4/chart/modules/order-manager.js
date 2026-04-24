@@ -712,39 +712,39 @@ class OrderManager {
             }
 
             this._dropOrderVisualsNotOnMainChart();
+            // Full strip + reset (same idea as multi-panel): removes orphan SVG and stale DOM refs in
+            // orderLines/slLines/... so a symbol switch cannot leave another pair's visuals on the canvas.
+            this._stripOrderDrawingLayersFromChart(this.chart);
+            this.orderLines = [];
+            this.splitGroupAvgLines = [];
+            this.multiTPAvgLines = [];
+            this.slLines = [];
+            this.tpLines = [];
+            this.beLines = [];
+            this.pendingTargetLines = [];
+            if (this.entryMarkers && this.entryMarkers.length) {
+                this.entryMarkers.forEach((m) => {
+                    try {
+                        if (m.marker) m.marker.remove();
+                    } catch (e) { /* ignore */ }
+                });
+                this.entryMarkers = [];
+            }
 
             (this.openPositions || []).forEach((pos) => {
-                if (this._isPositionForActiveChart(pos)) return;
-                this.removeOrderLine(pos.id);
-                this.removeSLTPLines(pos.id);
-                this.removeMultiTPAvgLine(pos.id);
-                this.removeEntryMarker(pos.id);
-            });
-            (this.pendingOrders || []).forEach((po) => {
-                if (this._positionTickerMatchesChartSymbol(po, this.chart)) return;
-                this.removePendingOrderLine(po.id);
-                this.removePendingSLTPLines(po.id);
-                this.removeMultiTPAvgLine(po.id);
-            });
-            (this.openPositions || []).forEach((pos) => {
                 if (!this._isPositionForActiveChart(pos)) return;
-                const has = (this.orderLines || []).some((ol) => ol.orderId === pos.id && !ol.isPending);
-                if (!has) {
-                    this.drawOrderLine(pos);
-                    this.drawSLTPLines(pos);
-                    try {
-                        this.drawEntryMarker(pos);
-                    } catch (e) { /* scales may not be ready yet */ }
-                }
+                this.drawOrderLine(pos);
+                this.drawSLTPLines(pos);
+                try {
+                    this.drawEntryMarker(pos);
+                } catch (e) { /* scales may not be ready yet */ }
             });
             (this.pendingOrders || []).forEach((po) => {
                 if (!this._positionTickerMatchesChartSymbol(po, this.chart)) return;
-                const has = (this.orderLines || []).some((ol) => ol.orderId === po.id && ol.isPending);
-                if (!has) {
-                    try {
-                        this.drawPendingOrderLine(po);
-                    } catch (e) {}
-                }
+                try {
+                    this.drawPendingOrderLine(po);
+                    this.drawPendingOrderTargets(po);
+                } catch (e) { /* ignore */ }
             });
             if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
             try {

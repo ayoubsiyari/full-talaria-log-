@@ -107,7 +107,7 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
           <div className="bt-os-header-brand">
             <div className="bt-os-logo">
               <div className="bt-os-logo-mark" aria-hidden />
-              <span className="bt-os-logo-text">BacktestOS</span>
+              <span className="bt-os-logo-text"></span>
             </div>
           </div>
           <nav className="bt-os-nav" aria-label="Dashboard views">

@@ -6190,8 +6190,10 @@ class DrawingToolsManager {
      * SHARED across all timeframes - drawings appear on all timeframes
      * SHARED across all panels of the same pair/session (mirror behavior)
      */
-    getStorageKey() {
-        const fileId = this.chart.currentFileId || 'default';
+    getStorageKey(fileIdOverride = null) {
+        const fileId = fileIdOverride != null && String(fileIdOverride) !== ''
+            ? String(fileIdOverride)
+            : (this.chart.currentFileId || 'default');
         const sessionId = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
             ? this.chart.getActiveTradingSessionId()
             : null;
@@ -6203,8 +6205,9 @@ class DrawingToolsManager {
 
     /**
      * Save drawings to localStorage and API (hybrid approach)
+     * @param {string|null} fileIdOverride — when set, persist under this dataset id (pair switch before chart.currentFileId updates).
      */
-    saveDrawings() {
+    saveDrawings(fileIdOverride = null) {
         // Ensure all drawings have chart reference before saving
         this.drawings.forEach(d => {
             this._ensureDrawingId(d);
@@ -6215,7 +6218,7 @@ class DrawingToolsManager {
         });
         
         const data = this.drawings.map(d => d.toJSON());
-        const key = this.getStorageKey();
+        const key = this.getStorageKey(fileIdOverride);
 
         // 1. Save to localStorage immediately (instant, works offline)
         try {
@@ -6224,9 +6227,14 @@ class DrawingToolsManager {
             console.warn('⚠️ Failed to save drawings to localStorage:', error?.message || error);
         }
 
-        // 2. Save to session state for backtesting sessions
+        // 2. Save to session state for backtesting sessions (skip when persisting a *different* file id than
+        // chart.currentFileId — otherwise PATCH would replace the whole session drawings blob with one pair).
         const isUndoRedo = this.history && this.history.isPerformingUndoRedo;
-        if (!isUndoRedo && this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
+        // Only skip session/API when persisting under a file id that is *not* the chart's current dataset
+        // (e.g. ghost save) — pair-switch saves pass the outgoing id while chart.currentFileId still matches it.
+        const skipRemote = fileIdOverride != null
+            && String(fileIdOverride) !== String(this.chart.currentFileId || '');
+        if (!isUndoRedo && !skipRemote && this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
             try {
                 this.chart.scheduleSessionStateSave({ drawings: data });
             } catch (error) {
@@ -6235,7 +6243,7 @@ class DrawingToolsManager {
         }
         
         // 3. Save to API for cross-device sync (background, debounced)
-        if (!isUndoRedo) {
+        if (!isUndoRedo && !skipRemote) {
             try {
                 this.scheduleSaveToAPI(data);
             } catch (error) {
@@ -6249,7 +6257,7 @@ class DrawingToolsManager {
             window &&
             window.__ENABLE_DRAWINGS_URL_SYNC__ === true
         );
-        if (!isUndoRedo && shouldSyncDrawingsToUrl) {
+        if (!isUndoRedo && !skipRemote && shouldSyncDrawingsToUrl) {
             try {
                 this.updateURLWithDrawings();
             } catch (error) {
