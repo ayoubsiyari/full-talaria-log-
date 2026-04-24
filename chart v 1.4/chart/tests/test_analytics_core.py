@@ -269,4 +269,44 @@ def test_session_dashboard_extras_bundle():
     assert "monthly_pnl" in bundle
     assert "weekday_winrate" in bundle
     assert bundle["balance"]["start_balance"] == 5000.0
+    assert "yearly_summary" in bundle
+    assert bundle["yearly_summary"]["best_year"]["year"] == 2024
+    assert "holding_duration" in bundle
+
+
+def test_holding_duration_open_close():
+    raw = [
+        {
+            "tradeId": "a",
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "openTime": _utc_ts(2024, 5, 1, 10) * 1000,
+            "closeTime": _utc_ts(2024, 5, 2, 10) * 1000,
+            "netPnL": 5,
+            "rMultiple": 0.1,
+            "mae_r": 0.0,
+            "mfe_r": 0.2,
+            "quantity": 1.0,
+            "riskAmount": 10,
+        },
+        {
+            "tradeId": "b",
+            "ticker": "EURUSD",
+            "direction": "BUY",
+            "openTime": _utc_ts(2024, 5, 3, 10) * 1000,
+            "closeTime": _utc_ts(2024, 5, 3, 22) * 1000,
+            "netPnL": -2,
+            "rMultiple": -0.2,
+            "mae_r": -0.3,
+            "mfe_r": 0.1,
+            "quantity": 1.0,
+            "riskAmount": 10,
+        },
+    ]
+    trades = normalize_trades(raw)
+    h = compute_session_dashboard_extras(trades, 1000.0)["holding_duration"]
+    assert h["trades_with_duration"] == 2
+    assert h["avg_hours"] is not None and h["avg_hours"] > 0
+    assert h["avg_win_hours"] is not None
+    assert h["avg_loss_hours"] is not None
 

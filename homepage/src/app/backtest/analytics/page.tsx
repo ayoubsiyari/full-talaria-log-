@@ -132,6 +132,64 @@ function fmtPct(v: number): string {
   return `${v.toFixed(1)}%`;
 }
 
+function fmtDaysFromHours(h: number | null | undefined): string {
+  if (h == null || !Number.isFinite(h) || h < 0) return "—";
+  return `${(h / 24).toFixed(1)} days`;
+}
+
+function holdHoursFromTrade(t: { openTs: number; closeTs: number }): number | null {
+  const o = n(t.openTs);
+  const c = n(t.closeTs);
+  if (o <= 0 || c <= 0 || c < o) return null;
+  if (o > 1e12 && c > 1e12) return (c - o) / 3600000;
+  if (o > 1e9 && c > 1e9) return (c - o) / 3600;
+  return null;
+}
+
+function yearlyRollupFromMonthly(monthlyRows: Array<{ x: string; y: number }>, sb: number | null): { best: string; worst: string } {
+  const em = "—";
+  if (sb == null || sb <= 0 || !monthlyRows.length) return { best: em, worst: em };
+  const by: Record<string, number> = {};
+  for (const r of monthlyRows) {
+    const y = String(r.x).slice(0, 4);
+    if (y.length < 4) continue;
+    by[y] = (by[y] || 0) + n(r.y);
+  }
+  const keys = Object.keys(by).sort();
+  if (!keys.length) return { best: em, worst: em };
+  let bestK = keys[0]!;
+  let worstK = keys[0]!;
+  let bestV = by[bestK]!;
+  let worstV = by[worstK]!;
+  for (const k of keys) {
+    const v = by[k]!;
+    if (v > bestV) {
+      bestV = v;
+      bestK = k;
+    }
+    if (v < worstV) {
+      worstV = v;
+      worstK = k;
+    }
+  }
+  const fmt = (k: string, v: number) => `${k} (${((v / sb) * 100).toFixed(1)}%)`;
+  return { best: fmt(bestK, bestV), worst: fmt(worstK, worstV) };
+}
+
+function jarqueBeraApprox(sk: number | null, kt: number | null, sampleN: number): number | null {
+  if (sk == null || kt == null || sampleN < 4) return null;
+  return (sampleN / 6) * (sk * sk + (kt * kt) / 4);
+}
+
+function pValueRoughFromT(tAbs: number): string {
+  if (!Number.isFinite(tAbs) || tAbs < 0) return "—";
+  if (tAbs > 3.29) return "<0.001";
+  if (tAbs > 2.58) return "<0.01";
+  if (tAbs > 1.96) return "<0.05";
+  if (tAbs > 1.65) return "<0.10";
+  return "≥0.10";
+}
+
 function buildHistogram(values: number[], bucketSize = 0.5) {
   const clean = values.filter((v) => Number.isFinite(v));
   if (clean.length === 0) return [];
@@ -171,6 +229,7 @@ export default function BacktestAnalyticsPage() {
   const [heatmapPair, setHeatmapPair] = useState("ALL");
   const [heatmapMetric, setHeatmapMetric] = useState<"USD" | "R">("USD");
   const [whatIfApi, setWhatIfApi] = useState<any>(null);
+  const [whatIfError, setWhatIfError] = useState<string | null>(null);
   const [pairSort, setPairSort] = useState<{ key: string; dir: "asc" | "desc" }>({
     key: "netPnl",
     dir: "desc",
@@ -529,6 +588,7 @@ export default function BacktestAnalyticsPage() {
     }
     (async () => {
       try {
+        setWhatIfError(null);
         const payload = await fetchJson<any>("/api/analytics/backtest/whatif", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -544,9 +604,10 @@ export default function BacktestAnalyticsPage() {
         });
         if (!mounted) return;
         setWhatIfApi(payload || null);
-      } catch {
+      } catch (e) {
         if (!mounted) return;
         setWhatIfApi(null);
+        setWhatIfError(e instanceof Error ? e.message : String(e));
       }
     })();
     return () => {
@@ -572,7 +633,12 @@ export default function BacktestAnalyticsPage() {
     [whatIfApi]
   );
 
-  const bestHeatmap = heatmapData[0];
+  const bestHeatmap = useMemo(() => {
+    if (!heatmapData.length) return null;
+    const score = (h: any) =>
+      heatmapMetric === "USD" ? n(h.expectancy_usd ?? h.expectancyUsd) : n(h.expectancy_r ?? h.expectancyR);
+    return heatmapData.reduce((best: any, h: any) => (score(h) > score(best) ? h : best), heatmapData[0]);
+  }, [heatmapData, heatmapMetric]);
   const heatmapValueRange = useMemo(() => {
     if (heatmapData.length === 0) return { min: 0, max: 0, absMax: 1 };
     const vals = heatmapData.map((h: any) =>
@@ -607,6 +673,16 @@ export default function BacktestAnalyticsPage() {
         sharpe_sortino?: { sharpe?: number | null; sortino?: number | null };
         monthly_pnl?: Array<{ x: string; y: number }>;
         weekday_winrate?: Array<{ x: string; y: number; n: number }>;
+        yearly_summary?: {
+          best_year?: { year: number; net_pnl: number; return_pct: number } | null;
+          worst_year?: { year: number; net_pnl: number; return_pct: number } | null;
+        };
+        holding_duration?: {
+          trades_with_duration?: number;
+          avg_hours?: number | null;
+          avg_win_hours?: number | null;
+          avg_loss_hours?: number | null;
+        };
         balance?: {
           start_balance?: number | null;
           net_pnl?: number;
@@ -849,15 +925,59 @@ export default function BacktestAnalyticsPage() {
       dateTo = Number.isNaN(d2.getTime()) ? em : d2.toISOString().slice(0, 10);
     }
 
-    const weekdayRows = sessionAnalytics?.weekday_winrate ?? [];
-    let bestWd = em;
-    let bestWdV = -1;
-    for (const w of weekdayRows) {
-      if (n(w.n) > 0 && n(w.y) > bestWdV) {
-        bestWdV = n(w.y);
-        bestWd = `${w.x} ${n(w.y).toFixed(0)}%`;
-      }
-    }
+    const ys = sessionAnalytics?.yearly_summary;
+    const yrRoll = yearlyRollupFromMonthly(monthlyRows, sb);
+    const bestYearLabel =
+      ys?.best_year && sb != null && sb > 0
+        ? `${ys.best_year.year} (${n(ys.best_year.return_pct).toFixed(1)}%)`
+        : yrRoll.best;
+    const worstYearLabel =
+      ys?.worst_year && sb != null && sb > 0
+        ? `${ys.worst_year.year} (${n(ys.worst_year.return_pct).toFixed(1)}%)`
+        : yrRoll.worst;
+
+    const holdApi = sessionAnalytics?.holding_duration;
+    const localHoldH = sortedByCloseForStreak
+      .map((t) => holdHoursFromTrade(t))
+      .filter((h): h is number => h != null && Number.isFinite(h));
+    const avgHoldH =
+      holdApi?.avg_hours != null && Number.isFinite(n(holdApi.avg_hours))
+        ? n(holdApi.avg_hours)
+        : localHoldH.length
+          ? mean(localHoldH)
+          : null;
+    const avgWinHoldH =
+      holdApi?.avg_win_hours != null && Number.isFinite(n(holdApi.avg_win_hours))
+        ? n(holdApi.avg_win_hours)
+        : (() => {
+            const xs = sortedByCloseForStreak.filter((t) => t.pnl > 0).map((t) => holdHoursFromTrade(t)).filter((h): h is number => h != null);
+            return xs.length ? mean(xs) : null;
+          })();
+    const avgLossHoldH =
+      holdApi?.avg_loss_hours != null && Number.isFinite(n(holdApi.avg_loss_hours))
+        ? n(holdApi.avg_loss_hours)
+        : (() => {
+            const xs = sortedByCloseForStreak.filter((t) => t.pnl < 0).map((t) => holdHoursFromTrade(t)).filter((h): h is number => h != null);
+            return xs.length ? mean(xs) : null;
+          })();
+
+    const grossProfitSum = filteredTrades.filter((t) => t.pnl > 0).reduce((s, t) => s + t.pnl, 0);
+    const grossLossAbs = Math.abs(filteredTrades.filter((t) => t.pnl < 0).reduce((s, t) => s + t.pnl, 0));
+    const omega0 = grossLossAbs > 1e-9 ? (grossProfitSum / grossLossAbs).toFixed(2) : em;
+
+    const retFrac = sb != null && sb > 0 ? stats.net / sb : null;
+    const martinApprox =
+      retFrac != null && ulcer != null && ulcer > 1e-9 ? ((retFrac * 100) / ulcer).toFixed(2) : em;
+    const painRatioApprox =
+      retFrac != null && pain != null && pain > 1e-9 ? ((retFrac * 100) / pain).toFixed(2) : em;
+
+    const jb = jarqueBeraApprox(sk, kt, pn);
+    const tAbs = tStat != null ? Math.abs(tStat) : NaN;
+    const pRough = tStat != null && Number.isFinite(tStat) ? pValueRoughFromT(tAbs) : em;
+
+    const nMc = Math.min(80, Math.max(10, pn));
+    const mcPack = pnls.length > 2 ? monteCarloPercentiles(pnls, 200, nMc) : null;
+    const mc5last = mcPack?.p5?.length ? mcPack.p5[mcPack.p5.length - 1]! : null;
 
     let bestMo = em;
     let worstMo = em;
@@ -924,9 +1044,15 @@ export default function BacktestAnalyticsPage() {
         card("Calmar ratio", String(calmarApprox), "same as drawdown card", "#00c4ff"),
         card("Info ratio", em, "benchmark N/A", "#00c4ff"),
         card("Treynor ratio", em, "β N/A", "#00c4ff"),
-        card("Omega ratio", stats.avgLoss > 0 ? (stats.avgWin / stats.avgLoss).toFixed(2) : em, "avg win / avg loss", "#00c4ff"),
-        card("Martin ratio", em, "needs CAGR / ulcer", "#00c4ff"),
-        card("Pain ratio", em, "needs return / pain", "#00c4ff"),
+        card(
+          "Omega ratio",
+          omega0,
+          "gains / |losses| at τ=0",
+          "#00c4ff",
+          omega0 !== em && Number.parseFloat(omega0) >= 1 ? "pos" : omega0 !== em ? "neg" : undefined
+        ),
+        card("Martin ratio", martinApprox, "return% / ulcer (proxy)", "#00c4ff", martinApprox !== em ? "pos" : undefined),
+        card("Pain ratio", painRatioApprox, "return% / pain idx (proxy)", "#00c4ff", painRatioApprox !== em ? "pos" : undefined),
         card("M² (Modigliani)", em, "benchmark N/A", "#00c4ff"),
         card("Kappa 3", em, "higher moments N/A", "#00c4ff"),
         card("Deflated Sharpe", em, "track record adj N/A", "#00c4ff"),
@@ -938,29 +1064,29 @@ export default function BacktestAnalyticsPage() {
         card("Payoff ratio", stats.avgLoss > 0 ? (stats.avgWin / stats.avgLoss).toFixed(2) : em, "avg win / avg loss", "#ff6b35"),
         card("Expectancy", fmtMoney(stats.expectancy), "per trade", "#ff6b35", stats.expectancy >= 0 ? "pos" : "neg"),
         card("Total trades", String(stats.total), "round-trips", "#ff6b35"),
-        card("Avg duration", em, "needs entry/exit ms on rows", "#ff6b35"),
+        card("Avg duration", fmtDaysFromHours(avgHoldH), "open→close when timestamps exist", "#ff6b35"),
         card("Max consec wins", String(streaks2.maxWins), "streak", "#ff6b35", "pos"),
         card("Max consec losses", String(streaks2.maxLosses), "streak", "#ff6b35", "neg"),
         card("Largest win", fmtMoney(Number.isFinite(stats.best?.pnl) ? stats.best.pnl : 0), stats.best?.ticker || "", "#ff6b35", "pos"),
         card("Largest loss", fmtMoney(Number.isFinite(stats.worst?.pnl) ? stats.worst.pnl : 0), stats.worst?.ticker || "", "#ff6b35", "neg"),
         card("Avg winner", fmtMoney(stats.avgWin), "per win", "#ff6b35", "pos"),
         card("Avg loser", fmtMoney(stats.avgLoss), "per loss (abs)", "#ff6b35", "neg"),
-        card("Avg win duration", em, "timestamp gaps", "#ff6b35"),
-        card("Avg loss duration", em, "timestamp gaps", "#ff6b35"),
+        card("Avg win duration", fmtDaysFromHours(avgWinHoldH), "winners only", "#ff6b35"),
+        card("Avg loss duration", fmtDaysFromHours(avgLossHoldH), "losers only", "#ff6b35"),
         card("Trade cost total", fmtMoney(-costTotal), "commissions + spread est.", "#ff6b35", "neg"),
         card("Gross profit", fmtMoney(filteredTrades.filter((t) => t.pnl > 0).reduce((s, t) => s + t.pnl, 0)), "winners only", "#ff6b35", "pos"),
       ],
       statCards: [
         card("t-Statistic", tStat != null ? tStat.toFixed(2) : em, "mean PnL / stderr", "#fbbf24"),
-        card("p-Value", em, "requires model spec", "#fbbf24"),
+        card("p-Value", pRough, "rough |t| thresholds (trade PnL)", "#fbbf24"),
         card("R² equity", em, "linear fit N/A", "#fbbf24"),
         card("K-Ratio", em, "equity slope / SE N/A", "#fbbf24"),
         card("Hurst exponent", em, "needs long log returns", "#fbbf24"),
         card("Autocorrelation", em, "lag-1 N/A", "#fbbf24"),
         card("Ljung-Box Q", em, "N/A", "#fbbf24"),
-        card("Jarque-Bera", em, "use skew+kurt above", "#fbbf24"),
+        card("Jarque-Bera", jb != null ? jb.toFixed(1) : em, "JB approx from skew & kurt", "#fbbf24"),
         card("WF efficiency", em, "OOS / IS N/A", "#fbbf24"),
-        card("Monte Carlo 5th %", em, "see chart below", "#fbbf24"),
+        card("Monte Carlo 5th %", mc5last != null ? fmtMoney(mc5last) : em, "bootstrap cum PnL end", "#fbbf24"),
         card("Overfit bias", em, "N/A", "#fbbf24"),
       ],
       timeCards: [
@@ -975,9 +1101,10 @@ export default function BacktestAnalyticsPage() {
         card("Avg leverage", em, "N/A", "#9ca3af"),
         card("Annual turnover", em, "N/A", "#9ca3af"),
         card("Capacity est.", em, "N/A", "#9ca3af"),
+        card("Best year", bestYearLabel, "sum of monthly $ / balance", "#9ca3af", "pos"),
+        card("Worst year", worstYearLabel, "sum of monthly $ / balance", "#9ca3af", "neg"),
         card("Best month", bestMo, "by $ PnL", "#9ca3af", "pos"),
         card("Worst month", worstMo, "by $ PnL", "#9ca3af", "neg"),
-        card("Best weekday", bestWd, "win rate", "#9ca3af"),
         card("Slippage total", em, "not modeled separately", "#9ca3af"),
       ],
     };
@@ -1028,6 +1155,12 @@ export default function BacktestAnalyticsPage() {
   return (
     <div className={`${syne.variable} ${spaceMono.variable} bt-os-dashboard`} style={{ fontFamily: "var(--font-syne), Syne, sans-serif" }}>
       <BacktestSubnav active="analytics" sessionId={selectedSessionId || undefined} />
+
+      {whatIfError ? (
+        <div style={{ padding: "0 2rem 0.75rem", color: "#f87171", fontSize: "0.78rem", fontFamily: "var(--font-space-mono), monospace" }}>
+          Analytics API: {whatIfError}
+        </div>
+      ) : null}
 
       <div className="bt-os-toolbar">
         <a href="/backtest" className="bt-os-back-link">

@@ -58,6 +58,7 @@ def normalize_trades(raw_trades: list[dict[str, Any]]) -> list[NormalizedTrade]:
         commission = _commission_at_entry(t)
         pip_value = _pip_value_at_entry(t)
         close_ts = to_float(t.get("closeTime", t.get("exitTime", 0.0)))
+        open_ts = to_float(t.get("openTime", t.get("entryTime", 0.0)))
         risk_usd = to_float(t.get("riskAmount", t.get("originalRiskAmount", 0.0)))
         if risk_usd <= 0.0 and abs(rr_actual) > 1e-9:
             risk_usd = abs(pnl_net / rr_actual)
@@ -69,6 +70,7 @@ def normalize_trades(raw_trades: list[dict[str, Any]]) -> list[NormalizedTrade]:
                 side=side,
                 setup=setup,
                 close_ts=close_ts,
+                open_ts=open_ts,
                 pnl_net=pnl_net,
                 rr_actual=rr_actual,
                 mae_r=mae_r,

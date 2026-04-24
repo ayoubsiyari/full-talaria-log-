@@ -6031,8 +6031,27 @@ def _sanitize_for_json(v):
         return {k: _sanitize_for_json(val) for k, val in v.items()}
     return v
 
+def _trade_sort_ts(trade: dict) -> float:
+    """Chronological sort key for equity path (seconds)."""
+    dt = _parse_dt_any(
+        trade.get("exitTime")
+        or trade.get("closeTime")
+        or trade.get("exit_time")
+        or trade.get("close_time")
+        or trade.get("entryTime")
+        or trade.get("openTime")
+    )
+    if not dt:
+        return 0.0
+    try:
+        return float(dt.timestamp())
+    except Exception:
+        return 0.0
+
+
 def _compute_session_analytics(session_public: dict, journal: list):
     trades = [t for t in journal if isinstance(t, dict)]
+    trades.sort(key=_trade_sort_ts)
     pnls = [float(_trade_pnl(t)) for t in trades]
     wins = sum(1 for p in pnls if p > 0)
     losses = sum(1 for p in pnls if p < 0)

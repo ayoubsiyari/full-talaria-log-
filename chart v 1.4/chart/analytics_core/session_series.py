@@ -9,6 +9,84 @@ from .types import NormalizedTrade
 _WEEKDAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
+def _ts_to_seconds(ts: float) -> float | None:
+    """Normalize journal timestamps to seconds since epoch (UTC)."""
+    if not math.isfinite(ts) or ts <= 0:
+        return None
+    if ts > 1e12:
+        return ts / 1000.0
+    return ts
+
+
+def trade_duration_hours(trade: NormalizedTrade) -> float | None:
+    """Holding period in hours when open/close timestamps are usable."""
+    os_ = _ts_to_seconds(float(trade.open_ts))
+    cs = _ts_to_seconds(float(trade.close_ts))
+    if os_ is None or cs is None or cs < os_:
+        return None
+    return (cs - os_) / 3600.0
+
+
+def compute_yearly_summary_from_monthly(
+    monthly: list[dict[str, Any]],
+    start_balance: float | None,
+) -> dict[str, Any]:
+    """Best/worst calendar year by summed monthly net PnL vs start balance."""
+    if not monthly or start_balance is None or not math.isfinite(float(start_balance)) or float(start_balance) <= 0:
+        return {"best_year": None, "worst_year": None}
+    sb = float(start_balance)
+    by_year: dict[int, float] = {}
+    for row in monthly:
+        x = str(row.get("x", ""))
+        if len(x) < 4:
+            continue
+        try:
+            y = int(x[:4])
+        except ValueError:
+            continue
+        by_year[y] = by_year.get(y, 0.0) + float(row.get("y", 0.0))
+    if not by_year:
+        return {"best_year": None, "worst_year": None}
+    best_y, best_net = max(by_year.items(), key=lambda kv: kv[1])
+    worst_y, worst_net = min(by_year.items(), key=lambda kv: kv[1])
+    return {
+        "best_year": {
+            "year": best_y,
+            "net_pnl": best_net,
+            "return_pct": (best_net / sb) * 100.0,
+        },
+        "worst_year": {
+            "year": worst_y,
+            "net_pnl": worst_net,
+            "return_pct": (worst_net / sb) * 100.0,
+        },
+    }
+
+
+def compute_holding_duration_stats(trades: list[NormalizedTrade]) -> dict[str, Any]:
+    hours_all: list[float] = []
+    hours_win: list[float] = []
+    hours_loss: list[float] = []
+    for t in trades:
+        h = trade_duration_hours(t)
+        if h is None:
+            continue
+        hours_all.append(h)
+        if float(t.pnl_net) > 0:
+            hours_win.append(h)
+        elif float(t.pnl_net) < 0:
+            hours_loss.append(h)
+    def _avg(xs: list[float]) -> float | None:
+        return (sum(xs) / len(xs)) if xs else None
+
+    return {
+        "trades_with_duration": len(hours_all),
+        "avg_hours": _avg(hours_all),
+        "avg_win_hours": _avg(hours_win),
+        "avg_loss_hours": _avg(hours_loss),
+    }
+
+
 def _trade_close_datetime(trade: NormalizedTrade) -> datetime | None:
     ts = float(trade.close_ts)
     if not math.isfinite(ts) or ts <= 0:
@@ -124,9 +202,15 @@ def compute_session_dashboard_extras(
     start_balance: float | None,
 ) -> dict[str, Any]:
     pnls = [float(t.pnl_net) for t in trades]
+    monthly = compute_monthly_net_pnl(trades)
+    sb_f: float | None = None
+    if start_balance is not None and math.isfinite(float(start_balance)) and float(start_balance) > 0:
+        sb_f = float(start_balance)
     return {
         "sharpe_sortino": compute_sharpe_sortino(pnls),
-        "monthly_pnl": compute_monthly_net_pnl(trades),
+        "monthly_pnl": monthly,
         "weekday_winrate": compute_weekday_win_rate(trades),
         "balance": compute_balance_equity_metrics(trades, start_balance),
+        "yearly_summary": compute_yearly_summary_from_monthly(monthly, sb_f),
+        "holding_duration": compute_holding_duration_stats(trades),
     }
