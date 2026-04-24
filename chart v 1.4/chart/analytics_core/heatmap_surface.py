@@ -151,19 +151,20 @@ def render_expectancy_heatmap_surface_png(
     ax.zaxis.pane.set_edgecolor((0.15, 0.17, 0.22, 0.5))
     ax.grid(True, color=(1, 1, 1, 0.06), linestyle="-", linewidth=0.35)
 
+    # 3D box aspect is *display* space, not raw data ratio. SL/TP span ~O(1–3 R) while
+    # E[$] can span tens — using (xr, yr, zr) literally collapses the XY plane to a sliver.
     xr = float(sl_1d[-1] - sl_1d[0]) if sl_1d.size > 1 else 1.0
     yr = float(tp_1d[-1] - tp_1d[0]) if tp_1d.size > 1 else 1.0
-    zr = float(np.nanmax(Z0) - np.nanmin(Z0))
-    if xr <= 0:
-        xr = 1.0
-    if yr <= 0:
-        yr = 1.0
-    if zr <= 0:
-        zr = 1.0
-    # Match data proportions so Z is not visually squashed against SL/TP.
-    ax.set_box_aspect((xr, yr, zr))
+    zr_data = float(np.nanmax(Z0) - np.nanmin(Z0))
+    xr = max(xr, 1e-9)
+    yr = max(yr, 1e-9)
+    xy = max(xr, yr)
+    z_cap = 3.0 * xy
+    z_floor = 0.42 * xy
+    z_box = float(np.clip(max(zr_data, 1e-12), z_floor, z_cap))
+    ax.set_box_aspect((xr, yr, z_box))
 
-    ax.view_init(elev=26, azim=-58)
+    ax.view_init(elev=24, azim=-52)
 
     cbar = fig.colorbar(surf, ax=ax, shrink=0.55, aspect=16, pad=0.12)
     cbar.ax.yaxis.set_tick_params(color="#9ca3af", labelsize=8)
