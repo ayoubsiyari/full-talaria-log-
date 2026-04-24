@@ -55,6 +55,8 @@ export type BacktestOsDashboardLayoutProps = {
   tradeCards: OsMetricCard[];
   statCards: OsMetricCard[];
   timeCards: OsMetricCard[];
+  /** Optional PnL calendar / time visual below time metric cards */
+  calendarSection?: React.ReactNode;
   advancedSection: React.ReactNode;
 };
 
@@ -91,6 +93,7 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
     tradeCards,
     statCards,
     timeCards,
+    calendarSection,
     advancedSection,
   } = props;
 
@@ -194,6 +197,7 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
         <div className="bt-os-section">
           <SectionHeader tag="Time" tagClass="bt-os-tag-time" title="Time & calendar" />
           <MetricGrid cards={timeCards} />
+          {calendarSection ? <div className="bt-os-calendar-shell">{calendarSection}</div> : null}
         </div>
       </main>
 

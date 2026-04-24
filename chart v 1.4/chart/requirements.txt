@@ -16,5 +16,4 @@ pytest
 binance-historical-data==0.1.14
 yfinance==0.2.55
 psutil==6.1.0
-matplotlib==3.8.4
 numpy==1.26.4

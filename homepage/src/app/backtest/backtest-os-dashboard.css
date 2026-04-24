@@ -451,6 +451,110 @@
   color: var(--bt-text);
 }
 
+.bt-os-calendar-shell {
+  margin-top: 1rem;
+  padding: 1rem 0 0.25rem;
+  border-top: 1px solid var(--bt-border);
+}
+
+.bt-os-pnl-cal-empty {
+  font-family: var(--font-space-mono, "Space Mono", monospace);
+  font-size: 0.72rem;
+  color: var(--bt-muted);
+  padding: 0.5rem 0;
+}
+
+.bt-os-pnl-cal-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.bt-os-pnl-cal-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bt-muted2);
+}
+
+.bt-os-pnl-cal-legend {
+  font-family: var(--font-space-mono, "Space Mono", monospace);
+  font-size: 0.62rem;
+  color: var(--bt-muted);
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.bt-os-pnl-cal-legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.bt-os-pnl-cal-months {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.25rem;
+}
+
+.bt-os-pnl-cal-month {
+  flex: 0 0 auto;
+}
+
+.bt-os-pnl-cal-month-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--bt-text);
+  margin-bottom: 6px;
+  letter-spacing: 0.04em;
+}
+
+.bt-os-pnl-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(22px, 28px));
+  gap: 3px;
+}
+
+.bt-os-pnl-cal-dow {
+  font-size: 0.55rem;
+  font-weight: 600;
+  color: var(--bt-muted);
+  text-align: center;
+  line-height: 1.2;
+  padding-bottom: 2px;
+}
+
+.bt-os-pnl-cal-cell {
+  aspect-ratio: 1;
+  min-height: 22px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bt-os-pnl-cal-dayn {
+  font-family: var(--font-space-mono, "Space Mono", monospace);
+  font-size: 0.55rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.65);
+}
+
+.bt-os-pnl-cal-note {
+  margin-top: 10px;
+  font-size: 0.62rem;
+  color: var(--bt-muted);
+  font-family: var(--font-space-mono, "Space Mono", monospace);
+}
+
 @media (max-width: 900px) {
   .bt-os-charts-row.bt-os-col2,
   .bt-os-charts-row.bt-os-col3 {

@@ -2,7 +2,6 @@ from .types import NormalizedTrade
 from .normalization import normalize_trades, filter_by_instrument
 from .simulation import simulate_trade, simulate_equity_curve
 from .heatmap import build_expectancy_heatmap, build_histogram
-from .heatmap_surface import heatmap_to_matrices, render_expectancy_heatmap_surface_png
 from .stats import (
     compute_stats,
     compute_playbook_breakdown,
@@ -26,8 +25,6 @@ __all__ = [
     "simulate_equity_curve",
     "build_expectancy_heatmap",
     "build_histogram",
-    "heatmap_to_matrices",
-    "render_expectancy_heatmap_surface_png",
     "compute_stats",
     "compute_playbook_breakdown",
     "compute_per_instrument_summary",

@@ -114,7 +114,6 @@ from analytics_engine import (
     compute_session_dashboard_extras,
 )
 from analytics_core.csv_journal import parse_trades_csv_bytes
-from analytics_core.heatmap_surface import render_expectancy_heatmap_surface_png
 
 from firstrate_ingest import (
     MAX_TICKER_LISTING_RETURN,
@@ -1468,55 +1467,6 @@ async def get_backtest_whatif(payload: BacktestWhatIfRequest, request: Request):
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    finally:
-        db.close()
-
-
-class BacktestHeatmap3dRequest(BaseModel):
-    session_id: int
-    pair_filter: str = "ALL"
-    playbook_filter: str = "ALL"
-    outcome_filter: str = "ALL"
-    heatmap_pair: str = "ALL"
-    metric: str = "USD"
-
-
-@app.post("/api/analytics/backtest/heatmap-3d-surface")
-async def post_backtest_heatmap_3d_surface(payload: BacktestHeatmap3dRequest, request: Request):
-    """PNG Matplotlib 3D surface of TP/SL expectancy (same filters as what-if heatmap)."""
-    user = _require_user(request)
-    db = SessionLocal()
-    try:
-        s = db.query(TradingSession).filter(TradingSession.id == payload.session_id).first()
-        if not s:
-            raise HTTPException(status_code=404, detail="Session not found")
-        if not _can_access_trading_session(user, s):
-            raise HTTPException(status_code=403, detail="Forbidden")
-
-        st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
-        state = _parse_json_dict(st.state_json)
-        journal = state.get("journal") if isinstance(state.get("journal"), list) else []
-
-        pair_filter = str(payload.pair_filter or "ALL").strip().upper().replace("/", "")
-        playbook_filter = str(payload.playbook_filter or "ALL").strip()
-        outcome_filter = str(payload.outcome_filter or "ALL").strip().upper()
-        filtered_raw = _filter_journal_raw_trades(journal, pair_filter, playbook_filter, outcome_filter)
-        normalized = normalize_trades(filtered_raw)
-        heatmap_scope = str(payload.heatmap_pair or "ALL").strip().upper().replace("/", "")
-        heatmap_trades = filter_by_instrument(normalized, heatmap_scope)
-        if not heatmap_trades:
-            raise HTTPException(status_code=400, detail="No trades in scope for heatmap")
-        heatmap = build_expectancy_heatmap(heatmap_trades)
-        m = str(payload.metric or "USD").strip().upper()
-        metric = "usd" if m in ("USD", "$", "DOLLAR") else "r"
-        title = f"TP/SL expectancy · {heatmap_scope} · {len(heatmap_trades)} trades · {metric.upper()}"
-        try:
-            png = render_expectancy_heatmap_surface_png(heatmap, metric=metric, title=title)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Matplotlib render failed: {e}") from e
-        return Response(content=png, media_type="image/png")
     finally:
         db.close()
 
