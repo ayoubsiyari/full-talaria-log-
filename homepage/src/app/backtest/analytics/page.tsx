@@ -670,7 +670,7 @@ export default function BacktestAnalyticsPage() {
     return () => {
       mounted = false;
     };
-  }, [selectedSessionId, pairFilter, playbookFilter, outcomeFilter, heatmapPair, simTpR, simSlR]);
+  }, [selectedSessionId, pairFilter, playbookFilter, outcomeFilter, heatmapPair, simTpR, simSlR, journalReloadToken]);
 
   const whatIfEquityCurve = useMemo(
     () =>
