@@ -10603,7 +10603,7 @@ class Chart {
             window.panelManager &&
             window.panelManager.syncSettings &&
             window.panelManager.syncSettings.interval &&
-            !window.panelManager._syncingInterval
+            (window.panelManager._syncIntervalDepth || 0) === 0
         ) {
             const sourcePanel = this.panel || (window.panelManager.panels || []).find(p => p.chartInstance === this);
             if (sourcePanel) {

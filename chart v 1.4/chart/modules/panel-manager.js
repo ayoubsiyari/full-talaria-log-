@@ -23,7 +23,7 @@ const PANEL_CHART_APPEARANCE_KEYS = [
     'symbolColor', 'prevDayColor',
     'settingsPanelAccentColor', 'settingsPanelSecondaryColor', 'settingsPanelTextColor',
     'settingsPanelBgColor', 'settingsPanelSidebarBgColor',
-    'activeFullTemplate', 'activeChartOnlyTemplate', 'activePanelOnlyTemplate'
+    'activeFullTemplate', 'activeChartOnlyTemplate'
 ];
 
 class PanelManager {
@@ -48,8 +48,15 @@ class PanelManager {
         this._dateRangeScrollSyncTimer = null;
         this._dateRangeScrollPending = null;
 
-        /** True while syncInterval() fans out setTimeframe — prevents nested sync storms (lag/freeze). */
+        /** True while syncInterval() fans out setTimeframe — chart.js checks this to avoid re-fan. */
         this._syncingInterval = false;
+        /** Re-entrancy guard: only outermost syncInterval runs body (see chart.js setTimeframe). */
+        this._syncIntervalDepth = 0;
+
+        /** Window chartScrolled listener ref — removed before re-registering (setupEventListeners). */
+        this._scrollListenerRef = null;
+
+        this._isSyncing = false;
 
         /** Per-target-panel last bar index so each follower only jumps when ITS own right-edge bar changes. */
         this._timeSyncLastTargetBar = {};
@@ -116,7 +123,11 @@ class PanelManager {
      * Setup event listeners for panel synchronization
      */
     setupEventListeners() {
-        window.addEventListener('chartScrolled', (e) => {
+        if (this._scrollListenerRef) {
+            window.removeEventListener('chartScrolled', this._scrollListenerRef);
+            this._scrollListenerRef = null;
+        }
+        this._scrollListenerRef = (e) => {
             if (this._isSyncing) return;
             const d = e.detail || {};
             const { panel, startTimestamp, endTimestamp } = d;
@@ -149,7 +160,8 @@ class PanelManager {
                 && Number.isFinite(endTimestamp) && endTimestamp > 0) {
                 this.syncTimeScrollFromScrolledEvent(panel, d);
             }
-        });
+        };
+        window.addEventListener('chartScrolled', this._scrollListenerRef);
     }
     
     /**
@@ -309,9 +321,17 @@ class PanelManager {
                     <div class="sync-label"><span>Date range</span><span class="sync-hint">Locks visible time span and zoom across panels with the same symbol/file while dragging.</span></div>
                     <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="daterange-sync-toggle"></label>
                 </div>
-                <div class="sync-row sync-row-border">
+                <div class="sync-row">
                     <div class="sync-label"><span>Drawings</span></div>
                     <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="drawings-sync-toggle"></label>
+                </div>
+                <div class="sync-row">
+                    <div class="sync-label"><span>Indicators</span><span class="sync-hint">Applies same indicators to all panels.</span></div>
+                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="indicators-sync-toggle"></label>
+                </div>
+                <div class="sync-row sync-row-border">
+                    <div class="sync-label"><span>Chart type</span><span class="sync-hint">Applies same chart style to all panels.</span></div>
+                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="charttype-sync-toggle"></label>
                 </div>
             </div>
         `;
@@ -698,7 +718,7 @@ class PanelManager {
      */
     syncInterval(sourcePanel, timeframe) {
         if (!this.syncSettings.interval || this.currentLayout === '1') return;
-        if (this._syncingInterval) return;
+        if ((this._syncIntervalDepth || 0) > 0) return;
 
         // Bar grid changes — stale right-edge indices break continuous time sync after TF jumps.
         this._timeSyncLastTargetBar = {};
@@ -720,6 +740,7 @@ class PanelManager {
             }
         }
 
+        this._syncIntervalDepth = 1;
         this._syncingInterval = true;
         try {
             this.panels.forEach(panel => {
@@ -740,6 +761,7 @@ class PanelManager {
                 }
             });
         } finally {
+            this._syncIntervalDepth = 0;
             this._syncingInterval = false;
         }
     }
@@ -756,7 +778,9 @@ class PanelManager {
             if ((data[mid].t || 0) < ts) lo = mid + 1;
             else hi = mid;
         }
-        if (lo > 0 && Math.abs((data[lo - 1].t || 0) - ts) < Math.abs((data[lo].t || 0) - ts)) {
+        // lo = first index with data[lo].t >= ts. Prefer lo-1 only when strictly closer (exact match keeps lo).
+        if (lo > 0 &&
+            Math.abs((data[lo - 1].t || 0) - ts) < Math.abs((data[lo].t || 0) - ts)) {
             return lo - 1;
         }
         return lo;
@@ -860,10 +884,11 @@ class PanelManager {
      * Apply Time scroll sync from a `chartScrolled` detail: same bar duration as source
      * uses fractional right-edge index every frame (smooth parity with the dragged chart);
      * mixed timeframes keep discrete right-edge jumps to avoid constant thrash.
-     * Does not set `_isSyncing` (that would drop coalesced scroll events for ~2 frames).
+     * Sets `_isSyncing` while applying so follower charts do not re-dispatch scroll storms.
      */
     syncTimeScrollFromScrolledEvent(sourcePanel, detail) {
         if (!this.syncSettings.time || this.currentLayout === '1') return;
+        if (this._isSyncing) return;
         const sourceChart = sourcePanel?.chartInstance;
         if (!sourceChart?.data?.length) return;
 
@@ -889,6 +914,7 @@ class PanelManager {
             ? sourceChart.inferBarDurationMs()
             : 60000;
 
+        this._isSyncing = true;
         const toRelease = [];
         try {
             this.panels.forEach(panel => {
@@ -944,6 +970,7 @@ class PanelManager {
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
                     toRelease.forEach(c => { c._suppressPanelScrollSync = false; });
+                    this._isSyncing = false;
                 });
             });
         }
@@ -1207,11 +1234,105 @@ class PanelManager {
         }
     }
 
+    _safeReparentBrand() {
+        const brand = document.querySelector('.chart-brand');
+        const chartCont = document.getElementById('chart-container');
+        if (brand && chartCont && brand.parentElement !== chartCont) {
+            chartCont.appendChild(brand);
+        }
+    }
+
+    _destroyAllResizeHandles() {
+        if (Array.isArray(this.resizeHandles)) {
+            this.resizeHandles.forEach(h => {
+                if (h?.parentNode) h.parentNode.removeChild(h);
+            });
+            this.resizeHandles = [];
+        }
+        document.querySelectorAll('.panel-resize-handle').forEach(h => h.remove());
+        document.querySelectorAll('.panel-selection-frame').forEach(f => f.remove());
+    }
+
+    _waitForSize(element, callback, timeout = 2000) {
+        if (!element || typeof callback !== 'function') return;
+        const start = performance.now();
+        if (typeof ResizeObserver !== 'undefined') {
+            const ro = new ResizeObserver((entries) => {
+                const cr = entries[0] && entries[0].contentRect;
+                if (!cr) return;
+                if (cr.width > 0 && cr.height > 0) {
+                    ro.disconnect();
+                    callback();
+                } else if (performance.now() - start > timeout) {
+                    ro.disconnect();
+                    callback();
+                }
+            });
+            ro.observe(element);
+        } else {
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                setTimeout(callback, 80);
+            }));
+        }
+    }
+
+    _observePanelCanvas(panelEl, canvas, svg, index) {
+        const apply = (w, h) => {
+            const dpr = window.devicePixelRatio || 1;
+            const wf = Math.max(1, Math.floor(w));
+            const hf = Math.max(1, Math.floor(h));
+            canvas.width = Math.max(1, Math.floor(wf * dpr));
+            canvas.height = Math.max(1, Math.floor(hf * dpr));
+            canvas.style.width = wf + 'px';
+            canvas.style.height = hf + 'px';
+            svg.setAttribute('width', String(wf));
+            svg.setAttribute('height', String(hf));
+            svg.style.width = wf + 'px';
+            svg.style.height = hf + 'px';
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.scale(dpr, dpr);
+            }
+            const panel = this.panels[index];
+            if (panel?.chartInstance) {
+                panel.chartInstance._lastResizeDpr = 0;
+                if (typeof panel.chartInstance.resize === 'function') panel.chartInstance.resize();
+                if (typeof panel.chartInstance.render === 'function') panel.chartInstance.render();
+            }
+        };
+
+        if (typeof ResizeObserver !== 'undefined') {
+            const ro = new ResizeObserver(entries => {
+                const cr = entries[0].contentRect;
+                if (cr.width > 0 && cr.height > 0) {
+                    ro.disconnect();
+                    apply(cr.width, cr.height);
+                }
+            });
+            ro.observe(panelEl);
+        } else {
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                const r = panelEl.getBoundingClientRect();
+                if (r.width > 0 && r.height > 0) apply(r.width, r.height);
+                else {
+                    setTimeout(() => {
+                        const r2 = panelEl.getBoundingClientRect();
+                        apply(r2.width || 300, r2.height || 200);
+                    }, 80);
+                }
+            }));
+        }
+    }
+
     /**
      * Apply selected layout
      */
     applyLayout(layout) {
         console.log('Applying layout:', layout);
+        this._safeReparentBrand();
+        this._destroyAllResizeHandles();
+        this.selectedPanelIndex = 0;
         this.currentLayout = layout;
 
         // Keep dropdown active state in sync
@@ -1229,22 +1350,24 @@ class PanelManager {
         if (layout === '1') {
             console.log('🔄 Returning to single layout - cleaning up panels...');
 
+            if (this._saveStateTimer) {
+                clearTimeout(this._saveStateTimer);
+                this._saveStateTimer = null;
+            }
+            if (this._dateRangeScrollSyncTimer != null) {
+                clearTimeout(this._dateRangeScrollSyncTimer);
+                this._dateRangeScrollSyncTimer = null;
+            }
+            this._dateRangeScrollPending = null;
+
+            const cwSingle = document.getElementById('chartWrapper');
+            if (cwSingle && cwSingle._panelClickHandler) {
+                cwSingle.removeEventListener('mousedown', cwSingle._panelClickHandler, true);
+                cwSingle._panelClickHandler = null;
+            }
+
             // Logo must leave panels-container before innerHTML clears it
             this.syncChartBrandPlacement('1');
-            
-            // FIRST: Remove ALL resize handles
-            if (this.resizeHandles && this.resizeHandles.length > 0) {
-                this.resizeHandles.forEach(h => {
-                    if (h && h.parentNode) {
-                        h.parentNode.removeChild(h);
-                    }
-                });
-                this.resizeHandles = [];
-                console.log('✅ Removed resize handles');
-            }
-            
-            // Also remove any orphaned resize handles by class name
-            document.querySelectorAll('.panel-resize-handle').forEach(h => h.remove());
 
             // Remove selection overlay and clear selected class from everything
             document.querySelectorAll('.panel-selection-frame').forEach(f => f.remove());
@@ -1305,7 +1428,6 @@ class PanelManager {
             
             // Reset panel tracking
             this.panels = [];
-            this.selectedPanelIndex = 0;
             // Keep container fully turned off in single-layout mode
             if (this.container) {
                 this.container.style.display = 'none';
@@ -1428,18 +1550,21 @@ class PanelManager {
             return;
         }
         
+        if (this._saveStateTimer) {
+            clearTimeout(this._saveStateTimer);
+            this._saveStateTimer = null;
+        }
+        if (this._dateRangeScrollSyncTimer != null) {
+            clearTimeout(this._dateRangeScrollSyncTimer);
+            this._dateRangeScrollSyncTimer = null;
+        }
+        this._dateRangeScrollPending = null;
+
         // Show panels container
         this.container.style.display = 'block';
         
         // Clear any active drawing tool when switching to multi-panel
         this.clearAllDrawingTools();
-        
-        // If logo already lived in panels-container, park it on chart-container so innerHTML does not wipe it
-        const brandEl = document.querySelector('.chart-brand');
-        const chartCont = document.getElementById('chart-container');
-        if (brandEl && this.container.contains(brandEl) && chartCont) {
-            chartCont.appendChild(brandEl);
-        }
 
         // Clear existing additional panels (keep original chart separate)
         this.container.innerHTML = '';
@@ -1457,14 +1582,14 @@ class PanelManager {
                 { width: '100%', height: '50%', top: '50%' }
             ],
             '3v': [
-                { width: '33.33%', height: '100%', left: '0' },
-                { width: '33.33%', height: '100%', left: '33.33%' },
-                { width: '33.33%', height: '100%', left: '66.66%' }
+                { width: 'calc(100% / 3)', height: '100%', left: '0' },
+                { width: 'calc(100% / 3)', height: '100%', left: 'calc(100% / 3)' },
+                { width: 'calc(100% / 3)', height: '100%', left: 'calc(200% / 3)' }
             ],
             '3h': [
-                { width: '100%', height: '33.33%', top: '0' },
-                { width: '100%', height: '33.33%', top: '33.33%' },
-                { width: '100%', height: '33.33%', top: '66.66%' }
+                { width: '100%', height: 'calc(100% / 3)', top: '0' },
+                { width: '100%', height: 'calc(100% / 3)', top: 'calc(100% / 3)' },
+                { width: '100%', height: 'calc(100% / 3)', top: 'calc(200% / 3)' }
             ],
             '3l': [
                 { width: '50%', height: '100%', left: '0' },
@@ -1506,54 +1631,54 @@ class PanelManager {
             ],
             '4t': [ // Top 1 + bottom 3
                 { width: '100%', height: '50%', left: '0', top: '0' },
-                { width: '33.33%', height: '50%', left: '0', top: '50%' },
-                { width: '33.33%', height: '50%', left: '33.33%', top: '50%' },
-                { width: '33.33%', height: '50%', left: '66.66%', top: '50%' }
+                { width: 'calc(100% / 3)', height: '50%', left: '0', top: '50%' },
+                { width: 'calc(100% / 3)', height: '50%', left: 'calc(100% / 3)', top: '50%' },
+                { width: 'calc(100% / 3)', height: '50%', left: 'calc(200% / 3)', top: '50%' }
             ],
             '4b': [ // Top 3 + bottom 1
-                { width: '33.33%', height: '50%', left: '0', top: '0' },
-                { width: '33.33%', height: '50%', left: '33.33%', top: '0' },
-                { width: '33.33%', height: '50%', left: '66.66%', top: '0' },
+                { width: 'calc(100% / 3)', height: '50%', left: '0', top: '0' },
+                { width: 'calc(100% / 3)', height: '50%', left: 'calc(100% / 3)', top: '0' },
+                { width: 'calc(100% / 3)', height: '50%', left: 'calc(200% / 3)', top: '0' },
                 { width: '100%', height: '50%', left: '0', top: '50%' }
             ],
             '4r': [ // Left 3 + right 1
-                { width: '50%', height: '33.33%', left: '0', top: '0' },
-                { width: '50%', height: '33.33%', left: '0', top: '33.33%' },
-                { width: '50%', height: '33.33%', left: '0', top: '66.66%' },
+                { width: '50%', height: 'calc(100% / 3)', left: '0', top: '0' },
+                { width: '50%', height: 'calc(100% / 3)', left: '0', top: 'calc(100% / 3)' },
+                { width: '50%', height: 'calc(100% / 3)', left: '0', top: 'calc(200% / 3)' },
                 { width: '50%', height: '100%', left: '50%', top: '0' }
             ],
             '4l': [ // 1 left + 3 right
                 { width: '50%', height: '100%', left: '0', top: '0' },
-                { width: '50%', height: '33.33%', left: '50%', top: '0' },
-                { width: '50%', height: '33.33%', left: '50%', top: '33.33%' },
-                { width: '50%', height: '33.33%', left: '50%', top: '66.66%' }
+                { width: '50%', height: 'calc(100% / 3)', left: '50%', top: '0' },
+                { width: '50%', height: 'calc(100% / 3)', left: '50%', top: 'calc(100% / 3)' },
+                { width: '50%', height: 'calc(100% / 3)', left: '50%', top: 'calc(200% / 3)' }
             ],
             '4tl': [ // 1 big top-left + 1 right + 2 bottom
-                { width: '66.66%', height: '60%', left: '0', top: '0' },
-                { width: '33.33%', height: '60%', left: '66.66%', top: '0' },
+                { width: 'calc(200% / 3)', height: '60%', left: '0', top: '0' },
+                { width: 'calc(100% / 3)', height: '60%', left: 'calc(200% / 3)', top: '0' },
                 { width: '50%', height: '40%', left: '0', top: '60%' },
                 { width: '50%', height: '40%', left: '50%', top: '60%' }
             ],
             '5a': [ // Top 2 + bottom 3
                 { width: '50%', height: '50%', left: '0', top: '0' },
                 { width: '50%', height: '50%', left: '50%', top: '0' },
-                { width: '33.33%', height: '50%', left: '0', top: '50%' },
-                { width: '33.33%', height: '50%', left: '33.33%', top: '50%' },
-                { width: '33.33%', height: '50%', left: '66.66%', top: '50%' }
+                { width: 'calc(100% / 3)', height: '50%', left: '0', top: '50%' },
+                { width: 'calc(100% / 3)', height: '50%', left: 'calc(100% / 3)', top: '50%' },
+                { width: 'calc(100% / 3)', height: '50%', left: 'calc(200% / 3)', top: '50%' }
             ],
             '5b': [ // Top 3 + bottom 2
-                { width: '33.33%', height: '50%', left: '0', top: '0' },
-                { width: '33.33%', height: '50%', left: '33.33%', top: '0' },
-                { width: '33.33%', height: '50%', left: '66.66%', top: '0' },
+                { width: 'calc(100% / 3)', height: '50%', left: '0', top: '0' },
+                { width: 'calc(100% / 3)', height: '50%', left: 'calc(100% / 3)', top: '0' },
+                { width: 'calc(100% / 3)', height: '50%', left: 'calc(200% / 3)', top: '0' },
                 { width: '50%', height: '50%', left: '0', top: '50%' },
                 { width: '50%', height: '50%', left: '50%', top: '50%' }
             ],
             '5c': [ // Left 2 + right 3
                 { width: '50%', height: '50%', left: '0', top: '0' },
                 { width: '50%', height: '50%', left: '0', top: '50%' },
-                { width: '50%', height: '33.33%', left: '50%', top: '0' },
-                { width: '50%', height: '33.33%', left: '50%', top: '33.33%' },
-                { width: '50%', height: '33.33%', left: '50%', top: '66.66%' }
+                { width: '50%', height: 'calc(100% / 3)', left: '50%', top: '0' },
+                { width: '50%', height: 'calc(100% / 3)', left: '50%', top: 'calc(100% / 3)' },
+                { width: '50%', height: 'calc(100% / 3)', left: '50%', top: 'calc(200% / 3)' }
             ],
             '5v': [
                 { width: '20%', height: '100%', left: '0' },
@@ -1570,54 +1695,54 @@ class PanelManager {
                 { width: '100%', height: '20%', top: '80%' }
             ],
             '6': [ // 2x3 grid
-                { width: '33.33%', height: '50%', left: '0', top: '0' },
-                { width: '33.33%', height: '50%', left: '33.33%', top: '0' },
-                { width: '33.33%', height: '50%', left: '66.66%', top: '0' },
-                { width: '33.33%', height: '50%', left: '0', top: '50%' },
-                { width: '33.33%', height: '50%', left: '33.33%', top: '50%' },
-                { width: '33.33%', height: '50%', left: '66.66%', top: '50%' }
+                { width: 'calc(100% / 3)', height: '50%', left: '0', top: '0' },
+                { width: 'calc(100% / 3)', height: '50%', left: 'calc(100% / 3)', top: '0' },
+                { width: 'calc(100% / 3)', height: '50%', left: 'calc(200% / 3)', top: '0' },
+                { width: 'calc(100% / 3)', height: '50%', left: '0', top: '50%' },
+                { width: 'calc(100% / 3)', height: '50%', left: 'calc(100% / 3)', top: '50%' },
+                { width: 'calc(100% / 3)', height: '50%', left: 'calc(200% / 3)', top: '50%' }
             ],
             '6b': [ // 3x2 grid
-                { width: '50%', height: '33.33%', left: '0', top: '0' },
-                { width: '50%', height: '33.33%', left: '50%', top: '0' },
-                { width: '50%', height: '33.33%', left: '0', top: '33.33%' },
-                { width: '50%', height: '33.33%', left: '50%', top: '33.33%' },
-                { width: '50%', height: '33.33%', left: '0', top: '66.66%' },
-                { width: '50%', height: '33.33%', left: '50%', top: '66.66%' }
+                { width: '50%', height: 'calc(100% / 3)', left: '0', top: '0' },
+                { width: '50%', height: 'calc(100% / 3)', left: '50%', top: '0' },
+                { width: '50%', height: 'calc(100% / 3)', left: '0', top: 'calc(100% / 3)' },
+                { width: '50%', height: 'calc(100% / 3)', left: '50%', top: 'calc(100% / 3)' },
+                { width: '50%', height: 'calc(100% / 3)', left: '0', top: 'calc(200% / 3)' },
+                { width: '50%', height: 'calc(100% / 3)', left: '50%', top: 'calc(200% / 3)' }
             ],
             '6v': [
-                { width: '16.66%', height: '100%', left: '0' },
-                { width: '16.66%', height: '100%', left: '16.66%' },
-                { width: '16.66%', height: '100%', left: '33.33%' },
-                { width: '16.66%', height: '100%', left: '50%' },
-                { width: '16.66%', height: '100%', left: '66.66%' },
-                { width: '16.66%', height: '100%', left: '83.33%' }
+                { width: 'calc(100% / 6)', height: '100%', left: '0' },
+                { width: 'calc(100% / 6)', height: '100%', left: 'calc(100% / 6)' },
+                { width: 'calc(100% / 6)', height: '100%', left: 'calc(100% / 3)' },
+                { width: 'calc(100% / 6)', height: '100%', left: 'calc(300% / 6)' },
+                { width: 'calc(100% / 6)', height: '100%', left: 'calc(200% / 3)' },
+                { width: 'calc(100% / 6)', height: '100%', left: 'calc(500% / 6)' }
             ],
             '6h': [
-                { width: '100%', height: '16.66%', top: '0' },
-                { width: '100%', height: '16.66%', top: '16.66%' },
-                { width: '100%', height: '16.66%', top: '33.33%' },
-                { width: '100%', height: '16.66%', top: '50%' },
-                { width: '100%', height: '16.66%', top: '66.66%' },
-                { width: '100%', height: '16.66%', top: '83.33%' }
+                { width: '100%', height: 'calc(100% / 6)', top: '0' },
+                { width: '100%', height: 'calc(100% / 6)', top: 'calc(100% / 6)' },
+                { width: '100%', height: 'calc(100% / 6)', top: 'calc(100% / 3)' },
+                { width: '100%', height: 'calc(100% / 6)', top: 'calc(300% / 6)' },
+                { width: '100%', height: 'calc(100% / 6)', top: 'calc(200% / 3)' },
+                { width: '100%', height: 'calc(100% / 6)', top: 'calc(500% / 6)' }
             ],
             '7v': [
-                { width: '14.28%', height: '100%', left: '0' },
-                { width: '14.28%', height: '100%', left: '14.28%' },
-                { width: '14.28%', height: '100%', left: '28.56%' },
-                { width: '14.28%', height: '100%', left: '42.84%' },
-                { width: '14.28%', height: '100%', left: '57.12%' },
-                { width: '14.28%', height: '100%', left: '71.4%' },
-                { width: '14.28%', height: '100%', left: '85.68%' }
+                { width: 'calc(100% / 7)', height: '100%', left: '0' },
+                { width: 'calc(100% / 7)', height: '100%', left: 'calc(100% / 7)' },
+                { width: 'calc(100% / 7)', height: '100%', left: 'calc(200% / 7)' },
+                { width: 'calc(100% / 7)', height: '100%', left: 'calc(300% / 7)' },
+                { width: 'calc(100% / 7)', height: '100%', left: 'calc(400% / 7)' },
+                { width: 'calc(100% / 7)', height: '100%', left: 'calc(500% / 7)' },
+                { width: 'calc(100% / 7)', height: '100%', left: 'calc(600% / 7)' }
             ],
             '7a': [ // Top 3 + middle 3 + bottom 1
-                { width: '33.33%', height: '33.33%', left: '0', top: '0' },
-                { width: '33.33%', height: '33.33%', left: '33.33%', top: '0' },
-                { width: '33.33%', height: '33.33%', left: '66.66%', top: '0' },
-                { width: '33.33%', height: '33.33%', left: '0', top: '33.33%' },
-                { width: '33.33%', height: '33.33%', left: '33.33%', top: '33.33%' },
-                { width: '33.33%', height: '33.33%', left: '66.66%', top: '33.33%' },
-                { width: '100%', height: '33.33%', left: '0', top: '66.66%' }
+                { width: 'calc(100% / 3)', height: 'calc(100% / 3)', left: '0', top: '0' },
+                { width: 'calc(100% / 3)', height: 'calc(100% / 3)', left: 'calc(100% / 3)', top: '0' },
+                { width: 'calc(100% / 3)', height: 'calc(100% / 3)', left: 'calc(200% / 3)', top: '0' },
+                { width: 'calc(100% / 3)', height: 'calc(100% / 3)', left: '0', top: 'calc(100% / 3)' },
+                { width: 'calc(100% / 3)', height: 'calc(100% / 3)', left: 'calc(100% / 3)', top: 'calc(100% / 3)' },
+                { width: 'calc(100% / 3)', height: 'calc(100% / 3)', left: 'calc(200% / 3)', top: 'calc(100% / 3)' },
+                { width: '100%', height: 'calc(100% / 3)', left: '0', top: 'calc(200% / 3)' }
             ],
             '8': [ // 2x4 grid
                 { width: '25%', height: '50%', left: '0', top: '0' },
@@ -1640,24 +1765,24 @@ class PanelManager {
                 { width: '50%', height: '25%', left: '50%', top: '75%' }
             ],
             '8v': [
-                { width: '12.5%', height: '100%', left: '0' },
-                { width: '12.5%', height: '100%', left: '12.5%' },
-                { width: '12.5%', height: '100%', left: '25%' },
-                { width: '12.5%', height: '100%', left: '37.5%' },
-                { width: '12.5%', height: '100%', left: '50%' },
-                { width: '12.5%', height: '100%', left: '62.5%' },
-                { width: '12.5%', height: '100%', left: '75%' },
-                { width: '12.5%', height: '100%', left: '87.5%' }
+                { width: 'calc(100% / 8)', height: '100%', left: '0' },
+                { width: 'calc(100% / 8)', height: '100%', left: 'calc(100% / 8)' },
+                { width: 'calc(100% / 8)', height: '100%', left: '25%' },
+                { width: 'calc(100% / 8)', height: '100%', left: 'calc(300% / 8)' },
+                { width: 'calc(100% / 8)', height: '100%', left: '50%' },
+                { width: 'calc(100% / 8)', height: '100%', left: 'calc(500% / 8)' },
+                { width: 'calc(100% / 8)', height: '100%', left: '75%' },
+                { width: 'calc(100% / 8)', height: '100%', left: 'calc(700% / 8)' }
             ],
             '8h': [
-                { width: '100%', height: '12.5%', top: '0' },
-                { width: '100%', height: '12.5%', top: '12.5%' },
-                { width: '100%', height: '12.5%', top: '25%' },
-                { width: '100%', height: '12.5%', top: '37.5%' },
-                { width: '100%', height: '12.5%', top: '50%' },
-                { width: '100%', height: '12.5%', top: '62.5%' },
-                { width: '100%', height: '12.5%', top: '75%' },
-                { width: '100%', height: '12.5%', top: '87.5%' }
+                { width: '100%', height: 'calc(100% / 8)', top: '0' },
+                { width: '100%', height: 'calc(100% / 8)', top: 'calc(100% / 8)' },
+                { width: '100%', height: 'calc(100% / 8)', top: '25%' },
+                { width: '100%', height: 'calc(100% / 8)', top: 'calc(300% / 8)' },
+                { width: '100%', height: 'calc(100% / 8)', top: '50%' },
+                { width: '100%', height: 'calc(100% / 8)', top: 'calc(500% / 8)' },
+                { width: '100%', height: 'calc(100% / 8)', top: '75%' },
+                { width: '100%', height: 'calc(100% / 8)', top: 'calc(700% / 8)' }
             ]
         };
         
@@ -1717,7 +1842,11 @@ class PanelManager {
             
             // Add click handler to select main chart panel (click anywhere on chart wrapper)
             const chartWrapper = document.getElementById('chartWrapper');
-            if (chartWrapper && !chartWrapper._panelClickHandler) {
+            if (chartWrapper) {
+                if (chartWrapper._panelClickHandler) {
+                    chartWrapper.removeEventListener('mousedown', chartWrapper._panelClickHandler, true);
+                    chartWrapper._panelClickHandler = null;
+                }
                 chartWrapper._panelClickHandler = (e) => {
                     console.log('🖱️ Main chart clicked', e.target);
                     
@@ -1747,11 +1876,12 @@ class PanelManager {
             
             console.log(`📊 Panel 0: Main chart positioned at ${firstConfig.width} x ${firstConfig.height}`);
             
-            // Trigger resize for main chart after positioning
-            requestAnimationFrame(() => {
-                if (window.chart && window.chart.resize) {
-                    window.chart.resize();
-                    window.chart.render();
+            // Wait for non-zero layout before resize (single rAF often sees 0×0 after absolute positioning).
+            this._waitForSize(originalChart, () => {
+                if (window.chart) {
+                    if (window.chart._lastResizeDpr !== undefined) window.chart._lastResizeDpr = 0;
+                    if (typeof window.chart.resize === 'function') window.chart.resize();
+                    if (typeof window.chart.render === 'function') window.chart.render();
                 }
             });
         }
@@ -1782,6 +1912,7 @@ class PanelManager {
 
         // After panels exist: park logo on #chart-container (above #chartWrapper paint order)
         this.syncChartBrandPlacement(layout);
+        const chartCont = document.getElementById('chart-container');
         const brandNode = document.querySelector('.chart-brand');
         if (brandNode && chartCont) {
             chartCont.appendChild(brandNode);
@@ -2049,31 +2180,7 @@ class PanelManager {
         
         console.log(`✅ Panel ${index} added to DOM`);
         
-        // Trigger resize for canvas with proper DPR scaling
-        requestAnimationFrame(() => {
-            const rect = panel.getBoundingClientRect();
-            if (rect.width > 0 && rect.height > 0 && rect.height < 10000) {
-                const dpr = window.devicePixelRatio || 1;
-                const w = Math.floor(rect.width);
-                const h = Math.floor(rect.height);
-                canvas.width = Math.max(1, w * dpr);
-                canvas.height = Math.max(1, h * dpr);
-                canvas.style.width = w + 'px';
-                canvas.style.height = h + 'px';
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                    ctx.setTransform(1, 0, 0, 1, 0, 0);
-                    ctx.scale(dpr, dpr);
-                }
-                svg.setAttribute('width', w);
-                svg.setAttribute('height', h);
-                svg.style.width = w + 'px';
-                svg.style.height = h + 'px';
-                console.log(`📐 Panel ${index} sized: ${w}x${h} (DPR ${dpr}, physical ${w*dpr}x${h*dpr})`);
-            } else {
-                console.error(`❌ Panel ${index} invalid size: ${rect.width}x${rect.height}`);
-            }
-        });
+        this._observePanelCanvas(panel, canvas, svg, index);
     }
     
     /**
@@ -2094,6 +2201,10 @@ class PanelManager {
      * Select a panel to control with timeframe buttons
      */
     selectPanel(index) {
+        if (!this.panels || index < 0 || index >= this.panels.length) {
+            console.warn(`selectPanel: index ${index} out of bounds (${this.panels ? this.panels.length : 0} panels)`);
+            return;
+        }
         this._timeSyncLastTargetBar = {};
 
         // Deselect all panels
@@ -2104,21 +2215,20 @@ class PanelManager {
         });
         
         // Select the clicked panel
-        if (this.panels[index]) {
-            this.selectedPanelIndex = index;
-            const panel = this.panels[index];
-            
-            if (panel.element) {
-                panel.element.classList.add('panel-selected');
-                // Ensure selection bar exists
-                if (!panel.element.querySelector('.panel-select-bar')) {
-                    const bar = document.createElement('div');
-                    bar.className = 'panel-select-bar';
-                    panel.element.appendChild(bar);
-                }
-            }
+        this.selectedPanelIndex = index;
+        const panel = this.panels[index];
 
-            this._updateSelectionOverlay();
+        if (panel.element) {
+            panel.element.classList.add('panel-selected');
+            // Ensure selection bar exists
+            if (!panel.element.querySelector('.panel-select-bar')) {
+                const bar = document.createElement('div');
+                bar.className = 'panel-select-bar';
+                panel.element.appendChild(bar);
+            }
+        }
+
+        this._updateSelectionOverlay();
             
             // Resolve the LIVE timeframe from the chart instance (not the stale snapshot)
             const liveTimeframe = (panel.chartInstance && panel.chartInstance.currentTimeframe)
@@ -2184,7 +2294,6 @@ class PanelManager {
                     });
                 }
             } catch (_e) { /* ignore */ }
-        }
     }
     
     _updateSelectionOverlay() {
@@ -2326,12 +2435,11 @@ class PanelManager {
         const panel = this.panels[panelIndex];
         if (!panel || !panel.chartInstance) return;
         
-        let settings = panel.chartInstance.chartSettings;
+        let settings = { ...panel.chartInstance.chartSettings };
         const key = `chart_panel_${panelIndex}_settings`;
         
         try {
             if (panelIndex > 0) {
-                settings = { ...settings };
                 for (const k of PANEL_CHART_APPEARANCE_KEYS) {
                     delete settings[k];
                 }
