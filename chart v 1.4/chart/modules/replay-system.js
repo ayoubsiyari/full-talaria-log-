@@ -4493,7 +4493,8 @@ class ReplaySystem {
                 data: this.chart.data,
                 rawData: this.chart.rawData,
                 symbol: this.chart.currentSymbol,
-                timeframe: this.chart.currentTimeframe
+                timeframe: this.chart.currentTimeframe,
+                sourceChart: this.chart
             }
         }));
         

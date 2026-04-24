@@ -1292,7 +1292,8 @@ class Chart {
                 data: this.data,
                 rawData: this.rawData,
                 symbol: this.currentSymbol,
-                timeframe: this.currentTimeframe
+                timeframe: this.currentTimeframe,
+                sourceChart: this
             }
         }));
     }
@@ -8640,7 +8641,8 @@ class Chart {
 	                            data: this.data,
 	                            rawData: this.rawData,
 	                            symbol: this.currentSymbol,
-	                            timeframe: this.currentTimeframe
+	                            timeframe: this.currentTimeframe,
+	                            sourceChart: this
 	                        }
 	                    }));
 	                } catch (error) {
@@ -10679,7 +10681,8 @@ class Chart {
                 data: this.data,
                 rawData: this.rawData,
                 symbol: this.currentSymbol,
-                timeframe: this.currentTimeframe
+                timeframe: this.currentTimeframe,
+                sourceChart: this
             }
         }));
     }

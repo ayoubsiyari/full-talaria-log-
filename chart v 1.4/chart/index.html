@@ -43946,9 +43946,9 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=2026042592"></script>
+    <script defer src="chart.js?v=2026042593"></script>
 
-    <script defer src="modules/replay-system.js?v=2026042592"></script>
+    <script defer src="modules/replay-system.js?v=2026042593"></script>
     <script defer src="modules/chart-env.defaults.js?v=2026042592"></script>
     <script defer src="modules/chart-env.generated.js?v=2026042592"></script>
     <script defer src="modules/economic-news-sidebar.js?v=2026042592"></script>
@@ -47688,7 +47688,7 @@
 
             // Legacy function for compatibility - now just calls initPanelChart
 
-            function renderPanelChart(panel, sourceData) {
+            function renderPanelChart(panel, sourceData, detail) {
 
                 if (!panel.chartInstance) {
 
@@ -47723,7 +47723,11 @@
                     // Skip data overwrite if panel has its own independent pair data or is currently loading it
                     var hasOwnPairData = panel.chartInstance._isLoadingOwnPairData || (Array.isArray(panel.chartInstance._panelFullRawData) && panel.chartInstance._panelFullRawData.length > 0);
 
-                    if (!hasOwnPairData) {
+                    var mainCh = typeof chart !== 'undefined' ? chart : window.chart;
+                    var differentInstrument = mainCh && panel.chartInstance.currentFileId != null && mainCh.currentFileId != null
+                        && String(panel.chartInstance.currentFileId) !== String(mainCh.currentFileId);
+
+                    if (!hasOwnPairData && !differentInstrument) {
                         // Copy symbol from main chart
 
                         if (typeof chart !== 'undefined' && chart.currentSymbol) {
@@ -47830,6 +47834,9 @@
 
                     const panels = window.panelManager.getPanels();
 
+                    const detail = event.detail || {};
+                    var src = detail.sourceChart != null ? detail.sourceChart : (typeof chart !== 'undefined' ? chart : window.chart);
+
                     if (panels && panels.length > 0) {
 
                         panels.forEach((panel, idx) => {
@@ -47842,9 +47849,16 @@
 
                             } else {
 
-                                // Update existing chart with new data
-
-                                renderPanelChart(panel, event.detail.data);
+                                if (src === panel.chartInstance) {
+                                    return;
+                                }
+                                if (panel.isMainChart) {
+                                    return;
+                                }
+                                if (src !== (typeof chart !== 'undefined' ? chart : window.chart)) {
+                                    return;
+                                }
+                                renderPanelChart(panel, detail.data, detail);
 
                             }
 
