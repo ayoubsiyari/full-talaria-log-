@@ -179,6 +179,8 @@ class Chart {
         this.dataVersion = 0; // Increment whenever data changes (used for caching)
         this.candleWidth = 8;
         this.offsetX = 0;
+        /** rAF id for coalesced multi-panel `chartScrolled` during drag/wheel (avoids main-chart thrash). */
+        this._panelScrollSyncRaf = null;
         this.priceZoom = 1;
         this.minPriceZoom = 1e-9;
         this.priceOffset = 0;
@@ -7875,6 +7877,24 @@ class Chart {
             }
         }));
     }
+
+    /** At most one `chartScrolled` per animation frame while panning/zooming (see `dispatchScrollSync`). */
+    _schedulePanelScrollSyncCoalesced() {
+        if (this._panelScrollSyncRaf != null) return;
+        this._panelScrollSyncRaf = requestAnimationFrame(() => {
+            this._panelScrollSyncRaf = null;
+            this.dispatchScrollSync();
+        });
+    }
+
+    /** Cancel pending coalesced sync and emit immediately (e.g. pan end, inertia end). */
+    _flushPanelScrollSyncNow() {
+        if (this._panelScrollSyncRaf != null) {
+            cancelAnimationFrame(this._panelScrollSyncRaf);
+            this._panelScrollSyncRaf = null;
+        }
+        this.dispatchScrollSync();
+    }
     
     /**
      * Extract symbol from filename
@@ -8386,7 +8406,7 @@ class Chart {
         this.constrainOffset();
         this.boxZoom.active = false;
         this.scheduleRender();
-        this.dispatchScrollSync();
+        this._flushPanelScrollSyncNow();
         
     }
     
@@ -13770,7 +13790,7 @@ class Chart {
                 requestAnimationFrame(runInertia);
             } else {
                 this.inertia.active = false;
-                this.dispatchScrollSync();
+                this._flushPanelScrollSyncNow();
             }
         };
         
@@ -13876,7 +13896,7 @@ class Chart {
                 }
 
                 this.scheduleRender();
-                this.dispatchScrollSync();
+                this._schedulePanelScrollSyncCoalesced();
                 return;
             }
 
@@ -13929,7 +13949,7 @@ class Chart {
 
                 this.constrainOffset();
                 this.scheduleRender();
-                this.dispatchScrollSync();
+                this._schedulePanelScrollSyncCoalesced();
                 return;
             }
 
@@ -14138,7 +14158,7 @@ class Chart {
                     
                     this.constrainOffset();
                     this.scheduleRender();
-                    this.dispatchScrollSync();
+                    this._schedulePanelScrollSyncCoalesced();
                     
                     // Update follow button visibility after panning
                     if (this.replaySystem && this.replaySystem.isActive) {
@@ -14175,7 +14195,7 @@ class Chart {
                     
                     this.constrainOffset();
                     this.scheduleRender();
-                    this.dispatchScrollSync();
+                    this._schedulePanelScrollSyncCoalesced();
                 }
                 // ─── Price Axis Drag Zoom ───
                 else if (this.drag.type === 'separatePanelAxis' && this.drag.separatePanelSlot &&
@@ -14343,7 +14363,7 @@ class Chart {
                 // Real pan → sync scroll to other panels. Tiny movement (click) → skip so Time-sync
                 // click handler can align by bar time without fighting right-edge sync.
                 if (!isChartClick) {
-                    this.dispatchScrollSync();
+                    this._flushPanelScrollSyncNow();
                 }
                 this.scheduleChartViewSave();
 
@@ -14543,7 +14563,7 @@ class Chart {
                         this.offsetX = rightEdge - m.l - lastVisibleIdx * newSpacing;
                         this.constrainOffset();
                         this.scheduleRender();
-                        this.dispatchScrollSync();
+                        this._schedulePanelScrollSyncCoalesced();
                     } else if (this.drag.type === 'pan') {
                         let effectiveDx = this.timeScale.locked ? 0 : dx;
                         let effectiveDy = this.priceScale.locked ? 0 : dy;
@@ -14557,7 +14577,7 @@ class Chart {
                         }
                         this.constrainOffset();
                         this.scheduleRender();
-                        this.dispatchScrollSync();
+                        this._schedulePanelScrollSyncCoalesced();
                     }
 
                     this.drag.lastX = e.clientX;
@@ -14639,7 +14659,7 @@ class Chart {
                 this.jumpToLatest();
 
 
-                this.dispatchScrollSync();
+                this._flushPanelScrollSyncNow();
             }
         });
 

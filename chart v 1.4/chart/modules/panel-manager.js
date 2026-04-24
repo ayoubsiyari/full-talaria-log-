@@ -44,6 +44,10 @@ class PanelManager {
         /** True while applying date-range sync so charts don't re-dispatch scroll storms */
         this._syncingDateRange = false;
 
+        /** Debounced `chartScrolled` → `syncScrollByVisibleTimeRange` (avoids candleWidth thrash while panning). */
+        this._dateRangeScrollSyncTimer = null;
+        this._dateRangeScrollPending = null;
+
         /** True while syncInterval() fans out setTimeframe — prevents nested sync storms (lag/freeze). */
         this._syncingInterval = false;
 
@@ -122,12 +126,24 @@ class PanelManager {
             if (this.syncSettings.dateRange
                 && Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
                 && startTimestamp > 0 && endTimestamp > startTimestamp) {
-                this.syncScrollByVisibleTimeRange(panel, startTimestamp, endTimestamp);
+                this._dateRangeScrollPending = { panel, startTimestamp, endTimestamp };
+                if (this._dateRangeScrollSyncTimer != null) {
+                    clearTimeout(this._dateRangeScrollSyncTimer);
+                }
+                const DEBOUNCE_MS = 120;
+                this._dateRangeScrollSyncTimer = setTimeout(() => {
+                    this._dateRangeScrollSyncTimer = null;
+                    const p = this._dateRangeScrollPending;
+                    this._dateRangeScrollPending = null;
+                    if (!p || !this.syncSettings.dateRange) return;
+                    this.syncScrollByVisibleTimeRange(p.panel, p.startTimestamp, p.endTimestamp);
+                }, DEBOUNCE_MS);
+                return;
             }
             // Time: discrete range-by-range sync. Each TARGET panel jumps only when
             // the bar IT would show at its right edge changes — so a 5m target jumps
             // once every 5 min of scrolling, a 1m target jumps once per minute.
-            else if (this.syncSettings.time
+            if (this.syncSettings.time
                 && Number.isFinite(endTimestamp) && endTimestamp > 0) {
                 const ts = Number.isFinite(d.timeSyncEndTimestamp) && d.timeSyncEndTimestamp > 0
                     ? d.timeSyncEndTimestamp : endTimestamp;
@@ -290,7 +306,7 @@ class PanelManager {
                     <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="time-sync-toggle" checked></label>
                 </div>
                 <div class="sync-row">
-                    <div class="sync-label"><span>Date range</span></div>
+                    <div class="sync-label"><span>Date range</span><span class="sync-hint">Locks visible time span and zoom across panels while dragging.</span></div>
                     <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="daterange-sync-toggle"></label>
                 </div>
                 <div class="sync-row sync-row-border">
@@ -375,6 +391,18 @@ class PanelManager {
             }
             .sync-toggle input[type="checkbox"] {
                 cursor: pointer;
+            }
+            .layout-dropdown .sync-hint {
+                display: block;
+                margin-top: 2px;
+                font-size: 10px;
+                font-weight: 400;
+                color: rgba(255, 255, 255, 0.38);
+                line-height: 1.25;
+                max-width: 200px;
+            }
+            body.light-mode .layout-dropdown .sync-hint {
+                color: rgba(0, 0, 0, 0.45);
             }
         `;
         document.head.appendChild(style);
@@ -532,6 +560,14 @@ class PanelManager {
                 e.stopPropagation();
                 this.syncSettings.dateRange = e.target.checked;
                 this.saveSyncSettings();
+
+                if (!e.target.checked) {
+                    if (this._dateRangeScrollSyncTimer != null) {
+                        clearTimeout(this._dateRangeScrollSyncTimer);
+                        this._dateRangeScrollSyncTimer = null;
+                    }
+                    this._dateRangeScrollPending = null;
+                }
 
                 if (e.target.checked && this.panels.length > 1) {
                     const selectedPanel = this.panels[this.selectedPanelIndex];
