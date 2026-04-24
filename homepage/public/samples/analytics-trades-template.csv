@@ -1,0 +1,3 @@
+tradeId,ticker,direction,setup,netPnL,openTime,closeTime,rMultiple,mae_r,mfe_r,quantity,riskAmount,spread_pips_at_entry,commission_at_entry,pip_value_at_entry
+tpl-1,EURUSD,BUY,Breakout,120.5,1672531200000,1672545600000,1.2,-0.4,1.5,1,100,1.0,2.5,10
+tpl-2,GBPUSD,SELL,Pullback,-65.0,1672549200000,1672560000000,-0.65,-0.9,0.3,1,100,1.2,2.5,10

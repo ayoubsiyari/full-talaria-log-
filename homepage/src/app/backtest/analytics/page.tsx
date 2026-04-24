@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Syne, Space_Mono } from "next/font/google";
 import { ArrowLeft, Filter } from "lucide-react";
 import { BacktestSubnav } from "../BacktestSubnav";
@@ -230,6 +230,12 @@ export default function BacktestAnalyticsPage() {
   const [heatmapMetric, setHeatmapMetric] = useState<"USD" | "R">("USD");
   const [whatIfApi, setWhatIfApi] = useState<any>(null);
   const [whatIfError, setWhatIfError] = useState<string | null>(null);
+  const [journalReloadToken, setJournalReloadToken] = useState(0);
+  const [csvImportMode, setCsvImportMode] = useState<"replace" | "append">("replace");
+  const [importStartBalance, setImportStartBalance] = useState("100000");
+  const [csvImportBusy, setCsvImportBusy] = useState(false);
+  const [csvImportMsg, setCsvImportMsg] = useState<string | null>(null);
+  const csvImportRef = useRef<HTMLInputElement>(null);
   const [pairSort, setPairSort] = useState<{ key: string; dir: "asc" | "desc" }>({
     key: "netPnl",
     dir: "desc",
@@ -317,7 +323,58 @@ export default function BacktestAnalyticsPage() {
     return () => {
       mounted = false;
     };
-  }, [selectedSessionId]);
+  }, [selectedSessionId, journalReloadToken]);
+
+  const runCsvImport = useCallback(
+    async (file: File) => {
+      if (!selectedSessionId) return;
+      setCsvImportBusy(true);
+      setCsvImportMsg(null);
+      try {
+        const q = new URLSearchParams();
+        q.set("mode", csvImportMode);
+        const sb = importStartBalance.trim();
+        if (sb && Number.isFinite(Number(sb)) && Number(sb) > 0) {
+          q.set("start_balance", sb);
+        }
+        const url = chartApiUrl(
+          `/api/sessions/${encodeURIComponent(selectedSessionId)}/journal/import-csv?${q.toString()}`
+        );
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch(url, { method: "POST", credentials: "include", body: fd });
+        const text = await res.text();
+        let body: { imported?: number; mode?: string; warnings?: string[]; warning?: string; detail?: unknown } | null = null;
+        try {
+          body = text ? JSON.parse(text) : null;
+        } catch {
+          body = null;
+        }
+        if (!res.ok) {
+          const d = body?.detail;
+          const msg =
+            typeof d === "string"
+              ? d
+              : d && typeof d === "object" && "errors" in d && Array.isArray((d as { errors: string[] }).errors)
+                ? (d as { errors: string[] }).errors.join("; ")
+                : text.slice(0, 200);
+          throw new Error(msg || `HTTP ${res.status}`);
+        }
+        const parts = [
+          `Imported ${body?.imported ?? "?"} trades (${body?.mode ?? csvImportMode}).`,
+          ...(body?.warnings ?? []),
+          body?.warning,
+        ].filter(Boolean);
+        setCsvImportMsg(parts.join(" "));
+        setJournalReloadToken((x) => x + 1);
+      } catch (e) {
+        setCsvImportMsg(e instanceof Error ? e.message : String(e));
+      } finally {
+        setCsvImportBusy(false);
+      }
+    },
+    [selectedSessionId, csvImportMode, importStartBalance]
+  );
 
   const normalizedTrades = useMemo(
     () =>
@@ -1187,11 +1244,91 @@ export default function BacktestAnalyticsPage() {
           <option value="LOSERS">Losers</option>
           <option value="BREAKEVEN">Breakeven</option>
         </select>
+        <span style={{ width: 1, height: 20, background: "rgba(255,255,255,0.12)", margin: "0 4px" }} aria-hidden />
+        <label style={{ fontSize: "0.72rem", color: "#9ca3af", display: "inline-flex", alignItems: "center", gap: 6 }}>
+          Start $
+          <input
+            type="text"
+            inputMode="decimal"
+            value={importStartBalance}
+            onChange={(e) => setImportStartBalance(e.target.value)}
+            placeholder="100000"
+            style={{ width: 88, padding: "4px 6px", borderRadius: 4, border: "1px solid rgba(255,255,255,0.15)", background: "#111418", color: "#e8eaed" }}
+            title="Written to session config as startBalance when importing (optional)"
+          />
+        </label>
+        <select
+          value={csvImportMode}
+          onChange={(e) => setCsvImportMode(e.target.value as "replace" | "append")}
+          className={filterSelectClass}
+          style={filterSelectStyle}
+        >
+          <option value="replace">CSV → replace journal</option>
+          <option value="append">CSV → append journal</option>
+        </select>
+        <input
+          ref={csvImportRef}
+          type="file"
+          accept=".csv,text/csv"
+          style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) void runCsvImport(f);
+          }}
+        />
+        <button
+          type="button"
+          title="CSV columns: netPnL (or pnl), closeTime (ms, seconds, or ISO); optional openTime, ticker, rMultiple, mae_r, mfe_r, riskAmount, setup, …"
+          disabled={!selectedSessionId || csvImportBusy}
+          onClick={() => csvImportRef.current?.click()}
+          style={{
+            padding: "6px 12px",
+            fontSize: "0.72rem",
+            fontWeight: 600,
+            borderRadius: 4,
+            border: "1px solid rgba(0,255,136,0.35)",
+            background: "rgba(0,255,136,0.12)",
+            color: "#00ff88",
+            cursor: csvImportBusy ? "wait" : "pointer",
+            opacity: !selectedSessionId ? 0.5 : 1,
+          }}
+        >
+          {csvImportBusy ? "Importing…" : "Import trades CSV"}
+        </button>
+        <a
+          href="/samples/analytics-demo-500-trades.csv"
+          download
+          style={{ fontSize: "0.68rem", color: "#00c4ff", textDecoration: "none", marginLeft: 4 }}
+        >
+          Demo 500
+        </a>
+        <a
+          href="/samples/analytics-trades-template.csv"
+          download
+          style={{ fontSize: "0.68rem", color: "#9ca3af", textDecoration: "none", marginLeft: 6 }}
+        >
+          Template
+        </a>
       </div>
+
+      {csvImportMsg ? (
+        <div
+          style={{
+            padding: "0.35rem 2rem 0.75rem",
+            fontSize: "0.75rem",
+            color: csvImportMsg.startsWith("Imported") ? "#86efac" : "#fbbf24",
+            fontFamily: "var(--font-space-mono), monospace",
+          }}
+        >
+          {csvImportMsg}
+        </div>
+      ) : null}
 
       {journalFetched && selectedSessionId && !loading && !journalError && !listError && allTrades.length === 0 ? (
         <div style={{ padding: "1rem 2rem", color: "#fbbf24", fontSize: "0.85rem" }}>
-          No trades in <code>state.journal</code> for this session. Pick the session you traded in the chart.
+          No trades in <code>state.journal</code> for this session. Import a CSV with <strong>Import trades CSV</strong> (see
+          Demo 500) or record trades in the chart for this session.
         </div>
       ) : null}
 

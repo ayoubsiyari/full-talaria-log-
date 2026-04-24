@@ -15,6 +15,7 @@ from analytics_core.session_series import (
     compute_sharpe_sortino,
     compute_weekday_win_rate,
 )
+from analytics_core.csv_journal import parse_trades_csv_text
 from datetime import datetime, timezone
 
 
@@ -246,6 +247,21 @@ def test_balance_equity_drawdown():
     assert bal["max_drawdown"] is not None
     assert bal["max_drawdown"] > 0
     assert bal["recovery_factor"] is not None
+
+
+def test_parse_trades_csv_minimal():
+    csv_text = (
+        "tradeId,ticker,netPnL,openTime,closeTime,rMultiple,mae_r,mfe_r,riskAmount\n"
+        "1,EURUSD,50,1700000000000,1700003600000,1,-0.5,1.2,100\n"
+    )
+    r = parse_trades_csv_text(csv_text)
+    assert not r["errors"]
+    assert len(r["trades"]) == 1
+    t = r["trades"][0]
+    assert t["tradeId"] == "1"
+    assert t["ticker"] == "EURUSD"
+    assert t["netPnL"] == 50.0
+    assert "closeTime" in t
 
 
 def test_session_dashboard_extras_bundle():

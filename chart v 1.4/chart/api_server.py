@@ -113,6 +113,7 @@ from analytics_engine import (
     compute_equity_summary,
     compute_session_dashboard_extras,
 )
+from analytics_core.csv_journal import parse_trades_csv_bytes
 
 from firstrate_ingest import (
     MAX_TICKER_LISTING_RETURN,
@@ -10877,6 +10878,97 @@ async def get_trading_session_state(session_id: int, request: Request):
                 "propfirm_challenge": state.get("propfirm_challenge") if isinstance(state.get("propfirm_challenge"), dict) else {},
                 "updated_at": st.updated_at.isoformat() if st.updated_at else None,
             }
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/sessions/{session_id}/journal/import-csv")
+async def import_trading_session_journal_csv(
+    session_id: int,
+    request: Request,
+    mode: str = Query("replace"),
+    start_balance: float | None = Query(None, description="When set, writes session.config startBalance for return % metrics."),
+    file: UploadFile = File(...),
+):
+    """Replace or append `state.journal` from a UTF-8 CSV (see `analytics_core.csv_journal`)."""
+    user = _require_user(request)
+    mode_clean = (mode or "replace").strip().lower()
+    if mode_clean not in {"replace", "append"}:
+        raise HTTPException(status_code=400, detail="mode must be replace or append")
+
+    raw = await file.read()
+    if len(raw) > 12 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="CSV file too large (max 12 MB)")
+
+    parsed = parse_trades_csv_bytes(raw)
+    errs = parsed.get("errors") or []
+    if errs:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "CSV parse errors", "errors": errs[:80]},
+        )
+    new_trades = parsed.get("trades") or []
+    if not new_trades:
+        raise HTTPException(status_code=400, detail="No trades parsed from CSV")
+
+    db = SessionLocal()
+    try:
+        s = db.query(TradingSession).filter(TradingSession.id == session_id).first()
+        if not s:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if not _can_access_trading_session(user, s):
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        if start_balance is not None and math.isfinite(float(start_balance)) and float(start_balance) > 0:
+            try:
+                cfg = json.loads(s.config_json or "{}")
+            except Exception:
+                cfg = {}
+            if not isinstance(cfg, dict):
+                cfg = {}
+            cfg["startBalance"] = float(start_balance)
+            s.config_json = json.dumps(cfg, separators=(",", ":"))
+
+        st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
+        state = _parse_json_dict(st.state_json)
+        existing = state.get("journal") if isinstance(state.get("journal"), list) else []
+        if mode_clean == "append":
+            state["journal"] = list(existing) + list(new_trades)
+        else:
+            state["journal"] = list(new_trades)
+
+        new_state_json = json.dumps(state, separators=(",", ":"))
+        new_size = len(new_state_json.encode("utf-8"))
+        prev_size = len((st.state_json or "").encode("utf-8"))
+        if new_size > SESSION_STATE_HARD_LIMIT_BYTES and new_size > prev_size:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"Session state too large after import "
+                    f"({new_size / 1_048_576:.1f} MB; hard limit "
+                    f"{SESSION_STATE_HARD_LIMIT_BYTES / 1_048_576:.0f} MB)."
+                ),
+            )
+
+        st.state_json = new_state_json
+        j = state["journal"]
+        if isinstance(j, list):
+            _sync_trading_session_journal_trades(db, session_id=s.id, user_id=s.user_id, journal=j)
+        db.commit()
+        db.refresh(st)
+        warning = None
+        if new_size > SESSION_STATE_SOFT_LIMIT_BYTES:
+            warning = (
+                f"Session state is {new_size / 1_048_576:.1f} MB (soft limit "
+                f"{SESSION_STATE_SOFT_LIMIT_BYTES / 1_048_576:.0f} MB)."
+            )
+        return {
+            "imported": len(new_trades),
+            "mode": mode_clean,
+            "journal_len": len(j) if isinstance(j, list) else 0,
+            "warnings": list(parsed.get("warnings") or []),
+            "warning": warning,
         }
     finally:
         db.close()
