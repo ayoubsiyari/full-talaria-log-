@@ -1731,7 +1731,9 @@ class Chart {
                     if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                     this.resize();
                     this._chartViewRestored = false;
-                    this.fitToView();
+                    if (!alignScrollToMain) {
+                        this.fitToView();
+                    }
                     this.render();
                 });
             });

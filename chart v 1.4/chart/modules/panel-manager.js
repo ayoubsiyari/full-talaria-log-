@@ -881,6 +881,44 @@ class PanelManager {
     }
 
     /**
+     * Wall-clock time at the plot's right edge for a fractional bar index (same-TF scroll sync).
+     */
+    _wallClockAtFractionalBarIndex(chart, idxFloat, barMs) {
+        const data = chart?.data;
+        const n = data?.length ?? 0;
+        if (!n) return NaN;
+        const lo = Math.max(0, Math.min(Math.floor(idxFloat), n - 1));
+        const frac = idxFloat - lo;
+        const tLo = Number(data[lo]?.t);
+        if (!Number.isFinite(tLo)) return NaN;
+        let step = barMs;
+        if (lo + 1 < n) {
+            const tHi = Number(data[lo + 1]?.t);
+            if (Number.isFinite(tHi) && tHi > tLo) step = tHi - tLo;
+        }
+        return tLo + frac * step;
+    }
+
+    /**
+     * Fractional bar index on `chart` whose bar span covers `wallMs` (inverse of _wallClockAtFractionalBarIndex).
+     */
+    _fractionalBarIndexAtWallClock(chart, wallMs, barMs) {
+        const data = chart?.data;
+        if (!data?.length || !Number.isFinite(wallMs)) return 0;
+        const jLo = this._findLastIndexAtOrBefore(data, wallMs);
+        const tj = Number(data[jLo]?.t) || 0;
+        let denom = barMs;
+        if (jLo + 1 < data.length) {
+            const tNext = Number(data[jLo + 1]?.t);
+            if (Number.isFinite(tNext) && tNext > tj) denom = tNext - tj;
+        }
+        let f = denom > 0 ? (wallMs - tj) / denom : 0;
+        if (!Number.isFinite(f)) f = 0;
+        f = Math.max(0, Math.min(1, f));
+        return jLo + f;
+    }
+
+    /**
      * Apply Time scroll sync from a `chartScrolled` detail: same bar duration as source
      * uses fractional right-edge index every frame (smooth parity with the dragged chart);
      * mixed timeframes keep discrete right-edge jumps to avoid constant thrash.
@@ -894,8 +932,8 @@ class PanelManager {
 
         const m = sourceChart.margin || { l: 0, r: 60 };
         const spacing = sourceChart.getCandleSpacing ? sourceChart.getCandleSpacing() : (sourceChart.candleWidth + 2);
-        const chartWidth = sourceChart.w - m.l - m.r;
-        if (!Number.isFinite(spacing) || spacing <= 0 || chartWidth <= 0) return;
+        const plotW = sourceChart.w - m.l - m.r;
+        if (!Number.isFinite(spacing) || spacing <= 0 || plotW <= 0) return;
 
         const rightEdgePx = sourceChart.w - m.r;
         const idxRaw = (rightEdgePx - m.l - sourceChart.offsetX) / spacing;
@@ -903,16 +941,16 @@ class PanelManager {
         // Stale offsetX after a large timeframe jump (old zoom vs new spacing) blows idxRaw up and breaks followers.
         if (!Number.isFinite(idxRaw) || idxRaw < bSrc.lo - 64 || idxRaw > bSrc.hi + 64) return;
         const idxFloat = Math.max(bSrc.lo, Math.min(idxRaw, bSrc.hi));
-        const fraction = (idxFloat * spacing + sourceChart.offsetX) / chartWidth;
-
-        const ts = Number.isFinite(detail.timeSyncEndTimestamp) && detail.timeSyncEndTimestamp > 0
-            ? detail.timeSyncEndTimestamp
-            : detail.endTimestamp;
-        if (!Number.isFinite(ts) || ts <= 0) return;
 
         const srcBarMs = typeof sourceChart.inferBarDurationMs === 'function'
             ? sourceChart.inferBarDurationMs()
             : 60000;
+        const edgeWallMs = this._wallClockAtFractionalBarIndex(sourceChart, idxFloat, srcBarMs);
+
+        const ts = Number.isFinite(detail.timeSyncEndTimestamp) && detail.timeSyncEndTimestamp > 0
+            ? detail.timeSyncEndTimestamp
+            : detail.endTimestamp;
+        if ((!Number.isFinite(ts) || ts <= 0) && (!Number.isFinite(edgeWallMs) || edgeWallMs <= 0)) return;
 
         this._isSyncing = true;
         const toRelease = [];
@@ -929,22 +967,26 @@ class PanelManager {
                 const sameBarStep = Math.abs(tgtBarMs - srcBarMs) < 1;
 
                 if (sameBarStep) {
+                    if (!Number.isFinite(edgeWallMs) || edgeWallMs <= 0) return;
                     const m2 = chart.margin || { l: 0, r: 60 };
                     const sp2 = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
                     const cw2 = chart.w - m2.l - m2.r;
                     if (cw2 > 0 && Number.isFinite(sp2) && sp2 > 0) {
                         chart._suppressPanelScrollSync = true;
                         toRelease.push(chart);
+                        const jFloat = this._fractionalBarIndexAtWallClock(chart, edgeWallMs, tgtBarMs);
                         const bTgt = this._scrollIdxFloatBounds(chart);
-                        const idxT = Math.max(bTgt.lo, Math.min(idxFloat, bTgt.hi));
-                        chart.offsetX = cw2 * fraction - idxT * sp2;
+                        const jClamped = Math.max(bTgt.lo, Math.min(jFloat, bTgt.hi));
+                        chart.offsetX = chart.w - m2.r - m2.l - jClamped * sp2;
                         if (chart.constrainOffset) chart.constrainOffset();
                         if (chart.scheduleRender) chart.scheduleRender();
                         else if (chart.render) chart.render();
+                        this._timeSyncLastTargetBar[panel.index] = Math.max(0, Math.floor(jFloat));
                     }
-                    this._timeSyncLastTargetBar[panel.index] = Math.max(0, Math.floor(idxFloat));
                     return;
                 }
+
+                if (!Number.isFinite(ts) || ts <= 0) return;
 
                 const targetIdx = chart.findGoToTargetIndex
                     ? chart.findGoToTargetIndex(chart.data, ts)
