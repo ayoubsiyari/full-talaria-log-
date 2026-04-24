@@ -1679,6 +1679,8 @@ class Chart {
                 this.data = this.resampleData(sliced, this.currentTimeframe);
             }
 
+            this._resetTimeZoomAndScrollForTimeframeLoad();
+
             this.updateChartOHLCSymbol(this.currentSymbol);
 
             this.priceZoom = 1;
@@ -1697,10 +1699,13 @@ class Chart {
             this.resize();
 
             const pm = window.panelManager;
+            // Only mirror main scroll when the same instrument is eligible for scroll sync (MNQ vs MES must not copy offsetX).
             const alignScrollToMain = !!(pm && pm.syncSettings
                 && (pm.syncSettings.time || pm.syncSettings.dateRange)
                 && mainChart && mainChart !== this && mainChart.data && mainChart.data.length > 0
-                && this.data && this.data.length > 0);
+                && this.data && this.data.length > 0
+                && typeof pm._shouldScrollSyncBetweenCharts === 'function'
+                && pm._shouldScrollSyncBetweenCharts(mainChart, this));
 
             if (alignScrollToMain) {
                 const sourceSpacing = mainChart.getCandleSpacing
@@ -1722,8 +1727,13 @@ class Chart {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
                 this._chartViewRestored = false;
-                this.fitToView();
-                this.render();
+                requestAnimationFrame(() => {
+                    if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
+                    this.resize();
+                    this._chartViewRestored = false;
+                    this.fitToView();
+                    this.render();
+                });
             });
             this._hidePanelLoadingOverlay();
 
@@ -7757,6 +7767,29 @@ class Chart {
 	    }
     
     /**
+     * After a timeframe change, old candleWidth + offsetX can leave a few huge bars on the left and an empty grid.
+     */
+    _resetTimeZoomAndScrollForTimeframeLoad() {
+        this.offsetX = 0;
+        this.candleWidth = 8;
+        if (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length) {
+            const widths = this.zoomLevel.allowedWidths;
+            let nearestIdx = 0;
+            let minDiff = Math.abs(this.candleWidth - widths[0]);
+            for (let i = 1; i < widths.length; i++) {
+                const d = Math.abs(this.candleWidth - widths[i]);
+                if (d < minDiff) {
+                    minDiff = d;
+                    nearestIdx = i;
+                }
+            }
+            this.zoomLevel.candleWidthIndex = nearestIdx;
+            this.candleWidth = widths[nearestIdx];
+        }
+        if (this._candleWidthAtCache !== undefined) this._candleWidthAtCache = null;
+    }
+
+    /**
      * Fit chart to show latest candles on the right edge
      */
     fitToView() {
@@ -10607,6 +10640,7 @@ class Chart {
             this.compareOverlay.refreshForTimeframe(timeframe);
         }
         this._chartViewRestored = false;
+        this._resetTimeZoomAndScrollForTimeframeLoad();
         this.resize();
         if (this._intervalSyncViewportHint && this._intervalSyncViewportSourcePanel) {
             this._applyIntervalSyncViewportIfPending();
@@ -10637,8 +10671,6 @@ class Chart {
 
             this.rawData = [];
             this.data = [];
-            // Avoid carrying small-TF offsetX into larger-TF spacing (sync/resize use a bogus right-edge index).
-            this.offsetX = 0;
             this.totalCandles = result.total;
             this._serverCursors = {
                 firstTs: result.first_cursor,
@@ -10653,21 +10685,28 @@ class Chart {
             this.resize();
 
             this._ingestSmartWindowResult(result, {});
+            this._resetTimeZoomAndScrollForTimeframeLoad();
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(timeframe);
             }
             if (this.hideLoader) this.hideLoader();
 
+            // Two frames: layout/canvas width can be 0 on first paint after TF swap; fitToView would no-op and leave offsetX at 0.
             requestAnimationFrame(() => {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
                 this._chartViewRestored = false;
-                if (this._intervalSyncViewportHint && this._intervalSyncViewportSourcePanel) {
-                    this._applyIntervalSyncViewportIfPending();
-                } else {
-                    this.fitToView();
-                }
-                this.render();
+                requestAnimationFrame(() => {
+                    if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
+                    this.resize();
+                    this._chartViewRestored = false;
+                    if (this._intervalSyncViewportHint && this._intervalSyncViewportSourcePanel) {
+                        this._applyIntervalSyncViewportIfPending();
+                    } else {
+                        this.fitToView();
+                    }
+                    this.render();
+                });
             });
 
         } catch (error) {
