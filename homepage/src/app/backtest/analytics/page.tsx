@@ -1199,13 +1199,6 @@ export default function BacktestAnalyticsPage() {
     return `rgba(239,68,68,${alpha.toFixed(3)})`;
   };
 
-  const filterSelectClass =
-    "rounded-lg border px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/60";
-  const filterSelectStyle: React.CSSProperties = {
-    backgroundColor: "rgba(15, 23, 42, 0.95)",
-    borderColor: "rgba(148, 163, 184, 0.35)",
-    color: "#e5e7eb",
-  };
   const filterOptionStyle: React.CSSProperties = {
     backgroundColor: "#0f172a",
     color: "#e5e7eb",
@@ -1216,17 +1209,16 @@ export default function BacktestAnalyticsPage() {
       <BacktestSubnav active="analytics" sessionId={selectedSessionId || undefined} />
 
       {whatIfError ? (
-        <div style={{ padding: "0 2rem 0.75rem", color: "#f87171", fontSize: "0.78rem", fontFamily: "var(--font-space-mono), monospace" }}>
-          Analytics API: {whatIfError}
-        </div>
+        <div className="bt-os-api-error">Analytics API: {whatIfError}</div>
       ) : null}
 
       <div className="bt-os-toolbar">
+        <div className="bt-os-toolbar-inner">
         <a href="/backtest" className="bt-os-back-link">
           <ArrowLeft className="w-3 h-3" />
           Sessions
         </a>
-        <Filter className="w-3 h-3" style={{ color: "#6b7280" }} aria-hidden />
+        <Filter className="w-3 h-3 bt-os-toolbar-icon" aria-hidden />
         <select value={selectedSessionId} onChange={(e) => setSelectedSessionId(e.target.value)}>
           {sessions.map((s: Session) => (
             <option key={s.id} value={String(s.id)}>{s.name} (#{s.id})</option>
@@ -1246,8 +1238,8 @@ export default function BacktestAnalyticsPage() {
           <option value="LOSERS">Losers</option>
           <option value="BREAKEVEN">Breakeven</option>
         </select>
-        <span style={{ width: 1, height: 20, background: "rgba(255,255,255,0.12)", margin: "0 4px" }} aria-hidden />
-        <label style={{ fontSize: "0.72rem", color: "#9ca3af", display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <span className="bt-os-toolbar-rule" aria-hidden />
+        <label className="bt-os-toolbar-field">
           Start $
           <input
             type="text"
@@ -1255,15 +1247,14 @@ export default function BacktestAnalyticsPage() {
             value={importStartBalance}
             onChange={(e) => setImportStartBalance(e.target.value)}
             placeholder="100000"
-            style={{ width: 88, padding: "4px 6px", borderRadius: 4, border: "1px solid rgba(255,255,255,0.15)", background: "#111418", color: "#e8eaed" }}
+            className="bt-os-toolbar-input"
             title="Written to session config as startBalance when importing (optional)"
           />
         </label>
         <select
           value={csvImportMode}
           onChange={(e) => setCsvImportMode(e.target.value as "replace" | "append")}
-          className={filterSelectClass}
-          style={filterSelectStyle}
+          className="bt-os-filter-select"
         >
           <option value="replace">CSV → replace journal</option>
           <option value="append">CSV → append journal</option>
@@ -1281,63 +1272,39 @@ export default function BacktestAnalyticsPage() {
         />
         <button
           type="button"
+          className="bt-os-btn-csv"
           title="CSV columns: netPnL (or pnl), closeTime (ms, seconds, or ISO); optional openTime, ticker, rMultiple, mae_r, mfe_r, riskAmount, setup, …"
           disabled={!selectedSessionId || csvImportBusy}
           onClick={() => csvImportRef.current?.click()}
-          style={{
-            padding: "6px 12px",
-            fontSize: "0.72rem",
-            fontWeight: 600,
-            borderRadius: 4,
-            border: "1px solid rgba(0,255,136,0.35)",
-            background: "rgba(0,255,136,0.12)",
-            color: "#00ff88",
-            cursor: csvImportBusy ? "wait" : "pointer",
-            opacity: !selectedSessionId ? 0.5 : 1,
-          }}
         >
           {csvImportBusy ? "Importing…" : "Import trades CSV"}
         </button>
-        <a
-          href="/samples/analytics-demo-500-trades.csv"
-          download
-          style={{ fontSize: "0.68rem", color: "#00c4ff", textDecoration: "none", marginLeft: 4 }}
-        >
+        <a href="/samples/analytics-demo-500-trades.csv" download className="bt-os-toolbar-auxlink">
           Demo 500
         </a>
-        <a
-          href="/samples/analytics-trades-template.csv"
-          download
-          style={{ fontSize: "0.68rem", color: "#9ca3af", textDecoration: "none", marginLeft: 6 }}
-        >
+        <a href="/samples/analytics-trades-template.csv" download className="bt-os-toolbar-auxlink bt-os-toolbar-auxlink--muted">
           Template
         </a>
+        </div>
       </div>
 
       {csvImportMsg ? (
-        <div
-          style={{
-            padding: "0.35rem 2rem 0.75rem",
-            fontSize: "0.75rem",
-            color: csvImportMsg.startsWith("Imported") ? "#86efac" : "#fbbf24",
-            fontFamily: "var(--font-space-mono), monospace",
-          }}
-        >
+        <div className={csvImportMsg.startsWith("Imported") ? "bt-os-csv-msg bt-os-csv-msg--ok" : "bt-os-csv-msg"}>
           {csvImportMsg}
         </div>
       ) : null}
 
       {journalFetched && selectedSessionId && !loading && !journalError && !listError && allTrades.length === 0 ? (
-        <div style={{ padding: "1rem 2rem", color: "#fbbf24", fontSize: "0.85rem" }}>
+        <div className="bt-os-inline-hint">
           No trades in <code>state.journal</code> for this session. Import a CSV with <strong>Import trades CSV</strong> (see
           Demo 500) or record trades in the chart for this session.
         </div>
       ) : null}
 
       {loading ? (
-        <div style={{ padding: "3rem", textAlign: "center", color: "#6b7280" }}>Loading…</div>
+        <div className="bt-os-loading">Loading…</div>
       ) : journalError || listError ? (
-        <div style={{ padding: "1.5rem 2rem", color: "#ff4d4d", fontSize: "0.85rem" }}>
+        <div className="bt-os-page-error">
           {listError ? <div>{listError}</div> : null}
           {journalError ? <div>{journalError}</div> : null}
         </div>
