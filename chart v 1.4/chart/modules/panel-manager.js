@@ -44,6 +44,9 @@ class PanelManager {
         /** True while applying date-range sync so charts don't re-dispatch scroll storms */
         this._syncingDateRange = false;
 
+        /** True while syncInterval() fans out setTimeframe — prevents nested sync storms (lag/freeze). */
+        this._syncingInterval = false;
+
         /** Per-target-panel last bar index so each follower only jumps when ITS own right-edge bar changes. */
         this._timeSyncLastTargetBar = {};
         
@@ -631,20 +634,26 @@ class PanelManager {
      */
     syncInterval(sourcePanel, timeframe) {
         if (!this.syncSettings.interval || this.currentLayout === '1') return;
-        
-        this.panels.forEach(panel => {
-            if (panel.index === sourcePanel.index) return;
-            const pc = panel.chartInstance;
-            if (!pc) return;
-            panel.timeframe = timeframe;
-            pc.currentTimeframe = timeframe;
-            if (typeof pc.setTimeframe === 'function') {
-                pc.setTimeframe(timeframe);
-            }
-            if (typeof pc.updateChartOHLCSymbol === 'function') {
-                pc.updateChartOHLCSymbol(pc.currentSymbol);
-            }
-        });
+        if (this._syncingInterval) return;
+
+        this._syncingInterval = true;
+        try {
+            this.panels.forEach(panel => {
+                if (panel.index === sourcePanel.index) return;
+                const pc = panel.chartInstance;
+                if (!pc) return;
+                panel.timeframe = timeframe;
+                pc.currentTimeframe = timeframe;
+                if (typeof pc.setTimeframe === 'function') {
+                    pc.setTimeframe(timeframe);
+                }
+                if (typeof pc.updateChartOHLCSymbol === 'function') {
+                    pc.updateChartOHLCSymbol(pc.currentSymbol);
+                }
+            });
+        } finally {
+            this._syncingInterval = false;
+        }
     }
     
     /**
@@ -2060,19 +2069,23 @@ class PanelManager {
     updateSelectedPanelTimeframe(timeframe) {
         if (this.panels.length === 0) return;
         
-        // If interval sync is enabled, update ALL panels
+        // If interval sync is enabled, one setTimeframe on the active chart fans out via syncInterval
+        // (inside Chart.setTimeframe). Calling setTimeframe on every panel used to refetch N× and freeze UI.
         if (this.syncSettings.interval) {
-            console.log(`⏱️ Interval sync ON - updating ALL panels to ${timeframe}`);
-            this.panels.forEach((panel, index) => {
-                if (panel) {
-                    panel.timeframe = timeframe;
-                    
-                    // Update chart instance if exists
-                    if (panel.chartInstance && panel.chartInstance.setTimeframe) {
-                        panel.chartInstance.setTimeframe(timeframe);
-                    }
-                }
+            this.panels.forEach((panel) => {
+                if (panel) panel.timeframe = timeframe;
             });
+            const panel = this.panels[this.selectedPanelIndex];
+            if (panel && panel.chartInstance && typeof panel.chartInstance.setTimeframe === 'function') {
+                panel.chartInstance.setTimeframe(timeframe);
+            }
+            window.dispatchEvent(new CustomEvent('panelTimeframeChanged', {
+                detail: {
+                    panelIndex: this.selectedPanelIndex,
+                    timeframe: timeframe,
+                    panel: panel
+                }
+            }));
             return;
         }
         

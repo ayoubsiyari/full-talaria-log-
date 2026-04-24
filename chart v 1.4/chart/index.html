@@ -43930,7 +43930,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260464"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260464"></script>
+    <script defer src="modules/panel-manager.js?v=20260465"></script>
 
     <script defer src="settings-panel.js?v=20260464"></script>
 
@@ -43946,7 +43946,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260468900"></script>
+    <script defer src="chart.js?v=20260468901"></script>
 
     <script defer src="modules/replay-system.js?v=20260465"></script>
     <script defer src="modules/chart-env.defaults.js?v=20260464"></script>
@@ -47798,55 +47798,9 @@
 
             
 
-            // Listen for panel timeframe changes
-
-            window.addEventListener('panelTimeframeChanged', (event) => {
-
-                const { panelIndex, timeframe, panel } = event.detail;
-
-                
-
-                // Update the panel's chart instance timeframe
-
-                if (panel && panel.chartInstance) {
-
-                    panel.chartInstance.setTimeframe(timeframe);
-
-                    
-
-                    // Sync interval to other panels if enabled
-
-                    if (window.panelManager && window.panelManager.syncSettings.interval) {
-
-                        window.panelManager.syncInterval(panel, timeframe);
-
-                    }
-
-                } else if (window.panelManager) {
-
-                    const panels = window.panelManager.getPanels();
-
-                    const targetPanel = panels[panelIndex];
-
-                    if (targetPanel && targetPanel.chartInstance) {
-
-                        targetPanel.chartInstance.setTimeframe(timeframe);
-
-                        
-
-                        // Sync interval to other panels if enabled
-
-                        if (window.panelManager.syncSettings.interval) {
-
-                            window.panelManager.syncInterval(targetPanel, timeframe);
-
-                        }
-
-                    }
-
-                }
-
-            });
+            // panelTimeframeChanged: callers already ran Chart.setTimeframe (which runs syncInterval).
+            // A previous listener here duplicated both and caused massive parallel /smart refetches when
+            // "Interval" sync was enabled (lag, wrong TF, stuck loaders).
 
             
 

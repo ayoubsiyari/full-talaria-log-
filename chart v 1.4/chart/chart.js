@@ -10469,8 +10469,13 @@ class Chart {
             this.updateChartOHLCSymbol(this.currentSymbol);
         }
 
-        // Trigger interval sync if enabled
-        if (window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.interval) {
+        // Trigger interval sync if enabled (skip while panel manager is already fanning out — avoids O(n²) refetch)
+        if (
+            window.panelManager &&
+            window.panelManager.syncSettings &&
+            window.panelManager.syncSettings.interval &&
+            !window.panelManager._syncingInterval
+        ) {
             const sourcePanel = this.panel || (window.panelManager.panels || []).find(p => p.chartInstance === this);
             if (sourcePanel) {
                 window.panelManager.syncInterval(sourcePanel, timeframe);
