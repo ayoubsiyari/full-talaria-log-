@@ -7895,6 +7895,50 @@ class Chart {
         }
         this.dispatchScrollSync();
     }
+
+    _clearIntervalSyncViewportFlags() {
+        delete this._intervalSyncViewportSourcePanel;
+        delete this._intervalSyncViewportHint;
+    }
+
+    /**
+     * After interval-synced `setTimeframe` on a follower, match wall-clock view to the source snapshot
+     * instead of `fitToView()` (which jumps the main chart when the user only changed another panel).
+     */
+    _applyIntervalSyncViewportIfPending() {
+        const hint = this._intervalSyncViewportHint;
+        const srcPanel = this._intervalSyncViewportSourcePanel;
+        this._clearIntervalSyncViewportFlags();
+
+        if (!hint || !srcPanel || !this.data?.length) {
+            this.fitToView();
+            return;
+        }
+        const pm = window.panelManager;
+        if (!pm || pm.currentLayout === '1') {
+            this.fitToView();
+            return;
+        }
+        const srcChart = srcPanel.chartInstance;
+        if (!srcChart || srcChart === this) {
+            this.fitToView();
+            return;
+        }
+        if (!(hint.startTimestamp > 0) || !(hint.endTimestamp > hint.startTimestamp)) {
+            this.fitToView();
+            return;
+        }
+
+        if (pm.syncSettings.dateRange) {
+            pm.syncScrollByVisibleTimeRange(srcPanel, hint.startTimestamp, hint.endTimestamp);
+            return;
+        }
+        if (pm.syncSettings.time && Number.isFinite(hint.rightEdgeOpenTs) && hint.rightEdgeOpenTs > 0) {
+            pm.syncTimeToClickedTimestamp(srcPanel, hint.rightEdgeOpenTs, 0.85);
+            return;
+        }
+        this.fitToView();
+    }
     
     /**
      * Extract symbol from filename
@@ -10474,7 +10518,10 @@ class Chart {
     setTimeframe(timeframe) {
         const hasData = Array.isArray(this.rawData) && this.rawData.length > 0;
         // Empty rawData is normal during sync/replay races; still refetch when this panel is tied to a server file.
-        if (!hasData && !this.currentFileId) return;
+        if (!hasData && !this.currentFileId) {
+            this._clearIntervalSyncViewportFlags();
+            return;
+        }
 
         if (this.drawingManager && this.drawings && this.drawings.length > 0) {
             this.drawingManager.saveDrawings();
@@ -10503,6 +10550,7 @@ class Chart {
         }
         
         if (this.replaySystem && this.replaySystem.isActive) {
+            this._clearIntervalSyncViewportFlags();
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(timeframe);
             }
@@ -10520,7 +10568,10 @@ class Chart {
         }
         
         // Fallback for non-file data (small local datasets)
-        if (!hasData) return;
+        if (!hasData) {
+            this._clearIntervalSyncViewportFlags();
+            return;
+        }
         this.data = this.resampleData(this.rawData, timeframe);
         if (typeof this.recalculateIndicators === 'function') this.recalculateIndicators();
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
@@ -10528,7 +10579,11 @@ class Chart {
         }
         this._chartViewRestored = false;
         this.resize();
-        this.fitToView();
+        if (this._intervalSyncViewportHint && this._intervalSyncViewportSourcePanel) {
+            this._applyIntervalSyncViewportIfPending();
+        } else {
+            this.fitToView();
+        }
         this.scheduleRender();
         this._fireChartDataLoaded();
     }
@@ -10545,7 +10600,10 @@ class Chart {
             const session = this.backtestingSession || {};
             const result = await this._fetchSmartWindow(this.currentFileId, timeframe, session);
 
-            if (loadId !== this._timeframeLoadSeq) return;
+            if (loadId !== this._timeframeLoadSeq) {
+                this._clearIntervalSyncViewportFlags();
+                return;
+            }
             if (!this._smartResponseHasPayload(result)) throw new Error('No data');
 
             this.rawData = [];
@@ -10573,12 +10631,17 @@ class Chart {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
                 this._chartViewRestored = false;
-                this.fitToView();
+                if (this._intervalSyncViewportHint && this._intervalSyncViewportSourcePanel) {
+                    this._applyIntervalSyncViewportIfPending();
+                } else {
+                    this.fitToView();
+                }
                 this.render();
             });
 
         } catch (error) {
             if (loadId === this._timeframeLoadSeq) {
+                this._clearIntervalSyncViewportFlags();
                 console.error('❌ Timeframe change failed:', error);
                 if (this.hideLoader) this.hideLoader();
             }

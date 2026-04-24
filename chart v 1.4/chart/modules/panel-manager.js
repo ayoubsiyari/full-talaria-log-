@@ -672,6 +672,23 @@ class PanelManager {
         if (!this.syncSettings.interval || this.currentLayout === '1') return;
         if (this._syncingInterval) return;
 
+        /** Wall-clock window on the source chart before followers refetch — avoids blind `fitToView()` on main. */
+        let viewportHint = null;
+        const srcChart = sourcePanel?.chartInstance;
+        if (srcChart?.data?.length && (this.syncSettings.dateRange || this.syncSettings.time)) {
+            const si = typeof srcChart.getVisibleStartIndex === 'function' ? srcChart.getVisibleStartIndex() : 0;
+            const ei = typeof srcChart.getVisibleEndIndex === 'function' ? srcChart.getVisibleEndIndex() : srcChart.data.length - 1;
+            const i0 = Math.max(0, Math.min(si, srcChart.data.length - 1));
+            const i1 = Math.max(0, Math.min(ei, srcChart.data.length - 1));
+            const startTimestamp = srcChart.data[i0]?.t ?? 0;
+            const barMs = typeof srcChart.inferBarDurationMs === 'function' ? srcChart.inferBarDurationMs() : 60000;
+            const endTimestamp = (srcChart.data[i1]?.t ?? 0) + barMs;
+            const rightEdgeOpenTs = srcChart.data[i1]?.t ?? 0;
+            if (startTimestamp > 0 && endTimestamp > startTimestamp) {
+                viewportHint = { startTimestamp, endTimestamp, rightEdgeOpenTs };
+            }
+        }
+
         this._syncingInterval = true;
         try {
             this.panels.forEach(panel => {
@@ -680,6 +697,10 @@ class PanelManager {
                 if (!pc) return;
                 panel.timeframe = timeframe;
                 pc.currentTimeframe = timeframe;
+                if (viewportHint) {
+                    pc._intervalSyncViewportSourcePanel = sourcePanel;
+                    pc._intervalSyncViewportHint = viewportHint;
+                }
                 if (typeof pc.setTimeframe === 'function') {
                     pc.setTimeframe(timeframe);
                 }
