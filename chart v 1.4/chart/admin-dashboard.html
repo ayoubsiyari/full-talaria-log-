@@ -1735,7 +1735,8 @@ select { cursor: pointer; }
           </div>
           <div class="card-body" style="padding-top:0">
             <p id="frHealthHeadline" style="margin:0 0 12px;font-size:12px;color:var(--text-muted);line-height:1.5">Checking last nightly run…</p>
-            <div id="frHealthClassGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:14px"></div>
+            <div id="frHealthClassGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:10px"></div>
+            <p id="frHealthRegistryNote" style="display:none;margin:0 0 14px;font-size:11px;color:var(--text-muted);line-height:1.5"></p>
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
               <input type="search" id="frHealthFilter" class="input" placeholder="Filter tickers…" style="flex:1;min-width:160px" oninput="_renderFirstrateNightlyHealth()">
               <select id="frHealthClassFilter" class="input" style="max-width:150px" onchange="_renderFirstrateNightlyHealth()">
@@ -5170,6 +5171,34 @@ function _renderFirstrateNightlyHealth() {
   // Headline: schedule state + last run outcome.
   const s = data.schedule || {};
   const sum = data.summary || { dataset_count: 0, fresh_count: 0, stale_count: 0, missing_count: 0 };
+  const noteEl = document.getElementById('frHealthRegistryNote');
+  if (noteEl) {
+    const regTot = sum.registry_csv_total;
+    const excl = sum.excluded_not_classified_count;
+    const tracked = sum.dataset_count;
+    if (regTot != null && regTot > 0) {
+      if (excl != null && excl > 0) {
+        noteEl.textContent =
+          'Dataset registry counts ' +
+          regTot +
+          ' CSV dataset(s). This panel tracks ' +
+          tracked +
+          ' that map to fx / crypto / futures / stock for FirstRate nightly sync freshness. The other ' +
+          excl +
+          ' still appear in the registry but are skipped here (unmappable filename, exotic symbol, or non–FirstRate-style upload).';
+        noteEl.style.display = '';
+      } else {
+        noteEl.textContent =
+          'Counts match the registry (' +
+          regTot +
+          ' CSV dataset(s)); all are classified for nightly sync freshness.';
+        noteEl.style.display = '';
+      }
+    } else {
+      noteEl.textContent = '';
+      noteEl.style.display = 'none';
+    }
+  }
   const onOff = s.enabled ? 'ON' : 'OFF';
   const hour = (s.nightly_utc_hour == null) ? '2' : String(s.nightly_utc_hour).padStart(2, '0');
   const modeTxt = (s.mode || 'nightly');

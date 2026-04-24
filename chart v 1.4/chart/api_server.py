@@ -8333,7 +8333,13 @@ async def admin_firstrate_fx_nightly_health(request: Request, rescan: int = 0):
             "last_error": cfg.get("last_error"),
         },
         "summary": {
+            # Rows in this panel (FirstRate-bucketable instruments only).
             "dataset_count": len(datasets),
+            # Every CSV in `csv_files` — matches Dataset registry card "Datasets".
+            "registry_csv_total": len(files),
+            # Datasets omitted here: filename/ticker did not map to fx|crypto|futures|stock
+            # (manual uploads, Dukascopy-only names, exotic symbols, etc.).
+            "excluded_not_classified_count": max(0, len(files) - len(datasets)),
             "fresh_count": sum(c["fresh_count"] for c in classes.values()),
             "stale_count": sum(c["stale_count"] for c in classes.values()),
             "missing_count": sum(c["missing_count"] for c in classes.values()),
