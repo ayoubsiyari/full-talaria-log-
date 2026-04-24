@@ -1,21 +1,35 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Filter, BarChart3 } from "lucide-react";
+import { Syne, Space_Mono } from "next/font/google";
+import { ArrowLeft, Filter } from "lucide-react";
 import { BacktestSubnav } from "../BacktestSubnav";
 import "../sessions-dashboard.css";
+import "../backtest-os-dashboard.css";
+import { BacktestOsDashboardLayout } from "../BacktestOsDashboardLayout";
+import type { BacktestOsChartPack } from "../BacktestOsCharts";
+import type { OsMetricCard } from "../backtestOsTypes";
 import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Cell,
-} from "recharts";
+  durationBucketsHours,
+  kurtosisExcess,
+  maxConsecutiveStreaks,
+  mean,
+  monteCarloPercentiles,
+  sampleStd,
+  skewness,
+  varCvar95,
+} from "../backtestOsCompute";
+
+const syne = Syne({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-syne",
+});
+const spaceMono = Space_Mono({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-space-mono",
+});
 
 type Session = {
   id: number;
@@ -605,37 +619,373 @@ export default function BacktestAnalyticsPage() {
       }
     | undefined;
 
-  const monthlyPnlChart = useMemo(
-    () =>
-      Array.isArray(sessionAnalytics?.monthly_pnl)
-        ? sessionAnalytics!.monthly_pnl!.map((row, i) => ({ ...row, idx: i + 1 }))
-        : [],
-    [sessionAnalytics]
+  const pnls = useMemo(() => filteredTrades.map((t) => t.pnl), [filteredTrades]);
+
+  const sortedByCloseForStreak = useMemo(
+    () => [...filteredTrades].sort((a, b) => n(a.closeTs) - n(b.closeTs)),
+    [filteredTrades]
   );
 
-  const balanceEquityChart = useMemo(
-    () =>
-      Array.isArray(sessionAnalytics?.balance?.equity)
-        ? sessionAnalytics!.balance!.equity!.map((row: { x: string; y: number }, i: number) => ({
-            idx: i + 1,
-            label: String(row.x || "").slice(0, 10),
-            y: n(row.y),
-          }))
-        : [],
-    [sessionAnalytics]
-  );
+  const osChartPack = useMemo((): BacktestOsChartPack => {
+    const sb =
+      sessionAnalytics?.balance?.start_balance != null && Number.isFinite(n(sessionAnalytics.balance.start_balance))
+        ? n(sessionAnalytics.balance.start_balance)
+        : null;
+    const monthlyRows = Array.isArray(sessionAnalytics?.monthly_pnl) ? sessionAnalytics!.monthly_pnl! : [];
 
-  const balanceDrawdownChart = useMemo(
-    () =>
-      Array.isArray(sessionAnalytics?.balance?.drawdown_pct)
-        ? sessionAnalytics!.balance!.drawdown_pct!.map((row: { x: string; y: number }, i: number) => ({
-            idx: i + 1,
-            label: String(row.x || "").slice(0, 10),
-            y: n(row.y),
-          }))
-        : [],
-    [sessionAnalytics]
-  );
+    let equity: BacktestOsChartPack["equity"] = null;
+    const balEq = sessionAnalytics?.balance?.equity;
+    if (Array.isArray(balEq) && balEq.length) {
+      const strategy = balEq.map((r: { y: number }) => n(r.y));
+      const labels = balEq.map((_: unknown, i: number) => String(i + 1));
+      const benchmark = sb != null && sb > 0 ? strategy.map(() => sb) : null;
+      equity = {
+        labels,
+        strategy,
+        benchmark,
+        subtitle: sb != null ? `${fmtMoney(sb)} start` : "account equity",
+      };
+    } else if (equityCurve.length) {
+      equity = {
+        labels: equityCurve.map((_: unknown, i: number) => String(i + 1)),
+        strategy: equityCurve.map((e: { equity: number }) => n(e.equity)),
+        benchmark: null,
+        subtitle: "cumulative $ PnL",
+      };
+    }
+
+    const monthlyPct =
+      sb != null && sb > 0 && monthlyRows.length
+        ? {
+            labels: monthlyRows.map((r: { x: string }) => r.x),
+            values: monthlyRows.map((r: { y: number }) => (n(r.y) / sb) * 100),
+          }
+        : null;
+
+    let rolling: BacktestOsChartPack["rolling"] = null;
+    if (monthlyPct && monthlyPct.values.length >= 3) {
+      const vals = monthlyPct.values;
+      rolling = {
+        labels: monthlyPct.labels,
+        values: vals.map((_, i) =>
+          i < 2 ? null : (((vals[i]! + vals[i - 1]! + vals[i - 2]!) / 3) * 12)
+        ),
+      };
+    }
+
+    let dist: BacktestOsChartPack["dist"] = null;
+    if (pnls.length) {
+      const spread = Math.max(...pnls) - Math.min(...pnls);
+      const hist = buildHistogram(pnls, Math.max(25, spread / 8 || 25));
+      dist = {
+        labels: hist.map((h) => h.label),
+        counts: hist.map((h) => h.count),
+        colors: hist.map((h) =>
+          (h.from + h.to) / 2 >= 0 ? "rgba(0,255,136,0.6)" : "rgba(255,77,77,0.6)"
+        ),
+      };
+    }
+
+    let drawdown: BacktestOsChartPack["drawdown"] = null;
+    const ddRows = sessionAnalytics?.balance?.drawdown_pct;
+    if (Array.isArray(ddRows) && ddRows.length) {
+      drawdown = {
+        labels: ddRows.map((_: unknown, i: number) => String(i + 1)),
+        values: ddRows.map((r: { y: number }) => n(r.y)),
+      };
+    }
+
+    const sharpeN = n(sessionAnalytics?.sharpe_sortino?.sharpe ?? 0);
+    const sortinoN = n(sessionAnalytics?.sharpe_sortino?.sortino ?? 0);
+    const mddpN = n(sessionAnalytics?.balance?.max_drawdown_pct ?? 0);
+    const calmarR =
+      mddpN > 0 && sb != null && sb > 0 ? Math.abs(stats.net / sb) / mddpN : 0;
+    const omega =
+      stats.avgLoss > 0 ? (stats.avgWin * stats.wins) / (Math.abs(stats.avgLoss) * Math.max(1, stats.losses)) : 0;
+    const clampR = (x: number) => Math.min(2, Math.max(0, Number.isFinite(x) ? x : 0));
+    const radar =
+      stats.total > 0
+        ? {
+            labels: ["Sharpe", "Sortino", "Win%", "PF", "Calmar", "Omega", "Avg R", "Net/σ"],
+            strategy: [
+              clampR(sharpeN / 1.2),
+              clampR(sortinoN / 1.5),
+              clampR(stats.winRate / 50),
+              clampR(stats.profitFactor / 2.5),
+              clampR(calmarR),
+              clampR(omega / 2),
+              clampR((stats.avgRR + 2) / 4),
+              clampR(sampleStd(pnls) > 0 ? stats.net / pnls.length / sampleStd(pnls) : 0),
+            ],
+            benchmark: [0.85, 0.9, 0.55, 0.85, 0.65, 0.9, 0.75, 0.7],
+          }
+        : null;
+
+    let annual: BacktestOsChartPack["annual"] = null;
+    if (monthlyRows.length && sb != null && sb > 0) {
+      const byYear: Record<string, number> = {};
+      for (const row of monthlyRows) {
+        const yk = String(row.x).slice(0, 4);
+        byYear[yk] = (byYear[yk] || 0) + n(row.y);
+      }
+      const years = Object.keys(byYear).sort();
+      annual = {
+        years,
+        strategy: years.map((y) => (byYear[y]! / sb) * 100),
+        benchmark: null,
+      };
+    }
+
+    const sortedByClose = [...filteredTrades].sort((a, b) => n(a.closeTs) - n(b.closeTs));
+    const tradePL =
+      sortedByClose.length > 0
+        ? (() => {
+            let cum = 0;
+            return sortedByClose.map((t, i) => {
+              cum += t.pnl;
+              return { x: i + 1, y: cum };
+            });
+          })()
+        : null;
+
+    const winLoss = stats.total > 0 ? { wins: stats.wins, losses: stats.losses } : null;
+
+    const hoursDur = sortedByClose
+      .map((t) => {
+        const o = n(t.openTs);
+        const c = n(t.closeTs);
+        if (o > 1e9 && c > 1e9) return Math.max(0, (c - o) / 3600000);
+        return NaN;
+      })
+      .filter((h) => Number.isFinite(h));
+    const duration =
+      hoursDur.length > 0
+        ? {
+            labels: ["≤1d", "2–3d", "4–7d", "8–14d", "15–30d", ">30d"],
+            counts: durationBucketsHours(hoursDur),
+          }
+        : null;
+
+    const nSteps = Math.min(80, Math.max(10, sortedByClose.length));
+    const monteCarlo = pnls.length > 2 ? monteCarloPercentiles(pnls, 200, nSteps) : null;
+
+    return {
+      equity,
+      rolling,
+      dist,
+      monthlyPct,
+      drawdown,
+      radar,
+      annual,
+      tradePL,
+      winLoss,
+      duration,
+      monteCarlo,
+    };
+  }, [sessionAnalytics, equityCurve, filteredTrades, stats, pnls]);
+
+  const osMetricBundles = useMemo(() => {
+    const em = "—";
+    const card = (label: string, value: string, sub: string, accent: string, tone?: "pos" | "neg"): OsMetricCard => ({
+      label,
+      value,
+      sub,
+      accent,
+      tone,
+    });
+
+    const sb =
+      sessionAnalytics?.balance?.start_balance != null && Number.isFinite(n(sessionAnalytics.balance.start_balance))
+        ? n(sessionAnalytics.balance.start_balance)
+        : null;
+    const totalRetPct =
+      sb != null && sb > 0 ? ((stats.net / sb) * 100).toFixed(2) + "%" : em;
+    const monthlyRows = Array.isArray(sessionAnalytics?.monthly_pnl) ? sessionAnalytics!.monthly_pnl! : [];
+    const monthlyAvgPct =
+      sb != null && sb > 0 && monthlyRows.length
+        ? ((monthlyRows.reduce((s: number, r: { y: number }) => s + n(r.y), 0) / monthlyRows.length / sb) * 100).toFixed(
+            2
+          ) + "%"
+        : em;
+
+    const σ = sampleStd(pnls);
+    const negOnly = pnls.filter((p) => p < 0);
+    const dsd = negOnly.length > 1 ? sampleStd(negOnly) : 0;
+    const { var95, cvar95 } = varCvar95(pnls);
+    const sk = skewness(pnls);
+    const kt = kurtosisExcess(pnls);
+    const thr = -3 * σ;
+    const tailPct = pnls.length ? ((pnls.filter((p) => p < thr).length / pnls.length) * 100).toFixed(1) + "%" : em;
+
+    const mddp = sessionAnalytics?.balance?.max_drawdown_pct;
+    const rec = sessionAnalytics?.balance?.recovery_factor;
+    const ddPts = sessionAnalytics?.balance?.drawdown_pct?.map((r: { y: number }) => Math.abs(n(r.y))) ?? [];
+    const ulcer = ddPts.length ? Math.sqrt(mean(ddPts.map((x) => x * x))) : null;
+    const pain = ddPts.length ? mean(ddPts) : null;
+
+    const sharpeN = sessionAnalytics?.sharpe_sortino?.sharpe;
+    const sortinoN = sessionAnalytics?.sharpe_sortino?.sortino;
+    const mddpN = n(mddp ?? 0);
+    const calmarApprox =
+      sb != null && sb > 0 && mddpN > 0 ? (Math.abs(stats.net / sb) / mddpN).toFixed(2) : em;
+
+    const streaks2 = maxConsecutiveStreaks(sortedByCloseForStreak.map((t) => t.pnl > 0));
+
+    const costTotal = sortedPerPair.reduce((s, r) => s + n(r.commissionPaid) + n(r.spreadCost), 0);
+
+    const pn = pnls.length;
+    const stderr = pn > 1 && σ > 0 ? σ / Math.sqrt(pn) : 0;
+    const tStat = stderr > 0 ? mean(pnls) / stderr : null;
+
+    const closeList = filteredTrades.map((t) => n(t.closeTs)).filter((x) => x > 1e11 || x > 1e9);
+    let dateFrom = em;
+    let dateTo = em;
+    if (closeList.length) {
+      const mn = Math.min(...closeList);
+      const mx = Math.max(...closeList);
+      const d1 = mn > 1e12 ? new Date(mn) : new Date(mn * 1000);
+      const d2 = mx > 1e12 ? new Date(mx) : new Date(mx * 1000);
+      dateFrom = Number.isNaN(d1.getTime()) ? em : d1.toISOString().slice(0, 10);
+      dateTo = Number.isNaN(d2.getTime()) ? em : d2.toISOString().slice(0, 10);
+    }
+
+    const weekdayRows = sessionAnalytics?.weekday_winrate ?? [];
+    let bestWd = em;
+    let bestWdV = -1;
+    for (const w of weekdayRows) {
+      if (n(w.n) > 0 && n(w.y) > bestWdV) {
+        bestWdV = n(w.y);
+        bestWd = `${w.x} ${n(w.y).toFixed(0)}%`;
+      }
+    }
+
+    let bestMo = em;
+    let worstMo = em;
+    let bestV = -Infinity;
+    let worstV = Infinity;
+    for (const r of monthlyRows) {
+      const v = n(r.y);
+      if (v > bestV) {
+        bestV = v;
+        bestMo = `${r.x} (${fmtMoney(v)})`;
+      }
+      if (v < worstV) {
+        worstV = v;
+        worstMo = `${r.x} (${fmtMoney(v)})`;
+      }
+    }
+
+    return {
+      dateFrom,
+      dateTo,
+      returnCards: [
+        card("Total return", totalRetPct, "net PnL / start balance", "#00ff88", stats.net >= 0 ? "pos" : "neg"),
+        card("CAGR", em, "needs long daily equity series", "#00ff88"),
+        card("Annualized return", em, "CAGR proxy unavailable", "#00ff88"),
+        card("Alpha", em, "no benchmark loaded", "#00ff88"),
+        card("Daily return", em, "use journal timestamps for daily bars", "#00ff88"),
+        card("Monthly avg %", monthlyAvgPct, "mean monthly / balance", "#00ff88"),
+        card("Benchmark return", em, "not connected", "#00ff88"),
+        card("Excess return", em, "vs benchmark N/A", "#00ff88"),
+      ],
+      riskCards: [
+        card("Volatility (σ)", pn ? fmtMoney(σ) : em, "per-trade PnL std ($)", "#ff4d4d"),
+        card("Downside dev", dsd > 0 ? fmtMoney(dsd) : em, "losing trades only", "#ff4d4d"),
+        card("VaR 95%", var95 != null ? (var95 / (sb || 1) * 100).toFixed(2) + "%" : em, "empirical trade tail", "#ff4d4d", "neg"),
+        card("CVaR 95%", cvar95 != null ? (cvar95 / (sb || 1) * 100).toFixed(2) + "%" : em, "expected shortfall", "#ff4d4d", "neg"),
+        card("Beta", em, "vs benchmark N/A", "#ff4d4d"),
+        card("Correlation", em, "benchmark N/A", "#ff4d4d"),
+        card("Skewness", sk != null ? sk.toFixed(2) : em, "trade PnL", "#ff4d4d", sk != null && sk > 0 ? "pos" : undefined),
+        card("Kurtosis (excess)", kt != null ? kt.toFixed(2) : em, "fat tails", "#ff4d4d"),
+        card("Tracking error", em, "benchmark N/A", "#ff4d4d"),
+        card("Tail risk", tailPct, "P(PnL < −3σ)", "#ff4d4d"),
+      ],
+      drawCards: [
+        card(
+          "Max drawdown",
+          mddp != null && Number.isFinite(n(mddp)) ? (n(mddp) * 100).toFixed(2) + "%" : em,
+          "of peak balance",
+          "#a855f7",
+          "neg"
+        ),
+        card("Avg drawdown", pain != null ? pain.toFixed(2) + "%" : em, "mean |underwater|", "#a855f7"),
+        card("Max DD duration", em, "needs episode parser", "#a855f7"),
+        card("Avg DD duration", em, "needs episode parser", "#a855f7"),
+        card("Calmar ratio", String(calmarApprox), "return / max DD%", "#a855f7", calmarApprox !== em ? "pos" : undefined),
+        card("Recovery factor", rec != null && Number.isFinite(n(rec)) ? n(rec).toFixed(2) + "×" : em, "net / max DD $", "#a855f7"),
+        card("Ulcer index", ulcer != null ? ulcer.toFixed(2) : em, "RMS DD%", "#a855f7"),
+        card("Pain index", pain != null ? pain.toFixed(2) + "%" : em, "mean DD depth", "#a855f7"),
+        card("Sterling ratio", em, "needs avg ann DD", "#a855f7"),
+        card("Burke ratio", em, "needs RMS DD series", "#a855f7"),
+      ],
+      ratioCards: [
+        card("Sharpe ratio", sharpeN != null && Number.isFinite(sharpeN) ? sharpeN.toFixed(2) : em, "mean/σ trades", "#00c4ff"),
+        card("Sortino ratio", sortinoN != null && Number.isFinite(sortinoN) ? sortinoN.toFixed(2) : em, "downside σ trades", "#00c4ff"),
+        card("Calmar ratio", String(calmarApprox), "same as drawdown card", "#00c4ff"),
+        card("Info ratio", em, "benchmark N/A", "#00c4ff"),
+        card("Treynor ratio", em, "β N/A", "#00c4ff"),
+        card("Omega ratio", stats.avgLoss > 0 ? (stats.avgWin / stats.avgLoss).toFixed(2) : em, "avg win / avg loss", "#00c4ff"),
+        card("Martin ratio", em, "needs CAGR / ulcer", "#00c4ff"),
+        card("Pain ratio", em, "needs return / pain", "#00c4ff"),
+        card("M² (Modigliani)", em, "benchmark N/A", "#00c4ff"),
+        card("Kappa 3", em, "higher moments N/A", "#00c4ff"),
+        card("Deflated Sharpe", em, "track record adj N/A", "#00c4ff"),
+        card("Sharpe t-stat", tStat != null && Number.isFinite(tStat) ? tStat.toFixed(2) : em, "mean / stderr", "#00c4ff"),
+      ],
+      tradeCards: [
+        card("Win rate", fmtPct(stats.winRate), `of ${stats.total} trades`, "#ff6b35", "pos"),
+        card("Profit factor", stats.profitFactor.toFixed(2), "gross win / gross loss", "#ff6b35", stats.profitFactor >= 1 ? "pos" : "neg"),
+        card("Payoff ratio", stats.avgLoss > 0 ? (stats.avgWin / stats.avgLoss).toFixed(2) : em, "avg win / avg loss", "#ff6b35"),
+        card("Expectancy", fmtMoney(stats.expectancy), "per trade", "#ff6b35", stats.expectancy >= 0 ? "pos" : "neg"),
+        card("Total trades", String(stats.total), "round-trips", "#ff6b35"),
+        card("Avg duration", em, "needs entry/exit ms on rows", "#ff6b35"),
+        card("Max consec wins", String(streaks2.maxWins), "streak", "#ff6b35", "pos"),
+        card("Max consec losses", String(streaks2.maxLosses), "streak", "#ff6b35", "neg"),
+        card("Largest win", fmtMoney(Number.isFinite(stats.best?.pnl) ? stats.best.pnl : 0), stats.best?.ticker || "", "#ff6b35", "pos"),
+        card("Largest loss", fmtMoney(Number.isFinite(stats.worst?.pnl) ? stats.worst.pnl : 0), stats.worst?.ticker || "", "#ff6b35", "neg"),
+        card("Avg winner", fmtMoney(stats.avgWin), "per win", "#ff6b35", "pos"),
+        card("Avg loser", fmtMoney(stats.avgLoss), "per loss (abs)", "#ff6b35", "neg"),
+        card("Avg win duration", em, "timestamp gaps", "#ff6b35"),
+        card("Avg loss duration", em, "timestamp gaps", "#ff6b35"),
+        card("Trade cost total", fmtMoney(-costTotal), "commissions + spread est.", "#ff6b35", "neg"),
+        card("Gross profit", fmtMoney(filteredTrades.filter((t) => t.pnl > 0).reduce((s, t) => s + t.pnl, 0)), "winners only", "#ff6b35", "pos"),
+      ],
+      statCards: [
+        card("t-Statistic", tStat != null ? tStat.toFixed(2) : em, "mean PnL / stderr", "#fbbf24"),
+        card("p-Value", em, "requires model spec", "#fbbf24"),
+        card("R² equity", em, "linear fit N/A", "#fbbf24"),
+        card("K-Ratio", em, "equity slope / SE N/A", "#fbbf24"),
+        card("Hurst exponent", em, "needs long log returns", "#fbbf24"),
+        card("Autocorrelation", em, "lag-1 N/A", "#fbbf24"),
+        card("Ljung-Box Q", em, "N/A", "#fbbf24"),
+        card("Jarque-Bera", em, "use skew+kurt above", "#fbbf24"),
+        card("WF efficiency", em, "OOS / IS N/A", "#fbbf24"),
+        card("Monte Carlo 5th %", em, "see chart below", "#fbbf24"),
+        card("Overfit bias", em, "N/A", "#fbbf24"),
+      ],
+      timeCards: [
+        card("Time in market", em, "bar data not in journal", "#9ca3af"),
+        card(
+          "Time in drawdown",
+          ddPts.length ? ((ddPts.filter((x) => x > 0.01).length / ddPts.length) * 100).toFixed(1) + "%" : em,
+          "DD pts > 0.01%",
+          "#9ca3af"
+        ),
+        card("Avg exposure", em, "size × price N/A", "#9ca3af"),
+        card("Avg leverage", em, "N/A", "#9ca3af"),
+        card("Annual turnover", em, "N/A", "#9ca3af"),
+        card("Capacity est.", em, "N/A", "#9ca3af"),
+        card("Best month", bestMo, "by $ PnL", "#9ca3af", "pos"),
+        card("Worst month", worstMo, "by $ PnL", "#9ca3af", "neg"),
+        card("Best weekday", bestWd, "win rate", "#9ca3af"),
+        card("Slippage total", em, "not modeled separately", "#9ca3af"),
+      ],
+    };
+  }, [sessionAnalytics, stats, pnls, filteredTrades, sortedPerPair, sortedByCloseForStreak]);
+
+  const sessionDisplayName =
+    sessions.find((s) => String(s.id) === String(selectedSessionId))?.name || `Session #${selectedSessionId || "?"}`;
+
   const bestHeatmapValue = bestHeatmap
     ? (heatmapMetric === "USD"
       ? n(bestHeatmap.expectancy_usd ?? bestHeatmap.expectancyUsd)
@@ -676,763 +1026,301 @@ export default function BacktestAnalyticsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className={`${syne.variable} ${spaceMono.variable} bt-os-dashboard`} style={{ fontFamily: "var(--font-syne), Syne, sans-serif" }}>
       <BacktestSubnav active="analytics" sessionId={selectedSessionId || undefined} />
-      <div className="max-w-6xl mx-auto space-y-6 p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <a
-              href="/backtest"
-              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Back to Sessions
-            </a>
-            <h1 className="text-2xl font-bold inline-flex items-center gap-2">
-              <BarChart3 className="w-6 h-6 text-blue-400" />
-              Backtest Analytics
-            </h1>
-          </div>
+
+      <div className="bt-os-toolbar">
+        <a href="/backtest" className="bt-os-back-link">
+          <ArrowLeft className="w-3 h-3" />
+          Sessions
+        </a>
+        <Filter className="w-3 h-3" style={{ color: "#6b7280" }} aria-hidden />
+        <select value={selectedSessionId} onChange={(e) => setSelectedSessionId(e.target.value)}>
+          {sessions.map((s: Session) => (
+            <option key={s.id} value={String(s.id)}>{s.name} (#{s.id})</option>
+          ))}
+        </select>
+        <select value={pairFilter} onChange={(e) => setPairFilter(e.target.value)}>
+          <option value="ALL">All instruments</option>
+          {pairOptions.map((p: string) => (<option key={p} value={p}>{p}</option>))}
+        </select>
+        <select value={playbookFilter} onChange={(e) => setPlaybookFilter(e.target.value)}>
+          <option value="ALL">All playbooks</option>
+          {playbookOptions.map((p: string) => (<option key={p} value={p}>{p}</option>))}
+        </select>
+        <select value={outcomeFilter} onChange={(e) => setOutcomeFilter(e.target.value)}>
+          <option value="ALL">All outcomes</option>
+          <option value="WINNERS">Winners</option>
+          <option value="LOSERS">Losers</option>
+          <option value="BREAKEVEN">Breakeven</option>
+        </select>
+      </div>
+
+      {journalFetched && selectedSessionId && !loading && !journalError && !listError && allTrades.length === 0 ? (
+        <div style={{ padding: "1rem 2rem", color: "#fbbf24", fontSize: "0.85rem" }}>
+          No trades in <code>state.journal</code> for this session. Pick the session you traded in the chart.
         </div>
+      ) : null}
 
-        <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 backdrop-blur-xl p-4 flex flex-wrap gap-3 items-center">
-          <Filter className="w-4 h-4 text-white/60" />
-          <select
-            value={selectedSessionId}
-            onChange={(e) => setSelectedSessionId(e.target.value)}
-            className={filterSelectClass}
-            style={filterSelectStyle}
-          >
-            {sessions.map((s: any) => (
-              <option key={s.id} value={String(s.id)} style={filterOptionStyle}>
-                {s.name} (#{s.id})
-              </option>
-            ))}
-          </select>
-          <select
-            value={pairFilter}
-            onChange={(e) => setPairFilter(e.target.value)}
-            className={filterSelectClass}
-            style={filterSelectStyle}
-          >
-            <option value="ALL" style={filterOptionStyle}>All Instruments</option>
-            {pairOptions.map((p: any) => (
-              <option key={p} value={p} style={filterOptionStyle}>
-                {p}
-              </option>
-            ))}
-          </select>
-          <select
-            value={playbookFilter}
-            onChange={(e) => setPlaybookFilter(e.target.value)}
-            className={filterSelectClass}
-            style={filterSelectStyle}
-          >
-            <option value="ALL" style={filterOptionStyle}>All Playbooks</option>
-            {playbookOptions.map((p: any) => (
-              <option key={p} value={p} style={filterOptionStyle}>
-                {p}
-              </option>
-            ))}
-          </select>
-          <select
-            value={outcomeFilter}
-            onChange={(e) => setOutcomeFilter(e.target.value)}
-            className={filterSelectClass}
-            style={filterSelectStyle}
-          >
-            <option value="ALL" style={filterOptionStyle}>All Outcomes</option>
-            <option value="WINNERS" style={filterOptionStyle}>Winners Only</option>
-            <option value="LOSERS" style={filterOptionStyle}>Losers Only</option>
-            <option value="BREAKEVEN" style={filterOptionStyle}>Breakeven Only</option>
-          </select>
+      {loading ? (
+        <div style={{ padding: "3rem", textAlign: "center", color: "#6b7280" }}>Loading…</div>
+      ) : journalError || listError ? (
+        <div style={{ padding: "1.5rem 2rem", color: "#ff4d4d", fontSize: "0.85rem" }}>
+          {listError ? <div>{listError}</div> : null}
+          {journalError ? <div>{journalError}</div> : null}
         </div>
+      ) : (
+        <BacktestOsDashboardLayout
+          sessionName={sessionDisplayName}
+          strategyLine={sessionDisplayName}
+          dateRangeLine={`${osMetricBundles.dateFrom} → ${osMetricBundles.dateTo}`}
+          nTrades={stats.total}
+          chartPack={osChartPack}
+          returnCards={osMetricBundles.returnCards}
+          riskCards={osMetricBundles.riskCards}
+          drawCards={osMetricBundles.drawCards}
+          ratioCards={osMetricBundles.ratioCards}
+          tradeCards={osMetricBundles.tradeCards}
+          statCards={osMetricBundles.statCards}
+          timeCards={osMetricBundles.timeCards}
+          advancedSection={(
+            <>
 
-        {journalFetched &&
-        selectedSessionId &&
-        !loading &&
-        !journalError &&
-        !listError &&
-        allTrades.length === 0 ? (
-          <div className="rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4 text-amber-100/90 text-sm space-y-2">
-            <p className="font-medium text-amber-50">No trades in session state for this session</p>
-            <p className="text-amber-100/80">
-              Analytics reads <code className="text-xs bg-black/30 px-1 rounded">GET /api/sessions/{selectedSessionId}/state</code> and uses{" "}
-              <code className="text-xs bg-black/30 px-1 rounded">state.journal</code>. If you had multiple backtest sessions, pick the same one you had open in
-              the chart (dropdown above). The chart saves trades per session id; choosing the newest session in the list by mistake shows zeros.
-            </p>
-          </div>
-        ) : null}
-
-        {loading ? (
-          <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-10 text-center text-white/60">Loading analytics...</div>
-        ) : journalError || listError ? (
-          <div className="space-y-3">
-            {listError ? (
-              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-100 text-sm">
-                <strong className="block mb-1">Session list</strong>
-                {listError}
-              </div>
-            ) : null}
-            {journalError ? (
-              <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-red-200">
-                <strong className="block mb-2">Journal / state</strong>
-                {journalError}
-                <p className="mt-3 text-sm text-red-200/80">
-                  If the API is on another host, set <code className="text-xs bg-black/30 px-1 rounded">NEXT_PUBLIC_CHART_API_ORIGIN</code> at build time
-                  (e.g. <code className="text-xs bg-black/30 px-1 rounded">https://your-chart-host</code>) so requests hit the chart server.
-                </p>
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Total Trades</div><div className="text-2xl font-bold">{stats.total}</div></div>
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Wins</div><div className="text-2xl font-bold text-green-400">{stats.wins}</div></div>
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Losses</div><div className="text-2xl font-bold text-red-400">{stats.losses}</div></div>
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Win Rate</div><div className="text-2xl font-bold">{fmtPct(stats.winRate)}</div></div>
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Net PnL</div><div className={`text-2xl font-bold ${stats.net >= 0 ? "text-green-400" : "text-red-400"}`}>{fmtMoney(stats.net)}</div></div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Profit Factor</div><div className="text-xl font-bold">{stats.profitFactor.toFixed(2)}</div></div>
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Expectancy / Trade</div><div className={`text-xl font-bold ${stats.expectancy >= 0 ? "text-green-400" : "text-red-400"}`}>{fmtMoney(stats.expectancy)}</div></div>
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Avg Win / Avg Loss</div><div className="text-xl font-bold">{fmtMoney(stats.avgWin)} / {fmtMoney(stats.avgLoss)}</div></div>
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Avg R</div><div className="text-xl font-bold">{stats.avgRR.toFixed(2)}</div></div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Best Trade</div><div className="text-xl font-bold text-green-400">{fmtMoney(Number.isFinite(stats.best?.pnl) ? stats.best.pnl : 0)}</div><div className="text-xs text-white/40">{stats.best?.ticker || "-"}</div></div>
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Worst Trade</div><div className="text-xl font-bold text-red-400">{fmtMoney(Number.isFinite(stats.worst?.pnl) ? stats.worst.pnl : 0)}</div><div className="text-xs text-white/40">{stats.worst?.ticker || "-"}</div></div>
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Long PnL</div><div className={`text-xl font-bold ${stats.longPnl >= 0 ? "text-green-400" : "text-red-400"}`}>{fmtMoney(stats.longPnl)}</div></div>
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4"><div className="text-xs text-white/50">Short PnL</div><div className={`text-xl font-bold ${stats.shortPnl >= 0 ? "text-green-400" : "text-red-400"}`}>{fmtMoney(stats.shortPnl)}</div></div>
-            </div>
-
-            {sessionAnalytics ? (
-              <div className="space-y-4">
-                <div className="text-sm font-semibold text-white/80">Session analytics</div>
-                <p className="text-xs text-white/45 -mt-2">
-                  Sharpe/Sortino on per-trade PnL; monthly and weekday stats need valid close timestamps. Balance curve uses session start balance when configured.
-                </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-3">
-                    <div className="text-[11px] text-white/50">Sharpe (PnL)</div>
-                    <div className="text-lg font-bold">
-                      {sessionAnalytics.sharpe_sortino?.sharpe != null && Number.isFinite(sessionAnalytics.sharpe_sortino.sharpe)
-                        ? sessionAnalytics.sharpe_sortino.sharpe.toFixed(2)
-                        : "—"}
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-3">
-                    <div className="text-[11px] text-white/50">Sortino (PnL)</div>
-                    <div className="text-lg font-bold">
-                      {sessionAnalytics.sharpe_sortino?.sortino != null && Number.isFinite(sessionAnalytics.sharpe_sortino.sortino)
-                        ? sessionAnalytics.sharpe_sortino.sortino.toFixed(2)
-                        : "—"}
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-3">
-                    <div className="text-[11px] text-white/50">Start balance</div>
-                    <div className="text-lg font-bold">
-                      {sessionAnalytics.balance?.start_balance != null && Number.isFinite(sessionAnalytics.balance.start_balance)
-                        ? fmtMoney(n(sessionAnalytics.balance.start_balance))
-                        : "—"}
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-3">
-                    <div className="text-[11px] text-white/50">Max drawdown ($)</div>
-                    <div className="text-lg font-bold text-amber-300/90">
-                      {sessionAnalytics.balance?.max_drawdown != null && Number.isFinite(sessionAnalytics.balance.max_drawdown)
-                        ? fmtMoney(n(sessionAnalytics.balance.max_drawdown))
-                        : "—"}
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-3">
-                    <div className="text-[11px] text-white/50">Max DD % of peak</div>
-                    <div className="text-lg font-bold">
-                      {sessionAnalytics.balance?.max_drawdown_pct != null && Number.isFinite(sessionAnalytics.balance.max_drawdown_pct)
-                        ? `${(n(sessionAnalytics.balance.max_drawdown_pct) * 100).toFixed(2)}%`
-                        : "—"}
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-3">
-                    <div className="text-[11px] text-white/50">Recovery factor</div>
-                    <div className="text-lg font-bold">
-                      {sessionAnalytics.balance?.recovery_factor != null && Number.isFinite(sessionAnalytics.balance.recovery_factor)
-                        ? n(sessionAnalytics.balance.recovery_factor).toFixed(2)
-                        : "—"}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4">
-                    <div className="font-semibold mb-2">Monthly net PnL</div>
-                    <div className="h-64">
-                      {monthlyPnlChart.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={monthlyPnlChart}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                            <XAxis dataKey="x" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 10 }} />
-                            <YAxis tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
-                            <Tooltip
-                              formatter={(v) => [fmtMoney(Number(v ?? 0)), "Net PnL"]}
-                              contentStyle={{ background: "#0b1220", border: "1px solid rgba(148,163,184,0.35)", color: "#e5e7eb" }}
-                            />
-                            <Bar dataKey="y" radius={[4, 4, 0, 0]}>
-                              {monthlyPnlChart.map((entry: { y: number }, idx: number) => (
-                                <Cell key={`mo-${idx}`} fill={entry.y >= 0 ? "#22c55e" : "#ef4444"} />
-                              ))}
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div className="h-full flex items-center justify-center text-white/40 text-sm">
-                          No monthly buckets (add close times on trades, or widen filters)
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4">
-                    <div className="font-semibold mb-2">Win rate by weekday</div>
-                    <div className="text-xs text-white/45 mb-2">% wins · sample n per day</div>
-                    <div className="h-64">
-                      {Array.isArray(sessionAnalytics.weekday_winrate) && sessionAnalytics.weekday_winrate.some((d) => d.n > 0) ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={sessionAnalytics.weekday_winrate}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                            <XAxis dataKey="x" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
-                            <YAxis tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} domain={[0, 100]} />
-                            <Tooltip
-                              formatter={(v, _name, item) => {
-                                const nTrades = (item as { payload?: { n?: number } })?.payload?.n ?? 0;
-                                return [`${Number(v ?? 0).toFixed(1)}% (${nTrades} trades)`, "Win rate"];
-                              }}
-                              contentStyle={{ background: "#0b1220", border: "1px solid rgba(148,163,184,0.35)", color: "#e5e7eb" }}
-                            />
-                            <Bar dataKey="y" fill="#60a5fa" radius={[4, 4, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div className="h-full flex items-center justify-center text-white/40 text-sm">
-                          No weekday data for filtered trades
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4">
-                    <div className="font-semibold mb-2">Account equity (from start balance)</div>
-                    <div className="h-64">
-                      {balanceEquityChart.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={balanceEquityChart}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                            <XAxis dataKey="idx" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 10 }} />
-                            <YAxis tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
-                            <Tooltip
-                              formatter={(v) => [fmtMoney(Number(v ?? 0)), "Equity"]}
-                              contentStyle={{ background: "#0b1220", border: "1px solid rgba(148,163,184,0.35)", color: "#e5e7eb" }}
-                            />
-                            <Line type="monotone" dataKey="y" stroke="#38bdf8" strokeWidth={2} dot={{ r: 2 }} />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div className="h-full flex items-center justify-center text-white/40 text-sm text-center px-4">
-                          Set session start balance in backtest config to plot balance-based equity for the filtered trades.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4">
-                    <div className="font-semibold mb-2">Drawdown (% of peak balance)</div>
-                    <div className="h-64">
-                      {balanceDrawdownChart.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={balanceDrawdownChart}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                            <XAxis dataKey="idx" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 10 }} />
-                            <YAxis tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
-                            <Tooltip
-                              formatter={(v) => [`${Number(v ?? 0).toFixed(2)}%`, "Drawdown"]}
-                              contentStyle={{ background: "#0b1220", border: "1px solid rgba(148,163,184,0.35)", color: "#e5e7eb" }}
-                            />
-                            <Line type="monotone" dataKey="y" stroke="#f97316" strokeWidth={2} dot={false} />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div className="h-full flex items-center justify-center text-white/40 text-sm">
-                          No drawdown series without start balance and equity points
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 overflow-hidden">
-              <div className="px-4 py-3 border-b border-white/10 font-semibold">Per-Pair Breakdown</div>
-              <table className="w-full">
-                <thead>
-                  <tr className="text-xs uppercase text-white/50 border-b border-white/10">
-                    <th className="text-left px-4 py-2 cursor-pointer" onClick={() => onSortPair("ticker")}>Ticker</th>
-                    <th className="text-right px-4 py-2 cursor-pointer" onClick={() => onSortPair("trades")}>Trades</th>
-                    <th className="text-right px-4 py-2 cursor-pointer" onClick={() => onSortPair("winRate")}>Win Rate</th>
-                    <th className="text-right px-4 py-2 cursor-pointer" onClick={() => onSortPair("netPnl")}>Net PnL ($)</th>
-                    <th className="text-right px-4 py-2 cursor-pointer" onClick={() => onSortPair("netRr")}>Net PnL (R)</th>
-                    <th className="text-right px-4 py-2 cursor-pointer" onClick={() => onSortPair("avgMae")}>Avg MAE (R)</th>
-                    <th className="text-right px-4 py-2 cursor-pointer" onClick={() => onSortPair("avgMfe")}>Avg MFE (R)</th>
-                    <th className="text-right px-4 py-2 cursor-pointer" onClick={() => onSortPair("captureRatio")}>Capture Ratio</th>
-                    <th className="text-right px-4 py-2 cursor-pointer" onClick={() => onSortPair("commissionPaid")}>Commission Paid</th>
-                    <th className="text-right px-4 py-2 cursor-pointer" onClick={() => onSortPair("spreadCost")}>Spread Cost</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedPerPair.map((r: any) => (
-                    <tr key={r.ticker} className="border-t border-white/5">
-                      <td className="px-4 py-2 font-medium">{r.ticker}</td>
-                      <td className="px-4 py-2 text-right">{r.trades}</td>
-                      <td className="px-4 py-2 text-right">{fmtPct(r.winRate)}</td>
-                      <td className={`px-4 py-2 text-right ${r.netPnl >= 0 ? "text-green-400" : "text-red-400"}`}>{fmtMoney(r.netPnl)}</td>
-                      <td className={`px-4 py-2 text-right ${r.netRr >= 0 ? "text-green-400" : "text-red-400"}`}>{r.netRr.toFixed(2)}</td>
-                      <td className="px-4 py-2 text-right">{r.avgMae.toFixed(2)}</td>
-                      <td className="px-4 py-2 text-right">{r.avgMfe.toFixed(2)}</td>
-                      <td className="px-4 py-2 text-right">{r.captureRatio.toFixed(2)}</td>
-                      <td className="px-4 py-2 text-right">{fmtMoney(r.commissionPaid)}</td>
-                      <td className="px-4 py-2 text-right">{fmtMoney(r.spreadCost)}</td>
+        <div className="bt-os-chart-card">
+          <div className="bt-os-chart-title">Recent trades</div>
+          <div className="bt-os-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Ticker</th><th>Side</th><th>Playbook</th><th>PnL</th><th>R</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentTrades.map((t: any, idx: number) => {
+                  const pos = t.pnl >= 0;
+                  return (
+                    <tr key={`${t.tradeId || t.id || idx}`}>
+                      <td>{t.ticker}</td>
+                      <td>
+                        <span className={`bt-os-td-badge ${String(t.direction).toUpperCase().includes("SHORT") || String(t.direction).toUpperCase() === "SELL" ? "bt-os-short" : "bt-os-long"}`}>
+                          {String(t.direction || "—").slice(0, 4)}
+                        </span>
+                      </td>
+                      <td>{t.setup || "General"}</td>
+                      <td className={pos ? "bt-os-td-pos" : "bt-os-td-neg"}>{fmtMoney(t.pnl)}</td>
+                      <td className={pos ? "bt-os-td-pos" : "bt-os-td-neg"}>{t.rr.toFixed(2)}</td>
                     </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="bt-os-chart-card" style={{ marginTop: "12px" }}>
+          <div className="bt-os-chart-title">Per-pair breakdown</div>
+          <div className="bt-os-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th onClick={() => onSortPair("trades")} style={{ cursor: "pointer" }}>Trades</th>
+                  <th>Win%</th>
+                  <th onClick={() => onSortPair("netPnl")} style={{ cursor: "pointer" }}>Net $</th>
+                  <th>Net R</th>
+                  <th>MAE</th>
+                  <th>MFE</th>
+                  <th>Cap</th>
+                  <th>Comm</th>
+                  <th>Spr</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedPerPair.map((r: any) => (
+                  <tr key={r.ticker}>
+                    <td>{r.ticker}</td>
+                    <td>{r.trades}</td>
+                    <td>{fmtPct(r.winRate)}</td>
+                    <td className={r.netPnl >= 0 ? "bt-os-td-pos" : "bt-os-td-neg"}>{fmtMoney(r.netPnl)}</td>
+                    <td>{r.netRr.toFixed(2)}</td>
+                    <td>{r.avgMae.toFixed(2)}</td>
+                    <td>{r.avgMfe.toFixed(2)}</td>
+                    <td>{r.captureRatio.toFixed(2)}</td>
+                    <td>{fmtMoney(r.commissionPaid)}</td>
+                    <td>{fmtMoney(r.spreadCost)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="bt-os-chart-card" style={{ marginTop: "12px" }}>
+          <div className="bt-os-chart-title">Playbook breakdown</div>
+          <div className="bt-os-table-wrap">
+            <table>
+              <thead>
+                <tr><th>Playbook</th><th>Trades</th><th>Win%</th><th>Net PnL</th><th>Avg R</th></tr>
+              </thead>
+              <tbody>
+                {playbookRows.map((r: any) => (
+                  <tr key={r.setup}>
+                    <td>{r.setup}</td>
+                    <td>{r.trades}</td>
+                    <td>{fmtPct(r.winRate)}</td>
+                    <td className={r.netPnl >= 0 ? "bt-os-td-pos" : "bt-os-td-neg"}>{fmtMoney(r.netPnl)}</td>
+                    <td>{r.avgRr.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="bt-os-charts-row bt-os-col2" style={{ marginTop: "12px" }}>
+          <div className="bt-os-chart-card">
+            <div className="bt-os-chart-title">MAE distribution (R)</div>
+            <div className="bt-os-table-wrap">
+              <table>
+                <thead><tr><th>Bin</th><th>Count</th></tr></thead>
+                <tbody>
+                  {maeDistribution.slice(0, 24).map((row: any, i: number) => (
+                    <tr key={i}><td>{row.label}</td><td>{row.count}</td></tr>
                   ))}
                 </tbody>
               </table>
             </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4">
-                <div className="font-semibold mb-3">Equity Curve (Multi-Instrument)</div>
-                <div className="h-72">
-                  {equityCurve.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={equityCurve}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                        <XAxis dataKey="idx" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
-                        <YAxis tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
-                        <Tooltip
-                          formatter={(value, _name, item: any) => [
-                            fmtMoney(Number(value || 0)),
-                            item?.payload?.ticker ? `Equity (${item.payload.ticker})` : "Equity",
-                          ]}
-                          contentStyle={{ background: "#0b1220", border: "1px solid rgba(148,163,184,0.35)", color: "#e5e7eb" }}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="equity"
-                          stroke="#60a5fa"
-                          strokeWidth={2.5}
-                          dot={(props: any) => {
-                            const { cx, cy, payload } = props;
-                            if (cx == null || cy == null) return null;
-                            return <circle cx={cx} cy={cy} r={3.5} fill={payload?.pointColor || "#3b82f6"} />;
-                          }}
-                          activeDot={{ r: 5 }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-white/40 text-sm">No equity data</div>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-3 mt-2 text-xs text-white/60">
-                  {pairOptions.map((p: any) => (
-                    <span key={p} className="inline-flex items-center gap-1.5">
-                      <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: tickerColor.get(p) || "#3b82f6" }} />
-                      {p}
-                    </span>
+          </div>
+          <div className="bt-os-chart-card">
+            <div className="bt-os-chart-title">MFE distribution (R)</div>
+            <div className="bt-os-table-wrap">
+              <table>
+                <thead><tr><th>Bin</th><th>Count</th></tr></thead>
+                <tbody>
+                  {mfeDistribution.slice(0, 24).map((row: any, i: number) => (
+                    <tr key={i}><td>{row.label}</td><td>{row.count}</td></tr>
                   ))}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 overflow-hidden">
-                <div className="px-4 py-3 border-b border-white/10 font-semibold">Playbook Breakdown</div>
-                <table className="w-full">
-                  <thead>
-                    <tr className="text-xs uppercase text-white/50 border-b border-white/10">
-                      <th className="text-left px-4 py-2">Playbook</th>
-                      <th className="text-right px-4 py-2">Trades</th>
-                      <th className="text-right px-4 py-2">Win Rate</th>
-                      <th className="text-right px-4 py-2">Net PnL</th>
-                      <th className="text-right px-4 py-2">Avg R</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {playbookRows.map((r: any) => (
-                      <tr key={r.setup} className="border-t border-white/5">
-                        <td className="px-4 py-2">{r.setup}</td>
-                        <td className="px-4 py-2 text-right">{r.trades}</td>
-                        <td className="px-4 py-2 text-right">{fmtPct(r.winRate)}</td>
-                        <td className={`px-4 py-2 text-right ${r.netPnl >= 0 ? "text-green-400" : "text-red-400"}`}>{fmtMoney(r.netPnl)}</td>
-                        <td className="px-4 py-2 text-right">{r.avgRr.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 overflow-hidden">
-                <div className="px-4 py-3 border-b border-white/10 font-semibold">Recent Trades</div>
-                <table className="w-full">
-                  <thead>
-                    <tr className="text-xs uppercase text-white/50 border-b border-white/10">
-                      <th className="text-left px-4 py-2">Ticker</th>
-                      <th className="text-left px-4 py-2">Side</th>
-                      <th className="text-left px-4 py-2">Playbook</th>
-                      <th className="text-right px-4 py-2">PnL</th>
-                      <th className="text-right px-4 py-2">R</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentTrades.map((t: any, idx: number) => (
-                      <tr key={`${t.tradeId || t.id || idx}`} className="border-t border-white/5">
-                        <td className="px-4 py-2">{t.ticker}</td>
-                        <td className="px-4 py-2">{t.direction || "-"}</td>
-                        <td className="px-4 py-2">{t.setup || "General"}</td>
-                        <td className={`px-4 py-2 text-right ${t.pnl >= 0 ? "text-green-400" : "text-red-400"}`}>{fmtMoney(t.pnl)}</td>
-                        <td className={`px-4 py-2 text-right ${t.rr >= 0 ? "text-green-400" : "text-red-400"}`}>{t.rr.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                </tbody>
+              </table>
             </div>
+          </div>
+        </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4">
-                <div className="font-semibold mb-3">MAE Distribution (R)</div>
-                <div className="text-xs text-white/50 mb-3">
-                  Scope: {pairFilter === "ALL" ? "All Instruments" : pairFilter}
-                </div>
-                <div className="h-72">
-                  {maeDistribution.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={maeDistribution}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                        <XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} interval="preserveStartEnd" />
-                        <YAxis tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} allowDecimals={false} />
-                        <Tooltip
-                          formatter={(value) => [value, "Trades"]}
-                          contentStyle={{ background: "#0b1220", border: "1px solid rgba(148,163,184,0.35)", color: "#e5e7eb" }}
-                        />
-                        <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                          {maeDistribution.map((entry: any, idx: number) => (
-                            <Cell key={`mae-${idx}`} fill={entry.from < 0 ? "#ef4444" : "#f59e0b"} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-white/40 text-sm">No MAE data</div>
+        <div className="bt-os-chart-card" style={{ marginTop: "12px" }}>
+          <div className="bt-os-chart-title">What-if TP/SL · Trades: {whatIfTradesCount}</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", marginBottom: "12px" }}>
+            <label style={{ fontSize: "0.72rem", color: "#9ca3af" }}>
+              TP (R){" "}
+              <input type="number" min={0.1} step={0.1} value={simTpR} onChange={(e) => setSimTpR(Math.max(0.1, n(e.target.value)))} style={{ marginLeft: 6, width: 72, padding: 4, borderRadius: 4, border: "1px solid rgba(255,255,255,0.15)", background: "#111418", color: "#e8eaed" }} />
+            </label>
+            <label style={{ fontSize: "0.72rem", color: "#9ca3af" }}>
+              SL (R){" "}
+              <input type="number" min={0.1} step={0.1} value={simSlR} onChange={(e) => setSimSlR(Math.max(0.1, n(e.target.value)))} style={{ marginLeft: 6, width: 72, padding: 4, borderRadius: 4, border: "1px solid rgba(255,255,255,0.15)", background: "#111418", color: "#e8eaed" }} />
+            </label>
+          </div>
+          {equitySummary ? (
+            <div style={{ fontSize: "0.72rem", color: "#9ca3af", marginBottom: "8px" }}>
+              Actual final {fmtMoney(n(equitySummary.actual_final))} · Sim {fmtMoney(n(equitySummary.simulated_final))} · Δ{" "}
+              <span className={n(equitySummary.delta_final) >= 0 ? "bt-os-td-pos" : "bt-os-td-neg"}>{fmtMoney(n(equitySummary.delta_final))}</span>
+            </div>
+          ) : null}
+          <div style={{ height: 200, position: "relative" }}>
+            {whatIfEquityCurve.length > 0 ? (() => {
+              const vals = whatIfEquityCurve.map((p: { actual: number }) => n(p.actual));
+              const vals2 = whatIfEquityCurve.map((p: { simulated: number }) => n(p.simulated));
+              const mn = Math.min(...vals, ...vals2);
+              const mx = Math.max(...vals, ...vals2);
+              const span = Math.max(mx - mn, 1e-6);
+              const nPts = whatIfEquityCurve.length;
+              const xa = (i: number) => 40 + (i / Math.max(1, nPts - 1)) * 520;
+              const yv = (v: number) => 180 - ((v - mn) / span) * 160;
+              const pa = whatIfEquityCurve.map((p: { actual: number }, i: number) => `${xa(i)},${yv(n(p.actual))}`).join(" ");
+              const ps = whatIfEquityCurve.map((p: { simulated: number }, i: number) => `${xa(i)},${yv(n(p.simulated))}`).join(" ");
+              return (
+                <svg width="100%" height="200" viewBox="0 0 600 200" preserveAspectRatio="none" style={{ display: "block" }}>
+                  <line x1="40" y1="10" x2="40" y2="180" stroke="rgba(255,255,255,0.08)" />
+                  <line x1="40" y1="180" x2="580" y2="180" stroke="rgba(255,255,255,0.08)" />
+                  <polyline fill="none" stroke="#94a3b8" strokeWidth={2} points={pa} />
+                  <polyline fill="none" stroke="#00ff88" strokeWidth={2} points={ps} />
+                </svg>
+              );
+            })() : (
+              <div style={{ color: "#6b7280", fontSize: "0.75rem", padding: "1rem" }}>No simulation data</div>
+            )}
+          </div>
+        </div>
+
+        <div className="bt-os-chart-card" style={{ marginTop: "12px" }}>
+          <div className="bt-os-chart-title">
+            TP/SL expectancy heatmap · {heatmapPair === "ALL" ? "All" : heatmapPair} · {heatmapTradesCount} trades
+            {bestHeatmap ? ` · Best TP ${bestHeatmapTp.toFixed(1)}R / SL ${bestHeatmapSl.toFixed(1)}R` : ""}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginBottom: "10px", alignItems: "center" }}>
+            <label style={{ fontSize: "0.72rem", color: "#9ca3af" }}>
+              Pair{" "}
+              <select value={heatmapPair} onChange={(e) => setHeatmapPair(e.target.value)} style={{ marginLeft: 6, padding: "4px 8px", borderRadius: 4, border: "1px solid rgba(255,255,255,0.15)", background: "#111418", color: "#e8eaed" }}>
+                <option value="ALL">All</option>
+                {pairOptions.map((p: string) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </label>
+            <div style={{ display: "inline-flex", borderRadius: 4, border: "1px solid rgba(255,255,255,0.12)", overflow: "hidden" }}>
+              <button type="button" onClick={() => setHeatmapMetric("USD")} style={{ padding: "4px 10px", fontSize: "0.7rem", border: "none", cursor: "pointer", background: heatmapMetric === "USD" ? "#2563eb" : "#111418", color: "#e8eaed" }}>$</button>
+              <button type="button" onClick={() => setHeatmapMetric("R")} style={{ padding: "4px 10px", fontSize: "0.7rem", border: "none", cursor: "pointer", background: heatmapMetric === "R" ? "#2563eb" : "#111418", color: "#e8eaed", borderLeft: "1px solid rgba(255,255,255,0.12)" }}>R</button>
+            </div>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            {(() => {
+              const leftPad = 78;
+              const topPad = 34;
+              const rightPad = 16;
+              const bottomPad = 28;
+              const cellW = 92;
+              const cellH = 40;
+              const width = leftPad + heatmapTpLevels.length * cellW + rightPad;
+              const height = topPad + heatmapSlLevels.length * cellH + bottomPad;
+              return (
+                <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="heatmap">
+                  <text x={14} y={18} fill="rgba(255,255,255,0.65)" fontSize="11" fontWeight="600">SL \\ TP</text>
+                  {heatmapTpLevels.map((tp: number, c: number) => {
+                    const x = leftPad + c * cellW + cellW / 2;
+                    return (
+                      <text key={`tp-${tp}`} x={x} y={20} textAnchor="middle" fill="rgba(255,255,255,0.75)" fontSize="11" fontWeight="600">{tp.toFixed(1)}R</text>
+                    );
+                  })}
+                  {heatmapSlLevels.map((sl: number, r: number) => {
+                    const y = topPad + r * cellH + cellH / 2 + 4;
+                    return (
+                      <text key={`sl-${sl}`} x={leftPad - 10} y={y} textAnchor="end" fill="rgba(255,255,255,0.75)" fontSize="11" fontWeight="600">{sl.toFixed(1)}R</text>
+                    );
+                  })}
+                  {heatmapSlLevels.flatMap((sl: number, r: number) =>
+                    heatmapTpLevels.map((tp: number, c: number) => {
+                      const value = heatmapLookup.get(`${sl}-${tp}`) ?? 0;
+                      const isBest = Boolean(bestHeatmap && bestHeatmapTp === tp && bestHeatmapSl === sl);
+                      const x = leftPad + c * cellW;
+                      const y = topPad + r * cellH;
+                      const label = heatmapMetric === "USD" ? fmtMoney(value) : `${value.toFixed(2)}R`;
+                      return (
+                        <g key={`c-${sl}-${tp}`}>
+                          <rect x={x} y={y} width={cellW} height={cellH} fill={heatColor(value)} stroke="rgba(255,255,255,0.1)" strokeWidth={1} rx={4} ry={4} />
+                          {isBest ? <rect x={x + 1.5} y={y + 1.5} width={cellW - 3} height={cellH - 3} fill="none" stroke="rgba(250,204,21,0.95)" strokeWidth={2} rx={4} ry={4} /> : null}
+                          <text x={x + cellW / 2} y={y + cellH / 2 + 4} textAnchor="middle" fill={value >= 0 ? "rgba(220,252,231,0.95)" : "rgba(254,226,226,0.95)"} fontSize="11" fontWeight="700">{label}</text>
+                        </g>
+                      );
+                    })
                   )}
-                </div>
-              </div>
+                </svg>
+              );
+            })()}
+          </div>
+        </div>
 
-              <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4">
-                <div className="font-semibold mb-3">MFE Distribution (R)</div>
-                <div className="text-xs text-white/50 mb-3">
-                  Scope: {pairFilter === "ALL" ? "All Instruments" : pairFilter}
-                </div>
-                <div className="h-72">
-                  {mfeDistribution.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={mfeDistribution}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                        <XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} interval="preserveStartEnd" />
-                        <YAxis tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} allowDecimals={false} />
-                        <Tooltip
-                          formatter={(value) => [value, "Trades"]}
-                          contentStyle={{ background: "#0b1220", border: "1px solid rgba(148,163,184,0.35)", color: "#e5e7eb" }}
-                        />
-                        <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                          {mfeDistribution.map((entry: any, idx: number) => (
-                            <Cell key={`mfe-${idx}`} fill={entry.to > 0 ? "#22c55e" : "#3b82f6"} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-white/40 text-sm">No MFE data</div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4 space-y-4">
-              <div className="font-semibold">What-If TP/SL Simulator</div>
-              <div className="flex flex-wrap gap-3 items-center">
-                <label className="text-sm text-white/70">
-                  TP (R)
-                  <input
-                    type="number"
-                    min={0.1}
-                    step={0.1}
-                    value={simTpR}
-                    onChange={(e) => setSimTpR(Math.max(0.1, n(e.target.value)))}
-                    className="ml-2 w-24 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-sm"
-                  />
-                </label>
-                <label className="text-sm text-white/70">
-                  SL (R)
-                  <input
-                    type="number"
-                    min={0.1}
-                    step={0.1}
-                    value={simSlR}
-                    onChange={(e) => setSimSlR(Math.max(0.1, n(e.target.value)))}
-                    className="ml-2 w-24 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-sm"
-                  />
-                </label>
-                <div className="text-xs text-white/50">
-                  Scope: {pairFilter === "ALL" ? "All Instruments" : pairFilter} | Trades: {whatIfTradesCount}
-                </div>
-              </div>
-
-              {equitySummary ? (
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                  <div className="rounded-lg border border-white/10 bg-white/5 p-2">
-                    <div className="text-[11px] text-white/50">Actual Final</div>
-                    <div className="text-sm font-semibold">{fmtMoney(n(equitySummary.actual_final))}</div>
-                  </div>
-                  <div className="rounded-lg border border-white/10 bg-white/5 p-2">
-                    <div className="text-[11px] text-white/50">Simulated Final</div>
-                    <div className="text-sm font-semibold">{fmtMoney(n(equitySummary.simulated_final))}</div>
-                  </div>
-                  <div className="rounded-lg border border-white/10 bg-white/5 p-2">
-                    <div className="text-[11px] text-white/50">Delta</div>
-                    <div className={`text-sm font-semibold ${n(equitySummary.delta_final) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                      {fmtMoney(n(equitySummary.delta_final))}
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-white/10 bg-white/5 p-2">
-                    <div className="text-[11px] text-white/50">Max DD (Act/Sim)</div>
-                    <div className="text-sm font-semibold">
-                      {fmtMoney(n(equitySummary.actual_max_drawdown))} / {fmtMoney(n(equitySummary.simulated_max_drawdown))}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="h-72">
-                {whatIfEquityCurve.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={whatIfEquityCurve}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                      <XAxis dataKey="idx" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
-                      <YAxis tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
-                      <Tooltip
-                        formatter={(value, name) => [fmtMoney(Number(value || 0)), name === "simulated" ? "Simulated" : "Actual"]}
-                        contentStyle={{ background: "#0b1220", border: "1px solid rgba(148,163,184,0.35)", color: "#e5e7eb" }}
-                      />
-                      <Line type="monotone" dataKey="actual" stroke="#94a3b8" strokeWidth={2} dot={false} />
-                      <Line type="monotone" dataKey="simulated" stroke="#22c55e" strokeWidth={2.4} dot={false} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-white/40 text-sm">No simulation data</div>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-[#0b0b16]/50 p-4 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="font-semibold">Per-Instrument Expectancy Heatmap (TP/SL)</div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <label className="text-sm text-white/70">
-                    Run heatmap for:
-                    <select
-                      value={heatmapPair}
-                      onChange={(e) => setHeatmapPair(e.target.value)}
-                      className="ml-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm"
-                    >
-                      <option value="ALL">All</option>
-                      {pairOptions.map((p: any) => (
-                        <option key={p} value={p}>
-                          {p}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <div className="inline-flex rounded-lg border border-white/10 overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => setHeatmapMetric("USD")}
-                      className={`px-3 py-2 text-sm ${heatmapMetric === "USD" ? "bg-blue-600 text-white" : "bg-white/5 text-white/70 hover:bg-white/10"}`}
-                    >
-                      Expectancy ($)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHeatmapMetric("R")}
-                      className={`px-3 py-2 text-sm border-l border-white/10 ${heatmapMetric === "R" ? "bg-blue-600 text-white" : "bg-white/5 text-white/70 hover:bg-white/10"}`}
-                    >
-                      Expectancy (R)
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="text-xs text-white/50">
-                Scope: {heatmapPair === "ALL" ? "All Instruments (blended)" : heatmapPair} | Trades: {heatmapTradesCount}
-                {bestHeatmap
-                  ? ` | Best: TP ${bestHeatmapTp.toFixed(1)}R / SL ${bestHeatmapSl.toFixed(1)}R (Expectancy ${
-                      heatmapMetric === "USD"
-                        ? fmtMoney(bestHeatmapValue)
-                        : `${bestHeatmapValue.toFixed(2)}R`
-                    })`
-                  : ""}
-              </div>
-
-              <div className="overflow-x-auto rounded-xl border border-white/10 bg-[#0b1220]/40 p-3">
-                {(() => {
-                  const leftPad = 78;
-                  const topPad = 34;
-                  const rightPad = 16;
-                  const bottomPad = 28;
-                  const cellW = 92;
-                  const cellH = 40;
-                  const width = leftPad + heatmapTpLevels.length * cellW + rightPad;
-                  const height = topPad + heatmapSlLevels.length * cellH + bottomPad;
-
-                  return (
-                    <svg
-                      width={width}
-                      height={height}
-                      viewBox={`0 0 ${width} ${height}`}
-                      role="img"
-                      aria-label="TP/SL expectancy heatmap"
-                    >
-                      <text x={14} y={18} fill="rgba(255,255,255,0.65)" fontSize="11" fontWeight="600">
-                        SL \ TP
-                      </text>
-
-                      {heatmapTpLevels.map((tp: any, c: number) => {
-                        const x = leftPad + c * cellW + cellW / 2;
-                        return (
-                          <text
-                            key={`tp-label-${tp}`}
-                            x={x}
-                            y={20}
-                            textAnchor="middle"
-                            fill="rgba(255,255,255,0.75)"
-                            fontSize="11"
-                            fontWeight="600"
-                          >
-                            {tp.toFixed(1)}R
-                          </text>
-                        );
-                      })}
-
-                      {heatmapSlLevels.map((sl: any, r: number) => {
-                        const y = topPad + r * cellH + cellH / 2 + 4;
-                        return (
-                          <text
-                            key={`sl-label-${sl}`}
-                            x={leftPad - 10}
-                            y={y}
-                            textAnchor="end"
-                            fill="rgba(255,255,255,0.75)"
-                            fontSize="11"
-                            fontWeight="600"
-                          >
-                            {sl.toFixed(1)}R
-                          </text>
-                        );
-                      })}
-
-                      {heatmapSlLevels.flatMap((sl: any, r: number) =>
-                        heatmapTpLevels.map((tp: any, c: number) => {
-                          const value = heatmapLookup.get(`${sl}-${tp}`) ?? 0;
-                          const isBest = Boolean(bestHeatmap && bestHeatmapTp === tp && bestHeatmapSl === sl);
-                          const x = leftPad + c * cellW;
-                          const y = topPad + r * cellH;
-                          const label = heatmapMetric === "USD" ? fmtMoney(value) : `${value.toFixed(2)}R`;
-                          return (
-                            <g key={`cell-${sl}-${tp}`}>
-                              <rect
-                                x={x}
-                                y={y}
-                                width={cellW}
-                                height={cellH}
-                                fill={heatColor(value)}
-                                stroke="rgba(255,255,255,0.1)"
-                                strokeWidth={1}
-                                rx={4}
-                                ry={4}
-                              />
-                              {isBest ? (
-                                <rect
-                                  x={x + 1.5}
-                                  y={y + 1.5}
-                                  width={cellW - 3}
-                                  height={cellH - 3}
-                                  fill="none"
-                                  stroke="rgba(250,204,21,0.95)"
-                                  strokeWidth={2}
-                                  rx={4}
-                                  ry={4}
-                                />
-                              ) : null}
-                              <text
-                                x={x + cellW / 2}
-                                y={y + cellH / 2 + 4}
-                                textAnchor="middle"
-                                fill={value >= 0 ? "rgba(220,252,231,0.95)" : "rgba(254,226,226,0.95)"}
-                                fontSize="11"
-                                fontWeight="700"
-                              >
-                                {label}
-                              </text>
-                              <title>
-                                {`TP ${tp.toFixed(1)}R / SL ${sl.toFixed(1)}R => ${label} expectancy`}
-                              </title>
-                            </g>
-                          );
-                        })
-                      )}
-                    </svg>
-                  );
-                })()}
-              </div>
-
-              <div className="flex items-center gap-3 text-xs text-white/60">
-                <span>Intensity scale:</span>
-                <span className="inline-flex items-center gap-1">
-                  <span className="inline-block w-3 h-3 rounded-sm" style={{ background: "rgba(239,68,68,0.6)" }} />
-                  Loss
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <span className="inline-block w-3 h-3 rounded-sm" style={{ background: "rgba(148,163,184,0.25)" }} />
-                  Near zero
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <span className="inline-block w-3 h-3 rounded-sm" style={{ background: "rgba(34,197,94,0.6)" }} />
-                  Profit
-                </span>
-                <span className="ml-auto">
-                  Range: {heatmapMetric === "USD"
-                    ? `${fmtMoney(heatmapValueRange.min)} to ${fmtMoney(heatmapValueRange.max)}`
-                    : `${heatmapValueRange.min.toFixed(2)}R to ${heatmapValueRange.max.toFixed(2)}R`}
-                </span>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+            </>
+          )}
+        />
+      )}
     </div>
   );
 }
-
