@@ -424,9 +424,7 @@ class OrderManager {
      * Only the instrument currently shown on that chart should be rendered (8.1).
      */
     _isPositionForActiveChart(position) {
-        const pt = this._positionTicker(position);
-        if (!pt) return true;
-        return pt === this._getActiveTicker();
+        return this._positionTickerMatchesChartSymbol(position, this.chart);
     }
 
     _isMultiPanelLayout() {
@@ -532,17 +530,22 @@ class OrderManager {
     }
 
     _positionTickerMatchesChartSymbol(position, chart) {
-        if (!chart) return false;
-        const posFile = position && position.sourceFileId != null ? String(position.sourceFileId) : '';
-        const chartFile = chart.currentFileId != null ? String(chart.currentFileId) : '';
+        if (!chart || !position) return false;
+        const posFileRaw = position.sourceFileId ?? position.source_file_id;
+        const posFile = posFileRaw != null && String(posFileRaw) !== '' ? String(posFileRaw) : '';
+        const chartFile = chart.currentFileId != null && String(chart.currentFileId) !== ''
+            ? String(chart.currentFileId)
+            : '';
         if (posFile && chartFile) {
             return posFile === chartFile;
         }
         const pt = this._positionTicker(position);
-        if (!pt) return chart === this.chart;
-        const cs = chart.currentSymbol ? this._normalizeTicker(chart.currentSymbol) : '';
-        if (!cs) return chart === this.chart;
-        return pt === cs;
+        if (pt) {
+            const cs = chart.currentSymbol ? this._normalizeTicker(chart.currentSymbol) : '';
+            return !!cs && pt === cs;
+        }
+        // No dataset id and no ticker — do not paint this trade on arbitrary charts (was: main chart only).
+        return false;
     }
 
     _stripOrderDrawingLayersFromChart(chart) {
@@ -718,7 +721,7 @@ class OrderManager {
                 this.removeEntryMarker(pos.id);
             });
             (this.pendingOrders || []).forEach((po) => {
-                if (this._normalizeTicker(po.ticker || po.symbol) === this._getActiveTicker()) return;
+                if (this._positionTickerMatchesChartSymbol(po, this.chart)) return;
                 this.removePendingOrderLine(po.id);
                 this.removePendingSLTPLines(po.id);
                 this.removeMultiTPAvgLine(po.id);
@@ -735,7 +738,7 @@ class OrderManager {
                 }
             });
             (this.pendingOrders || []).forEach((po) => {
-                if (this._normalizeTicker(po.ticker || po.symbol) !== this._getActiveTicker()) return;
+                if (!this._positionTickerMatchesChartSymbol(po, this.chart)) return;
                 const has = (this.orderLines || []).some((ol) => ol.orderId === po.id && ol.isPending);
                 if (!has) {
                     try {

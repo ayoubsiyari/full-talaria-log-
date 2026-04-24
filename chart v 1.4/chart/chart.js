@@ -1382,6 +1382,21 @@ class Chart {
 
             if (!this._smartResponseHasPayload(result)) throw new Error('No data in response');
 
+            // Persist drawings for the pair we are leaving *before* currentFileId changes.
+            // Otherwise saveDrawings()/storage keys target the new file and in-memory drawings are discarded.
+            if (
+                this.drawingManager &&
+                typeof this.drawingManager.saveDrawings === 'function' &&
+                this.currentFileId != null &&
+                String(this.currentFileId) !== String(targetFileId)
+            ) {
+                try {
+                    this.drawingManager.saveDrawings();
+                } catch (e) {
+                    console.warn('⚠️ Failed to save drawings before pair switch', e);
+                }
+            }
+
             this.rawData = [];
             this.data = [];
             this.totalCandles = result.total;
@@ -1548,6 +1563,7 @@ class Chart {
         const mainChart = window.chart;
         this._showPanelLoadingOverlay();
         try {
+            const outgoingPanelFileId = this.currentFileId != null ? String(this.currentFileId) : null;
             const session = this.backtestingSession
                 || (mainChart && mainChart.backtestingSession)
                 || JSON.parse(userStorage.getItem('backtestingSession') || '{}');
@@ -1596,6 +1612,19 @@ class Chart {
             }
 
             if (!this._smartResponseHasPayload(result)) throw new Error('No data in response');
+
+            if (
+                this.drawingManager &&
+                typeof this.drawingManager.saveDrawings === 'function' &&
+                this.currentFileId != null &&
+                String(this.currentFileId) !== String(targetFileId)
+            ) {
+                try {
+                    this.drawingManager.saveDrawings();
+                } catch (e) {
+                    console.warn('⚠️ Failed to save drawings before panel pair switch', e);
+                }
+            }
 
             this.rawData = [];
             this.data = [];
@@ -1681,6 +1710,23 @@ class Chart {
             }
 
             this.render();
+
+            // Panel path updates currentFileId after ingest, so _commitLoadedBars does not treat
+            // this as a file change — explicitly reload drawings for the new pair.
+            if (
+                outgoingPanelFileId &&
+                String(outgoingPanelFileId) !== String(targetFileId) &&
+                this.drawingManager &&
+                typeof this.drawingManager.loadDrawings === 'function' &&
+                this.data &&
+                this.data.length > 0
+            ) {
+                this.drawingManager._drawingsLoaded = false;
+                void this.drawingManager.loadDrawings();
+            }
+            if (outgoingPanelFileId && String(outgoingPanelFileId) !== String(targetFileId)) {
+                this._lastLoadedFileId = this.currentFileId;
+            }
 
             requestAnimationFrame(() => {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
@@ -6643,13 +6689,24 @@ class Chart {
         };
 
         collectFromSession(this.backtestingSession);
-        try {
-            collectFromSession(JSON.parse(userStorage.getItem('backtestingSession') || '{}'));
-        } catch (e) {
-            /* ignore */
-        }
 
         let entries = Array.from(byFileId.values());
+
+        // When the wizard saved an explicit `files` list, only those datasets belong to this
+        // backtest — drop stray tickers that may linger in `instruments` from older API merges.
+        const filesList = this.backtestingSession && Array.isArray(this.backtestingSession.files)
+            ? this.backtestingSession.files
+            : null;
+        if (filesList && filesList.length > 0) {
+            const allowed = new Set(
+                filesList.map((f) => {
+                    if (!f) return null;
+                    const fileId = f.id != null ? f.id : f.fileId;
+                    return fileId != null ? String(fileId) : null;
+                }).filter(Boolean)
+            );
+            entries = entries.filter((e) => allowed.has(e.fileId));
+        }
 
         if (entries.length === 0) {
             const session = this.backtestingSession || {};
