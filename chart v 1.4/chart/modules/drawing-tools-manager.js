@@ -47,6 +47,11 @@ class DrawingToolsManager {
         this.dragFirstTwoStartScreen = null;
         this._liveSyncDrawingId = null;
         this._liveSyncBroadcasted = false;
+
+        /** Remote sync (session PATCH + cloud API) lags localStorage; drives toolbar save indicator */
+        this._drawingsPendingTargets = { session: false, api: false };
+        this._drawingsFlushAllInProgress = false;
+        this._drawingsSaveBtn = null;
         
         // Rectangular selection
         this.isRectSelecting = false;
@@ -556,8 +561,128 @@ class DrawingToolsManager {
         } else {
             console.warn('⚠️ UndoRedoManager not found');
         }
-        
-        // [debug removed]
+
+        this._setupDrawingsSaveStatusToolbar();
+    }
+
+    _setupDrawingsSaveStatusToolbar() {
+        const btn = typeof document !== 'undefined' ? document.getElementById('drawingsSyncToolbarBtn') : null;
+        if (!btn) {
+            this._drawingsSaveToolbarRetries = (this._drawingsSaveToolbarRetries || 0) + 1;
+            if (this._drawingsSaveToolbarRetries <= 25 && typeof window !== 'undefined') {
+                setTimeout(() => this._setupDrawingsSaveStatusToolbar(), 300);
+            }
+            return;
+        }
+        if (!this._drawingsSaveToolbarClickBound) {
+            this._drawingsSaveToolbarClickBound = () => {
+                void this.flushDrawingsSyncNow();
+            };
+            btn.addEventListener('click', this._drawingsSaveToolbarClickBound);
+        }
+        this._drawingsSaveBtn = btn;
+        this._syncDrawingsSaveUiFromTargets();
+    }
+
+    _syncDrawingsSaveUiFromTargets() {
+        if (this._drawingsFlushAllInProgress) return;
+        const p = this._drawingsPendingTargets;
+        const busy = !!(p && (p.session || p.api));
+        this._setDrawingsSaveUi(busy ? 'pending' : 'saved');
+    }
+
+    _setDrawingsSaveUi(state) {
+        const btn = this._drawingsSaveBtn || (typeof document !== 'undefined' ? document.getElementById('drawingsSyncToolbarBtn') : null);
+        if (!btn) return;
+        this._drawingsSaveBtn = btn;
+        if (state === 'pending') {
+            btn.classList.add('drawings-sync-pending');
+            btn.setAttribute('data-tooltip', 'Saving… — click to save to cloud & session now');
+            btn.setAttribute('aria-busy', 'true');
+        } else {
+            btn.classList.remove('drawings-sync-pending');
+            btn.setAttribute('data-tooltip', 'Saved locally — click to sync to cloud & session now');
+            btn.setAttribute('aria-busy', 'false');
+        }
+    }
+
+    _onSessionDrawingsSaveFinished() {
+        if (this._drawingsFlushAllInProgress) return;
+        if (this._drawingsPendingTargets) {
+            this._drawingsPendingTargets.session = false;
+        }
+        this._syncDrawingsSaveUiFromTargets();
+    }
+
+    _onChartDrawingsApiSaveFinished() {
+        if (this._drawingsFlushAllInProgress) return;
+        if (this._drawingsPendingTargets) {
+            this._drawingsPendingTargets.api = false;
+        }
+        this._syncDrawingsSaveUiFromTargets();
+    }
+
+    /**
+     * Force immediate cloud + session sync (TradingView-style manual save). localStorage is already updated on each edit.
+     */
+    async flushDrawingsSyncNow() {
+        if (!this.chart) return;
+        const isUndoRedo = this.history && this.history.isPerformingUndoRedo;
+        if (isUndoRedo) return;
+
+        this.drawings.forEach(d => {
+            this._ensureDrawingId(d);
+            if (!d.chart) d.chart = this.chart;
+        });
+        const data = this.drawings.map(d => d.toJSON());
+        try {
+            userStorage.setItem(this.getStorageKey(), JSON.stringify(data));
+        } catch (e) {
+            console.warn('flushDrawingsSyncNow localStorage:', e?.message || e);
+        }
+
+        this._drawingsFlushAllInProgress = true;
+        try {
+            if (this._apiSaveTimer) {
+                clearTimeout(this._apiSaveTimer);
+                this._apiSaveTimer = null;
+            }
+            await this.saveDrawingsToAPI(data);
+
+            const ch = this.chart;
+            const sid = ch && typeof ch.getActiveTradingSessionId === 'function' ? ch.getActiveTradingSessionId() : null;
+            if (sid && typeof ch.scheduleSessionStateSave === 'function') {
+                ch.scheduleSessionStateSave({ drawings: data });
+                if (ch._sessionStateSaveTimer) {
+                    clearTimeout(ch._sessionStateSaveTimer);
+                    ch._sessionStateSaveTimer = null;
+                }
+                if (typeof ch.flushSessionStateSave === 'function') {
+                    await ch.flushSessionStateSave();
+                }
+            }
+
+            this._drawingsPendingTargets = { session: false, api: false };
+            this._setDrawingsSaveUi('saved');
+            try {
+                if (typeof this.chart.showNotification === 'function') {
+                    const hadRemote =
+                        !!(typeof localStorage !== 'undefined' && localStorage.getItem('token')) ||
+                        !!(ch && typeof ch.getActiveTradingSessionId === 'function' && ch.getActiveTradingSessionId());
+                    this.chart.showNotification(hadRemote ? 'Drawings synced' : 'Saved locally');
+                }
+            } catch (_) { /* ignore */ }
+        } catch (e) {
+            console.warn('flushDrawingsSyncNow failed', e);
+            try {
+                if (typeof this.chart.showNotification === 'function') {
+                    this.chart.showNotification('Could not sync drawings — try again');
+                }
+            } catch (_) { /* ignore */ }
+        } finally {
+            this._drawingsFlushAllInProgress = false;
+            this._syncDrawingsSaveUiFromTargets();
+        }
     }
     
     /**
@@ -6191,6 +6316,9 @@ class DrawingToolsManager {
      * SHARED across all panels of the same pair/session (mirror behavior)
      */
     getStorageKey(fileIdOverride = null) {
+        if (this.chart && typeof this.chart.getDrawingsStorageKey === 'function') {
+            return this.chart.getDrawingsStorageKey(fileIdOverride);
+        }
         const fileId = fileIdOverride != null && String(fileIdOverride) !== ''
             ? String(fileIdOverride)
             : (this.chart.currentFileId || 'default');
@@ -6270,6 +6398,14 @@ class DrawingToolsManager {
             // [debug removed]
         });
 
+        if (!isUndoRedo && !skipRemote) {
+            this._drawingsPendingTargets = {
+                session: !!(this.chart && typeof this.chart.getActiveTradingSessionId === 'function' && this.chart.getActiveTradingSessionId()),
+                api: !!(typeof localStorage !== 'undefined' && localStorage.getItem('token'))
+            };
+            this._syncDrawingsSaveUiFromTargets();
+        }
+
         try {
             window.dispatchEvent(new CustomEvent('drawingsChanged'));
         } catch (error) {
@@ -6301,13 +6437,12 @@ class DrawingToolsManager {
             const sessionId = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
                 ? this.chart.getActiveTradingSessionId()
                 : null;
-            
+
             const token = localStorage.getItem('token');
             if (!token) {
-                // User not logged in, skip API save
                 return;
             }
-            
+
             const response = await fetch(`/api/chart/drawings/${encodeURIComponent(symbol)}`, {
                 method: 'POST',
                 headers: {
@@ -6320,7 +6455,7 @@ class DrawingToolsManager {
                     session_id: sessionId
                 })
             });
-            
+
             if (response.ok) {
                 const result = await response.json();
                 console.log(`✅ Drawings synced to cloud (${result.count} drawings)`);
@@ -6331,7 +6466,10 @@ class DrawingToolsManager {
             }
         } catch (error) {
             console.warn('⚠️ Error syncing drawings to cloud:', error.message);
-            // Fail silently - localStorage still has the data
+        } finally {
+            try {
+                this._onChartDrawingsApiSaveFinished();
+            } catch (_) { /* ignore */ }
         }
     }
 
@@ -6544,15 +6682,13 @@ class DrawingToolsManager {
             saved = JSON.stringify(urlDrawings);
             console.log('📥 Loaded drawings from URL (shared link)');
         }
-        // 2. Try loading from API for cross-device sync (requires authentication)
+        // 2. API vs localStorage: when a trading session is active, prefer session-scoped local data
+        //    so symbol-wide cloud rows do not mask shapes saved under chart_drawings_s{session}_{file}.
         else {
-            const apiDrawings = await this.loadDrawingsFromAPI();
-            if (apiDrawings) {
-                saved = JSON.stringify(apiDrawings);
-                console.log('📥 Loaded drawings from cloud');
-            }
-            // 3. Fall back to localStorage
-            else {
+            const sessionId = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
+                ? this.chart.getActiveTradingSessionId()
+                : null;
+            if (sessionId) {
                 const key = this.getStorageKey();
                 saved = userStorage.getItem(key);
                 if (!saved && key.includes('_s')) {
@@ -6564,7 +6700,34 @@ class DrawingToolsManager {
                     }
                 }
                 if (saved) {
-                    console.log('📥 Loaded drawings from localStorage');
+                    console.log('📥 Loaded drawings from localStorage (session)');
+                }
+                if (!saved) {
+                    const apiDrawings = await this.loadDrawingsFromAPI();
+                    if (apiDrawings) {
+                        saved = JSON.stringify(apiDrawings);
+                        console.log('📥 Loaded drawings from cloud');
+                    }
+                }
+            } else {
+                const apiDrawings = await this.loadDrawingsFromAPI();
+                if (apiDrawings) {
+                    saved = JSON.stringify(apiDrawings);
+                    console.log('📥 Loaded drawings from cloud');
+                } else {
+                    const key = this.getStorageKey();
+                    saved = userStorage.getItem(key);
+                    if (!saved && key.includes('_s')) {
+                        const fileId = this.chart.currentFileId || 'default';
+                        const legacyKey = `chart_drawings_${fileId}`;
+                        const legacy = userStorage.getItem(legacyKey);
+                        if (legacy) {
+                            saved = legacy;
+                        }
+                    }
+                    if (saved) {
+                        console.log('📥 Loaded drawings from localStorage');
+                    }
                 }
             }
         }
@@ -6583,7 +6746,9 @@ class DrawingToolsManager {
         this._drawingsLoaded = true;
 
         if (!saved) {
-            // [debug removed]
+            if (this.chart && typeof this.chart._applyPendingSessionDrawingsAfterManagerLoad === 'function') {
+                this.chart._applyPendingSessionDrawingsAfterManagerLoad();
+            }
             return;
         }
         
@@ -6675,6 +6840,9 @@ class DrawingToolsManager {
             }
         } catch (error) {
             console.error('❌ Failed to load drawings:', error);
+        }
+        if (this.chart && typeof this.chart._applyPendingSessionDrawingsAfterManagerLoad === 'function') {
+            this.chart._applyPendingSessionDrawingsAfterManagerLoad();
         }
     }
 

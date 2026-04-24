@@ -1813,6 +1813,37 @@ class Chart {
     }
 
     /**
+     * localStorage key for drawings — must match DrawingToolsManager (session-scoped when a trading session is active).
+     * @param {string|null} fileIdOverride — persist under this dataset id (e.g. pair switch before currentFileId updates).
+     */
+    getDrawingsStorageKey(fileIdOverride = null) {
+        const fileId = fileIdOverride != null && String(fileIdOverride) !== ''
+            ? String(fileIdOverride)
+            : (this.currentFileId || 'default');
+        const sessionId = typeof this.getActiveTradingSessionId === 'function'
+            ? this.getActiveTradingSessionId()
+            : null;
+        if (sessionId) {
+            return `chart_drawings_s${sessionId}_${fileId}`;
+        }
+        return `chart_drawings_${fileId}`;
+    }
+
+    /** Session GET /state returned drawings before OHLC existed — applied after DrawingToolsManager finishes its first load. */
+    _applyPendingSessionDrawingsAfterManagerLoad() {
+        try {
+            const pending = this._pendingSessionDrawingsFromState;
+            if (!pending || !Array.isArray(pending) || pending.length === 0) return;
+            if (!this.drawingManager || typeof this.drawingManager.loadDrawingsFromData !== 'function') return;
+            if (!this.data || this.data.length === 0) return;
+            this._pendingSessionDrawingsFromState = null;
+            this.drawingManager.loadDrawingsFromData(pending);
+        } catch (e) {
+            console.warn('Failed to apply pending session drawings', e);
+        }
+    }
+
+    /**
      * One-time read of pre-migration journal keys from localStorage; removes keys so data lives only in DB afterward.
      * @returns {Array} parsed trades or []
      */
@@ -2075,7 +2106,14 @@ class Chart {
                 state.drawings.length > 0 &&
                 typeof this.drawingManager.loadDrawingsFromData === 'function'
             ) {
-                this.drawingManager.loadDrawingsFromData(state.drawings);
+                if (this.data && this.data.length > 0) {
+                    this._pendingSessionDrawingsFromState = null;
+                    this.drawingManager.loadDrawingsFromData(state.drawings);
+                } else {
+                    this._pendingSessionDrawingsFromState = state.drawings;
+                }
+            } else if (Array.isArray(state.drawings) && state.drawings.length === 0) {
+                this._pendingSessionDrawingsFromState = null;
             }
 
             // Always treat journal as an array (legacy/corrupt blobs may omit it or use a non-array).
@@ -2303,10 +2341,17 @@ class Chart {
         );
     }
 
+    /** Patches that may be queued before GET /state hydrates the client (journal, balance, drawings). */
+    _sessionStatePatchAllowedBeforeHydrate(patch) {
+        if (!patch || typeof patch !== 'object') return false;
+        if (this._sessionStatePatchIsJournalRelated(patch)) return true;
+        return Object.prototype.hasOwnProperty.call(patch, 'drawings');
+    }
+
     scheduleSessionStateSave(patch) {
         const sessionId = this.getActiveTradingSessionId();
         if (!sessionId) return;
-        if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchIsJournalRelated(patch)) return;
+        if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchAllowedBeforeHydrate(patch)) return;
         if (!patch || typeof patch !== 'object') return;
 
         this._pendingSessionStatePatch = Object.assign({}, this._pendingSessionStatePatch || {}, patch);
@@ -2395,7 +2440,9 @@ class Chart {
         if (!sessionId) return;
         const patch = this._pendingSessionStatePatch;
         if (!patch) return;
-        if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchIsJournalRelated(patch)) return;
+        if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchAllowedBeforeHydrate(patch)) return;
+
+        const hadDrawings = !!(patch && patch.drawings != null);
         this._pendingSessionStatePatch = null;
 
         try {
@@ -2426,6 +2473,12 @@ class Chart {
             } catch (_) {}
             console.warn('⚠️ Failed to save trading session state', e, patchUrl ? `(PATCH ${patchUrl})` : '');
             this._notifyJournalNetworkError();
+        } finally {
+            if (hadDrawings && this.drawingManager && typeof this.drawingManager._onSessionDrawingsSaveFinished === 'function') {
+                try {
+                    this.drawingManager._onSessionDrawingsSaveFinished();
+                } catch (_) { /* ignore */ }
+            }
         }
     }
     
@@ -2985,7 +3038,12 @@ class Chart {
     
     loadDrawingsFromStorage() {
         try {
-            const saved = userStorage.getItem(`chart_drawings_${this.currentFileId || 'default'}`);
+            const key = this.getDrawingsStorageKey();
+            let saved = userStorage.getItem(key);
+            if (!saved && key.includes('_s')) {
+                const legacyKey = `chart_drawings_${this.currentFileId || 'default'}`;
+                saved = userStorage.getItem(legacyKey);
+            }
             if (saved) {
                 this.drawings = JSON.parse(saved);
                 
@@ -3391,7 +3449,7 @@ class Chart {
         } else if (Array.isArray(this.drawings) && this.drawings.length > 0) {
             this.svg.selectAll('*').remove();
             this.drawings = [];
-            userStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify([]));
+            userStorage.setItem(this.getDrawingsStorageKey(), JSON.stringify([]));
             this.scheduleRender();
             cleared = true;
         }
@@ -8565,7 +8623,7 @@ class Chart {
                 // Sync deletion to other panels
                 this.syncDrawingToOtherPanels(deletedDrawing, 'delete');
                 // Save to localStorage
-                userStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
+                userStorage.setItem(this.getDrawingsStorageKey(), JSON.stringify(this.drawings));
                 this.needsRender = true;
             }
             // Ctrl/Cmd + Z - undo last drawing
@@ -8574,7 +8632,7 @@ class Chart {
                 if (this.drawings.length > 0) {
                     this.drawings.pop();
                     // Save to localStorage
-                    userStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
+                    userStorage.setItem(this.getDrawingsStorageKey(), JSON.stringify(this.drawings));
                     this.needsRender = true;
                 }
             }
@@ -13249,8 +13307,12 @@ class Chart {
                         
                         // Save to localStorage directly using index
                         try {
-                            const drawingsData = JSON.stringify(chart.drawings);
-                            userStorage.setItem(`chart_drawings_${chart.currentFileId || 'default'}`, drawingsData);
+                            if (chart.drawingManager && typeof chart.drawingManager.saveDrawings === 'function') {
+                                chart.drawingManager.saveDrawings();
+                            } else {
+                                const drawingsData = JSON.stringify(chart.drawings);
+                                userStorage.setItem(chart.getDrawingsStorageKey(), drawingsData);
+                            }
                         } catch (e) {
                             console.error('Failed to save after resize:', e);
                         }
@@ -15264,7 +15326,7 @@ class Chart {
                         this.updateToolDefaultsFromDrawing(newDrawing);
                         
                         // Save to localStorage
-                        userStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
+                        userStorage.setItem(this.getDrawingsStorageKey(), JSON.stringify(this.drawings));
                         
                         // For text tool, enter inline edit mode immediately
                         if (this.pendingTextEdit) {
@@ -17234,7 +17296,7 @@ class Chart {
         }
 
         try {
-            userStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
+            userStorage.setItem(this.getDrawingsStorageKey(), JSON.stringify(this.drawings));
         } catch (error) {
         }
 
@@ -18517,25 +18579,29 @@ class Chart {
     
     // Helper method to save drawing changes
     saveDrawingChanges(drawing) {
+        if (this.drawingManager && typeof this.drawingManager.saveDrawings === 'function') {
+            try {
+                this.drawingManager.saveDrawings();
+            } catch (e) {
+                console.error('Failed to save drawings:', e);
+            }
+            this.scheduleRender();
+            return;
+        }
         // Try to find by reference first (most reliable)
         let index = this.drawings.findIndex(d => d === drawing);
-        
-        // If not found by reference, the drawing object might be a copy
-        // In this case, just save the entire array since the drawing is already in it
+
         if (index === -1) {
             console.warn('Drawing not found by reference, saving entire array');
-        } else {
-            // Drawing was found - it's already updated in the array
         }
-        
-        // Save all drawings to localStorage
+
         try {
             const drawingsData = JSON.stringify(this.drawings);
-            userStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, drawingsData);
+            userStorage.setItem(this.getDrawingsStorageKey(), drawingsData);
         } catch (e) {
             console.error('Failed to save drawings to localStorage:', e);
         }
-        
+
         this.scheduleRender();
     }
     
