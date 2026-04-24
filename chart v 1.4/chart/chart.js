@@ -7858,21 +7858,26 @@ class Chart {
     }
     
     /**
-     * Bar duration (ms) from series or current timeframe — used for visible time-range sync across panels.
+     * Bar duration (ms) for the active timeframe — used for visible time-range sync across panels.
+     * Prefer the nominal TF step from the selector: the first gap in `data` (e.g. Fri→Mon on daily)
+     * is not a reliable bar length and breaks HTF panel sync / end-of-window timestamps.
      */
     inferBarDurationMs() {
-        if (this.data && this.data.length >= 2) {
-            const d = Math.abs(this.data[1].t - this.data[0].t);
-            if (Number.isFinite(d) && d > 0) return d;
-        }
-        const tf = this.currentTimeframe || '1m';
+        const tf = String(this.currentTimeframe || '1m').toLowerCase().trim();
         const tfMap = {
             '1m': 60000, '2m': 120000, '3m': 180000, '4m': 240000, '5m': 300000,
             '10m': 600000, '15m': 900000, '30m': 1800000, '45m': 2700000,
             '1h': 3600000, '2h': 7200000, '4h': 14400000, '6h': 21600000, '12h': 43200000,
             '1d': 86400000, '1w': 604800000, '1mo': 2592000000
         };
-        return tfMap[tf] || 60000;
+        if (Object.prototype.hasOwnProperty.call(tfMap, tf)) {
+            return tfMap[tf];
+        }
+        if (this.data && this.data.length >= 2) {
+            const d = Math.abs(this.data[1].t - this.data[0].t);
+            if (Number.isFinite(d) && d > 0) return d;
+        }
+        return 60000;
     }
 
     /**
