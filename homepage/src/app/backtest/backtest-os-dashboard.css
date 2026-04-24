@@ -745,10 +745,18 @@
 .bt-os-pnl-cal-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 14px 20px;
+  margin-bottom: 14px;
+}
+
+.bt-os-pnl-cal-head-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 10px;
-  margin-bottom: 12px;
+  min-width: 0;
 }
 
 .bt-os-pnl-cal-title {
@@ -757,6 +765,88 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--bt-text-dim);
+}
+
+.bt-os-pnl-cal-view-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: var(--bt-radius-sm);
+  border: 1px solid var(--bt-border);
+  background: rgba(0, 0, 0, 0.2);
+  gap: 2px;
+}
+
+.bt-os-pnl-cal-view-btn {
+  font-family: var(--bt-sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--bt-text-dim);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.bt-os-pnl-cal-view-btn:hover {
+  color: var(--bt-text-secondary);
+}
+
+.bt-os-pnl-cal-view-btn--active {
+  background: var(--bt-bg-elevated);
+  color: var(--bt-text);
+  box-shadow: 0 0 0 1px var(--bt-border-strong);
+}
+
+.bt-os-pnl-cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding: 6px 0;
+}
+
+.bt-os-pnl-cal-nav-label {
+  font-family: var(--bt-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--bt-text-secondary);
+  min-width: 0;
+  text-align: center;
+}
+
+.bt-os-pnl-cal-nav-btn {
+  font-family: var(--bt-mono);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--bt-radius-sm);
+  border: 1px solid var(--bt-border);
+  background: var(--bt-bg-elevated);
+  color: var(--bt-text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, opacity 0.15s;
+}
+
+.bt-os-pnl-cal-nav-btn:hover:not(:disabled) {
+  border-color: var(--bt-border-strong);
+  color: var(--bt-text);
+}
+
+.bt-os-pnl-cal-nav-btn:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
 }
 
 .bt-os-pnl-cal-legend {
@@ -780,6 +870,21 @@
   display: flex;
   flex-wrap: wrap;
   gap: 1.1rem 1.35rem;
+}
+
+.bt-os-pnl-cal-months--single {
+  flex-direction: column;
+  gap: 0;
+}
+
+.bt-os-pnl-cal-week-wrap {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.bt-os-pnl-cal-grid--weeks {
+  grid-template-columns: repeat(7, minmax(18px, 1fr));
+  max-width: min(100%, 520px);
 }
 
 .bt-os-pnl-cal-month-title {
@@ -829,6 +934,54 @@
   font-family: var(--bt-mono);
 }
 
+.bt-os-pnl-cal-years {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bt-os-pnl-cal-year-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.bt-os-pnl-cal-year-label {
+  font-family: var(--bt-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--bt-text-secondary);
+  letter-spacing: 0.04em;
+}
+
+.bt-os-pnl-cal-year-months {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.bt-os-pnl-cal-year-cell {
+  aspect-ratio: 1;
+  min-height: 26px;
+  max-height: 40px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: default;
+}
+
+.bt-os-pnl-cal-year-cell-mo {
+  font-family: var(--bt-mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.82);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
 @media (max-width: 900px) {
   .bt-os-header-inner {
     grid-template-columns: 1fr;
@@ -848,5 +1001,9 @@
   }
   .bt-os-metrics-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+  .bt-os-pnl-cal-year-months {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    row-gap: 6px;
   }
 }
