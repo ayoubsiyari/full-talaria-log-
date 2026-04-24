@@ -7705,7 +7705,12 @@ class Chart {
 	            svgNode.style.height = this.h + 'px';
 	        }
 	        
-	        if (oldW && oldH) {
+	        // PanelManager scroll sync sets offsetX/candleWidth while _suppressPanelScrollSync is true.
+	        // resize() must not re-derive offset from old dimensions here or the main chart jumps wrong
+	        // when the user pans a secondary panel (asymmetric vs panning main).
+	        if (this._suppressPanelScrollSync) {
+	            this.constrainOffset();
+	        } else if (oldW && oldH) {
 	            const deltaW = this.w - oldW;
 	            const m = this.margin || { l: 0, r: 60 };
 	            const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : (this.candleWidth + 2);
