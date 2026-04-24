@@ -1587,6 +1587,7 @@ select { cursor: pointer; }
                 <div class="field fg-full">
                   <label for="fr_pairs" style="display:block;font-size:11px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-muted)">Tickers / pairs (optional)</label>
                   <textarea id="fr_pairs" rows="8" class="input" style="resize:vertical;font-family:ui-monospace,'JetBrains Mono',monospace;font-size:12px;line-height:1.45;min-height:140px" placeholder="EURUSD, GBPUSD, … — comma, space, or newline. Empty = every CSV in the ZIP."></textarea>
+                  <p style="font-size:10px;color:var(--text-muted);margin:6px 0 0;line-height:1.45">Duplicate symbols are merged automatically when you <strong>Download &amp; import</strong> or <strong>Save schedule</strong> (same rules as the server filter).</p>
                   <p id="fr_ticker_hint" style="font-size:11px;color:var(--text-muted);margin:8px 0 0;line-height:1.5"></p>
                 </div>
                 <div class="field fg-full" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -4167,6 +4168,9 @@ async function syncFirstrateFx() {
   btn.disabled = true;
   label.textContent = 'Starting…';
   try {
+    if (dedupeFrPairsTextareaInPlace()) {
+      toast('Removed duplicate tickers from the list.', 'ok');
+    }
     const inst = $('fr_type') ? $('fr_type').value : 'fx';
     let adj = null;
     if (inst === 'stock' || inst === 'etf') {
@@ -4792,10 +4796,40 @@ function frPairsFillAllForex() {
   }
 }
 
+/** Match api_server._normalize_ticker_filter_list: strip non-alphanumerics, uppercase, cap length, dedupe (first occurrence wins). */
+function normalizeFirstrateTickerToken(s) {
+  return String(s || '')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .toUpperCase()
+    .slice(0, 12);
+}
+
 function parsePairsFromTextarea(elId) {
   const el = $(elId);
-  const raw = el && el.value ? String(el.value) : '';
-  return raw.split(/[\s,;]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+  const raw = el && el.value != null ? String(el.value) : '';
+  const parts = raw.split(/[\s,;]+/).map(function (s) { return String(s).trim(); }).filter(Boolean);
+  const seen = Object.create(null);
+  const out = [];
+  for (let i = 0; i < parts.length; i++) {
+    const t = normalizeFirstrateTickerToken(parts[i]);
+    if (!t || seen[t]) continue;
+    seen[t] = true;
+    out.push(t);
+  }
+  return out;
+}
+
+/** Rewrite #fr_pairs with deduped comma-separated tokens; returns true if the box changed. */
+function dedupeFrPairsTextareaInPlace() {
+  const el = $('fr_pairs');
+  if (!el) return false;
+  const before = String(el.value || '');
+  const tokens = parsePairsFromTextarea('fr_pairs');
+  const after = tokens.length ? tokens.join(', ') : '';
+  const normBefore = before.replace(/\s+/g, ' ').trim();
+  if (normBefore === after) return false;
+  el.value = after;
+  return true;
 }
 
 function frPairsAdd(line) {
@@ -5043,6 +5077,9 @@ async function saveFirstrateSchedule() {
   const btn = $('frSchedSaveBtn');
   if (btn) btn.disabled = true;
   try {
+    if (dedupeFrPairsTextareaInPlace()) {
+      toast('Removed duplicate tickers from the list.', 'ok');
+    }
     const st = $('fr_type') ? $('fr_type').value : 'fx';
     const selAdj = $('fr_adjustment');
     const mode = ($('fr_sched_mode') && $('fr_sched_mode').value) || 'nightly';

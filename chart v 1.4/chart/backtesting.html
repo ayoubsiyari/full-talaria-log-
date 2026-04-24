@@ -2416,18 +2416,6 @@ html.iframe-mode .bt-modal-footer {
                     updateFileListUI();
                     return;
                 }
-                if (isSameInstrumentAlreadySelected(fileId)) {
-                    var dupLabel = cached
-                        ? cleanPairName(cached.original_name || cached.name || cached.filename || '')
-                        : fileName;
-                    alert(
-                        'That instrument (' +
-                            dupLabel +
-                            ') is already in this session. Remove the existing chip first if you want to swap this file for another dataset of the same pair.'
-                    );
-                    updateFileListUI();
-                    return;
-                }
                 selectedFilesArray.push({ id: fileId, name: fileName });
                 pushRecentFileId(fileId);
             } else {
@@ -2691,33 +2679,6 @@ html.iframe-mode .bt-modal-footer {
             return availableFilesCache.find(function (f) { return sameFileId(f.id, fileId); });
         }
 
-        /** Same normalized key for two files = same tradable instrument for session limits (EUR/USD and EURUSD → EURUSD). */
-        function canonicalInstrumentKeyFromCached(file) {
-            if (!file) return '';
-            const raw = file.original_name || file.name || file.filename || '';
-            const display = cleanPairName(raw);
-            const k = String(display || '')
-                .replace(/\//g, '')
-                .replace(/\s+/g, '')
-                .toUpperCase();
-            if (!k || k === 'UNKNOWN') return '';
-            return k;
-        }
-
-        function canonicalInstrumentKeyFromFileId(fileId) {
-            return canonicalInstrumentKeyFromCached(findCachedFileById(fileId));
-        }
-
-        /** True if another selected file already uses this instrument key (different file id). */
-        function isSameInstrumentAlreadySelected(fileId) {
-            const k = canonicalInstrumentKeyFromFileId(fileId);
-            if (!k) return false;
-            return selectedFilesArray.some(function (f) {
-                if (sameFileId(f.id, fileId)) return false;
-                return canonicalInstrumentKeyFromFileId(f.id) === k;
-            });
-        }
-
         /** While the user has ≥1 symbol selected, all additions must match this asset group. */
         function selectionLockedGroup() {
             if (!selectedFilesArray.length) return null;
@@ -2753,14 +2714,6 @@ html.iframe-mode .bt-modal-footer {
                 });
                 const fileGroup = classifyFile(file);
                 const crossLocked = Boolean(lockedGroup && !isSelected && fileGroup !== lockedGroup);
-                const pairKey = canonicalInstrumentKeyFromCached(file);
-                const pairTaken =
-                    !isSelected &&
-                    pairKey &&
-                    selectedFilesArray.some(function (f) {
-                        return !sameFileId(f.id, file.id) && canonicalInstrumentKeyFromFileId(f.id) === pairKey;
-                    });
-                const rowLocked = crossLocked || pairTaken;
                 const rawName = file.original_name || file.name || file.filename || file.symbol || 'File ' + file.id;
                 const pairName = cleanPairName(rawName);
                 const rows = file.row_count ? formatRowCount(file.row_count) : '';
@@ -2770,15 +2723,10 @@ html.iframe-mode .bt-modal-footer {
                 const labelCls =
                     'bt-file-dropdown-label' +
                     (isSelected ? ' bt-file-row--selected' : '') +
-                    (rowLocked ? ' bt-file-row--locked' : '');
-                var lockedTitle = '';
-                if (crossLocked) {
-                    lockedTitle =
-                        ' title="Only one asset group per session — clear selection to switch (e.g. Futures vs Forex)."';
-                } else if (pairTaken) {
-                    lockedTitle =
-                        ' title="This pair is already in the session — remove it from the chips above to add this file instead."';
-                }
+                    (crossLocked ? ' bt-file-row--locked' : '');
+                const lockedTitle = crossLocked
+                    ? ' title="Only one asset group per session — clear selection to switch (e.g. Futures vs Forex)."'
+                    : '';
                 const desc = describeInstrument(file);
                 const primaryLine =
                     '<span class="bt-asset-symbol">' +
@@ -2804,7 +2752,7 @@ html.iframe-mode .bt-modal-footer {
                     '>' +
                     '<input type="checkbox" class="bt-file-checkbox"' +
                     (isSelected ? ' checked' : '') +
-                    (rowLocked ? ' disabled' : '') +
+                    (crossLocked ? ' disabled' : '') +
                     ' onchange="toggleFileSelection(\'' +
                     file.id +
                     "', '" +
