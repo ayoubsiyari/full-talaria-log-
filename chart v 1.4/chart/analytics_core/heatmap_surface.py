@@ -7,8 +7,47 @@ from typing import Any
 
 import numpy as np
 
-# Coarse TP/SL grids (e.g. 6×6) look faceted; upsample for a smooth PNG surface only.
-_SURFACE_UPSAMPLE = 48
+# Coarse TP/SL grids (e.g. 6×6) look faceted; upsample then lightly blur for PNG only.
+_SURFACE_UPSAMPLE = 96
+# Gaussian sigma in *upsampled* grid pixels; softens cell boundaries without SciPy.
+_SMOOTH_SIGMA = 1.85
+_SMOOTH_BLEND = 0.78  # weight on blurred surface vs raw upsample (0 = no blur)
+
+
+def _gauss1d_kernel(sigma: float) -> np.ndarray:
+    sigma = max(float(sigma), 0.05)
+    r = int(max(1, np.ceil(3.0 * sigma)))
+    x = np.arange(-r, r + 1, dtype=np.float64)
+    k = np.exp(-(x * x) / (2.0 * sigma * sigma))
+    k /= float(k.sum())
+    return k
+
+
+def _convolve1d_reflect(signal: np.ndarray, kernel: np.ndarray) -> np.ndarray:
+    r = len(kernel) // 2
+    padded = np.pad(signal, (r, r), mode="reflect")
+    return np.convolve(padded, kernel, mode="valid").astype(np.float64, copy=False)
+
+
+def _gaussian_blur_2d(Z: np.ndarray, sigma: float) -> np.ndarray:
+    """Separable Gaussian blur; preserves shape, NaNs unchanged."""
+    Z = np.asarray(Z, dtype=np.float64, copy=True)
+    if sigma <= 0:
+        return Z
+    nan_m = ~np.isfinite(Z)
+    if nan_m.any():
+        fill = float(np.nanmean(Z))
+        if not np.isfinite(fill):
+            fill = 0.0
+        Z = np.where(nan_m, fill, Z)
+    k = _gauss1d_kernel(sigma)
+    tmp = np.empty_like(Z)
+    for i in range(Z.shape[0]):
+        tmp[i, :] = _convolve1d_reflect(Z[i, :], k)
+    out = np.empty_like(Z)
+    for j in range(tmp.shape[1]):
+        out[:, j] = _convolve1d_reflect(tmp[:, j], k)
+    return out
 
 
 def _bilinear_upsample(
@@ -93,14 +132,17 @@ def render_expectancy_heatmap_surface_png(
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib import cm
-    from matplotlib.colors import Normalize, TwoSlopeNorm
+    from matplotlib.colors import LinearSegmentedColormap, Normalize, TwoSlopeNorm
 
     SL0, TP0, Z0 = heatmap_to_matrices(heatmap, metric)
     sl_1d = np.asarray(heatmap["sl_levels"], dtype=float).ravel()
     tp_1d = np.asarray(heatmap["tp_levels"], dtype=float).ravel()
-    n_s = max(_SURFACE_UPSAMPLE, int(sl_1d.size) * 8)
-    n_t = max(_SURFACE_UPSAMPLE, int(tp_1d.size) * 8)
-    SL, TP, Z = _bilinear_upsample(sl_1d, tp_1d, Z0, n_s, n_t)
+    n_s = max(_SURFACE_UPSAMPLE, int(sl_1d.size) * 14)
+    n_t = max(_SURFACE_UPSAMPLE, int(tp_1d.size) * 14)
+    SL, TP, Z_up = _bilinear_upsample(sl_1d, tp_1d, Z0, n_s, n_t)
+    zb = _gaussian_blur_2d(Z_up, _SMOOTH_SIGMA)
+    w = float(np.clip(_SMOOTH_BLEND, 0.0, 1.0))
+    Z = (1.0 - w) * Z_up + w * zb
     zm = np.ma.masked_invalid(Z)
 
     fig = plt.figure(figsize=(10.5, 7.0), dpi=dpi, facecolor="#0a0c0f")
@@ -119,18 +161,23 @@ def render_expectancy_heatmap_surface_png(
     else:
         norm = Normalize(vmin=lo, vmax=hi if hi != lo else lo + 1e-9)
 
+    # Slightly muted RdYlGn reads better on dark UI than saturated default.
+    _g = cm.RdYlGn(np.linspace(0.08, 0.92, 256))
+    cmap_soft = LinearSegmentedColormap.from_list("RdYlGn_soft", _g)
+
     surf = ax.plot_surface(
         SL,
         TP,
         zm,
-        cmap=cm.RdYlGn,
+        cmap=cmap_soft,
         norm=norm,
         linewidth=0,
         edgecolor="none",
         antialiased=True,
         rstride=1,
         cstride=1,
-        shade=True,
+        # Directional shading exaggerates mesh facets; flat shading follows colormap only.
+        shade=False,
     )
 
     mlow = str(metric or "usd").lower()
@@ -164,7 +211,8 @@ def render_expectancy_heatmap_surface_png(
     z_box = float(np.clip(max(zr_data, 1e-12), z_floor, z_cap))
     ax.set_box_aspect((xr, yr, z_box))
 
-    ax.view_init(elev=24, azim=-52)
+    # Higher + more top-down: SL/TP sheet fills the frame; less self-occlusion.
+    ax.view_init(elev=36, azim=-115)
 
     cbar = fig.colorbar(surf, ax=ax, shrink=0.55, aspect=16, pad=0.12)
     cbar.ax.yaxis.set_tick_params(color="#9ca3af", labelsize=8)
