@@ -6662,8 +6662,11 @@ class DrawingToolsManager {
             
             // [debug removed]
 
-            if (key.includes('_s')) {
-                this.saveDrawings();
+            const storageKey = this.getStorageKey();
+            if (storageKey.includes('_s')) {
+                try {
+                    this.saveDrawings();
+                } catch (_) { /* ignore */ }
             }
             
             // Refresh object tree if available

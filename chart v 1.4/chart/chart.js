@@ -2067,7 +2067,14 @@ class Chart {
 
             this._sessionStateLoadedFor = String(sessionId);
 
-            if (this.drawingManager && Array.isArray(state.drawings) && typeof this.drawingManager.loadDrawingsFromData === 'function') {
+            // Only merge server drawings when non-empty. Session payloads often include `drawings: []`
+            // when the server never stored shapes — applying that would wipe shapes just loaded from localStorage.
+            if (
+                this.drawingManager &&
+                Array.isArray(state.drawings) &&
+                state.drawings.length > 0 &&
+                typeof this.drawingManager.loadDrawingsFromData === 'function'
+            ) {
                 this.drawingManager.loadDrawingsFromData(state.drawings);
             }
 
