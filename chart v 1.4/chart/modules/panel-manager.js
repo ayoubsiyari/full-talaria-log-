@@ -122,6 +122,10 @@ class PanelManager {
             const { panel, startTimestamp, endTimestamp } = d;
             if (!panel) return;
 
+            const srcChart = panel.chartInstance;
+            if (!srcChart) return;
+            if (!this._hasAnyScrollSyncPeerFor(panel, srcChart)) return;
+
             // Date Range: continuous full-window sync (scroll + zoom locked).
             if (this.syncSettings.dateRange
                 && Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
@@ -302,11 +306,11 @@ class PanelManager {
                     <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="crosshair-sync-toggle" checked></label>
                 </div>
                 <div class="sync-row">
-                    <div class="sync-label"><span>Time</span></div>
+                    <div class="sync-label"><span>Time</span><span class="sync-hint">Aligns panels that share the same symbol/file.</span></div>
                     <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="time-sync-toggle" checked></label>
                 </div>
                 <div class="sync-row">
-                    <div class="sync-label"><span>Date range</span><span class="sync-hint">Locks visible time span and zoom across panels while dragging.</span></div>
+                    <div class="sync-label"><span>Date range</span><span class="sync-hint">Locks visible time span and zoom across panels with the same symbol/file while dragging.</span></div>
                     <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="daterange-sync-toggle"></label>
                 </div>
                 <div class="sync-row sync-row-border">
@@ -646,6 +650,34 @@ class PanelManager {
     }
     
     /**
+     * Time / date-range scroll sync only makes sense for the same instrument; otherwise
+     * wall-clock alignment rewrites another pair's zoom/scroll and breaks panning.
+     */
+    _shouldScrollSyncBetweenCharts(sourceChart, targetChart) {
+        if (!sourceChart || !targetChart) return false;
+        if (sourceChart === targetChart) return true;
+        const fidA = sourceChart.currentFileId;
+        const fidB = targetChart.currentFileId;
+        const hasA = fidA != null && String(fidA).trim() !== '';
+        const hasB = fidB != null && String(fidB).trim() !== '';
+        if (hasA && hasB) return String(fidA) === String(fidB);
+        const symA = String(sourceChart.currentSymbol || '').trim().toUpperCase();
+        const symB = String(targetChart.currentSymbol || '').trim().toUpperCase();
+        if (symA && symB) return symA === symB;
+        return false;
+    }
+
+    /** True if some other panel's chart should receive scroll sync from `sourceChart`. */
+    _hasAnyScrollSyncPeerFor(sourcePanel, sourceChart) {
+        if (!this.panels || !sourceChart) return false;
+        return this.panels.some(p => {
+            if (!p || p.index === sourcePanel.index) return false;
+            const c = p.chartInstance;
+            return !!(c && this._shouldScrollSyncBetweenCharts(sourceChart, c));
+        });
+    }
+
+    /**
      * Sync symbol across all panels
      */
     syncSymbol(sourcePanel, symbol, fileId) {
@@ -697,7 +729,7 @@ class PanelManager {
                 if (!pc) return;
                 panel.timeframe = timeframe;
                 pc.currentTimeframe = timeframe;
-                if (viewportHint) {
+                if (viewportHint && this._shouldScrollSyncBetweenCharts(srcChart, pc)) {
                     pc._intervalSyncViewportSourcePanel = sourcePanel;
                     pc._intervalSyncViewportHint = viewportHint;
                 }
@@ -746,6 +778,8 @@ class PanelManager {
                 if (panel.index === sourcePanel.index) return;
                 const chart = panel.chartInstance;
                 if (!chart?.data?.length) return;
+                const srcPc = sourcePanel && sourcePanel.chartInstance;
+                if (!this._shouldScrollSyncBetweenCharts(srcPc, chart)) return;
 
                 chart._suppressPanelScrollSync = true;
                 toRelease.push(chart);
@@ -809,10 +843,12 @@ class PanelManager {
         let anyChanged = false;
         const toUpdate = [];
 
+        const srcDiscrete = sourcePanel?.chartInstance;
         this.panels.forEach(panel => {
             if (panel.index === sourcePanel.index) return;
             const chart = panel.chartInstance;
             if (!chart?.data?.length) return;
+            if (!this._shouldScrollSyncBetweenCharts(srcDiscrete, chart)) return;
 
             const targetIdx = chart.findGoToTargetIndex
                 ? chart.findGoToTargetIndex(chart.data, rightEdgeTimestamp)
@@ -896,6 +932,7 @@ class PanelManager {
                 if (panel.index === sourcePanel.index) return;
                 const chart = panel.chartInstance;
                 if (!chart?.data?.length) return;
+                if (!this._shouldScrollSyncBetweenCharts(sourceChart, chart)) return;
 
                 chart._suppressPanelScrollSync = true;
                 toRelease.push(chart);

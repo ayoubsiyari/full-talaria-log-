@@ -7706,8 +7706,30 @@ class Chart {
 	        
 	        if (oldW && oldH) {
 	            const deltaW = this.w - oldW;
-	            this.offsetX = Math.round(this.offsetX + deltaW * 0.5);
+	            const m = this.margin || { l: 0, r: 60 };
+	            const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : (this.candleWidth + 2);
+	            if (this.data?.length > 0 && Number.isFinite(spacing) && spacing > 0 && Number.isFinite(this.offsetX)) {
+	                const rightEdgePxOld = oldW - m.r;
+	                const idxAtRight = (rightEdgePxOld - m.l - this.offsetX) / spacing;
+	                const rightEdgePxNew = this.w - m.r;
+	                this.offsetX = Math.round(rightEdgePxNew - m.l - idxAtRight * spacing);
+	            } else if (deltaW !== 0) {
+	                this.offsetX = Math.round(this.offsetX + deltaW * 0.5);
+	            }
 	            this.constrainOffset();
+	        } else if (this._chartViewRestored && this.data?.length > 0) {
+	            const m = this.margin || { l: 0, r: 60 };
+	            const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : (this.candleWidth + 2);
+	            if (Number.isFinite(spacing) && spacing > 0 && Number.isFinite(this.offsetX)) {
+	                const prevW = Number.isFinite(oldW) && oldW > 0 ? oldW : nextW;
+	                const rightEdgePxOld = prevW - m.r;
+	                const idxAtRight = (rightEdgePxOld - m.l - this.offsetX) / spacing;
+	                const rightEdgePxNew = this.w - m.r;
+	                this.offsetX = Math.round(rightEdgePxNew - m.l - idxAtRight * spacing);
+	                this.constrainOffset();
+	            } else {
+	                this.fitToView();
+	            }
 	        } else {
 	            this.fitToView();
 	        }
