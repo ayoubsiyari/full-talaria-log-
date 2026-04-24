@@ -115,6 +115,12 @@
   background: var(--bt-bg3);
 }
 
+/* In-page nav: offset sticky BacktestSubnav + BacktestOS header */
+.bt-os-dashboard main#bt-os-overview,
+.bt-os-dashboard .bt-os-nav-target {
+  scroll-margin-top: 7.5rem;
+}
+
 .bt-os-header-meta {
   display: flex;
   align-items: center;

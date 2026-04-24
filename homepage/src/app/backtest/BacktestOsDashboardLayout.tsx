@@ -1,7 +1,6 @@
 "use client";
 
-import React from "react";
-import Link from "next/link";
+import React, { useEffect, useState } from "react";
 import type { OsMetricCard } from "./backtestOsTypes";
 import type { BacktestOsChartPack } from "./BacktestOsCharts";
 import {
@@ -59,6 +58,25 @@ export type BacktestOsDashboardLayoutProps = {
   advancedSection: React.ReactNode;
 };
 
+function useHashSection(): string {
+  const [hash, setHash] = useState(() =>
+    typeof window !== "undefined" ? window.location.hash.replace(/^#/, "") : ""
+  );
+  useEffect(() => {
+    const read = () => setHash(window.location.hash.replace(/^#/, ""));
+    window.addEventListener("hashchange", read);
+    return () => window.removeEventListener("hashchange", read);
+  }, []);
+  return hash;
+}
+
+const NAV: { id: string; label: string }[] = [
+  { id: "bt-os-overview", label: "Overview" },
+  { id: "bt-os-returns", label: "Returns" },
+  { id: "bt-os-risk", label: "Risk" },
+  { id: "bt-os-trades", label: "Trades" },
+];
+
 export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps) {
   const {
     sessionName,
@@ -76,6 +94,9 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
     advancedSection,
   } = props;
 
+  const hash = useHashSection();
+  const navActive = (id: string) => hash === id || (hash === "" && id === "bt-os-overview");
+
   return (
     <>
       <header className="bt-os-header">
@@ -84,12 +105,11 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
           BacktestOS
         </div>
         <nav className="bt-os-nav" aria-label="Dashboard views">
-          <Link href="/backtest/analytics" className="bt-os-nav-active">
-            Overview
-          </Link>
-          <span style={{ padding: "5px 14px", fontSize: "0.78rem", color: "#6b7280" }}>Returns</span>
-          <span style={{ padding: "5px 14px", fontSize: "0.78rem", color: "#6b7280" }}>Risk</span>
-          <span style={{ padding: "5px 14px", fontSize: "0.78rem", color: "#6b7280" }}>Trades</span>
+          {NAV.map(({ id, label }) => (
+            <a key={id} href={`#${id}`} className={navActive(id) ? "bt-os-nav-active" : undefined}>
+              {label}
+            </a>
+          ))}
         </nav>
         <div className="bt-os-header-meta">
           <div>{strategyLine}</div>
@@ -101,8 +121,8 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
         </div>
       </header>
 
-      <main className="bt-os-main">
-        <div className="bt-os-section">
+      <main id="bt-os-overview" className="bt-os-main">
+        <div id="bt-os-returns" className="bt-os-section bt-os-nav-target">
           <SectionHeader tag="Return" tagClass="bt-os-tag-return" title="Return metrics" />
           <MetricGrid cards={returnCards} />
         </div>
@@ -112,7 +132,7 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
           <OsChartsEquityRolling equity={chartPack.equity} rolling={chartPack.rolling} />
         </div>
 
-        <div className="bt-os-section">
+        <div id="bt-os-risk" className="bt-os-section bt-os-nav-target">
           <SectionHeader tag="Risk" tagClass="bt-os-tag-risk" title="Risk metrics" />
           <MetricGrid cards={riskCards} />
         </div>
@@ -142,7 +162,7 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
           <OsChartsRadarAnnual radar={chartPack.radar} annual={chartPack.annual} />
         </div>
 
-        <div className="bt-os-section">
+        <div id="bt-os-trades" className="bt-os-section bt-os-nav-target">
           <SectionHeader tag="Trades" tagClass="bt-os-tag-trade" title="Trade metrics" />
           <MetricGrid cards={tradeCards} />
         </div>
