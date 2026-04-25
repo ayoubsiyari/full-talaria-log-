@@ -11081,6 +11081,7 @@ class Chart {
     }
     
     resampleData(data, timeframe) {
+        const t0 = performance.now();
         if (data.length === 0) return [];
 
         const normalizedTf = String(timeframe || '').toLowerCase().trim();
@@ -11172,7 +11173,11 @@ class Chart {
         if (currentCandle) {
             resampled.push(currentCandle);
         }
-        
+
+        const t1 = performance.now();
+        if (t1 - t0 > 16) {
+            console.log(`[PERF] resampleData took ${(t1 - t0).toFixed(1)}ms for ${data.length} candles`);
+        }
         return resampled;
     }
     
@@ -11525,7 +11530,8 @@ class Chart {
     }
 
     render() {
-        if (this.isLoading) return;
+        const t0 = performance.now();
+        if (!this.canvas || !this.ctx) return;
         
         // Ensure minimum dimensions to prevent rendering issues
         if (this.w < 200 || this.h < 150) {
@@ -11792,24 +11798,13 @@ class Chart {
         
         // Volume section separator (only show if volume is visible)
         if (this.chartSettings.showVolume && volumeAreaHeight > 0) {
-            this.ctx.strokeStyle = this.chartSettings.gridColor || 'rgba(255, 255, 255, 0.08)';
-            this.ctx.lineWidth = 1;
-            this.ctx.beginPath();
-            this.ctx.moveTo(m.l, this.h - m.b - volumeAreaHeight);
-            this.ctx.lineTo(this.w - m.r, this.h - m.b - volumeAreaHeight);
-            this.ctx.stroke();
-        }
     }
-    
-    /**
-     * Draw axis labels and ticks
-     */
-    drawAxes() {
-        const m = this.margin;
-        const ch = this.h - m.t - m.b;
-        const effectiveVolumeHeight = this.chartSettings.showVolume ? this.volumeHeight : 0;
-        const volumeAreaHeight = ch * effectiveVolumeHeight;
-        
+    if (typeof this.orderManager.updateMfeMaeMarkers === 'function') {
+        this.orderManager.updateMfeMaeMarkers(this);
+    }
+}
+return;
+}
         if (!this.xScale || !this.yScale) return;
         
         const axisLeft = !!this.priceAxisLeft;
