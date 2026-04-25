@@ -135,7 +135,24 @@ class PanelManager {
 
             const srcChart = panel.chartInstance;
             if (!srcChart) return;
+            
+            // EXTRA SAFETY: Skip scroll sync entirely when symbols differ across panels
+            // This prevents cross-pair coupling that breaks chart views
             if (!this._hasAnyScrollSyncPeerFor(panel, srcChart)) return;
+            
+            // Double-check: if source panel has different symbol than any other panel, disable sync
+            const srcSym = this._normalizeSymbolForScrollSync(srcChart.currentSymbol);
+            const hasDifferentSymbolPeer = this.panels.some(p => {
+                if (!p || p.index === panel.index) return false;
+                const pc = p.chartInstance;
+                if (!pc) return false;
+                const tgtSym = this._normalizeSymbolForScrollSync(pc.currentSymbol);
+                return srcSym && tgtSym && srcSym !== tgtSym;
+            });
+            if (hasDifferentSymbolPeer) {
+                console.log(`[SCROLL SYNC BLOCKED] Source ${srcSym} has different symbol peers`);
+                return;
+            }
 
             // Date Range: continuous full-window sync (scroll + zoom locked).
             if (this.syncSettings.dateRange
