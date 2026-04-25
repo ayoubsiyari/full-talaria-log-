@@ -43930,7 +43930,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=2026042601"></script>
 
-    <script defer src="modules/panel-manager.js?v=202604264"></script>
+    <script defer src="modules/panel-manager.js?v=2026042607"></script>
 
     <script defer src="settings-panel.js?v=2026042601"></script>
 
@@ -43946,7 +43946,7 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=2026042605103"></script>
+    <script defer src="chart.js?v=2026042607"></script>
 
     <script defer src="modules/replay-system.js?v=2026042601"></script>
     <script defer src="modules/chart-env.defaults.js?v=2026042601"></script>
@@ -47444,13 +47444,23 @@
 
                     
 
-                    // Hide placeholder
+                    // Show loading state with fade-out capability
 
-                    if (panel.placeholder) {
+                    const hideLoading = () => {
 
-                        panel.placeholder.style.display = 'none';
+                        if (panel.placeholder) {
 
-                    }
+                            panel.placeholder.classList.add('fade-out');
+
+                            setTimeout(() => {
+
+                                if (panel.placeholder) panel.placeholder.style.display = 'none';
+
+                            }, 300);
+
+                        }
+
+                    };
 
                     
 
@@ -47536,9 +47546,17 @@
 
                         
 
-                        // Copy data if available
+                        // Copy data if available from main chart
 
-                        if (chart.rawData && chart.rawData.length > 0) {
+                        const mainHasData = chart.rawData && chart.rawData.length > 0;
+
+                        const mainHasFileId = chart.currentFileId;
+
+                        
+
+                        if (mainHasData) {
+
+                            // Case 1: Main chart has data - resample for this panel's timeframe
 
                             panelChart.rawData = chart.rawData;
 
@@ -47548,9 +47566,99 @@
 
                             panelChart.totalCandles = chart.totalCandles;
 
+                            panelChart.currentFileId = chart.currentFileId;
+
                             
 
+                            // Load panel-specific drawings for this symbol
+
+                            if (panelChart.drawingManager && chart.currentFileId) {
+
+                                try {
+
+                                    panelChart.drawingManager.loadDrawings(String(chart.currentFileId));
+
+                                } catch (e) { /* ignore */ }
+
+                            }
+
+                            
+
+                            // Sync offset to match main chart view (TradingView-style time alignment)
+
+                            if (panelChart.data && panelChart.data.length > 0 && chart.data && chart.data.length > 0) {
+
+                                // Align to same center timestamp for consistent multi-timeframe view
+
+                                const mainCenterIndex = Math.floor(chart.data.length / 2);
+
+                                const mainCenterTs = chart.data[mainCenterIndex]?.t;
+
+                                if (mainCenterTs) {
+
+                                    const panelCenterIndex = panelChart.data.findIndex(c => c.t >= mainCenterTs);
+
+                                    if (panelCenterIndex >= 0) {
+
+                                        const spacing = panelChart.getCandleSpacing
+
+                                            ? panelChart.getCandleSpacing()
+
+                                            : (panelChart.candleWidth + 2);
+
+                                        panelChart.offsetX = -(panelCenterIndex * spacing) + (panelChart.w || 800) / 2;
+
+                                    }
+
+                                }
+
+                            }
+
+                            
+
+                            hideLoading();
+
+                            
+
+                        } else if (mainHasFileId) {
+
+                            // Case 2: Main chart has fileId but no rawData yet - load it
+
+                            panelChart.currentFileId = chart.currentFileId;
+
+                            panelChart.currentSymbol = chart.currentSymbol;
+
+                            
+
+                            // Queue data load after chart is fully initialized
+
+                            requestAnimationFrame(() => {
+
+                                if (typeof panelChart.loadPanelFileData === 'function') {
+
+                                    panelChart.loadPanelFileData(chart.currentFileId)
+
+                                        .then(() => hideLoading())
+
+                                        .catch(() => hideLoading());
+
+                                } else {
+
+                                    hideLoading();
+
+                                }
+
+                            });
+
                         } else {
+
+                            // Case 3: No data available yet - keep showing loading until user selects symbol
+
+                            panel.placeholder.innerHTML = `
+
+                                <span style="font-size: 13px; color: #787b86;">Select a symbol</span>
+
+                            `;
 
                         }
 

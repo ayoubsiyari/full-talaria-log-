@@ -1560,6 +1560,15 @@ class Chart {
             overlay.classList.remove('active');
             setTimeout(() => { if (!overlay.classList.contains('active')) overlay.remove(); }, 400);
         }
+        
+        // Also hide the panel placeholder spinner (from panel-manager.js createPanel)
+        const placeholder = container.querySelector('.panel-loading-indicator');
+        if (placeholder) {
+            placeholder.classList.add('fade-out');
+            setTimeout(() => {
+                placeholder.style.display = 'none';
+            }, 300);
+        }
     }
 
     async loadPanelFileData(fileId) {
@@ -10646,7 +10655,14 @@ class Chart {
             return;
         }
         
-        // Always fetch from server — viewport-based, like TradingView
+        // Smart timeframe loading: prefer local resampling if rawData has sufficient coverage
+        // This avoids redundant server fetches like FXreplay/TradingView behavior
+        if (this.currentFileId && hasData && this._canResampleLocally(timeframe)) {
+            this._loadTimeframeLocal(timeframe);
+            return;
+        }
+        
+        // Fallback to server fetch for fresh viewport-optimized data
         if (this.currentFileId) {
             this._loadTimeframeFromServer(timeframe);
             return;
@@ -10672,6 +10688,89 @@ class Chart {
         }
         this.scheduleRender();
         this._fireChartDataLoaded();
+    }
+    
+    /**
+     * Check if we can resample locally from existing rawData
+     * instead of hitting the server. Criteria:
+     * - rawData has >1000 candles (sufficient for resampling quality)
+     * - Current timeframe is >= rawData's implied granularity
+     */
+    _canResampleLocally(targetTimeframe) {
+        if (!Array.isArray(this.rawData) || this.rawData.length < 1000) return false;
+        
+        const targetMs = this.parseTimeframe(targetTimeframe);
+        if (!Number.isFinite(targetMs) || targetMs <= 0) return false;
+        
+        // Check if rawData has reasonable time coverage
+        const firstTs = Number(this.rawData[0]?.t);
+        const lastTs = Number(this.rawData[this.rawData.length - 1]?.t);
+        if (!Number.isFinite(firstTs) || !Number.isFinite(lastTs)) return false;
+        
+        const coverageMs = lastTs - firstTs;
+        const minCoverageMs = targetMs * 500; // At least 500 candles worth of data
+        
+        return coverageMs >= minCoverageMs;
+    }
+    
+    /**
+     * Load timeframe by resampling from existing rawData (fast local path)
+     */
+    _loadTimeframeLocal(timeframe) {
+        const loadId = ++this._timeframeLoadSeq;
+        
+        try {
+            if (this.showLoader) this.showLoader('Resampling...');
+            
+            // Preserve current viewport center timestamp for seamless transition
+            let centerTs = null;
+            if (this.data && this.data.length > 0) {
+                const centerIndex = Math.floor(this.data.length / 2);
+                centerTs = this.data[centerIndex]?.t;
+            }
+            
+            // Resample from rawData
+            this.data = this.resampleData(this.rawData, timeframe);
+            this.currentTimeframe = timeframe;
+            
+            // Recalculate indicators on new timeframe data
+            if (typeof this.recalculateIndicators === 'function') {
+                try { this.recalculateIndicators(); } catch (e) {}
+            }
+            
+            // Update overlays
+            if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
+                this.compareOverlay.refreshForTimeframe(timeframe);
+            }
+            
+            // Re-center view on same timestamp if possible
+            if (centerTs && this.data && this.data.length > 0) {
+                const newCenterIndex = this.data.findIndex(c => c.t >= centerTs);
+                if (newCenterIndex >= 0) {
+                    const spacing = this.getCandleSpacing
+                        ? this.getCandleSpacing()
+                        : (this.candleWidth + 2);
+                    this.offsetX = -(newCenterIndex * spacing) + (this.w || 800) / 2;
+                    if (this.constrainOffset) this.constrainOffset();
+                }
+            }
+            
+            this._chartViewRestored = false;
+            this._resetTimeZoomAndScrollForTimeframeLoad();
+            
+            if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
+            this.resize();
+            this.render();
+            
+            if (this.hideLoader) this.hideLoader();
+            this._fireChartDataLoaded();
+            
+            console.log(`⏱️ Timeframe ${timeframe} loaded locally from ${this.rawData.length} raw candles`);
+            
+        } catch (error) {
+            console.warn('Local resampling failed, falling back to server:', error);
+            this._loadTimeframeFromServer(timeframe);
+        }
     }
     
     /**

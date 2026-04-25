@@ -736,9 +736,16 @@ class PanelManager {
 
     /**
      * Sync symbol across all panels
+     * TradingView-style: all panels switch to the same symbol with smart prefetching
      */
     syncSymbol(sourcePanel, symbol, fileId) {
         if (!this.syncSettings.symbol || this.currentLayout === '1') return;
+        
+        // Prefetch data for panels before they request it (FXreplay-style optimization)
+        this._prefetchForSymbolSync(fileId, sourcePanel);
+        
+        // Collect panels that need updating (for batch loading)
+        const panelsToUpdate = [];
         
         this.panels.forEach(panel => {
             if (panel.index === sourcePanel.index) return;
@@ -749,8 +756,73 @@ class PanelManager {
             if (panel.isMainChart && window.chart && typeof window.chart.loadFileData === 'function') {
                 window.chart.loadFileData(fileId);
             } else if (typeof pc.loadPanelFileData === 'function') {
-                pc.loadPanelFileData(fileId);
+                // Show loading state on panel
+                if (panel.placeholder) {
+                    panel.placeholder.style.display = 'flex';
+                    panel.placeholder.classList.remove('fade-out');
+                    panel.placeholder.innerHTML = `
+                        <div class="panel-spinner" style="
+                            width: 20px;
+                            height: 20px;
+                            border: 2px solid #2a2e39;
+                            border-top-color: #5b8cff;
+                            border-radius: 50%;
+                            animation: panel-spin 1s linear infinite;
+                        "></div>
+                        <span style="margin-top: 6px; font-size: 12px;">${symbol}</span>
+                    `;
+                }
+                panelsToUpdate.push(panel);
             }
+        });
+        
+        // Stagger panel updates to avoid server overload (50ms intervals)
+        panelsToUpdate.forEach((panel, idx) => {
+            setTimeout(() => {
+                if (panel.chartInstance && typeof panel.chartInstance.loadPanelFileData === 'function') {
+                    panel.chartInstance.loadPanelFileData(fileId);
+                }
+            }, idx * 50);
+        });
+    }
+    
+    /**
+     * Prefetch data for panels during symbol sync (FXreplay-style optimization)
+     */
+    _prefetchForSymbolSync(fileId, sourcePanel) {
+        const mainChart = window.chart;
+        if (!mainChart || !mainChart._smartPrefetchCache) return;
+        
+        // Build params for prefetch
+        const session = mainChart.backtestingSession || {};
+        const timeframe = '1m'; // Prefetch 1m raw data for resampling
+        const params = mainChart._buildSmartWindowParams(fileId, timeframe, session);
+        const key = mainChart._smartCacheKeyFromParams(fileId, params);
+        
+        // Already cached? Skip prefetch
+        if (mainChart._smartPrefetchCache.has(key)) return;
+        
+        // Prefetch in background
+        const ric = window.requestIdleCallback || ((cb) => setTimeout(cb, 100));
+        ric(() => {
+            fetch(`${mainChart.apiUrl}/file/${fileId}/smart?${params.toString()}`)
+                .then(r => r.ok ? r.json() : null)
+                .then(data => {
+                    if (!data) return;
+                    const ok = (Array.isArray(data.candles) && data.candles.length) || data.data;
+                    if (!ok) return;
+                    mainChart._smartPrefetchCache.set(key, { 
+                        at: Date.now(), 
+                        payload: data, 
+                        fileId: String(fileId) 
+                    });
+                    // Keep cache size bounded
+                    while (mainChart._smartPrefetchCache.size > 6) {
+                        const first = mainChart._smartPrefetchCache.keys().next().value;
+                        mainChart._smartPrefetchCache.delete(first);
+                    }
+                })
+                .catch(() => {});
         });
     }
     
@@ -2132,8 +2204,9 @@ class PanelManager {
             background: ${_panelBg};
         `;
         
-        // Add placeholder text
+        // Add loading indicator (shows briefly while data loads)
         const placeholder = document.createElement('div');
+        placeholder.className = 'panel-loading-indicator';
         placeholder.style.cssText = `
             position: absolute;
             top: 50%;
@@ -2142,11 +2215,38 @@ class PanelManager {
             color: #787b86;
             font-size: 14px;
             text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
         `;
         placeholder.innerHTML = `
-            Panel ${index + 1}<br>
-            <span style="font-size: 12px;">${panelTimeframe}</span>
+            <div class="panel-spinner" style="
+                width: 24px;
+                height: 24px;
+                border: 2px solid #2a2e39;
+                border-top-color: #5b8cff;
+                border-radius: 50%;
+                animation: panel-spin 1s linear infinite;
+            "></div>
+            <span>Loading ${panelTimeframe}...</span>
         `;
+        // Add spinner animation if not already present
+        if (!document.getElementById('panel-spinner-style')) {
+            const style = document.createElement('style');
+            style.id = 'panel-spinner-style';
+            style.textContent = `
+                @keyframes panel-spin {
+                    to { transform: rotate(360deg); }
+                }
+                .panel-loading-indicator.fade-out {
+                    opacity: 0;
+                    transition: opacity 0.3s ease;
+                    pointer-events: none;
+                }
+            `;
+            document.head.appendChild(style);
+        }
         chartContainer.appendChild(placeholder);
         
         // Create canvas for candlestick chart
