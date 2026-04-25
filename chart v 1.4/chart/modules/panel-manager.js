@@ -1129,6 +1129,15 @@ class PanelManager {
 
                 if (sameBarStep) {
                     if (!Number.isFinite(edgeWallMs) || edgeWallMs <= 0) return;
+                    
+                    // CRITICAL FIX: Re-check symbol compatibility before modifying offsetX
+                    // Continuous sync at same timeframe can drift drawings on different pairs
+                    const srcSymNow = this._normalizeSymbolForScrollSync(sourceChart.currentSymbol);
+                    const tgtSymNow = this._normalizeSymbolForScrollSync(chart.currentSymbol);
+                    if (srcSymNow && tgtSymNow && srcSymNow !== tgtSymNow) {
+                        return; // Different symbols - don't sync even at same timeframe
+                    }
+                    
                     const m2 = chart.margin || { l: 0, r: 60 };
                     const sp2 = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
                     const cw2 = chart.w - m2.l - m2.r;
@@ -1155,6 +1164,13 @@ class PanelManager {
                 if (!Number.isFinite(targetIdx) || targetIdx < 0) return;
                 const lastIdx = this._timeSyncLastTargetBar[panel.index];
                 if (lastIdx === targetIdx) return;
+
+                // CRITICAL FIX: Skip discrete sync for different symbols too
+                const srcSymDiscrete = this._normalizeSymbolForScrollSync(sourceChart.currentSymbol);
+                const tgtSymDiscrete = this._normalizeSymbolForScrollSync(chart.currentSymbol);
+                if (srcSymDiscrete && tgtSymDiscrete && srcSymDiscrete !== tgtSymDiscrete) {
+                    return;
+                }
 
                 this._timeSyncLastTargetBar[panel.index] = targetIdx;
                 chart._suppressPanelScrollSync = true;
