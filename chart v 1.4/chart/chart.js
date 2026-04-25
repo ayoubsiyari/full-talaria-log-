@@ -13803,6 +13803,41 @@ class Chart {
         const endIdx = Math.ceil(this.pixelToDataIndex(this.w));
         return Math.min(this.data.length - 1, endIdx);
     }
+
+    /**
+     * Multi-panel: if the user left one chart with the button down (see canvas mouseleave),
+     * the first chart can keep `drag.active` so document-level "pan while pointer outside
+     * canvas" continues. A later mousedown on a different panel would start a second drag
+     * without clearing the first — then both instances pan from the same pointer.
+     * End pointer-drag state on all other chart surfaces so only the chart under the cursor
+     * is driven by the gesture.
+     * @param {Chart} keep - chart that is about to start a new interaction
+     */
+    static _clearGlobalDragStateExcept(keep) {
+        const endDrag = (c) => {
+            if (!c || c === keep) return;
+            if (c.drag) {
+                c.drag.active = false;
+                c.drag.type = null;
+                c.drag.separatePanelSlot = null;
+            }
+            if (c.movement) c.movement.isDragging = false;
+            if (c.inertia) c.inertia.active = false;
+            if (c.boxZoom) c.boxZoom.active = false;
+            c._rightMouseDragged = false;
+            c.isZooming = false;
+        };
+        try {
+            if (typeof window === 'undefined') return;
+            if (window.chart) endDrag(window.chart);
+            const pm = window.panelManager;
+            if (pm && Array.isArray(pm.panels)) {
+                pm.panels.forEach((p) => {
+                    if (p && p.chartInstance) endDrag(p.chartInstance);
+                });
+            }
+        } catch (_e) { /* ignore */ }
+    }
     
     // First redrawDrawings() implementation removed as it was a duplicate
 
@@ -14126,6 +14161,8 @@ class Chart {
         this.canvas.addEventListener('mousedown', e => {
             if (this.tool) return;
             if (this.drawingManager && this.drawingManager.currentTool) return;
+
+            Chart._clearGlobalDragStateExcept(this);
             
             const rect = this.canvas.getBoundingClientRect();
             const mx = e.clientX - rect.left;
