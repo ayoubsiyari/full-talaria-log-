@@ -666,27 +666,40 @@ class PanelManager {
     }
     
     /**
+     * Normalize symbol for scroll-sync comparison (EUR/USD vs EURUSD).
+     */
+    _normalizeSymbolForScrollSync(s) {
+        if (s == null) return '';
+        return String(s).replace(/[/\s\-_]/g, '').toUpperCase();
+    }
+
+    /**
      * Time / date-range scroll sync only makes sense for the same instrument; otherwise
      * wall-clock alignment rewrites another pair's zoom/scroll and breaks panning.
      */
     _shouldScrollSyncBetweenCharts(sourceChart, targetChart) {
         if (!sourceChart || !targetChart) return false;
         if (sourceChart === targetChart) return true;
-        // Same instrument name only — this must run before the file-id check: some sessions
-        // reuse the same `currentFileId` shape for more than one market; matching ids alone
-        // was coupling NQ vs ES and driving the main panel when a secondary panel panned.
-        const symA = String(sourceChart.currentSymbol || '').trim().toUpperCase();
-        const symB = String(targetChart.currentSymbol || '').trim().toUpperCase();
-        if (symA && symB && symA !== symB) return false;
+        const normA = this._normalizeSymbolForScrollSync(sourceChart.currentSymbol);
+        const normB = this._normalizeSymbolForScrollSync(targetChart.currentSymbol);
+        if (normA && normB && normA !== normB) return false;
+
         const fidA = sourceChart.currentFileId;
         const fidB = targetChart.currentFileId;
         const hasA = fidA != null && String(fidA).trim() !== '';
         const hasB = fidB != null && String(fidB).trim() !== '';
-        if (hasA && hasB) return String(fidA) === String(fidB);
+        if (hasA && hasB) {
+            if (String(fidA) !== String(fidB)) return false;
+            // Same file id: only scroll-sync when both symbols are unknown or both match.
+            // One side with a symbol and the other empty can be a different market on a shared session id.
+            if (normA && normB) return normA === normB;
+            if (!normA && !normB) return true;
+            return false;
+        }
         // If only one side has a concrete file-id, treat them as different instruments
         // and never sync scroll (prevents cross-pair drag coupling after symbol switches).
         if (hasA !== hasB) return false;
-        if (symA && symB) return symA === symB;
+        if (normA && normB) return normA === normB;
         return false;
     }
 

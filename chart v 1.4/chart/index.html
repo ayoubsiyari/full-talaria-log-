@@ -47728,6 +47728,10 @@
                         && String(panel.chartInstance.currentFileId) !== String(mainCh.currentFileId);
 
                     if (!hasOwnPairData && !differentInstrument) {
+                        var pSym0 = (panel.chartInstance && panel.chartInstance.currentSymbol) ? String(panel.chartInstance.currentSymbol).trim() : '';
+                        var mSym0 = (mainCh && mainCh.currentSymbol) ? String(mainCh.currentSymbol).trim() : '';
+                        var skipMirrorFromMain = (pSym0 !== '' && mSym0 !== '' && pSym0 !== mSym0);
+                        if (!skipMirrorFromMain) {
                         // Copy symbol from main chart
 
                         if (typeof chart !== 'undefined' && chart.currentSymbol) {
@@ -47760,6 +47764,7 @@
 
                             panel.chartInstance.updateChartOHLCSymbol(panel.chartInstance.currentSymbol);
 
+                        }
                         }
                     }
 

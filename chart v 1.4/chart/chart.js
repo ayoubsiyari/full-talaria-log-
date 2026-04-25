@@ -7892,6 +7892,25 @@ class Chart {
         if (pm._isSyncing) return;
         if (pm._syncingDateRange) return;
 
+        // Resolve panel first; then skip all idx/bounds work when no chart in the layout can time-sync.
+        let sourcePanel = this.panel || null;
+        if (!sourcePanel) {
+            const panels = window.panelManager.getPanels();
+            for (const panel of panels) {
+                if (panel.chartInstance === this) {
+                    sourcePanel = panel;
+                    break;
+                }
+            }
+            if (!sourcePanel && this === window.chart && panels.length > 0) {
+                sourcePanel = panels[0];
+            }
+        }
+        if (!sourcePanel) return;
+        if (typeof pm._hasAnyScrollSyncPeerFor === 'function' && !pm._hasAnyScrollSyncPeerFor(sourcePanel, this)) {
+            return;
+        }
+
         // Visible range: use same helpers as UI so timestamps match actual viewport (multi-TF sync).
         const startIndex = typeof this.getVisibleStartIndex === 'function'
             ? this.getVisibleStartIndex()
@@ -7922,27 +7941,7 @@ class Chart {
         }
         const rightEdgeBarIndex = Math.max(0, Math.min(this.data.length - 1, Math.floor(idxAtRight)));
         const timeSyncEndTimestamp = (this.data[rightEdgeBarIndex]?.t ?? 0) + barMs;
-        
-        // Find which panel this chart belongs to
-        let sourcePanel = this.panel || null;
-        if (!sourcePanel && window.panelManager) {
-            const panels = window.panelManager.getPanels();
-            for (const panel of panels) {
-                if (panel.chartInstance === this) {
-                    sourcePanel = panel;
-                    break;
-                }
-            }
-            // If this is main chart (window.chart), use panel 0
-            if (!sourcePanel && this === window.chart && panels.length > 0) {
-                sourcePanel = panels[0];
-            }
-        }
-        
-        if (!sourcePanel) return;
-        if (typeof pm._hasAnyScrollSyncPeerFor === 'function' && !pm._hasAnyScrollSyncPeerFor(sourcePanel, this)) {
-            return;
-        }
+
         window.dispatchEvent(new CustomEvent('chartScrolled', {
             detail: {
                 chart: this,
