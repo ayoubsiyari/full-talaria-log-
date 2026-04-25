@@ -43930,7 +43930,7 @@
 
     <script defer src="modules/keyboard-shortcuts.js?v=20260464"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260465333"></script>
+    <script defer src="modules/panel-manager.js?v=20260464"></script>
 
     <script defer src="settings-panel.js?v=20260464"></script>
 
@@ -43946,9 +43946,9 @@
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260468901333343"></script>
+    <script defer src="chart.js?v=20260468900"></script>
 
-    <script defer src="modules/replay-system.js?v=20260465"></script>
+    <script defer src="modules/replay-system.js?v=20260464"></script>
     <script defer src="modules/chart-env.defaults.js?v=20260464"></script>
     <script defer src="modules/chart-env.generated.js?v=20260464"></script>
     <script defer src="modules/economic-news-sidebar.js?v=20260464"></script>
@@ -57355,7 +57355,7 @@ P['panellayout']={
 
                 syncRow('Crosshair','crosshair-sync-toggle',sync.crosshair!==false)+
 
-                syncRow('Time','time-sync-toggle',!!sync.time)+
+                syncRow('Time','time-sync-toggle',sync.time!==false)+
 
                 syncRow('Date range','daterange-sync-toggle',!!sync.dateRange)+
 
@@ -58257,15 +58257,6 @@ var _spCloseAnimTimer = null;
 
 var _spAnimMs = 280;
 
-/** While #chart-container animates inset (settings/order), skip resize() horizontal recentering. */
-function _markLayoutInsetTransition() {
-    if (typeof performance !== 'undefined' && performance.now) {
-        window.__layoutInsetTransitionUntil = performance.now() + _spAnimMs + 120;
-    }
-}
-
-window._markLayoutInsetTransition = _markLayoutInsetTransition;
-
 
 
 function _syncSpBottom() {
@@ -58444,8 +58435,6 @@ function openPanel(section) {
 
     document.body.classList.add('settings-open');
 
-    _markLayoutInsetTransition();
-
     _syncSpBottom();
 
     loadSection(section || 'symbol');
@@ -58499,8 +58488,6 @@ window.closePanel = function() {
     document.body.classList.remove('settings-open');
 
     if (w) w.classList.remove('settings-open');
-
-    _markLayoutInsetTransition();
 
     _spResizeChart(_spAnimMs + 24);
 

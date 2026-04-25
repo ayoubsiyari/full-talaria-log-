@@ -363,12 +363,6 @@ class Chart {
         this.isLoadingChunk = false;
         this.renderPending = false;
         this.renderThrottleTimer = null;
-        /** Throttle layout resize triggered from updateCrosshair (multi-panel / drawer transitions). */
-        this._crosshairResizeThrottleMs = 48;
-        this._lastCrosshairResizeApply = 0;
-        this._crosshairResizeTimer = null;
-        /** When true, resize() skips small horizontal offset recentering (crosshair-driven path). */
-        this._resizeFromCrosshairDedupe = false;
         
         // Performance metrics
         this.lastFrameTime = performance.now();
@@ -7710,22 +7704,7 @@ class Chart {
 	        
 	        if (oldW && oldH) {
 	            const deltaW = this.w - oldW;
-	            // #chart-container uses transition:right when settings/order drawer opens; width
-	            // steps across many frames — do not recenter offsetX each step or the chart "drifts".
-	            const layoutInsetAnim =
-	                typeof window !== 'undefined' &&
-	                Number.isFinite(window.__layoutInsetTransitionUntil) &&
-	                typeof performance !== 'undefined' &&
-	                performance.now() < window.__layoutInsetTransitionUntil;
-	            // Skip 1px noise; skip small width steps during crosshair-throttled resizes to limit
-	            // time-axis creep when #chart-container width animates (settings/order drawer).
-	            const nudge =
-	                !layoutInsetAnim &&
-	                Math.abs(deltaW) >= 2 &&
-	                !(this._resizeFromCrosshairDedupe && Math.abs(deltaW) < 12);
-	            if (nudge) {
-	                this.offsetX = Math.round(this.offsetX + deltaW * 0.5);
-	            }
+	            this.offsetX = Math.round(this.offsetX + deltaW * 0.5);
 	            this.constrainOffset();
 	        } else {
 	            this.fitToView();
@@ -7838,14 +7817,9 @@ class Chart {
         if (!this.data || this.data.length === 0) return;
         // Allow main chart (panel 0) to sync to other panels too
         if (!window.panelManager || window.panelManager.currentLayout === '1') return;
-        const pm = window.panelManager;
-        const ss = pm.syncSettings;
-        // Avoid chartScrolled storms when scroll sync is off — otherwise panel1 pan still
-        // looked like it was "dragging" panel0 via the time-sync listener defaults.
-        if (ss && !ss.time && !ss.dateRange) return;
         if (this._suppressPanelScrollSync) return;
-        if (pm._isSyncing) return;
-        if (pm._syncingDateRange) return;
+        if (window.panelManager._isSyncing) return;
+        if (window.panelManager._syncingDateRange) return;
 
         // Visible range: use same helpers as UI so timestamps match actual viewport (multi-TF sync).
         const startIndex = typeof this.getVisibleStartIndex === 'function'
@@ -16281,76 +16255,23 @@ class Chart {
         }
     }
 
-    _flushCrosshairLayoutResizeTimer() {
-        if (this._crosshairResizeTimer) {
-            clearTimeout(this._crosshairResizeTimer);
-            this._crosshairResizeTimer = null;
-        }
-    }
-
-    /**
-     * Coalesce resize() calls from crosshair mousemove so OHLC / drawer reflow does not
-     * hammer offsetX (main #chartWrapper is heavier than panel-chart-container).
-     */
-    scheduleLayoutResizeFromCrosshair() {
-        if (!this.canvas) return;
-        const now = performance.now();
-        const throttle = this._crosshairResizeThrottleMs || 48;
-        if (now - (this._lastCrosshairResizeApply || 0) >= throttle) {
-            this._flushCrosshairLayoutResizeTimer();
-            this._applyCrosshairLayoutResize();
-            return;
-        }
-        if (this._crosshairResizeTimer) return;
-        const wait = Math.max(0, throttle - (now - (this._lastCrosshairResizeApply || 0)));
-        this._crosshairResizeTimer = setTimeout(() => {
-            this._crosshairResizeTimer = null;
-            this._applyCrosshairLayoutResize();
-        }, wait);
-    }
-
-    _applyCrosshairLayoutResize() {
-        if (!this.canvas) return;
-        const cw = Math.round(this.canvas.clientWidth || 0);
-        const ch = Math.round(this.canvas.clientHeight || 0);
-        if (!(cw > 2 && ch > 2) ||
-            (Math.abs(cw - this.w) <= 4 && Math.abs(ch - this.h) <= 4)) {
-            return;
-        }
-        this._lastCrosshairResizeApply = performance.now();
-        if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
-        this._resizeFromCrosshairDedupe = true;
-        try {
-            if (typeof this.resize === 'function') this.resize();
-        } finally {
-            this._resizeFromCrosshairDedupe = false;
-        }
-    }
-
     updateCrosshair(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        // Stale layout fix: only while the pointer is over THIS chart's canvas. Every Chart
-        // listens on document capture mousemove; without this, moving over another panel still
-        // ran the check on panel0's #chartWrapper and could call resize()/offset nudges when
-        // the other pair reflowed — worse on 1h+ where layout/OHLC churn is larger.
-        if (this.canvas && e && Number.isFinite(e.clientX) && Number.isFinite(e.clientY)) {
-            const overCanvas =
-                e.clientX >= rect.left && e.clientX <= rect.right &&
-                e.clientY >= rect.top && e.clientY <= rect.bottom;
-            if (overCanvas) {
-                const ctr = this.canvas.parentElement;
-                if (ctr) {
-                    const pr = ctr.getBoundingClientRect();
-                    const pw = Math.floor(pr.width || 0);
-                    const ph = Math.floor(pr.height || 0);
-                    if (pw > 2 && ph > 2 &&
-                        (Math.abs(pw - this.w) > 4 || Math.abs(ph - this.h) > 4)) {
-                        this.scheduleLayoutResizeFromCrosshair();
-                    }
-                }
+        // Auto-fix stale dimensions: compare the parent wrapper size (which CSS
+        // already expanded) against the canvas/chart internal w/h.  When they
+        // diverge a layout change happened and resize() hasn't caught up yet.
+        const _ctrEl = this.canvas.parentElement;
+        if (_ctrEl) {
+            const _cR = _ctrEl.getBoundingClientRect();
+            const _cW = Math.floor(_cR.width || 0);
+            const _cH = Math.floor(_cR.height || 0);
+            if (_cW > 2 && _cH > 2 &&
+                (Math.abs(_cW - this.w) > 4 || Math.abs(_cH - this.h) > 4)) {
+                if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
+                if (typeof this.resize === 'function') this.resize();
             }
         }
 
+        const rect = this.canvas.getBoundingClientRect();
         const x = e.clientX - rect.left, y = e.clientY - rect.top;
         const m = this.margin;
 

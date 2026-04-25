@@ -47,13 +47,12 @@ class PanelManager {
         /** Per-target-panel last bar index so each follower only jumps when ITS own right-edge bar changes. */
         this._timeSyncLastTargetBar = {};
         
-        // Sync settings — time/date scroll link off by default so panel0 does not follow
-        // panel1 unless the user turns it on (chartScrolled + _discreteTimeSyncToRightEdge).
+        // Sync settings - time enabled by default for smooth scroll sync
         this.syncSettings = {
             symbol: false,
             interval: false,
             crosshair: true,
-            time: false,
+            time: true,
             dateRange: false,
             drawings: true,
             indicators: false,
@@ -285,7 +284,7 @@ class PanelManager {
                 </div>
                 <div class="sync-row">
                     <div class="sync-label"><span>Time</span></div>
-                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="time-sync-toggle"></label>
+                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="time-sync-toggle" checked></label>
                 </div>
                 <div class="sync-row">
                     <div class="sync-label"><span>Date range</span></div>
@@ -2240,51 +2239,42 @@ class PanelManager {
             return;
         }
         const ps = state.panels.find(p => p.index === panelIndex);
+        if (!ps || ps.isMainChart) {
+            const panel = this.panels[panelIndex];
+            if (panel && panel.chartInstance) {
+                this._schedulePostRestoreRender(panel.chartInstance);
+            }
+            return;
+        }
+
         const panel = this.panels[panelIndex];
         if (!panel || !panel.chartInstance) return;
         const pc = panel.chartInstance;
-
-        if (!ps) {
-            this._schedulePostRestoreRender(pc);
-            return;
-        }
 
         if (ps.timeframe) pc.currentTimeframe = ps.timeframe;
         if (Number.isFinite(ps.offsetX)) pc.offsetX = ps.offsetX;
         if (Number.isFinite(ps.candleWidth) && ps.candleWidth > 0) pc.candleWidth = ps.candleWidth;
 
-        const skipInitialFitToView =
-            Number.isFinite(ps.offsetX) || (Number.isFinite(ps.candleWidth) && ps.candleWidth > 0);
-
-        const runAfterFile = () => {
-            if (pc.currentSymbol && typeof pc.updateChartOHLCSymbol === 'function') {
-                pc.updateChartOHLCSymbol(pc.currentSymbol);
-            }
-            this._schedulePostRestoreRender(pc, { skipInitialFitToView });
-        };
-
-        const needFile =
-            ps.fileId && ps.fileId !== (window.chart && window.chart.currentFileId);
-        if (needFile) {
-            if (ps.isMainChart && typeof window.chart !== 'undefined' && typeof window.chart.loadFileData === 'function') {
-                window.chart.loadFileData(ps.fileId).then(runAfterFile).catch(runAfterFile);
-            } else if (!ps.isMainChart && typeof pc.loadPanelFileData === 'function') {
-                pc.loadPanelFileData(ps.fileId).then(runAfterFile).catch(runAfterFile);
-            } else {
-                runAfterFile();
+        if (ps.fileId && ps.fileId !== (window.chart && window.chart.currentFileId)) {
+            if (typeof pc.loadPanelFileData === 'function') {
+                pc.loadPanelFileData(ps.fileId).then(() => {
+                    pc.updateChartOHLCSymbol(pc.currentSymbol);
+                    this._schedulePostRestoreRender(pc);
+                }).catch(() => {
+                    this._schedulePostRestoreRender(pc);
+                });
             }
         } else {
-            runAfterFile();
+            this._schedulePostRestoreRender(pc);
         }
     }
 
-    _schedulePostRestoreRender(pc, opts = {}) {
-        const skipInitialFitToView = !!opts.skipInitialFitToView;
+    _schedulePostRestoreRender(pc) {
         requestAnimationFrame(() => {
             if (pc._lastResizeDpr !== undefined) pc._lastResizeDpr = 0;
             if (typeof pc.resize === 'function') pc.resize();
             pc._chartViewRestored = false;
-            if (!skipInitialFitToView && typeof pc.fitToView === 'function') pc.fitToView();
+            if (typeof pc.fitToView === 'function') pc.fitToView();
             if (typeof pc.render === 'function') pc.render();
             requestAnimationFrame(() => {
                 if (pc._lastResizeDpr !== undefined) pc._lastResizeDpr = 0;
