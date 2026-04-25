@@ -13805,6 +13805,32 @@ class Chart {
     }
 
     /**
+     * @returns {boolean} true if the pointer is over a different multi-panel surface than `this` (so we must not apply document-level "outside canvas" pan for a stale `drag` on this chart).
+     */
+    _pointerEventOverAnotherPanelSurface(clientX, clientY) {
+        if (typeof document.elementsFromPoint !== 'function') return false;
+        const pm = typeof window !== 'undefined' ? window.panelManager : null;
+        if (!pm || !Array.isArray(pm.panels) || pm.panels.length < 2) return false;
+        let stack;
+        try {
+            stack = document.elementsFromPoint(clientX, clientY);
+        } catch (_e) {
+            return false;
+        }
+        if (!stack || !stack.length) return false;
+        for (const el of stack) {
+            for (const p of pm.panels) {
+                const c = p && p.chartInstance;
+                if (!c || c === this) continue;
+                if (p.element && p.element.contains(el)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
      * Multi-panel: if the user left one chart with the button down (see canvas mouseleave),
      * the first chart can keep `drag.active` so document-level "pan while pointer outside
      * canvas" continues. A later mousedown on a different panel would start a second drag
@@ -14163,6 +14189,7 @@ class Chart {
             if (this.drawingManager && this.drawingManager.currentTool) return;
 
             Chart._clearGlobalDragStateExcept(this);
+            Chart._activePointerChart = this;
             
             const rect = this.canvas.getBoundingClientRect();
             const mx = e.clientX - rect.left;
@@ -14644,6 +14671,10 @@ class Chart {
             this.isZooming = false;
             this._rightMouseDragged = false;
             
+            if (Chart._activePointerChart === this) {
+                Chart._activePointerChart = null;
+            }
+            
             if (!this.tool) {
                 this.canvas.style.cursor = this.getCurrentCursorStyle();
                 if (this.svg && this.svg.node()) {
@@ -14715,6 +14746,34 @@ class Chart {
 
             // Continue axis/pan drags even when mouse is outside the canvas
             if (this.drag && this.drag.active && this.canvas) {
+                // Multi-panel: document-level continuation must not run on a chart that is not
+                // driving this pointer, or while the pointer is over a different panel (1h+ pan
+                // often leaves the main canvas first; otherwise the main chart keeps panning with ES).
+                const _pm = typeof window !== 'undefined' ? window.panelManager : null;
+                const _multi = _pm && _pm.currentLayout && String(_pm.currentLayout) !== '1';
+                if (_multi) {
+                    let _drop = false;
+                    if (Chart._activePointerChart && Chart._activePointerChart !== this) {
+                        _drop = true;
+                    } else if (typeof this._pointerEventOverAnotherPanelSurface === 'function'
+                        && this._pointerEventOverAnotherPanelSurface(e.clientX, e.clientY)) {
+                        _drop = true;
+                    }
+                    if (_drop) {
+                        if (Chart._activePointerChart === this) {
+                            Chart._activePointerChart = null;
+                        }
+                        this.drag.active = false;
+                        this.drag.type = null;
+                        this.drag.separatePanelSlot = null;
+                        this.movement.isDragging = false;
+                        this.inertia.active = false;
+                        this.boxZoom.active = false;
+                        this.isZooming = false;
+                    }
+                }
+
+                if (this.drag && this.drag.active) {
                 const rect = this.canvas.getBoundingClientRect();
                 const mx = e.clientX - rect.left;
                 const my = e.clientY - rect.top;
@@ -14774,6 +14833,7 @@ class Chart {
 
                     this.drag.lastX = e.clientX;
                     this.drag.lastY = e.clientY;
+                }
                 }
             }
 
