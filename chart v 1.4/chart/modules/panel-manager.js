@@ -672,6 +672,12 @@ class PanelManager {
     _shouldScrollSyncBetweenCharts(sourceChart, targetChart) {
         if (!sourceChart || !targetChart) return false;
         if (sourceChart === targetChart) return true;
+        // Same instrument name only — this must run before the file-id check: some sessions
+        // reuse the same `currentFileId` shape for more than one market; matching ids alone
+        // was coupling NQ vs ES and driving the main panel when a secondary panel panned.
+        const symA = String(sourceChart.currentSymbol || '').trim().toUpperCase();
+        const symB = String(targetChart.currentSymbol || '').trim().toUpperCase();
+        if (symA && symB && symA !== symB) return false;
         const fidA = sourceChart.currentFileId;
         const fidB = targetChart.currentFileId;
         const hasA = fidA != null && String(fidA).trim() !== '';
@@ -680,8 +686,6 @@ class PanelManager {
         // If only one side has a concrete file-id, treat them as different instruments
         // and never sync scroll (prevents cross-pair drag coupling after symbol switches).
         if (hasA !== hasB) return false;
-        const symA = String(sourceChart.currentSymbol || '').trim().toUpperCase();
-        const symB = String(targetChart.currentSymbol || '').trim().toUpperCase();
         if (symA && symB) return symA === symB;
         return false;
     }
