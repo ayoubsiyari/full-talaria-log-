@@ -682,6 +682,7 @@ class PanelManager {
         if (sourceChart === targetChart) return true;
         const normA = this._normalizeSymbolForScrollSync(sourceChart.currentSymbol);
         const normB = this._normalizeSymbolForScrollSync(targetChart.currentSymbol);
+        // If both have symbols and they're different, never sync
         if (normA && normB && normA !== normB) return false;
 
         const fidA = sourceChart.currentFileId;
@@ -699,6 +700,15 @@ class PanelManager {
         // If only one side has a concrete file-id, treat them as different instruments
         // and never sync scroll (prevents cross-pair drag coupling after symbol switches).
         if (hasA !== hasB) return false;
+
+        // BUGFIX: If either chart lacks proper identification (no symbol, no fileId),
+        // don't sync. This prevents panels with different pairs from syncing when
+        // one panel hasn't fully loaded its symbol/fileId yet (e.g., after timeframe change).
+        // Only sync when we can positively confirm they're the same instrument.
+        const idA = normA || hasA;
+        const idB = normB || hasB;
+        if (!idA || !idB) return false;
+
         if (normA && normB) return normA === normB;
         return false;
     }
