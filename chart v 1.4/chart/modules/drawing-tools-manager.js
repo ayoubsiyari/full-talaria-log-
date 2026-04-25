@@ -529,6 +529,9 @@ class DrawingToolsManager {
             window.removeEventListener('chartDataLoaded', prevListener);
         }
         this._chartDataLoadedListener = (event) => {
+            const detailSrc = event.detail && event.detail.sourceChart;
+            if (detailSrc != null && detailSrc !== this.chart) return;
+
             const newTimeframe = event.detail?.timeframe;
 
             // If drawings were not loaded yet (chart had no data during init), load them now

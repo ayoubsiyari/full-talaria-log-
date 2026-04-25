@@ -47971,6 +47971,14 @@
                                 if (src !== (typeof chart !== 'undefined' ? chart : window.chart)) {
                                     return;
                                 }
+                                var _mainChForMirror = (typeof chart !== 'undefined' ? chart : window.chart);
+                                var _pmMirror = window.panelManager;
+                                var _pcMirror = panel.chartInstance;
+                                if (_pmMirror && typeof _pmMirror._shouldScrollSyncBetweenCharts === 'function'
+                                    && _mainChForMirror && _pcMirror
+                                    && !_pmMirror._shouldScrollSyncBetweenCharts(_mainChForMirror, _pcMirror)) {
+                                    return;
+                                }
                                 renderPanelChart(panel, detail.data, detail);
 
                             }
