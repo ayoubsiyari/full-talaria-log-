@@ -7902,9 +7902,12 @@ class Chart {
                     break;
                 }
             }
-            if (!sourcePanel && this === window.chart && panels.length > 0) {
-                sourcePanel = panels[0];
-            }
+            // BUGFIX: Removed the fallback that assigned main chart scroll events to panels[0].
+            // This was causing incorrect scroll sync attribution - when the main chart scrolled,
+            // it would be treated as if panels[0] (secondary panel) was scrolling, causing
+            // the main chart to incorrectly sync TO the secondary panel instead of vice versa.
+            // The main chart (window.chart) is not in the panels array, so if we can't find
+            // a matching panel, we should not sync (return early).
         }
         if (!sourcePanel) return;
         if (typeof pm._hasAnyScrollSyncPeerFor === 'function' && !pm._hasAnyScrollSyncPeerFor(sourcePanel, this)) {
@@ -14640,9 +14643,9 @@ class Chart {
                                                 break;
                                             }
                                         }
-                                        if (!sourcePanel && this === window.chart && panels.length > 0) {
-                                            sourcePanel = panels[0];
-                                        }
+                                        // BUGFIX: Removed the fallback that assigned main chart click events to panels[0].
+                                        // This was causing the same incorrect attribution issue as in dispatchScrollSync.
+                                        // The main chart should only sync when it has a valid panel reference.
                                     }
                                     if (sourcePanel) {
                                         pm.syncTimeToClickedTimestamp(sourcePanel, ts, screenFrac);
