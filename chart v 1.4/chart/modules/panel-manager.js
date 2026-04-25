@@ -947,6 +947,13 @@ class PanelManager {
                 }
                 if (!this._shouldScrollSyncBetweenCharts(srcPc, chart)) return;
 
+                // CRITICAL FIX: Re-check symbol compatibility before modifying offset
+                const srcSymPos = this._normalizeSymbolForScrollSync(srcPc?.currentSymbol);
+                const tgtSymPos = this._normalizeSymbolForScrollSync(chart.currentSymbol);
+                if (srcSymPos && tgtSymPos && srcSymPos !== tgtSymPos) {
+                    return; // Different symbols - don't sync
+                }
+
                 chart._suppressPanelScrollSync = true;
                 toRelease.push(chart);
 
@@ -1257,6 +1264,13 @@ class PanelManager {
                     }
                 }
                 if (!this._shouldScrollSyncBetweenCharts(sourceChart, chart)) return;
+
+                // CRITICAL FIX: Re-check symbol compatibility before modifying chart
+                const srcSymDR = this._normalizeSymbolForScrollSync(sourceChart.currentSymbol);
+                const tgtSymDR = this._normalizeSymbolForScrollSync(chart.currentSymbol);
+                if (srcSymDR && tgtSymDR && srcSymDR !== tgtSymDR) {
+                    return; // Different symbols - don't sync
+                }
 
                 chart._suppressPanelScrollSync = true;
                 toRelease.push(chart);
