@@ -10554,7 +10554,7 @@ class Chart {
             if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
             this.resize();
 
-            this._ingestSmartWindowResult(result, {});
+            this._ingestSmartWindowResult(result, { skipFitToView: true });
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(timeframe);
             }
