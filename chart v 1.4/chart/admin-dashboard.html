@@ -2003,6 +2003,90 @@ select { cursor: pointer; }
             </div>
           </div>
         </div>
+
+        <!-- ─────────────────────────────────────────────────────────────
+             Admin Audit Log card — forensic trail of every admin action.
+             Uses GET /api/admin/audit-log for listing (filterable,
+             paginated) and POST /api/admin/audit-log/prune for retention.
+        ─────────────────────────────────────────────────────────────── -->
+        <div class="card" id="auditLogCard" style="margin-top:16px">
+          <div class="card-hdr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            <div class="card-title">Audit Log</div>
+            <span class="card-badge" id="auditLogBadge" style="background:var(--panel);color:var(--text-muted)">not loaded</span>
+            <button type="button" class="btn sm primary" id="auditLogRefreshBtn" onclick="refreshAuditLog()" style="margin-left:auto">Load</button>
+          </div>
+          <div class="card-body">
+            <p style="margin:0 0 12px;font-size:12px;color:var(--text-muted);line-height:1.5">
+              Forensic trail of every admin action — who did what, when, and from where. Auto-captured for all mutating admin calls; structured detail for destructive ops.
+            </p>
+
+            <!-- Filters -->
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+              <input type="text" id="auditFilterQ" placeholder="Search path, params, result…" style="width:220px" class="input sm">
+              <select id="auditFilterStatus" class="input sm" style="width:110px">
+                <option value="">All statuses</option>
+                <option value="ok">ok</option>
+                <option value="error">error</option>
+                <option value="denied">denied</option>
+                <option value="dry_run">dry_run</option>
+              </select>
+              <select id="auditFilterAction" class="input sm" style="width:130px">
+                <option value="">All actions</option>
+                <option value="archive_stale_sessions">archive</option>
+                <option value="prune_support_attachments">prune</option>
+                <option value="restore_archived_session">restore</option>
+                <option value="audit_log_prune">log prune</option>
+              </select>
+              <input type="number" id="auditFilterDays" value="7" min="1" max="365" style="width:70px" class="input sm" title="Since days">
+              <button type="button" class="btn sm" onclick="refreshAuditLog()">Search</button>
+              <button type="button" class="btn sm" onclick="clearAuditFilters()">Clear</button>
+            </div>
+
+            <!-- Table -->
+            <div style="max-height:420px;overflow:auto;border:1px solid var(--border);border-radius:6px">
+              <table style="width:100%;border-collapse:collapse;font-size:11px">
+                <thead style="position:sticky;top:0;background:var(--panel);z-index:1">
+                  <tr style="color:var(--text-muted);text-align:left">
+                    <th style="padding:8px 10px;border-bottom:1px solid var(--border)">Time</th>
+                    <th style="padding:8px 10px;border-bottom:1px solid var(--border)">Admin</th>
+                    <th style="padding:8px 10px;border-bottom:1px solid var(--border)">Action</th>
+                    <th style="padding:8px 10px;border-bottom:1px solid var(--border)">Target</th>
+                    <th style="padding:8px 10px;border-bottom:1px solid var(--border)">Status</th>
+                    <th style="padding:8px 10px;border-bottom:1px solid var(--border)">Params</th>
+                    <th style="padding:8px 10px;border-bottom:1px solid var(--border)">Result</th>
+                    <th style="padding:8px 10px;border-bottom:1px solid var(--border)">IP</th>
+                  </tr>
+                </thead>
+                <tbody id="auditLogTableBody">
+                  <tr><td colspan="8" style="padding:14px;color:var(--text-muted);text-align:center">Click Load to fetch audit log</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination -->
+            <div style="display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:10px">
+              <span id="auditLogPaging" style="font-size:12px;color:var(--text-muted)">—</span>
+              <button type="button" class="btn sm" id="auditLogPrevBtn" onclick="changeAuditLogPage(-1)">Prev</button>
+              <button type="button" class="btn sm" id="auditLogNextBtn" onclick="changeAuditLogPage(1)">Next</button>
+            </div>
+
+            <!-- Retention -->
+            <div class="card" style="margin-top:16px;background:var(--panel);padding:12px;border:1px solid var(--border)">
+              <div style="font-weight:600;margin-bottom:6px">Retention</div>
+              <p style="margin:0 0 10px;font-size:12px;color:var(--text-muted)">Prune entries older than N days (default keeps 1 year). Dry-run first.</p>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <label style="font-size:12px;display:flex;align-items:center;gap:4px">older than
+                  <input type="number" id="auditPruneDays" value="365" min="30" max="3650" style="width:70px" class="input sm">
+                  days
+                </label>
+                <button type="button" class="btn sm" onclick="runAuditLogPrune(true)">Dry-run</button>
+                <button type="button" class="btn sm danger" id="auditPruneExecBtn" onclick="runAuditLogPrune(false)" disabled>Execute</button>
+              </div>
+              <div id="auditPruneResult" style="font-size:12px;color:var(--text-muted);margin-top:6px"></div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- ════════ SUBSCRIPTIONS SECTION ════════ -->
@@ -5330,6 +5414,172 @@ async function refreshFirstrateNightlyHealth(opts) {
       btn.disabled = false;
       if (origLabel !== null) btn.textContent = origLabel;
     }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Admin Audit Log card
+//
+// Wraps:
+//   GET  /api/admin/audit-log (paginated, filterable)
+//   POST /api/admin/audit-log/prune (retention, dry-run first)
+// ═══════════════════════════════════════════════════════════
+let _auditLogCache = { entries: [], total: 0, limit: 200, offset: 0 };
+let _auditLogLastPlan = null;
+
+function _fmtAuditDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso.slice(0, 16);
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function _auditStatusColor(status) {
+  if (status === 'ok') return '#10b981';
+  if (status === 'dry_run') return '#f59e0b';
+  if (status === 'error') return '#ef4444';
+  if (status === 'denied') return '#dc2626';
+  return 'var(--text-muted)';
+}
+
+function _auditJsonPreview(jsonStr, maxLen = 60) {
+  if (!jsonStr) return '—';
+  let s = jsonStr;
+  if (s.length > maxLen) s = s.slice(0, maxLen - 1) + '…';
+  return '<span style="font-family:ui-monospace,monospace;color:var(--text-muted)">' + esc(s) + '</span>';
+}
+
+function _renderAuditLog() {
+  const tbody = document.getElementById('auditLogTableBody');
+  const paging = document.getElementById('auditLogPaging');
+  const badge = document.getElementById('auditLogBadge');
+  if (!tbody) return;
+
+  const { entries, total, limit, offset } = _auditLogCache;
+  if (!entries.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="padding:14px;color:var(--text-muted);text-align:center">No entries found</td></tr>';
+  } else {
+    tbody.innerHTML = entries.map(r => {
+      const statusColor = _auditStatusColor(r.status);
+      const target = (r.target_type ? r.target_type + (r.target_id ? '#' + r.target_id : '') : '—');
+      return `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:6px 10px;font-variant-numeric:tabular-nums;white-space:nowrap">${_fmtAuditDate(r.created_at)}</td>
+        <td style="padding:6px 10px">${esc(r.admin_email || ('uid ' + r.admin_user_id))}</td>
+        <td style="padding:6px 10px;font-weight:600">${esc(r.action)}</td>
+        <td style="padding:6px 10px">${esc(target)}</td>
+        <td style="padding:6px 10px;color:${statusColor};font-weight:600">${esc(r.status)}</td>
+        <td style="padding:6px 10px">${_auditJsonPreview(r.params)}</td>
+        <td style="padding:6px 10px">${_auditJsonPreview(r.result)}</td>
+        <td style="padding:6px 10px;font-family:ui-monospace,monospace;color:var(--text-muted)">${esc(r.ip_address || '—')}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  const start = total === 0 ? 0 : offset + 1;
+  const end = Math.min(offset + limit, total);
+  if (paging) paging.textContent = `${start}-${end} of ${total}`;
+
+  const prevBtn = document.getElementById('auditLogPrevBtn');
+  const nextBtn = document.getElementById('auditLogNextBtn');
+  if (prevBtn) prevBtn.disabled = offset <= 0;
+  if (nextBtn) nextBtn.disabled = offset + limit >= total;
+
+  if (badge) {
+    badge.textContent = total + ' entries';
+    badge.style.background = 'rgba(16,185,129,0.18)';
+    badge.style.color = '#10b981';
+  }
+}
+
+async function refreshAuditLog() {
+  const btn = document.getElementById('auditLogRefreshBtn');
+  const orig = btn ? btn.textContent : null;
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+
+  const q = document.getElementById('auditFilterQ');
+  const statusSel = document.getElementById('auditFilterStatus');
+  const actionSel = document.getElementById('auditFilterAction');
+  const daysIn = document.getElementById('auditFilterDays');
+
+  const params = new URLSearchParams();
+  params.set('limit', '200');
+  params.set('offset', String(_auditLogCache.offset || 0));
+  if (q && q.value.trim()) params.set('q', q.value.trim().slice(0, 200));
+  if (statusSel && statusSel.value) params.set('status', statusSel.value);
+  if (actionSel && actionSel.value) params.set('action', actionSel.value);
+  if (daysIn && daysIn.value) params.set('since_days', String(parseInt(daysIn.value, 10) || 7));
+
+  try {
+    const data = await api('/api/admin/audit-log?' + params.toString());
+    _auditLogCache = {
+      entries: data.entries || [],
+      total: data.total || 0,
+      limit: data.limit || 200,
+      offset: data.offset || 0,
+    };
+    _renderAuditLog();
+  } catch (e) {
+    if (typeof toast === 'function') toast('Failed to load audit log: ' + (e?.message || e), 'err');
+    const tbody = document.getElementById('auditLogTableBody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="padding:14px;color:var(--err,#ef4444);text-align:center">Failed to load</td></tr>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = orig || 'Load'; }
+  }
+}
+
+function changeAuditLogPage(delta) {
+  const newOffset = (_auditLogCache.offset || 0) + (_auditLogCache.limit || 200) * delta;
+  if (newOffset < 0) return;
+  _auditLogCache.offset = newOffset;
+  refreshAuditLog();
+}
+
+function clearAuditFilters() {
+  const q = document.getElementById('auditFilterQ');
+  const statusSel = document.getElementById('auditFilterStatus');
+  const actionSel = document.getElementById('auditFilterAction');
+  const daysIn = document.getElementById('auditFilterDays');
+  if (q) q.value = '';
+  if (statusSel) statusSel.value = '';
+  if (actionSel) actionSel.value = '';
+  if (daysIn) daysIn.value = '7';
+  _auditLogCache.offset = 0;
+  refreshAuditLog();
+}
+
+async function runAuditLogPrune(dryRun) {
+  const days = parseInt(document.getElementById('auditPruneDays').value, 10) || 365;
+  if (!dryRun) {
+    if (!_auditLogLastPlan || !_auditLogLastPlan.would_delete) {
+      if (typeof toast === 'function') toast('Run a dry-run first so you see the plan', 'err');
+      return;
+    }
+    const ok = confirm(`Delete ${_auditLogLastPlan.would_delete} audit log entries older than ${days} days?\n\nThis is NOT reversible.`);
+    if (!ok) return;
+  }
+
+  try {
+    const data = await api('/api/admin/audit-log/prune', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ older_than_days: days, dry_run: !!dryRun }),
+    });
+    const host = document.getElementById('auditPruneResult');
+    if (dryRun) {
+      _auditLogLastPlan = data;
+      if (host) host.innerHTML = `<span style="color:#f59e0b;font-weight:600">DRY-RUN</span> · would delete <b>${data.would_delete || 0}</b> entries`;
+      const btn = document.getElementById('auditPruneExecBtn');
+      if (btn) btn.disabled = (data.would_delete || 0) === 0;
+    } else {
+      _auditLogLastPlan = null;
+      if (host) host.innerHTML = `<span style="color:#10b981;font-weight:600">DONE</span> · deleted <b>${data.deleted || 0}</b> entries`;
+      const btn = document.getElementById('auditPruneExecBtn');
+      if (btn) btn.disabled = true;
+      refreshAuditLog();
+    }
+  } catch (e) {
+    const host = document.getElementById('auditPruneResult');
+    if (host) host.innerHTML = `<span style="color:var(--danger,#ef4444)">Failed: ${esc(e?.message || e)}</span>`;
   }
 }
 
