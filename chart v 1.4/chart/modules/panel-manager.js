@@ -129,6 +129,9 @@ class PanelManager {
         }
         this._scrollListenerRef = (e) => {
             if (this._isSyncing) return;
+            const ss = this.syncSettings || {};
+            if (!ss.time && !ss.dateRange) return;
+
             const d = e.detail || {};
             const { panel, startTimestamp, endTimestamp } = d;
             if (!panel) return;
@@ -149,10 +152,7 @@ class PanelManager {
                 const tgtSym = this._normalizeSymbolForScrollSync(pc.currentSymbol);
                 return srcSym && tgtSym && srcSym !== tgtSym;
             });
-            if (hasDifferentSymbolPeer) {
-                console.log(`[SCROLL SYNC BLOCKED] Source ${srcSym} has different symbol peers`);
-                return;
-            }
+            if (hasDifferentSymbolPeer) return;
 
             // Date Range: continuous full-window sync (scroll + zoom locked).
             if (this.syncSettings.dateRange
