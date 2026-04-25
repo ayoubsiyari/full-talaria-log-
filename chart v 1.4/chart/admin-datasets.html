@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dataset Control Center</title>
+  <style>
+    :root {
+      --bg:#080e1e; --surface:#0d1530; --surface2:#111c3a;
+      --border:#1e2d56; --border2:#253460;
+      --text:#e4eafc; --muted:#7b8db8;
+      --accent:#4e8cff; --accent2:#7ea8ff;
+      --ok:#22c07a; --warn:#f5a623; --danger:#ff4d6d;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text);background:var(--bg);min-height:100vh;font-size:14px}
+    .page{max-width:1380px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:16px}
+    .hdr{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px}
+    .hdr h1{font-size:21px;font-weight:700;letter-spacing:-.3px;margin-bottom:3px}
+    .hdr-sub{color:var(--muted);font-size:13px}
+    .btn-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600}
+    .badge-admin{background:#1a2a6e;border:1px solid #2e42a0;color:#a0b4ff}
+    #toast{position:fixed;top:18px;right:18px;z-index:9999;min-width:260px;max-width:400px;padding:12px 16px;border-radius:10px;font-size:13px;font-weight:500;border-left:4px solid var(--accent);background:#111c3a;color:var(--text);box-shadow:0 8px 32px #0009;display:none}
+    #toast.ok{border-color:var(--ok);color:#b7f6d7;background:#0d2a1e}
+    #toast.err{border-color:var(--danger);color:#ffd5de;background:#2a0d18}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px}
+    .card-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+    .card-title{font-weight:700;font-size:14px}
+    .layout{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;align-items:start}
+    @media(max-width:1060px){.layout{grid-template-columns:1fr}}
+
+    /* Upload zone */
+    .drop-zone{border:2px dashed var(--border2);border-radius:12px;padding:28px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;background:#090f20}
+    .drop-zone:hover,.drop-zone.drag{border-color:var(--accent);background:#0d1a40}
+    .drop-icon{font-size:30px;margin-bottom:8px}
+    .drop-title{font-size:15px;font-weight:600;margin-bottom:4px}
+    .drop-sub{color:var(--muted);font-size:12px}
+    .pbar-wrap{background:#162040;border-radius:999px;height:5px;overflow:hidden;margin:12px 0 4px}
+    .pbar{height:100%;background:var(--accent);border-radius:999px;width:0%;transition:width .3s}
+    .pbar-label{font-size:12px;color:var(--muted)}
+    #uploadProgress{display:none}
+
+    /* Table */
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:7px 8px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
+    td{padding:10px 8px;border-bottom:1px solid #0f182e;vertical-align:middle}
+    tr.drow{cursor:pointer;transition:background .1s}
+    tr.drow:hover{background:#0f1c38}
+    tr.drow.sel{background:#122040;box-shadow:inset 2px 0 0 var(--accent)}
+    .ds-name{font-weight:600;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .ds-orig{color:var(--muted);font-size:11px;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tf-bar{display:flex;gap:3px;flex-wrap:wrap}
+    .tp{padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700}
+    .tp.ready{background:#0d2a1e;color:#6ee7b7;border:1px solid #145c3a}
+    .tp.missing,.tp.failed{background:#2a0d18;color:#fca5b4;border:1px solid #5c1430}
+    .tp.processing,.tp.pending{background:#1a1440;color:#c4b5fd;border:1px solid #3d2a80}
+    .act-badge{padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;border:1px solid}
+    .act-badge.yes{background:#0d2a1e;color:#6ee7b7;border-color:#145c3a}
+    .act-badge.no{background:#1a1440;color:#a78bfa;border-color:#3d2a80}
+
+    /* Buttons */
+    .btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border2);border-radius:8px;padding:7px 13px;background:#131f40;color:var(--text);cursor:pointer;font-size:13px;font-weight:600;transition:filter .15s;line-height:1}
+    .btn:hover{filter:brightness(1.15)}
+    .btn.primary{background:var(--accent);border-color:var(--accent2);color:#fff}
+    .btn.danger{background:#2a0d18;border-color:#5c1430;color:#fca5b4}
+    .btn.warn{background:#2a1806;border-color:#7a4810;color:#fcd38a}
+    .btn.sm{padding:4px 9px;font-size:12px}
+
+    /* Settings form */
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media(max-width:1060px){.form-grid{grid-template-columns:1fr}}
+    .fg-full{grid-column:1/-1}
+    .field>label{display:block;color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+    input[type=text],input[type=date],select,textarea{width:100%;background:#08101f;border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:9px 11px;font-size:13px;outline:none;transition:border-color .15s}
+    input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+    select option{background:#0d1530}
+    textarea{min-height:68px;resize:vertical;font-family:inherit}
+    .toggle-row{display:flex;align-items:center;gap:10px;padding:9px 0}
+    .toggle{position:relative;width:40px;height:22px;flex-shrink:0}
+    .toggle input{opacity:0;width:0;height:0;position:absolute}
+    .slider{position:absolute;inset:0;background:#1e2d56;border-radius:999px;cursor:pointer;transition:.2s}
+    .slider::before{content:'';position:absolute;width:16px;height:16px;background:#5a72b0;border-radius:50%;left:3px;top:3px;transition:.2s}
+    .toggle input:checked+.slider{background:var(--ok)}
+    .toggle input:checked+.slider::before{transform:translateX(18px);background:#fff}
+
+    /* TF cards */
+    .tf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:7px;margin-top:14px}
+    .tf-card{background:#08101f;border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center}
+    .tf-card .tfn{font-size:12px;font-weight:700;margin-bottom:3px}
+    .tf-card .tfr{font-size:10px;color:var(--muted)}
+    .tf-card.ready{border-color:#145c3a}.tf-card.ready .tfn{color:#6ee7b7}
+    .tf-card.missing,.tf-card.failed{border-color:#5c1430}.tf-card.missing .tfn,.tf-card.failed .tfn{color:#fca5b4}
+    .tf-card.processing,.tf-card.pending{border-color:#3d2a80}.tf-card.processing .tfn,.tf-card.pending .tfn{color:#c4b5fd}
+
+    /* Misc */
+    .conv-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--warn);animation:pulse 1s infinite;margin-right:4px}
+    .empty{text-align:center;padding:40px 20px;color:var(--muted);font-size:13px}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="hdr">
+    <div>
+      <h1>&#128194; Dataset Control Center</h1>
+      <div class="hdr-sub">Upload CSV datasets &mdash; configure parser settings &mdash; monitor binary conversion</div>
+    </div>
+    <div class="btn-row">
+      <span id="adminBadge" class="badge badge-admin" style="display:none"></span>
+      <button class="btn" id="refreshBtn">&#8635; Refresh</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <!-- Upload -->
+  <div class="card">
+    <div class="card-hdr">
+      <span class="card-title">Upload New Dataset</span>
+      <span style="color:var(--muted);font-size:12px">Admin-only &mdash; auto-triggers binary conversion for all timeframes</span>
+    </div>
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".csv" style="display:none">
+      <div class="drop-icon">&#128228;</div>
+      <div class="drop-title">Drag &amp; drop a CSV file here</div>
+      <div class="drop-sub">or <span style="color:var(--accent);cursor:pointer" onclick="document.getElementById('fileInput').click()">browse to select</span> &mdash; .csv files only</div>
+      <div id="uploadProgress">
+        <div class="pbar-wrap"><div class="pbar" id="pbar"></div></div>
+        <div class="pbar-label" id="pbarLabel"></div>
+      </div>
+    </div>
+
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+      <div class="card-title" style="margin-bottom:6px">Fetch directly from Dukascopy</div>
+      <div class="hdr-sub" style="margin-bottom:10px">Choose pair and date range. Server downloads CSV and saves it automatically as a dataset.</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Pair</label>
+          <select id="dk_pair">
+            <option value="eurusd">EUR/USD</option>
+            <option value="gbpusd">GBP/USD</option>
+            <option value="audusd">AUD/USD</option>
+            <option value="nzdusd">NZD/USD</option>
+            <option value="usdcad">USD/CAD</option>
+            <option value="usdchf">USD/CHF</option>
+            <option value="usdjpy">USD/JPY</option>
+            <option value="eurjpy">EUR/JPY</option>
+            <option value="gbpjpy">GBP/JPY</option>
+            <option value="xauusd">XAU/USD</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>From</label>
+          <input type="date" id="dk_from">
+        </div>
+        <div class="field">
+          <label>To</label>
+          <input type="date" id="dk_to">
+        </div>
+        <div class="field">
+          <label>Timeframe</label>
+          <input type="text" value="M1" disabled>
+        </div>
+      </div>
+      <div class="btn-row" style="margin-top:10px;justify-content:flex-end">
+        <button type="button" class="btn primary" id="dkFetchBtn">Fetch &amp; Save Dataset</button>
+      </div>
+      <div id="dukaProgress" style="display:none;margin-top:8px">
+        <div class="pbar-wrap"><div class="pbar" id="dukaPbar"></div></div>
+        <div class="pbar-label" id="dukaPbarLabel"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main layout -->
+  <div class="layout">
+
+    <!-- Dataset list -->
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-title">Datasets <span id="countBadge" style="color:var(--muted);font-weight:400;font-size:12px"></span></span>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>ID</th><th>Name</th><th>Rows</th><th>Timeframes</th><th>State</th><th></th></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-title">Dataset Settings</span>
+        <span id="selLabel" style="color:var(--muted);font-size:12px">No dataset selected</span>
+      </div>
+      <form id="settingsForm">
+        <div class="form-grid">
+          <div class="field fg-full"><label>Display Name</label>
+            <input type="text" id="f_name" placeholder="e.g. EURUSD M1 2022-2025"></div>
+          <div class="field"><label>CSV Delimiter</label>
+            <select id="f_delim">
+              <option value=",">Comma  ,</option>
+              <option value=";">Semicolon  ;</option>
+              <option value="">Tab  \t</option>
+              <option value="|">Pipe  |</option>
+            </select></div>
+          <div class="field"><label>Timezone</label>
+            <select id="f_tz">
+              <option value="UTC">UTC</option>
+              <option value="US/Eastern">US/Eastern (ET)</option>
+              <option value="US/Central">US/Central (CT)</option>
+              <option value="US/Pacific">US/Pacific (PT)</option>
+              <option value="Europe/London">Europe/London</option>
+              <option value="Europe/Berlin">Europe/Berlin</option>
+              <option value="Asia/Tokyo">Asia/Tokyo</option>
+              <option value="Asia/Dubai">Asia/Dubai</option>
+              <option value="Australia/Sydney">Australia/Sydney</option>
+            </select></div>
+          <div class="field fg-full"><label>Date/Time Format <span style="color:var(--muted);font-weight:400;text-transform:none">(blank = auto-detect)</span></label>
+            <input type="text" id="f_dtfmt" placeholder="%Y-%m-%d %H:%M:%S"></div>
+          <div class="field"><label>Has Header Row</label>
+            <select id="f_header"><option value="true">Yes</option><option value="false">No</option></select></div>
+          <div class="field"><label>Visible to Users</label>
+            <div class="toggle-row">
+              <label class="toggle"><input type="checkbox" id="f_active"><span class="slider"></span></label>
+              <span id="activeLabel" style="font-size:12px;color:var(--muted)">Inactive</span>
+            </div></div>
+          <div class="field fg-full"><label>Notes</label>
+            <textarea id="f_notes" placeholder="Internal notes..."></textarea></div>
+        </div>
+        <div class="btn-row" style="margin-top:14px;justify-content:flex-end">
+          <button type="button" class="btn warn sm" id="rebuildBtn">&#8635; Rebuild</button>
+          <button type="button" class="btn danger sm" id="deleteBtn">&#128465; Delete</button>
+          <button type="submit" class="btn primary">Save Settings</button>
+        </div>
+      </form>
+      <div class="tf-grid" id="tfGrid"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const S = { datasets: [], sel: null, me: null, polling: new Set() };
+const DUKASCOPY_CHUNK_DAYS = 365;
+const DUKASCOPY_MAX_TOTAL_DAYS = 7300;
+
+/* ── Toast ── */
+let _tt;
+function toast(msg, kind = 'info') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = kind === 'ok' ? 'ok' : kind === 'err' ? 'err' : '';
+  el.style.display = 'block';
+  clearTimeout(_tt);
+  _tt = setTimeout(() => el.style.display = 'none', 5000);
+}
+
+/* ── API helper ── */
+async function api(url, opts = {}) {
+  const r = await fetch(url, { credentials: 'include', ...opts });
+  const b = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(b.detail || b.error || 'HTTP ' + r.status);
+  return b;
+}
+
+function fmtN(n) { return Number(n || 0).toLocaleString(); }
+function esc(v) { return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function selDs() { return S.datasets.find(d => d.id === S.sel) || null; }
+
+function parseDateInput(value) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const d = new Date(value + 'T00:00:00Z');
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function dukascopyRangeDays(fromDate, toDate) {
+  const from = parseDateInput(fromDate);
+  const to = parseDateInput(toDate);
+  if (!from || !to) return null;
+  return Math.floor((to.getTime() - from.getTime()) / 86400000) + 1;
+}
+
+function clampDukascopyDateFields() {
+  const fromEl = document.getElementById('dk_from');
+  const toEl = document.getElementById('dk_to');
+  if (!fromEl || !toEl) return;
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+  fromEl.max = todayIso;
+  toEl.max = todayIso;
+
+  if (fromEl.value && fromEl.value > todayIso) fromEl.value = todayIso;
+  if (toEl.value && toEl.value > todayIso) toEl.value = todayIso;
+
+  const from = parseDateInput(fromEl.value);
+  const to = parseDateInput(toEl.value);
+  if (from && to && from > to) {
+    fromEl.value = toEl.value;
+  }
+}
+
+function setDefaultDukascopyDates() {
+  const today = new Date();
+  const to = today.toISOString().slice(0, 10);
+  const fromDate = new Date(today);
+  fromDate.setDate(fromDate.getDate() - 30);
+  const from = fromDate.toISOString().slice(0, 10);
+  const fromEl = document.getElementById('dk_from');
+  const toEl = document.getElementById('dk_to');
+  if (fromEl && !fromEl.value) fromEl.value = from;
+  if (toEl && !toEl.value) toEl.value = to;
+  clampDukascopyDateFields();
+}
+
+function datasetTfSummary(ds) {
+  const raw = Object.values((ds && ds.timeframes) || {});
+  if (!raw.length) {
+    const total = Number((ds && ds.total_timeframes) || 1);
+    const ready = Number((ds && ds.ready_timeframes) || 0);
+    const pending = Math.max(total - ready, 0);
+    return { total, ready, failed: 0, pending, done: pending === 0 };
+  }
+
+  let ready = 0;
+  let failed = 0;
+  let pending = 0;
+
+  raw.forEach((info) => {
+    const st = String((info && info.status) || 'missing').toLowerCase();
+    if (st === 'ready') ready += 1;
+    else if (st === 'failed') failed += 1;
+    else pending += 1;
+  });
+
+  return {
+    total: raw.length,
+    ready,
+    failed,
+    pending,
+    done: pending === 0,
+  };
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function waitForDukascopyJob(jobId, onUpdate, maxAttempts = 2400, intervalMs = 2000) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const status = await api('/api/admin/datasets/fetch-dukascopy/' + encodeURIComponent(jobId) + '/status');
+      if (onUpdate) onUpdate(status);
+      if (status.status === 'done' || status.status === 'failed') {
+        return { done: true, status };
+      }
+    } catch {
+      // keep polling; job file may not be visible momentarily on distributed workers
+    }
+
+    await sleep(intervalMs);
+  }
+
+  return { done: false, status: null };
+}
+
+async function waitForConversionProgress(fileId, onUpdate, maxAttempts = 1200, intervalMs = 3000) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const status = await api('/api/file/' + fileId + '/conversion-status');
+      if (onUpdate) onUpdate(status);
+
+      if (status.status === 'ready' || status.status === 'failed') {
+        return { done: true, status };
+      }
+    } catch {
+      // keep polling; conversion rows might not be visible yet
+    }
+
+    await sleep(intervalMs);
+  }
+
+  return { done: false, status: null };
+}
+
+/* ── Render table ── */
+function renderTable() {
+  const tb = document.getElementById('tbody');
+  document.getElementById('countBadge').textContent = '(' + S.datasets.length + ')';
+  if (!S.datasets.length) {
+    tb.innerHTML = '<tr><td colspan="6"><div class="empty">No datasets yet. Upload a CSV above.</div></td></tr>';
+    return;
+  }
+  tb.innerHTML = '';
+  S.datasets.forEach(ds => {
+    const tfSummary = datasetTfSummary(ds);
+    const ready = tfSummary.ready;
+    const total = tfSummary.total;
+    const failed = tfSummary.failed;
+    const converting = tfSummary.pending > 0;
+    const active = ds.settings && ds.settings.is_active !== false;
+    const name = (ds.settings && ds.settings.display_name) || ds.original_name;
+    const tfHtml = Object.entries(ds.timeframes || {}).slice(0,9).map(([tf, info]) => {
+      const st = (info.status || 'missing').toLowerCase();
+      return '<span class="tp ' + st + '">' + tf + '</span>';
+    }).join('');
+    const stateHtml = converting
+      ? '<span class="conv-dot"></span><span style="font-size:11px;color:var(--warn)">' + (ready + failed) + '/' + total + '</span>'
+      : (failed > 0
+          ? '<span style="font-size:11px;color:var(--danger)">&#9888; ' + ready + '/' + total + ' ready (' + failed + ' failed)</span>'
+          : '<span style="font-size:11px;color:var(--ok)">&#10003; Ready</span>');
+    const tr = document.createElement('tr');
+    tr.className = 'drow' + (ds.id === S.sel ? ' sel' : '');
+    tr.innerHTML =
+      '<td style="color:var(--muted);font-size:11px">#' + ds.id + '</td>' +
+      '<td><div class="ds-name">' + esc(name) + '</div><div class="ds-orig">' + esc(ds.original_name) + '</div></td>' +
+      '<td style="white-space:nowrap">' + fmtN(ds.row_count) + '</td>' +
+      '<td><div class="tf-bar">' + tfHtml + '</div></td>' +
+      '<td>' +
+        stateHtml +
+        '<br><span class="act-badge ' + (active ? 'yes' : 'no') + '">' + (active ? 'Active' : 'Hidden') + '</span>' +
+      '</td>' +
+      '<td><button class="btn sm edit-btn" data-id="' + ds.id + '">Edit</button></td>';
+    tr.querySelector('.edit-btn').addEventListener('click', e => { e.stopPropagation(); selectDs(ds.id); });
+    tr.addEventListener('click', () => selectDs(ds.id));
+    tb.appendChild(tr);
+  });
+}
+
+/* ── Timeframe cards ── */
+function renderTfCards(ds) {
+  const grid = document.getElementById('tfGrid');
+  grid.innerHTML = '';
+  if (!ds || !ds.timeframes) return;
+  Object.entries(ds.timeframes).forEach(([tf, info]) => {
+    const st = (info.status || 'missing').toLowerCase();
+    const d = document.createElement('div');
+    d.className = 'tf-card ' + st;
+    d.innerHTML = '<div class="tfn">' + tf + '</div><div class="tfr">' + fmtN(info.row_count) + ' rows</div>';
+    grid.appendChild(d);
+  });
+}
+
+/* ── Fill settings ── */
+function fillForm(ds) {
+  if (!ds) return;
+  const s = ds.settings || {};
+  document.getElementById('selLabel').textContent = '#' + ds.id + ' — ' + ds.original_name;
+  document.getElementById('f_name').value = s.display_name || ds.original_name || '';
+  document.getElementById('f_delim').value = s.csv_delimiter || ',';
+  // timezone — add custom option if not in list
+  const tzEl = document.getElementById('f_tz');
+  const tz = s.csv_timezone || 'UTC';
+  const tzExists = Array.from(tzEl.options).some(o => o.value === tz);
+  if (!tzExists) { const o = new Option(tz, tz); tzEl.insertBefore(o, tzEl.firstChild); }
+  tzEl.value = tz;
+  document.getElementById('f_dtfmt').value = s.datetime_format || '';
+  document.getElementById('f_header').value = String(s.csv_has_header !== false);
+  const act = s.is_active !== false;
+  document.getElementById('f_active').checked = act;
+  document.getElementById('activeLabel').textContent = act ? 'Active — visible to users' : 'Inactive — hidden from users';
+  document.getElementById('f_notes').value = s.notes || '';
+  renderTfCards(ds);
+}
+
+/* ── Select dataset ── */
+function selectDs(id) {
+  S.sel = id;
+  renderTable();
+  fillForm(selDs());
+}
+
+/* ── Load all datasets ── */
+async function loadDatasets(keepSel) {
+  const data = await api('/api/admin/datasets');
+  S.datasets = data.datasets || [];
+  renderTable();
+  if (S.sel && keepSel) fillForm(selDs());
+  else if (!S.sel && S.datasets.length) selectDs(S.datasets[0].id);
+  // auto-poll any still converting
+  S.datasets.forEach(ds => {
+    const summary = datasetTfSummary(ds);
+    if (!summary.done) startPolling(ds.id);
+  });
+}
+
+/* ── Conversion polling ── */
+function startPolling(id) {
+  if (S.polling.has(id)) return;
+  S.polling.add(id);
+  let attempts = 0;
+  const tick = async () => {
+    try {
+      const [data, conversion] = await Promise.all([
+        api('/api/admin/datasets').catch(() => null),
+        api('/api/file/' + id + '/conversion-status').catch(() => null),
+      ]);
+
+      if (data) {
+        S.datasets = data.datasets || [];
+        renderTable();
+        if (S.sel) fillForm(selDs());
+      }
+
+      const ds = S.datasets.find(d => d.id === id);
+      const summary = ds ? datasetTfSummary(ds) : null;
+      const conversionStatus = String((conversion && conversion.status) || '').toLowerCase();
+      const conversionReady = conversionStatus === 'ready';
+      const conversionFailed = conversionStatus === 'failed';
+      const datasetMissing = !!data && !ds;
+      const done = datasetMissing || conversionReady || conversionFailed || (summary && summary.done);
+      if (done) {
+        S.polling.delete(id);
+        if (ds) {
+          if (conversionFailed || (summary && summary.failed > 0)) {
+            const errRaw = conversion && (conversion.error || conversion.message || conversion.detail);
+            const errTxt = errRaw ? String(errRaw).slice(0, 180) : null;
+            toast(
+              errTxt
+                ? ('Dataset #' + id + ' conversion failed: ' + errTxt)
+                : ('Dataset #' + id + ' conversion finished with errors. Use Rebuild to retry.'),
+              'err'
+            );
+          } else {
+            toast('Dataset #' + id + ' binary ready!', 'ok');
+          }
+        }
+        return;
+      }
+      if (++attempts < 1200) setTimeout(tick, 3000);
+      else {
+        S.polling.delete(id);
+        toast('Dataset #' + id + ' is still processing. Please refresh in a few minutes.');
+      }
+    } catch { S.polling.delete(id); }
+  };
+  setTimeout(tick, 3000);
+}
+
+/* ── Upload ── */
+async function uploadFile(file) {
+  if (!file) return;
+  if (!file.name.endsWith('.csv')) { toast('Only .csv files allowed.', 'err'); return; }
+  const prog = document.getElementById('uploadProgress');
+  const pbar = document.getElementById('pbar');
+  const label = document.getElementById('pbarLabel');
+  prog.style.display = 'block';
+  pbar.style.width = '0%';
+  label.textContent = 'Uploading ' + file.name + ' (' + (file.size/1048576).toFixed(1) + ' MB)...';
+  let pv = 0;
+  const iv = setInterval(() => { if (pv < 88) { pv += 4; pbar.style.width = pv + '%'; } }, 150);
+  try {
+    const fd = new FormData();
+    fd.append('csvFile', file);
+    const res = await api('/api/admin/datasets/upload', { method: 'POST', body: fd });
+    clearInterval(iv);
+    pbar.style.width = '100%';
+    label.textContent = '✓ Uploaded — ' + fmtN(res.file && res.file.rowCount) + ' rows. Converting to binary...';
+    toast('Uploaded: ' + file.name, 'ok');
+    await loadDatasets(false);
+    if (res.file && res.file.id) { selectDs(res.file.id); startPolling(res.file.id); }
+    setTimeout(() => { prog.style.display = 'none'; }, 8000);
+  } catch (err) {
+    clearInterval(iv);
+    pbar.style.width = '0%';
+    label.textContent = '✗ ' + err.message;
+    toast('Upload failed: ' + err.message, 'err');
+  }
+}
+
+async function fetchDukascopyDataset() {
+  const pair = (document.getElementById('dk_pair').value || '').trim().toLowerCase();
+  const fromDate = (document.getElementById('dk_from').value || '').trim();
+  const toDate = (document.getElementById('dk_to').value || '').trim();
+  const btn = document.getElementById('dkFetchBtn');
+  const prog = document.getElementById('dukaProgress');
+  const pbar = document.getElementById('dukaPbar');
+  const label = document.getElementById('dukaPbarLabel');
+
+  if (!pair) { toast('Please select a pair.', 'err'); return; }
+  if (!fromDate || !toDate) { toast('Please select both from/to dates.', 'err'); return; }
+  const from = parseDateInput(fromDate);
+  const to = parseDateInput(toDate);
+  if (!from || !to) { toast('Invalid date. Please pick valid calendar dates.', 'err'); return; }
+  if (from > to) { toast('From date must be before To date.', 'err'); return; }
+
+  const rangeDays = dukascopyRangeDays(fromDate, toDate);
+  if (!rangeDays) { toast('Invalid date range.', 'err'); return; }
+  if (rangeDays > DUKASCOPY_MAX_TOTAL_DAYS) {
+    toast(`Date range too large (${rangeDays} days). Max is ${DUKASCOPY_MAX_TOTAL_DAYS} days per request.`, 'err');
+    return;
+  }
+
+  const chunkCount = Math.max(1, Math.ceil(rangeDays / DUKASCOPY_CHUNK_DAYS));
+
+  btn.disabled = true;
+  prog.style.display = 'block';
+  pbar.style.width = '8%';
+  label.textContent = chunkCount > 1
+    ? `Downloading ${pair.toUpperCase()} M1 ${fromDate} → ${toDate} in ${chunkCount} chunks...`
+    : `Downloading ${pair.toUpperCase()} M1 ${fromDate} → ${toDate} from Dukascopy...`;
+
+  try {
+    const res = await api('/api/admin/datasets/fetch-dukascopy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        instrument: pair,
+        from_date: fromDate,
+        to_date: toDate,
+      }),
+    });
+
+    let finalRes = res;
+    let usedChunks = Number((res.params && res.params.chunk_count) || chunkCount || 1);
+
+    if (res && res.job_id) {
+      const jobId = res.job_id;
+      label.textContent = `Queued ${pair.toUpperCase()} download (${usedChunks} chunks)...`;
+
+      const jobResult = await waitForDukascopyJob(jobId, (job) => {
+        const chunks = Array.isArray(job.chunks) ? job.chunks : [];
+        const total = Number(job.chunk_count || usedChunks || 1);
+        const done = Number(job.completed_chunks || chunks.filter(c => c.status === 'done').length || 0);
+        const failed = chunks.filter(c => c.status === 'failed').length;
+        const processing = chunks.find(c => c.status === 'processing');
+
+        if (job.status === 'failed') {
+          pbar.style.width = '100%';
+          label.textContent = `✗ ${job.message || job.error || 'Chunked download failed'}`;
+          return;
+        }
+
+        if (job.phase === 'merge') {
+          pbar.style.width = '78%';
+          label.textContent = `Merging chunks (${done}/${total})...`;
+          return;
+        }
+
+        if (job.phase === 'store') {
+          pbar.style.width = '86%';
+          label.textContent = `Saving merged dataset (${done}/${total} chunks complete)...`;
+          return;
+        }
+
+        if (job.status === 'done') {
+          pbar.style.width = '90%';
+          label.textContent = `✓ All chunks downloaded (${done}/${total}). Starting binary conversion...`;
+          return;
+        }
+
+        const effective = processing ? Math.min(total, done + 0.35) : done;
+        const downloadPct = Math.min(70, 8 + Math.round((effective / Math.max(total, 1)) * 62));
+        pbar.style.width = downloadPct + '%';
+
+        if (processing) {
+          label.textContent = `Downloading chunk ${processing.index}/${total} (${processing.from_date} → ${processing.to_date}) — done ${done}/${total}${failed ? `, failed ${failed}` : ''}`;
+        } else {
+          label.textContent = `Downloading chunks — done ${done}/${total}${failed ? `, failed ${failed}` : ''}`;
+        }
+      });
+
+      if (!jobResult.done || !jobResult.status) {
+        throw new Error('Chunked Dukascopy job is still running. Please refresh in a minute.');
+      }
+
+      if (jobResult.status.status === 'failed') {
+        throw new Error(jobResult.status.message || jobResult.status.error || 'Chunked Dukascopy job failed');
+      }
+
+      usedChunks = Number(jobResult.status.chunk_count || usedChunks || 1);
+      finalRes = jobResult.status.result;
+      if (!finalRes || !finalRes.file || !finalRes.file.id) {
+        throw new Error('Dukascopy job completed but dataset result is missing');
+      }
+    }
+
+    const fileId = finalRes.file && finalRes.file.id;
+    const rowCountTxt = fmtN(finalRes.file && finalRes.file.rowCount);
+    let conversionDone = false;
+
+    if (fileId) {
+      pbar.style.width = '90%';
+      label.textContent = usedChunks > 1
+        ? `Downloaded ${rowCountTxt} rows from ${usedChunks} chunks. Converting binaries...`
+        : `Downloaded ${rowCountTxt} rows. Converting binaries...`;
+
+      const conversionResult = await waitForConversionProgress(fileId, (status) => {
+        const ready = Number(status.ready || 0);
+        const total = Number(status.total || 0);
+        const progress = Number(status.progress || 0);
+
+        if (status.status === 'ready') {
+          pbar.style.width = '100%';
+          label.textContent = `✓ Downloaded ${rowCountTxt} rows. Binary ready (${ready}/${total}).`;
+          return;
+        }
+
+        if (status.status === 'failed') {
+          pbar.style.width = '100%';
+          label.textContent = `⚠ Downloaded ${rowCountTxt} rows. Some timeframes failed to convert.`;
+          return;
+        }
+
+        const combinedProgress = Math.min(99, 90 + Math.round(progress * 0.1));
+        pbar.style.width = combinedProgress + '%';
+        label.textContent = `Downloaded ${rowCountTxt} rows. Converting binaries (${ready}/${total})...`;
+      });
+
+      conversionDone = conversionResult.done;
+      if (conversionResult.done && conversionResult.status && conversionResult.status.status === 'failed') {
+        toast('Dataset downloaded, but conversion failed for some timeframes. You can click Rebuild.', 'err');
+      } else if (conversionResult.done) {
+        toast('Dukascopy dataset imported successfully.', 'ok');
+      } else {
+        toast('Dataset downloaded. Conversion still running in background.', 'ok');
+      }
+    } else {
+      pbar.style.width = '100%';
+      label.textContent = `✓ Download completed for ${pair.toUpperCase()}.`;
+      toast('Dukascopy dataset imported successfully.', 'ok');
+    }
+
+    await loadDatasets(false);
+    if (fileId) {
+      selectDs(fileId);
+      if (!conversionDone) {
+        startPolling(fileId);
+      }
+    }
+
+    setTimeout(() => { prog.style.display = 'none'; }, 8000);
+  } catch (err) {
+    pbar.style.width = '0%';
+    label.textContent = '✗ ' + err.message;
+    toast('Dukascopy fetch failed: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ── Drag & drop ── */
+const dz = document.getElementById('dropZone');
+const fi = document.getElementById('fileInput');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag'); uploadFile(e.dataTransfer.files[0]); });
+fi.addEventListener('change', () => { uploadFile(fi.files[0]); fi.value = ''; });
+document.getElementById('dkFetchBtn').addEventListener('click', fetchDukascopyDataset);
+document.getElementById('dk_from').addEventListener('change', clampDukascopyDateFields);
+document.getElementById('dk_to').addEventListener('change', clampDukascopyDateFields);
+
+/* ── Active toggle label ── */
+document.getElementById('f_active').addEventListener('change', function() {
+  document.getElementById('activeLabel').textContent = this.checked ? 'Active — visible to users' : 'Inactive — hidden from users';
+});
+
+/* ── Save settings ── */
+document.getElementById('settingsForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const ds = selDs();
+  if (!ds) { toast('Select a dataset first.', 'err'); return; }
+  try {
+    const payload = {
+      display_name: document.getElementById('f_name').value.trim(),
+      csv_delimiter: document.getElementById('f_delim').value,
+      csv_timezone: document.getElementById('f_tz').value || 'UTC',
+      datetime_format: document.getElementById('f_dtfmt').value.trim() || null,
+      csv_has_header: document.getElementById('f_header').value === 'true',
+      is_active: document.getElementById('f_active').checked,
+      notes: document.getElementById('f_notes').value.trim() || null,
+    };
+    await api('/api/admin/datasets/' + ds.id + '/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    toast('Settings saved for #' + ds.id, 'ok');
+    await loadDatasets(true);
+    selectDs(ds.id);
+  } catch (err) { toast('Save failed: ' + err.message, 'err'); }
+});
+
+/* ── Rebuild ── */
+document.getElementById('rebuildBtn').addEventListener('click', async () => {
+  const ds = selDs();
+  if (!ds) { toast('Select a dataset first.', 'err'); return; }
+  try {
+    await api('/api/admin/datasets/' + ds.id + '/rebuild-binary', { method: 'POST' });
+    toast('Rebuild started for #' + ds.id, 'ok');
+    await loadDatasets(true);
+    startPolling(ds.id);
+  } catch (err) { toast('Rebuild failed: ' + err.message, 'err'); }
+});
+
+/* ── Delete ── */
+document.getElementById('deleteBtn').addEventListener('click', async () => {
+  const ds = selDs();
+  if (!ds) { toast('Select a dataset first.', 'err'); return; }
+  if (!confirm('Delete dataset #' + ds.id + ' "' + ds.original_name + '"?\nThis cannot be undone.')) return;
+  try {
+    await api('/api/admin/datasets/' + ds.id, { method: 'DELETE' });
+    S.sel = null;
+    S.polling.delete(ds.id);
+    toast('Dataset #' + ds.id + ' deleted.', 'ok');
+    document.getElementById('selLabel').textContent = 'No dataset selected';
+    document.getElementById('tfGrid').innerHTML = '';
+    await loadDatasets(false);
+  } catch (err) { toast('Delete failed: ' + err.message, 'err'); }
+});
+
+/* ── Refresh ── */
+document.getElementById('refreshBtn').addEventListener('click', async () => {
+  try { await loadDatasets(true); toast('Refreshed.', 'ok'); }
+  catch (err) { toast('Refresh failed: ' + err.message, 'err'); }
+});
+
+/* ── Init ── */
+(async () => {
+  try {
+    const me = await api('/api/auth/me');
+    S.me = me.user;
+    if (!S.me || S.me.role !== 'admin') {
+      document.querySelector('.page').innerHTML = '<div style="text-align:center;padding:80px;color:var(--danger);font-size:18px;font-weight:700">&#128683; Admin access required</div>';
+      return;
+    }
+    const badge = document.getElementById('adminBadge');
+    badge.textContent = S.me.email;
+    badge.style.display = 'inline-block';
+    setDefaultDukascopyDates();
+    await loadDatasets(false);
+  } catch (err) {
+    toast('Auth error: ' + err.message, 'err');
+  }
+})();
+</script>
+</body>
+</html>
