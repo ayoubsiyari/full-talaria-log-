@@ -179,8 +179,6 @@ class Chart {
         this.dataVersion = 0; // Increment whenever data changes (used for caching)
         this.candleWidth = 8;
         this.offsetX = 0;
-        /** rAF id for coalesced multi-panel `chartScrolled` during drag/wheel (avoids main-chart thrash). */
-        this._panelScrollSyncRaf = null;
         this.priceZoom = 1;
         this.minPriceZoom = 1e-9;
         this.priceOffset = 0;
@@ -1292,8 +1290,7 @@ class Chart {
                 data: this.data,
                 rawData: this.rawData,
                 symbol: this.currentSymbol,
-                timeframe: this.currentTimeframe,
-                sourceChart: this
+                timeframe: this.currentTimeframe
             }
         }));
     }
@@ -1560,15 +1557,6 @@ class Chart {
             overlay.classList.remove('active');
             setTimeout(() => { if (!overlay.classList.contains('active')) overlay.remove(); }, 400);
         }
-        
-        // Also hide the panel placeholder spinner (from panel-manager.js createPanel)
-        const placeholder = container.querySelector('.panel-loading-indicator');
-        if (placeholder) {
-            placeholder.classList.add('fade-out');
-            setTimeout(() => {
-                placeholder.style.display = 'none';
-            }, 300);
-        }
     }
 
     async loadPanelFileData(fileId) {
@@ -1688,8 +1676,6 @@ class Chart {
                 this.data = this.resampleData(sliced, this.currentTimeframe);
             }
 
-            this._resetTimeZoomAndScrollForTimeframeLoad();
-
             this.updateChartOHLCSymbol(this.currentSymbol);
 
             this.priceZoom = 1;
@@ -1708,13 +1694,10 @@ class Chart {
             this.resize();
 
             const pm = window.panelManager;
-            // Only mirror main scroll when the same instrument is eligible for scroll sync (MNQ vs MES must not copy offsetX).
             const alignScrollToMain = !!(pm && pm.syncSettings
                 && (pm.syncSettings.time || pm.syncSettings.dateRange)
                 && mainChart && mainChart !== this && mainChart.data && mainChart.data.length > 0
-                && this.data && this.data.length > 0
-                && typeof pm._shouldScrollSyncBetweenCharts === 'function'
-                && pm._shouldScrollSyncBetweenCharts(mainChart, this));
+                && this.data && this.data.length > 0);
 
             if (alignScrollToMain) {
                 const sourceSpacing = mainChart.getCandleSpacing
@@ -1736,15 +1719,8 @@ class Chart {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
                 this._chartViewRestored = false;
-                requestAnimationFrame(() => {
-                    if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
-                    this.resize();
-                    this._chartViewRestored = false;
-                    if (!alignScrollToMain) {
-                        this.fitToView();
-                    }
-                    this.render();
-                });
+                this.fitToView();
+                this.render();
             });
             this._hidePanelLoadingOverlay();
 
@@ -7726,37 +7702,10 @@ class Chart {
 	            svgNode.style.height = this.h + 'px';
 	        }
 	        
-	        // PanelManager scroll sync sets offsetX/candleWidth while _suppressPanelScrollSync is true.
-	        // resize() must not re-derive offset from old dimensions here or the main chart jumps wrong
-	        // when the user pans a secondary panel (asymmetric vs panning main).
-	        if (this._suppressPanelScrollSync) {
-	            this.constrainOffset();
-	        } else if (oldW && oldH) {
+	        if (oldW && oldH) {
 	            const deltaW = this.w - oldW;
-	            const m = this.margin || { l: 0, r: 60 };
-	            const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : (this.candleWidth + 2);
-	            if (this.data?.length > 0 && Number.isFinite(spacing) && spacing > 0 && Number.isFinite(this.offsetX)) {
-	                const rightEdgePxOld = oldW - m.r;
-	                const idxAtRight = (rightEdgePxOld - m.l - this.offsetX) / spacing;
-	                const rightEdgePxNew = this.w - m.r;
-	                this.offsetX = Math.round(rightEdgePxNew - m.l - idxAtRight * spacing);
-	            } else if (deltaW !== 0) {
-	                this.offsetX = Math.round(this.offsetX + deltaW * 0.5);
-	            }
+	            this.offsetX = Math.round(this.offsetX + deltaW * 0.5);
 	            this.constrainOffset();
-	        } else if (this._chartViewRestored && this.data?.length > 0) {
-	            const m = this.margin || { l: 0, r: 60 };
-	            const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : (this.candleWidth + 2);
-	            if (Number.isFinite(spacing) && spacing > 0 && Number.isFinite(this.offsetX)) {
-	                const prevW = Number.isFinite(oldW) && oldW > 0 ? oldW : nextW;
-	                const rightEdgePxOld = prevW - m.r;
-	                const idxAtRight = (rightEdgePxOld - m.l - this.offsetX) / spacing;
-	                const rightEdgePxNew = this.w - m.r;
-	                this.offsetX = Math.round(rightEdgePxNew - m.l - idxAtRight * spacing);
-	                this.constrainOffset();
-	            } else {
-	                this.fitToView();
-	            }
 	        } else {
 	            this.fitToView();
 	        }
@@ -7777,29 +7726,6 @@ class Chart {
 	        }
 	    }
     
-    /**
-     * After a timeframe change, old candleWidth + offsetX can leave a few huge bars on the left and an empty grid.
-     */
-    _resetTimeZoomAndScrollForTimeframeLoad() {
-        this.offsetX = 0;
-        this.candleWidth = 8;
-        if (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length) {
-            const widths = this.zoomLevel.allowedWidths;
-            let nearestIdx = 0;
-            let minDiff = Math.abs(this.candleWidth - widths[0]);
-            for (let i = 1; i < widths.length; i++) {
-                const d = Math.abs(this.candleWidth - widths[i]);
-                if (d < minDiff) {
-                    minDiff = d;
-                    nearestIdx = i;
-                }
-            }
-            this.zoomLevel.candleWidthIndex = nearestIdx;
-            this.candleWidth = widths[nearestIdx];
-        }
-        if (this._candleWidthAtCache !== undefined) this._candleWidthAtCache = null;
-    }
-
     /**
      * Fit chart to show latest candles on the right edge
      */
@@ -7867,26 +7793,21 @@ class Chart {
     }
     
     /**
-     * Bar duration (ms) for the active timeframe — used for visible time-range sync across panels.
-     * Prefer the nominal TF step from the selector: the first gap in `data` (e.g. Fri→Mon on daily)
-     * is not a reliable bar length and breaks HTF panel sync / end-of-window timestamps.
+     * Bar duration (ms) from series or current timeframe — used for visible time-range sync across panels.
      */
     inferBarDurationMs() {
-        const tf = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        if (this.data && this.data.length >= 2) {
+            const d = Math.abs(this.data[1].t - this.data[0].t);
+            if (Number.isFinite(d) && d > 0) return d;
+        }
+        const tf = this.currentTimeframe || '1m';
         const tfMap = {
             '1m': 60000, '2m': 120000, '3m': 180000, '4m': 240000, '5m': 300000,
             '10m': 600000, '15m': 900000, '30m': 1800000, '45m': 2700000,
             '1h': 3600000, '2h': 7200000, '4h': 14400000, '6h': 21600000, '12h': 43200000,
             '1d': 86400000, '1w': 604800000, '1mo': 2592000000
         };
-        if (Object.prototype.hasOwnProperty.call(tfMap, tf)) {
-            return tfMap[tf];
-        }
-        if (this.data && this.data.length >= 2) {
-            const d = Math.abs(this.data[1].t - this.data[0].t);
-            if (Number.isFinite(d) && d > 0) return d;
-        }
-        return 60000;
+        return tfMap[tf] || 60000;
     }
 
     /**
@@ -7896,35 +7817,9 @@ class Chart {
         if (!this.data || this.data.length === 0) return;
         // Allow main chart (panel 0) to sync to other panels too
         if (!window.panelManager || window.panelManager.currentLayout === '1') return;
-        const pm = window.panelManager;
         if (this._suppressPanelScrollSync) return;
-        if (pm._isSyncing) return;
-        if (pm._syncingDateRange) return;
-
-        const ss = pm.syncSettings || {};
-        if (!ss.time && !ss.dateRange) return;
-
-        // Resolve panel first; then skip all idx/bounds work when no chart in the layout can time-sync.
-        let sourcePanel = this.panel || null;
-        if (!sourcePanel) {
-            const panels = window.panelManager.getPanels();
-            for (const panel of panels) {
-                if (panel.chartInstance === this) {
-                    sourcePanel = panel;
-                    break;
-                }
-            }
-            // BUGFIX: Removed the fallback that assigned main chart scroll events to panels[0].
-            // This was causing incorrect scroll sync attribution - when the main chart scrolled,
-            // it would be treated as if panels[0] (secondary panel) was scrolling, causing
-            // the main chart to incorrectly sync TO the secondary panel instead of vice versa.
-            // The main chart (window.chart) is not in the panels array, so if we can't find
-            // a matching panel, we should not sync (return early).
-        }
-        if (!sourcePanel) return;
-        if (typeof pm._hasAnyScrollSyncPeerFor === 'function' && !pm._hasAnyScrollSyncPeerFor(sourcePanel, this)) {
-            return;
-        }
+        if (window.panelManager._isSyncing) return;
+        if (window.panelManager._syncingDateRange) return;
 
         // Visible range: use same helpers as UI so timestamps match actual viewport (multi-TF sync).
         const startIndex = typeof this.getVisibleStartIndex === 'function'
@@ -7942,21 +7837,28 @@ class Chart {
         // Right-edge bar index (same geometry as wheel zoom) — used for Time sync discrete steps (range-by-range).
         const m = this.margin || { l: 0, r: 60 };
         const spacing = this.getCandleSpacing ? this.getCandleSpacing() : (this.candleWidth + 2);
-        if (!Number.isFinite(spacing) || spacing <= 0) return;
         const rightEdgePx = this.w - m.r;
         const idxAtRight = (rightEdgePx - m.l - this.offsetX) / spacing;
-        if (typeof pm._scrollIdxFloatBounds === 'function') {
-            const b = pm._scrollIdxFloatBounds(this);
-            if (!Number.isFinite(idxAtRight) || idxAtRight < b.lo - 96 || idxAtRight > b.hi + 96) {
-                // Recover from stale geometry after symbol/TF switches instead of emitting bad sync events.
-                if (typeof this.constrainOffset === 'function') this.constrainOffset();
-                if (typeof this.scheduleRender === 'function') this.scheduleRender();
-                return;
-            }
-        }
         const rightEdgeBarIndex = Math.max(0, Math.min(this.data.length - 1, Math.floor(idxAtRight)));
         const timeSyncEndTimestamp = (this.data[rightEdgeBarIndex]?.t ?? 0) + barMs;
-
+        
+        // Find which panel this chart belongs to
+        let sourcePanel = this.panel || null;
+        if (!sourcePanel && window.panelManager) {
+            const panels = window.panelManager.getPanels();
+            for (const panel of panels) {
+                if (panel.chartInstance === this) {
+                    sourcePanel = panel;
+                    break;
+                }
+            }
+            // If this is main chart (window.chart), use panel 0
+            if (!sourcePanel && this === window.chart && panels.length > 0) {
+                sourcePanel = panels[0];
+            }
+        }
+        
+        if (!sourcePanel) return;
         window.dispatchEvent(new CustomEvent('chartScrolled', {
             detail: {
                 chart: this,
@@ -7972,78 +7874,6 @@ class Chart {
                 candleWidth: this.candleWidth
             }
         }));
-    }
-
-    /** At most one `chartScrolled` per animation frame while panning/zooming (see `dispatchScrollSync`). */
-    _schedulePanelScrollSyncCoalesced() {
-        if (this._panelScrollSyncRaf != null) return;
-        this._panelScrollSyncRaf = requestAnimationFrame(() => {
-            this._panelScrollSyncRaf = null;
-            this.dispatchScrollSync();
-        });
-    }
-
-    /** Cancel pending coalesced sync and emit immediately (e.g. pan end, inertia end). */
-    _flushPanelScrollSyncNow() {
-        if (this._panelScrollSyncRaf != null) {
-            cancelAnimationFrame(this._panelScrollSyncRaf);
-            this._panelScrollSyncRaf = null;
-        }
-        this.dispatchScrollSync();
-    }
-
-    _clearIntervalSyncViewportFlags() {
-        delete this._intervalSyncViewportSourcePanel;
-        delete this._intervalSyncViewportHint;
-    }
-
-    /**
-     * After interval-synced `setTimeframe` on a follower, match wall-clock view to the source snapshot
-     * instead of `fitToView()` (which jumps the main chart when the user only changed another panel).
-     */
-    _applyIntervalSyncViewportIfPending() {
-        const hint = this._intervalSyncViewportHint;
-        const srcPanel = this._intervalSyncViewportSourcePanel;
-        this._clearIntervalSyncViewportFlags();
-
-        if (!hint || !srcPanel || !this.data?.length) {
-            this.fitToView();
-            return;
-        }
-        const pm = window.panelManager;
-        if (!pm || pm.currentLayout === '1') {
-            this.fitToView();
-            return;
-        }
-        const srcChart = srcPanel.chartInstance;
-        if (!srcChart || srcChart === this) {
-            this.fitToView();
-            return;
-        }
-        if (!(hint.startTimestamp > 0) || !(hint.endTimestamp > hint.startTimestamp)) {
-            this.fitToView();
-            return;
-        }
-        
-        // CRITICAL FIX: Only sync viewport if symbols are compatible
-        // When panels have different pairs, viewport sync would break the chart
-        if (typeof pm._shouldScrollSyncBetweenCharts === 'function') {
-            if (!pm._shouldScrollSyncBetweenCharts(srcChart, this)) {
-                console.log(`[VIEWPORT SYNC SKIP] Different symbols: src=${srcChart.currentSymbol}, target=${this.currentSymbol}`);
-                this.fitToView();
-                return;
-            }
-        }
-
-        if (pm.syncSettings.dateRange) {
-            pm.syncScrollByVisibleTimeRange(srcPanel, hint.startTimestamp, hint.endTimestamp);
-            return;
-        }
-        if (pm.syncSettings.time && Number.isFinite(hint.rightEdgeOpenTs) && hint.rightEdgeOpenTs > 0) {
-            pm.syncTimeToClickedTimestamp(srcPanel, hint.rightEdgeOpenTs, 0.85);
-            return;
-        }
-        this.fitToView();
     }
     
     /**
@@ -8556,7 +8386,7 @@ class Chart {
         this.constrainOffset();
         this.boxZoom.active = false;
         this.scheduleRender();
-        this._flushPanelScrollSyncNow();
+        this.dispatchScrollSync();
         
     }
     
@@ -8724,8 +8554,7 @@ class Chart {
 	                            data: this.data,
 	                            rawData: this.rawData,
 	                            symbol: this.currentSymbol,
-	                            timeframe: this.currentTimeframe,
-	                            sourceChart: this
+	                            timeframe: this.currentTimeframe
 	                        }
 	                    }));
 	                } catch (error) {
@@ -10625,10 +10454,7 @@ class Chart {
     setTimeframe(timeframe) {
         const hasData = Array.isArray(this.rawData) && this.rawData.length > 0;
         // Empty rawData is normal during sync/replay races; still refetch when this panel is tied to a server file.
-        if (!hasData && !this.currentFileId) {
-            this._clearIntervalSyncViewportFlags();
-            return;
-        }
+        if (!hasData && !this.currentFileId) return;
 
         if (this.drawingManager && this.drawings && this.drawings.length > 0) {
             this.drawingManager.saveDrawings();
@@ -10643,13 +10469,8 @@ class Chart {
             this.updateChartOHLCSymbol(this.currentSymbol);
         }
 
-        // Trigger interval sync if enabled (skip while panel manager is already fanning out — avoids O(n²) refetch)
-        if (
-            window.panelManager &&
-            window.panelManager.syncSettings &&
-            window.panelManager.syncSettings.interval &&
-            (window.panelManager._syncIntervalDepth || 0) === 0
-        ) {
+        // Trigger interval sync if enabled
+        if (window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.interval) {
             const sourcePanel = this.panel || (window.panelManager.panels || []).find(p => p.chartInstance === this);
             if (sourcePanel) {
                 window.panelManager.syncInterval(sourcePanel, timeframe);
@@ -10657,7 +10478,6 @@ class Chart {
         }
         
         if (this.replaySystem && this.replaySystem.isActive) {
-            this._clearIntervalSyncViewportFlags();
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(timeframe);
             }
@@ -10668,122 +10488,24 @@ class Chart {
             return;
         }
         
-        // Smart timeframe loading: prefer local resampling if rawData has sufficient coverage
-        // This avoids redundant server fetches like FXreplay/TradingView behavior
-        if (this.currentFileId && hasData && this._canResampleLocally(timeframe)) {
-            this._loadTimeframeLocal(timeframe);
-            return;
-        }
-        
-        // Fallback to server fetch for fresh viewport-optimized data
+        // Always fetch from server — viewport-based, like TradingView
         if (this.currentFileId) {
             this._loadTimeframeFromServer(timeframe);
             return;
         }
         
         // Fallback for non-file data (small local datasets)
-        if (!hasData) {
-            this._clearIntervalSyncViewportFlags();
-            return;
-        }
+        if (!hasData) return;
         this.data = this.resampleData(this.rawData, timeframe);
         if (typeof this.recalculateIndicators === 'function') this.recalculateIndicators();
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
             this.compareOverlay.refreshForTimeframe(timeframe);
         }
         this._chartViewRestored = false;
-        this._resetTimeZoomAndScrollForTimeframeLoad();
         this.resize();
-        if (this._intervalSyncViewportHint && this._intervalSyncViewportSourcePanel) {
-            this._applyIntervalSyncViewportIfPending();
-        } else {
-            this.fitToView();
-        }
+        this.fitToView();
         this.scheduleRender();
         this._fireChartDataLoaded();
-    }
-    
-    /**
-     * Check if we can resample locally from existing rawData
-     * instead of hitting the server. Criteria:
-     * - rawData has >1000 candles (sufficient for resampling quality)
-     * - Current timeframe is >= rawData's implied granularity
-     */
-    _canResampleLocally(targetTimeframe) {
-        if (!Array.isArray(this.rawData) || this.rawData.length < 1000) return false;
-        
-        const targetMs = this.parseTimeframe(targetTimeframe);
-        if (!Number.isFinite(targetMs) || targetMs <= 0) return false;
-        
-        // Check if rawData has reasonable time coverage
-        const firstTs = Number(this.rawData[0]?.t);
-        const lastTs = Number(this.rawData[this.rawData.length - 1]?.t);
-        if (!Number.isFinite(firstTs) || !Number.isFinite(lastTs)) return false;
-        
-        const coverageMs = lastTs - firstTs;
-        const minCoverageMs = targetMs * 500; // At least 500 candles worth of data
-        
-        return coverageMs >= minCoverageMs;
-    }
-    
-    /**
-     * Load timeframe by resampling from existing rawData (fast local path)
-     */
-    _loadTimeframeLocal(timeframe) {
-        const loadId = ++this._timeframeLoadSeq;
-        
-        try {
-            if (this.showLoader) this.showLoader('Resampling...');
-            
-            // Preserve current viewport center timestamp for seamless transition
-            let centerTs = null;
-            if (this.data && this.data.length > 0) {
-                const centerIndex = Math.floor(this.data.length / 2);
-                centerTs = this.data[centerIndex]?.t;
-            }
-            
-            // Resample from rawData
-            this.data = this.resampleData(this.rawData, timeframe);
-            this.currentTimeframe = timeframe;
-            
-            // Recalculate indicators on new timeframe data
-            if (typeof this.recalculateIndicators === 'function') {
-                try { this.recalculateIndicators(); } catch (e) {}
-            }
-            
-            // Update overlays
-            if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
-                this.compareOverlay.refreshForTimeframe(timeframe);
-            }
-            
-            // Re-center view on same timestamp if possible
-            if (centerTs && this.data && this.data.length > 0) {
-                const newCenterIndex = this.data.findIndex(c => c.t >= centerTs);
-                if (newCenterIndex >= 0) {
-                    const spacing = this.getCandleSpacing
-                        ? this.getCandleSpacing()
-                        : (this.candleWidth + 2);
-                    this.offsetX = -(newCenterIndex * spacing) + (this.w || 800) / 2;
-                    if (this.constrainOffset) this.constrainOffset();
-                }
-            }
-            
-            this._chartViewRestored = false;
-            this._resetTimeZoomAndScrollForTimeframeLoad();
-            
-            if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
-            this.resize();
-            this.render();
-            
-            if (this.hideLoader) this.hideLoader();
-            this._fireChartDataLoaded();
-            
-            console.log(`⏱️ Timeframe ${timeframe} loaded locally from ${this.rawData.length} raw candles`);
-            
-        } catch (error) {
-            console.warn('Local resampling failed, falling back to server:', error);
-            this._loadTimeframeFromServer(timeframe);
-        }
     }
     
     /**
@@ -10798,10 +10520,7 @@ class Chart {
             const session = this.backtestingSession || {};
             const result = await this._fetchSmartWindow(this.currentFileId, timeframe, session);
 
-            if (loadId !== this._timeframeLoadSeq) {
-                this._clearIntervalSyncViewportFlags();
-                return;
-            }
+            if (loadId !== this._timeframeLoadSeq) return;
             if (!this._smartResponseHasPayload(result)) throw new Error('No data');
 
             this.rawData = [];
@@ -10820,33 +10539,21 @@ class Chart {
             this.resize();
 
             this._ingestSmartWindowResult(result, {});
-            this._resetTimeZoomAndScrollForTimeframeLoad();
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(timeframe);
             }
             if (this.hideLoader) this.hideLoader();
 
-            // Two frames: layout/canvas width can be 0 on first paint after TF swap; fitToView would no-op and leave offsetX at 0.
             requestAnimationFrame(() => {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
                 this._chartViewRestored = false;
-                requestAnimationFrame(() => {
-                    if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
-                    this.resize();
-                    this._chartViewRestored = false;
-                    if (this._intervalSyncViewportHint && this._intervalSyncViewportSourcePanel) {
-                        this._applyIntervalSyncViewportIfPending();
-                    } else {
-                        this.fitToView();
-                    }
-                    this.render();
-                });
+                this.fitToView();
+                this.render();
             });
 
         } catch (error) {
             if (loadId === this._timeframeLoadSeq) {
-                this._clearIntervalSyncViewportFlags();
                 console.error('❌ Timeframe change failed:', error);
                 if (this.hideLoader) this.hideLoader();
             }
@@ -10862,8 +10569,7 @@ class Chart {
                 data: this.data,
                 rawData: this.rawData,
                 symbol: this.currentSymbol,
-                timeframe: this.currentTimeframe,
-                sourceChart: this
+                timeframe: this.currentTimeframe
             }
         }));
     }
@@ -13917,67 +13623,6 @@ class Chart {
         const endIdx = Math.ceil(this.pixelToDataIndex(this.w));
         return Math.min(this.data.length - 1, endIdx);
     }
-
-    /**
-     * @returns {boolean} true if the pointer is over a different multi-panel surface than `this` (so we must not apply document-level "outside canvas" pan for a stale `drag` on this chart).
-     */
-    _pointerEventOverAnotherPanelSurface(clientX, clientY) {
-        if (typeof document.elementsFromPoint !== 'function') return false;
-        const pm = typeof window !== 'undefined' ? window.panelManager : null;
-        if (!pm || !Array.isArray(pm.panels) || pm.panels.length < 2) return false;
-        let stack;
-        try {
-            stack = document.elementsFromPoint(clientX, clientY);
-        } catch (_e) {
-            return false;
-        }
-        if (!stack || !stack.length) return false;
-        for (const el of stack) {
-            for (const p of pm.panels) {
-                const c = p && p.chartInstance;
-                if (!c || c === this) continue;
-                if (p.element && p.element.contains(el)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Multi-panel: if the user left one chart with the button down (see canvas mouseleave),
-     * the first chart can keep `drag.active` so document-level "pan while pointer outside
-     * canvas" continues. A later mousedown on a different panel would start a second drag
-     * without clearing the first — then both instances pan from the same pointer.
-     * End pointer-drag state on all other chart surfaces so only the chart under the cursor
-     * is driven by the gesture.
-     * @param {Chart} keep - chart that is about to start a new interaction
-     */
-    static _clearGlobalDragStateExcept(keep) {
-        const endDrag = (c) => {
-            if (!c || c === keep) return;
-            if (c.drag) {
-                c.drag.active = false;
-                c.drag.type = null;
-                c.drag.separatePanelSlot = null;
-            }
-            if (c.movement) c.movement.isDragging = false;
-            if (c.inertia) c.inertia.active = false;
-            if (c.boxZoom) c.boxZoom.active = false;
-            c._rightMouseDragged = false;
-            c.isZooming = false;
-        };
-        try {
-            if (typeof window === 'undefined') return;
-            if (window.chart) endDrag(window.chart);
-            const pm = window.panelManager;
-            if (pm && Array.isArray(pm.panels)) {
-                pm.panels.forEach((p) => {
-                    if (p && p.chartInstance) endDrag(p.chartInstance);
-                });
-            }
-        } catch (_e) { /* ignore */ }
-    }
     
     // First redrawDrawings() implementation removed as it was a duplicate
 
@@ -14120,7 +13765,7 @@ class Chart {
                 requestAnimationFrame(runInertia);
             } else {
                 this.inertia.active = false;
-                this._flushPanelScrollSyncNow();
+                this.dispatchScrollSync();
             }
         };
         
@@ -14226,7 +13871,7 @@ class Chart {
                 }
 
                 this.scheduleRender();
-                this._schedulePanelScrollSyncCoalesced();
+                this.dispatchScrollSync();
                 return;
             }
 
@@ -14279,7 +13924,7 @@ class Chart {
 
                 this.constrainOffset();
                 this.scheduleRender();
-                this._schedulePanelScrollSyncCoalesced();
+                this.dispatchScrollSync();
                 return;
             }
 
@@ -14301,9 +13946,6 @@ class Chart {
         this.canvas.addEventListener('mousedown', e => {
             if (this.tool) return;
             if (this.drawingManager && this.drawingManager.currentTool) return;
-
-            Chart._clearGlobalDragStateExcept(this);
-            Chart._activePointerChart = this;
             
             const rect = this.canvas.getBoundingClientRect();
             const mx = e.clientX - rect.left;
@@ -14491,7 +14133,7 @@ class Chart {
                     
                     this.constrainOffset();
                     this.scheduleRender();
-                    this._schedulePanelScrollSyncCoalesced();
+                    this.dispatchScrollSync();
                     
                     // Update follow button visibility after panning
                     if (this.replaySystem && this.replaySystem.isActive) {
@@ -14528,7 +14170,7 @@ class Chart {
                     
                     this.constrainOffset();
                     this.scheduleRender();
-                    this._schedulePanelScrollSyncCoalesced();
+                    this.dispatchScrollSync();
                 }
                 // ─── Price Axis Drag Zoom ───
                 else if (this.drag.type === 'separatePanelAxis' && this.drag.separatePanelSlot &&
@@ -14696,7 +14338,7 @@ class Chart {
                 // Real pan → sync scroll to other panels. Tiny movement (click) → skip so Time-sync
                 // click handler can align by bar time without fighting right-edge sync.
                 if (!isChartClick) {
-                    this._flushPanelScrollSyncNow();
+                    this.dispatchScrollSync();
                 }
                 this.scheduleChartViewSave();
 
@@ -14755,9 +14397,9 @@ class Chart {
                                                 break;
                                             }
                                         }
-                                        // BUGFIX: Removed the fallback that assigned main chart click events to panels[0].
-                                        // This was causing the same incorrect attribution issue as in dispatchScrollSync.
-                                        // The main chart should only sync when it has a valid panel reference.
+                                        if (!sourcePanel && this === window.chart && panels.length > 0) {
+                                            sourcePanel = panels[0];
+                                        }
                                     }
                                     if (sourcePanel) {
                                         pm.syncTimeToClickedTimestamp(sourcePanel, ts, screenFrac);
@@ -14785,10 +14427,6 @@ class Chart {
             this.isZooming = false;
             this._rightMouseDragged = false;
             
-            if (Chart._activePointerChart === this) {
-                Chart._activePointerChart = null;
-            }
-            
             if (!this.tool) {
                 this.canvas.style.cursor = this.getCurrentCursorStyle();
                 if (this.svg && this.svg.node()) {
@@ -14805,15 +14443,10 @@ class Chart {
         
         this.canvas.addEventListener('mouseleave', (e) => {
             const hasPressedButton = !!(e && typeof e.buttons === 'number' && e.buttons !== 0);
-            const _pmMl = typeof window !== 'undefined' ? window.panelManager : null;
-            const _multiLayout = _pmMl && _pmMl.currentLayout && String(_pmMl.currentLayout) !== '1';
 
-            // Multi-panel (c799887-style): always end the gesture when the pointer leaves this
-            // surface so document mousemove cannot keep panning a sibling chart. Single-panel
-            // keeps TV-like continuation when the button is still down.
-            if (!_multiLayout
-                && this.drag.active
-                && hasPressedButton) {
+            // TradingView-like behavior: if user is still holding mouse button while
+            // leaving the chart, keep drag state alive so re-entering continues the drag.
+            if (this.drag.active && hasPressedButton) {
                 this.hideTooltip();
                 if (typeof this.hideEconomicCalendarTooltip === 'function') this.hideEconomicCalendarTooltip();
                 return;
@@ -14823,9 +14456,6 @@ class Chart {
             this.drag.type = null;
             this.boxZoom.active = false;
             this.inertia.active = false;
-            if (Chart._activePointerChart === this) {
-                Chart._activePointerChart = null;
-            }
             const dm = this.drawingManager;
             if (dm && (dm.isResizing || dm.isCustomHandleDrag)) {
                 this.canvas.style.cursor = 'ew-resize';
@@ -14866,13 +14496,8 @@ class Chart {
                 }
             }
 
-            // Continue axis/pan drags when the pointer is outside the canvas (single-panel only).
-            // c799887 had no document-level outside continuation; with multiple Chart instances each
-            // listening on document, that path caused the wrong panel to pan on HTF. Multi-panel
-            // relies on canvas/bubble mousemove + mouseleave to end the gesture.
-            const _pmDoc = typeof window !== 'undefined' ? window.panelManager : null;
-            const _multiPanelDoc = _pmDoc && _pmDoc.currentLayout && String(_pmDoc.currentLayout) !== '1';
-            if (!_multiPanelDoc && this.drag && this.drag.active && this.canvas) {
+            // Continue axis/pan drags even when mouse is outside the canvas
+            if (this.drag && this.drag.active && this.canvas) {
                 const rect = this.canvas.getBoundingClientRect();
                 const mx = e.clientX - rect.left;
                 const my = e.clientY - rect.top;
@@ -14913,7 +14538,7 @@ class Chart {
                         this.offsetX = rightEdge - m.l - lastVisibleIdx * newSpacing;
                         this.constrainOffset();
                         this.scheduleRender();
-                        this._schedulePanelScrollSyncCoalesced();
+                        this.dispatchScrollSync();
                     } else if (this.drag.type === 'pan') {
                         let effectiveDx = this.timeScale.locked ? 0 : dx;
                         let effectiveDy = this.priceScale.locked ? 0 : dy;
@@ -14927,7 +14552,7 @@ class Chart {
                         }
                         this.constrainOffset();
                         this.scheduleRender();
-                        this._schedulePanelScrollSyncCoalesced();
+                        this.dispatchScrollSync();
                     }
 
                     this.drag.lastX = e.clientX;
@@ -15009,7 +14634,7 @@ class Chart {
                 this.jumpToLatest();
 
 
-                this._flushPanelScrollSyncNow();
+                this.dispatchScrollSync();
             }
         });
 
@@ -16631,6 +16256,21 @@ class Chart {
     }
 
     updateCrosshair(e) {
+        // Auto-fix stale dimensions: compare the parent wrapper size (which CSS
+        // already expanded) against the canvas/chart internal w/h.  When they
+        // diverge a layout change happened and resize() hasn't caught up yet.
+        const _ctrEl = this.canvas.parentElement;
+        if (_ctrEl) {
+            const _cR = _ctrEl.getBoundingClientRect();
+            const _cW = Math.floor(_cR.width || 0);
+            const _cH = Math.floor(_cR.height || 0);
+            if (_cW > 2 && _cH > 2 &&
+                (Math.abs(_cW - this.w) > 4 || Math.abs(_cH - this.h) > 4)) {
+                if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
+                if (typeof this.resize === 'function') this.resize();
+            }
+        }
+
         const rect = this.canvas.getBoundingClientRect();
         const x = e.clientX - rect.left, y = e.clientY - rect.top;
         const m = this.margin;
@@ -16648,22 +16288,6 @@ class Chart {
                 this.broadcastCrosshairSync(null, null);
             }
             return;
-        }
-
-        // Auto-fix stale dimensions only when the pointer is over THIS chart's plot.
-        // Every Chart registers document capture mousemove → updateCrosshair; running resize()
-        // while the mouse is over another panel was resizing the wrong chart, nudging offsetX
-        // and making drawings look drifted on the untouched panel.
-        const _ctrEl = this.canvas.parentElement;
-        if (_ctrEl) {
-            const _cR = _ctrEl.getBoundingClientRect();
-            const _cW = Math.floor(_cR.width || 0);
-            const _cH = Math.floor(_cR.height || 0);
-            if (_cW > 2 && _cH > 2 &&
-                (Math.abs(_cW - this.w) > 4 || Math.abs(_cH - this.h) > 4)) {
-                if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
-                if (typeof this.resize === 'function') this.resize();
-            }
         }
         
         // Get crosshair elements - for panels, find within the panel container

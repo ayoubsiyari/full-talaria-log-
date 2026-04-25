@@ -23,7 +23,7 @@ const PANEL_CHART_APPEARANCE_KEYS = [
     'symbolColor', 'prevDayColor',
     'settingsPanelAccentColor', 'settingsPanelSecondaryColor', 'settingsPanelTextColor',
     'settingsPanelBgColor', 'settingsPanelSidebarBgColor',
-    'activeFullTemplate', 'activeChartOnlyTemplate'
+    'activeFullTemplate', 'activeChartOnlyTemplate', 'activePanelOnlyTemplate'
 ];
 
 class PanelManager {
@@ -43,20 +43,6 @@ class PanelManager {
 
         /** True while applying date-range sync so charts don't re-dispatch scroll storms */
         this._syncingDateRange = false;
-
-        /** Debounced `chartScrolled` → `syncScrollByVisibleTimeRange` (avoids candleWidth thrash while panning). */
-        this._dateRangeScrollSyncTimer = null;
-        this._dateRangeScrollPending = null;
-
-        /** True while syncInterval() fans out setTimeframe — chart.js checks this to avoid re-fan. */
-        this._syncingInterval = false;
-        /** Re-entrancy guard: only outermost syncInterval runs body (see chart.js setTimeframe). */
-        this._syncIntervalDepth = 0;
-
-        /** Window chartScrolled listener ref — removed before re-registering (setupEventListeners). */
-        this._scrollListenerRef = null;
-
-        this._isSyncing = false;
 
         /** Per-target-panel last bar index so each follower only jumps when ITS own right-edge bar changes. */
         this._timeSyncLastTargetBar = {};
@@ -123,62 +109,28 @@ class PanelManager {
      * Setup event listeners for panel synchronization
      */
     setupEventListeners() {
-        if (this._scrollListenerRef) {
-            window.removeEventListener('chartScrolled', this._scrollListenerRef);
-            this._scrollListenerRef = null;
-        }
-        this._scrollListenerRef = (e) => {
+        window.addEventListener('chartScrolled', (e) => {
             if (this._isSyncing) return;
-            const ss = this.syncSettings || {};
-            if (!ss.time && !ss.dateRange) return;
-
             const d = e.detail || {};
             const { panel, startTimestamp, endTimestamp } = d;
             if (!panel) return;
-
-            const srcChart = panel.chartInstance;
-            if (!srcChart) return;
-            
-            // EXTRA SAFETY: Skip scroll sync entirely when symbols differ across panels
-            // This prevents cross-pair coupling that breaks chart views
-            if (!this._hasAnyScrollSyncPeerFor(panel, srcChart)) return;
-            
-            // Double-check: if source panel has different symbol than any other panel, disable sync
-            const srcSym = this._normalizeSymbolForScrollSync(srcChart.currentSymbol);
-            const hasDifferentSymbolPeer = this.panels.some(p => {
-                if (!p || p.index === panel.index) return false;
-                const pc = p.chartInstance;
-                if (!pc) return false;
-                const tgtSym = this._normalizeSymbolForScrollSync(pc.currentSymbol);
-                return srcSym && tgtSym && srcSym !== tgtSym;
-            });
-            if (hasDifferentSymbolPeer) return;
 
             // Date Range: continuous full-window sync (scroll + zoom locked).
             if (this.syncSettings.dateRange
                 && Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
                 && startTimestamp > 0 && endTimestamp > startTimestamp) {
-                this._dateRangeScrollPending = { panel, startTimestamp, endTimestamp };
-                if (this._dateRangeScrollSyncTimer != null) {
-                    clearTimeout(this._dateRangeScrollSyncTimer);
-                }
-                const DEBOUNCE_MS = 120;
-                this._dateRangeScrollSyncTimer = setTimeout(() => {
-                    this._dateRangeScrollSyncTimer = null;
-                    const p = this._dateRangeScrollPending;
-                    this._dateRangeScrollPending = null;
-                    if (!p || !this.syncSettings.dateRange) return;
-                    this.syncScrollByVisibleTimeRange(p.panel, p.startTimestamp, p.endTimestamp);
-                }, DEBOUNCE_MS);
-                return;
+                this.syncScrollByVisibleTimeRange(panel, startTimestamp, endTimestamp);
             }
-            // Time: same bar step → continuous geometry every frame; mixed TF → discrete right-edge jumps.
-            if (this.syncSettings.time
+            // Time: discrete range-by-range sync. Each TARGET panel jumps only when
+            // the bar IT would show at its right edge changes — so a 5m target jumps
+            // once every 5 min of scrolling, a 1m target jumps once per minute.
+            else if (this.syncSettings.time
                 && Number.isFinite(endTimestamp) && endTimestamp > 0) {
-                this.syncTimeScrollFromScrolledEvent(panel, d);
+                const ts = Number.isFinite(d.timeSyncEndTimestamp) && d.timeSyncEndTimestamp > 0
+                    ? d.timeSyncEndTimestamp : endTimestamp;
+                this._discreteTimeSyncToRightEdge(panel, ts);
             }
-        };
-        window.addEventListener('chartScrolled', this._scrollListenerRef);
+        });
     }
     
     /**
@@ -331,24 +283,16 @@ class PanelManager {
                     <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="crosshair-sync-toggle" checked></label>
                 </div>
                 <div class="sync-row">
-                    <div class="sync-label"><span>Time</span><span class="sync-hint">Aligns panels that share the same symbol/file.</span></div>
+                    <div class="sync-label"><span>Time</span></div>
                     <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="time-sync-toggle" checked></label>
                 </div>
                 <div class="sync-row">
-                    <div class="sync-label"><span>Date range</span><span class="sync-hint">Locks visible time span and zoom across panels with the same symbol/file while dragging.</span></div>
+                    <div class="sync-label"><span>Date range</span></div>
                     <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="daterange-sync-toggle"></label>
                 </div>
-                <div class="sync-row">
+                <div class="sync-row sync-row-border">
                     <div class="sync-label"><span>Drawings</span></div>
                     <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="drawings-sync-toggle"></label>
-                </div>
-                <div class="sync-row">
-                    <div class="sync-label"><span>Indicators</span><span class="sync-hint">Applies same indicators to all panels.</span></div>
-                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="indicators-sync-toggle"></label>
-                </div>
-                <div class="sync-row sync-row-border">
-                    <div class="sync-label"><span>Chart type</span><span class="sync-hint">Applies same chart style to all panels.</span></div>
-                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="charttype-sync-toggle"></label>
                 </div>
             </div>
         `;
@@ -428,18 +372,6 @@ class PanelManager {
             }
             .sync-toggle input[type="checkbox"] {
                 cursor: pointer;
-            }
-            .layout-dropdown .sync-hint {
-                display: block;
-                margin-top: 2px;
-                font-size: 10px;
-                font-weight: 400;
-                color: rgba(255, 255, 255, 0.38);
-                line-height: 1.25;
-                max-width: 200px;
-            }
-            body.light-mode .layout-dropdown .sync-hint {
-                color: rgba(0, 0, 0, 0.45);
             }
         `;
         document.head.appendChild(style);
@@ -598,14 +530,6 @@ class PanelManager {
                 this.syncSettings.dateRange = e.target.checked;
                 this.saveSyncSettings();
 
-                if (!e.target.checked) {
-                    if (this._dateRangeScrollSyncTimer != null) {
-                        clearTimeout(this._dateRangeScrollSyncTimer);
-                        this._dateRangeScrollSyncTimer = null;
-                    }
-                    this._dateRangeScrollPending = null;
-                }
-
                 if (e.target.checked && this.panels.length > 1) {
                     const selectedPanel = this.panels[this.selectedPanelIndex];
                     if (selectedPanel?.chartInstance?.data?.length) {
@@ -683,86 +607,10 @@ class PanelManager {
     }
     
     /**
-     * Normalize symbol for scroll-sync comparison (EUR/USD vs EURUSD).
-     */
-    _normalizeSymbolForScrollSync(s) {
-        if (s == null) return '';
-        return String(s).replace(/[/\s\-_]/g, '').toUpperCase();
-    }
-
-    /**
-     * Time / date-range scroll sync only makes sense for the same instrument; otherwise
-     * wall-clock alignment rewrites another pair's zoom/scroll and breaks panning.
-     */
-    _shouldScrollSyncBetweenCharts(sourceChart, targetChart) {
-        if (!sourceChart || !targetChart) return false;
-        if (sourceChart === targetChart) return true;
-        const normA = this._normalizeSymbolForScrollSync(sourceChart.currentSymbol);
-        const normB = this._normalizeSymbolForScrollSync(targetChart.currentSymbol);
-        const fidA = sourceChart.currentFileId;
-        const fidB = targetChart.currentFileId;
-        // DEBUG: Log sync check for troubleshooting different pair issues
-        if (normA && normB && normA !== normB) {
-            console.log(`[SYNC BLOCKED] Different symbols: ${normA} vs ${normB}`);
-            return false;
-        }
-        if (fidA != null && fidB != null && String(fidA) !== String(fidB)) {
-            console.log(`[SYNC BLOCKED] Different fileIds: ${fidA} vs ${fidB}`);
-            return false;
-        }
-
-        const hasA = fidA != null && String(fidA).trim() !== '';
-        const hasB = fidB != null && String(fidB).trim() !== '';
-        if (hasA && hasB) {
-            if (String(fidA) !== String(fidB)) return false;
-            // Same file id: only scroll-sync when both symbols are unknown or both match.
-            // One side with a symbol and the other empty can be a different market on a shared session id.
-            if (normA && normB) return normA === normB;
-            if (!normA && !normB) return true;
-            return false;
-        }
-        // If only one side has a concrete file-id, treat them as different instruments
-        // and never sync scroll (prevents cross-pair drag coupling after symbol switches).
-        if (hasA !== hasB) return false;
-
-        // BUGFIX: If either chart lacks proper identification (no symbol, no fileId),
-        // don't sync. This prevents panels with different pairs from syncing when
-        // one panel hasn't fully loaded its symbol/fileId yet (e.g., after timeframe change).
-        // Only sync when we can positively confirm they're the same instrument.
-        const idA = normA || hasA;
-        const idB = normB || hasB;
-        if (!idA || !idB) {
-            console.log(`[SYNC BLOCKED] Missing identification: normA=${normA}, hasA=${hasA}, normB=${normB}, hasB=${hasB}`);
-            return false;
-        }
-
-        const result = (normA && normB) ? normA === normB : false;
-        console.log(`[SYNC ${result ? 'ALLOWED' : 'BLOCKED'}] symbols: ${normA} vs ${normB}, fileIds: ${fidA} vs ${fidB}`);
-        return result;
-    }
-
-    /** True if some other panel's chart should receive scroll sync from `sourceChart`. */
-    _hasAnyScrollSyncPeerFor(sourcePanel, sourceChart) {
-        if (!this.panels || !sourceChart) return false;
-        return this.panels.some(p => {
-            if (!p || p.index === sourcePanel.index) return false;
-            const c = p.chartInstance;
-            return !!(c && this._shouldScrollSyncBetweenCharts(sourceChart, c));
-        });
-    }
-
-    /**
      * Sync symbol across all panels
-     * TradingView-style: all panels switch to the same symbol with smart prefetching
      */
     syncSymbol(sourcePanel, symbol, fileId) {
         if (!this.syncSettings.symbol || this.currentLayout === '1') return;
-        
-        // Prefetch data for panels before they request it (FXreplay-style optimization)
-        this._prefetchForSymbolSync(fileId, sourcePanel);
-        
-        // Collect panels that need updating (for batch loading)
-        const panelsToUpdate = [];
         
         this.panels.forEach(panel => {
             if (panel.index === sourcePanel.index) return;
@@ -773,73 +621,8 @@ class PanelManager {
             if (panel.isMainChart && window.chart && typeof window.chart.loadFileData === 'function') {
                 window.chart.loadFileData(fileId);
             } else if (typeof pc.loadPanelFileData === 'function') {
-                // Show loading state on panel
-                if (panel.placeholder) {
-                    panel.placeholder.style.display = 'flex';
-                    panel.placeholder.classList.remove('fade-out');
-                    panel.placeholder.innerHTML = `
-                        <div class="panel-spinner" style="
-                            width: 20px;
-                            height: 20px;
-                            border: 2px solid #2a2e39;
-                            border-top-color: #5b8cff;
-                            border-radius: 50%;
-                            animation: panel-spin 1s linear infinite;
-                        "></div>
-                        <span style="margin-top: 6px; font-size: 12px;">${symbol}</span>
-                    `;
-                }
-                panelsToUpdate.push(panel);
+                pc.loadPanelFileData(fileId);
             }
-        });
-        
-        // Stagger panel updates to avoid server overload (50ms intervals)
-        panelsToUpdate.forEach((panel, idx) => {
-            setTimeout(() => {
-                if (panel.chartInstance && typeof panel.chartInstance.loadPanelFileData === 'function') {
-                    panel.chartInstance.loadPanelFileData(fileId);
-                }
-            }, idx * 50);
-        });
-    }
-    
-    /**
-     * Prefetch data for panels during symbol sync (FXreplay-style optimization)
-     */
-    _prefetchForSymbolSync(fileId, sourcePanel) {
-        const mainChart = window.chart;
-        if (!mainChart || !mainChart._smartPrefetchCache) return;
-        
-        // Build params for prefetch
-        const session = mainChart.backtestingSession || {};
-        const timeframe = '1m'; // Prefetch 1m raw data for resampling
-        const params = mainChart._buildSmartWindowParams(fileId, timeframe, session);
-        const key = mainChart._smartCacheKeyFromParams(fileId, params);
-        
-        // Already cached? Skip prefetch
-        if (mainChart._smartPrefetchCache.has(key)) return;
-        
-        // Prefetch in background
-        const ric = window.requestIdleCallback || ((cb) => setTimeout(cb, 100));
-        ric(() => {
-            fetch(`${mainChart.apiUrl}/file/${fileId}/smart?${params.toString()}`)
-                .then(r => r.ok ? r.json() : null)
-                .then(data => {
-                    if (!data) return;
-                    const ok = (Array.isArray(data.candles) && data.candles.length) || data.data;
-                    if (!ok) return;
-                    mainChart._smartPrefetchCache.set(key, { 
-                        at: Date.now(), 
-                        payload: data, 
-                        fileId: String(fileId) 
-                    });
-                    // Keep cache size bounded
-                    while (mainChart._smartPrefetchCache.size > 6) {
-                        const first = mainChart._smartPrefetchCache.keys().next().value;
-                        mainChart._smartPrefetchCache.delete(first);
-                    }
-                })
-                .catch(() => {});
         });
     }
     
@@ -848,52 +631,20 @@ class PanelManager {
      */
     syncInterval(sourcePanel, timeframe) {
         if (!this.syncSettings.interval || this.currentLayout === '1') return;
-        if ((this._syncIntervalDepth || 0) > 0) return;
-
-        // Bar grid changes — stale right-edge indices break continuous time sync after TF jumps.
-        this._timeSyncLastTargetBar = {};
-
-        /** Wall-clock window on the source chart before followers refetch — avoids blind `fitToView()` on main. */
-        let viewportHint = null;
-        const srcChart = sourcePanel?.chartInstance;
-        if (srcChart?.data?.length && (this.syncSettings.dateRange || this.syncSettings.time)) {
-            const si = typeof srcChart.getVisibleStartIndex === 'function' ? srcChart.getVisibleStartIndex() : 0;
-            const ei = typeof srcChart.getVisibleEndIndex === 'function' ? srcChart.getVisibleEndIndex() : srcChart.data.length - 1;
-            const i0 = Math.max(0, Math.min(si, srcChart.data.length - 1));
-            const i1 = Math.max(0, Math.min(ei, srcChart.data.length - 1));
-            const startTimestamp = srcChart.data[i0]?.t ?? 0;
-            const barMs = typeof srcChart.inferBarDurationMs === 'function' ? srcChart.inferBarDurationMs() : 60000;
-            const endTimestamp = (srcChart.data[i1]?.t ?? 0) + barMs;
-            const rightEdgeOpenTs = srcChart.data[i1]?.t ?? 0;
-            if (startTimestamp > 0 && endTimestamp > startTimestamp) {
-                viewportHint = { startTimestamp, endTimestamp, rightEdgeOpenTs };
+        
+        this.panels.forEach(panel => {
+            if (panel.index === sourcePanel.index) return;
+            const pc = panel.chartInstance;
+            if (!pc) return;
+            panel.timeframe = timeframe;
+            pc.currentTimeframe = timeframe;
+            if (typeof pc.setTimeframe === 'function') {
+                pc.setTimeframe(timeframe);
             }
-        }
-
-        this._syncIntervalDepth = 1;
-        this._syncingInterval = true;
-        try {
-            this.panels.forEach(panel => {
-                if (panel.index === sourcePanel.index) return;
-                const pc = panel.chartInstance;
-                if (!pc) return;
-                panel.timeframe = timeframe;
-                pc.currentTimeframe = timeframe;
-                if (viewportHint && this._shouldScrollSyncBetweenCharts(srcChart, pc)) {
-                    pc._intervalSyncViewportSourcePanel = sourcePanel;
-                    pc._intervalSyncViewportHint = viewportHint;
-                }
-                if (typeof pc.setTimeframe === 'function') {
-                    pc.setTimeframe(timeframe);
-                }
-                if (typeof pc.updateChartOHLCSymbol === 'function') {
-                    pc.updateChartOHLCSymbol(pc.currentSymbol);
-                }
-            });
-        } finally {
-            this._syncIntervalDepth = 0;
-            this._syncingInterval = false;
-        }
+            if (typeof pc.updateChartOHLCSymbol === 'function') {
+                pc.updateChartOHLCSymbol(pc.currentSymbol);
+            }
+        });
     }
     
     /**
@@ -908,9 +659,7 @@ class PanelManager {
             if ((data[mid].t || 0) < ts) lo = mid + 1;
             else hi = mid;
         }
-        // lo = first index with data[lo].t >= ts. Prefer lo-1 only when strictly closer (exact match keeps lo).
-        if (lo > 0 &&
-            Math.abs((data[lo - 1].t || 0) - ts) < Math.abs((data[lo].t || 0) - ts)) {
+        if (lo > 0 && Math.abs((data[lo - 1].t || 0) - ts) < Math.abs((data[lo].t || 0) - ts)) {
             return lo - 1;
         }
         return lo;
@@ -931,28 +680,6 @@ class PanelManager {
                 if (panel.index === sourcePanel.index) return;
                 const chart = panel.chartInstance;
                 if (!chart?.data?.length) return;
-                const srcPc = sourcePanel && sourcePanel.chartInstance;
-                // Extra safety: never sync to main chart if it's a different pair
-                if (panel.isMainChart && chart === window.chart) {
-                    const srcSym = this._normalizeSymbolForScrollSync(srcPc?.currentSymbol);
-                    const mainSym = this._normalizeSymbolForScrollSync(chart.currentSymbol);
-                    const srcFile = srcPc?.currentFileId;
-                    const mainFile = chart.currentFileId;
-                    const diffSym = srcSym && mainSym && srcSym !== mainSym;
-                    const diffFile = srcFile != null && mainFile != null && String(srcFile) !== String(mainFile);
-                    if (diffSym || diffFile) {
-                        console.log(`[TIME SYNC SKIP] Skipping main chart (different pair): src=${srcSym}/${srcFile}, main=${mainSym}/${mainFile}`);
-                        return;
-                    }
-                }
-                if (!this._shouldScrollSyncBetweenCharts(srcPc, chart)) return;
-
-                // CRITICAL FIX: Re-check symbol compatibility before modifying offset
-                const srcSymPos = this._normalizeSymbolForScrollSync(srcPc?.currentSymbol);
-                const tgtSymPos = this._normalizeSymbolForScrollSync(chart.currentSymbol);
-                if (srcSymPos && tgtSymPos && srcSymPos !== tgtSymPos) {
-                    return; // Different symbols - don't sync
-                }
 
                 chart._suppressPanelScrollSync = true;
                 toRelease.push(chart);
@@ -1002,204 +729,57 @@ class PanelManager {
         const frac = Number.isFinite(screenFraction) ? screenFraction : 0.5;
         this._positionOtherPanelsOnTimestamp(sourcePanel, timestamp, frac);
     }
-
+    
     /**
-     * Valid range for fractional bar index at the plot right edge:
-     * (w - m.r - m.l - offsetX) / spacing over offsetX allowed by Chart#constrainOffset hard bounds.
+     * Per-target discrete Time sync: for each follower panel, compute which bar index
+     * the source's right-edge timestamp maps to in THAT panel's data. Only update
+     * when that target bar index changes (so 5m targets jump every 5 minutes, 1m every minute).
      */
-    _scrollIdxFloatBounds(chart) {
-        const n = chart?.data?.length ?? 0;
-        if (n <= 0) return { lo: 0, hi: 0 };
-        const m = chart.margin || { l: 0, r: 60 };
-        const sp = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
-        const cw = chart.w - m.l - m.r;
-        if (!(cw > 0) || !Number.isFinite(sp) || !(sp > 0)) return { lo: 0, hi: Math.max(0, n - 1) };
-        const rmC = Number.isFinite(chart.timeScale?.rightOffsetCandles)
-            ? chart.timeScale.rightOffsetCandles
-            : 5;
-        const rightMargin = Math.max(0, rmC) * sp;
-        const maxOffset = cw - rightMargin;
-        const minOffset = -(n - 1) * sp;
-        const rightEdgePx = chart.w - m.r;
-        const idxAtMax = (rightEdgePx - m.l - maxOffset) / sp;
-        const idxAtMin = (rightEdgePx - m.l - minOffset) / sp;
-        const pad = 4;
-        return {
-            lo: Math.min(idxAtMax, idxAtMin) - pad,
-            hi: Math.max(idxAtMax, idxAtMin) + pad
-        };
-    }
-
-    /**
-     * Wall-clock time at the plot's right edge for a fractional bar index (same-TF scroll sync).
-     */
-    _wallClockAtFractionalBarIndex(chart, idxFloat, barMs) {
-        const data = chart?.data;
-        const n = data?.length ?? 0;
-        if (!n) return NaN;
-        const lo = Math.max(0, Math.min(Math.floor(idxFloat), n - 1));
-        const frac = idxFloat - lo;
-        const tLo = Number(data[lo]?.t);
-        if (!Number.isFinite(tLo)) return NaN;
-        let step = barMs;
-        if (lo + 1 < n) {
-            const tHi = Number(data[lo + 1]?.t);
-            if (Number.isFinite(tHi) && tHi > tLo) step = tHi - tLo;
-        }
-        return tLo + frac * step;
-    }
-
-    /**
-     * Fractional bar index on `chart` whose bar span covers `wallMs` (inverse of _wallClockAtFractionalBarIndex).
-     */
-    _fractionalBarIndexAtWallClock(chart, wallMs, barMs) {
-        const data = chart?.data;
-        if (!data?.length || !Number.isFinite(wallMs)) return 0;
-        const jLo = this._findLastIndexAtOrBefore(data, wallMs);
-        const tj = Number(data[jLo]?.t) || 0;
-        let denom = barMs;
-        if (jLo + 1 < data.length) {
-            const tNext = Number(data[jLo + 1]?.t);
-            if (Number.isFinite(tNext) && tNext > tj) denom = tNext - tj;
-        }
-        let f = denom > 0 ? (wallMs - tj) / denom : 0;
-        if (!Number.isFinite(f)) f = 0;
-        f = Math.max(0, Math.min(1, f));
-        return jLo + f;
-    }
-
-    /**
-     * Apply Time scroll sync from a `chartScrolled` detail: same bar duration as source
-     * uses fractional right-edge index every frame (smooth parity with the dragged chart);
-     * mixed timeframes keep discrete right-edge jumps to avoid constant thrash.
-     * Sets `_isSyncing` while applying so follower charts do not re-dispatch scroll storms.
-     */
-    syncTimeScrollFromScrolledEvent(sourcePanel, detail) {
-        if (!this.syncSettings.time || this.currentLayout === '1') return;
+    _discreteTimeSyncToRightEdge(sourcePanel, rightEdgeTimestamp) {
         if (this._isSyncing) return;
-        const sourceChart = sourcePanel?.chartInstance;
-        if (!sourceChart?.data?.length) return;
+        if (!this.syncSettings.time || this.currentLayout === '1') return;
+        if (!Number.isFinite(rightEdgeTimestamp)) return;
 
-        const m = sourceChart.margin || { l: 0, r: 60 };
-        const spacing = sourceChart.getCandleSpacing ? sourceChart.getCandleSpacing() : (sourceChart.candleWidth + 2);
-        const plotW = sourceChart.w - m.l - m.r;
-        if (!Number.isFinite(spacing) || spacing <= 0 || plotW <= 0) return;
+        let anyChanged = false;
+        const toUpdate = [];
 
-        const rightEdgePx = sourceChart.w - m.r;
-        const idxRaw = (rightEdgePx - m.l - sourceChart.offsetX) / spacing;
-        const bSrc = this._scrollIdxFloatBounds(sourceChart);
-        // Stale offsetX after a large timeframe jump (old zoom vs new spacing) blows idxRaw up and breaks followers.
-        if (!Number.isFinite(idxRaw) || idxRaw < bSrc.lo - 64 || idxRaw > bSrc.hi + 64) {
-            // Defensive recovery: keep source chart in-bounds instead of forwarding bad geometry.
-            if (typeof sourceChart.constrainOffset === 'function') sourceChart.constrainOffset();
-            if (typeof sourceChart.scheduleRender === 'function') sourceChart.scheduleRender();
-            return;
-        }
-        const idxFloat = Math.max(bSrc.lo, Math.min(idxRaw, bSrc.hi));
+        this.panels.forEach(panel => {
+            if (panel.index === sourcePanel.index) return;
+            const chart = panel.chartInstance;
+            if (!chart?.data?.length) return;
 
-        const srcBarMs = typeof sourceChart.inferBarDurationMs === 'function'
-            ? sourceChart.inferBarDurationMs()
-            : 60000;
-        const edgeWallMs = this._wallClockAtFractionalBarIndex(sourceChart, idxFloat, srcBarMs);
+            const targetIdx = chart.findGoToTargetIndex
+                ? chart.findGoToTargetIndex(chart.data, rightEdgeTimestamp)
+                : this._bsearchTimestamp(chart.data, rightEdgeTimestamp);
 
-        const ts = Number.isFinite(detail.timeSyncEndTimestamp) && detail.timeSyncEndTimestamp > 0
-            ? detail.timeSyncEndTimestamp
-            : detail.endTimestamp;
-        if ((!Number.isFinite(ts) || ts <= 0) && (!Number.isFinite(edgeWallMs) || edgeWallMs <= 0)) return;
+            const lastIdx = this._timeSyncLastTargetBar[panel.index];
+            if (lastIdx === targetIdx) return;
+
+            this._timeSyncLastTargetBar[panel.index] = targetIdx;
+            anyChanged = true;
+            toUpdate.push({ chart, targetIdx });
+        });
+
+        if (!anyChanged) return;
 
         this._isSyncing = true;
-        const toRelease = [];
         try {
-            this.panels.forEach(panel => {
-                if (panel.index === sourcePanel.index) return;
-                const chart = panel.chartInstance;
-                if (!chart?.data?.length) return;
-                // Extra safety: never sync to main chart if it's a different pair
-                if (panel.isMainChart && chart === window.chart) {
-                    const srcSym = this._normalizeSymbolForScrollSync(sourceChart.currentSymbol);
-                    const mainSym = this._normalizeSymbolForScrollSync(chart.currentSymbol);
-                    const srcFile = sourceChart.currentFileId;
-                    const mainFile = chart.currentFileId;
-                    const diffSym = srcSym && mainSym && srcSym !== mainSym;
-                    const diffFile = srcFile != null && mainFile != null && String(srcFile) !== String(mainFile);
-                    if (diffSym || diffFile) {
-                        console.log(`[SYNC SKIP] Skipping main chart (different pair): src=${srcSym}/${srcFile}, main=${mainSym}/${mainFile}`);
-                        return;
-                    }
-                }
-                if (!this._shouldScrollSyncBetweenCharts(sourceChart, chart)) return;
-
-                const tgtBarMs = typeof chart.inferBarDurationMs === 'function'
-                    ? chart.inferBarDurationMs()
-                    : 60000;
-                const sameBarStep = Math.abs(tgtBarMs - srcBarMs) < 1;
-
-                if (sameBarStep) {
-                    if (!Number.isFinite(edgeWallMs) || edgeWallMs <= 0) return;
-                    
-                    // CRITICAL FIX: Re-check symbol compatibility before modifying offsetX
-                    // Continuous sync at same timeframe can drift drawings on different pairs
-                    const srcSymNow = this._normalizeSymbolForScrollSync(sourceChart.currentSymbol);
-                    const tgtSymNow = this._normalizeSymbolForScrollSync(chart.currentSymbol);
-                    if (srcSymNow && tgtSymNow && srcSymNow !== tgtSymNow) {
-                        return; // Different symbols - don't sync even at same timeframe
-                    }
-                    
-                    const m2 = chart.margin || { l: 0, r: 60 };
-                    const sp2 = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
-                    const cw2 = chart.w - m2.l - m2.r;
-                    if (cw2 > 0 && Number.isFinite(sp2) && sp2 > 0) {
-                        chart._suppressPanelScrollSync = true;
-                        toRelease.push(chart);
-                        const jFloat = this._fractionalBarIndexAtWallClock(chart, edgeWallMs, tgtBarMs);
-                        const bTgt = this._scrollIdxFloatBounds(chart);
-                        const jClamped = Math.max(bTgt.lo, Math.min(jFloat, bTgt.hi));
-                        chart.offsetX = chart.w - m2.r - m2.l - jClamped * sp2;
-                        if (chart.constrainOffset) chart.constrainOffset();
-                        if (chart.scheduleRender) chart.scheduleRender();
-                        else if (chart.render) chart.render();
-                        this._timeSyncLastTargetBar[panel.index] = Math.max(0, Math.floor(jFloat));
-                    }
-                    return;
-                }
-
-                if (!Number.isFinite(ts) || ts <= 0) return;
-
-                const targetIdx = chart.findGoToTargetIndex
-                    ? chart.findGoToTargetIndex(chart.data, ts)
-                    : this._bsearchTimestamp(chart.data, ts);
-                if (!Number.isFinite(targetIdx) || targetIdx < 0) return;
-                const lastIdx = this._timeSyncLastTargetBar[panel.index];
-                if (lastIdx === targetIdx) return;
-
-                // CRITICAL FIX: Skip discrete sync for different symbols too
-                const srcSymDiscrete = this._normalizeSymbolForScrollSync(sourceChart.currentSymbol);
-                const tgtSymDiscrete = this._normalizeSymbolForScrollSync(chart.currentSymbol);
-                if (srcSymDiscrete && tgtSymDiscrete && srcSymDiscrete !== tgtSymDiscrete) {
-                    return;
-                }
-
-                this._timeSyncLastTargetBar[panel.index] = targetIdx;
+            toUpdate.forEach(({ chart, targetIdx }) => {
                 chart._suppressPanelScrollSync = true;
-                toRelease.push(chart);
 
-                const spacing2 = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
-                const m2 = chart.margin || { l: 0, r: 60 };
-                const chartWidth2 = chart.w - m2.l - m2.r;
-                if (!(chartWidth2 > 0) || !Number.isFinite(spacing2) || spacing2 <= 0) return;
-                const bTgt = this._scrollIdxFloatBounds(chart);
-                const targetIdxClamped = Math.max(bTgt.lo, Math.min(targetIdx, bTgt.hi));
+                const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
+                const m = chart.margin || { l: 0, r: 60 };
+                const chartWidth = chart.w - m.l - m.r;
+                const visibleCandles = Math.max(1, Math.floor(chartWidth / spacing));
 
-                // Keep right-edge anchoring consistent with same-bar-step branch.
-                chart.offsetX = chart.w - m2.r - m2.l - targetIdxClamped * spacing2;
+                chart.offsetX = -(targetIdx - visibleCandles + 1) * spacing;
                 if (chart.constrainOffset) chart.constrainOffset();
                 if (chart.scheduleRender) chart.scheduleRender();
-                else if (chart.render) chart.render();
             });
         } finally {
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
-                    toRelease.forEach(c => { c._suppressPanelScrollSync = false; });
+                    toUpdate.forEach(({ chart }) => { chart._suppressPanelScrollSync = false; });
                     this._isSyncing = false;
                 });
             });
@@ -1250,27 +830,6 @@ class PanelManager {
                 if (panel.index === sourcePanel.index) return;
                 const chart = panel.chartInstance;
                 if (!chart?.data?.length) return;
-                // Extra safety: never sync to main chart if it's a different pair
-                if (panel.isMainChart && chart === window.chart) {
-                    const srcSym = this._normalizeSymbolForScrollSync(sourceChart.currentSymbol);
-                    const mainSym = this._normalizeSymbolForScrollSync(chart.currentSymbol);
-                    const srcFile = sourceChart.currentFileId;
-                    const mainFile = chart.currentFileId;
-                    const diffSym = srcSym && mainSym && srcSym !== mainSym;
-                    const diffFile = srcFile != null && mainFile != null && String(srcFile) !== String(mainFile);
-                    if (diffSym || diffFile) {
-                        console.log(`[DATE RANGE SYNC SKIP] Skipping main chart (different pair): src=${srcSym}/${srcFile}, main=${mainSym}/${mainFile}`);
-                        return;
-                    }
-                }
-                if (!this._shouldScrollSyncBetweenCharts(sourceChart, chart)) return;
-
-                // CRITICAL FIX: Re-check symbol compatibility before modifying chart
-                const srcSymDR = this._normalizeSymbolForScrollSync(sourceChart.currentSymbol);
-                const tgtSymDR = this._normalizeSymbolForScrollSync(chart.currentSymbol);
-                if (srcSymDR && tgtSymDR && srcSymDR !== tgtSymDR) {
-                    return; // Different symbols - don't sync
-                }
 
                 chart._suppressPanelScrollSync = true;
                 toRelease.push(chart);
@@ -1484,105 +1043,11 @@ class PanelManager {
         }
     }
 
-    _safeReparentBrand() {
-        const brand = document.querySelector('.chart-brand');
-        const chartCont = document.getElementById('chart-container');
-        if (brand && chartCont && brand.parentElement !== chartCont) {
-            chartCont.appendChild(brand);
-        }
-    }
-
-    _destroyAllResizeHandles() {
-        if (Array.isArray(this.resizeHandles)) {
-            this.resizeHandles.forEach(h => {
-                if (h?.parentNode) h.parentNode.removeChild(h);
-            });
-            this.resizeHandles = [];
-        }
-        document.querySelectorAll('.panel-resize-handle').forEach(h => h.remove());
-        document.querySelectorAll('.panel-selection-frame').forEach(f => f.remove());
-    }
-
-    _waitForSize(element, callback, timeout = 2000) {
-        if (!element || typeof callback !== 'function') return;
-        const start = performance.now();
-        if (typeof ResizeObserver !== 'undefined') {
-            const ro = new ResizeObserver((entries) => {
-                const cr = entries[0] && entries[0].contentRect;
-                if (!cr) return;
-                if (cr.width > 0 && cr.height > 0) {
-                    ro.disconnect();
-                    callback();
-                } else if (performance.now() - start > timeout) {
-                    ro.disconnect();
-                    callback();
-                }
-            });
-            ro.observe(element);
-        } else {
-            requestAnimationFrame(() => requestAnimationFrame(() => {
-                setTimeout(callback, 80);
-            }));
-        }
-    }
-
-    _observePanelCanvas(panelEl, canvas, svg, index) {
-        const apply = (w, h) => {
-            const dpr = window.devicePixelRatio || 1;
-            const wf = Math.max(1, Math.floor(w));
-            const hf = Math.max(1, Math.floor(h));
-            canvas.width = Math.max(1, Math.floor(wf * dpr));
-            canvas.height = Math.max(1, Math.floor(hf * dpr));
-            canvas.style.width = wf + 'px';
-            canvas.style.height = hf + 'px';
-            svg.setAttribute('width', String(wf));
-            svg.setAttribute('height', String(hf));
-            svg.style.width = wf + 'px';
-            svg.style.height = hf + 'px';
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-                ctx.setTransform(1, 0, 0, 1, 0, 0);
-                ctx.scale(dpr, dpr);
-            }
-            const panel = this.panels[index];
-            if (panel?.chartInstance) {
-                panel.chartInstance._lastResizeDpr = 0;
-                if (typeof panel.chartInstance.resize === 'function') panel.chartInstance.resize();
-                if (typeof panel.chartInstance.render === 'function') panel.chartInstance.render();
-            }
-        };
-
-        if (typeof ResizeObserver !== 'undefined') {
-            const ro = new ResizeObserver(entries => {
-                const cr = entries[0].contentRect;
-                if (cr.width > 0 && cr.height > 0) {
-                    ro.disconnect();
-                    apply(cr.width, cr.height);
-                }
-            });
-            ro.observe(panelEl);
-        } else {
-            requestAnimationFrame(() => requestAnimationFrame(() => {
-                const r = panelEl.getBoundingClientRect();
-                if (r.width > 0 && r.height > 0) apply(r.width, r.height);
-                else {
-                    setTimeout(() => {
-                        const r2 = panelEl.getBoundingClientRect();
-                        apply(r2.width || 300, r2.height || 200);
-                    }, 80);
-                }
-            }));
-        }
-    }
-
     /**
      * Apply selected layout
      */
     applyLayout(layout) {
         console.log('Applying layout:', layout);
-        this._safeReparentBrand();
-        this._destroyAllResizeHandles();
-        this.selectedPanelIndex = 0;
         this.currentLayout = layout;
 
         // Keep dropdown active state in sync
@@ -1600,24 +1065,22 @@ class PanelManager {
         if (layout === '1') {
             console.log('🔄 Returning to single layout - cleaning up panels...');
 
-            if (this._saveStateTimer) {
-                clearTimeout(this._saveStateTimer);
-                this._saveStateTimer = null;
-            }
-            if (this._dateRangeScrollSyncTimer != null) {
-                clearTimeout(this._dateRangeScrollSyncTimer);
-                this._dateRangeScrollSyncTimer = null;
-            }
-            this._dateRangeScrollPending = null;
-
-            const cwSingle = document.getElementById('chartWrapper');
-            if (cwSingle && cwSingle._panelClickHandler) {
-                cwSingle.removeEventListener('mousedown', cwSingle._panelClickHandler, true);
-                cwSingle._panelClickHandler = null;
-            }
-
             // Logo must leave panels-container before innerHTML clears it
             this.syncChartBrandPlacement('1');
+            
+            // FIRST: Remove ALL resize handles
+            if (this.resizeHandles && this.resizeHandles.length > 0) {
+                this.resizeHandles.forEach(h => {
+                    if (h && h.parentNode) {
+                        h.parentNode.removeChild(h);
+                    }
+                });
+                this.resizeHandles = [];
+                console.log('✅ Removed resize handles');
+            }
+            
+            // Also remove any orphaned resize handles by class name
+            document.querySelectorAll('.panel-resize-handle').forEach(h => h.remove());
 
             // Remove selection overlay and clear selected class from everything
             document.querySelectorAll('.panel-selection-frame').forEach(f => f.remove());
@@ -1678,6 +1141,7 @@ class PanelManager {
             
             // Reset panel tracking
             this.panels = [];
+            this.selectedPanelIndex = 0;
             // Keep container fully turned off in single-layout mode
             if (this.container) {
                 this.container.style.display = 'none';
@@ -1800,21 +1264,18 @@ class PanelManager {
             return;
         }
         
-        if (this._saveStateTimer) {
-            clearTimeout(this._saveStateTimer);
-            this._saveStateTimer = null;
-        }
-        if (this._dateRangeScrollSyncTimer != null) {
-            clearTimeout(this._dateRangeScrollSyncTimer);
-            this._dateRangeScrollSyncTimer = null;
-        }
-        this._dateRangeScrollPending = null;
-
         // Show panels container
         this.container.style.display = 'block';
         
         // Clear any active drawing tool when switching to multi-panel
         this.clearAllDrawingTools();
+        
+        // If logo already lived in panels-container, park it on chart-container so innerHTML does not wipe it
+        const brandEl = document.querySelector('.chart-brand');
+        const chartCont = document.getElementById('chart-container');
+        if (brandEl && this.container.contains(brandEl) && chartCont) {
+            chartCont.appendChild(brandEl);
+        }
 
         // Clear existing additional panels (keep original chart separate)
         this.container.innerHTML = '';
@@ -1832,14 +1293,14 @@ class PanelManager {
                 { width: '100%', height: '50%', top: '50%' }
             ],
             '3v': [
-                { width: 'calc(100% / 3)', height: '100%', left: '0' },
-                { width: 'calc(100% / 3)', height: '100%', left: 'calc(100% / 3)' },
-                { width: 'calc(100% / 3)', height: '100%', left: 'calc(200% / 3)' }
+                { width: '33.33%', height: '100%', left: '0' },
+                { width: '33.33%', height: '100%', left: '33.33%' },
+                { width: '33.33%', height: '100%', left: '66.66%' }
             ],
             '3h': [
-                { width: '100%', height: 'calc(100% / 3)', top: '0' },
-                { width: '100%', height: 'calc(100% / 3)', top: 'calc(100% / 3)' },
-                { width: '100%', height: 'calc(100% / 3)', top: 'calc(200% / 3)' }
+                { width: '100%', height: '33.33%', top: '0' },
+                { width: '100%', height: '33.33%', top: '33.33%' },
+                { width: '100%', height: '33.33%', top: '66.66%' }
             ],
             '3l': [
                 { width: '50%', height: '100%', left: '0' },
@@ -1881,54 +1342,54 @@ class PanelManager {
             ],
             '4t': [ // Top 1 + bottom 3
                 { width: '100%', height: '50%', left: '0', top: '0' },
-                { width: 'calc(100% / 3)', height: '50%', left: '0', top: '50%' },
-                { width: 'calc(100% / 3)', height: '50%', left: 'calc(100% / 3)', top: '50%' },
-                { width: 'calc(100% / 3)', height: '50%', left: 'calc(200% / 3)', top: '50%' }
+                { width: '33.33%', height: '50%', left: '0', top: '50%' },
+                { width: '33.33%', height: '50%', left: '33.33%', top: '50%' },
+                { width: '33.33%', height: '50%', left: '66.66%', top: '50%' }
             ],
             '4b': [ // Top 3 + bottom 1
-                { width: 'calc(100% / 3)', height: '50%', left: '0', top: '0' },
-                { width: 'calc(100% / 3)', height: '50%', left: 'calc(100% / 3)', top: '0' },
-                { width: 'calc(100% / 3)', height: '50%', left: 'calc(200% / 3)', top: '0' },
+                { width: '33.33%', height: '50%', left: '0', top: '0' },
+                { width: '33.33%', height: '50%', left: '33.33%', top: '0' },
+                { width: '33.33%', height: '50%', left: '66.66%', top: '0' },
                 { width: '100%', height: '50%', left: '0', top: '50%' }
             ],
             '4r': [ // Left 3 + right 1
-                { width: '50%', height: 'calc(100% / 3)', left: '0', top: '0' },
-                { width: '50%', height: 'calc(100% / 3)', left: '0', top: 'calc(100% / 3)' },
-                { width: '50%', height: 'calc(100% / 3)', left: '0', top: 'calc(200% / 3)' },
+                { width: '50%', height: '33.33%', left: '0', top: '0' },
+                { width: '50%', height: '33.33%', left: '0', top: '33.33%' },
+                { width: '50%', height: '33.33%', left: '0', top: '66.66%' },
                 { width: '50%', height: '100%', left: '50%', top: '0' }
             ],
             '4l': [ // 1 left + 3 right
                 { width: '50%', height: '100%', left: '0', top: '0' },
-                { width: '50%', height: 'calc(100% / 3)', left: '50%', top: '0' },
-                { width: '50%', height: 'calc(100% / 3)', left: '50%', top: 'calc(100% / 3)' },
-                { width: '50%', height: 'calc(100% / 3)', left: '50%', top: 'calc(200% / 3)' }
+                { width: '50%', height: '33.33%', left: '50%', top: '0' },
+                { width: '50%', height: '33.33%', left: '50%', top: '33.33%' },
+                { width: '50%', height: '33.33%', left: '50%', top: '66.66%' }
             ],
             '4tl': [ // 1 big top-left + 1 right + 2 bottom
-                { width: 'calc(200% / 3)', height: '60%', left: '0', top: '0' },
-                { width: 'calc(100% / 3)', height: '60%', left: 'calc(200% / 3)', top: '0' },
+                { width: '66.66%', height: '60%', left: '0', top: '0' },
+                { width: '33.33%', height: '60%', left: '66.66%', top: '0' },
                 { width: '50%', height: '40%', left: '0', top: '60%' },
                 { width: '50%', height: '40%', left: '50%', top: '60%' }
             ],
             '5a': [ // Top 2 + bottom 3
                 { width: '50%', height: '50%', left: '0', top: '0' },
                 { width: '50%', height: '50%', left: '50%', top: '0' },
-                { width: 'calc(100% / 3)', height: '50%', left: '0', top: '50%' },
-                { width: 'calc(100% / 3)', height: '50%', left: 'calc(100% / 3)', top: '50%' },
-                { width: 'calc(100% / 3)', height: '50%', left: 'calc(200% / 3)', top: '50%' }
+                { width: '33.33%', height: '50%', left: '0', top: '50%' },
+                { width: '33.33%', height: '50%', left: '33.33%', top: '50%' },
+                { width: '33.33%', height: '50%', left: '66.66%', top: '50%' }
             ],
             '5b': [ // Top 3 + bottom 2
-                { width: 'calc(100% / 3)', height: '50%', left: '0', top: '0' },
-                { width: 'calc(100% / 3)', height: '50%', left: 'calc(100% / 3)', top: '0' },
-                { width: 'calc(100% / 3)', height: '50%', left: 'calc(200% / 3)', top: '0' },
+                { width: '33.33%', height: '50%', left: '0', top: '0' },
+                { width: '33.33%', height: '50%', left: '33.33%', top: '0' },
+                { width: '33.33%', height: '50%', left: '66.66%', top: '0' },
                 { width: '50%', height: '50%', left: '0', top: '50%' },
                 { width: '50%', height: '50%', left: '50%', top: '50%' }
             ],
             '5c': [ // Left 2 + right 3
                 { width: '50%', height: '50%', left: '0', top: '0' },
                 { width: '50%', height: '50%', left: '0', top: '50%' },
-                { width: '50%', height: 'calc(100% / 3)', left: '50%', top: '0' },
-                { width: '50%', height: 'calc(100% / 3)', left: '50%', top: 'calc(100% / 3)' },
-                { width: '50%', height: 'calc(100% / 3)', left: '50%', top: 'calc(200% / 3)' }
+                { width: '50%', height: '33.33%', left: '50%', top: '0' },
+                { width: '50%', height: '33.33%', left: '50%', top: '33.33%' },
+                { width: '50%', height: '33.33%', left: '50%', top: '66.66%' }
             ],
             '5v': [
                 { width: '20%', height: '100%', left: '0' },
@@ -1945,54 +1406,54 @@ class PanelManager {
                 { width: '100%', height: '20%', top: '80%' }
             ],
             '6': [ // 2x3 grid
-                { width: 'calc(100% / 3)', height: '50%', left: '0', top: '0' },
-                { width: 'calc(100% / 3)', height: '50%', left: 'calc(100% / 3)', top: '0' },
-                { width: 'calc(100% / 3)', height: '50%', left: 'calc(200% / 3)', top: '0' },
-                { width: 'calc(100% / 3)', height: '50%', left: '0', top: '50%' },
-                { width: 'calc(100% / 3)', height: '50%', left: 'calc(100% / 3)', top: '50%' },
-                { width: 'calc(100% / 3)', height: '50%', left: 'calc(200% / 3)', top: '50%' }
+                { width: '33.33%', height: '50%', left: '0', top: '0' },
+                { width: '33.33%', height: '50%', left: '33.33%', top: '0' },
+                { width: '33.33%', height: '50%', left: '66.66%', top: '0' },
+                { width: '33.33%', height: '50%', left: '0', top: '50%' },
+                { width: '33.33%', height: '50%', left: '33.33%', top: '50%' },
+                { width: '33.33%', height: '50%', left: '66.66%', top: '50%' }
             ],
             '6b': [ // 3x2 grid
-                { width: '50%', height: 'calc(100% / 3)', left: '0', top: '0' },
-                { width: '50%', height: 'calc(100% / 3)', left: '50%', top: '0' },
-                { width: '50%', height: 'calc(100% / 3)', left: '0', top: 'calc(100% / 3)' },
-                { width: '50%', height: 'calc(100% / 3)', left: '50%', top: 'calc(100% / 3)' },
-                { width: '50%', height: 'calc(100% / 3)', left: '0', top: 'calc(200% / 3)' },
-                { width: '50%', height: 'calc(100% / 3)', left: '50%', top: 'calc(200% / 3)' }
+                { width: '50%', height: '33.33%', left: '0', top: '0' },
+                { width: '50%', height: '33.33%', left: '50%', top: '0' },
+                { width: '50%', height: '33.33%', left: '0', top: '33.33%' },
+                { width: '50%', height: '33.33%', left: '50%', top: '33.33%' },
+                { width: '50%', height: '33.33%', left: '0', top: '66.66%' },
+                { width: '50%', height: '33.33%', left: '50%', top: '66.66%' }
             ],
             '6v': [
-                { width: 'calc(100% / 6)', height: '100%', left: '0' },
-                { width: 'calc(100% / 6)', height: '100%', left: 'calc(100% / 6)' },
-                { width: 'calc(100% / 6)', height: '100%', left: 'calc(100% / 3)' },
-                { width: 'calc(100% / 6)', height: '100%', left: 'calc(300% / 6)' },
-                { width: 'calc(100% / 6)', height: '100%', left: 'calc(200% / 3)' },
-                { width: 'calc(100% / 6)', height: '100%', left: 'calc(500% / 6)' }
+                { width: '16.66%', height: '100%', left: '0' },
+                { width: '16.66%', height: '100%', left: '16.66%' },
+                { width: '16.66%', height: '100%', left: '33.33%' },
+                { width: '16.66%', height: '100%', left: '50%' },
+                { width: '16.66%', height: '100%', left: '66.66%' },
+                { width: '16.66%', height: '100%', left: '83.33%' }
             ],
             '6h': [
-                { width: '100%', height: 'calc(100% / 6)', top: '0' },
-                { width: '100%', height: 'calc(100% / 6)', top: 'calc(100% / 6)' },
-                { width: '100%', height: 'calc(100% / 6)', top: 'calc(100% / 3)' },
-                { width: '100%', height: 'calc(100% / 6)', top: 'calc(300% / 6)' },
-                { width: '100%', height: 'calc(100% / 6)', top: 'calc(200% / 3)' },
-                { width: '100%', height: 'calc(100% / 6)', top: 'calc(500% / 6)' }
+                { width: '100%', height: '16.66%', top: '0' },
+                { width: '100%', height: '16.66%', top: '16.66%' },
+                { width: '100%', height: '16.66%', top: '33.33%' },
+                { width: '100%', height: '16.66%', top: '50%' },
+                { width: '100%', height: '16.66%', top: '66.66%' },
+                { width: '100%', height: '16.66%', top: '83.33%' }
             ],
             '7v': [
-                { width: 'calc(100% / 7)', height: '100%', left: '0' },
-                { width: 'calc(100% / 7)', height: '100%', left: 'calc(100% / 7)' },
-                { width: 'calc(100% / 7)', height: '100%', left: 'calc(200% / 7)' },
-                { width: 'calc(100% / 7)', height: '100%', left: 'calc(300% / 7)' },
-                { width: 'calc(100% / 7)', height: '100%', left: 'calc(400% / 7)' },
-                { width: 'calc(100% / 7)', height: '100%', left: 'calc(500% / 7)' },
-                { width: 'calc(100% / 7)', height: '100%', left: 'calc(600% / 7)' }
+                { width: '14.28%', height: '100%', left: '0' },
+                { width: '14.28%', height: '100%', left: '14.28%' },
+                { width: '14.28%', height: '100%', left: '28.56%' },
+                { width: '14.28%', height: '100%', left: '42.84%' },
+                { width: '14.28%', height: '100%', left: '57.12%' },
+                { width: '14.28%', height: '100%', left: '71.4%' },
+                { width: '14.28%', height: '100%', left: '85.68%' }
             ],
             '7a': [ // Top 3 + middle 3 + bottom 1
-                { width: 'calc(100% / 3)', height: 'calc(100% / 3)', left: '0', top: '0' },
-                { width: 'calc(100% / 3)', height: 'calc(100% / 3)', left: 'calc(100% / 3)', top: '0' },
-                { width: 'calc(100% / 3)', height: 'calc(100% / 3)', left: 'calc(200% / 3)', top: '0' },
-                { width: 'calc(100% / 3)', height: 'calc(100% / 3)', left: '0', top: 'calc(100% / 3)' },
-                { width: 'calc(100% / 3)', height: 'calc(100% / 3)', left: 'calc(100% / 3)', top: 'calc(100% / 3)' },
-                { width: 'calc(100% / 3)', height: 'calc(100% / 3)', left: 'calc(200% / 3)', top: 'calc(100% / 3)' },
-                { width: '100%', height: 'calc(100% / 3)', left: '0', top: 'calc(200% / 3)' }
+                { width: '33.33%', height: '33.33%', left: '0', top: '0' },
+                { width: '33.33%', height: '33.33%', left: '33.33%', top: '0' },
+                { width: '33.33%', height: '33.33%', left: '66.66%', top: '0' },
+                { width: '33.33%', height: '33.33%', left: '0', top: '33.33%' },
+                { width: '33.33%', height: '33.33%', left: '33.33%', top: '33.33%' },
+                { width: '33.33%', height: '33.33%', left: '66.66%', top: '33.33%' },
+                { width: '100%', height: '33.33%', left: '0', top: '66.66%' }
             ],
             '8': [ // 2x4 grid
                 { width: '25%', height: '50%', left: '0', top: '0' },
@@ -2015,24 +1476,24 @@ class PanelManager {
                 { width: '50%', height: '25%', left: '50%', top: '75%' }
             ],
             '8v': [
-                { width: 'calc(100% / 8)', height: '100%', left: '0' },
-                { width: 'calc(100% / 8)', height: '100%', left: 'calc(100% / 8)' },
-                { width: 'calc(100% / 8)', height: '100%', left: '25%' },
-                { width: 'calc(100% / 8)', height: '100%', left: 'calc(300% / 8)' },
-                { width: 'calc(100% / 8)', height: '100%', left: '50%' },
-                { width: 'calc(100% / 8)', height: '100%', left: 'calc(500% / 8)' },
-                { width: 'calc(100% / 8)', height: '100%', left: '75%' },
-                { width: 'calc(100% / 8)', height: '100%', left: 'calc(700% / 8)' }
+                { width: '12.5%', height: '100%', left: '0' },
+                { width: '12.5%', height: '100%', left: '12.5%' },
+                { width: '12.5%', height: '100%', left: '25%' },
+                { width: '12.5%', height: '100%', left: '37.5%' },
+                { width: '12.5%', height: '100%', left: '50%' },
+                { width: '12.5%', height: '100%', left: '62.5%' },
+                { width: '12.5%', height: '100%', left: '75%' },
+                { width: '12.5%', height: '100%', left: '87.5%' }
             ],
             '8h': [
-                { width: '100%', height: 'calc(100% / 8)', top: '0' },
-                { width: '100%', height: 'calc(100% / 8)', top: 'calc(100% / 8)' },
-                { width: '100%', height: 'calc(100% / 8)', top: '25%' },
-                { width: '100%', height: 'calc(100% / 8)', top: 'calc(300% / 8)' },
-                { width: '100%', height: 'calc(100% / 8)', top: '50%' },
-                { width: '100%', height: 'calc(100% / 8)', top: 'calc(500% / 8)' },
-                { width: '100%', height: 'calc(100% / 8)', top: '75%' },
-                { width: '100%', height: 'calc(100% / 8)', top: 'calc(700% / 8)' }
+                { width: '100%', height: '12.5%', top: '0' },
+                { width: '100%', height: '12.5%', top: '12.5%' },
+                { width: '100%', height: '12.5%', top: '25%' },
+                { width: '100%', height: '12.5%', top: '37.5%' },
+                { width: '100%', height: '12.5%', top: '50%' },
+                { width: '100%', height: '12.5%', top: '62.5%' },
+                { width: '100%', height: '12.5%', top: '75%' },
+                { width: '100%', height: '12.5%', top: '87.5%' }
             ]
         };
         
@@ -2092,11 +1553,7 @@ class PanelManager {
             
             // Add click handler to select main chart panel (click anywhere on chart wrapper)
             const chartWrapper = document.getElementById('chartWrapper');
-            if (chartWrapper) {
-                if (chartWrapper._panelClickHandler) {
-                    chartWrapper.removeEventListener('mousedown', chartWrapper._panelClickHandler, true);
-                    chartWrapper._panelClickHandler = null;
-                }
+            if (chartWrapper && !chartWrapper._panelClickHandler) {
                 chartWrapper._panelClickHandler = (e) => {
                     console.log('🖱️ Main chart clicked', e.target);
                     
@@ -2126,12 +1583,11 @@ class PanelManager {
             
             console.log(`📊 Panel 0: Main chart positioned at ${firstConfig.width} x ${firstConfig.height}`);
             
-            // Wait for non-zero layout before resize (single rAF often sees 0×0 after absolute positioning).
-            this._waitForSize(originalChart, () => {
-                if (window.chart) {
-                    if (window.chart._lastResizeDpr !== undefined) window.chart._lastResizeDpr = 0;
-                    if (typeof window.chart.resize === 'function') window.chart.resize();
-                    if (typeof window.chart.render === 'function') window.chart.render();
+            // Trigger resize for main chart after positioning
+            requestAnimationFrame(() => {
+                if (window.chart && window.chart.resize) {
+                    window.chart.resize();
+                    window.chart.render();
                 }
             });
         }
@@ -2141,28 +1597,8 @@ class PanelManager {
             this.createPanel(panelConfig[i], i);
         }
 
-        // Second pass: panel Chart instances are created with 0×0 until layout commits — resize all
-        // so replay sync (getReplayAutoScrollState) and candle math use real width/height like the main chart.
-        requestAnimationFrame(() => {
-            if (this.panels && this.panels.length > 0) {
-                this.panels.forEach((panel) => {
-                    const pc = panel.chartInstance;
-                    if (pc && typeof pc.resize === 'function') {
-                        try {
-                            pc._lastResizeDpr = 0;
-                            pc.resize();
-                            if (typeof pc.render === 'function') pc.render();
-                        } catch (e) {
-                            console.warn('Panel resize after layout:', e);
-                        }
-                    }
-                });
-            }
-        });
-
         // After panels exist: park logo on #chart-container (above #chartWrapper paint order)
         this.syncChartBrandPlacement(layout);
-        const chartCont = document.getElementById('chart-container');
         const brandNode = document.querySelector('.chart-brand');
         if (brandNode && chartCont) {
             chartCont.appendChild(brandNode);
@@ -2251,9 +1687,8 @@ class PanelManager {
             background: ${_panelBg};
         `;
         
-        // Add loading indicator (shows briefly while data loads)
+        // Add placeholder text
         const placeholder = document.createElement('div');
-        placeholder.className = 'panel-loading-indicator';
         placeholder.style.cssText = `
             position: absolute;
             top: 50%;
@@ -2262,38 +1697,11 @@ class PanelManager {
             color: #787b86;
             font-size: 14px;
             text-align: center;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 8px;
         `;
         placeholder.innerHTML = `
-            <div class="panel-spinner" style="
-                width: 24px;
-                height: 24px;
-                border: 2px solid #2a2e39;
-                border-top-color: #5b8cff;
-                border-radius: 50%;
-                animation: panel-spin 1s linear infinite;
-            "></div>
-            <span>Loading ${panelTimeframe}...</span>
+            Panel ${index + 1}<br>
+            <span style="font-size: 12px;">${panelTimeframe}</span>
         `;
-        // Add spinner animation if not already present
-        if (!document.getElementById('panel-spinner-style')) {
-            const style = document.createElement('style');
-            style.id = 'panel-spinner-style';
-            style.textContent = `
-                @keyframes panel-spin {
-                    to { transform: rotate(360deg); }
-                }
-                .panel-loading-indicator.fade-out {
-                    opacity: 0;
-                    transition: opacity 0.3s ease;
-                    pointer-events: none;
-                }
-            `;
-            document.head.appendChild(style);
-        }
         chartContainer.appendChild(placeholder);
         
         // Create canvas for candlestick chart
@@ -2458,7 +1866,31 @@ class PanelManager {
         
         console.log(`✅ Panel ${index} added to DOM`);
         
-        this._observePanelCanvas(panel, canvas, svg, index);
+        // Trigger resize for canvas with proper DPR scaling
+        requestAnimationFrame(() => {
+            const rect = panel.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0 && rect.height < 10000) {
+                const dpr = window.devicePixelRatio || 1;
+                const w = Math.floor(rect.width);
+                const h = Math.floor(rect.height);
+                canvas.width = Math.max(1, w * dpr);
+                canvas.height = Math.max(1, h * dpr);
+                canvas.style.width = w + 'px';
+                canvas.style.height = h + 'px';
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+                    ctx.scale(dpr, dpr);
+                }
+                svg.setAttribute('width', w);
+                svg.setAttribute('height', h);
+                svg.style.width = w + 'px';
+                svg.style.height = h + 'px';
+                console.log(`📐 Panel ${index} sized: ${w}x${h} (DPR ${dpr}, physical ${w*dpr}x${h*dpr})`);
+            } else {
+                console.error(`❌ Panel ${index} invalid size: ${rect.width}x${rect.height}`);
+            }
+        });
     }
     
     /**
@@ -2479,10 +1911,6 @@ class PanelManager {
      * Select a panel to control with timeframe buttons
      */
     selectPanel(index) {
-        if (!this.panels || index < 0 || index >= this.panels.length) {
-            console.warn(`selectPanel: index ${index} out of bounds (${this.panels ? this.panels.length : 0} panels)`);
-            return;
-        }
         this._timeSyncLastTargetBar = {};
 
         // Deselect all panels
@@ -2493,20 +1921,21 @@ class PanelManager {
         });
         
         // Select the clicked panel
-        this.selectedPanelIndex = index;
-        const panel = this.panels[index];
-
-        if (panel.element) {
-            panel.element.classList.add('panel-selected');
-            // Ensure selection bar exists
-            if (!panel.element.querySelector('.panel-select-bar')) {
-                const bar = document.createElement('div');
-                bar.className = 'panel-select-bar';
-                panel.element.appendChild(bar);
+        if (this.panels[index]) {
+            this.selectedPanelIndex = index;
+            const panel = this.panels[index];
+            
+            if (panel.element) {
+                panel.element.classList.add('panel-selected');
+                // Ensure selection bar exists
+                if (!panel.element.querySelector('.panel-select-bar')) {
+                    const bar = document.createElement('div');
+                    bar.className = 'panel-select-bar';
+                    panel.element.appendChild(bar);
+                }
             }
-        }
 
-        this._updateSelectionOverlay();
+            this._updateSelectionOverlay();
             
             // Resolve the LIVE timeframe from the chart instance (not the stale snapshot)
             const liveTimeframe = (panel.chartInstance && panel.chartInstance.currentTimeframe)
@@ -2572,6 +2001,7 @@ class PanelManager {
                     });
                 }
             } catch (_e) { /* ignore */ }
+        }
     }
     
     _updateSelectionOverlay() {
@@ -2611,23 +2041,19 @@ class PanelManager {
     updateSelectedPanelTimeframe(timeframe) {
         if (this.panels.length === 0) return;
         
-        // If interval sync is enabled, one setTimeframe on the active chart fans out via syncInterval
-        // (inside Chart.setTimeframe). Calling setTimeframe on every panel used to refetch N× and freeze UI.
+        // If interval sync is enabled, update ALL panels
         if (this.syncSettings.interval) {
-            this.panels.forEach((panel) => {
-                if (panel) panel.timeframe = timeframe;
-            });
-            const panel = this.panels[this.selectedPanelIndex];
-            if (panel && panel.chartInstance && typeof panel.chartInstance.setTimeframe === 'function') {
-                panel.chartInstance.setTimeframe(timeframe);
-            }
-            window.dispatchEvent(new CustomEvent('panelTimeframeChanged', {
-                detail: {
-                    panelIndex: this.selectedPanelIndex,
-                    timeframe: timeframe,
-                    panel: panel
+            console.log(`⏱️ Interval sync ON - updating ALL panels to ${timeframe}`);
+            this.panels.forEach((panel, index) => {
+                if (panel) {
+                    panel.timeframe = timeframe;
+                    
+                    // Update chart instance if exists
+                    if (panel.chartInstance && panel.chartInstance.setTimeframe) {
+                        panel.chartInstance.setTimeframe(timeframe);
+                    }
                 }
-            }));
+            });
             return;
         }
         
@@ -2713,11 +2139,12 @@ class PanelManager {
         const panel = this.panels[panelIndex];
         if (!panel || !panel.chartInstance) return;
         
-        let settings = { ...panel.chartInstance.chartSettings };
+        let settings = panel.chartInstance.chartSettings;
         const key = `chart_panel_${panelIndex}_settings`;
         
         try {
             if (panelIndex > 0) {
+                settings = { ...settings };
                 for (const k of PANEL_CHART_APPEARANCE_KEYS) {
                     delete settings[k];
                 }
