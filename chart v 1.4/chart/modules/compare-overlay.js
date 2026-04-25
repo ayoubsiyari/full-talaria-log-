@@ -3,24 +3,9 @@
  * Allows overlaying multiple symbols on the same chart like TradingView
  */
 
-const COMPARE_SETTINGS_ICON_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-    <circle cx="12" cy="12" r="3"/>
-    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-</svg>`;
-
-const COMPARE_TRASH_ICON_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-    <polyline points="3 6 5 6 21 6"/>
-    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-    <line x1="10" y1="11" x2="10" y2="17"/>
-    <line x1="14" y1="11" x2="14" y2="17"/>
-</svg>`;
-
 class CompareOverlay {
     constructor(chart) {
         this.chart = chart;
-        this.scopeKey = chart && chart.isPanel
-            ? `panel_${chart.panelIndex != null ? chart.panelIndex : 'x'}`
-            : 'main';
         this.overlays = []; // Array of overlay objects
         this.colors = [
             '#FF6B6B', // Red
@@ -41,42 +26,7 @@ class CompareOverlay {
         
         this.init();
     }
-
-    getMainChartBackground() {
-        const fromSettings = this.chart?.chartSettings?.backgroundColor;
-        if (fromSettings && fromSettings !== 'transparent') return fromSettings;
-        try {
-            const chartContainer = document.getElementById('chart-container');
-            const chartWrapper = document.getElementById('chartWrapper');
-            const canvasEl = this.chart && this.chart.canvas ? this.chart.canvas : null;
-            const candidates = [canvasEl, chartWrapper, chartContainer, document.body];
-            for (const el of candidates) {
-                if (!el) continue;
-                const bg = window.getComputedStyle(el).backgroundColor;
-                if (bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)') {
-                    return bg;
-                }
-            }
-        } catch (_) {}
-        return '#131722';
-    }
-
-    getLinkedPaneThemeTokens() {
-        const scaleText = this.chart?.chartSettings?.scaleTextColor || '#787b86';
-        const scaleLine = this.chart?.chartSettings?.scaleLineColor || '#363a45';
-        const paneBg = this.getMainChartBackground();
-        return {
-            paneBg,
-            border: scaleLine,
-            legendBg: paneBg,
-            hoverBg: 'rgba(255,255,255,0.08)',
-            textPrimary: scaleText,
-            textSecondary: scaleText,
-            iconMuted: scaleText,
-            iconHover: scaleText
-        };
-    }
-
+    
     init() {
         this.setupEventListeners();
         this.setupYAxisDrag();
@@ -262,62 +212,42 @@ class CompareOverlay {
     }
     
     setupEventListeners() {
-        // Bind global compare modal listeners once and route to active chart overlay.
-        if (!window.__compareOverlayGlobalHandlersBound) {
-            const resolveOwner = () => {
-                const activeChart = (typeof window.getActiveChart === 'function')
-                    ? window.getActiveChart()
-                    : window.chart;
-                return (activeChart && activeChart.compareOverlay) || window.__activeCompareOverlayOwner || null;
-            };
-
-            const compareBtn = document.getElementById('compareBtn');
-            if (compareBtn) {
-                compareBtn.addEventListener('click', () => {
-                    const owner = resolveOwner();
-                    if (owner) owner.openModal();
-                });
-            }
-            
-            const closeBtn = document.getElementById('compareModalClose');
-            if (closeBtn) {
-                closeBtn.addEventListener('click', () => {
-                    const owner = window.__activeCompareOverlayOwner;
-                    if (owner) owner.closeModal();
-                });
-            }
-            
-            const modalOverlay = document.getElementById('compareModalOverlay');
-            if (modalOverlay) {
-                modalOverlay.addEventListener('click', (e) => {
-                    if (e.target === modalOverlay) {
-                        const owner = window.__activeCompareOverlayOwner;
-                        if (owner) owner.closeModal();
-                    }
-                });
-            }
-            
-            const searchInput = document.getElementById('compareSearchInput');
-            if (searchInput) {
-                searchInput.addEventListener('input', (e) => {
-                    const owner = window.__activeCompareOverlayOwner || resolveOwner();
-                    if (owner) owner.filterSymbols(e.target.value);
-                });
-            }
-            
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape') {
-                    const owner = window.__activeCompareOverlayOwner || resolveOwner();
-                    if (owner) {
-                        owner.closeModal();
-                        owner.closeSettingsPopup();
-                        owner.closePaneSettingsPopup();
-                    }
+        // Compare button
+        const compareBtn = document.getElementById('compareBtn');
+        if (compareBtn) {
+            compareBtn.addEventListener('click', () => this.openModal());
+        }
+        
+        // Modal close button
+        const closeBtn = document.getElementById('compareModalClose');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.closeModal());
+        }
+        
+        // Modal overlay click to close
+        const modalOverlay = document.getElementById('compareModalOverlay');
+        if (modalOverlay) {
+            modalOverlay.addEventListener('click', (e) => {
+                if (e.target === modalOverlay) {
+                    this.closeModal();
                 }
             });
-
-            window.__compareOverlayGlobalHandlersBound = true;
         }
+        
+        // Search input
+        const searchInput = document.getElementById('compareSearchInput');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => this.filterSymbols(e.target.value));
+        }
+        
+        // Escape key to close modal
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                this.closeModal();
+                this.closeSettingsPopup();
+                this.closePaneSettingsPopup();
+            }
+        });
         
         // Initialize settings popup
         this.initSettingsPopup();
@@ -343,53 +273,9 @@ class CompareOverlay {
             this.availableFiles = [];
         }
     }
-
-    getSessionSymbolFiles() {
-        try {
-            const session = JSON.parse(userStorage.getItem('backtestingSession') || '{}');
-            if (session && Array.isArray(session.files) && session.files.length > 0) {
-                return session.files;
-            }
-        } catch (_) {}
-        return [];
-    }
-
-    getCompareSourceFiles() {
-        const sessionFiles = this.getSessionSymbolFiles();
-        if (!Array.isArray(sessionFiles) || sessionFiles.length === 0) {
-            return this.availableFiles;
-        }
-
-        const byId = new Map();
-        const byName = new Map();
-        (this.availableFiles || []).forEach(file => {
-            byId.set(String(file.id), file);
-            const fname = String(file.original_name || file.name || '')
-                .replace(/\.(csv|CSV)$/, '')
-                .toUpperCase();
-            if (fname) byName.set(fname, file);
-        });
-
-        const scoped = [];
-        const seen = new Set();
-        sessionFiles.forEach(sf => {
-            const sid = String(sf.id ?? '');
-            const sname = String(sf.name || '').replace(/\.(csv|CSV)$/, '').toUpperCase();
-            let match = null;
-            if (sid && byId.has(sid)) match = byId.get(sid);
-            else if (sname && byName.has(sname)) match = byName.get(sname);
-            if (match && !seen.has(String(match.id))) {
-                seen.add(String(match.id));
-                scoped.push(match);
-            }
-        });
-
-        return scoped;
-    }
     
     openModal() {
         console.log('📊 Opening compare modal');
-        window.__activeCompareOverlayOwner = this;
         const modal = document.getElementById('compareModalOverlay');
         if (modal) {
             modal.classList.add('open');
@@ -416,9 +302,6 @@ class CompareOverlay {
         const modal = document.getElementById('compareModalOverlay');
         if (modal) {
             modal.classList.remove('open');
-        }
-        if (window.__activeCompareOverlayOwner === this) {
-            window.__activeCompareOverlayOwner = null;
         }
     }
     
@@ -609,7 +492,7 @@ class CompareOverlay {
                     <span class="pill-color" style="background: ${overlay.color}"></span>
                     <span>${overlay.symbol}</span>
                     <button class="pill-remove" data-id="${overlay.id}" title="Remove">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="18" y1="6" x2="6" y2="18"/>
                             <line x1="6" y1="6" x2="18" y2="18"/>
                         </svg>
@@ -629,7 +512,7 @@ class CompareOverlay {
                         <span class="pill-color" style="background: ${pane.color}"></span>
                         <span>${pane.symbol}</span>
                         <button class="pill-remove" data-pane-id="${pane.id}" title="Remove">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <line x1="18" y1="6" x2="6" y2="18"/>
                                 <line x1="6" y1="6" x2="18" y2="18"/>
                             </svg>
@@ -644,8 +527,7 @@ class CompareOverlay {
         
         // Filter available symbols (not current, not overlayed, not in linked panes)
         const linkedPaneIds = this.linkedPanes ? this.linkedPanes.map(p => p.fileId) : [];
-        const compareSourceFiles = this.getCompareSourceFiles();
-        const availableSymbols = compareSourceFiles.filter(file => {
+        const availableSymbols = this.availableFiles.filter(file => {
             return file.id !== currentFileId && 
                    !overlayedIds.includes(file.id) && 
                    !linkedPaneIds.includes(file.id);
@@ -691,49 +573,12 @@ class CompareOverlay {
             // Fallback: if name is short enough, use it; otherwise truncate
             return name.length > 12 ? name.substring(0, 12) : name;
         };
-
-        const currencyToCountry = (ccy) => {
-            const map = {
-                USD: 'us', EUR: 'eu', GBP: 'gb', JPY: 'jp', AUD: 'au', NZD: 'nz',
-                CAD: 'ca', CHF: 'ch', SEK: 'se', NOK: 'no', DKK: 'dk', SGD: 'sg',
-                HKD: 'hk', CNY: 'cn', CNH: 'cn', INR: 'in', ZAR: 'za', MXN: 'mx',
-                BRL: 'br', TRY: 'tr', PLN: 'pl', HUF: 'hu', CZK: 'cz', RUB: 'ru',
-                KRW: 'kr', TWD: 'tw', THB: 'th', MYR: 'my', PHP: 'ph', IDR: 'id',
-                ILS: 'il', CLP: 'cl', COP: 'co', PEN: 'pe', ARS: 'ar', RON: 'ro',
-                BGN: 'bg', HRK: 'hr', ISK: 'is', RSD: 'rs', UAH: 'ua', KES: 'ke',
-                NGN: 'ng', EGP: 'eg', SAR: 'sa', AED: 'ae', QAR: 'qa', KWD: 'kw',
-                BHD: 'bh', OMR: 'om', JOD: 'jo', XAU: 'xau', XAG: 'xag'
-            };
-            return map[(ccy || '').toUpperCase()] || null;
-        };
-
-        const getPairIconHTML = (symbol) => {
-            const clean = String(symbol || '').replace(/[\s\-_\/\.]/g, '').toUpperCase();
-            if (clean.length < 6) {
-                return String(symbol || '').slice(0, 2).toUpperCase() || '•';
-            }
-
-            const base = clean.slice(0, 3);
-            const quote = clean.slice(3, 6);
-            const baseCC = currencyToCountry(base);
-            const quoteCC = currencyToCountry(quote);
-            if (!baseCC || !quoteCC || baseCC === 'xau' || baseCC === 'xag' || quoteCC === 'xau' || quoteCC === 'xag') {
-                return `${base.slice(0, 2)}${quote.slice(0, 2)}`;
-            }
-
-            const baseUrl = `https://flagcdn.com/w80/${baseCC}.png`;
-            const quoteUrl = `https://flagcdn.com/w80/${quoteCC}.png`;
-            return `
-                <img class="compare-pair-flag compare-pair-flag-base" src="${baseUrl}" alt="${base}" onerror="this.style.display='none'" style="position:absolute;left:5px;top:9px;width:20px;height:20px;border-radius:50%;object-fit:cover;border:2px solid rgba(203,213,225,0.92);outline:1px solid rgba(5,10,20,0.8);box-shadow:0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92);" />
-                <img class="compare-pair-flag compare-pair-flag-quote" src="${quoteUrl}" alt="${quote}" onerror="this.style.display='none'" style="position:absolute;left:15px;top:9px;width:20px;height:20px;border-radius:50%;object-fit:cover;border:2px solid rgba(203,213,225,0.92);outline:1px solid rgba(5,10,20,0.8);box-shadow:0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92);" />
-            `;
-        };
         
         // Render available symbols with action buttons
         availableSymbols.forEach(file => {
             const fullName = file.original_name?.replace(/\.(csv|CSV)$/, '').toUpperCase() || `FILE_${file.id}`;
             const symbolName = extractSymbolName(file.original_name) || fullName;
-            const pairIconHTML = getPairIconHTML(symbolName);
+            const abbrev = symbolName.substring(0, 2);
             const iconType = getIconType(symbolName);
             const isAdded = overlayedIds.includes(file.id) || linkedPaneIds.includes(file.id);
             
@@ -743,13 +588,14 @@ class CompareOverlay {
             item.dataset.fileId = file.id;
             
             item.innerHTML = `
-                <div class="compare-symbol-icon ${iconType}" style="position:relative;overflow:visible;background:transparent;border:none;box-shadow:none;">${pairIconHTML}</div>
+                <div class="compare-symbol-icon ${iconType}">${abbrev}</div>
                 <div class="compare-symbol-info">
                     <span class="compare-symbol-name">${symbolName}</span>
                     <span class="compare-symbol-desc">${file.row_count?.toLocaleString() || '?'} candles</span>
                 </div>
                 <div class="compare-symbol-actions">
                     <button class="compare-action-btn" data-mode="same-scale" data-file-id="${file.id}" data-symbol="${symbolName}">Overlay</button>
+                    <button class="compare-action-btn primary" data-mode="new-pane" data-file-id="${file.id}" data-symbol="${symbolName}">New Pane</button>
                 </div>
             `;
             
@@ -768,97 +614,29 @@ class CompareOverlay {
         });
     }
     
-    async addSymbolWithMode(fileId, symbolName, mode) {
+    addSymbolWithMode(fileId, symbolName, mode) {
         console.log(`📊 Adding symbol ${symbolName} with mode: ${mode}`);
-        if (mode === 'new-pane') {
-            if (typeof this.chart?.showNotification === 'function') {
-                this.chart.showNotification('New Pane is disabled. Use the multi-panel layout system instead.');
-            } else {
-                alert('New Pane is disabled. Use the multi-panel layout system instead.');
-            }
-            return;
+        
+        switch (mode) {
+            case 'same-scale':
+                // Add overlay on same chart with same scale
+                this.addOverlay(fileId, symbolName);
+                break;
+            case 'new-scale':
+                // Add overlay with separate Y-axis (for now same as overlay)
+                this.addOverlay(fileId, symbolName);
+                break;
+            case 'new-pane':
+                // Add as linked pane (shares time axis with main chart)
+                this.addLinkedPane(fileId, symbolName);
+                break;
         }
-
-        // Close picker immediately and show temporary loading label near chart symbol.
+        
         this.closeModal();
-        this.startOverlayLoadingState(symbolName);
-
-        try {
-            switch (mode) {
-                case 'same-scale':
-                    // Add overlay on same chart with same scale
-                    await this.addOverlay(fileId, symbolName);
-                    break;
-                case 'new-scale':
-                    // Add overlay with separate Y-axis (for now same as overlay)
-                    await this.addOverlay(fileId, symbolName);
-                    break;
-            }
-        } finally {
-            this.stopOverlayLoadingState();
-        }
-    }
-
-    startOverlayLoadingState(symbolName) {
-        try {
-            this.stopOverlayLoadingState();
-
-            const host = (typeof this.chart._getPanelOverlayContainer === 'function')
-                ? this.chart._getPanelOverlayContainer()
-                : (this.chart?.canvas?.closest('.chart-panel') || document);
-            const symbolLine = host?.querySelector?.('.ohlc-symbol-line') || document.querySelector('.ohlc-symbol-line');
-            if (!symbolLine) return;
-
-            const badge = document.createElement('span');
-            badge.className = 'compare-overlay-loading-badge';
-            badge.style.cssText = [
-                'display:inline-flex',
-                'align-items:center',
-                'margin-left:10px',
-                'padding:2px 8px',
-                'border-radius:999px',
-                'font-size:11px',
-                'font-weight:600',
-                'letter-spacing:0.2px',
-                'color:#93c5fd',
-                'background:rgba(30,64,175,0.2)',
-                'border:1px solid rgba(96,165,250,0.35)'
-            ].join(';');
-            badge.textContent = `${symbolName} loading`;
-            symbolLine.appendChild(badge);
-
-            let dots = 0;
-            this._overlayLoadingEl = badge;
-            this._overlayLoadingTimer = setInterval(() => {
-                dots = (dots + 1) % 4;
-                if (this._overlayLoadingEl) {
-                    this._overlayLoadingEl.textContent = `${symbolName} loading${'.'.repeat(dots)}`;
-                }
-            }, 320);
-        } catch (_) {}
-    }
-
-    stopOverlayLoadingState() {
-        if (this._overlayLoadingTimer) {
-            clearInterval(this._overlayLoadingTimer);
-            this._overlayLoadingTimer = null;
-        }
-        if (this._overlayLoadingEl && this._overlayLoadingEl.parentNode) {
-            this._overlayLoadingEl.parentNode.removeChild(this._overlayLoadingEl);
-        }
-        this._overlayLoadingEl = null;
     }
     
     async addLinkedPane(fileId, symbolName) {
         console.log(`📊 Adding linked pane for ${symbolName} (fileId: ${fileId})`);
-        if (Array.isArray(this.linkedPanes) && this.linkedPanes.length > 0) {
-            if (typeof this.chart?.showNotification === 'function') {
-                this.chart.showNotification('Only one New Pane is allowed. Remove the current pane first.');
-            } else {
-                alert('Only one New Pane is allowed. Remove the current pane first.');
-            }
-            return;
-        }
         
         try {
             // Use same endpoint as overlays
@@ -882,9 +660,6 @@ class CompareOverlay {
             // Parse CSV data (same as overlay)
             const rawData = this.parseCSVData(result.data);
             console.log(`📊 Parsed ${rawData.length} candles`);
-            if (!Array.isArray(rawData) || rawData.length === 0) {
-                throw new Error('No valid candles parsed for selected symbol');
-            }
             
             // Initialize linked panes array if needed
             if (!this.linkedPanes) {
@@ -937,34 +712,28 @@ class CompareOverlay {
             console.log(`📊 Rendering linked panes (total: ${this.linkedPanes.length})`);
             this.renderLinkedPanes();
             this.renderSymbolsList();
-            this.closeModal();
             
             console.log(`✅ Linked pane added: ${symbolName} with ${pane.data.length} candles`);
             
         } catch (error) {
             console.error('Error adding linked pane:', error);
-            alert(`Failed to add ${symbolName}: ${error.message}`);
         }
     }
     
     setupLinkedPanesContainer() {
         // Create container for linked panes below main chart
-        const containerId = `linkedPanesContainer_${this.scopeKey}`;
-        let container = document.getElementById(containerId);
-        const paneBg = this.getMainChartBackground();
-        const chartContainer = (typeof this.chart._getPanelOverlayContainer === 'function')
-            ? this.chart._getPanelOverlayContainer()
-            : (this.chart?.canvas?.closest('.chart-panel') || document.getElementById('chart-container'));
+        let container = document.getElementById('linkedPanesContainer');
         if (!container) {
+            const chartContainer = document.getElementById('chart-container');
             if (chartContainer) {
                 container = document.createElement('div');
-                container.id = containerId;
+                container.id = 'linkedPanesContainer';
                 container.style.cssText = `
                     position: absolute;
                     bottom: 30px;
                     left: 0;
                     right: 0;
-                    background: ${paneBg};
+                    background: #131722;
                     z-index: 100;
                 `;
                 chartContainer.appendChild(container);
@@ -972,13 +741,6 @@ class CompareOverlay {
             } else {
                 console.error('❌ Could not find chart-container for linked panes');
             }
-        }
-        if (container) {
-            if (chartContainer && container.parentElement !== chartContainer) {
-                chartContainer.appendChild(container);
-            }
-            container.style.bottom = '30px';
-            container.style.background = paneBg;
         }
         
         // Hook into main chart's render to sync linked panes
@@ -1025,23 +787,13 @@ class CompareOverlay {
     
     renderLinkedPanes() {
         if (!this.linkedPanes || this.linkedPanes.length === 0) return;
-
-        const containerId = `linkedPanesContainer_${this.scopeKey}`;
-        let container = document.getElementById(containerId);
+        
+        const container = document.getElementById('linkedPanesContainer');
         if (!container) {
             console.log('📊 No linked panes container, creating...');
             this.setupLinkedPanesContainer();
             return;
         }
-        const expectedHost = (typeof this.chart._getPanelOverlayContainer === 'function')
-            ? this.chart._getPanelOverlayContainer()
-            : (this.chart?.canvas?.closest('.chart-panel') || document.getElementById('chart-container'));
-        if (expectedHost && container.parentElement !== expectedHost) {
-            expectedHost.appendChild(container);
-        }
-        const theme = this.getLinkedPaneThemeTokens();
-        const paneBg = theme.paneBg;
-        container.style.background = paneBg;
         
         // Get main chart dimensions for reference
         const mainCanvas = this.chart.canvas;
@@ -1068,8 +820,8 @@ class CompareOverlay {
                     position: relative;
                     width: 100%;
                     height: ${paneHeight}px;
-                    border-top: none;
-                    background: ${paneBg};
+                    border-top: 1px solid #363a45;
+                    background: #131722;
                 `;
                 
                 // Create canvas - set explicit size
@@ -1094,24 +846,23 @@ class CompareOverlay {
                 legend.style.cssText = `
                     position: absolute;
                     top: 8px;
-                    left: ${(this.chart.margin?.l || 0) + 10}px;
+                    left: 10px;
                     display: flex;
                     align-items: center;
                     gap: 6px;
                     z-index: 10;
                     font-size: 12px;
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    color: ${theme.textPrimary};
-                    background: ${theme.legendBg};
+                    color: #d1d4dc;
+                    background: rgba(19, 23, 34, 0.9);
                     padding: 4px 10px;
                     border-radius: 4px;
-                    border: 1px solid ${theme.border};
                 `;
                 
                 const iconBtnStyle = `
                     background: transparent;
                     border: none;
-                    color: ${theme.iconMuted};
+                    color: #787b86;
                     cursor: pointer;
                     padding: 2px;
                     display: flex;
@@ -1125,22 +876,28 @@ class CompareOverlay {
                     <span class="pane-color-indicator" style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: ${pane.color}; cursor: pointer;" title="Change color"></span>
                     <span class="pane-symbol" style="font-weight: 600; color: ${pane.color};">${pane.symbol}</span>
                     <button class="pane-visibility-btn" data-id="${pane.id}" title="Hide" style="${iconBtnStyle}">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                             <circle cx="12" cy="12" r="3"/>
                         </svg>
                     </button>
                     <button class="pane-settings-btn" data-id="${pane.id}" title="Settings" style="${iconBtnStyle}">
-                        ${COMPARE_SETTINGS_ICON_SVG}
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                        </svg>
                     </button>
                     <button class="pane-delete-btn" data-id="${pane.id}" title="Remove" style="${iconBtnStyle}">
-                        ${COMPARE_TRASH_ICON_SVG}
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        </svg>
                     </button>
-                    <span class="pane-ohlc" style="margin-left: 8px; color: ${theme.textSecondary};">
-                        <span style="color: ${theme.textSecondary};">O</span> <span class="pane-open" style="color: ${theme.textPrimary};">--</span>
-                        <span style="color: ${theme.textSecondary}; margin-left: 6px;">H</span> <span class="pane-high" style="color: ${theme.textPrimary};">--</span>
-                        <span style="color: ${theme.textSecondary}; margin-left: 6px;">L</span> <span class="pane-low" style="color: ${theme.textPrimary};">--</span>
-                        <span style="color: ${theme.textSecondary}; margin-left: 6px;">C</span> <span class="pane-close" style="color: ${theme.textPrimary};">--</span>
+                    <span class="pane-ohlc" style="margin-left: 8px; color: #787b86;">
+                        <span style="color: #787b86;">O</span> <span class="pane-open" style="color: #d1d4dc;">--</span>
+                        <span style="color: #787b86; margin-left: 6px;">H</span> <span class="pane-high" style="color: #d1d4dc;">--</span>
+                        <span style="color: #787b86; margin-left: 6px;">L</span> <span class="pane-low" style="color: #d1d4dc;">--</span>
+                        <span style="color: #787b86; margin-left: 6px;">C</span> <span class="pane-close" style="color: #d1d4dc;">--</span>
                     </span>
                 `;
                 
@@ -1162,45 +919,6 @@ class CompareOverlay {
                 `;
                 pane.svg = svg;
                 if (!pane.drawings) pane.drawings = [];
-
-                // Add the same resize line/handle style as multi-panel layout
-                const resizeHandle = document.createElement('div');
-                resizeHandle.className = 'panel-resize-handle horizontal';
-                resizeHandle.style.cssText = `
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    z-index: 210;
-                `;
-                wrapper.appendChild(resizeHandle);
-
-                // Drag-to-resize linked pane height (same row-resize feel as multi-panel)
-                resizeHandle.addEventListener('mousedown', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const startY = e.clientY;
-                    const startHeight = wrapper.getBoundingClientRect().height;
-                    const minHeight = 120;
-                    const maxHeight = Math.max(minHeight, Math.floor((this.chart.h || 900) * 0.85));
-                    resizeHandle.classList.add('dragging');
-
-                    const onMove = (ev) => {
-                        const delta = ev.clientY - startY;
-                        const newHeight = Math.max(minHeight, Math.min(maxHeight, Math.round(startHeight - delta)));
-                        pane.height = `${newHeight}px`;
-                        wrapper.style.height = `${newHeight}px`;
-                        canvas.style.height = `${newHeight}px`;
-                        this.renderLinkedPanes();
-                    };
-                    const onUp = () => {
-                        resizeHandle.classList.remove('dragging');
-                        document.removeEventListener('mousemove', onMove);
-                        document.removeEventListener('mouseup', onUp);
-                    };
-                    document.addEventListener('mousemove', onMove);
-                    document.addEventListener('mouseup', onUp);
-                });
                 
                 wrapper.appendChild(canvas);
                 wrapper.appendChild(svg);
@@ -1210,11 +928,11 @@ class CompareOverlay {
                 // Add hover effects
                 legend.querySelectorAll('button').forEach(btn => {
                     btn.addEventListener('mouseenter', () => {
-                        btn.style.color = theme.iconHover;
-                        btn.style.background = theme.hoverBg;
+                        btn.style.color = '#d1d4dc';
+                        btn.style.background = 'rgba(255,255,255,0.1)';
                     });
                     btn.addEventListener('mouseleave', () => {
-                        btn.style.color = theme.iconMuted;
+                        btn.style.color = '#787b86';
                         btn.style.background = 'transparent';
                     });
                 });
@@ -1244,27 +962,6 @@ class CompareOverlay {
                 
                 console.log(`📊 Created linked pane wrapper for ${pane.symbol}, canvas: ${canvas.width}x${canvas.height}`);
             }
-            const legendEl = document.getElementById(`linkedPaneLegend_${pane.id}`);
-            if (legendEl) {
-                legendEl.style.background = theme.legendBg;
-                legendEl.style.color = theme.textPrimary;
-                legendEl.style.border = `1px solid ${theme.border}`;
-                legendEl.querySelectorAll('button').forEach((btn) => {
-                    btn.style.color = theme.iconMuted;
-                });
-                const ohlc = legendEl.querySelector('.pane-ohlc');
-                if (ohlc) {
-                    ohlc.style.color = theme.textSecondary;
-                    ohlc.querySelectorAll('span').forEach((sp) => {
-                        if (sp.classList.contains('pane-open') || sp.classList.contains('pane-high') || sp.classList.contains('pane-low') || sp.classList.contains('pane-close')) {
-                            sp.style.color = theme.textPrimary;
-                        } else {
-                            sp.style.color = theme.textSecondary;
-                        }
-                    });
-                }
-            }
-            wrapper.style.background = paneBg;
             
             // Update canvas size to match wrapper
             const rect = wrapper.getBoundingClientRect();
@@ -1293,20 +990,15 @@ class CompareOverlay {
         // Clear canvas
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.scale(dpr, dpr);
-        ctx.fillStyle = this.getMainChartBackground();
+        ctx.fillStyle = '#131722';
         ctx.fillRect(0, 0, width, height);
         
-        const mainChart = this.chart;
-        const axisBg = this.getMainChartBackground();
-        const axisBorder = mainChart.chartSettings?.scaleLineColor || '#363a45';
-        const axisText = mainChart.chartSettings?.scaleTextColor || '#787b86';
-        const axisCrosshairBg = mainChart.chartSettings?.scaleLineColor || '#363a45';
-        const axisCrosshairText = mainChart.chartSettings?.scaleTextColor || '#d1d4dc';
-        const margin = { t: 10, r: (mainChart.margin?.r || 60), b: 5, l: (mainChart.margin?.l || 0) };
+        const margin = { t: 10, r: 60, b: 5, l: 0 };
         const chartWidth = width - margin.l - margin.r;
         const chartHeight = height - margin.t - margin.b;
         
         // Get main chart data and settings
+        const mainChart = this.chart;
         const mainData = mainChart.data || [];
         if (mainData.length === 0) return;
         
@@ -1381,43 +1073,36 @@ class CompareOverlay {
             return margin.t + chartHeight - ((price - minPrice) / priceRange) * chartHeight;
         };
         
-        // Y ticks/grid: use nice ticks like main chart (not fixed quartiles)
-        const numYTicks = Math.max(8, Math.min(15, Math.floor(chartHeight / 60)));
-        const yTicks = this.generateNiceTicks(minPrice, maxPrice, numYTicks);
-        const gridColor = mainChart.chartSettings?.gridColor || 'rgba(42, 46, 57, 0.6)';
-        ctx.strokeStyle = gridColor;
+        // Draw horizontal grid lines
+        ctx.strokeStyle = 'rgba(42, 46, 57, 0.6)';
         ctx.lineWidth = 1;
-        yTicks.forEach((price) => {
-            const y = yScale(price);
-            if (y < margin.t || y > height - margin.b) return;
+        const gridLines = 4;
+        for (let i = 0; i <= gridLines; i++) {
+            const y = margin.t + (chartHeight * i / gridLines);
             ctx.beginPath();
             ctx.moveTo(0, Math.floor(y) + 0.5);
             ctx.lineTo(chartWidth, Math.floor(y) + 0.5);
             ctx.stroke();
-        });
+        }
         
-        // Vertical grid lines: reuse main chart time ticks when available for exact sync
-        ctx.strokeStyle = gridColor;
+        // Draw vertical grid lines - sync with main chart's time axis
+        const spacing = 2;
+        const totalCandleWidth = mainChart.candleWidth + spacing;
+        
+        // Calculate how many candles fit and the interval for grid lines
+        const visibleCandles = Math.ceil(chartWidth / totalCandleWidth);
+        const gridInterval = Math.max(1, Math.floor(visibleCandles / 6)); // ~6 vertical lines
+        
+        ctx.strokeStyle = 'rgba(42, 46, 57, 0.6)';
         ctx.lineWidth = 1;
-        if (Array.isArray(mainChart._timeTicks) && mainChart._timeTicks.length > 0) {
-            mainChart._timeTicks.forEach((tick) => {
-                const x = tick.x;
-                if (x >= margin.l && x <= chartWidth) {
-                    ctx.beginPath();
-                    ctx.moveTo(Math.floor(x) + 0.5, margin.t);
-                    ctx.lineTo(Math.floor(x) + 0.5, height - margin.b);
-                    ctx.stroke();
-                }
-            });
-        } else {
-            const totalCandleWidth = candleSpacing;
-            const visibleCandles = Math.ceil(chartWidth / totalCandleWidth);
-            const gridInterval = Math.max(1, Math.floor(visibleCandles / 6));
-            for (let i = startIdx; i <= endIdx; i++) {
-                if (i % gridInterval !== 0) continue;
-                const x = mainChart.dataIndexToPixel
-                    ? mainChart.dataIndexToPixel(i)
-                    : margin.l + (i * totalCandleWidth) + mainChart.offsetX + mainChart.candleWidth / 2;
+        
+        for (let i = startIdx; i <= endIdx; i++) {
+            // Draw grid at regular intervals
+            if (i % gridInterval === 0) {
+                const x = mainChart.dataIndexToPixel ? 
+                    mainChart.dataIndexToPixel(i) : 
+                    margin.l + (i * totalCandleWidth) + mainChart.offsetX + mainChart.candleWidth / 2;
+                
                 if (x >= margin.l && x <= chartWidth) {
                     ctx.beginPath();
                     ctx.moveTo(Math.floor(x) + 0.5, margin.t);
@@ -1592,54 +1277,44 @@ class CompareOverlay {
         
         console.log(`📊 Pane drew ${pointCount} ${displayType}, range: ${minPrice.toFixed(2)} - ${maxPrice.toFixed(2)}`);
         
-        // Determine decimal places from same logic as main chart
-        const decimals = typeof mainChart.getPriceDecimals === 'function'
-            ? mainChart.getPriceDecimals(priceRange)
-            : (maxPrice > 100 ? 2 : (maxPrice > 10 ? 3 : 5));
-        const scaleTextSize = mainChart.chartSettings?.scaleTextSize || 11;
-        const scaleFont = `${scaleTextSize}px Roboto`;
+        // Determine decimal places based on price magnitude
+        const decimals = maxPrice > 100 ? 2 : (maxPrice > 10 ? 3 : 5);
         
         // Draw Y-axis background first
-        ctx.fillStyle = axisBg;
+        ctx.fillStyle = '#131722';
         ctx.fillRect(width - margin.r, 0, margin.r, height);
         
-        // Draw Y-axis border using the same style model as main chart scale line
-        const scaleLineColor = mainChart.chartSettings?.scaleLineColor || axisBorder;
-        const scaleLineWidth = mainChart.chartSettings?.scaleLineWidth || 1;
-        const scaleLinePattern = mainChart.chartSettings?.scaleLinePattern || 'solid';
-        if (scaleLinePattern === 'dashed') {
-            ctx.setLineDash([4, 4]);
-        } else if (scaleLinePattern === 'dotted') {
-            ctx.setLineDash([2, 4]);
-        } else {
-            ctx.setLineDash([]);
-        }
-        ctx.strokeStyle = scaleLineColor;
-        ctx.lineWidth = scaleLineWidth;
-        const axisBorderX = Math.floor(width - margin.r) + 0.5;
+        // Draw Y-axis border
+        ctx.strokeStyle = '#363a45';
+        ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(axisBorderX, 0);
-        ctx.lineTo(axisBorderX, height);
+        ctx.moveTo(width - margin.r + 0.5, 0);
+        ctx.lineTo(width - margin.r + 0.5, height);
         ctx.stroke();
-        ctx.setLineDash([]);
         
         // Draw Y-axis labels
-        ctx.fillStyle = axisText;
-        ctx.font = scaleFont;
+        ctx.fillStyle = '#787b86';
+        ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
         ctx.textAlign = 'center';
-        yTicks.forEach((price) => {
-            const y = yScale(price);
-            if (y < margin.t + 8 || y > height - margin.b - 8) return;
-            if (lastPrice > 0 && Math.abs(y - lastY) < 18) return;
-            if (!isNaN(price)) ctx.fillText(price.toFixed(decimals), width - margin.r / 2, y + 4);
-        });
+        
+        const priceStep = priceRange / gridLines;
+        for (let i = 0; i <= gridLines; i++) {
+            const price = maxPrice - priceStep * i;
+            const y = margin.t + (chartHeight * i / gridLines);
+            
+            // Don't draw if too close to current price label
+            if (lastPrice > 0 && Math.abs(y - lastY) < 18) continue;
+            
+            if (!isNaN(price)) {
+                ctx.fillText(price.toFixed(decimals), width - margin.r / 2, y + 4);
+            }
+        }
         
         // Draw current price line and label
         if (lastPrice > 0 && !isNaN(lastPrice)) {
-            const currentPriceLabelColor = mainChart.chartSettings?.priceLineColor || pane.color;
             // Dashed line from chart to price axis
             ctx.setLineDash([3, 3]);
-            ctx.strokeStyle = currentPriceLabelColor;
+            ctx.strokeStyle = pane.color;
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(width - margin.r, lastY);
@@ -1648,12 +1323,12 @@ class CompareOverlay {
             ctx.setLineDash([]);
             
             // Price label background
-            ctx.fillStyle = currentPriceLabelColor;
+            ctx.fillStyle = pane.color;
             ctx.fillRect(width - margin.r, lastY - 10, margin.r, 20);
             
             // Price label text
             ctx.fillStyle = '#ffffff';
-            ctx.font = `500 ${scaleTextSize}px Roboto`;
+            ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText(lastPrice.toFixed(decimals), width - margin.r / 2, lastY + 4);
         }
@@ -1662,22 +1337,11 @@ class CompareOverlay {
         if (pane.crosshair && pane.crosshair.x >= 0) {
             const cx = pane.crosshair.x;
             const cy = pane.crosshair.y;
-            const crossColor = mainChart.chartSettings?.crosshairColor || '#787b86';
-            const crossPattern = mainChart.chartSettings?.crosshairPattern || 'dashed';
-            const crossWidth = Math.max(1, parseInt(mainChart.chartSettings?.crosshairWidth, 10) || 2);
-            const cursorLabelBg = mainChart.chartSettings?.cursorLabelBgColor || axisCrosshairBg;
-            const cursorLabelText = mainChart.chartSettings?.cursorLabelTextColor || axisCrosshairText;
             
             ctx.save();
-            if (crossPattern === 'dashed') {
-                ctx.setLineDash([4, 4]);
-            } else if (crossPattern === 'dotted') {
-                ctx.setLineDash([2, 4]);
-            } else {
-                ctx.setLineDash([]);
-            }
-            ctx.strokeStyle = crossColor;
-            ctx.lineWidth = crossWidth;
+            ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = '#787b86';
+            ctx.lineWidth = 1;
             
             // Vertical line
             if (cx >= margin.l && cx <= chartWidth) {
@@ -1698,10 +1362,10 @@ class CompareOverlay {
                 const crosshairPrice = minPrice + (1 - (cy - margin.t) / chartHeight) * priceRange;
                 if (!isNaN(crosshairPrice)) {
                     ctx.setLineDash([]);
-                    ctx.fillStyle = cursorLabelBg;
+                    ctx.fillStyle = '#363a45';
                     ctx.fillRect(width - margin.r, cy - 10, margin.r, 20);
-                    ctx.fillStyle = cursorLabelText;
-                    ctx.font = scaleFont;
+                    ctx.fillStyle = '#d1d4dc';
+                    ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
                     ctx.textAlign = 'center';
                     ctx.fillText(crosshairPrice.toFixed(decimals), width - margin.r / 2, cy + 4);
                 }
@@ -1711,8 +1375,8 @@ class CompareOverlay {
         }
         
         // Update OHLC display with last visible candle
-        if (paneData.length > 0) {
-            const lastCandle = paneData[paneData.length - 1];
+        if (visibleData.length > 0) {
+            const lastCandle = visibleData[visibleData.length - 1];
             this.updatePaneOHLCDirect(pane, lastCandle);
         }
         
@@ -1847,8 +1511,8 @@ class CompareOverlay {
      * Setup price axis controls (same as overlay - drag Y-axis to zoom, drag chart to move)
      */
     setupPaneAxisControls(pane, canvas, wrapper) {
-        const priceAxisWidth = this.chart.margin?.r || 60;
-        const margin = { t: 10, r: priceAxisWidth, b: 5, l: (this.chart.margin?.l || 0) };
+        const priceAxisWidth = 60;
+        const margin = { t: 10, r: 60, b: 5, l: 0 };
         
         const dragState = {
             isDragging: false,
@@ -1921,9 +1585,9 @@ class CompareOverlay {
                 
                 // Only handle Y-axis zoom here (chart area movement is handled by combinedDrag)
                 if (dragState.dragType === 'zoom') {
-                    // Drag from Y-axis: match main chart price-axis behavior
-                    const sensitivity = 0.002;
-                    const zoomFactor = Math.max(0.01, 1 - dy * sensitivity);
+                    // Drag from Y-axis: Zoom (same as overlay)
+                    const sensitivity = 0.005;
+                    const zoomFactor = 1 + dy * sensitivity;
                     const newZoom = Math.max(0.5, Math.min(20, pane.priceZoom * zoomFactor));
                     
                     const newRange = baseRange / newZoom;
@@ -1931,7 +1595,7 @@ class CompareOverlay {
                     
                     // Zoom centered on mouse position
                     const mouseRatio = (my - margin.t) / chartHeight;
-                    pane.priceOffset -= rangeChange * (0.5 - mouseRatio);
+                    pane.priceOffset += rangeChange * (0.5 - mouseRatio);
                     pane.priceZoom = newZoom;
                 }
                 
@@ -1994,26 +1658,7 @@ class CompareOverlay {
         
         // Horizontal scroll - sync with main chart
         canvas.addEventListener('wheel', (e) => {
-            if (isOverPriceAxis(e)) {
-                // Match main chart: wheel on price axis zooms vertical scale
-                e.preventDefault();
-                pane.autoScale = false;
-                const rect = canvas.getBoundingClientRect();
-                const my = e.clientY - rect.top;
-                const chartHeight = rect.height - margin.t - margin.b;
-                const baseRange = pane.baseRange || (pane.yMax - pane.yMin) || 100;
-                const displayedRange = baseRange / pane.priceZoom;
-                const sensitivity = 0.002;
-                const zoomFactor = Math.max(0.01, 1 - e.deltaY * sensitivity);
-                const newZoom = Math.max(0.5, Math.min(20, pane.priceZoom * zoomFactor));
-                const newRange = baseRange / newZoom;
-                const rangeChange = newRange - displayedRange;
-                const mouseRatio = (my - margin.t) / chartHeight;
-                pane.priceOffset -= rangeChange * (0.5 - mouseRatio);
-                pane.priceZoom = newZoom;
-                this.renderLinkedPanes();
-                return;
-            } else {
+            if (!isOverPriceAxis(e)) {
                 // Horizontal scroll in chart area - sync with main chart
                 e.preventDefault();
                 
@@ -2069,7 +1714,8 @@ class CompareOverlay {
             const price = pane.currentMax - ((my - margin.t) / chartHeight) * (pane.currentMax - pane.currentMin);
             
             // Index from X (use main chart's calculation)
-            const candleSpacing = this.chart.getCandleSpacing ? this.chart.getCandleSpacing() : (this.chart.candleWidth + 2);
+            const spacing = 2;
+            const candleSpacing = this.chart.candleWidth + spacing;
             const adjustedX = mx - margin.l - this.chart.offsetX;
             const dataIndex = Math.round(adjustedX / candleSpacing);
             
@@ -2254,7 +1900,7 @@ class CompareOverlay {
                 const baseRange = pane.baseRange || (pane.yMax - pane.yMin) || 100;
                 const displayedRange = baseRange / pane.priceZoom;
                 const pricePerPixel = displayedRange / chartHeight;
-                pane.priceOffset += dy * pricePerPixel;
+                pane.priceOffset -= dy * pricePerPixel;
             }
             
             // Update last position
@@ -2382,7 +2028,7 @@ class CompareOverlay {
             if (btn) {
                 if (pane.visible) {
                     btn.innerHTML = `
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                             <circle cx="12" cy="12" r="3"/>
                         </svg>
@@ -2390,7 +2036,7 @@ class CompareOverlay {
                     btn.title = 'Hide';
                 } else {
                     btn.innerHTML = `
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
                             <line x1="1" y1="1" x2="23" y2="23"/>
                         </svg>
@@ -2662,7 +2308,7 @@ class CompareOverlay {
                     <span class="compare-overlay-name">${overlay.symbol}</span>
                     <button class="compare-overlay-toggle ${overlay.visible ? 'visible' : ''}" 
                             data-id="${overlay.id}" title="Toggle visibility">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             ${overlay.visible 
                                 ? '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'
                                 : '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'
@@ -2670,7 +2316,7 @@ class CompareOverlay {
                         </svg>
                     </button>
                     <button class="compare-overlay-remove" data-id="${overlay.id}" title="Remove">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="18" y1="6" x2="6" y2="18"/>
                             <line x1="6" y1="6" x2="18" y2="18"/>
                         </svg>
@@ -2715,9 +2361,6 @@ class CompareOverlay {
             // Parse using chart's parsing logic
             const rawData = this.parseCSVData(result.data);
             console.log(`📊 Parsed ${rawData.length} candles`);
-            if (!Array.isArray(rawData) || rawData.length === 0) {
-                throw new Error('No valid candles parsed for selected symbol');
-            }
             
             // Resample to match current timeframe
             const resampledData = this.resampleData(rawData, this.chart.currentTimeframe);
@@ -2792,7 +2435,6 @@ class CompareOverlay {
         let separator = ',';
         if (lines[dataStartIdx].split('\t').length > 4) separator = '\t';
         else if (lines[dataStartIdx].split(';').length > 4) separator = ';';
-        else if (lines[dataStartIdx].split(/\s+/).length > 5) separator = /\s+/;
         
         // Find column indices
         let timeIdx = -1, dateIdx = -1, openIdx = -1, highIdx = -1, lowIdx = -1, closeIdx = -1, volIdx = -1, tickerIdx = -1;
@@ -2847,31 +2489,25 @@ class CompareOverlay {
             
             // Parse timestamp
             let timestamp = null;
-            if (dateIdx >= 0 && timeIdx >= 0 && timeIdx !== dateIdx) {
-                timestamp = this.parseDateTime(cols[dateIdx], cols[timeIdx]);
-            } else if (dateIdx >= 0) {
-                timestamp = this.parseDateTime(cols[dateIdx]);
-            } else if (timeIdx >= 0) {
-                const timeVal = cols[timeIdx];
-                if (/^\d+$/.test(timeVal)) {
-                    timestamp = parseInt(timeVal, 10);
-                    if (timestamp < 10000000000) timestamp *= 1000;
-                } else {
-                    timestamp = this.parseDateTime(timeVal);
+            if (dateIdx >= 0) {
+                let dateStr = cols[dateIdx];
+                if (timeIdx >= 0 && cols[timeIdx]) {
+                    dateStr += ' ' + cols[timeIdx];
                 }
-            }
-            
-            // Debug first few failures
-            if (!timestamp && i < dataStartIdx + 3) {
-                console.log('📊 Failed to parse date:', cols[dateIdx >= 0 ? dateIdx : (timeIdx >= 0 ? timeIdx : 0)]);
+                timestamp = this.parseDateTime(dateStr);
+                
+                // Debug first few failures
+                if (!timestamp && i < dataStartIdx + 3) {
+                    console.log('📊 Failed to parse date:', dateStr);
+                }
             }
             
             if (!timestamp) continue;
             
-            const open = parseFloat(cols[openIdx >= 0 ? openIdx : 1]);
-            const high = parseFloat(cols[highIdx >= 0 ? highIdx : 2]);
-            const low = parseFloat(cols[lowIdx >= 0 ? lowIdx : 3]);
-            const close = parseFloat(cols[closeIdx >= 0 ? closeIdx : 4]);
+            const open = parseFloat(cols[openIdx]);
+            const high = parseFloat(cols[highIdx]);
+            const low = parseFloat(cols[lowIdx]);
+            const close = parseFloat(cols[closeIdx]);
             const volume = volIdx >= 0 ? parseFloat(cols[volIdx]) || 0 : 0;
             
             if (isNaN(open) || isNaN(high) || isNaN(low) || isNaN(close)) continue;
@@ -2885,16 +2521,11 @@ class CompareOverlay {
         return data;
     }
     
-    parseDateTime(dateStr, timeStr = null) {
+    parseDateTime(dateStr) {
         if (!dateStr) return null;
         
         // Clean the string
-        dateStr = String(dateStr).trim();
-        if (timeStr != null && String(timeStr).trim() !== '') {
-            const merged = `${dateStr} ${String(timeStr).trim()}`;
-            const mergedParsed = this.parseDateTime(merged);
-            if (mergedParsed) return mergedParsed;
-        }
+        dateStr = dateStr.trim();
         
         // Handle YYYYMMDD HHMM format (e.g., "20180401 2104" or "20180401 210400")
         const compactMatch = dateStr.match(/^(\d{4})(\d{2})(\d{2})\s+(\d{2})(\d{2})(\d{2})?$/);
@@ -3070,14 +2701,11 @@ class CompareOverlay {
                 return;
             }
             
-            // Calculate Y scale for this overlay from full OHLC range.
-            // Using close-only can distort/clip candle wicks on higher timeframes.
+            // Calculate Y scale for this overlay (its own price range)
             let minPrice = Infinity, maxPrice = -Infinity;
             overlayData.forEach(d => {
-                const lo = Number.isFinite(d.l) ? d.l : d.c;
-                const hi = Number.isFinite(d.h) ? d.h : d.c;
-                if (lo < minPrice) minPrice = lo;
-                if (hi > maxPrice) maxPrice = hi;
+                if (d.c < minPrice) minPrice = d.c;
+                if (d.c > maxPrice) maxPrice = d.c;
             });
             
             let priceRange = maxPrice - minPrice || 1;
@@ -3236,112 +2864,10 @@ class CompareOverlay {
     
     updateOverlayLegend() {
         let legend = document.getElementById('overlayLegendContainer');
-        const panelHost = (typeof this.chart._getPanelOverlayContainer === 'function')
-            ? this.chart._getPanelOverlayContainer()
-            : (this.chart?.canvas?.closest('.chart-panel') || null);
-        const inlineHost = panelHost
-            ? panelHost.querySelector('.ohlc-indicators')
-            : document.getElementById('ohlcIndicators');
-        const currencyToCountry = (ccy) => {
-            const map = {
-                USD: 'us', EUR: 'eu', GBP: 'gb', JPY: 'jp', AUD: 'au', NZD: 'nz',
-                CAD: 'ca', CHF: 'ch', SEK: 'se', NOK: 'no', DKK: 'dk', SGD: 'sg',
-                HKD: 'hk', CNY: 'cn', CNH: 'cn', INR: 'in', ZAR: 'za', MXN: 'mx',
-                BRL: 'br', TRY: 'tr', PLN: 'pl', HUF: 'hu', CZK: 'cz', RUB: 'ru',
-                KRW: 'kr', TWD: 'tw', THB: 'th', MYR: 'my', PHP: 'ph', IDR: 'id',
-                ILS: 'il', CLP: 'cl', COP: 'co', PEN: 'pe', ARS: 'ar', RON: 'ro',
-                BGN: 'bg', HRK: 'hr', ISK: 'is', RSD: 'rs', UAH: 'ua', KES: 'ke',
-                NGN: 'ng', EGP: 'eg', SAR: 'sa', AED: 'ae', QAR: 'qa', KWD: 'kw',
-                BHD: 'bh', OMR: 'om', JOD: 'jo'
-            };
-            return map[(ccy || '').toUpperCase()] || null;
-        };
-        // ---------------------------------------------------------------
-        // Symbol-icon builder for the compare-overlay legend. Produces an
-        // 18-px circular asset-class badge for every ticker the platform
-        // knows about so the legend matches the chart header / dropdown:
-        //   FX pair  → two overlapping country flags (classic forex look)
-        //   crypto   → coin logo from CoinCap (orange gradient fallback)
-        //   futures  → blue gradient circle + root (ES, NQ, CL…)
-        //   stock    → green gradient circle + ticker (AAPL, MSFT…)
-        // ---------------------------------------------------------------
-        const detectAssetClass = (symbol) => {
-            try {
-                const MCE = (typeof window !== 'undefined') ? window.MarketCalculationEngine : null;
-                if (MCE && typeof MCE.detectMarketType === 'function') {
-                    const t = MCE.detectMarketType(symbol);
-                    if (t === 'forex')   return 'fx';
-                    if (t === 'crypto')  return 'crypto';
-                    if (t === 'futures') return 'futures';
-                    if (t === 'stocks')  return 'stock';
-                }
-            } catch (_) { /* fallthrough */ }
-            return null;
-        };
-        const singleCircle = (inner, gradient) => `
-            <span style="position:relative;display:inline-block;width:28px;height:18px;vertical-align:middle;">
-                <span style="position:absolute;left:5px;top:0;width:18px;height:18px;border-radius:50%;background:${gradient};border:2px solid rgba(203,213,225,0.92);outline:1px solid rgba(5,10,20,0.8);box-shadow:0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:8px;letter-spacing:-0.3px;overflow:hidden">${inner}</span>
-            </span>
-        `;
-        const buildOverlayPairFlags = (symbol) => {
-            const raw = String(symbol || '');
-            const clean = raw.replace(/[\s\-_\/\.]/g, '').toUpperCase();
-            const cls = detectAssetClass(raw);
-
-            // Crypto: coin logo on CoinCap, gradient badge behind.
-            if (cls === 'crypto') {
-                const base = clean.replace(/USDT$|USDC$|BUSD$|DAI$|TUSD$|USD$|EUR$|GBP$|PERP$/i, '') || clean;
-                const iconUrl = `https://assets.coincap.io/assets/icons/${base.toLowerCase()}@2x.png`;
-                const inner = `<span style="position:relative;z-index:1">${base.slice(0,3)}</span><img src="${iconUrl}" alt="${base}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit;z-index:2" onerror="this.style.display='none'" />`;
-                return singleCircle(inner, 'linear-gradient(135deg,#f7931a,#ffb347)');
-            }
-            if (cls === 'futures') {
-                const root = clean.slice(0, Math.min(3, clean.length)) || 'FX';
-                return singleCircle(root, 'linear-gradient(135deg,#3b82f6,#6366f1)');
-            }
-            if (cls === 'stock') {
-                const sym = clean.slice(0, Math.min(4, clean.length)) || 'ST';
-                return singleCircle(sym, 'linear-gradient(135deg,#10b981,#14b8a6)');
-            }
-
-            // FX pair path (unchanged): two overlapping country flags.
-            if (clean.length < 6) return '';
-            const base = clean.slice(0, 3);
-            const quote = clean.slice(3, 6);
-            const baseCC = currencyToCountry(base);
-            const quoteCC = currencyToCountry(quote);
-            if (!baseCC || !quoteCC) return '';
-            const baseUrl = `https://flagcdn.com/w80/${baseCC}.png`;
-            const quoteUrl = `https://flagcdn.com/w80/${quoteCC}.png`;
-            return `
-                <span style="position:relative;display:inline-block;width:28px;height:18px;vertical-align:middle;">
-                    <img src="${baseUrl}" alt="${base}" onerror="this.style.display='none'" style="position:absolute;left:0;top:0;width:18px;height:18px;border-radius:50%;object-fit:cover;border:2px solid rgba(203,213,225,0.92);outline:1px solid rgba(5,10,20,0.8);box-shadow:0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92);" />
-                    <img src="${quoteUrl}" alt="${quote}" onerror="this.style.display='none'" style="position:absolute;left:10px;top:0;width:18px;height:18px;border-radius:50%;object-fit:cover;border:2px solid rgba(203,213,225,0.92);outline:1px solid rgba(5,10,20,0.8);box-shadow:0 1.5px 4px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(203,213,225,0.92);" />
-                </span>
-            `;
-        };
         
         if (!legend) {
             legend = document.createElement('div');
             legend.id = 'overlayLegendContainer';
-            legend.className = 'overlay-legend-inline';
-        }
-
-        // Keep compare overlay symbols inside OHLC body so collapse/hide controls include them.
-        if (inlineHost) {
-            if (legend.parentElement !== inlineHost) inlineHost.appendChild(legend);
-            legend.style.cssText = `
-                position: static;
-                display: flex;
-                flex-direction: column;
-                gap: 2px;
-                margin-top: 2px;
-                z-index: 2;
-                pointer-events: auto;
-            `;
-            legend.dataset.inline = '1';
-        } else if (!legend.parentElement) {
-            // Fallback for unexpected layouts
             legend.style.cssText = `
                 position: absolute;
                 top: 52px;
@@ -3353,8 +2879,10 @@ class CompareOverlay {
                 pointer-events: auto;
             `;
             this.chart.canvas.parentElement.appendChild(legend);
-            legend.dataset.inline = '0';
         }
+        
+        // Update top position (below OHLC info and Volume)
+        legend.style.top = '52px';
         
         // Clear and rebuild
         legend.innerHTML = '';
@@ -3368,7 +2896,6 @@ class CompareOverlay {
             const isBullish = latestCandle.c >= latestCandle.o;
             const changeColor = isBullish ? '#26a69a' : '#ef5350';
             const isHidden = !overlay.visible;
-            const pairFlags = buildOverlayPairFlags(overlay.symbol);
             
             const row = document.createElement('div');
             row.style.cssText = `
@@ -3394,12 +2921,12 @@ class CompareOverlay {
             
             // Eye icon - different for visible/hidden
             const eyeIcon = isHidden ? `
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
                     <line x1="1" y1="1" x2="23" y2="23"/>
                 </svg>
             ` : `
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                     <circle cx="12" cy="12" r="3"/>
                 </svg>
@@ -3416,23 +2943,29 @@ class CompareOverlay {
                     opacity: ${isHidden ? '0.5' : '1'};
                     cursor: pointer;
                 ">
-                    ${pairFlags || `<span style="
+                    <span style="
                         width: 10px;
                         height: 10px;
                         background: ${overlay.color};
                         border-radius: 2px;
                         ${isSelected ? 'box-shadow: 0 0 0 2px #2962ff;' : ''}
-                    "></span>`}
+                    "></span>
                     <span style="color: ${overlay.color}; font-weight: 500;">${overlay.symbol}</span>
                     ${isSelected ? '<span style="color: #2962ff; font-size: 10px;">↕</span>' : ''}
                     <button class="overlay-visibility-btn" data-id="${overlay.id}" title="${isHidden ? 'Show' : 'Hide'}" style="${iconBtnStyle}">
                         ${eyeIcon}
                     </button>
                     <button class="overlay-settings-btn" data-id="${overlay.id}" title="Settings" style="${iconBtnStyle}">
-                        ${COMPARE_SETTINGS_ICON_SVG}
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                        </svg>
                     </button>
                     <button class="overlay-delete-btn" data-id="${overlay.id}" title="Delete" style="${iconBtnStyle}">
-                        ${COMPARE_TRASH_ICON_SVG}
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        </svg>
                     </button>
                 </div>
                 <span style="color: #787b86;">O</span>
@@ -3513,7 +3046,7 @@ class CompareOverlay {
         
         // Update overlay legend
         const legend = document.getElementById('overlayLegendContainer');
-        if (legend && legend.dataset.inline !== '1') {
+        if (legend) {
             legend.style.left = leftOffset + 'px';
         }
         
@@ -3731,13 +3264,6 @@ class CompareOverlay {
         this.overlays.forEach(overlay => {
             overlay.data = this.resampleData(overlay.rawData, timeframe);
         });
-        if (Array.isArray(this.linkedPanes)) {
-            this.linkedPanes.forEach(pane => {
-                pane.data = this.resampleData(pane.rawData || [], timeframe);
-                this.calculateLinkedPaneScale(pane);
-            });
-            this.renderLinkedPanes();
-        }
         this.chart.render();
     }
     

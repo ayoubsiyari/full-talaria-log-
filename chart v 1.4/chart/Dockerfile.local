@@ -17,12 +17,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY package.json package-lock.json* ./
-RUN npm ci
+COPY package.json ./
+RUN npm install --omit=dev
 
 COPY . .
-
-RUN npm run build:chart-client
 
 RUN mkdir -p uploads/bin uploads/tiles uploads/aggregates data db indicators && \
     chmod -R 755 /app

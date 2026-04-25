@@ -4,1290 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Standard Backtesting Mode</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-        <style id="bt-all-styles">
-/* Fonts loaded from backtesting.html <link> so a blocked @import cannot drop the whole sheet */
-
-:root {
-  --bt-bg: #0d1117;
-  --bt-border: rgba(255, 255, 255, 0.07);
-  --bt-blue: #3b82f6;
-  --bt-blue-soft: rgba(59, 130, 246, 0.12);
-  --bt-blue-mid: rgba(59, 130, 246, 0.5);
-  --bt-text: #e2e8f0;
-  --bt-muted: #64748b;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-/* ——— Shell (standalone) ——— */
-body {
-  margin: 0;
-  min-height: 100vh;
-  font-family: 'DM Sans', system-ui, sans-serif;
-  background: #05060d;
-  color: var(--bt-text);
-  overflow-x: hidden;
-}
-
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59, 130, 246, 0.07), transparent 55%);
-  pointer-events: none;
-  z-index: 0;
-}
-
-.bt-top-bar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 52px;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-  background: rgba(13, 17, 23, 0.92);
-  backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.bt-top-bar-logo {
-  height: 28px;
-  margin-right: 12px;
-}
-
-.bt-top-bar-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #f8fafc;
-  letter-spacing: -0.02em;
-}
-
-.bt-top-bar-actions {
-  margin-left: auto;
-}
-
-.bt-top-bar .bt-top-cancel {
-  padding: 7px 14px;
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 8px;
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  font-family: 'DM Sans', sans-serif;
-  transition: all 0.15s;
-}
-
-.bt-top-bar .bt-top-cancel:hover {
-  border-color: rgba(255, 255, 255, 0.16);
-  color: #94a3b8;
-}
-
-.bt-overlay {
-  position: relative;
-  z-index: 1;
-  min-height: calc(100vh - 52px);
-  margin-top: 52px;
-  background: rgba(5, 8, 18, 0.85);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem 1rem 2.5rem;
-}
-
-.bt-modal {
-  background: var(--bt-bg);
-  border: 1px solid var(--bt-border);
-  border-radius: 16px;
-  width: 100%;
-  max-width: 780px;
-  overflow: hidden;
-  color: var(--bt-text);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
-  display: flex;
-  flex-direction: column;
-  max-height: calc(100vh - 52px - 4rem);
-}
-
-.bt-modal > form {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
-
-.bt-modal-header {
-  padding: 1.75rem 2rem 1.25rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-shrink: 0;
-  background: linear-gradient(180deg, rgba(59, 130, 246, 0.06) 0%, transparent 100%);
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.header-icon {
-  width: 38px;
-  height: 38px;
-  background: rgba(59, 130, 246, 0.1);
-  border: 1px solid rgba(59, 130, 246, 0.28);
-  border-radius: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  overflow: hidden;
-}
-
-.header-logo-img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
-  padding: 5px;
-}
-
-.bt-modal-title {
-  font-size: 17px;
-  font-weight: 600;
-  color: #f1f5f9;
-  letter-spacing: -0.01em;
-}
-
-.bt-modal-subtitle {
-  font-size: 12px;
-  color: #64748b;
-  margin-top: 2px;
-}
-
-.bt-close-btn {
-  width: 32px;
-  height: 32px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #64748b;
-  transition: all 0.15s;
-  flex-shrink: 0;
-}
-
-.bt-close-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #e2e8f0;
-}
-
-.bt-modal-body {
-  padding: 1.5rem 2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  overflow-y: auto;
-  overflow-x: hidden;
-  flex: 1;
-  min-height: 0;
-}
-
-.bt-modal-body::-webkit-scrollbar {
-  width: 8px;
-}
-.bt-modal-body::-webkit-scrollbar-thumb {
-  background: rgba(59, 130, 246, 0.25);
-  border-radius: 8px;
-}
-
-.bt-section-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.section-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #475569;
-  margin-bottom: 0.75rem;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.section-label::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.section-label .section-label-note {
-  font-size: 10px;
-  font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
-  color: #475569;
-  margin-left: 4px;
-}
-
-.grid-2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.grid-3 {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 12px;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.field-full {
-  grid-column: 1 / -1;
-}
-
-.bt-modal-body label,
-.field label {
-  font-size: 11px;
-  font-weight: 500;
-  color: #94a3b8;
-  letter-spacing: 0.02em;
-}
-
-label .req,
-label .required {
-  color: #f87171;
-  margin-left: 2px;
-}
-
-.bt-modal-body input[type='text'],
-.bt-modal-body input[type='number'],
-.bt-modal-body input[type='datetime-local'],
-.bt-modal-body input[type='date'],
-.bt-modal-body textarea,
-.bt-modal-body select {
-  width: 100%;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  padding: 9px 12px;
-  font-size: 13px;
-  color: #e2e8f0;
-  font-family: 'DM Sans', sans-serif;
-  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
-  outline: none;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-.bt-modal-body input:focus,
-.bt-modal-body textarea:focus,
-.bt-modal-body select:focus {
-  border-color: rgba(59, 130, 246, 0.5);
-  background: rgba(59, 130, 246, 0.04);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
-}
-
-.bt-modal-body input::placeholder,
-.bt-modal-body textarea::placeholder {
-  color: #334155;
-}
-
-.bt-modal-body textarea {
-  resize: vertical;
-  min-height: 68px;
-}
-
-.bt-modal-body select {
-  cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  padding-right: 32px;
-  background-color: rgba(255, 255, 255, 0.03);
-}
-
-.bt-modal-body select option {
-  background: #0d1117;
-  color: #e2e8f0;
-}
-
-.date-field,
-input.date-field,
-input.mono {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 12px;
-  color: #a5b4fc;
-}
-
-.quick-pills {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.pill,
-.preset-btn {
-  padding: 5px 12px;
-  font-size: 11px;
-  font-weight: 500;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  color: #64748b;
-  cursor: pointer;
-  transition: all 0.12s;
-  font-family: 'DM Sans', sans-serif;
-}
-
-.pill:hover,
-.preset-btn:hover {
-  border-color: rgba(59, 130, 246, 0.4);
-  color: #60a5fa;
-  background: rgba(59, 130, 246, 0.06);
-}
-
-.pill.active,
-.preset-btn.active {
-  border-color: rgba(59, 130, 246, 0.5);
-  color: #a5b4fc;
-  background: rgba(59, 130, 246, 0.1);
-}
-
-.instrument-table-wrap {
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
-  overflow: auto;
-  max-width: 100%;
-}
-
-.instrument-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 11px;
-  min-width: 820px;
-}
-
-.instrument-table th {
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.03);
-  color: #475569;
-  font-weight: 500;
-  text-align: left;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  white-space: nowrap;
-}
-
-.instrument-table td {
-  padding: 10px 10px;
-  color: #64748b;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-  font-size: 11px;
-  vertical-align: middle;
-  font-style: normal;
-}
-
-.instrument-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.instrument-input {
-  width: 100%;
-  padding: 6px 9px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  color: #e2e8f0;
-  font-size: 12px;
-  font-family: 'DM Sans', sans-serif;
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.instrument-input:focus {
-  outline: none;
-  border-color: rgba(59, 130, 246, 0.45);
-  background: rgba(59, 130, 246, 0.04);
-}
-
-.protection-row {
-  display: flex;
-  gap: 10px;
-  align-items: flex-end;
-  flex-wrap: wrap;
-}
-
-.protection-row .field {
-  flex: 1;
-  min-width: 200px;
-}
-
-.new-btn {
-  height: 36px;
-  padding: 0 14px;
-  background: rgba(59, 130, 246, 0.08);
-  border: 1px solid rgba(59, 130, 246, 0.25);
-  border-radius: 8px;
-  color: #60a5fa;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  font-family: 'DM Sans', sans-serif;
-  transition: all 0.15s;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.new-btn:hover {
-  background: rgba(59, 130, 246, 0.14);
-  border-color: rgba(59, 130, 246, 0.4);
-}
-
-.new-btn svg {
-  flex-shrink: 0;
-}
-
-.bt-toggle-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
-  margin: 0 2rem 0;
-}
-
-.bt-toggle-row .toggle-switch {
-  position: relative;
-  display: inline-block;
-  width: 36px;
-  height: 20px;
-  flex-shrink: 0;
-}
-
-.bt-toggle-row .toggle-switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.bt-toggle-row .toggle-slider {
-  position: absolute;
-  cursor: pointer;
-  inset: 0;
-  background: rgba(255, 255, 255, 0.1);
-  transition: 0.2s;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.bt-toggle-row .toggle-slider:before {
-  position: absolute;
-  content: '';
-  height: 14px;
-  width: 14px;
-  left: 3px;
-  bottom: 2px;
-  background: #fff;
-  transition: 0.2s;
-  border-radius: 50%;
-}
-
-.bt-toggle-row .toggle-switch input:checked + .toggle-slider {
-  background: rgba(59, 130, 246, 0.55);
-  border-color: rgba(59, 130, 246, 0.4);
-}
-
-.bt-toggle-row .toggle-switch input:checked + .toggle-slider:before {
-  transform: translateX(15px);
-}
-
-.toggle-text-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1;
-  min-width: 0;
-}
-
-.toggle-text {
-  font-size: 12px;
-  color: #94a3b8;
-  font-weight: 500;
-}
-
-.toggle-hint-inline {
-  font-size: 10px;
-  color: #475569;
-  margin-left: auto;
-}
-
-.hint,
-.helper-text {
-  font-size: 11px;
-  color: #475569;
-  margin-top: 3px;
-  line-height: 1.45;
-}
-
-.link {
-  font-size: 11px;
-  color: #60a5fa;
-  cursor: pointer;
-  text-decoration: none;
-}
-
-.link:hover {
-  color: #a5b4fc;
-  text-decoration: underline;
-}
-
-.readonly-input {
-  background: rgba(255, 255, 255, 0.03) !important;
-  color: #64748b !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
-  cursor: not-allowed;
-}
-
-/* File picker row */
-.bt-selected-wrap {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-height: 28px;
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  margin-bottom: 8px;
-}
-
-.file-select-row {
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
-}
-
-.file-select-area {
-  flex: 1;
-  position: relative;
-  border: 1px solid rgba(139, 92, 246, 0.22);
-  border-radius: 10px;
-  padding: 10px 14px;
-  padding-right: 38px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  cursor: pointer;
-  transition: all 0.15s;
-  min-height: 44px;
-  background: rgba(15, 15, 22, 0.85);
-}
-
-.file-select-area:hover {
-  border-color: rgba(167, 139, 250, 0.45);
-  background: rgba(139, 92, 246, 0.06);
-}
-
-.bt-asset-trigger-chevron {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #64748b;
-  pointer-events: none;
-  display: flex;
-}
-
-.bt-asset-trigger-chevron svg {
-  transition: transform 0.18s ease;
-}
-
-.file-select-area.bt-asset-trigger[aria-expanded='true'] .bt-asset-trigger-chevron svg {
-  transform: rotate(180deg);
-}
-
-.file-select-area.bt-asset-trigger[aria-expanded='true'] .bt-asset-trigger-chevron {
-  color: #a78bfa;
-}
-
-.bt-asset-sep {
-  color: #64748b;
-  font-weight: 500;
-}
-
-.file-select-text {
-  font-size: 13px;
-  color: #e2e8f0;
-  flex: 1;
-  min-width: 0;
-  padding-right: 8px;
-  font-weight: 500;
-}
-
-.file-refresh-btn {
-  padding: 10px 12px;
-  min-width: 44px;
-  height: auto;
-  align-self: stretch;
-  background: rgba(59, 130, 246, 0.08);
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  border-radius: 8px;
-  color: #60a5fa;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s;
-}
-
-.file-refresh-btn:hover {
-  background: rgba(59, 130, 246, 0.14);
-}
-
-/* File dropdown */
-#fileDropdown.bt-file-dropdown {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  max-height: none;
-  overflow: visible;
-  z-index: 200;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-}
-
-#fileDropdown {
-  display: none;
-  background: #0a0a10 !important;
-  border: 1px solid rgba(139, 92, 246, 0.28) !important;
-  border-radius: 12px !important;
-  margin-top: 8px !important;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.72) !important;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(139, 92, 246, 0.35) transparent;
-}
-
-.bt-asset-picker-inner {
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.bt-asset-search-input {
-  width: 100%;
-  box-sizing: border-box;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 13px;
-  color: #f1f5f9;
-  font-family: 'DM Sans', sans-serif;
-  outline: none;
-}
-
-.bt-asset-search-input::placeholder {
-  color: #475569;
-}
-
-.bt-asset-search-input:focus {
-  border-color: rgba(167, 139, 250, 0.45);
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
-}
-
-.bt-asset-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.bt-asset-tab {
-  padding: 6px 11px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.06);
-  color: #94a3b8;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-  font-family: 'DM Sans', sans-serif;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-
-.bt-asset-tab:hover {
-  background: rgba(255, 255, 255, 0.09);
-  color: #e2e8f0;
-}
-
-.bt-asset-tab.bt-asset-tab--active {
-  background: rgba(91, 33, 182, 0.45);
-  border-color: rgba(167, 139, 250, 0.35);
-  color: #f5f3ff;
-}
-
-.bt-asset-list.bt-file-list {
-  max-height: 300px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 4px 2px 6px;
-  margin: 0 -2px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(139, 92, 246, 0.35) transparent;
-}
-
-.bt-asset-row-label {
-  padding: 11px 12px !important;
-}
-
-.bt-asset-row-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
-}
-
-.bt-asset-row-line {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  flex-wrap: wrap;
-  width: 100%;
-}
-
-.bt-asset-symbol {
-  color: #f8fafc;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-.bt-asset-desc {
-  color: #cbd5e1;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.bt-asset-row-meta {
-  color: #64748b;
-  font-size: 11px;
-  white-space: nowrap;
-  flex-shrink: 0;
-  margin-left: auto;
-  padding-left: 10px;
-}
-
-.bt-asset-row-wrap {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-}
-
-.bt-file-dropdown-label.bt-asset-row-label {
-  align-items: flex-start;
-}
-
-.bt-file-dropdown-label.bt-asset-row-label .bt-file-checkbox {
-  margin-top: 3px;
-}
-
-#fileDropdown::-webkit-scrollbar {
-  width: 8px;
-}
-#fileDropdown::-webkit-scrollbar-thumb {
-  background: rgba(59, 130, 246, 0.28);
-  border-radius: 8px;
-}
-
-.bt-file-list {
-  padding: 6px;
-}
-
-.bt-file-dropdown-label {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  margin: 2px 0;
-  cursor: pointer;
-  border-radius: 8px;
-  transition: background 0.15s ease, border-color 0.15s ease;
-  border: 1px solid transparent;
-}
-
-.bt-file-dropdown-label:hover {
-  background: rgba(59, 130, 246, 0.07);
-  border-color: rgba(59, 130, 246, 0.12);
-}
-
-.bt-file-dropdown-label.bt-file-row--selected {
-  background: rgba(59, 130, 246, 0.11);
-  border-color: rgba(59, 130, 246, 0.22);
-}
-
-.bt-file-dropdown-label.bt-file-row--locked {
-  opacity: 0.48;
-  cursor: not-allowed;
-}
-
-.bt-file-checkbox {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(0, 0, 0, 0.4);
-  cursor: pointer;
-  flex-shrink: 0;
-  position: relative;
-  margin: 0;
-  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
-}
-
-.bt-file-checkbox:hover {
-  border-color: rgba(129, 140, 248, 0.55);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
-}
-
-.bt-file-checkbox:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.bt-file-checkbox:checked {
-  background: linear-gradient(145deg, #2563eb 0%, #1d4ed8 100%);
-  border-color: rgba(129, 140, 248, 0.65);
-  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
-}
-
-.bt-file-checkbox:checked::after {
-  content: '';
-  position: absolute;
-  left: 5px;
-  top: 2px;
-  width: 5px;
-  height: 9px;
-  border: solid #fff;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
-  box-sizing: border-box;
-}
-
-.bt-file-row-main {
-  flex: 1;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.bt-file-row-name {
-  color: #f1f5f9;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.bt-file-row-meta {
-  color: #64748b;
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.symbol-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  background: rgba(59, 130, 246, 0.12);
-  border: 1px solid rgba(59, 130, 246, 0.28);
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #a5b4fc;
-}
-
-.symbol-tag button {
-  background: none;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  padding: 0;
-  font-size: 14px;
-  line-height: 1;
-}
-
-.bt-modal-footer {
-  padding: 1.25rem 2rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-shrink: 0;
-  background: rgba(0, 0, 0, 0.2);
-}
-
-.btn-cancel {
-  padding: 8px 18px;
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  color: #64748b;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  font-family: 'DM Sans', sans-serif;
-  transition: all 0.15s;
-}
-
-.btn-cancel:hover {
-  border-color: rgba(255, 255, 255, 0.18);
-  color: #94a3b8;
-}
-
-.bt-btn-create,
-.btn-primary {
-  padding: 8px 22px;
-  background: #2563eb;
-  border: none;
-  border-radius: 8px;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: 'DM Sans', sans-serif;
-  transition: all 0.15s;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.bt-btn-create:hover,
-.btn-primary:hover {
-  background: #1d4ed8;
-}
-
-.bt-btn-create svg,
-.btn-primary svg {
-  width: 14px;
-  height: 14px;
-}
-
-.info-tooltip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  background: rgba(59, 130, 246, 0.15);
-  border-radius: 50%;
-  font-size: 9px;
-  color: #60a5fa;
-  cursor: help;
-  vertical-align: middle;
-  margin-left: 3px;
-}
-
-.info-icon-container {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  cursor: help;
-}
-
-.info-icon {
-  color: #475569;
-  transition: color 0.15s;
-}
-
-.info-icon-container:hover .info-icon {
-  color: #60a5fa;
-}
-
-.info-icon-container .info-tooltip {
-  display: block;
-  width: 280px;
-  height: auto;
-  background: rgba(13, 17, 23, 0.98);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #e2e8f0;
-  padding: 10px 14px;
-  border-radius: 8px;
-  font-size: 12px;
-  line-height: 1.5;
-  white-space: normal;
-  opacity: 0;
-  visibility: hidden;
-  transition: all 0.2s;
-  pointer-events: none;
-  z-index: 1000;
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%) scale(0.95);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-}
-
-.info-icon-container:hover .info-tooltip {
-  opacity: 1;
-  visibility: visible;
-  transform: translateX(-50%) scale(1);
-}
-
-#presetDetails {
-  margin-top: 12px;
-  padding: 12px;
-  background: rgba(59, 130, 246, 0.08);
-  border: 1px solid rgba(59, 130, 246, 0.25);
-  border-radius: 8px;
-}
-
-#presetDetailsContent {
-  font-size: 11px;
-  color: #94a3b8;
-  line-height: 1.6;
-}
-
-.warning-box {
-  background: rgba(251, 191, 36, 0.06);
-  border: 1px solid rgba(251, 191, 36, 0.2);
-  border-radius: 8px;
-  padding: 10px 12px;
-  color: #fbbf24;
-  font-size: 12px;
-}
-
-/* Inner modals (templates, create preset) */
-/* Buttons inside secondary modals (templates, create preset) */
-.modal-overlay .btn {
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  font-family: 'DM Sans', sans-serif;
-  transition: all 0.15s;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-.modal-overlay .btn-cancel {
-  background: transparent;
-  color: #64748b;
-}
-.modal-overlay .btn-cancel:hover {
-  border-color: rgba(255, 255, 255, 0.18);
-  color: #94a3b8;
-}
-.modal-overlay .btn-primary {
-  background: #2563eb;
-  color: #fff;
-  border: none;
-  font-weight: 600;
-}
-.modal-overlay .btn-primary:hover {
-  background: #1d4ed8;
-}
-
-.modal-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(3, 6, 15, 0.88);
-  backdrop-filter: blur(6px);
-  z-index: 1000;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-}
-
-.modal-overlay.active {
-  display: flex;
-}
-
-.modal-content {
-  background: #0d1117;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  padding: 24px;
-  max-width: 500px;
-  width: 100%;
-  max-height: 85vh;
-  overflow-y: auto;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
-  font-family: 'DM Sans', sans-serif;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 18px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.modal-header h2 {
-  font-size: 15px;
-  font-weight: 600;
-  color: #f8fafc;
-}
-
-.modal-close {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 18px;
-  cursor: pointer;
-  color: #64748b;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  transition: all 0.15s;
-}
-
-.modal-close:hover {
-  background: rgba(255, 255, 255, 0.09);
-  color: #e2e8f0;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 32px 16px;
-  color: rgba(255, 255, 255, 0.3);
-}
-
-/* Embedded in Sessions dashboard iframe: fill iframe height, keep scroll inside body */
-html.iframe-mode,
-html.iframe-mode body {
-  height: 100%;
-  margin: 0;
-  background: #0d1117;
-  overflow: hidden;
-}
-
-html.iframe-mode body {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-html.iframe-mode body::before {
-  display: none;
-}
-
-html.iframe-mode .bt-top-bar {
-  display: none !important;
-}
-
-html.iframe-mode .bt-overlay {
-  flex: 1;
-  min-height: 0;
-  margin-top: 0;
-  padding: 0;
-  background: #0d1117;
-  align-items: stretch;
-  justify-content: flex-start;
-  display: flex;
-  flex-direction: column;
-}
-
-html.iframe-mode .bt-modal {
-  max-width: none;
-  width: 100%;
-  max-height: none;
-  flex: 1;
-  min-height: 0;
-  height: auto;
-  border-radius: 0;
-  border: none;
-  box-shadow: none;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-html.iframe-mode .bt-modal > form {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-html.iframe-mode .bt-modal-body {
-  flex: 1;
-  min-height: 0;
-}
-
-html.iframe-mode .bt-toggle-row {
-  margin: 0 2rem;
-  flex-shrink: 0;
-}
-
-html.iframe-mode .bt-modal-footer {
-  margin-top: 0;
-  flex-shrink: 0;
-}
-
-@media (max-width: 720px) {
-  .grid-2,
-  .grid-3 {
-    grid-template-columns: 1fr;
-  }
-  .protection-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .new-btn {
-    width: 100%;
-  }
-}
-
-    </style>
-
     <script>
         (function() {
             function redirectToLogin() {
@@ -1313,274 +29,353 @@ html.iframe-mode .bt-modal-footer {
                 });
         })();
     </script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #070711;
+            color: #e2e8f0;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(ellipse at top, rgba(59,130,246,0.07), transparent 60%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .top-bar {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: 52px;
+            background: rgba(7,7,17,0.92);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            z-index: 100;
+        }
+        .top-bar-logo { height: 30px; margin-right: 14px; }
+        .top-bar-title { font-size: 14px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 8px; }
+        .top-bar-title svg { width: 16px; height: 16px; stroke: #3b82f6; }
+        .top-bar-actions { margin-left: auto; display: flex; gap: 8px; }
+
+        .container {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 64px 20px 20px;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .main-content {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 14px;
+            overflow: hidden;
+            height: calc(100vh - 84px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header-bar { padding: 14px 20px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+        .modal-header-bar h1 { font-size: 15px; font-weight: 600; color: #fff; letter-spacing: -0.01em; }
+        .close-btn { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: rgba(255,255,255,0.4); width: 28px; height: 28px; border-radius: 8px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+        .close-btn:hover { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.2); color: #ef4444; }
+        .full-panel { flex: 1; padding: 18px 20px 24px; overflow-y: auto; overflow-x: hidden; }
+        .full-panel::-webkit-scrollbar { width: 3px; }
+        .full-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+        .form-grid { display: flex; flex-direction: column; }
+        .form-card { padding: 16px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .form-card:last-of-type { border-bottom: none; }
+        .card-icon { display: none; }
+        .form-card h3 { font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.28); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; }
+        .form-group { margin-bottom: 12px; }
+        .form-group:last-child { margin-bottom: 0; }
+        .form-group label { display: block; font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.4); margin-bottom: 5px; }
+        .form-group label .required { color: #f87171; }
+        .form-group input[type="text"], .form-group input[type="number"], .form-group input[type="datetime-local"], .form-group input[type="date"], .form-group textarea, .form-group select { width: 100%; padding: 8px 11px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: #e2e8f0; font-size: 13px; font-family: inherit; transition: border-color 0.15s, background 0.15s; -webkit-appearance: none; appearance: none; }
+        .form-group input::placeholder, .form-group textarea::placeholder { color: rgba(255,255,255,0.18); }
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline: none; border-color: rgba(59,130,246,0.4); background: rgba(255,255,255,0.06); }
+        .form-group textarea { resize: vertical; min-height: 60px; }
+        .helper-text { font-size: 11px; color: rgba(255,255,255,0.22); margin-top: 4px; line-height: 1.4; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .preset-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+        .preset-btn { padding: 5px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 20px; color: rgba(255,255,255,0.45); font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+        .preset-btn:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.14); color: #fff; }
+        .preset-btn.active { background: rgba(59,130,246,0.2); border-color: rgba(59,130,246,0.35); color: #93c5fd; }
+        .form-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 16px; margin-top: 16px; border-top: 1px solid rgba(255,255,255,0.05); }
+        .form-actions-container { display: flex; justify-content: space-between; align-items: center; padding: 14px 0 0; margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.05); }
+        .forward-mode-toggle { display: flex; align-items: center; gap: 10px; }
+        .toggle-text-wrapper { display: flex; align-items: center; gap: 6px; }
+        .toggle-text { color: rgba(255,255,255,0.55); font-size: 12px; font-weight: 500; user-select: none; }
+        .action-buttons-group { display: flex; gap: 8px; }
+        .btn { padding: 8px 18px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; border: 1px solid rgba(255,255,255,0.08); outline: none; font-family: inherit; display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.6); }
+        .btn:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.14); color: #fff; }
+        .btn svg { width: 14px; height: 14px; stroke: currentColor; }
+        .btn-cancel { background: transparent; color: rgba(255,255,255,0.4); border: 1px solid rgba(255,255,255,0.07); }
+        .btn-cancel:hover { background: rgba(255,255,255,0.05); color: #fff; }
+        .btn-primary { background: rgba(59,130,246,0.85); color: #fff; border: 1px solid rgba(59,130,246,0.4); }
+        .btn-primary:hover { background: #3b82f6; border-color: rgba(59,130,246,0.6); }
+        .link { color: rgba(59,130,246,0.8); text-decoration: none; font-size: 12px; }
+        .link:hover { color: #60a5fa; text-decoration: underline; }
+        .symbol-tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.18); border-radius: 16px; font-size: 12px; color: #c4b5fd; }
+        .symbol-tag button { background: none; border: none; color: #a78bfa; cursor: pointer; padding: 0; font-size: 14px; line-height: 1; }
+        .toggle-switch { position: relative; display: inline-block; width: 38px; height: 22px; flex-shrink: 0; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider { position: absolute; cursor: pointer; inset: 0; background: rgba(255,255,255,0.08); transition: all 0.2s; border-radius: 22px; border: 1px solid rgba(255,255,255,0.1); }
+        .toggle-slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background: #94a3b8; transition: all 0.2s; border-radius: 50%; }
+        input:checked + .toggle-slider { background: rgba(59,130,246,0.6); border-color: rgba(59,130,246,0.4); }
+        input:checked + .toggle-slider:before { transform: translateX(16px); background: #fff; }
+        .market-checkbox { width: 14px; height: 14px; cursor: pointer; accent-color: #3b82f6; }
+        .warning-box { background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.2); border-radius: 8px; padding: 10px 12px; color: #fbbf24; font-size: 12px; }
+        .info-tooltip { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; background: rgba(255,255,255,0.08); border-radius: 50%; font-size: 10px; color: rgba(255,255,255,0.35); cursor: help; vertical-align: middle; margin-left: 3px; }
+        .info-icon-container { position: relative; display: inline-flex; align-items: center; cursor: help; }
+        .info-icon { color: rgba(255,255,255,0.22); transition: all 0.15s; }
+        .info-icon-container:hover .info-icon { color: #60a5fa; }
+        .info-icon-container .info-tooltip { display: block; width: 280px; height: auto; background: rgba(10,10,20,0.98); border: 1px solid rgba(255,255,255,0.1); color: #e2e8f0; padding: 10px 14px; border-radius: 8px; font-size: 12px; line-height: 1.5; white-space: normal; box-shadow: 0 8px 24px rgba(0,0,0,0.5); opacity: 0; visibility: hidden; transition: all 0.2s; pointer-events: none; z-index: 1000; position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%) scale(0.95); }
+        .info-icon-container:hover .info-tooltip { opacity: 1; visibility: visible; transform: translateX(-50%) scale(1); }
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.active { display: flex; }
+        .modal-content { background: #0a0a14; border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 24px; max-width: 480px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .modal-header h2 { font-size: 15px; font-weight: 600; color: #fff; }
+        .modal-close { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); font-size: 18px; cursor: pointer; color: rgba(255,255,255,0.4); width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 8px; transition: all 0.15s; }
+        .modal-close:hover { background: rgba(239,68,68,0.1); color: #ef4444; }
+        #createPresetModal label { color: rgba(255,255,255,0.6); font-size: 12px; font-weight: 500; display: block; margin-bottom: 6px; }
+        #createPresetModal .required { color: #f87171; }
+        .empty-state { text-align: center; padding: 32px 16px; color: rgba(255,255,255,0.3); }
+    </style>
 </head>
 <body>
     <!-- Top Bar -->
-    <header class="bt-top-bar">
-        <img src="modules/logo-08.png" alt="" class="bt-top-bar-logo" width="28" height="28" decoding="async" />
-        <div class="bt-top-bar-title">Standard Backtesting Mode</div>
-        <div class="bt-top-bar-actions">
-            <button type="button" class="bt-top-cancel" onclick="handleCancel()">Back to Sessions</button>
+    <div class="top-bar">
+        <img src="modules/LOGO-04.png" alt="Logo" class="top-bar-logo">
+        <div class="top-bar-title">Standard Backtesting Mode</div>
+        <div class="top-bar-actions">
+            <button type="button" class="btn btn-cancel" onclick="handleCancel()">Back to Sessions</button>
         </div>
-    </header>
+    </div>
 
-    <div class="bt-overlay">
-        <div class="bt-modal">
-            <div class="bt-modal-header">
-                <div class="header-left">
-                    <div class="header-icon" aria-hidden="true">
-                        <img src="modules/logo-08.png" alt="" class="header-logo-img" width="38" height="38" decoding="async" />
-                    </div>
-                    <div>
-                        <div class="bt-modal-title">Create Standard Backtest</div>
-                        <div class="bt-modal-subtitle">Configure session parameters and trading settings</div>
-                    </div>
-                </div>
-                <button type="button" class="bt-close-btn close-btn" onclick="handleCancel()" aria-label="Close">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
-                </button>
+    <div class="container">
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Header -->
+            <div class="modal-header-bar">
+                <h1>Create Standard Backtest</h1>
+                <button class="close-btn" onclick="handleCancel()" type="button">&times;</button>
             </div>
 
-            <form id="backtestingForm">
-                <div class="bt-modal-body">
-                    <!-- General -->
-                    <div>
-                        <div class="section-label">General</div>
-                        <div class="bt-section-stack">
-                            <div class="grid-2">
-                                <div class="field">
-                                    <label>Session name <span class="req">*</span></label>
-                                    <input type="text" id="sessionName" name="sessionName" required placeholder="e.g. EURUSD Breakout Test">
-                                </div>
-                                <div class="field">
-                                    <label>Playbook / strategy</label>
-                                    <select id="playbook" name="playbook">
-                                        <option value="">Select playbook...</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="field">
-                                <label>Description</label>
-                                <textarea id="description" name="description" placeholder="Optional description of your backtesting session"></textarea>
-                                <span class="hint">Choose a strategy from Strategies Lab for analytics, or use a quick label. Shown in Backtest Analytics → Playbook.</span>
-                                <a href="/strategies-lab/" target="_blank" rel="noopener" class="link" style="margin-top:6px;display:inline-block;">Open Strategies Lab ↗</a>
-                            </div>
-                            <div class="field">
-                                <label>Symbols / Data files <span class="req">*</span></label>
-                                <span class="hint" style="display:block;margin-bottom:8px;">Select one or more files; switch between them on the chart.</span>
-                                <div id="selectedFilesContainer" class="bt-selected-wrap">
-                                    <span class="hint" id="noFilesText" style="margin:0;">No files selected</span>
-                                </div>
-                                <div class="file-select-row">
-                                    <div style="flex:1;position:relative;">
-                                        <div class="file-select-area bt-asset-trigger" id="fileAreaTrigger" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false">
-                                            <span class="file-select-text" id="fileAreaSummary">No files selected — select one or more datasets to backtest</span>
-                                            <span class="bt-asset-trigger-chevron" aria-hidden="true">
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-                                            </span>
-                                        </div>
-                                        <div id="fileDropdown" class="bt-file-dropdown bt-asset-picker-dropdown" style="display: none;">
-                                            <div class="bt-asset-picker-inner">
-                                                <input type="text" id="assetSearchInput" class="bt-asset-search-input" placeholder="Search symbol or name..." autocomplete="off" spellcheck="false">
-                                                <div class="bt-asset-tabs" role="tablist" aria-label="Instrument category">
-                                                    <button type="button" class="bt-asset-tab" data-asset-tab="recent" role="tab">Recently used</button>
-                                                    <button type="button" class="bt-asset-tab bt-asset-tab--active" data-asset-tab="all" role="tab">All</button>
-                                                    <button type="button" class="bt-asset-tab" data-asset-tab="Futures" role="tab">Futures</button>
-                                                    <button type="button" class="bt-asset-tab" data-asset-tab="Forex" role="tab">Forex</button>
-                                                    <button type="button" class="bt-asset-tab" data-asset-tab="Stocks" role="tab">Stocks</button>
-                                                    <button type="button" class="bt-asset-tab" data-asset-tab="Crypto" role="tab">Crypto</button>
-                                                </div>
-                                                <div id="fileList" class="bt-file-list bt-asset-list">
-                                                    <div style="color: #64748b; padding: 12px; text-align: center;">Loading files...</div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <button type="button" class="file-refresh-btn" onclick="loadAvailableFiles()" title="Refresh file list">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <polyline points="23 4 23 10 17 10"></polyline>
-                                            <polyline points="1 20 1 14 7 14"></polyline>
-                                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                                        </svg>
-                                    </button>
-                                </div>
-                                <input type="hidden" id="selectedFiles" name="selectedFiles" value="[]">
-                                <span class="hint">Datasets are managed by the admin. <a href="/strategies-lab/" class="link">Open Strategies Lab ↗</a></span>
-                            </div>
+            <!-- Content Wrapper -->
+            <div class="full-panel">
+                <form id="backtestingForm">
+                  <div class="form-grid">
+                    <!-- General Card -->
+                    <div class="form-card form-card-full">
+                        <h3>General</h3>
+                        <div class="form-group">
+                            <label>Session name <span class="required">*</span></label>
+                            <input type="text" id="sessionName" name="sessionName" required placeholder="Enter session name">
                         </div>
-                    </div>
 
-                    <!-- Testing period -->
-                    <div>
-                        <div class="section-label">Testing period</div>
-                        <div class="grid-2">
-                            <div class="field">
-                                <label>Start date <span class="req">*</span></label>
-                                <input type="datetime-local" class="date-field" id="startDate" name="startDate" required>
-                            </div>
-                            <div class="field">
-                                <label>End date <span class="req">*</span></label>
-                                <input type="datetime-local" class="date-field" id="endDate" name="endDate" required>
-                            </div>
+                        <div class="form-group">
+                            <label>Description</label>
+                            <textarea id="description" name="description" placeholder="Optional description of your backtesting session"></textarea>
                         </div>
-                        <span id="testingPeriodHint" class="hint" style="margin-top:6px;display:block;">Select a data file to see available date range</span>
-                    </div>
 
-                    <!-- Trading settings -->
-                    <div>
-                        <div class="section-label">Trading settings</div>
-                        <div class="bt-section-stack">
-                            <div class="grid-2">
-                                <div class="field">
-                                    <label>Start balance <span class="req">*</span></label>
-                                    <input type="number" id="startBalance" name="startBalance" placeholder="0" min="0" step="1000" required value="10000">
-                                    <div class="quick-pills preset-buttons" style="margin-top:6px;">
-                                        <button type="button" class="pill preset-btn" data-value="5000">5K</button>
-                                        <button type="button" class="pill preset-btn" data-value="10000">10K</button>
-                                        <button type="button" class="pill preset-btn" data-value="20000">20K</button>
-                                        <button type="button" class="pill preset-btn" data-value="40000">40K</button>
-                                        <button type="button" class="pill preset-btn" data-value="50000">50K</button>
-                                        <button type="button" class="pill preset-btn" data-value="100000">100K</button>
-                                    </div>
-                                    <span class="hint">Your starting account balance for this session</span>
-                                </div>
-                                <div class="field">
-                                    <label>Risk type</label>
-                                    <select id="defaultRiskType" name="defaultRiskType">
-                                        <option value="percent" selected>Percentage (%)</option>
-                                        <option value="dollar">Dollar ($)</option>
-                                        <option value="lot">Lot</option>
-                                    </select>
-                                    <span class="hint">How to specify risk per trade</span>
-                                </div>
-                            </div>
-                            <div class="field">
-                                <label id="defaultRiskLabel">Default risk per trade (%)</label>
-                                <input type="number" id="defaultRisk" name="defaultRisk" placeholder="1" min="0.1" step="0.1" value="1">
-                                <span class="hint" id="defaultRiskHelper">Percentage of account balance to risk</span>
-                            </div>
-                            <div class="grid-3">
-                                <div class="field">
-                                    <label>Account currency</label>
-                                    <select id="accountCurrency" name="accountCurrency">
-                                        <option value="USD" selected>USD</option>
-                                        <option value="EUR">EUR</option>
-                                        <option value="GBP">GBP</option>
-                                    </select>
-                                </div>
-                                <div class="field">
-                                    <label>Leverage</label>
-                                    <select id="accountLeverage" name="accountLeverage">
-                                        <option value="1:1">1:1</option>
-                                        <option value="1:10">1:10</option>
-                                        <option value="1:30" selected>1:30</option>
-                                        <option value="1:50">1:50</option>
-                                        <option value="1:100">1:100</option>
-                                        <option value="1:200">1:200</option>
-                                        <option value="1:500">1:500</option>
-                                    </select>
-                                </div>
-                                <div class="field">
-                                    <label>Asset class</label>
-                                    <input type="text" id="assetClass" name="assetClass" class="readonly-input" value="Forex" readonly>
-                                    <span class="hint">Auto-detected</span>
-                                </div>
-                            </div>
-                            <div class="grid-3">
-                                <div class="field">
-                                    <label>Margin call level (%)</label>
-                                    <input type="number" id="marginCallLevel" name="marginCallLevel" min="1" step="1" value="100">
-                                </div>
-                                <div class="field">
-                                    <label>Stop out level (%)</label>
-                                    <input type="number" id="stopOutLevel" name="stopOutLevel" min="1" step="1" value="50">
-                                </div>
-                                <div class="field">
-                                    <label>Max risk per trade (%)</label>
-                                    <input type="number" id="maxRiskPerTradePct" name="maxRiskPerTradePct" min="0" step="0.1" placeholder="Optional">
+                        <div class="form-group">
+                            <label>Playbook</label>
+                            <select id="playbook" name="playbook">
+                                <option value="">Select playbook...</option>
+                                <option value="scalping">Scalping Strategy</option>
+                                <option value="swing">Swing Trading</option>
+                                <option value="breakout">Breakout Strategy</option>
+                                <option value="momentum">Momentum Trading</option>
+                                <option value="reversal">Reversal Strategy</option>
+                            </select>
+                            <a href="#" class="link" style="margin-top: 8px; display: inline-block;">Create new playbook</a>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Symbols / Data Files <span class="required">*</span></label>
+                            <div class="helper-text" style="margin-bottom: 8px;">Select one or more files to backtest. You can switch between them on the chart.</div>
+                    
+                    <!-- Selected Files Tags -->
+                    <div id="selectedFilesContainer" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; min-height: 28px; padding: 6px 8px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+                        <span style="color: rgba(255,255,255,0.22); font-size: 12px;" id="noFilesText">No files selected</span>
+                    </div>
+                    
+                    <!-- File Selection Dropdown -->
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <div style="flex: 1; position: relative;">
+                            <button type="button" id="fileSelectBtn" class="btn" style="width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center; padding: 10px 14px;">
+                                <span>Click to select files...</span>
+                                <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                </svg>
+                            </button>
+                            <div id="fileDropdown" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: #0a0a14; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; margin-top: 4px; max-height: 180px; overflow-y: auto; z-index: 100; box-shadow: 0 8px 24px rgba(0,0,0,0.6);">
+                                <div id="fileList" style="padding: 8px;">
+                                    <div style="color: #64748b; padding: 12px; text-align: center;">Loading files...</div>
                                 </div>
                             </div>
                         </div>
+                        <button type="button" class="btn" onclick="loadAvailableFiles()" style="padding: 10px 12px; min-width: auto;" title="Refresh file list">
+                            <svg style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="23 4 23 10 17 10"></polyline>
+                                <polyline points="1 20 1 14 7 14"></polyline>
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                            </svg>
+                        </button>
                     </div>
-
-                    <!-- Instrument table -->
-                    <div>
-                        <div class="section-label">Instrument table <span class="section-label-note">max 10, one row per dataset</span></div>
-                        <span class="hint" style="display:block;margin-bottom:10px;">Configure spread and commission per instrument.</span>
-                        <div class="instrument-table-wrap">
-                            <table class="instrument-table">
-                                <thead>
-                                    <tr>
-                                        <th>Ticker</th>
-                                        <th>Spread (pips)</th>
-                                        <th>Commission / lot / side</th>
-                                        <th>Pip size</th>
-                                        <th>Pip value / lot</th>
-                                        <th>Contract size</th>
-                                        <th>Min lot</th>
-                                        <th>Lot step</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="instrumentTableBody"></tbody>
-                            </table>
+                    
+                    <!-- Hidden input to store selected files -->
+                    <input type="hidden" id="selectedFiles" name="selectedFiles" value="[]">
+                    
+                    <div style="margin-top: 8px; padding: 6px 10px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; font-size: 11px; color: rgba(255,255,255,0.25);">
+                        Datasets are managed by the admin. Contact your administrator to add or update datasets.
+                    </div>
                         </div>
-                        <div id="instrumentTableHint" class="hint" style="margin-top:8px;">Select datasets to populate instrument rows.</div>
                     </div>
 
-                    <!-- Protection -->
-                    <div>
-                        <div class="section-label">Protection settings</div>
-                        <div class="protection-row">
-                            <div class="field">
-                                <label>Load protection preset <span class="info-tooltip" title="Use protection presets created in the Place Order panel">?</span></label>
-                                <select id="protectionPresetSelect" name="protectionPreset">
+                    <!-- Testing Period Card -->
+                    <div class="form-card">
+                        <h3>Testing Period</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Start date <span class="required">*</span></label>
+                                <input type="datetime-local" id="startDate" name="startDate" required>
+                            </div>
+                            <div class="form-group">
+                                <label>End date <span class="required">*</span></label>
+                                <input type="datetime-local" id="endDate" name="endDate" required>
+                            </div>
+                        </div>
+                        <div class="helper-text">Select a data file to see available date range</div>
+                    </div>
+
+                    <!-- Trading Settings Card -->
+                    <div class="form-card">
+                        <h3>Trading Settings</h3>
+                    
+                    <!-- Market Types -->
+                    <div class="form-group">
+                        <label>Market Types <span class="required">*</span></label>
+                        <div style="display: flex; gap: 20px; margin-top: 8px;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" class="market-checkbox" name="marketType" value="forex" checked>
+                                <span>Forex</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" class="market-checkbox" name="marketType" value="futures">
+                                <span>Futures</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" class="market-checkbox" name="marketType" value="crypto">
+                                <span>Crypto</span>
+                            </label>
+                        </div>
+                        <div class="helper-text" style="margin-top: 8px;">Select one or more market types you're backtesting</div>
+                    </div>
+
+                    <div class="form-row">
+                        <!-- Default Risk Type -->
+                        <div class="form-group">
+                            <label>Risk Type</label>
+                            <select id="defaultRiskType" name="defaultRiskType">
+                                <option value="percent" selected>Percentage (%)</option>
+                                <option value="dollar">Dollar ($)</option>
+                                <option value="lot">Lot</option>
+                            </select>
+                            <div class="helper-text">How to specify risk per trade</div>
+                        </div>
+
+                        <!-- Default Risk Value -->
+                        <div class="form-group">
+                            <label id="defaultRiskLabel">Default Risk Per Trade (%)</label>
+                            <input type="number" id="defaultRisk" name="defaultRisk" placeholder="1" min="0.1" step="0.1" value="1">
+                            <div class="helper-text" id="defaultRiskHelper">Percentage of account balance to risk</div>
+                        </div>
+
+                        <!-- Start Balance -->
+                        <div class="form-group">
+                            <label>Start balance (Leverage is 1:1) <span class="required">*</span></label>
+                            <input type="number" id="startBalance" name="startBalance" placeholder="$ 0" min="0" step="1000" required value="10000">
+                            <div class="preset-buttons">
+                                <button type="button" class="preset-btn" data-value="5000">5K</button>
+                                <button type="button" class="preset-btn" data-value="10000">10K</button>
+                                <button type="button" class="preset-btn" data-value="20000">20K</button>
+                                <button type="button" class="preset-btn" data-value="40000">40K</button>
+                                <button type="button" class="preset-btn" data-value="50000">50K</button>
+                                <button type="button" class="preset-btn" data-value="100000">100K</button>
+                            </div>
+                            <div class="helper-text">Your starting account balance for this backtesting session</div>
+                        </div>
+                    </div>
+
+                    <!-- Protection Settings Card -->
+                    <div class="form-card form-card-full">
+                        <h3>Protection Settings</h3>
+                        <div class="form-group">
+                            <label>Load Protection Preset <span class="info-tooltip" title="Use protection presets created in the Place Order panel">?</span></label>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <select id="protectionPresetSelect" name="protectionPreset" style="flex: 1;">
                                     <option value="">-- None (Configure in chart) --</option>
                                 </select>
-                                <span class="hint">Auto-applies breakeven, trailing stop, and take profit when configured</span>
-                                <div id="presetDetails" style="display: none;">
-                                    <div style="font-size: 12px; color: #a5b4fc; font-weight: 600; margin-bottom: 8px;">Preset details</div>
-                                    <div id="presetDetailsContent"></div>
+                                <button type="button" class="btn" onclick="openCreatePresetModal()" style="padding: 8px 12px; min-width: auto; white-space: nowrap;" title="Create new protection preset">
+                                    <svg style="width: 16px; height: 16px; margin-right: 4px; display: inline-block; vertical-align: middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12 5v14M5 12h14"></path>
+                                    </svg>
+                                    Create New
+                                </button>
+                            </div>
+                            <div class="helper-text">Select a protection preset to auto-apply breakeven, trailing stop, and take profit settings</div>
+                            <div id="presetDetails" style="margin-top: 12px; padding: 12px; background: rgba(124, 58, 237, 0.1); border: 1px solid rgba(124, 58, 237, 0.3); border-radius: 6px; display: none;">
+                                <div style="font-size: 12px; color: #a78bfa; font-weight: 600; margin-bottom: 8px;">📋 Preset Details:</div>
+                                <div id="presetDetailsContent" style="font-size: 11px; color: #9ca3af; line-height: 1.6;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                  </div><!-- end form-grid -->
+
+                    <!-- Actions -->
+                    <div class="form-actions-container">
+                    <!-- Enable Back Navigation Toggle -->
+                    <div class="forward-mode-toggle">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="allowBackNavigation" name="allowBackNavigation" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <div class="toggle-text-wrapper">
+                            <span class="toggle-text">Enable back/forward navigation</span>
+                            <div class="info-icon-container">
+                                <svg class="info-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                </svg>
+                                <div class="info-tooltip">
+                                    When enabled, you can go backward in time during replay. A visible badge will appear on the chart for transparency. Disable this for forward-only testing (simulating real trading).
                                 </div>
                             </div>
-                            <button type="button" class="new-btn" onclick="openCreatePresetModal()" title="Create new protection preset">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
-                                Create new
-                            </button>
                         </div>
                     </div>
-                </div>
-
-                <div class="bt-toggle-row">
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="allowBackNavigation" name="allowBackNavigation" checked>
-                        <span class="toggle-slider"></span>
-                    </label>
-                    <div class="toggle-text-wrapper">
-                        <span class="toggle-text">Enable back/forward navigation</span>
-                        <div class="info-icon-container">
-                            <svg class="info-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="12" cy="12" r="10"></circle>
-                                <line x1="12" y1="16" x2="12" y2="12"></line>
-                                <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                            </svg>
-                            <div class="info-tooltip">
-                                When enabled, you can go backward in time during replay. A visible badge will appear on the chart for transparency. Disable this for forward-only testing (simulating real trading).
-                            </div>
-                        </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="action-buttons-group">
+                        <button type="button" class="btn btn-cancel" onclick="handleCancel()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Create session</button>
                     </div>
-                    <span class="toggle-hint-inline">Step through trades chronologically</span>
-                </div>
-
-                <div class="bt-modal-footer">
-                    <button type="button" class="btn-cancel" onclick="handleCancel()">Cancel</button>
-                    <button type="submit" class="bt-btn-create btn-primary">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-                        </svg>
-                        Create session
-                    </button>
-                </div>
-            </form>
+                </form>
+            </div>
         </div>
     </div>
     
@@ -1589,27 +384,28 @@ html.iframe-mode .bt-modal-footer {
         function handleCancel() {
             const isInIframe = window.self !== window.top;
             if (isInIframe) {
-                var p = window.parent;
-                if (typeof p.closePropFirmIframe === 'function') {
-                    p.closePropFirmIframe();
-                } else if (typeof p.closeBacktestingIframe === 'function') {
-                    p.closeBacktestingIframe();
-                }
+                // Close the iframe modal by calling parent function
+                window.parent.closeBacktestingIframe();
             } else {
-                window.location.href = '/chart/index.html';
+                window.location.href = 'index.html';
             }
         }
 
-        // Hide top bar if in iframe (Sessions dashboard); parent provides chrome
+        // Hide top bar if in iframe (modal mode)
         if (window.self !== window.top) {
-            document.documentElement.classList.add('iframe-mode');
-            var topBarEl = document.querySelector('.bt-top-bar');
-            if (topBarEl) {
-                topBarEl.style.display = 'none';
+            const topBar = document.querySelector('.top-bar');
+            if (topBar) {
+                topBar.style.display = 'none';
             }
-            var modalCloseBtn = document.querySelector('.bt-modal-header .bt-close-btn');
+            // Hide the close button in modal-header-bar (we use the overlay close button)
+            const modalCloseBtn = document.querySelector('.modal-header-bar .close-btn');
             if (modalCloseBtn) {
                 modalCloseBtn.style.display = 'none';
+            }
+            // Adjust container padding since top bar is hidden
+            const container = document.querySelector('.container');
+            if (container) {
+                container.style.paddingTop = '0';
             }
         }
 
@@ -2076,316 +872,38 @@ html.iframe-mode .bt-modal-footer {
             
             return null;
         }
-
-        /** Normalize API/CSV epoch values to milliseconds for Date(); reject corrupt timestamps. */
-        function normalizeEpochMs(raw) {
-            const n = Number(raw);
-            if (!Number.isFinite(n) || n <= 0) return null;
-            if (n >= 1e14) return null;
-            let ms;
-            if (n >= 1e12) ms = n;
-            else if (n >= 1e9) ms = n * 1000;
-            else return null;
-            const MIN = 631152000000;
-            const MAX = 4102444800000;
-            if (ms < MIN || ms > MAX) return null;
-            return ms;
-        }
         
         // Selected files array
         let selectedFilesArray = [];
         let availableFilesCache = [];
-        var BT_RECENT_LS = 'bt_backtest_recent_file_ids_v1';
-        var assetFilterTab = 'all';
-        var assetSearchStr = '';
-        var fileMetaHints = {};
-        var updateFileListDebounceTimer = null;
-        var metaPrefetchTimer = null;
-        var metaRequestedIds = new Set();
-
-        function escapeHtml(s) {
-            if (s == null) return '';
-            return String(s)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;');
-        }
-
-        function readRecentFileIds() {
-            try {
-                var raw = localStorage.getItem(BT_RECENT_LS);
-                var arr = raw ? JSON.parse(raw) : [];
-                return Array.isArray(arr) ? arr.map(function (x) { return String(x); }) : [];
-            } catch (e) {
-                return [];
-            }
-        }
-
-        function pushRecentFileId(fileId) {
-            try {
-                var sid = String(fileId);
-                var arr = readRecentFileIds().filter(function (id) { return id !== sid; });
-                arr.unshift(sid);
-                arr = arr.slice(0, 24);
-                localStorage.setItem(BT_RECENT_LS, JSON.stringify(arr));
-            } catch (e) {
-                /* ignore */
-            }
-        }
-
-        function formatHistoryDate(ms) {
-            if (ms == null || !Number.isFinite(ms)) return '';
-            try {
-                return new Date(ms).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                });
-            } catch (e) {
-                return '';
-            }
-        }
-
-        function describeInstrument(file) {
-            var raw = file.original_name || file.name || file.filename || '';
-            var pair = cleanPairName(raw);
-            var cat = classifyFile(file);
-            var token = String(pair || '').replace('/', '').toUpperCase();
-
-            var CUR_NAMES = {
-                USD: 'US Dollar',
-                EUR: 'Euro',
-                GBP: 'British Pound',
-                JPY: 'Japanese Yen',
-                AUD: 'Australian Dollar',
-                NZD: 'New Zealand Dollar',
-                CAD: 'Canadian Dollar',
-                CHF: 'Swiss Franc',
-                HKD: 'Hong Kong Dollar',
-                SGD: 'Singapore Dollar',
-                SEK: 'Swedish Krona',
-                NOK: 'Norwegian Krone',
-                DKK: 'Danish Krone',
-                ZAR: 'South African Rand',
-                TRY: 'Turkish Lira',
-                MXN: 'Mexican Peso',
-                CNY: 'Chinese Yuan',
-                XAU: 'Gold',
-                XAG: 'Silver',
-                BTC: 'Bitcoin',
-                ETH: 'Ethereum',
-            };
-
-            var FUT_NAMES = {
-                '6A': 'Australian Dollar Futures',
-                '6B': 'British Pound Futures',
-                '6C': 'Canadian Dollar Futures',
-                '6E': 'Euro FX Futures',
-                '6J': 'Japanese Yen Futures',
-                '6S': 'Swiss Franc Futures',
-                '6N': 'New Zealand Dollar Futures',
-                ES: 'E-mini S&P 500 Futures',
-                NQ: 'E-mini Nasdaq-100 Futures',
-                YM: 'E-mini Dow Futures',
-                RTY: 'E-mini Russell 2000 Futures',
-                MES: 'Micro E-mini S&P 500 Futures',
-                MNQ: 'Micro E-mini Nasdaq Futures',
-                M2K: 'Micro E-mini Russell Futures',
-                CL: 'Crude Oil Futures',
-                GC: 'Gold Futures',
-                SI: 'Silver Futures',
-                NG: 'Natural Gas Futures',
-                ZB: '30-Year T-Bond Futures',
-                ZN: '10-Year T-Note Futures',
-                MCL: 'Micro Crude Oil Futures',
-                MGC: 'Micro Gold Futures',
-                MSI: 'Micro Silver Futures',
-                HG: 'Copper Futures',
-            };
-
-            if (cat === 'Stocks') {
-                return '';
-            }
-            if (cat === 'Futures') {
-                return FUT_NAMES[token] || 'Futures contract';
-            }
-            if (cat === 'Forex' && token.length === 6) {
-                var base = token.slice(0, 3);
-                var quote = token.slice(3, 6);
-                var bn = CUR_NAMES[base];
-                var qn = CUR_NAMES[quote];
-                if (bn && qn) {
-                    return bn + ' / ' + qn;
-                }
-                return 'Forex';
-            }
-            if (cat === 'Crypto') {
-                if (pair.indexOf('/') >= 0) {
-                    var halves = pair.split('/');
-                    var hb = CUR_NAMES[halves[0].toUpperCase()] || halves[0];
-                    var hq = CUR_NAMES[halves[1].toUpperCase()] || halves[1];
-                    return hb + ' / ' + hq + ' (Crypto)';
-                }
-                return 'Cryptocurrency';
-            }
-            return '';
-        }
-
-        function getFilteredDatasetFiles() {
-            if (!availableFilesCache.length) return [];
-
-            var q = (assetSearchStr || '').trim().toLowerCase();
-            var tab = assetFilterTab || 'all';
-
-            function matchesQuery(file) {
-                if (!q) return true;
-                var rawName = file.original_name || file.name || file.filename || '';
-                var pair = cleanPairName(rawName).toLowerCase();
-                var raw = rawName.toLowerCase();
-                var desc = describeInstrument(file).toLowerCase();
-                return pair.indexOf(q) >= 0 || raw.indexOf(q) >= 0 || desc.indexOf(q) >= 0;
-            }
-
-            if (tab === 'recent') {
-                var order = readRecentFileIds();
-                var out = [];
-                order.forEach(function (rid) {
-                    var f = findCachedFileById(rid);
-                    if (f && matchesQuery(f)) out.push(f);
-                });
-                return out;
-            }
-
-            var pool = availableFilesCache.filter(matchesQuery);
-            if (tab === 'all') return pool;
-
-            return pool.filter(function (f) {
-                return classifyFile(f) === tab;
-            });
-        }
-
-        function schedulePrefetchMetaForVisible() {
-            if (metaPrefetchTimer) clearTimeout(metaPrefetchTimer);
-            metaPrefetchTimer = setTimeout(function () {
-                var files = getFilteredDatasetFiles().slice(0, 40);
-                files.slice(0, 16).forEach(function (file) {
-                    var id = file.id;
-                    if (metaRequestedIds.has(id)) return;
-                    metaRequestedIds.add(id);
-                    fetch('/api/file/' + encodeURIComponent(id) + '/meta')
-                        .then(function (r) {
-                            return r.ok ? r.json() : null;
-                        })
-                        .then(function (meta) {
-                            if (!meta || meta.start_ts == null) {
-                                fileMetaHints[id] = { start_ts: null };
-                            } else {
-                                var ts = normalizeEpochMs(meta.start_ts);
-                                fileMetaHints[id] = { start_ts: ts };
-                            }
-                            if (updateFileListDebounceTimer) clearTimeout(updateFileListDebounceTimer);
-                            updateFileListDebounceTimer = setTimeout(function () {
-                                updateFileListUI();
-                            }, 50);
-                        })
-                        .catch(function () {
-                            fileMetaHints[id] = { start_ts: null };
-                        });
-                });
-            }, 120);
-        }
-
+        
         // Initialize file dropdown when DOM is ready
         function initFileDropdown() {
-            var fileDropdown = document.getElementById('fileDropdown');
-            var fileAreaTrigger = document.getElementById('fileAreaTrigger');
-
-            if (!fileDropdown) {
+            const fileSelectBtn = document.getElementById('fileSelectBtn');
+            const fileDropdown = document.getElementById('fileDropdown');
+            
+            if (!fileSelectBtn || !fileDropdown) {
                 console.log('File dropdown elements not found, retrying...');
                 setTimeout(initFileDropdown, 100);
                 return;
             }
-
-            function setExpanded(open) {
-                if (fileAreaTrigger) {
-                    fileAreaTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
-                }
-            }
-
-            function toggleFileDropdown(e) {
-                if (e) e.stopPropagation();
-                var open = fileDropdown.style.display === 'none';
-                fileDropdown.style.display = open ? 'block' : 'none';
-                setExpanded(open);
-                if (open) {
-                    updateFileListUI();
-                    schedulePrefetchMetaForVisible();
-                    var searchEl = document.getElementById('assetSearchInput');
-                    if (searchEl) {
-                        setTimeout(function () {
-                            searchEl.focus();
-                            searchEl.select();
-                        }, 0);
-                    }
-                }
-            }
-
-            if (fileAreaTrigger) {
-                fileAreaTrigger.addEventListener('click', function (e) {
-                    toggleFileDropdown(e);
-                });
-                fileAreaTrigger.addEventListener('keydown', function (e) {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        toggleFileDropdown(e);
-                    }
-                });
-            }
-
-            var searchInput = document.getElementById('assetSearchInput');
-            if (searchInput && !searchInput._btBound) {
-                searchInput._btBound = true;
-                searchInput.addEventListener('input', function (e) {
-                    assetSearchStr = e.target.value || '';
-                    updateFileListUI();
-                    schedulePrefetchMetaForVisible();
-                });
-                searchInput.addEventListener('click', function (e) {
-                    e.stopPropagation();
-                });
-            }
-
-            var tabBar = document.querySelector('.bt-asset-tabs');
-            if (tabBar && !tabBar._btBound) {
-                tabBar._btBound = true;
-                tabBar.addEventListener('click', function (e) {
-                    var btn = e.target.closest('[data-asset-tab]');
-                    if (!btn) return;
-                    e.stopPropagation();
-                    var t = btn.getAttribute('data-asset-tab');
-                    if (!t) return;
-                    assetFilterTab = t;
-                    tabBar.querySelectorAll('[data-asset-tab]').forEach(function (b) {
-                        b.classList.toggle('bt-asset-tab--active', b.getAttribute('data-asset-tab') === t);
-                    });
-                    updateFileListUI();
-                    schedulePrefetchMetaForVisible();
-                });
-            }
-
-            document.addEventListener('click', function (e) {
-                var fileArea = document.getElementById('fileAreaTrigger');
-                if (fileDropdown.contains(e.target) || (fileArea && fileArea.contains(e.target))) {
-                    return;
-                }
-                fileDropdown.style.display = 'none';
-                setExpanded(false);
+            
+            // Toggle file dropdown
+            fileSelectBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                fileDropdown.style.display = fileDropdown.style.display === 'none' ? 'block' : 'none';
             });
-
+            
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function(e) {
+                if (!fileDropdown.contains(e.target) && !fileSelectBtn.contains(e.target)) {
+                    fileDropdown.style.display = 'none';
+                }
+            });
+            
+            // Load files on init
             loadAvailableFiles();
-            syncAutoAssetClass();
-
+            
             console.log('✅ File dropdown initialized');
         }
         
@@ -2396,38 +914,21 @@ html.iframe-mode .bt-modal-footer {
             initFileDropdown();
         }
         
-        function sameFileId(a, b) {
-            return String(a) === String(b);
-        }
-
         // Toggle file selection
         function toggleFileSelection(fileId, fileName) {
-            const index = selectedFilesArray.findIndex(function (f) { return sameFileId(f.id, fileId); });
+            const index = selectedFilesArray.findIndex(f => f.id === fileId);
             if (index === -1) {
-                if (selectedFilesArray.length >= 10) {
-                    alert('Maximum 10 instruments per session.');
-                    updateFileListUI();
-                    return;
-                }
-                const locked = selectionLockedGroup();
-                const cached = findCachedFileById(fileId);
-                if (locked && cached && classifyFile(cached) !== locked) {
-                    alert('You can only combine instruments from the same asset group (for example all Futures or all Forex). Remove your current selections to pick a different group.');
-                    updateFileListUI();
-                    return;
-                }
                 selectedFilesArray.push({ id: fileId, name: fileName });
-                pushRecentFileId(fileId);
             } else {
                 selectedFilesArray.splice(index, 1);
             }
             updateSelectedFilesUI();
             updateFileListUI();
         }
-
+        
         // Remove file from selection
         function removeSelectedFile(fileId) {
-            selectedFilesArray = selectedFilesArray.filter(function (f) { return !sameFileId(f.id, fileId); });
+            selectedFilesArray = selectedFilesArray.filter(f => f.id !== fileId);
             updateSelectedFilesUI();
             updateFileListUI();
         }
@@ -2435,205 +936,58 @@ html.iframe-mode .bt-modal-footer {
         // Update the selected files display
         function updateSelectedFilesUI() {
             const container = document.getElementById('selectedFilesContainer');
+            const noFilesText = document.getElementById('noFilesText');
             const hiddenInput = document.getElementById('selectedFiles');
-            const summaryEl = document.getElementById('fileAreaSummary');
-
+            
+            // Update hidden input
             hiddenInput.value = JSON.stringify(selectedFilesArray);
-
+            
             if (selectedFilesArray.length === 0) {
-                container.innerHTML = '<span class="hint" id="noFilesText" style="margin:0;">No files selected</span>';
-                if (summaryEl) {
-                    summaryEl.textContent = 'No files selected — select one or more datasets to backtest';
-                }
-                syncAutoAssetClass();
-                rebuildInstrumentTable();
+                container.innerHTML = '<span style="color: rgba(255,255,255,0.22); font-size: 12px;" id="noFilesText">No files selected</span>';
                 return;
             }
-
-            var names = selectedFilesArray.map(function (file) {
-                return cleanPairName(file.name);
-            });
-            if (summaryEl) {
-                summaryEl.textContent = names.length + ' file' + (names.length === 1 ? '' : 's') + ' — ' + names.slice(0, 4).join(', ') + (names.length > 4 ? '…' : '');
-            }
-
-            container.innerHTML = selectedFilesArray.map(function (file) {
-                var display = cleanPairName(file.name);
-                var sid = String(file.id).replace(/'/g, "\\'");
-                return (
-                    '<span class="symbol-tag">' + display +
-                    '<button type="button" onclick="removeSelectedFile(\'' + sid + '\')">&times;</button></span>'
-                );
-            }).join('');
-
+            
+            container.innerHTML = selectedFilesArray.map(file => {
+                const display = cleanPairName(file.name);
+                return `
+                <span style="display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2)); border: 1px solid rgba(59, 130, 246, 0.3); padding: 4px 10px; border-radius: 16px; font-size: 12px; color: #fff; font-weight: 600;">
+                    ${display}
+                    <button type="button" onclick="removeSelectedFile('${file.id}')" style="background: none; border: none; color: #94a3b8; cursor: pointer; padding: 0; font-size: 14px; line-height: 1;">&times;</button>
+                </span>
+            `}).join('');
+            
+            // Load date range from first selected file
             if (selectedFilesArray.length > 0) {
                 loadDateRangeFromFile(selectedFilesArray[0].id);
             }
-            rebuildInstrumentTable();
-            syncAutoAssetClass();
-        }
-
-        function defaultInstrumentConfigFor(file) {
-            const ticker = cleanPairName(file.name || '').replace('/', '');
-            const isJPY = ticker.endsWith('JPY');
-            return {
-                ticker: ticker || 'UNKNOWN',
-                fileId: file.id,
-                fileName: file.name,
-                spread_pips: 1.0,
-                commission_per_lot_per_side: 3.5,
-                pip_size: isJPY ? 0.01 : 0.0001,
-                pip_value_per_lot: isJPY ? 7 : 10,
-                contract_size: 100000,
-                min_lot_size: 0.01,
-                lot_step: 0.01
-            };
-        }
-
-        function detectAssetClassFromFiles(files = []) {
-            const futuresSymbols = new Set(['ES', 'NQ', 'YM', 'RTY', 'MES', 'MNQ', 'M2K', 'CL', 'GC', 'SI', 'NG', 'ZB', 'ZN']);
-            const cryptoSymbols = new Set(['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'DOGE', 'BNB', 'LTC']);
-            let hasFutures = false;
-            let hasCrypto = false;
-
-            files.forEach((file) => {
-                const raw = cleanPairName(file.name || '');
-                const token = String(raw || '').replace('/', '').toUpperCase();
-                if (!token) return;
-                if (futuresSymbols.has(token)) hasFutures = true;
-                const base = token.slice(0, 3);
-                const quote = token.slice(3, 6);
-                if (cryptoSymbols.has(base) || cryptoSymbols.has(quote)) hasCrypto = true;
-            });
-
-            if (hasFutures) return 'Futures';
-            if (hasCrypto) return 'Crypto';
-            return 'Forex';
-        }
-
-        function syncAutoAssetClass() {
-            const input = document.getElementById('assetClass');
-            if (!input) return;
-            input.value = detectAssetClassFromFiles(selectedFilesArray);
-        }
-
-        function rebuildInstrumentTable() {
-            const body = document.getElementById('instrumentTableBody');
-            const hint = document.getElementById('instrumentTableHint');
-            if (!body) return;
-            if (selectedFilesArray.length === 0) {
-                body.innerHTML = '';
-                if (hint) hint.textContent = 'Select datasets to populate instrument rows.';
-                return;
-            }
-            if (hint) hint.textContent = `${selectedFilesArray.length} instrument(s) selected.`;
-            body.innerHTML = selectedFilesArray.map((file, idx) => {
-                const d = defaultInstrumentConfigFor(file);
-                return `
-                <tr>
-                    <td style="padding:8px;"><input class="instrument-input" id="inst_${idx}_ticker" value="${d.ticker}"></td>
-                    <td style="padding:8px;"><input class="instrument-input" type="text" inputmode="decimal" id="inst_${idx}_spread" value="${d.spread_pips}"></td>
-                    <td style="padding:8px;"><input class="instrument-input" type="text" inputmode="decimal" id="inst_${idx}_commission" value="${d.commission_per_lot_per_side}"></td>
-                    <td style="padding:8px;"><input class="instrument-input" type="text" inputmode="decimal" id="inst_${idx}_pipSize" value="${d.pip_size}"></td>
-                    <td style="padding:8px;"><input class="instrument-input" type="text" inputmode="decimal" id="inst_${idx}_pipValue" value="${d.pip_value_per_lot}"></td>
-                    <td style="padding:8px;"><input class="instrument-input" type="number" step="1" min="1" id="inst_${idx}_contract" value="${d.contract_size}"></td>
-                    <td style="padding:8px;"><input class="instrument-input" type="text" inputmode="decimal" id="inst_${idx}_minLot" value="${d.min_lot_size}"></td>
-                    <td style="padding:8px;"><input class="instrument-input" type="text" inputmode="decimal" id="inst_${idx}_lotStep" value="${d.lot_step}"></td>
-                </tr>
-                `;
-            }).join('');
-        }
-
-        function parseDecimalInput(raw, fallback) {
-            const normalized = String(raw ?? '')
-                .trim()
-                .replace(/\s+/g, '')
-                .replace(',', '.');
-            const value = parseFloat(normalized);
-            return Number.isFinite(value) ? value : fallback;
-        }
-
-        function collectInstrumentConfigs() {
-            const rows = selectedFilesArray.map((file, idx) => {
-                const ticker = String(document.getElementById(`inst_${idx}_ticker`)?.value || '').toUpperCase().replace('/', '');
-                const defaults = defaultInstrumentConfigFor(file);
-                return {
-                    ticker: ticker || defaults.ticker,
-                    fileId: file.id,
-                    fileName: file.name,
-                    spread_pips: parseDecimalInput(document.getElementById(`inst_${idx}_spread`)?.value, defaults.spread_pips),
-                    commission_per_lot_per_side: parseDecimalInput(document.getElementById(`inst_${idx}_commission`)?.value, defaults.commission_per_lot_per_side),
-                    pip_size: parseDecimalInput(document.getElementById(`inst_${idx}_pipSize`)?.value, defaults.pip_size),
-                    pip_value_per_lot: parseDecimalInput(document.getElementById(`inst_${idx}_pipValue`)?.value, defaults.pip_value_per_lot),
-                    contract_size: parseDecimalInput(document.getElementById(`inst_${idx}_contract`)?.value, defaults.contract_size),
-                    min_lot_size: parseDecimalInput(document.getElementById(`inst_${idx}_minLot`)?.value, defaults.min_lot_size),
-                    lot_step: parseDecimalInput(document.getElementById(`inst_${idx}_lotStep`)?.value, defaults.lot_step)
-                };
-            });
-            return rows;
         }
         
         // Update file list checkboxes
-        // Extract clean pair name from CSV filename.
-        //
-        // Dataset files arrive with various naming schemes:
-        //   EURUSD.csv                                       (raw FX upload)
-        //   20260217_182920_GBPUSD.csv                       (timestamped legacy upload)
-        //   BTC_full_1min_1min.csv                           (FirstRate crypto, implicit USD)
-        //   BTC-EUR_full_1min_1min.csv                       (FirstRate crypto, explicit quote)
-        //   ES_full_1min_1min.csv                            (FirstRate futures, 2-letter root)
-        //   AAPL_full_1min_adj_split_1min.csv                (FirstRate stock)
-        //
-        // The old implementation used a greedy /[a-zA-Z]{3,5}/ scan, which skipped short
-        // roots like `ES` (2 letters) and latched onto the next alpha run — usually `full`
-        // — so 2-letter-ticker files displayed as "FULL". The new implementation takes the
-        // first underscore-separated segment as the canonical ticker, treats hyphenated
-        // crypto pairs (`BTC-EUR`) specially, and skips FirstRate meta-words if a mis-split
-        // ever produces one as segment 0.
+        // Extract clean pair name from CSV filename
         function cleanPairName(rawName) {
             if (!rawName) return 'Unknown';
-            // Strip path and extension, then common prefixes the pipeline may add.
+            // Remove path, extension, timestamps, prefixes
             let name = rawName.replace(/^.*[\/\\]/, '').replace(/\.csv$/i, '');
-            name = name.replace(/^\d{8}_\d{6}_/, '');                          // 20260217_182920_
-            name = name.replace(/^b\d{2}_\d{4}_firstrate_/, '');               // b01_0003_firstrate_
-            name = name.replace(/^firstrate_/, '');                            // firstrate_
-
-            const CURRENCIES = ['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','HKD','SGD','SEK','NOK','DKK','ZAR','TRY','MXN','CNY','BTC','ETH','XAU','XAG'];
-            const META = new Set([
-                'FULL','DAY','WEEK','MONTH','YEAR','HOUR','MIN',
-                'ADJ','UNADJ','CONTIN','CONTINUOUS','SPLIT','DIV','RATIO','ABSOLUTE',
-                '1MIN','5MIN','15MIN','30MIN','1HOUR','1DAY','1WEEK','1MONTH','1H','4H','1D','1W','1MO'
-            ]);
-
-            const parts = name.split('_').filter(Boolean);
-            if (!parts.length) return (rawName || 'Unknown').toUpperCase();
-
-            // Pick the first non-meta, non-numeric segment as the ticker candidate.
-            let seg = parts.find(p => {
-                const u = p.toUpperCase();
-                return !META.has(u) && !/^\d+$/.test(p);
-            }) || parts[0];
-
-            // Hyphenated crypto pair like BTC-EUR → BTC/EUR
-            if (/^[A-Za-z]{2,5}-[A-Za-z]{2,5}$/.test(seg)) {
-                const halves = seg.toUpperCase().split('-');
-                return halves[0] + '/' + halves[1];
-            }
-
-            const segU = seg.toUpperCase();
-
-            // Six-letter FX pair like EURUSD → EUR/USD (only when the halves are real currencies)
-            if (/^[A-Z]{6}$/.test(segU)) {
-                const base = segU.substring(0, 3);
-                const quote = segU.substring(3, 6);
-                if (CURRENCIES.includes(base) || CURRENCIES.includes(quote)) {
+            // Remove common prefixes like dates: 20260217_182920_
+            name = name.replace(/^\d{8}_\d{6}_/, '');
+            // Extract 6-letter pair from patterns like "eurusd_data", "eurusd-m1-bid-2022...", "GBPUSD"
+            const currencies = ['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','HKD','SGD','SEK','NOK','DKK','ZAR','TRY','MXN','BTC','ETH','XAU','XAG'];
+            const pairMatch = name.match(/([a-zA-Z]{6})/);
+            if (pairMatch) {
+                const pair = pairMatch[1].toUpperCase();
+                const base = pair.substring(0, 3);
+                const quote = pair.substring(3, 6);
+                if (currencies.includes(base) || currencies.includes(quote)) {
                     return base + '/' + quote;
                 }
             }
-
-            // Otherwise return the segment verbatim (strips hyphens for clean display of
-            // futures contract codes, tickers, crypto base symbols, etc.).
-            return segU;
+            // Try 3-letter match for indices/commodities (e.g. "NAS", "SPX")
+            const indexMatch = name.match(/([a-zA-Z]{3,5})/);
+            if (indexMatch) {
+                return indexMatch[1].toUpperCase();
+            }
+            // Fallback: clean up the name
+            return name.replace(/[-_]/g, ' ').trim() || rawName;
         }
 
         function formatRowCount(count) {
@@ -2643,138 +997,38 @@ html.iframe-mode .bt-modal-footer {
             return count.toString();
         }
 
-        // Classify a single file into Futures / Crypto / Forex / Stocks for grouping
-        // in the dropdown. Mirrors detectAssetClassFromFiles() but per-file, and adds
-        // a Stocks fallback so AAPL-style tickers don't silently fall into Forex.
-        function classifyFile(file) {
-            const FUTURES = new Set(['ES','NQ','YM','RTY','MES','MNQ','M2K','CL','GC','SI','NG','ZB','ZN','MCL','MGC','MSI','MNG','HG','PL','PA','ZC','ZS','ZW','ZL','ZM','6E','6B','6J','6A','6C','6S','6N']);
-            const CRYPTO = new Set(['BTC','ETH','SOL','XRP','ADA','DOGE','BNB','LTC','AVAX','ATOM','DOT','LINK','MATIC','UNI','BCH','ETC','FIL','NEAR','ALGO','XLM','TRX','SHIB','APT','ARB','OP']);
-            const CURRENCIES = new Set(['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','HKD','SGD','SEK','NOK','DKK','ZAR','TRY','MXN','CNY','XAU','XAG']);
-
-            const raw = cleanPairName(file.original_name || file.name || file.filename || '');
-            const token = String(raw || '').replace('/', '').toUpperCase();
-            if (!token) return 'Other';
-
-            if (FUTURES.has(token)) return 'Futures';
-
-            // Pair-like tokens: treat each half independently
-            if (token.length >= 6) {
-                const base = token.slice(0, 3);
-                const quote = token.slice(3, 6);
-                if (CRYPTO.has(base) || CRYPTO.has(quote)) return 'Crypto';
-                if (CURRENCIES.has(base) && CURRENCIES.has(quote)) return 'Forex';
-            }
-
-            // Single-token tickers
-            if (CRYPTO.has(token)) return 'Crypto';
-            if (CURRENCIES.has(token)) return 'Forex';
-
-            // 1–5 letter alpha-only symbols that aren't currencies → assume stock ticker
-            if (/^[A-Z]{1,5}$/.test(token)) return 'Stocks';
-
-            return 'Other';
-        }
-
-        function findCachedFileById(fileId) {
-            return availableFilesCache.find(function (f) { return sameFileId(f.id, fileId); });
-        }
-
-        /** While the user has ≥1 symbol selected, all additions must match this asset group. */
-        function selectionLockedGroup() {
-            if (!selectedFilesArray.length) return null;
-            const first = findCachedFileById(selectedFilesArray[0].id);
-            if (!first) return null;
-            return classifyFile(first);
-        }
-
         function updateFileListUI() {
             const fileList = document.getElementById('fileList');
-            if (!fileList) return;
             if (availableFilesCache.length === 0) return;
 
+            // Detect duplicate pair names to add differentiators
             const pairCounts = {};
-            availableFilesCache.forEach(function (file) {
+            availableFilesCache.forEach(file => {
                 const raw = file.original_name || file.name || file.filename || '';
                 const pair = cleanPairName(raw);
                 pairCounts[pair] = (pairCounts[pair] || 0) + 1;
             });
-
-            const lockedGroup = selectionLockedGroup();
-            const visible = getFilteredDatasetFiles();
-
-            if (assetFilterTab === 'recent' && visible.length === 0) {
-                fileList.innerHTML =
-                    '<div style="color:#64748b;padding:18px;text-align:center;font-size:12px;line-height:1.5;">No recently used instruments yet.<br/><span style="opacity:0.85;">Choose datasets under <strong>All</strong> — recent picks appear here.</span></div>';
-                return;
-            }
-
-            function renderRow(file) {
-                const isSelected = selectedFilesArray.some(function (f) {
-                    return sameFileId(f.id, file.id);
-                });
-                const fileGroup = classifyFile(file);
-                const crossLocked = Boolean(lockedGroup && !isSelected && fileGroup !== lockedGroup);
-                const rawName = file.original_name || file.name || file.filename || file.symbol || 'File ' + file.id;
+            
+            fileList.innerHTML = availableFilesCache.map(file => {
+                const isSelected = selectedFilesArray.some(f => f.id === file.id);
+                const rawName = file.original_name || file.name || file.filename || file.symbol || `File ${file.id}`;
                 const pairName = cleanPairName(rawName);
                 const rows = file.row_count ? formatRowCount(file.row_count) : '';
+                // Add row count suffix if duplicate pair names exist
                 const hasDupes = pairCounts[pairName] > 1;
                 const displayName = hasDupes && rows ? pairName + ' (' + rows + ')' : pairName;
-                const safeName = displayName.replace(/'/g, "\\'");
-                const labelCls =
-                    'bt-file-dropdown-label' +
-                    (isSelected ? ' bt-file-row--selected' : '') +
-                    (crossLocked ? ' bt-file-row--locked' : '');
-                const lockedTitle = crossLocked
-                    ? ' title="Only one asset group per session — clear selection to switch (e.g. Futures vs Forex)."'
-                    : '';
-                const desc = describeInstrument(file);
-                const primaryLine =
-                    '<span class="bt-asset-symbol">' +
-                    escapeHtml(pairName) +
-                    '</span>' +
-                    (desc
-                        ? '<span class="bt-asset-sep"> - </span><span class="bt-asset-desc">' +
-                          escapeHtml(desc) +
-                          '</span>'
-                        : '');
-                const hint = fileMetaHints[file.id];
-                var metaRight = '';
-                if (hint && hint.start_ts != null) {
-                    metaRight = '(from ' + formatHistoryDate(hint.start_ts) + ')';
-                } else if (rows) {
-                    metaRight = rows + ' bars';
-                }
-                return (
-                    '<label class="' +
-                    labelCls +
-                    ' bt-asset-row-label"' +
-                    lockedTitle +
-                    '>' +
-                    '<input type="checkbox" class="bt-file-checkbox"' +
-                    (isSelected ? ' checked' : '') +
-                    (crossLocked ? ' disabled' : '') +
-                    ' onchange="toggleFileSelection(\'' +
-                    file.id +
-                    "', '" +
-                    safeName +
-                    "')\">" +
-                    '<div class="bt-asset-row-wrap">' +
-                    '<div class="bt-asset-row-main">' +
-                    '<div class="bt-asset-row-line">' +
-                    primaryLine +
-                    '</div>' +
-                    '</div>' +
-                    '<span class="bt-asset-row-meta">' +
-                    escapeHtml(metaRight) +
-                    '</span>' +
-                    '</div></label>'
-                );
-            }
-
-            fileList.innerHTML =
-                visible.length > 0
-                    ? visible.map(renderRow).join('')
-                    : '<div style="color:#64748b;padding:16px;text-align:center;font-size:12px;">No matching instruments.</div>';
+                return `
+                    <label style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; border-radius: 6px; transition: background 0.15s; ${isSelected ? 'background: rgba(59, 130, 246, 0.15);' : ''}" 
+                           onmouseover="this.style.background='rgba(59, 130, 246, 0.1)'" 
+                           onmouseout="this.style.background='${isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent'}'">
+                        <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleFileSelection('${file.id}', '${displayName.replace(/'/g, "\\'")}')" style="accent-color: #3b82f6; width: 16px; height: 16px;">
+                        <div style="flex:1;display:flex;justify-content:space-between;align-items:center;">
+                            <span style="color: #e5e7eb; font-size: 14px; font-weight: 600;">${pairName}</span>
+                            <span style="color: #64748b; font-size: 11px;">${rows ? rows + ' candles' : ''}</span>
+                        </div>
+                    </label>
+                `;
+            }).join('');
         }
         
         // Load available files on page load
@@ -2827,64 +1081,12 @@ html.iframe-mode .bt-modal-footer {
                 });
                 
                 availableFilesCache = files;
-                fileMetaHints = {};
-                metaRequestedIds.clear();
                 updateFileListUI();
                 
                 console.log(`✅ Successfully loaded ${files.length} files`);
             } catch (error) {
                 console.error('❌ Error loading files:', error);
                 fileList.innerHTML = '<div style="color: #ef4444; padding: 12px; text-align: center;">Error loading files - Click refresh</div>';
-            }
-        }
-
-        /** Default testing window: one calendar month ending at min(now, latest bar in file). */
-        var DEFAULT_BACKTEST_PERIOD_MONTHS = 1;
-
-        /**
-         * Sets min/max from file bounds and defaults the chosen window to the most recent
-         * DEFAULT_BACKTEST_PERIOD_MONTHS months ending at min(now, latest in file).
-         * Chart loads candles only between these dates until the user widens the range.
-         */
-        function applyDefaultTestingPeriodBounds(firstDate, lastDate) {
-            var startDateInput = document.getElementById('startDate');
-            var endDateInput = document.getElementById('endDate');
-            if (!startDateInput || !endDateInput) return;
-
-            var firstMs = firstDate.getTime();
-            var lastMs = lastDate.getTime();
-            var wallNow = Date.now();
-            var endMs = Math.min(wallNow, lastMs);
-            var end = new Date(endMs);
-
-            var start = new Date(endMs);
-            start.setMonth(start.getMonth() - DEFAULT_BACKTEST_PERIOD_MONTHS);
-
-            if (start.getTime() < firstMs) {
-                start = new Date(firstMs);
-            }
-            if (start.getTime() >= endMs) {
-                start = new Date(Math.max(firstMs, endMs - 86400000));
-            }
-
-            var minStr = firstDate.toISOString().slice(0, 16);
-            var maxStr = lastDate.toISOString().slice(0, 16);
-            startDateInput.min = minStr;
-            startDateInput.max = maxStr;
-            endDateInput.min = minStr;
-            endDateInput.max = maxStr;
-
-            startDateInput.value = start.toISOString().slice(0, 16);
-            endDateInput.value = end.toISOString().slice(0, 16);
-
-            var hintEl = document.getElementById('testingPeriodHint');
-            if (hintEl) {
-                hintEl.textContent =
-                    'Available data: ' +
-                    firstDate.toLocaleDateString() +
-                    ' — ' +
-                    lastDate.toLocaleDateString() +
-                    '. Default: last month (to latest / today), not the full file — widen dates to pull more history.';
             }
         }
 
@@ -2904,19 +1106,39 @@ html.iframe-mode .bt-modal-footer {
                     const metaResponse = await fetch(`/api/file/${fileId}/meta`);
                     if (metaResponse.ok) {
                         const meta = await metaResponse.json();
-                        if (meta.start_ts != null && meta.end_ts != null) {
-                            const metaStartTs = normalizeEpochMs(meta.start_ts);
-                            const metaEndTs = normalizeEpochMs(meta.end_ts);
+                        const metaStartTs = Number(meta.start_ts);
+                        const metaEndTs = Number(meta.end_ts);
 
-                            if (metaStartTs != null && metaEndTs != null && metaEndTs >= metaStartTs) {
-                                const firstDate = new Date(metaStartTs);
-                                const lastDate = new Date(metaEndTs);
+                        if (Number.isFinite(metaStartTs) && Number.isFinite(metaEndTs) && metaEndTs >= metaStartTs) {
+                            const firstDate = new Date(metaStartTs);
+                            const lastDate = new Date(metaEndTs);
 
-                                applyDefaultTestingPeriodBounds(firstDate, lastDate);
+                            const startDateInput = document.getElementById('startDate');
+                            const endDateInput = document.getElementById('endDate');
 
-                                console.log(`✅ Date range (meta): ${firstDate.toLocaleString()} to ${lastDate.toLocaleString()}`);
-                                return;
+                            startDateInput.min = firstDate.toISOString().slice(0, 16);
+                            startDateInput.max = lastDate.toISOString().slice(0, 16);
+                            endDateInput.min = firstDate.toISOString().slice(0, 16);
+                            endDateInput.max = lastDate.toISOString().slice(0, 16);
+
+                            // Set default values to full available span.
+                            startDateInput.value = firstDate.toISOString().slice(0, 16);
+                            endDateInput.value = lastDate.toISOString().slice(0, 16);
+
+                            const helperText = document.querySelector('.form-row .helper-text');
+                            const helperValue = `Available data: ${firstDate.toLocaleDateString()} to ${lastDate.toLocaleDateString()}`;
+                            if (!helperText) {
+                                const newHelper = document.createElement('div');
+                                newHelper.className = 'helper-text';
+                                newHelper.style.gridColumn = '1 / -1';
+                                newHelper.textContent = helperValue;
+                                document.querySelector('.form-row').appendChild(newHelper);
+                            } else {
+                                helperText.textContent = helperValue;
                             }
+
+                            console.log(`✅ Date range (meta): ${firstDate.toLocaleString()} to ${lastDate.toLocaleString()}`);
+                            return;
                         }
                     }
                 } catch (metaError) {
@@ -2951,8 +1173,8 @@ html.iframe-mode .bt-modal-footer {
                     return;
                 }
                 
-                // First line is header (strip BOM so "timestamp" matches Binance-exported CSVs)
-                const header = lines[0].split(',').map(function (h) { return h.replace(/^\uFEFF/g, '').trim(); });
+                // First line is header
+                const header = lines[0].split(',');
                 console.log('📊 CSV Headers:', header);
                 
                 // Second line is first data row
@@ -2968,10 +1190,8 @@ html.iframe-mode .bt-modal-footer {
                 
                 let firstTimestamp = null;
                 
-                // Strategy 1: Numeric epoch ms (Binance merged CSV uses "timestamp")
-                if (firstRow.timestamp !== undefined && firstRow.timestamp !== '' && /^\d+$/.test(String(firstRow.timestamp).trim())) {
-                    firstTimestamp = parseInt(String(firstRow.timestamp).trim(), 10);
-                } else if (firstRow.t) {
+                // Strategy 1: Try standard timestamp fields
+                if (firstRow.t) {
                     firstTimestamp = firstRow.t;
                 } else if (firstRow.time) {
                     firstTimestamp = firstRow.time;
@@ -3018,13 +1238,7 @@ html.iframe-mode .bt-modal-footer {
                     firstTimestamp = parseInt(firstTimestamp, 10);
                 }
                 
-                const normFirstMs = normalizeEpochMs(firstTimestamp);
-                const firstDate = new Date(normFirstMs != null ? normFirstMs : firstTimestamp);
-                if (isNaN(firstDate.getTime())) {
-                    console.error('❌ Invalid first row timestamp');
-                    alert('Cannot read valid dates from this dataset file.');
-                    return;
-                }
+                const firstDate = new Date(firstTimestamp);
                 console.log('📅 First date detected:', firstDate.toLocaleString());
                 
                 // Use reported total row count to get the last row (no hardcoded fallback).
@@ -3054,9 +1268,7 @@ html.iframe-mode .bt-modal-footer {
                         let lastTimestamp = null;
                         
                         // Use same detection logic as first date
-                        if (lastRow.timestamp !== undefined && lastRow.timestamp !== '' && /^\d+$/.test(String(lastRow.timestamp).trim())) {
-                            lastTimestamp = parseInt(String(lastRow.timestamp).trim(), 10);
-                        } else if (lastRow.t) {
+                        if (lastRow.t) {
                             lastTimestamp = lastRow.t;
                         } else if (lastRow.time) {
                             lastTimestamp = lastRow.time;
@@ -3091,16 +1303,38 @@ html.iframe-mode .bt-modal-footer {
                             if (typeof lastTimestamp === 'string' && /^\d+$/.test(lastTimestamp)) {
                                 lastTimestamp = parseInt(lastTimestamp, 10);
                             }
-                            const normLastMs = normalizeEpochMs(lastTimestamp);
-                            lastDate = new Date(normLastMs != null ? normLastMs : lastTimestamp);
+                            lastDate = new Date(lastTimestamp);
                             console.log('📅 Last date detected:', lastDate.toLocaleString());
                         }
                     }
                 }
                 
-                applyDefaultTestingPeriodBounds(firstDate, lastDate);
-
+                // Set min/max and default values
+                const startDateInput = document.getElementById('startDate');
+                const endDateInput = document.getElementById('endDate');
+                
+                startDateInput.min = firstDate.toISOString().slice(0, 16);
+                startDateInput.max = lastDate.toISOString().slice(0, 16);
+                endDateInput.min = firstDate.toISOString().slice(0, 16);
+                endDateInput.max = lastDate.toISOString().slice(0, 16);
+                
+                // Set default values (first date to last date)
+                startDateInput.value = firstDate.toISOString().slice(0, 16);
+                endDateInput.value = lastDate.toISOString().slice(0, 16);
+                
                 console.log(`✅ Date range: ${firstDate.toLocaleString()} to ${lastDate.toLocaleString()}`);
+                
+                // Update helper text
+                const helperText = document.querySelector('.form-row .helper-text');
+                if (!helperText) {
+                    const newHelper = document.createElement('div');
+                    newHelper.className = 'helper-text';
+                    newHelper.style.gridColumn = '1 / -1';
+                    newHelper.textContent = `Available data: ${firstDate.toLocaleDateString()} to ${lastDate.toLocaleDateString()}`;
+                    document.querySelector('.form-row').appendChild(newHelper);
+                } else {
+                    helperText.textContent = `Available data: ${firstDate.toLocaleDateString()} to ${lastDate.toLocaleDateString()}`;
+                }
                 
             } catch (error) {
                 console.error('❌ Error loading date range:', error);
@@ -3248,24 +1482,19 @@ html.iframe-mode .bt-modal-footer {
         });
 
 
-        // Form submission: do NOT rely only on `window` "load". If the document is already complete
-        // when this script runs (iframes, bfcache, fast cache), "load" has already fired and a load
-        // listener never runs — so no submit handler, no preventDefault, no redirect.
-        function attachBacktestingFormSubmit() {
-            if (window.__backtestingFormSubmitAttached) return;
-            window.__backtestingFormSubmitAttached = true;
-
-            console.log('📄 Attaching backtesting form submit handler (readyState=' + document.readyState + ')');
-
+        // Form submission - Wait for window to load
+        window.addEventListener('load', function() {
+            console.log('📄 Window loaded, attaching form handler...');
+            
             const backtestingForm = document.getElementById('backtestingForm');
             console.log('🔍 Form element found:', backtestingForm);
-
+            
             if (!backtestingForm) {
                 console.error('❌ CRITICAL: Form element not found!');
                 alert('ERROR: Form not found! Please refresh the page.');
                 return;
             }
-
+            
             backtestingForm.addEventListener('submit', async function(e) {
                 console.log('✅ Form submit event fired!');
                 e.preventDefault();
@@ -3280,26 +1509,13 @@ html.iframe-mode .bt-modal-footer {
                 const primaryFile = selectedFilesArray[0];
                 const selectedFileId = primaryFile.id;
                 const selectedFileName = primaryFile.name;
-                const instrumentRows = collectInstrumentConfigs();
-                if (instrumentRows.length > 10) {
-                    alert('Maximum 10 instruments per session.');
-                    return;
-                }
-                if (instrumentRows.some(row => !row.fileId)) {
-                    alert('Missing data loaded for one or more instruments. Please refresh selected datasets.');
-                    return;
-                }
-                if (instrumentRows.some(row => !Number.isFinite(row.pip_size) || row.pip_size <= 0)) {
-                    alert('Invalid pip size detected. Please use a positive number (e.g. 0.0001 or 0,0001).');
-                    return;
-                }
-                if (instrumentRows.some(row => !Number.isFinite(row.pip_value_per_lot) || row.pip_value_per_lot <= 0)) {
-                    alert('Invalid pip value detected. Please use a positive number.');
-                    return;
-                }
 
                 // Validate at least one market type is selected
-                syncAutoAssetClass();
+                const selectedMarkets = document.querySelectorAll('.market-checkbox:checked');
+                if (selectedMarkets.length === 0) {
+                    alert('Please select at least one market type');
+                    return;
+                }
 
                 // Get selected protection preset
                 const selectedPresetName = document.getElementById('protectionPresetSelect')?.value;
@@ -3309,65 +1525,22 @@ html.iframe-mode .bt-modal-footer {
                     protectionPreset = presets.find(p => p.name === selectedPresetName);
                 }
 
-                var playbookSel = document.getElementById('playbook');
-                var rawPlaybook = playbookSel ? playbookSel.value : '';
-                var playbookOpt = playbookSel && playbookSel.selectedOptions && playbookSel.selectedOptions[0];
-                var playbook_display = 'General';
-                var strategy_id = null;
-                if (!rawPlaybook) {
-                    playbook_display = 'General';
-                } else if (rawPlaybook.indexOf('strategy:') === 0) {
-                    strategy_id = parseInt(rawPlaybook.split(':')[1], 10);
-                    playbook_display = (playbookOpt && playbookOpt.getAttribute('data-label')) || (playbookOpt && playbookOpt.textContent && playbookOpt.textContent.trim()) || 'Strategy';
-                } else {
-                    playbook_display = (playbookOpt && playbookOpt.getAttribute('data-label')) || rawPlaybook;
-                }
-
-                var strategy_variables = [];
-                if (strategy_id && window.__strategiesLabStrategies && window.__strategiesLabStrategies.length) {
-                    var stFound = window.__strategiesLabStrategies.find(function (x) { return x.id === strategy_id; });
-                    if (stFound && stFound.strategy_definition && Array.isArray(stFound.strategy_definition.variables)) {
-                        strategy_variables = stFound.strategy_definition.variables;
-                    }
-                }
-
                 const formData = {
                     type: 'standard', // Distinguish from prop firm mode
                     sessionName: document.getElementById('sessionName').value,
                     description: document.getElementById('description').value,
-                    playbook: rawPlaybook,
-                    playbook_display: playbook_display,
-                    strategy_id: strategy_id,
-                    strategy_variables: strategy_variables,
+                    playbook: document.getElementById('playbook').value,
                     fileId: selectedFileId,
                     fileName: selectedFileName,
                     // Store all selected files for symbol switching
                     files: selectedFilesArray,
-                    instruments: instrumentRows.reduce((acc, row) => {
-                        acc[row.ticker] = row;
-                        return acc;
-                    }, {}),
-                    symbols: instrumentRows.map(row => ({ symbolName: row.ticker, fileId: row.fileId })),
-                    // Same as prop firm: used by /api/sessions list (Session page SYMBOL column)
-                    symbol:
-                        instrumentRows.length === 1
-                            ? instrumentRows[0].ticker
-                            : instrumentRows.length > 1
-                              ? instrumentRows.length + " symbols"
-                              : null,
                     activeFileIndex: 0,
                     startDate: document.getElementById('startDate').value,
                     endDate: document.getElementById('endDate').value,
                     startBalance: document.getElementById('startBalance').value,
-                    account_currency: document.getElementById('accountCurrency').value,
-                    leverage: document.getElementById('accountLeverage').value,
-                    asset_class: document.getElementById('assetClass').value,
-                    margin_call_level: parseFloat(document.getElementById('marginCallLevel').value || 100),
-                    stop_out_level: parseFloat(document.getElementById('stopOutLevel').value || 50),
-                    max_risk_per_trade_pct: parseFloat(document.getElementById('maxRiskPerTradePct').value || 0) || null,
                     
                     // Trading Settings
-                    marketType: [detectAssetClassFromFiles(selectedFilesArray).toLowerCase()],
+                    marketType: Array.from(document.querySelectorAll('.market-checkbox:checked')).map(cb => cb.value),
                     defaultRiskType: document.getElementById('defaultRiskType').value,
                     defaultRisk: parseFloat(document.getElementById('defaultRisk').value) || 1,
                     allowBackNavigation: document.getElementById('allowBackNavigation').checked,
@@ -3417,80 +1590,25 @@ html.iframe-mode .bt-modal-footer {
                 }
                 localStorage.setItem('backtestingSessions', JSON.stringify(sessions));
 
-                // Chart URL: same origin as this frame, or parentOrigin from query when embedded (Sessions passes it).
-                var qs = new URLSearchParams();
-                qs.set('mode', 'backtest');
-                if (sessionId != null && sessionId !== '') {
-                    qs.set('sessionId', String(sessionId));
-                }
-                if (selectedFileId != null && selectedFileId !== '') {
-                    qs.set('fileId', String(selectedFileId));
-                }
-                function resolveParentOriginFromQuery() {
-                    try {
-                        var raw = new URLSearchParams(window.location.search).get('parentOrigin');
-                        if (!raw) return null;
-                        var dec = decodeURIComponent(raw);
-                        var u = new URL(dec);
-                        if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
-                        return u.origin;
-                    } catch (e) {
-                        return null;
+                // Small delay to ensure localStorage is written
+                setTimeout(() => {
+                    // Redirect to chart with backtesting mode
+                    console.log('🚀 Redirecting to backtesting mode...');
+                    const targetUrl = `index.html?mode=backtest&sessionId=${encodeURIComponent(String(sessionId))}&fileId=${selectedFileId}`;
+                    
+                    // Check if we're in an iframe
+                    const isInIframe = window.self !== window.top;
+                    if (isInIframe) {
+                        // If in iframe (opened from sessions.html), redirect parent window
+                        console.log('📱 Running in iframe, redirecting parent window');
+                        window.top.location.href = targetUrl;
+                    } else {
+                        // If standalone page, redirect normally
+                        window.location.href = targetUrl;
                     }
-                }
-                var inIframe = window.self !== window.top;
-                var parentOriginFromQuery = resolveParentOriginFromQuery();
-                var chartOrigin = (inIframe && parentOriginFromQuery) ? parentOriginFromQuery : window.location.origin;
-                var absUrl = chartOrigin + '/chart/index.html?' + qs.toString();
-
-                function navigateToChartAfterCreate() {
-                    console.log('🚀 Redirecting to backtesting mode…', absUrl, 'inIframe=', inIframe);
-                    if (!inIframe) {
-                        window.location.replace(absUrl);
-                        return;
-                    }
-                    // 1) Tell parent (Sessions dashboard) to navigate — works cross-origin.
-                    try {
-                        window.parent.postMessage(
-                            { type: 'talaria-open-chart', url: absUrl },
-                            parentOriginFromQuery || '*'
-                        );
-                    } catch (err) {
-                        console.warn('[backtesting] postMessage failed', err);
-                    }
-                    // 2) Escape iframe: navigate top-level (often works when parent and chart share policy).
-                    try {
-                        var a = document.createElement('a');
-                        a.href = absUrl;
-                        a.target = '_top';
-                        a.rel = 'noopener noreferrer';
-                        document.body.appendChild(a);
-                        a.click();
-                        a.remove();
-                    } catch (err2) {
-                        console.warn('[backtesting] _top link failed', err2);
-                    }
-                    // 3) If still embedded after a tick, load chart in this frame so the user is not stuck.
-                    setTimeout(function () {
-                        try {
-                            if (window.self !== window.top) {
-                                window.location.replace(absUrl);
-                            }
-                        } catch (err3) {
-                            console.warn('[backtesting] iframe fallback navigation failed', err3);
-                        }
-                    }, 350);
-                }
-
-                navigateToChartAfterCreate();
+                }, 100);
             });
-        }
-
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', attachBacktestingFormSubmit);
-        } else {
-            attachBacktestingFormSubmit();
-        }
+        });
 
         // Dates will be auto-populated when user selects a file
 
@@ -3505,8 +1623,7 @@ html.iframe-mode .bt-modal-footer {
         function getCurrentFormData() {
             return {
                 type: 'standard',
-                marketType: [detectAssetClassFromFiles(selectedFilesArray).toLowerCase()],
-                asset_class: document.getElementById('assetClass')?.value || 'Forex',
+                marketType: Array.from(document.querySelectorAll('.market-checkbox:checked')).map(cb => cb.value),
                 defaultRiskType: document.getElementById('defaultRiskType').value,
                 defaultRisk: parseFloat(document.getElementById('defaultRisk').value) || 1,
                 allowBackNavigation: document.getElementById('allowBackNavigation').checked
@@ -3518,12 +1635,14 @@ html.iframe-mode .bt-modal-footer {
             if (!data) return;
             
             // Load all fields
+            // Load market types (handle both array and single string for backward compatibility)
+            const marketTypes = Array.isArray(data.marketType) ? data.marketType : [data.marketType || 'forex'];
+            document.querySelectorAll('.market-checkbox').forEach(cb => {
+                cb.checked = marketTypes.includes(cb.value);
+            });
             document.getElementById('defaultRiskType').value = data.defaultRiskType || 'percent';
             document.getElementById('defaultRisk').value = data.defaultRisk || 1;
             document.getElementById('allowBackNavigation').checked = data.allowBackNavigation !== false;
-            if (document.getElementById('assetClass')) {
-                document.getElementById('assetClass').value = data.asset_class || document.getElementById('assetClass').value || 'Forex';
-            }
             
             // Trigger the risk type change to update labels
             const riskEvent = new Event('change');
@@ -3635,7 +1754,7 @@ html.iframe-mode .bt-modal-footer {
                 <div class="session-item" onclick="useSession(${sessions.length - 1 - index})">
                     <div class="session-info">
                         <div class="session-name">${session.sessionName}</div>
-                        <div class="session-desc">${session.fileName || 'Unknown file'} • ${(session.asset_class || session.marketType || 'Forex')} • ${new Date(session.created || Date.now()).toLocaleDateString()}</div>
+                        <div class="session-desc">${session.fileName || 'Unknown file'} • ${session.marketType || 'Forex'} • ${new Date(session.created || Date.now()).toLocaleDateString()}</div>
                     </div>
                 </div>
             `).join('');
@@ -3679,80 +1798,6 @@ html.iframe-mode .bt-modal-footer {
         });
 
         // Note: Session history saving is already handled in the main submit handler above
-    </script>
-    <script>
-    (function () {
-        var PRESETS = [
-            { value: 'scalping', label: 'Scalping Strategy' },
-            { value: 'swing', label: 'Swing Trading' },
-            { value: 'breakout', label: 'Breakout Strategy' },
-            { value: 'momentum', label: 'Momentum Trading' },
-            { value: 'reversal', label: 'Reversal Strategy' }
-        ];
-        function rebuildPlaybookSelect(strategies) {
-            window.__strategiesLabStrategies = strategies || [];
-            var sel = document.getElementById('playbook');
-            if (!sel) return;
-            sel.innerHTML = '';
-            var o0 = document.createElement('option');
-            o0.value = '';
-            o0.textContent = 'Select playbook...';
-            sel.appendChild(o0);
-            var gUser = document.createElement('optgroup');
-            gUser.label = 'Your strategies (Strategies Lab)';
-            if (strategies && strategies.length) {
-                strategies.forEach(function (s) {
-                    var opt = document.createElement('option');
-                    opt.value = 'strategy:' + s.id;
-                    opt.setAttribute('data-label', s.name);
-                    opt.textContent = s.name;
-                    gUser.appendChild(opt);
-                });
-            } else {
-                var dis = document.createElement('option');
-                dis.disabled = true;
-                dis.textContent = 'No saved strategies — use Strategies Lab to create one';
-                gUser.appendChild(dis);
-            }
-            sel.appendChild(gUser);
-            var gPreset = document.createElement('optgroup');
-            gPreset.label = 'Quick labels';
-            PRESETS.forEach(function (p) {
-                var opt = document.createElement('option');
-                opt.value = p.value;
-                opt.setAttribute('data-label', p.label);
-                opt.textContent = p.label;
-                gPreset.appendChild(opt);
-            });
-            sel.appendChild(gPreset);
-        }
-        function loadPlaybookStrategies() {
-            var token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
-            if (!token) {
-                rebuildPlaybookSelect([]);
-                return;
-            }
-            fetch('/journal/api/strategies', {
-                credentials: 'include',
-                headers: { 'Authorization': 'Bearer ' + token }
-            })
-                .then(function (res) {
-                    if (!res.ok) throw new Error('strategies');
-                    return res.json();
-                })
-                .then(function (data) {
-                    rebuildPlaybookSelect(data.strategies || []);
-                })
-                .catch(function () {
-                    rebuildPlaybookSelect([]);
-                });
-        }
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', loadPlaybookStrategies);
-        } else {
-            loadPlaybookStrategies();
-        }
-    })();
     </script>
 </body>
 </html>

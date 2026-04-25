@@ -7,8 +7,6 @@ class TimeframeFavorites {
         this.favorites = this.loadFavorites();
         this.customTimeframes = this.loadCustomTimeframes();
         this.currentTimeframe = chart.currentTimeframe || '1m';
-        /** When favorites are full, show this panel TF in the sidebar without persisting it */
-        this._sidebarExtraTimeframe = null;
         
         // Initialize UI
         this.initDropdown();
@@ -31,7 +29,7 @@ class TimeframeFavorites {
                 }
             }
 
-            const saved = userStorage.getItem('chart_timeframe_favorites');
+            const saved = localStorage.getItem('chart_timeframe_favorites');
             if (saved) {
                 const parsed = JSON.parse(saved);
                 if (Array.isArray(parsed) && parsed.length > 0) {
@@ -51,7 +49,7 @@ class TimeframeFavorites {
     saveFavorites() {
         try {
             this.favorites = this.normalizeTimeframeList(this.favorites);
-            userStorage.setItem('chart_timeframe_favorites', JSON.stringify(this.favorites));
+            localStorage.setItem('chart_timeframe_favorites', JSON.stringify(this.favorites));
 
             if (typeof window !== 'undefined' && typeof window.saveTimeframeFavorites === 'function') {
                 window.saveTimeframeFavorites(this.favorites);
@@ -112,7 +110,7 @@ class TimeframeFavorites {
 
     loadCustomTimeframes() {
         try {
-            const saved = userStorage.getItem('chart_custom_timeframes');
+            const saved = localStorage.getItem('chart_custom_timeframes');
             const parsed = saved ? JSON.parse(saved) : [];
             const fromFavorites = (this.favorites || []).filter(tf => !this.isBuiltInTimeframe(tf));
 
@@ -128,7 +126,7 @@ class TimeframeFavorites {
         try {
             this.customTimeframes = this.normalizeTimeframeList(this.customTimeframes)
                 .filter(tf => !this.isBuiltInTimeframe(tf));
-            userStorage.setItem('chart_custom_timeframes', JSON.stringify(this.customTimeframes));
+            localStorage.setItem('chart_custom_timeframes', JSON.stringify(this.customTimeframes));
         } catch (e) {
             console.error('Failed to save custom timeframes:', e);
         }
@@ -371,66 +369,6 @@ class TimeframeFavorites {
     }
 
     /**
-     * Favorites list plus one extra TF when favorites are at max (not persisted).
-     */
-    getSidebarDisplayTimeframes() {
-        const sorted = this.getSortedFavorites();
-        const extra = this._sidebarExtraTimeframe ? this.normalizeTimeframe(this._sidebarExtraTimeframe) : null;
-        if (!extra || sorted.includes(extra)) return sorted;
-        return [...sorted, extra].sort((a, b) => this.timeframeToMinutes(a) - this.timeframeToMinutes(b));
-    }
-
-    /**
-     * Ensure a panel's timeframe appears in the sidebar (add to favorites if room, else ephemeral slot).
-     */
-    ensureTimeframeInSidebar(timeframe) {
-        const tf = this.normalizeTimeframe(timeframe);
-        if (!tf) return;
-        this._sidebarExtraTimeframe = null;
-        if (this.favorites.includes(tf)) return;
-        if (this.favorites.length < this.getMaxFavorites()) {
-            this.favorites.push(tf);
-            this.saveFavorites();
-        } else {
-            this._sidebarExtraTimeframe = tf;
-        }
-    }
-
-    /**
-     * Update labels + favorite/sidebar buttons to match a timeframe without loading data (multi-panel).
-     */
-    syncSidebarHighlightFromTimeframe(timeframe) {
-        const tf = this.normalizeTimeframe(timeframe);
-        if (!tf) return;
-        this.currentTimeframe = tf;
-
-        const label = document.getElementById('currentTimeframeLabel');
-        if (label) label.textContent = this.getTimeframeLabel(tf);
-
-        const sidebarCurrentTimeframe = document.getElementById('sidebarCurrentTimeframe');
-        if (sidebarCurrentTimeframe) sidebarCurrentTimeframe.textContent = this.getTimeframeLabel(tf);
-
-        const items = document.querySelectorAll('.timeframe-dropdown-item');
-        items.forEach(item => {
-            if (item.dataset.timeframe === tf) item.classList.add('selected');
-            else item.classList.remove('selected');
-        });
-
-        // renderFavoriteButtons also refreshes the vertical sidebar list
-        this.renderFavoriteButtons();
-    }
-
-    /**
-     * When the user selects a chart panel, mirror its interval in the sidebar (add button if missing).
-     */
-    reflectActivePanelTimeframeWithoutChartChange(timeframe) {
-        const tf = this.normalizeTimeframe(timeframe);
-        if (!tf) return;
-        this.ensureTimeframeInSidebar(tf);
-        this.syncSidebarHighlightFromTimeframe(tf);
-    }
-
-    /**
      * Initialize dropdown functionality
      */
     initDropdown() {
@@ -657,7 +595,6 @@ class TimeframeFavorites {
             return;
         }
         timeframe = normalizedTimeframe;
-        this._sidebarExtraTimeframe = null;
 
         if (!this.isBuiltInTimeframe(timeframe) && !this.customTimeframes.includes(timeframe)) {
             this.customTimeframes.push(timeframe);
@@ -749,8 +686,6 @@ class TimeframeFavorites {
         } else if (window.panelManager && window.panelManager.getCurrentLayout() !== '1') {
             // Regular multi-panel mode (not linked)
             window.panelManager.updateSelectedPanelTimeframe(timeframe);
-            this.ensureTimeframeInSidebar(timeframe);
-            this.syncSidebarHighlightFromTimeframe(timeframe);
         } else {
             // Single panel mode - update main chart only
             if (this.chart && typeof this.chart.setTimeframe === 'function') {
@@ -818,7 +753,6 @@ class TimeframeFavorites {
                     
                     // Update the selected panel's timeframe
                     window.panelManager.updateSelectedPanelTimeframe(timeframe);
-                    this.syncSidebarHighlightFromTimeframe(timeframe);
                     
                     return false;
                 }
@@ -843,7 +777,7 @@ class TimeframeFavorites {
 
         sidebarContainer.innerHTML = '';
 
-        this.getSidebarDisplayTimeframes().forEach(timeframe => {
+        this.getSortedFavorites().forEach(timeframe => {
             const isActive = timeframe === this.currentTimeframe;
             const btn = document.createElement('button');
             btn.className = isActive ? 'sidebar-current-timeframe' : 'sidebar-timeframe-btn';
@@ -857,7 +791,6 @@ class TimeframeFavorites {
                     e.preventDefault();
                     e.stopImmediatePropagation();
                     window.panelManager.updateSelectedPanelTimeframe(timeframe);
-                    this.syncSidebarHighlightFromTimeframe(timeframe);
                     return false;
                 }
                 this.selectTimeframe(timeframe);
@@ -957,8 +890,6 @@ class TimeframeFavorites {
                     this._closeTfFlyout();
                     if (window.panelManager && window.panelManager.getCurrentLayout() !== '1') {
                         window.panelManager.updateSelectedPanelTimeframe(tf);
-                        this.ensureTimeframeInSidebar(tf);
-                        this.syncSidebarHighlightFromTimeframe(tf);
                     } else {
                         this.selectTimeframe(tf);
                     }

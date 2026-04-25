@@ -39,15 +39,12 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Node: chart client bundle (minified) + Dukascopy helper deps
-COPY package.json package-lock.json* ./
-RUN npm ci
+# Install Node dependency used by Dukascopy fetch script
+COPY package.json ./
+RUN npm install --omit=dev
 
 # Copy application files
 COPY . .
-
-# Minified chart JS + production index.html under dist/ (served when present)
-RUN npm run build:chart-client
 
 # Copy built homepage static export into the runtime image
 COPY --from=homepage_builder /homepage/out /app/homepage/out

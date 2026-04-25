@@ -321,26 +321,13 @@ class BaseDrawing {
         const svg = this.chart.svg;
         if (!svg) return;
         
-        const yScale = this.chart.yScale || this.chart.scales?.yScale;
-        const xScale = this.chart.xScale || this.chart.scales?.xScale;
+        const yScale = this.chart.scales?.yScale;
+        const xScale = this.chart.scales?.xScale;
         if (!yScale || !xScale) return;
         
         const margin = this.chart.margin || { t: 5, r: 60, b: 30, l: 0 };
         const chartWidth = this.chart.w || this.chart.canvas?.width || 800;
         const chartHeight = this.chart.h || this.chart.canvas?.height || 600;
-        
-        // Compute price decimals matching the chart's current precision setting
-        let priceDecimals;
-        const _precisionSetting = this.chart.chartSettings?.precision;
-        if (_precisionSetting && _precisionSetting !== 'Default') {
-            priceDecimals = Math.max(0, Math.min(8, parseInt(_precisionSetting, 10) || 5));
-        } else if (typeof this.chart.getPriceDecimals === 'function' && yScale) {
-            const _d = yScale.domain();
-            const _range = Math.abs((Array.isArray(_d) && _d.length === 2) ? (_d[1] - _d[0]) : 0);
-            priceDecimals = this.chart.getPriceDecimals(_range);
-        } else {
-            priceDecimals = this.chart.priceDecimals || 5;
-        }
         
         // Create highlight group for SVG labels only (zones are drawn on canvas)
         this.axisHighlightGroup = svg.append('g')
@@ -393,16 +380,7 @@ class BaseDrawing {
         
         // Calculate price axis zone (Y-axis)
         if (this.points.length >= 2) {
-            let prices = this.points.map(p => p.y);
-            if ((this.type === 'long-position' || this.type === 'short-position') && this.meta) {
-                ['extraTargets', 'extraEntries', 'extraStops'].forEach((key) => {
-                    const arr = this.meta[key];
-                    if (!Array.isArray(arr)) return;
-                    arr.forEach((row) => {
-                        if (row && Number.isFinite(row.y)) prices.push(row.y);
-                    });
-                });
-            }
+            const prices = this.points.map(p => p.y);
             const minPrice = Math.min(...prices);
             const maxPrice = Math.max(...prices);
             const minY = yScale(maxPrice); // Note: Y is inverted
@@ -508,8 +486,6 @@ class BaseDrawing {
                         .attr('width', boxWidth)
                         .attr('height', boxHeight)
                         .attr('fill', timeHighlightColor)
-                        .attr('stroke', 'rgba(0,0,0,0.35)')
-                        .attr('stroke-width', 1)
                         .attr('rx', 3);
                     
                     this.axisHighlightGroup.append('text')
@@ -565,8 +541,6 @@ class BaseDrawing {
                         .attr('width', boxWidth)
                         .attr('height', boxHeight)
                         .attr('fill', timeHighlightColor)
-                        .attr('stroke', 'rgba(0,0,0,0.35)')
-                        .attr('stroke-width', 1)
                         .attr('rx', 3);
                     
                     this.axisHighlightGroup.append('text')
@@ -585,21 +559,6 @@ class BaseDrawing {
         // For brush/highlighter, only show high and low price labels
         const isBrushType = this.type === 'brush' || this.type === 'highlighter';
         let pointsToLabel = this.points;
-
-        if ((this.type === 'long-position' || this.type === 'short-position') && this.meta) {
-            const x0 = Number.isFinite(this.points[0]?.x) ? this.points[0].x : 0;
-            const extraPts = [];
-            ['extraTargets', 'extraEntries', 'extraStops'].forEach((key) => {
-                const arr = this.meta[key];
-                if (!Array.isArray(arr)) return;
-                arr.forEach((row) => {
-                    if (row && Number.isFinite(row.y)) {
-                        extraPts.push({ x: x0, y: row.y, _rrExtra: key });
-                    }
-                });
-            });
-            pointsToLabel = pointsToLabel.concat(extraPts);
-        }
         
         if (isBrushType && this.points.length > 2) {
             // Find highest and lowest points
@@ -618,12 +577,9 @@ class BaseDrawing {
             const index = point.x;
             
             // Determine color based on point type for position tools
-            let priceColor = this.style?.color || this.style?.lineColor || this.style?.stroke || '#2962ff';
+            let priceColor = this.style?.color || this.style?.stroke || '#2962ff';
             if (this.type === 'long-position' || this.type === 'short-position') {
-                if (point._rrExtra === 'extraEntries') priceColor = '#2196f3';
-                else if (point._rrExtra === 'extraStops') priceColor = '#f44336';
-                else if (point._rrExtra === 'extraTargets') priceColor = '#4caf50';
-                else if (idx === 0) priceColor = '#2196f3'; // Entry - blue
+                if (idx === 0) priceColor = '#2196f3'; // Entry - blue
                 else if (idx === 1) priceColor = '#f44336'; // Stop - red
                 else if (idx === 2) priceColor = '#4caf50'; // Target - green
             }
@@ -631,7 +587,7 @@ class BaseDrawing {
             // Price highlight on Y-axis (right side)
             const yPos = yScale(price);
             if (showPriceLabels && yPos >= margin.t && yPos <= chartHeight - margin.b) {
-                const priceText = price.toFixed(priceDecimals);
+                const priceText = price.toFixed(this.chart.priceDecimals || 5);
                 const boxWidth = 58;
                 const boxHeight = 20;
                 
@@ -643,8 +599,6 @@ class BaseDrawing {
                     .attr('width', boxWidth)
                     .attr('height', boxHeight)
                     .attr('fill', priceColor)
-                    .attr('stroke', 'rgba(0,0,0,0.35)')
-                    .attr('stroke-width', 1)
                     .attr('rx', 3);
                 
                 // Price text - determine text color based on price background
@@ -706,8 +660,6 @@ class BaseDrawing {
                             .attr('width', boxWidth)
                             .attr('height', boxHeight)
                             .attr('fill', timeHighlightColor)
-                            .attr('stroke', 'rgba(0,0,0,0.35)')
-                            .attr('stroke-width', 1)
                             .attr('rx', 3);
                         
                         // Time text

@@ -17,15 +17,28 @@ class FibonacciRetracementTool extends BaseDrawing {
         const globalLineType = `${this.style.levelsLineDasharray ?? ''}`;
         const globalLineWidth = (this.style.levelsLineWidth != null && !isNaN(parseInt(this.style.levelsLineWidth))) ? parseInt(this.style.levelsLineWidth) : 2;
         
-        // Fibonacci levels (0 and 1 fixed at top, middle levels below)
+        // Fibonacci levels
         const defaultLevels = [
+            { value: -0.618, label: '-0.618', color: style.colorMinus618 || '#9c27b0', visible: false },
+            { value: -0.5, label: '-0.5', color: style.colorMinus50 || '#673ab7', visible: false },
+            { value: -0.382, label: '-0.382', color: style.colorMinus382 || '#2196f3', visible: false },
+            { value: -0.236, label: '-0.236', color: style.colorMinus236 || '#00bcd4', visible: false },
             { value: 0, label: '0', color: style.color0 || '#787b86', visible: true },
-            { value: 1, label: '1', color: style.color1 || '#787b86', visible: true },
             { value: 0.236, label: '0.236', color: style.color236 || '#f23645', visible: true },
             { value: 0.382, label: '0.382', color: style.color382 || '#ff9800', visible: true },
             { value: 0.5, label: '0.5', color: style.color50 || '#ffeb3b', visible: true },
             { value: 0.618, label: '0.618', color: style.color618 || '#4caf50', visible: true },
-            { value: 0.786, label: '0.786', color: style.color786 || '#2196f3', visible: true }
+            { value: 0.786, label: '0.786', color: style.color786 || '#2196f3', visible: true },
+            { value: 1, label: '1', color: style.color1 || '#787b86', visible: true },
+            { value: 1.272, label: '1.272', color: style.color1272 || '#00bcd4', visible: false },
+            { value: 1.414, label: '1.414', color: style.color1414 || '#4caf50', visible: false },
+            { value: 1.618, label: '1.618', color: style.color1618 || '#9c27b0', visible: false },
+            { value: 2, label: '2', color: style.color2 || '#e91e63', visible: false },
+            { value: 2.272, label: '2.272', color: style.color2272 || '#ff9800', visible: false },
+            { value: 2.618, label: '2.618', color: style.color2618 || '#f44336', visible: false },
+            { value: 3.618, label: '3.618', color: style.color3618 || '#b71c1c', visible: false },
+            { value: 4.236, label: '4.236', color: style.color4236 || '#607d8b', visible: false },
+            { value: 5, label: '5', color: style.color5 || '#3f51b5', visible: false }
         ];
 
         const providedLevels = Array.isArray(style.levels) ? style.levels : defaultLevels;
@@ -273,11 +286,11 @@ class FibonacciExtensionTool extends BaseDrawing {
         if (this.style.trendLineDasharray === undefined || this.style.trendLineDasharray === null) this.style.trendLineDasharray = '2,2';
         if (this.style.trendLineWidth === undefined || this.style.trendLineWidth === null) this.style.trendLineWidth = 1;
         
-        // Fibonacci extension levels (0 and 1 fixed at top)
+        // Fibonacci extension levels (beyond 1.0)
         const defaultLevels = [
             { value: 0, label: '0', color: style.color0 || '#787b86', visible: true },
-            { value: 1, label: '1', color: style.color1 || '#787b86', visible: true },
             { value: 0.618, label: '0.618', color: style.color618 || '#4caf50', visible: true },
+            { value: 1, label: '1', color: style.color1 || '#787b86', visible: true },
             { value: 1.272, label: '1.272', color: style.color1272 || '#2196f3', visible: true },
             { value: 1.618, label: '1.618', color: style.color1618 || '#9c27b0', visible: true },
             { value: 2.618, label: '2.618', color: style.color2618 || '#e91e63', visible: true },

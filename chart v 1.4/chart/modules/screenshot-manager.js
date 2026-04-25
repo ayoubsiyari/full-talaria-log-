@@ -6,11 +6,6 @@
 class ScreenshotManager {
     constructor(chart) {
         this.chart = chart;
-        this._brandLogoImage = null;
-        this._brandLogoLoadPromise = null;
-        this._brandLogoBounds = null;
-        /** @type {Promise<boolean>|null} */
-        this._zainFontLoadPromise = null;
         this.init();
     }
 
@@ -48,593 +43,10 @@ class ScreenshotManager {
             return false;
         }
     }
-
-    isLightColor(colorValue) {
-        if (!colorValue || typeof colorValue !== 'string') return false;
-
-        const color = colorValue.trim();
-        let r;
-        let g;
-        let b;
-
-        const rgbMatch = color.match(/^rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
-        if (rgbMatch) {
-            r = parseInt(rgbMatch[1], 10);
-            g = parseInt(rgbMatch[2], 10);
-            b = parseInt(rgbMatch[3], 10);
-        } else if (color.startsWith('#')) {
-            let hex = color.slice(1);
-            if (hex.length === 3) {
-                hex = hex.split('').map((ch) => ch + ch).join('');
-            }
-            if (hex.length !== 6) return false;
-            r = parseInt(hex.slice(0, 2), 16);
-            g = parseInt(hex.slice(2, 4), 16);
-            b = parseInt(hex.slice(4, 6), 16);
-        } else {
-            return false;
-        }
-
-        if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) return false;
-
-        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-        return luminance > 0.65;
-    }
-
-    prepareScreenshotClone(clonedDoc, sourceElement = null) {
-        if (!clonedDoc) return;
-
-        const backgroundColor = this.getScreenshotBackgroundColor(sourceElement || document.getElementById('chart-container'));
-        const useDarkBrand = this.isLightColor(backgroundColor);
-        const toAbsoluteAssetUrl = (relativePath) => {
-            try {
-                return new URL(relativePath, window.location.href).href;
-            } catch (error) {
-                return relativePath;
-            }
-        };
-
-        const symbolSrc = toAbsoluteAssetUrl(useDarkBrand ? 'modules/logo-09.png' : 'modules/logo-08.png');
-        const wordmarkSrc = toAbsoluteAssetUrl(useDarkBrand ? 'modules/logo-14.png' : 'modules/logo-05.png');
-
-        const chartBrand = clonedDoc.querySelector('.chart-brand');
-        if (chartBrand) {
-            chartBrand.style.display = 'block';
-            chartBrand.style.visibility = 'visible';
-            chartBrand.style.opacity = '1';
-        }
-
-        clonedDoc.querySelectorAll('.chart-brand .brand-stack').forEach((stack) => {
-            stack.style.visibility = 'visible';
-            stack.style.opacity = '1';
-        });
-
-        clonedDoc.querySelectorAll('.chart-brand .logo-top').forEach((img) => {
-            img.setAttribute('src', symbolSrc);
-            img.setAttribute('crossorigin', 'anonymous');
-            img.style.setProperty('filter', 'none', 'important');
-            img.style.opacity = '1';
-            img.style.visibility = 'visible';
-        });
-
-        clonedDoc.querySelectorAll('.chart-brand .logo-bottom').forEach((el) => {
-            if (el.tagName === 'IMG') {
-                el.setAttribute('src', wordmarkSrc);
-                el.setAttribute('crossorigin', 'anonymous');
-                el.style.setProperty('filter', 'none', 'important');
-            } else {
-                el.style.setProperty('max-width', '300px', 'important');
-                el.style.setProperty('opacity', '1', 'important');
-                el.style.setProperty('overflow', 'visible', 'important');
-            }
-            el.style.opacity = '1';
-            el.style.visibility = 'visible';
-        });
-
-        clonedDoc.querySelectorAll('.chart-brand .logo-bottom-wrap').forEach((wrap) => {
-            wrap.style.maxWidth = '300px';
-            wrap.style.opacity = '1';
-        });
-
-        const darkStack = clonedDoc.querySelector('.chart-brand .logo-dark');
-        const lightStack = clonedDoc.querySelector('.chart-brand .logo-light');
-        if (darkStack) darkStack.style.display = useDarkBrand ? 'none' : 'block';
-        if (lightStack) lightStack.style.display = useDarkBrand ? 'block' : 'none';
-    }
-
-    flashCapture() {
-        const flash = document.createElement('div');
-        flash.style.cssText = `
-            position: fixed;
-            inset: 0;
-            z-index: 100003;
-            background: #ffffff;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 60ms ease-in;
-        `;
-        document.body.appendChild(flash);
-        requestAnimationFrame(() => {
-            flash.style.opacity = '0.82';
-            setTimeout(() => {
-                flash.style.transition = 'opacity 220ms ease-out';
-                flash.style.opacity = '0';
-                setTimeout(() => flash.remove(), 240);
-            }, 70);
-        });
-    }
-
-    resolveAssetUrl(relativePath) {
-        try {
-            return new URL(relativePath, window.location.href).href;
-        } catch (error) {
-            return relativePath;
-        }
-    }
-
-    async getBrandLogoImage() {
-        if (this._brandLogoImage && this._brandLogoImage.complete && this._brandLogoImage.naturalWidth > 0) {
-            return this._brandLogoImage;
-        }
-
-        if (this._brandLogoLoadPromise) {
-            return this._brandLogoLoadPromise;
-        }
-
-        const candidates = ['modules/logo-05.png', 'modules/logo-14.png', 'modules/logo-04.png', 'modules/logo-09.png'];
-
-        this._brandLogoLoadPromise = new Promise((resolve) => {
-            const tryLoad = (index) => {
-                if (index >= candidates.length) {
-                    this._brandLogoLoadPromise = null;
-                    resolve(null);
-                    return;
-                }
-
-                const image = new Image();
-                image.decoding = 'async';
-                image.onload = () => {
-                    image.__talariaSource = candidates[index];
-                    this._brandLogoImage = image;
-                    this._brandLogoBounds = null;
-                    this._brandLogoLoadPromise = null;
-                    resolve(image);
-                };
-                image.onerror = () => {
-                    tryLoad(index + 1);
-                };
-                image.src = this.resolveAssetUrl(candidates[index]);
-            };
-
-            tryLoad(0);
-        });
-
-        return this._brandLogoLoadPromise;
-    }
-
-    getVisibleLogoBounds(image) {
-        if (!image) {
-            return null;
-        }
-
-        if (
-            this._brandLogoBounds &&
-            this._brandLogoBounds.sourceWidth === image.naturalWidth &&
-            this._brandLogoBounds.sourceHeight === image.naturalHeight
-        ) {
-            return this._brandLogoBounds;
-        }
-
-        const scratch = document.createElement('canvas');
-        scratch.width = image.naturalWidth;
-        scratch.height = image.naturalHeight;
-        const scratchCtx = scratch.getContext('2d', { willReadFrequently: true });
-
-        if (!scratchCtx) {
-            const fallback = {
-                x: 0,
-                y: 0,
-                width: image.naturalWidth,
-                height: image.naturalHeight,
-                sourceWidth: image.naturalWidth,
-                sourceHeight: image.naturalHeight
-            };
-            this._brandLogoBounds = fallback;
-            return fallback;
-        }
-
-        scratchCtx.clearRect(0, 0, scratch.width, scratch.height);
-        scratchCtx.drawImage(image, 0, 0);
-        const pixels = scratchCtx.getImageData(0, 0, scratch.width, scratch.height).data;
-
-        let minX = scratch.width;
-        let minY = scratch.height;
-        let maxX = -1;
-        let maxY = -1;
-        let visiblePixelCount = 0;
-        let lumaSum = 0;
-
-        for (let y = 0; y < scratch.height; y += 1) {
-            for (let x = 0; x < scratch.width; x += 1) {
-                const i = (y * scratch.width + x) * 4;
-                const red = pixels[i];
-                const green = pixels[i + 1];
-                const blue = pixels[i + 2];
-                const alpha = pixels[i + 3];
-
-                // Works for both transparent logos and opaque logos on near-black backgrounds
-                const hasVisibleContent = alpha > 0 && ((red + green + blue) > 20 || alpha < 250);
-                if (hasVisibleContent) {
-                    if (x < minX) minX = x;
-                    if (y < minY) minY = y;
-                    if (x > maxX) maxX = x;
-                    if (y > maxY) maxY = y;
-                    visiblePixelCount += 1;
-                    lumaSum += (0.2126 * red) + (0.7152 * green) + (0.0722 * blue);
-                }
-            }
-        }
-
-        const averageLuma = visiblePixelCount > 0 ? (lumaSum / visiblePixelCount) : 0;
-
-        const bounds = maxX >= minX && maxY >= minY
-            ? {
-                x: minX,
-                y: minY,
-                width: maxX - minX + 1,
-                height: maxY - minY + 1,
-                averageLuma,
-                sourceWidth: image.naturalWidth,
-                sourceHeight: image.naturalHeight
-            }
-            : {
-                x: 0,
-                y: 0,
-                width: image.naturalWidth,
-                height: image.naturalHeight,
-                averageLuma,
-                sourceWidth: image.naturalWidth,
-                sourceHeight: image.naturalHeight
-            };
-
-        this._brandLogoBounds = bounds;
-        return bounds;
-    }
-
-    /**
-     * Load Zain Black (900) for canvas text — same file as index.html / homepage.
-     */
-    async ensureZainFontForScreenshot() {
-        if (this._zainFontLoadPromise) {
-            return this._zainFontLoadPromise;
-        }
-        if (typeof FontFace === 'undefined' || !document.fonts) {
-            this._zainFontLoadPromise = Promise.resolve(false);
-            return this._zainFontLoadPromise;
-        }
-        this._zainFontLoadPromise = (async () => {
-            try {
-                if (typeof document !== 'undefined' && document.fonts) {
-                    await document.fonts.ready;
-                    if (document.fonts.check('900 16px Zain')) {
-                        return true;
-                    }
-                }
-            } catch (e) {
-                /* fall through */
-            }
-            try {
-                const url = this.resolveAssetUrl('../../homepage/font/Zain/Zain-Black.ttf');
-                const face = new FontFace('Zain', `url("${url}")`, { style: 'normal', weight: '900' });
-                await face.load();
-                document.fonts.add(face);
-                return true;
-            } catch (e) {
-                console.warn('📸 Zain font not loaded for screenshot logo; using fallback.', e);
-                return false;
-            }
-        })();
-        return this._zainFontLoadPromise;
-    }
-
-    async addBrandLogo(canvas, sourceElement = null) {
-        if (!canvas) return false;
-        if (canvas.__talariaLogoStamped) return true;
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return false;
-
-        const backgroundColor = this.getScreenshotBackgroundColor(sourceElement || document.getElementById('chart-container'));
-        const isDark = !this.isLightColor(backgroundColor);
-
-        // Match index.html .chart-brand: logo-08 (dark) / logo-09 (light), row + Zain wordmark
-        const iconSrc = isDark
-            ? this.resolveAssetUrl('modules/logo-08.png')
-            : this.resolveAssetUrl('modules/logo-09.png');
-
-        const loadImg = (src) => new Promise((resolve) => {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => resolve(img);
-            img.onerror = () => resolve(null);
-            img.src = src;
-        });
-
-        const [iconImg, zainOk] = await Promise.all([
-            loadImg(iconSrc),
-            this.ensureZainFontForScreenshot()
-        ]);
-
-        if (!iconImg) {
-            console.warn('📸 Logo stamp skipped: icon image could not be loaded');
-            return false;
-        }
-
-        const containerEl = sourceElement || document.getElementById('chart-container');
-        const containerRect = containerEl?.getBoundingClientRect();
-        const s = (containerRect && containerRect.height > 0)
-            ? canvas.height / containerRect.height
-            : 2;
-
-        // index.html: .chart-brand { left: 8px; bottom: 36px } — .logo-top { height: 38px } — .logo-bottom { font-size: 22px }
-        const leftPad = Math.round(8 * s);
-        const bottomPad = Math.round(36 * s);
-        const iconH = Math.round(38 * s);
-        const gap = Math.round(4 * s);
-        const fontSize = Math.round(22 * s);
-
-        const iconW = Math.round((iconImg.naturalWidth / iconImg.naturalHeight) * iconH);
-        const iconTopY = canvas.height - bottomPad - iconH;
-
-        const wordmark = 'Talaria-Log';
-
-        ctx.save();
-        ctx.globalAlpha = 0.98;
-
-        // Same filter as .brand-lockup img in index.html
-        ctx.filter = 'brightness(1.85) saturate(0)';
-        ctx.drawImage(iconImg, leftPad, iconTopY, iconW, iconH);
-        ctx.restore();
-
-        ctx.save();
-        const fontFamily = zainOk ? 'Zain, Roboto, sans-serif' : 'Roboto, "Segoe UI", sans-serif';
-        ctx.font = `900 ${fontSize}px ${fontFamily}`;
-        ctx.textBaseline = 'middle';
-        ctx.textAlign = 'left';
-        ctx.fillStyle = isDark ? 'rgba(255, 255, 255, 0.98)' : 'rgba(19, 23, 34, 0.96)';
-        const textX = leftPad + iconW + gap;
-        const textY = iconTopY + iconH / 2;
-        ctx.fillText(wordmark, textX, textY);
-        ctx.restore();
-
-        canvas.__talariaLogoStamped = true;
-        return true;
-    }
-
-    /**
-     * Draw the OHLC info label (symbol, timeframe, O/H/L/C, change) onto the
-     * screenshot canvas. Reads values from the live DOM, so no separate data
-     * pipeline is needed.
-     */
-    addOHLCOverlay(canvas, scale = 2) {
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
-        const get = (id) => document.getElementById(id)?.textContent?.trim() || '';
-        const symbol    = get('chartSymbol');
-        const timeframe = get('chartTimeframe');
-        const openVal   = get('open');
-        const highVal   = get('high');
-        const lowVal    = get('low');
-        const closeVal  = get('close');
-        const change    = get('chartChange');
-
-        if (!symbol && !openVal) return;
-
-        const pad  = Math.round(10 * scale);
-        const lineH = Math.round(15 * scale);
-        const fs1  = Math.round(11 * scale);   // .ohlc-symbol-block: font-size 11px
-        const fs2  = Math.round(9  * scale);   // .ohlc-info base:     font-size 9px
-        const fontFace = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-
-        ctx.save();
-        ctx.textBaseline = 'top';
-
-        let y = pad;
-
-        // --- Symbol · Timeframe line (matches .ohlc-symbol-block: font-size 11px, color #ffffff) ---
-        if (symbol || timeframe) {
-            ctx.font = `400 ${fs1}px ${fontFace}`;
-            const symbolText    = symbol || '';
-            const separatorText = symbol && timeframe ? ' · ' : '';
-            const tfText        = timeframe || '';
-
-            let x = pad;
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-            ctx.fillText(symbolText, x, y);
-            x += ctx.measureText(symbolText).width;
-
-            if (separatorText) {
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.60)';
-                ctx.fillText(separatorText, x, y);
-                x += ctx.measureText(separatorText).width;
-            }
-
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-            ctx.fillText(tfText, x, y);
-            y += lineH;
-        }
-
-        // --- O H L C  change line (matches .ohlc-stats: font-weight 300, color #ffffff) ---
-        if (openVal) {
-            ctx.font = `300 ${fs2}px ${fontFace}`;
-            // Labels: opacity 0.6 (matches .ohlc-label opacity: 0.6), values: full white
-            const labelColor  = 'rgba(255, 255, 255, 0.60)';
-            const valueColor  = 'rgba(255, 255, 255, 0.95)';
-            const parts = [
-                { label: 'O', value: openVal },
-                { label: 'H', value: highVal },
-                { label: 'L', value: lowVal  },
-                { label: 'C', value: closeVal },
-            ];
-            let x = pad;
-            const colGap = Math.round(8 * scale);
-
-            parts.forEach(({ label, value }) => {
-                if (!value || value === '—') return;
-                ctx.fillStyle = labelColor;
-                ctx.fillText(label, x, y);
-                x += ctx.measureText(label).width + Math.round(2 * scale);
-                ctx.fillStyle = valueColor;
-                ctx.fillText(value, x, y);
-                x += ctx.measureText(value).width + colGap;
-            });
-
-            if (change && change !== '—') {
-                const isPos = change.startsWith('+');
-                ctx.fillStyle = isPos ? 'rgba(8, 153, 129, 0.92)' : 'rgba(242, 54, 69, 0.92)';
-                ctx.fillText(change, x, y);
-            }
-        }
-
-        ctx.restore();
-    }
-
-    /**
-     * Show screenshot preview modal with quick actions
-     */
-    async showScreenshotPreview(canvas) {
-        if (!canvas) return;
-
-        // Final guarantee for preview path: stamp logo right before display/export actions
-        await this.addBrandLogo(canvas);
-
-        const existingPreview = document.getElementById('chartScreenshotPreviewModal');
-        if (existingPreview) existingPreview.remove();
-
-        const dataUrl = canvas.toDataURL('image/png');
-
-        const modal = document.createElement('div');
-        modal.id = 'chartScreenshotPreviewModal';
-        modal.style.cssText = `
-            position: fixed;
-            inset: 0;
-            background: rgba(2, 6, 16, 0.86);
-            backdrop-filter: blur(5px);
-            z-index: 100002;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        `;
-
-        const panel = document.createElement('div');
-        panel.style.cssText = `
-            width: min(960px, 94vw);
-            max-height: 92vh;
-            background: #0b1220;
-            border: 1px solid #253248;
-            border-radius: 14px;
-            box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        `;
-
-        const header = document.createElement('div');
-        header.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom: 1px solid #253248;';
-        header.innerHTML = `
-            <div style="display:flex; align-items:center; gap:10px; color:#dbe8ff; font-size:14px; font-weight:600;">
-                Screenshot preview
-            </div>
-        `;
-
-        const closeBtn = document.createElement('button');
-        closeBtn.type = 'button';
-        closeBtn.textContent = '✕';
-        closeBtn.style.cssText = `
-            width: 28px;
-            height: 28px;
-            border-radius: 8px;
-            border: 1px solid #2e3c55;
-            background: #121d31;
-            color: #a9b9d4;
-            cursor: pointer;
-        `;
-        header.appendChild(closeBtn);
-
-        const imageWrap = document.createElement('div');
-        imageWrap.style.cssText = 'padding: 16px; overflow:auto; display:flex; justify-content:center; align-items:center; background:#070d18;';
-
-        const image = document.createElement('img');
-        image.src = dataUrl;
-        image.alt = 'Chart screenshot preview';
-        image.style.cssText = 'max-width:100%; max-height:62vh; border-radius:10px; border:1px solid #22324a; box-shadow: 0 10px 30px rgba(0,0,0,0.35);';
-        imageWrap.appendChild(image);
-
-        const actions = document.createElement('div');
-        actions.style.cssText = 'display:flex; justify-content:flex-end; flex-wrap:wrap; gap:10px; padding:14px 16px 16px; border-top:1px solid #253248;';
-
-        const mkBtn = (label, style) => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.textContent = label;
-            btn.style.cssText = style;
-            return btn;
-        };
-
-        const downloadBtn = mkBtn(
-            'Download',
-            'padding:10px 14px; border-radius:10px; border:1px solid #2d7cff; background:#1f6feb; color:#ffffff; font-weight:600; cursor:pointer;'
-        );
-        const copyBtn = mkBtn(
-            'Copy',
-            'padding:10px 14px; border-radius:10px; border:1px solid #2e3c55; background:#152136; color:#dbe8ff; font-weight:600; cursor:pointer;'
-        );
-        const linkBtn = mkBtn(
-            'Copy link',
-            'padding:10px 14px; border-radius:10px; border:1px solid #2e3c55; background:#152136; color:#dbe8ff; font-weight:600; cursor:pointer;'
-        );
-
-        actions.appendChild(downloadBtn);
-        actions.appendChild(copyBtn);
-        actions.appendChild(linkBtn);
-
-        panel.appendChild(header);
-        panel.appendChild(imageWrap);
-        panel.appendChild(actions);
-        modal.appendChild(panel);
-        document.body.appendChild(modal);
-
-        const closeModal = () => {
-            document.removeEventListener('keydown', handleEsc);
-            modal.remove();
-        };
-
-        const handleEsc = (e) => {
-            if (e.key === 'Escape') closeModal();
-        };
-
-        closeBtn.addEventListener('click', closeModal);
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) closeModal();
-        });
-        document.addEventListener('keydown', handleEsc);
-
-        downloadBtn.addEventListener('click', () => {
-            this.downloadImage(canvas);
-        });
-        copyBtn.addEventListener('click', async () => {
-            await this.copyToClipboard(canvas);
-        });
-        linkBtn.addEventListener('click', async () => {
-            await this.copyLink(canvas);
-        });
-    }
     
     init() {
-        this.getBrandLogoImage();
+        console.log('📸 Screenshot Manager initialized');
+        
         this.initDropdown();
         this.initKeyboardShortcuts();
     }
@@ -652,11 +64,10 @@ class ScreenshotManager {
             return;
         }
         
-        // Primary behavior: take screenshot and show on-screen preview with actions
-        screenshotBtn.addEventListener('click', async (e) => {
+        // Toggle dropdown on button click
+        screenshotBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            dropdown.classList.remove('open');
-            await this.takeQuickScreenshot('preview');
+            dropdown.classList.toggle('open');
         });
         
         // Close dropdown when clicking outside
@@ -714,68 +125,34 @@ class ScreenshotManager {
     /**
      * Take a quick screenshot with default settings
      */
-    _hideUIOverlays() {
-        const hidden = [];
-        const selectors = [
-            '#settingsPanel',
-            '.settings-panel',
-            '.indicator-settings-panel',
-            '.context-menu',
-            '.dropdown-menu.open',
-            '.tooltip'
-        ];
-        for (const sel of selectors) {
-            document.querySelectorAll(sel).forEach(el => {
-                if (el.style.display !== 'none' && el.offsetParent !== null) {
-                    hidden.push({ el, display: el.style.display });
-                    el.style.display = 'none';
-                }
-            });
-        }
-        return hidden;
-    }
-
-    _restoreUIOverlays(hidden) {
-        for (const { el, display } of hidden) {
-            el.style.display = display;
-        }
-    }
-
     async takeQuickScreenshot(action = 'download') {
-        // Close settings panel if open and wait for its slide-out animation (280ms)
-        const settingsPanel = document.getElementById('settingsPanel');
-        const settingsWasOpen = settingsPanel?.classList.contains('open');
-        if (settingsWasOpen && typeof window.closePanel === 'function') {
-            window.closePanel();
-            await new Promise(resolve => setTimeout(resolve, 310));
-        }
-
-        this.flashCapture();
-
-        let hidden = [];
         try {
+            console.log('📸 Quick screenshot:', action);
+            
             // Get the chart container
             let targetElement = document.getElementById('chart-container');
             if (!targetElement) targetElement = document.querySelector('.chart-wrapper');
             if (!targetElement) targetElement = document.querySelector('.container');
             if (!targetElement) targetElement = document.body;
-
-            hidden = this._hideUIOverlays();
-            const canvas = await this.captureCanvasDirect(targetElement, 2);
-            this._restoreUIOverlays(hidden);
-            hidden = []; // already restored — prevent double-restore in finally
-            if (!canvas) throw new Error('Canvas capture returned null');
-
-            // Overlay OHLC info (HTML element not captured by canvas compositor)
-            this.addOHLCOverlay(canvas, 2);
+            
+            // Load html2canvas if not already loaded
+            if (typeof html2canvas === 'undefined') {
+                await this.loadHtml2Canvas();
+            }
+            
+            // Take screenshot
+            const canvas = await html2canvas(targetElement, {
+                backgroundColor: this.getScreenshotBackgroundColor(targetElement),
+                useCORS: true,
+                allowTaint: true,
+                foreignObjectRendering: false,
+                scale: 2,
+                width: targetElement.offsetWidth,
+                height: targetElement.offsetHeight
+            });
+            
             // Add watermark
             this.addWatermark(canvas);
-            await this.addBrandLogo(canvas, targetElement);
-
-            if (action === 'preview') {
-                await this.showScreenshotPreview(canvas);
-                return;
-            }
             
             // Handle action
             if (action === 'download') {
@@ -791,9 +168,6 @@ class ScreenshotManager {
         } catch (error) {
             console.error('Screenshot error:', error);
             this.showNotification('Failed to capture screenshot', 'error');
-        } finally {
-            // Always restore overlays in case capture threw before manual restore
-            this._restoreUIOverlays(hidden);
         }
     }
     
@@ -820,34 +194,20 @@ class ScreenshotManager {
     }
     
     /**
-     * Copy image to clipboard.
-     * Falls back to auto-download when the browser blocks clipboard write
-     * (clipboard image API requires HTTPS / secure context).
+     * Copy image to clipboard
      */
     async copyToClipboard(canvas) {
-        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-        if (!blob) { this.showNotification('Failed to create image', 'error'); return; }
-
-        // Try modern clipboard API (requires HTTPS)
-        if (window.isSecureContext && navigator.clipboard && typeof ClipboardItem !== 'undefined') {
-            try {
-                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-                this.showNotification('Screenshot copied to clipboard!', 'success');
-                return;
-            } catch (_) { /* fall through */ }
+        try {
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+            if (!blob) throw new Error('Failed to create blob');
+            
+            const clipboardItem = new ClipboardItem({ 'image/png': blob });
+            await navigator.clipboard.write([clipboardItem]);
+            this.showNotification('Screenshot copied to clipboard!', 'success');
+        } catch (err) {
+            console.error('Clipboard error:', err);
+            this.showNotification('Failed to copy to clipboard', 'error');
         }
-
-        // Fallback: download the image (HTTP context — clipboard write blocked by browser)
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-        a.href = url;
-        a.download = `Talaria-Chart-${timestamp}.png`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        this.showNotification('Saved to downloads (clipboard requires HTTPS)', 'warning');
     }
     
     /**
@@ -876,16 +236,13 @@ class ScreenshotManager {
         const dataUrl = canvas.toDataURL('image/png');
         const newTab = window.open();
         if (newTab) {
-            const _bg = (typeof document !== 'undefined' && document.body && document.body.classList.contains('light-mode'))
-                ? '#ffffff'
-                : '#131722';
             newTab.document.write(`
                 <!DOCTYPE html>
                 <html>
                 <head>
                     <title>Talaria Chart Screenshot</title>
                     <style>
-                        body { margin: 0; background: ${_bg}; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+                        body { margin: 0; background: #131722; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
                         img { max-width: 100%; max-height: 100vh; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
                     </style>
                 </head>
@@ -908,19 +265,6 @@ class ScreenshotManager {
         // Remove existing modal if any
         const existingModal = document.getElementById('screenshotModal');
         if (existingModal) existingModal.remove();
-
-        const isLight = typeof document !== 'undefined' && document.body && document.body.classList.contains('light-mode');
-        const panelBg = isLight ? '#ffffff' : '#1a1d28';
-        const panelBorder = isLight ? 'rgba(0,0,0,0.12)' : '#2a2e39';
-        const textTitle = isLight ? '#000000' : '#ffffff';
-        const textBody = isLight ? '#000000' : '#d1d4dc';
-        const textSecondary = isLight ? '#444444' : '#787b86';
-        const textMuted = isLight ? '#64748b' : '#9ca3af';
-        const sectionBg = isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.03)';
-        const closeBg = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)';
-        const closeBgHover = isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)';
-        const closeColor = isLight ? '#000000' : '#787b86';
-        const closeColorHover = isLight ? '#000000' : '#fff';
         
         const modal = document.createElement('div');
         modal.id = 'screenshotModal';
@@ -940,86 +284,86 @@ class ScreenshotManager {
         
         const modalContent = document.createElement('div');
         modalContent.style.cssText = `
-            background: ${panelBg};
+            background: #1a1d28;
             border-radius: 12px;
             padding: 24px;
             max-width: 450px;
             width: 90%;
             box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-            border: 1px solid ${panelBorder};
+            border: 1px solid #2a2e39;
         `;
         
         modalContent.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3 style="color: ${textTitle}; margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
+                <h3 style="color: #fff; margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
                     📸 Take Screenshot
                 </h3>
                 <button id="closeScreenshotModal" style="
-                    background: ${closeBg};
-                    border: 1px solid ${panelBorder};
-                    color: ${closeColor};
+                    background: rgba(255, 255, 255, 1);
+                    border: 1px solid rgba(255,255,255,0.1);
+                    color: #787b86;
                     font-size: 20px;
                     cursor: default;
                     padding: 4px 8px;
                     border-radius: 6px;
                     transition: all 0.2s;
-                " onmouseover="this.style.background='${closeBgHover}'; this.style.color='${closeColorHover}';" 
-                   onmouseout="this.style.background='${closeBg}'; this.style.color='${closeColor}';">×</button>
+                " onmouseover="this.style.background='rgba(255,255,255,0.1)'; this.style.color='#fff';" 
+                   onmouseout="this.style.background='rgba(255,255,255,0.05)'; this.style.color='#787b86';">×</button>
             </div>
             
             <!-- Screenshot Options -->
             <div style="margin-bottom: 24px;">
-                <div style="color: ${textSecondary}; font-size: 12px; margin-bottom: 12px; font-weight: 600;">Screenshot Options</div>
+                <div style="color: #787b86; font-size: 12px; margin-bottom: 12px; font-weight: 600;">Screenshot Options</div>
                 
                 <!-- Include Elements -->
-                <div style="background: ${sectionBg}; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-                    <div style="color: ${textMuted}; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Include in Screenshot</div>
+                <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                    <div style="color: #9ca3af; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Include in Screenshot</div>
                     
                     <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; cursor: default;">
                         <input type="checkbox" id="includeToolbar" checked style="width: 16px; height: 16px; cursor: default;">
-                        <span style="color: ${textBody}; font-size: 13px;">Toolbar</span>
+                        <span style="color: #d1d4dc; font-size: 13px;">Toolbar</span>
                     </label>
                     
                     <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; cursor: default;">
                         <input type="checkbox" id="includeSidebar" style="width: 16px; height: 16px; cursor: default;">
-                        <span style="color: ${textBody}; font-size: 13px;">Sidebars</span>
+                        <span style="color: #d1d4dc; font-size: 13px;">Sidebars</span>
                     </label>
                     
                     <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; cursor: default;">
                         <input type="checkbox" id="includeDrawings" checked style="width: 16px; height: 16px; cursor: default;">
-                        <span style="color: ${textBody}; font-size: 13px;">Drawings & Indicators</span>
+                        <span style="color: #d1d4dc; font-size: 13px;">Drawings & Indicators</span>
                     </label>
                     
                     <label style="display: flex; align-items: center; gap: 10px; cursor: default;">
                         <input type="checkbox" id="includeWatermark" checked style="width: 16px; height: 16px; cursor: default;">
-                        <span style="color: ${textBody}; font-size: 13px;">Watermark (Talaria Chart)</span>
+                        <span style="color: #d1d4dc; font-size: 13px;">Watermark (Talaria Chart)</span>
                     </label>
                 </div>
                 
                 <!-- Image Format -->
-                <div style="background: ${sectionBg}; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-                    <div style="color: ${textMuted}; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Image Format</div>
+                <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                    <div style="color: #9ca3af; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Image Format</div>
                     
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                         <label style="display: flex; align-items: center; gap: 8px; cursor: default;">
                             <input type="radio" name="imageFormat" value="png" checked style="cursor: default;">
-                            <span style="color: ${textBody}; font-size: 13px;">PNG</span>
+                            <span style="color: #d1d4dc; font-size: 13px;">PNG</span>
                         </label>
                         <label style="display: flex; align-items: center; gap: 8px; cursor: default;">
                             <input type="radio" name="imageFormat" value="jpg" style="cursor: default;">
-                            <span style="color: ${textBody}; font-size: 13px;">JPG</span>
+                            <span style="color: #d1d4dc; font-size: 13px;">JPG</span>
                         </label>
                     </div>
                 </div>
                 
                 <!-- Quality (for JPG) -->
-                <div id="qualitySection" style="background: ${sectionBg}; border-radius: 8px; padding: 16px; display: none;">
-                    <div style="color: ${textMuted}; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Image Quality</div>
+                <div id="qualitySection" style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 16px; display: none;">
+                    <div style="color: #9ca3af; font-size: 11px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Image Quality</div>
                     <input type="range" id="imageQuality" min="0.5" max="1.0" step="0.1" value="0.9" style="width: 100%; cursor: pointer;">
                     <div style="display: flex; justify-content: space-between; margin-top: 6px;">
-                        <span style="color: ${textSecondary}; font-size: 11px;">Lower</span>
+                        <span style="color: #787b86; font-size: 11px;">Lower</span>
                         <span id="qualityValue" style="color: #a78bfa; font-size: 11px; font-weight: 600;">90%</span>
-                        <span style="color: ${textSecondary}; font-size: 11px;">Higher</span>
+                        <span style="color: #787b86; font-size: 11px;">Higher</span>
                     </div>
                 </div>
             </div>
@@ -1092,8 +436,6 @@ class ScreenshotManager {
      * Take screenshot
      */
     async takeScreenshot(action = 'download') {
-        this.flashCapture();
-
         try {
             // Get options
             const includeToolbar = document.getElementById('includeToolbar')?.checked ?? true;
@@ -1103,15 +445,36 @@ class ScreenshotManager {
             const format = document.querySelector('input[name="imageFormat"]:checked')?.value ?? 'png';
             const quality = parseFloat(document.getElementById('imageQuality')?.value ?? 0.9);
             
+            console.log('📸 Taking screenshot...', { action, format, includeToolbar, includeSidebar });
+            
+            this.showNotification('Capturing screenshot...', 'info');
+            
             // Close the modal first
             document.getElementById('screenshotModal')?.remove();
-            await new Promise(resolve => setTimeout(resolve, 50));
-
-            // Get the chart container
+            
+            // Wait a moment for modal to close
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // Get the chart container - try multiple selectors
             let targetElement = document.getElementById('chart-container');
-            if (!targetElement) targetElement = document.querySelector('.chart-wrapper');
-            if (!targetElement) targetElement = document.querySelector('.container');
-            if (!targetElement) targetElement = document.body;
+            if (!targetElement) {
+                targetElement = document.querySelector('.chart-wrapper');
+            }
+            if (!targetElement) {
+                targetElement = document.querySelector('.container');
+            }
+            if (!targetElement) {
+                targetElement = document.body;
+            }
+            
+            console.log('📸 Target element:', targetElement.id || targetElement.className || 'body');
+            
+            // Load html2canvas if not already loaded
+            if (typeof html2canvas === 'undefined') {
+                console.log('📦 Loading html2canvas...');
+                await this.loadHtml2Canvas();
+                console.log('✅ html2canvas loaded');
+            }
             
             // Temporarily hide/show elements based on options
             const toolbar = document.querySelector('.toolbar');
@@ -1140,8 +503,26 @@ class ScreenshotManager {
                 }
             }
             
-            const canvas = await this.captureCanvasDirect(targetElement, 2);
-            if (!canvas) throw new Error('Canvas capture returned null');
+            console.log('📸 Capturing with html2canvas...');
+            
+            // Take screenshot with html2canvas
+            const canvas = await html2canvas(targetElement, {
+                backgroundColor: this.getScreenshotBackgroundColor(targetElement),
+                logging: true,
+                useCORS: true,
+                allowTaint: true,
+                foreignObjectRendering: false,
+                scale: 2, // Higher resolution
+                width: targetElement.offsetWidth,
+                height: targetElement.offsetHeight,
+                windowWidth: targetElement.scrollWidth,
+                windowHeight: targetElement.scrollHeight,
+                onclone: (clonedDoc) => {
+                    console.log('📸 Document cloned for capture');
+                }
+            });
+            
+            console.log('✅ Screenshot captured! Canvas size:', canvas.width, 'x', canvas.height);
             
             // Restore original styles
             originalStyles.forEach((originalDisplay, element) => {
@@ -1152,7 +533,6 @@ class ScreenshotManager {
             if (includeWatermark) {
                 this.addWatermark(canvas);
             }
-            await this.addBrandLogo(canvas, targetElement);
             
             // Convert to desired format
             const imageType = format === 'jpg' ? 'image/jpeg' : 'image/png';
@@ -1231,80 +611,16 @@ class ScreenshotManager {
     }
     
     /**
-     * Fast canvas compositing — replaces html2canvas entirely.
-     * Reads pixels directly from existing <canvas> elements and serialises
-     * any <svg> overlays (drawings). No DOM cloning, no CDN download.
-     * @param {Element} container  Root element to capture
-     * @param {number}  scale      Output pixel ratio (default 2 for retina)
+     * Load html2canvas library dynamically
      */
-    async captureCanvasDirect(container, scale = 2) {
-        if (!container) return null;
-
-        const rect = container.getBoundingClientRect();
-        if (!rect.width || !rect.height) return null;
-
-        const out = document.createElement('canvas');
-        out.width  = Math.round(rect.width  * scale);
-        out.height = Math.round(rect.height * scale);
-        const ctx = out.getContext('2d');
-        if (!ctx) return null;
-
-        // Background
-        ctx.fillStyle = this.getScreenshotBackgroundColor(container) || '#050028';
-        ctx.fillRect(0, 0, out.width, out.height);
-
-        // Helper: map an element's bounding rect onto the output canvas
-        const place = (el) => {
-            const r = el.getBoundingClientRect();
-            return {
-                x: (r.left - rect.left) * scale,
-                y: (r.top  - rect.top)  * scale,
-                w: r.width  * scale,
-                h: r.height * scale
-            };
-        };
-
-        // 1. Draw every <canvas> in DOM order (chart + panels)
-        for (const c of container.querySelectorAll('canvas')) {
-            if (!c.width || !c.height) continue;
-            const s = window.getComputedStyle(c);
-            if (s.display === 'none' || s.visibility === 'hidden') continue;
-            const { x, y, w, h } = place(c);
-            if (w > 0 && h > 0) ctx.drawImage(c, x, y, w, h);
-        }
-
-        // 2. Render SVG drawing overlays on top
-        for (const svg of container.querySelectorAll('svg')) {
-            const s = window.getComputedStyle(svg);
-            if (s.display === 'none' || s.visibility === 'hidden') continue;
-            const svgRect = svg.getBoundingClientRect();
-            if (!svgRect.width || !svgRect.height) continue;
-            try {
-                const clone = svg.cloneNode(true);
-                clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-                clone.setAttribute('width',  String(svgRect.width));
-                clone.setAttribute('height', String(svgRect.height));
-                if (!clone.getAttribute('viewBox')) {
-                    clone.setAttribute('viewBox', `0 0 ${svgRect.width} ${svgRect.height}`);
-                }
-                const blob = new Blob([new XMLSerializer().serializeToString(clone)],
-                                      { type: 'image/svg+xml' });
-                const url  = URL.createObjectURL(blob);
-                await new Promise((resolve) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        const { x, y, w, h } = place(svg);
-                        if (w > 0 && h > 0) ctx.drawImage(img, x, y, w, h);
-                        URL.revokeObjectURL(url);
-                        resolve();
-                    };
-                    img.onerror = () => { URL.revokeObjectURL(url); resolve(); };
-                    img.src = url;
-                });
-            } catch (_) { /* ignore per-SVG errors */ }
-        }
-
-        return out;
+    loadHtml2Canvas() {
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
     }
     
     /**
@@ -1313,27 +629,58 @@ class ScreenshotManager {
      */
     async captureChartSnapshot() {
         try {
-            let chartContainer = document.getElementById('chart-container');
-            if (!chartContainer) chartContainer = document.querySelector('.chart-wrapper');
-            if (!chartContainer) chartContainer = document.body;
-
-            // scale=1 keeps file size small for journal storage
-            const canvas = await this.captureCanvasDirect(chartContainer, 1);
+            console.log('📸 Auto-capturing chart snapshot...');
+            
+            // Load html2canvas if needed
+            if (typeof html2canvas === 'undefined') {
+                await this.loadHtml2Canvas();
+            }
+            
+            // Get chart container - prefer chart-wrapper for better compatibility
+            let chartContainer = document.querySelector('.chart-wrapper');
+            if (!chartContainer) {
+                chartContainer = document.getElementById('chartWrapper');
+            }
+            if (!chartContainer) {
+                chartContainer = document.getElementById('chart-container');
+            }
+            if (!chartContainer) {
+                chartContainer = document.body;
+            }
+            
+            console.log('   Capturing element:', chartContainer.id || chartContainer.className || 'body');
+            console.log('   Element dimensions:', chartContainer.offsetWidth, 'x', chartContainer.offsetHeight);
+            
+            // Capture with minimal options for speed
+            const canvas = await html2canvas(chartContainer, {
+                backgroundColor: this.getScreenshotBackgroundColor(chartContainer),
+                logging: false,
+                useCORS: true,
+                allowTaint: false, // Changed to false to avoid tainted canvas
+                scale: 1, // Reduced scale to avoid memory issues
+                width: chartContainer.offsetWidth,
+                height: chartContainer.offsetHeight,
+                foreignObjectRendering: false, // Disable for better compatibility
+                imageTimeout: 0
+            });
+            
+            console.log('   Canvas created:', canvas.width, 'x', canvas.height);
             
             // Add subtle watermark
             this.addWatermark(canvas);
-            await this.addBrandLogo(canvas, chartContainer);
             
             // Convert to base64 with compression
             let dataUrl = null;
             try {
                 dataUrl = canvas.toDataURL('image/jpeg', 0.7); // 70% quality for smaller size
-                } catch (err) {
+                console.log('   toDataURL successful');
+            } catch (err) {
                 console.error('❌ toDataURL failed:', err.message);
                 // Try PNG fallback
                 try {
                     dataUrl = canvas.toDataURL('image/png');
-                        } catch (err2) {
+                    console.log('   PNG fallback successful');
+                } catch (err2) {
                     console.error('❌ PNG fallback also failed:', err2.message);
                     return null;
                 }
@@ -1345,6 +692,9 @@ class ScreenshotManager {
                 console.error('   dataUrl:', dataUrl ? dataUrl.substring(0, 50) : 'null');
                 return null;
             }
+            
+            console.log('✅ Chart snapshot captured:', (dataUrl.length / 1024).toFixed(2) + ' KB');
+            console.log('   Data URL preview:', dataUrl.substring(0, 100) + '...');
             
             return dataUrl;
             
@@ -1415,19 +765,39 @@ class ScreenshotManager {
     }
 }
 
+// Initialize immediately when script loads
+console.log('📸 Screenshot Manager script loaded');
+
+// Try multiple initialization strategies
 function initScreenshotManager() {
+    console.log('📸 Attempting Screenshot Manager initialization...');
+    console.log('   window.chart:', window.chart);
+    console.log('   window.orderManager:', window.orderManager);
+    
     if (window.chart) {
         window.screenshotManager = new ScreenshotManager(window.chart);
+        console.log('✅ Screenshot Manager initialized successfully!');
         return true;
     }
     return false;
 }
 
+// Strategy 1: Try immediate
 if (!initScreenshotManager()) {
+    console.log('⏳ Chart not ready, trying DOMContentLoaded...');
+    
+    // Strategy 2: On DOMContentLoaded
     document.addEventListener('DOMContentLoaded', () => {
         if (!initScreenshotManager()) {
+            console.log('⏳ Chart still not ready, trying window load...');
+            
+            // Strategy 3: On window load
             window.addEventListener('load', () => {
-                setTimeout(initScreenshotManager, 500);
+                setTimeout(() => {
+                    if (!initScreenshotManager()) {
+                        console.error('❌ Screenshot Manager: Failed to initialize - chart not found!');
+                    }
+                }, 500);
             });
         }
     });

@@ -83,7 +83,7 @@ window.saveNewPreset = function() {
         }
     };
     
-    let saved = JSON.parse(userStorage.getItem('protectionSettings') || '[]');
+    let saved = JSON.parse(localStorage.getItem('protectionSettings') || '[]');
     
     // Check if name already exists
     const existingIndex = saved.findIndex(s => s.name === preset.name);
@@ -94,7 +94,7 @@ window.saveNewPreset = function() {
         saved.push(preset);
     }
     
-    userStorage.setItem('protectionSettings', JSON.stringify(saved));
+    localStorage.setItem('protectionSettings', JSON.stringify(saved));
     console.log('✅ Protection preset saved:', preset);
     
     // Reload presets dropdown
@@ -228,7 +228,6 @@ document.addEventListener('DOMContentLoaded', function() {
     loadAvailableFiles();
     setupPresetButtons();
     setupFormHandlers();
-    initSimulationPresetGrid();
     loadProtectionPresets();
     console.log('✅ Initialization complete');
 });
@@ -427,19 +426,16 @@ function setupPresetButtons() {
     balanceValues.forEach(value => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'pill';
-        btn.dataset.val = String(value);
+        btn.className = 'preset-btn';
         btn.textContent = value >= 1000000 ? (value/1000000) + 'M' : (value/1000) + 'K';
         btn.onclick = function() {
             document.getElementById('balance').value = value;
-            document.querySelectorAll('#balancePresets .pill').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('#balancePresets .preset-btn').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             updateLossLimits();
         };
         balancePresets.appendChild(btn);
     });
-    const firstBal = balancePresets.querySelector('.pill');
-    if (firstBal) firstBal.classList.add('active');
     
     // Profit target presets
     const profitPresets = document.getElementById('profitPresets');
@@ -447,149 +443,33 @@ function setupPresetButtons() {
     profitValues.forEach(value => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'pill';
-        btn.dataset.pt = String(value);
+        btn.className = 'preset-btn';
         btn.textContent = value + '%';
         btn.onclick = function() {
             document.getElementById('profitTarget').value = value;
-            document.querySelectorAll('#profitPresets .pill').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('#profitPresets .preset-btn').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
-            updateLossLimits();
         };
         profitPresets.appendChild(btn);
     });
-    const firstPt = profitPresets.querySelector('.pill');
-    if (firstPt) firstPt.classList.add('active');
-}
-
-function initSimulationPresetGrid() {
-    var grid = document.getElementById('simulationPresetGrid');
-    var list = typeof window.PROPFIRM_SIMULATION_PRESETS !== 'undefined' ? window.PROPFIRM_SIMULATION_PRESETS : null;
-    if (!grid || !list || !list.length) {
-        return;
-    }
-
-    grid.innerHTML = '';
-    list.forEach(function (preset) {
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'preset-card';
-        btn.setAttribute('data-preset-id', preset.id);
-        btn.setAttribute('role', 'listitem');
-        var icon = preset.icon ? String(preset.icon) : '📌';
-        btn.innerHTML =
-            '<div class="preset-icon" aria-hidden="true">' + icon + '</div>' +
-            '<div class="preset-name">' + String(preset.title || preset.id) + '</div>' +
-            '<div class="preset-desc">' + String(preset.description || '') + '</div>';
-        btn.addEventListener('click', function () {
-            applySimulationPreset(preset.id);
-        });
-        grid.appendChild(btn);
-    });
-
-    applySimulationPreset('custom');
-}
-
-function applySimulationPreset(presetId) {
-    var idEl = document.getElementById('simulationPresetId');
-    var labelEl = document.getElementById('simulationPresetLabel');
-    var preset = typeof window.getPropfirmPresetById === 'function'
-        ? window.getPropfirmPresetById(presetId)
-        : null;
-
-    if (!preset) {
-        preset = { id: 'custom', title: 'Custom configuration', rules: null };
-    }
-
-    if (idEl) idEl.value = preset.id;
-    if (labelEl) labelEl.value = preset.title || preset.id;
-
-    document.querySelectorAll('.preset-card').forEach(function (el) {
-        el.classList.toggle('active', el.getAttribute('data-preset-id') === preset.id);
-    });
-
-    var nameEl = document.getElementById('active-preset-name');
-    if (nameEl) {
-        nameEl.textContent = preset.title || preset.id || 'Custom';
-    }
-
-    if (!preset.rules) {
-        if (typeof updateLossLimits === 'function') {
-            updateLossLimits();
-        }
-        return;
-    }
-
-    var r = preset.rules;
-    var balanceEl = document.getElementById('balance');
-    var profitEl = document.getElementById('profitTarget');
-    var dailyPct = document.getElementById('maxDailyLossPercent');
-    var totalPct = document.getElementById('maxTotalLossPercent');
-    var minDaysEl = document.getElementById('minTradingDays');
-    var disableMinEl = document.getElementById('disableMinDays');
-    var levSlider = document.getElementById('leverageSlider');
-    var levVal = document.getElementById('leverageValue');
-
-    if (balanceEl && typeof r.balance === 'number') {
-        balanceEl.value = String(r.balance);
-    }
-    if (profitEl && typeof r.profitTarget === 'number') {
-        profitEl.value = String(r.profitTarget);
-    }
-    if (dailyPct && typeof r.maxDailyLossPercent === 'number') {
-        dailyPct.value = String(r.maxDailyLossPercent);
-    }
-    if (totalPct && typeof r.maxTotalLossPercent === 'number') {
-        totalPct.value = String(r.maxTotalLossPercent);
-    }
-    if (minDaysEl && typeof r.minTradingDays === 'number') {
-        minDaysEl.value = String(r.minTradingDays);
-    }
-    if (disableMinEl && typeof r.disableMinDays === 'boolean') {
-        disableMinEl.checked = r.disableMinDays;
-        if (minDaysEl) minDaysEl.disabled = r.disableMinDays;
-    }
-    if (levSlider && levVal && typeof r.leverage === 'number') {
-        var lv = Math.max(1, Math.min(125, Math.round(r.leverage)));
-        levSlider.value = String(lv);
-        levVal.value = String(lv);
-    }
-
-    if (balanceEl && balanceEl.value) {
-        document.querySelectorAll('#balancePresets .pill').forEach(function (p) {
-            p.classList.toggle('active', p.dataset.val === String(balanceEl.value));
-        });
-    }
-    if (profitEl && profitEl.value) {
-        document.querySelectorAll('#profitPresets .pill').forEach(function (p) {
-            p.classList.toggle('active', p.dataset.pt === String(profitEl.value));
-        });
-    }
-
-    if (typeof updateLossLimits === 'function') {
-        updateLossLimits();
-    }
 }
 
 // Setup form handlers
 function setupFormHandlers() {
     // Balance input updates loss limits
     document.getElementById('balance').addEventListener('input', updateLossLimits);
-    document.getElementById('profitTarget').addEventListener('input', updateLossLimits);
     
     // Loss percentage inputs update dollar amounts
     document.getElementById('maxDailyLossPercent').addEventListener('input', function() {
         const balance = parseFloat(document.getElementById('balance').value) || 0;
         const percent = parseFloat(this.value) || 0;
         document.getElementById('maxDailyLossDollar').value = Math.round(balance * percent / 100);
-        updateLossLimits();
     });
     
     document.getElementById('maxTotalLossPercent').addEventListener('input', function() {
         const balance = parseFloat(document.getElementById('balance').value) || 0;
         const percent = parseFloat(this.value) || 0;
         document.getElementById('maxTotalLossDollar').value = Math.round(balance * percent / 100);
-        updateLossLimits();
     });
     
     // Loss dollar inputs update percentages
@@ -628,8 +508,6 @@ function setupFormHandlers() {
     
     // Form submission
     document.getElementById('propfirmForm').addEventListener('submit', handleFormSubmit);
-
-    updateLossLimits();
 }
 
 // Update loss limits when balance changes
@@ -637,33 +515,9 @@ function updateLossLimits() {
     const balance = parseFloat(document.getElementById('balance').value) || 0;
     const dailyPercent = parseFloat(document.getElementById('maxDailyLossPercent').value) || 5;
     const totalPercent = parseFloat(document.getElementById('maxTotalLossPercent').value) || 10;
-    const profitPct = parseFloat(document.getElementById('profitTarget').value) || 0;
-
+    
     document.getElementById('maxDailyLossDollar').value = Math.round(balance * dailyPercent / 100);
     document.getElementById('maxTotalLossDollar').value = Math.round(balance * totalPercent / 100);
-
-    const ptUsd = document.getElementById('profitTargetUsd');
-    if (ptUsd) {
-        ptUsd.value = Math.round(balance * profitPct / 100);
-    }
-
-    const rsT = document.getElementById('rs-target');
-    const rsTu = document.getElementById('rs-target-usd');
-    const rsL = document.getElementById('rs-loss');
-    const rsLu = document.getElementById('rs-loss-usd');
-    if (rsT) rsT.textContent = profitPct + '%';
-    if (rsTu) {
-        rsTu.textContent =
-            '$' +
-            Math.round(balance * profitPct / 100).toLocaleString() +
-            ' on $' +
-            balance.toLocaleString() +
-            ' account';
-    }
-    if (rsL) rsL.textContent = totalPercent + '%';
-    if (rsLu) {
-        rsLu.textContent = '$' + Math.round(balance * totalPercent / 100).toLocaleString() + ' drawdown limit';
-    }
 }
 
 // Setup symbol checkbox handlers
@@ -679,35 +533,20 @@ async function updateDateInputs() {
     const selectedSymbols = document.querySelectorAll('.symbol-checkbox:checked');
     const startDate = document.getElementById('startDate');
     const endDate = document.getElementById('endDate');
-    if (!startDate || !endDate) return;
-
+    
     if (selectedSymbols.length > 0) {
-        startDate.removeAttribute('disabled');
-        endDate.removeAttribute('disabled');
+        startDate.disabled = false;
+        endDate.disabled = false;
+        
+        // Load date range from first selected file
         const firstFileId = selectedSymbols[0].value;
         await loadDateRangeFromFile(firstFileId);
     } else {
+        startDate.disabled = true;
+        endDate.disabled = true;
         startDate.value = '';
         endDate.value = '';
-        startDate.removeAttribute('min');
-        startDate.removeAttribute('max');
-        endDate.removeAttribute('min');
-        endDate.removeAttribute('max');
     }
-}
-
-function normalizeEpochMs(raw) {
-    const n = Number(raw);
-    if (!Number.isFinite(n) || n <= 0) return null;
-    if (n >= 1e14) return null;
-    let ms;
-    if (n >= 1e12) ms = n;
-    else if (n >= 1e9) ms = n * 1000;
-    else return null;
-    const MIN = 631152000000;
-    const MAX = 4102444800000;
-    if (ms < MIN || ms > MAX) return null;
-    return ms;
 }
 
 // Load date range from selected file (same logic as backtesting.html)
@@ -728,7 +567,7 @@ async function loadDateRangeFromFile(fileId) {
         const lines = responseData.data.trim().split('\n');
         if (lines.length < 2) return;
         
-        const header = lines[0].split(',').map((h) => h.replace(/^\uFEFF/g, '').trim());
+        const header = lines[0].split(',');
         const firstRowValues = lines[1].split(',');
         const firstRow = {};
         header.forEach((key, index) => {
@@ -738,13 +577,8 @@ async function loadDateRangeFromFile(fileId) {
         // Extract timestamp from first row
         let firstTimestamp = extractTimestamp(firstRow);
         if (!firstTimestamp) return;
-        if (typeof firstTimestamp === 'string' && /^\d+$/.test(String(firstTimestamp).trim())) {
-            firstTimestamp = parseInt(firstTimestamp, 10);
-        }
-
-        const nf = normalizeEpochMs(firstTimestamp);
-        const firstDate = new Date(nf != null ? nf : firstTimestamp);
-        if (isNaN(firstDate.getTime())) return;
+        
+        const firstDate = new Date(firstTimestamp);
         
         // Fetch last row
         const totalRows = responseData.total || 30000;
@@ -765,41 +599,19 @@ async function loadDateRangeFromFile(fileId) {
                 
                 let lastTimestamp = extractTimestamp(lastRow);
                 if (lastTimestamp) {
-                    if (typeof lastTimestamp === 'string' && /^\d+$/.test(String(lastTimestamp).trim())) {
-                        lastTimestamp = parseInt(lastTimestamp, 10);
-                    }
-                    const nl = normalizeEpochMs(lastTimestamp);
-                    lastDate = new Date(nl != null ? nl : lastTimestamp);
+                    lastDate = new Date(lastTimestamp);
                 }
             }
         }
         
+        // Set date inputs
         const startDateInput = document.getElementById('startDate');
         const endDateInput = document.getElementById('endDate');
-        if (!startDateInput || !endDateInput) return;
-
-        const minStr = firstDate.toISOString().slice(0, 16);
-        const maxStr = lastDate.toISOString().slice(0, 16);
-        startDateInput.min = minStr;
-        startDateInput.max = maxStr;
-        endDateInput.min = minStr;
-        endDateInput.max = maxStr;
-        startDateInput.value = minStr;
-        endDateInput.value = maxStr;
-        startDateInput.removeAttribute('disabled');
-        endDateInput.removeAttribute('disabled');
-
-        const hintEl = document.getElementById('testingPeriodHint');
-        if (hintEl) {
-            hintEl.textContent =
-                'Available data in file: ' +
-                firstDate.toLocaleString() +
-                ' — ' +
-                lastDate.toLocaleString() +
-                '. You can narrow the window; stay within the range above.';
-        }
-
-        console.log(`✅ Date range: ${firstDate.toLocaleString()} to ${lastDate.toLocaleString()}`);
+        
+        startDateInput.value = firstDate.toISOString().split('T')[0];
+        endDateInput.value = lastDate.toISOString().split('T')[0];
+        
+        console.log(`✅ Date range: ${firstDate.toLocaleDateString()} to ${lastDate.toLocaleDateString()}`);
         
     } catch (error) {
         console.error('❌ Error loading date range:', error);
@@ -808,10 +620,7 @@ async function loadDateRangeFromFile(fileId) {
 
 // Extract timestamp from CSV row
 function extractTimestamp(row) {
-    // Strategy 1: Binance-style epoch ms in "timestamp"
-    if (row.timestamp !== undefined && row.timestamp !== '' && /^\d+$/.test(String(row.timestamp).trim())) {
-        return parseInt(String(row.timestamp).trim(), 10);
-    }
+    // Strategy 1: Standard timestamp fields
     if (row.t) return row.t;
     if (row.time) return row.time;
     if (row.timestamp) return row.timestamp;
@@ -849,7 +658,7 @@ function loadProtectionPresets() {
     const select = document.getElementById('protectionPresetSelect');
     if (!select) return;
 
-    const presets = JSON.parse(userStorage.getItem('protectionSettings') || '[]');
+    const presets = JSON.parse(localStorage.getItem('protectionSettings') || '[]');
     
     // Clear existing options except first one
     select.innerHTML = '<option value="">-- None (Configure in chart) --</option>';
@@ -880,7 +689,7 @@ function showPresetDetails(presetName) {
         return;
     }
 
-    const presets = JSON.parse(userStorage.getItem('protectionSettings') || '[]');
+    const presets = JSON.parse(localStorage.getItem('protectionSettings') || '[]');
     const preset = presets.find(p => p.name === presetName);
     
     if (!preset) {
@@ -925,45 +734,20 @@ async function handleFormSubmit(e) {
     
     console.log('🚀 Form submitted');
     
-    // Multi-select + instrument table (aligned with standard backtesting.html)
+    // Check if using new multi-select (from propfirm-backtest.html)
     let selectedSymbols = [];
     let primaryFileId, primaryFileName;
-    let instrumentRows = [];
-
+    
     if (typeof selectedFilesArray !== 'undefined' && selectedFilesArray.length > 0) {
+        // Use new multi-select array
         console.log('📊 Using multi-file selection:', selectedFilesArray);
-        if (typeof collectInstrumentConfigs !== 'function') {
-            alert('Instrument configuration is not ready. Please refresh the page.');
-            return;
-        }
-        instrumentRows = collectInstrumentConfigs();
-        if (instrumentRows.length === 0) {
-            alert('Please select at least one data file');
-            return;
-        }
-        if (instrumentRows.length > 1) {
-            alert('Prop firm challenges use exactly one pair. Remove extra files and try again.');
-            return;
-        }
-        if (instrumentRows.some(row => !row.fileId)) {
-            alert('Missing data file for one or more instruments.');
-            return;
-        }
-        if (instrumentRows.some(row => !Number.isFinite(row.pip_size) || row.pip_size <= 0)) {
-            alert('Invalid pip size detected. Please use a positive number (e.g. 0.0001).');
-            return;
-        }
-        if (instrumentRows.some(row => !Number.isFinite(row.pip_value_per_lot) || row.pip_value_per_lot <= 0)) {
-            alert('Invalid pip value detected. Please use a positive number.');
-            return;
-        }
-        selectedSymbols = instrumentRows.map(row => ({
-            fileId: row.fileId,
-            symbolName: row.ticker,
-            fileName: row.fileName
+        selectedSymbols = selectedFilesArray.map(f => ({
+            fileId: f.id,
+            symbolName: f.name.replace(/\.(csv|CSV)$/, ''),
+            fileName: f.name
         }));
-        primaryFileId = instrumentRows[0].fileId;
-        primaryFileName = instrumentRows[0].fileName;
+        primaryFileId = selectedFilesArray[0].id;
+        primaryFileName = selectedFilesArray[0].name;
     } else {
         // Fallback to old single select
         const select = document.getElementById('symbolSelect');
@@ -993,7 +777,6 @@ async function handleFormSubmit(e) {
         }];
         primaryFileId = select.value;
         primaryFileName = fileName;
-        instrumentRows = [];
     }
     
     if (selectedSymbols.length === 0) {
@@ -1008,32 +791,22 @@ async function handleFormSubmit(e) {
     const selectedPresetName = document.getElementById('protectionPresetSelect')?.value;
     let protectionPreset = null;
     if (selectedPresetName) {
-        const presets = JSON.parse(userStorage.getItem('protectionSettings') || '[]');
+        const presets = JSON.parse(localStorage.getItem('protectionSettings') || '[]');
         protectionPreset = presets.find(p => p.name === selectedPresetName);
         console.log('🛡️ Selected protection preset:', protectionPreset);
     }
     
     // Create files array for symbol switching
-    const filesForSwitching = typeof selectedFilesArray !== 'undefined' && selectedFilesArray.length > 0
-        ? selectedFilesArray
+    const filesForSwitching = typeof selectedFilesArray !== 'undefined' 
+        ? selectedFilesArray 
         : selectedSymbols.map(s => ({ id: s.fileId, name: s.fileName }));
-
-    const instrumentsMap = instrumentRows.length > 0
-        ? instrumentRows.reduce((acc, row) => {
-            acc[row.ticker] = row;
-            return acc;
-        }, {})
-        : null;
-
+    
     // Collect form data
     const formData = {
         type: 'propfirm',
-        simulationPresetId: (document.getElementById('simulationPresetId') && document.getElementById('simulationPresetId').value) || 'custom',
-        simulationPresetLabel: (document.getElementById('simulationPresetLabel') && document.getElementById('simulationPresetLabel').value) || 'Custom configuration',
         projectName: document.getElementById('projectName').value,
         balance: parseFloat(document.getElementById('balance').value),
         symbols: selectedSymbols,
-        ...(instrumentsMap ? { instruments: instrumentsMap } : {}),
         files: filesForSwitching, // For symbol switching on chart
         activeFileIndex: 0,
         fileId: primaryFileId, // Primary file for loading
@@ -1054,10 +827,9 @@ async function handleFormSubmit(e) {
         sessionCloseTime: document.getElementById('sessionCloseTime').value,
         daylightSavingTime: document.getElementById('daylightSavingTime').value,
         barsTimeFormat: document.getElementById('barsTimeFormat').value,
-        accountCurrency: (document.getElementById('accountCurrency') && document.getElementById('accountCurrency').value) || 'USD',
         leverage: parseInt(document.getElementById('leverageValue').value),
-        forwardTestingOnly: true,
-        allowBackNavigation: false,
+        forwardTestingOnly: document.getElementById('forwardTestingOnly').checked,
+        allowBackNavigation: !document.getElementById('forwardTestingOnly').checked, // Inverse of forwardTestingOnly
         created: new Date().toISOString(),
         
         // Protection Preset
@@ -1092,31 +864,26 @@ async function handleFormSubmit(e) {
 
     // Store as active session locally (compatibility with existing UI)
     try {
-        userStorage.setItem('backtestingSession', JSON.stringify(formData));
+        localStorage.setItem('backtestingSession', JSON.stringify(formData));
         if (sessionId) {
-            userStorage.setItem('active_trading_session_id', String(sessionId));
+            localStorage.setItem('active_trading_session_id', String(sessionId));
         }
     } catch (e) {}
     
     console.log('✅ Prop firm challenge created:', formData);
-    console.log('📊 Redirecting to challenge overview, session:', sessionId);
-
-    var po = null;
-    try {
-        po = new URLSearchParams(window.location.search).get('parentOrigin');
-    } catch (e) {}
-    var appOrigin = (po && String(po).replace(/\/$/, '')) || window.location.origin;
-    var targetUrl = appOrigin + '/backtest/challenge?sessionId=' + encodeURIComponent(String(sessionId));
-
-    var inIframe = window.self !== window.top;
-    if (!inIframe) {
-        window.location.href = targetUrl;
-        return;
-    }
-    try {
-        window.parent.postMessage({ type: 'talaria-open-chart', url: targetUrl }, '*');
-    } catch (err) {
-        console.error('[propfirm] postMessage failed', err);
+    console.log('📊 Redirecting to chart with fileId:', primaryFileId);
+    
+    // Check if we're in an iframe
+    const isInIframe = window.self !== window.top;
+    const targetUrl = `index.html?mode=propfirm&sessionId=${encodeURIComponent(String(sessionId))}&fileId=${primaryFileId}`;
+    
+    if (isInIframe) {
+        // If in iframe (opened from sessions.html), redirect parent window
+        console.log('📱 Running in iframe, redirecting parent window to prop firm mode');
+        window.top.location.href = targetUrl;
+    } else {
+        // If standalone page, redirect normally
+        console.log('🚀 Redirecting to prop firm chart mode');
         window.location.href = targetUrl;
     }
 }

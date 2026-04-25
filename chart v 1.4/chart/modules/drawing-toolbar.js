@@ -141,17 +141,6 @@ class DrawingToolbar {
                 background: rgba(255, 255, 255, 0.08);
                 color: #ffffff;
             }
-
-            body:not(.light-mode) .drawing-toolbar .toolbar-btn:active {
-                opacity: 0.7;
-                transform: scale(0.95);
-            }
-
-
-            body.light-mode .drawing-toolbar .toolbar-btn:active {
-                opacity: 0.7;
-                transform: scale(0.95);
-            }
             
             @keyframes toolbarBounce {
                 0% { transform: scale(1); }
@@ -245,7 +234,7 @@ class DrawingToolbar {
         const isColorOnlyTool = colorOnlyTools.includes(drawing.type);
         
         // Text-based tools
-        const textTypes = ['text', 'anchored-text', 'note', 'callout', 'price-label', 'pin', 'comment'];
+        const textTypes = ['text', 'anchored-text', 'note', 'callout', 'price-label', 'pin'];
         const isTextTool = textTypes.includes(drawing.type);
         
         // Note/box style tools
@@ -261,25 +250,6 @@ class DrawingToolbar {
         const noTemplateTools = []; // Empty - all tools get templates now
         const isBrushTool = !noTemplateTools.includes(drawing.type);
         const useBrushToolbarLayout = isBrushTool && !isRiskReward;
-
-        // Range mode
-        const isDatePriceRange = drawing.type === 'date-price-range';
-        const _rangeMode = isDatePriceRange ? (function(m){const v=String(m||'').toLowerCase().trim();if(v==='price')return 'price';if(v==='time'||v==='date')return 'time';return 'both';})(style.rangeMode) : 'both';
-        const _rangeModeLabels = { both: 'Date & Price', price: 'Price Only', time: 'Date/Time Only' };
-        const _rangeModeLabel = _rangeModeLabels[_rangeMode] || 'Date & Price';
-
-        // Ruler stats
-        const isRuler = drawing.type === 'ruler';
-        let rulerStatsText = '';
-        if (isRuler && Array.isArray(drawing.points) && drawing.points.length >= 2) {
-            const _p1 = drawing.points[0], _p2 = drawing.points[1];
-            const _pd = _p2.y - _p1.y;
-            const _pct = _p1.y !== 0 ? (_pd / Math.abs(_p1.y)) * 100 : 0;
-            const _sign = _pd >= 0 ? '+' : '−';
-            const _absPd = Math.abs(_pd);
-            const _bars = Math.abs(Math.round(_p2.x - _p1.x));
-            rulerStatsText = `${_sign}${_absPd.toFixed(4)}&nbsp;(${_sign}${Math.abs(_pct).toFixed(2)}%)&nbsp;&middot;&nbsp;${_bars}&nbsp;bars`;
-        }
         
         // Determine stroke/color label and value
         let strokeLabel, strokeBaseColor;
@@ -300,21 +270,6 @@ class DrawingToolbar {
             strokeBaseColor = style.stroke || '#787b86';
         }
         
-        // For fib tools: show rainbow gradient swatch when levels have multiple distinct colors
-        const isFibTool = drawing.type.startsWith('fibonacci-') || drawing.type.startsWith('fib-') || drawing.type.startsWith('trend-fib-');
-        if (isFibTool) {
-            const lvls = drawing.levels || style.levels;
-            if (Array.isArray(lvls) && lvls.length > 0) {
-                const levelColors = lvls.map(l => l.color).filter(Boolean);
-                const uniqueColors = [...new Set(levelColors)];
-                if (uniqueColors.length > 1) {
-                    strokeBaseColor = 'linear-gradient(90deg, #f23645, #ff9800, #ffeb3b, #4caf50, #2196f3, #9c27b0)';
-                } else if (uniqueColors.length === 1) {
-                    strokeBaseColor = uniqueColors[0];
-                }
-            }
-        }
-
         // Fill color
         const showFill = this.needsFillColor(drawing) && !isColorOnlyTool;
         const _fillRaw = showFill
@@ -329,11 +284,11 @@ class DrawingToolbar {
         })(_fillRaw) : null;
         
         // Line controls (hide for text/marker tools)
-        const noLineControlTypes = ['text', 'notebox', 'anchored-text', 'note', 'price-note', 'callout', 'price-label', 'comment', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down', 'flag-mark'];
+        const noLineControlTypes = ['text', 'notebox', 'anchored-text', 'note', 'price-note', 'callout', 'price-label', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down'];
         const showLineControls = !noLineControlTypes.includes(drawing.type);
 
         // Tools that show only the fill color (no stroke button)
-        const fillOnlyTools = ['arrow-marker', 'arrow-mark-up', 'arrow-mark-down', 'flag-mark'];
+        const fillOnlyTools = ['arrow-marker', 'arrow-mark-up', 'arrow-mark-down'];
         const showStrokeColor = !fillOnlyTools.includes(drawing.type);
         
         // Text editing
@@ -488,7 +443,7 @@ class DrawingToolbar {
                 }
                 .toolbar-number-input:focus {
                     border-color: #787b86;
-                    box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb), 0.15);
+                    box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.15);
                 }
                 .toolbar-textarea {
                     flex: 1 1 100%;
@@ -607,12 +562,12 @@ class DrawingToolbar {
                     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
                     backdrop-filter: blur(20px);
                     -webkit-backdrop-filter: blur(20px);
-                    padding: 5px;
+                    padding: 8px;
                     display: none;
                     flex-direction: column;
-                    gap: 2px;
+                    gap: 4px;
                     z-index: 10001;
-                    min-width: 130px;
+                    min-width: 120px;
                 }
                 
                 body.light-mode .toolbar-dropdown {
@@ -623,19 +578,15 @@ class DrawingToolbar {
                 .toolbar-dropdown.active {
                     display: flex;
                 }
-                #line-width-dropdown, #fontsize-dropdown, #range-type-dropdown {
-                    min-width: 0;
-                    width: fit-content;
-                }
                 .toolbar-dropdown-item {
                     display: flex;
                     align-items: center;
-                    gap: 8px;
-                    padding: 6px 10px;
+                    gap: 10px;
+                    padding: 8px 12px;
                     border-radius: 4px;
                     cursor: default;
                     color: #d1d4dc;
-                    font-size: 12px;
+                    font-size: 13px;
                     transition: background 0.15s, color 0.15s;
                 }
                 
@@ -644,29 +595,29 @@ class DrawingToolbar {
                 }
                 
                 .toolbar-dropdown-item:hover {
-                    background: rgba(var(--sp-accent-rgb), 0.15);
+                    background: rgba(41, 98, 255, 0.15);
                     color: #ffffff;
                 }
                 
                 body.light-mode .toolbar-dropdown-item:hover {
-                    background: rgba(var(--sp-accent-rgb), 0.12);
-                    color: var(--sp-accent);
+                    background: rgba(41, 98, 255, 0.12);
+                    color: #2962ff;
                 }
                 
                 .toolbar-dropdown-item.active {
-                    background: rgba(var(--sp-accent-rgb), 0.25);
+                    background: rgba(41, 98, 255, 0.25);
                     color: #ffffff;
                 }
                 
                 body.light-mode .toolbar-dropdown-item.active {
-                    background: rgba(var(--sp-accent-rgb), 0.15);
-                    color: var(--sp-accent);
+                    background: rgba(41, 98, 255, 0.15);
+                    color: #2962ff;
                 }
                 .toolbar-dropdown-item svg {
                     flex-shrink: 0;
                 }
                 .toolbar-dropdown-wide {
-                    min-width: 170px;
+                    min-width: 220px;
                 }
                 .template-separator {
                     height: 1px;
@@ -680,20 +631,15 @@ class DrawingToolbar {
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
-                    padding: 6px 10px;
+                    padding: 8px 12px;
                     border-radius: 4px;
                     cursor: default;
                     color: #d1d4dc;
-                    font-size: 12px;
-                    transition: background 0.15s, color 0.15s;
+                    font-size: 13px;
+                    transition: background 0.15s;
                 }
                 .template-item:hover {
-                    background: var(--sp-hover-bg, rgba(255,255,255,0.08));
-                    color: var(--sp-text, #d1d4dc);
-                }
-                #template-dropdown .toolbar-dropdown-item:hover {
-                    background: var(--sp-hover-bg, rgba(255,255,255,0.08));
-                    color: var(--sp-text, #d1d4dc);
+                    background: #363a45;
                 }
                 .template-item-name {
                     display: flex;
@@ -727,7 +673,7 @@ class DrawingToolbar {
             </style>
             
             <div class="toolbar-drag-handle" title="Drag to move">
-                <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
                     <circle cx="6" cy="6" r="1.5"/>
                     <circle cx="12" cy="6" r="1.5"/>
                     <circle cx="6" cy="12" r="1.5"/>
@@ -742,7 +688,7 @@ class DrawingToolbar {
             <!-- Template Button with Dropdown -->
             <div class="toolbar-item toolbar-dropdown-wrapper">
                 <button class="toolbar-btn toolbar-dropdown-btn" id="tb-template" title="Template">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M12 3v17a1 1 0 0 1-1 1H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1H3"/>
                         <path d="M16 19h6"/>
                         <path d="M19 22v-6"/>
@@ -767,7 +713,7 @@ class DrawingToolbar {
             <div class="toolbar-item">
                 <div class="toolbar-color-label" title="${strokeLabel}">
                     <div class="toolbar-color-icon-wrapper" id="stroke-color-preview">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
                             <path d="m15 5 4 4"/>
                         </svg>
@@ -782,7 +728,7 @@ class DrawingToolbar {
             <div class="toolbar-item">
                 <div class="toolbar-color-label" title="Fill Color">
                     <div class="toolbar-color-icon-wrapper" id="fill-color-preview">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/>
                             <path d="m5 2 5 5"/>
                             <path d="M2 13h15"/>
@@ -798,33 +744,32 @@ class DrawingToolbar {
             ${lineTools.includes(drawing.type) ? `
             <div class="toolbar-item toolbar-dropdown-wrapper">
                 <button class="toolbar-btn toolbar-dropdown-btn" id="tb-style-btn" title="Line Style">
-                    <svg width="18" height="18" viewBox="0 0 32 24">
-                        <line x1="2" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="1.5" stroke-dasharray="${style.dashArray || '0'}"/>
+                    <svg width="32" height="24" viewBox="0 0 32 24">
+                        <line x1="2" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="2" stroke-dasharray="${style.dashArray || '0'}"/>
                     </svg>
                 </button>
                 <div class="toolbar-dropdown" id="line-style-dropdown">
                     <div class="toolbar-dropdown-item ${!style.dashArray || style.dashArray === '0' ? 'active' : ''}" data-dash="0">
-                        <svg width="18" height="18" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="1.5"/></svg>
+                        <svg width="40" height="20" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="2"/></svg>
                         <span>Solid</span>
                     </div>
                     <div class="toolbar-dropdown-item ${style.dashArray === '10,6' || style.dashArray === '5,5' ? 'active' : ''}" data-dash="10,6">
-                        <svg width="18" height="18" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="1.5" stroke-dasharray="10,6"/></svg>
+                        <svg width="40" height="20" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="2" stroke-dasharray="10,6"/></svg>
                         <span>Dashed</span>
                     </div>
                     <div class="toolbar-dropdown-item ${style.dashArray === '2,2' ? 'active' : ''}" data-dash="2,2">
-                        <svg width="18" height="18" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2,2"/></svg>
+                        <svg width="40" height="20" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="2" stroke-dasharray="2,2"/></svg>
                         <span>Dotted</span>
                     </div>
                     <div class="toolbar-dropdown-item ${style.dashArray === '8,4,2,4' ? 'active' : ''}" data-dash="8,4,2,4">
-                        <svg width="18" height="18" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="1.5" stroke-dasharray="8,4,2,4"/></svg>
+                        <svg width="40" height="20" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="2" stroke-dasharray="8,4,2,4"/></svg>
                         <span>Dash-Dot</span>
                     </div>
                 </div>
             </div>
             ` : ''}
             
-            <!-- Line Width Dropdown (hidden for text tool and arrow-mark tools) -->
-            ${!isTextTool && !fillOnlyTools.includes(drawing.type) ? `
+            <!-- Line Width Dropdown -->
             <div class="toolbar-item toolbar-dropdown-wrapper">
                 <button class="toolbar-btn toolbar-dropdown-btn" id="tb-width-btn" title="Line Width">
                     <span class="toolbar-width-text">${style.strokeWidth || 2}px</span>
@@ -837,49 +782,11 @@ class DrawingToolbar {
                     `).join('')}
                 </div>
             </div>
-            ` : ''}
-
-            <!-- Font Size Dropdown (text tool only) -->
-            ${isTextTool ? `
-            <div class="toolbar-item toolbar-dropdown-wrapper">
-                <button class="toolbar-btn toolbar-dropdown-btn" id="tb-fontsize-btn" title="Font Size">
-                    <span class="toolbar-width-text">${fontSize}px</span>
-                </button>
-                <div class="toolbar-dropdown" id="fontsize-dropdown">
-                    ${[8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64, 72].map(s => `
-                        <div class="toolbar-dropdown-item ${(style.fontSize || 14) == s ? 'active' : ''}" data-size="${s}">
-                            <span>${s}px</span>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-            ` : ''}
-
-            ${isDatePriceRange ? `
-            <!-- Range Type Dropdown -->
-            <div class="toolbar-item toolbar-dropdown-wrapper">
-                <button class="toolbar-btn toolbar-dropdown-btn" id="tb-range-type-btn" title="Range Type">
-                    <span class="toolbar-width-text" id="tb-range-type-label">Type</span>
-                </button>
-                <div class="toolbar-dropdown" id="range-type-dropdown">
-                    <div class="toolbar-dropdown-item ${_rangeMode === 'both' ? 'active' : ''}" data-range="both"><span>Date &amp; Price</span></div>
-                    <div class="toolbar-dropdown-item ${_rangeMode === 'price' ? 'active' : ''}" data-range="price"><span>Price Only</span></div>
-                    <div class="toolbar-dropdown-item ${_rangeMode === 'time' ? 'active' : ''}" data-range="time"><span>Date/Time Only</span></div>
-                </div>
-            </div>
-            ` : ''}
-
-            ${rulerStatsText ? `
-            <!-- Ruler Stats -->
-            <div class="toolbar-item">
-                <div style="height:28px;padding:0 10px;border-radius:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(120,123,134,0.3);display:flex;align-items:center;font-size:12px;color:#d1d4dc;white-space:nowrap;cursor:default;letter-spacing:0.01em;font-variant-numeric:tabular-nums;">${rulerStatsText}</div>
-            </div>
-            ` : ''}
-
+            
             <!-- Lock -->
             <div class="toolbar-item">
                 <button class="toolbar-btn ${drawing.locked ? 'active' : ''}" id="tb-lock" title="${drawing.locked ? 'Unlock' : 'Lock'}">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         ${drawing.locked ? 
                             '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>' :
                             '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 019.9-1"/>'
@@ -891,11 +798,8 @@ class DrawingToolbar {
             <!-- Delete -->
             <div class="toolbar-item">
                 <button class="toolbar-btn toolbar-btn-danger" id="tb-delete" title="Delete">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <polyline points="3 6 5 6 21 6"/>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                        <line x1="10" y1="11" x2="10" y2="17"/>
-                        <line x1="14" y1="11" x2="14" y2="17"/>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/>
                     </svg>
                 </button>
             </div>
@@ -903,7 +807,7 @@ class DrawingToolbar {
             <!-- Settings -->
             <div class="toolbar-item">
                 <button class="toolbar-btn" id="tb-settings" title="Settings">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="3"/>
                         <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
                     </svg>
@@ -913,7 +817,7 @@ class DrawingToolbar {
             <!-- More Options (3 dots) -->
             <div class="toolbar-item">
                 <button class="toolbar-btn" id="tb-more" title="More Options">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                         <circle cx="5" cy="12" r="2"/>
                         <circle cx="12" cy="12" r="2"/>
                         <circle cx="19" cy="12" r="2"/>
@@ -927,7 +831,7 @@ class DrawingToolbar {
             <div class="toolbar-item">
                 <div class="toolbar-color-label" title="${strokeLabel}">
                     <div class="toolbar-color-icon-wrapper" id="stroke-color-preview">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
                             <path d="m15 5 4 4"/>
                         </svg>
@@ -942,7 +846,7 @@ class DrawingToolbar {
             <div class="toolbar-item">
                 <div class="toolbar-color-label" title="Fill Color">
                     <div class="toolbar-color-icon-wrapper" id="fill-color-preview">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/>
                             <path d="m5 2 5 5"/>
                             <path d="M2 13h15"/>
@@ -958,25 +862,25 @@ class DrawingToolbar {
             ${showLineControls ? `
             <div class="toolbar-item toolbar-dropdown-wrapper">
                 <button class="toolbar-btn toolbar-dropdown-btn" id="tb-style-btn" title="Line Style">
-                    <svg width="18" height="18" viewBox="0 0 32 24">
-                        <line x1="2" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="1.5" stroke-dasharray="${style.dashArray || '0'}"/>
+                    <svg width="32" height="24" viewBox="0 0 32 24">
+                        <line x1="2" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="2" stroke-dasharray="${style.dashArray || '0'}"/>
                     </svg>
                 </button>
                 <div class="toolbar-dropdown" id="line-style-dropdown">
                     <div class="toolbar-dropdown-item ${!style.dashArray || style.dashArray === '0' ? 'active' : ''}" data-dash="0">
-                        <svg width="18" height="18" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="1.5"/></svg>
+                        <svg width="40" height="20" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="2"/></svg>
                         <span>Solid</span>
                     </div>
                     <div class="toolbar-dropdown-item ${style.dashArray === '10,6' || style.dashArray === '5,5' ? 'active' : ''}" data-dash="10,6">
-                        <svg width="18" height="18" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="1.5" stroke-dasharray="10,6"/></svg>
+                        <svg width="40" height="20" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="2" stroke-dasharray="10,6"/></svg>
                         <span>Dashed</span>
                     </div>
                     <div class="toolbar-dropdown-item ${style.dashArray === '2,2' ? 'active' : ''}" data-dash="2,2">
-                        <svg width="18" height="18" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2,2"/></svg>
+                        <svg width="40" height="20" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="2" stroke-dasharray="2,2"/></svg>
                         <span>Dotted</span>
                     </div>
                     <div class="toolbar-dropdown-item ${style.dashArray === '8,4,2,4' ? 'active' : ''}" data-dash="8,4,2,4">
-                        <svg width="18" height="18" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="1.5" stroke-dasharray="8,4,2,4"/></svg>
+                        <svg width="40" height="20" viewBox="0 0 40 20"><line x1="2" y1="10" x2="38" y2="10" stroke="currentColor" stroke-width="2" stroke-dasharray="8,4,2,4"/></svg>
                         <span>Dash-Dot</span>
                     </div>
                 </div>
@@ -1010,9 +914,12 @@ class DrawingToolbar {
             <!-- Execute Button (for Risk/Reward tools only) -->
             ${isRiskReward ? `
             <div class="toolbar-item">
-                <button class="toolbar-btn" id="tb-execute" title="Execute Order (prefill panel)">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <text x="2" y="20" font-size="22" font-weight="bold" fill="currentColor" stroke="none">$</text><line x1="17" y1="2" x2="17" y2="12" stroke-width="1.5"/><line x1="12" y1="7" x2="22" y2="7" stroke-width="1.5"/>
+                <button class="toolbar-btn ${drawing.meta?.executed ? 'executed' : ''}" id="tb-execute" title="${drawing.meta?.executed ? 'Order Executed' : 'Execute Order'}" style="${drawing.meta?.executed ? 'color: #22c55e;' : ''}">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        ${drawing.meta?.executed ? 
+                            '<polyline points="20 6 9 17 4 12"/>' :
+                            '<text x="2" y="20" font-size="22" font-weight="bold" fill="currentColor" stroke="none">$</text><line x1="17" y1="2" x2="17" y2="12" stroke-width="2.5"/><line x1="12" y1="7" x2="22" y2="7" stroke-width="2.5"/>'
+                        }
                     </svg>
                 </button>
             </div>
@@ -1021,7 +928,7 @@ class DrawingToolbar {
             <!-- Settings -->
             <div class="toolbar-item">
                 <button class="toolbar-btn" id="tb-settings" title="Settings">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="3"/>
                         <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
                     </svg>
@@ -1031,7 +938,7 @@ class DrawingToolbar {
             <!-- Lock -->
             <div class="toolbar-item">
                 <button class="toolbar-btn ${drawing.locked ? 'active' : ''}" id="tb-lock" title="${drawing.locked ? 'Unlock' : 'Lock'}">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         ${drawing.locked ? 
                             '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>' :
                             '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 019.9-1"/>'
@@ -1043,11 +950,8 @@ class DrawingToolbar {
             <!-- Delete -->
             <div class="toolbar-item">
                 <button class="toolbar-btn toolbar-btn-danger" id="tb-delete" title="Delete">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <polyline points="3 6 5 6 21 6"/>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                        <line x1="10" y1="11" x2="10" y2="17"/>
-                        <line x1="14" y1="11" x2="14" y2="17"/>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/>
                     </svg>
                 </button>
             </div>
@@ -1055,7 +959,7 @@ class DrawingToolbar {
             <!-- More Options (3 dots) -->
             <div class="toolbar-item">
                 <button class="toolbar-btn" id="tb-more" title="More Options">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                         <circle cx="5" cy="12" r="2"/>
                         <circle cx="12" cy="12" r="2"/>
                         <circle cx="19" cy="12" r="2"/>
@@ -1073,11 +977,11 @@ class DrawingToolbar {
             // Arrow markers (fill-only arrows - no stroke)
             'arrow-marker', 'arrow-mark-up', 'arrow-mark-down',
             // Analysis tools with background fills
-            'date-price-range',
+            'date-price-range', 'price-range',
             // Patterns with fill
             'xabcd-pattern',
             // Text tools with background
-            'notebox', 'note', 'price-note', 'anchored-text', 'callout', 'price-label', 'comment',
+            'notebox', 'note', 'price-note', 'anchored-text', 'callout', 'price-label',
             // Polyline (background shows when shape is closed)
             'polyline',
             // Other
@@ -1221,12 +1125,8 @@ class DrawingToolbar {
             left = padding;
         }
         
-        // Check if settings panel is open and adjust maxLeft accordingly
-        const settingsPanel = document.querySelector('.settings-panel');
-        const settingsPanelWidth = settingsPanel && settingsPanel.classList.contains('open') ? 420 : 0;
-        
         // If toolbar would go off-screen on the right
-        const maxLeft = window.innerWidth - rect.width - padding - settingsPanelWidth;
+        const maxLeft = window.innerWidth - rect.width - padding;
         if (left > maxLeft) {
             left = maxLeft;
         }
@@ -1241,12 +1141,7 @@ class DrawingToolbar {
         if (left < padding) {
             left = padding;
         }
-        
-        // Check if settings panel is open and adjust maxLeft accordingly
-        const settingsPanel = document.querySelector('.settings-panel');
-        const settingsPanelWidth = settingsPanel && settingsPanel.classList.contains('open') ? 420 : 0;
-        
-        const maxLeft = window.innerWidth - rect.width - padding - settingsPanelWidth;
+        const maxLeft = window.innerWidth - rect.width - padding;
         if (left > maxLeft) {
             left = maxLeft;
         }
@@ -1355,18 +1250,7 @@ class DrawingToolbar {
         const strokePreview = this.toolbar.querySelector('#stroke-color-preview');
         const strokePalette = this.toolbar.querySelector('#stroke-color-palette');
         if (strokePreview) {
-            let _previewColor = primaryColor;
-            const _isFibPreview = drawing.type.startsWith('fibonacci-') || drawing.type.startsWith('fib-') || drawing.type.startsWith('trend-fib-');
-            if (_isFibPreview) {
-                const _fibLvls = drawing.levels || (drawing.style && drawing.style.levels);
-                if (Array.isArray(_fibLvls) && _fibLvls.length > 0) {
-                    const _fibUnique = [...new Set(_fibLvls.map(l => l.color).filter(Boolean))];
-                    if (_fibUnique.length > 1) {
-                        _previewColor = 'linear-gradient(90deg, #f23645, #ff9800, #ffeb3b, #4caf50, #2196f3, #9c27b0)';
-                    }
-                }
-            }
-            this.updateColorPreview(strokePreview, _previewColor);
+            this.updateColorPreview(strokePreview, primaryColor);
             if (strokePalette) strokePalette.classList.remove('active');
 
             strokePreview.addEventListener('click', (e) => {
@@ -1379,7 +1263,8 @@ class DrawingToolbar {
                 // Close any inline palettes if present
                 this.toolbar.querySelectorAll('.color-palette').forEach(p => p.classList.remove('active'));
 
-                const _strokePickerCallback = (newColor) => {
+                if (typeof openColorPicker === 'function') {
+                    openColorPicker(primaryColor, (newColor) => {
                         primaryColor = newColor;
                         this._strokeBaseColor = this.normalizeColor(newColor);
                         this._strokeOpacity = this.extractOpacity(newColor);
@@ -1394,13 +1279,6 @@ class DrawingToolbar {
                         } else {
                             drawing.style.stroke = newColor;
                             drawing.style.color = newColor;
-                            // For fib tools, apply color to all individual levels and the trend line
-                            const _isFib = drawing.type.startsWith('fibonacci-') || drawing.type.startsWith('fib-') || drawing.type.startsWith('trend-fib-');
-                            if (_isFib) {
-                                const lvls = drawing.levels || (drawing.style && drawing.style.levels);
-                                if (Array.isArray(lvls)) lvls.forEach(lvl => { if (lvl) lvl.color = newColor; });
-                                drawing.style.trendLineColor = newColor;
-                            }
                         }
 
                         this.updateColorPreview(strokePreview, newColor);
@@ -1411,12 +1289,7 @@ class DrawingToolbar {
                         if (this.onUpdate) {
                             this.onUpdate(drawing);
                         }
-                };
-                if (this.colorPicker) {
-                    const rect = strokePreview.getBoundingClientRect();
-                    this.colorPicker.show(rect.left, rect.bottom, primaryColor, _strokePickerCallback, strokePreview);
-                } else if (typeof openColorPicker === 'function') {
-                    openColorPicker(primaryColor, _strokePickerCallback, strokePreview);
+                    }, strokePreview);
                 }
             });
         }
@@ -1444,7 +1317,8 @@ class DrawingToolbar {
                 this.toolbar.querySelectorAll('.color-palette').forEach(p => p.classList.remove('active'));
 
                 const currentFillColor = getCurrentFillColor();
-                const _fillPickerCallback = (newColor) => {
+                if (typeof openColorPicker === 'function') {
+                    openColorPicker(currentFillColor, (newColor) => {
                         this._fillBaseColor = this.normalizeColor(newColor);
                         this._fillOpacity = this.extractOpacity(newColor);
 
@@ -1462,12 +1336,7 @@ class DrawingToolbar {
                         if (this.onUpdate) {
                             this.onUpdate(drawing);
                         }
-                };
-                if (this.colorPicker) {
-                    const rect = fillPreview.getBoundingClientRect();
-                    this.colorPicker.show(rect.left, rect.bottom, currentFillColor, _fillPickerCallback, fillPreview);
-                } else if (typeof openColorPicker === 'function') {
-                    openColorPicker(currentFillColor, _fillPickerCallback, fillPreview);
+                    }, fillPreview);
                 }
             });
         }
@@ -1525,7 +1394,7 @@ class DrawingToolbar {
                     drawing.style.strokeDasharray = dash;
                     
                     // Update button icon
-                    styleBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 32 24"><line x1="2" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="1.5" stroke-dasharray="${dash}"/></svg>`;
+                    styleBtn.innerHTML = `<svg width="32" height="24" viewBox="0 0 32 24"><line x1="2" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="2" stroke-dasharray="${dash}"/></svg>`;
                     
                     // Update active state
                     styleDropdown.querySelectorAll('.toolbar-dropdown-item').forEach(i => i.classList.remove('active'));
@@ -1537,35 +1406,6 @@ class DrawingToolbar {
             });
         }
         
-        // Font Size Dropdown (text tool in brush layout)
-        const fontsizeBtn = this.toolbar.querySelector('#tb-fontsize-btn');
-        const fontsizeDropdown = this.toolbar.querySelector('#fontsize-dropdown');
-        if (fontsizeBtn && fontsizeDropdown) {
-            fontsizeBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.closeColorPickerPopups();
-                this.toolbar.querySelectorAll('.toolbar-dropdown').forEach(d => {
-                    if (d !== fontsizeDropdown) d.classList.remove('active');
-                });
-                this.toolbar.querySelectorAll('.color-palette').forEach(p => p.classList.remove('active'));
-                fontsizeDropdown.classList.toggle('active');
-            });
-            fontsizeDropdown.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const item = e.target.closest('.toolbar-dropdown-item');
-                if (item) {
-                    const size = parseInt(item.dataset.size);
-                    drawing.style.fontSize = size;
-                    fontsizeBtn.innerHTML = `<span class="toolbar-width-text">${size}px</span>`;
-                    fontsizeDropdown.querySelectorAll('.toolbar-dropdown-item').forEach(i => i.classList.remove('active'));
-                    item.classList.add('active');
-                    fontsizeDropdown.classList.remove('active');
-                    if (this.onBeforeUpdate) this.onBeforeUpdate(drawing);
-                    if (this.onUpdate) this.onUpdate(drawing);
-                }
-            });
-        }
-
         // Line Width Dropdown
         const widthBtn = this.toolbar.querySelector('#tb-width-btn');
         const widthDropdown = this.toolbar.querySelector('#line-width-dropdown');
@@ -1587,14 +1427,6 @@ class DrawingToolbar {
                 if (item) {
                     const width = parseInt(item.dataset.width);
                     drawing.style.strokeWidth = width;
-                    // For fib tools, apply width to all individual levels and the trend line
-                    const _isFibW = drawing.type.startsWith('fibonacci-') || drawing.type.startsWith('fib-') || drawing.type.startsWith('trend-fib-');
-                    if (_isFibW) {
-                        const lvls = drawing.levels || (drawing.style && drawing.style.levels);
-                        if (Array.isArray(lvls)) lvls.forEach(lvl => { if (lvl) lvl.lineWidth = width; });
-                        drawing.style.levelsLineWidth = width;
-                        drawing.style.trendLineWidth = width;
-                    }
                     
                     // Update button text
                     widthBtn.innerHTML = `<span class="toolbar-width-text">${width}px</span>`;
@@ -1606,33 +1438,6 @@ class DrawingToolbar {
                     widthDropdown.classList.remove('active');
                     if (this.onUpdate) this.onUpdate(drawing);
                 }
-            });
-        }
-
-        // Range Type Dropdown
-        const rangeTypeBtn = this.toolbar.querySelector('#tb-range-type-btn');
-        const rangeTypeDropdown = this.toolbar.querySelector('#range-type-dropdown');
-        if (rangeTypeBtn && rangeTypeDropdown) {
-            rangeTypeBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.closeColorPickerPopups();
-                this.toolbar.querySelectorAll('.toolbar-dropdown').forEach(d => {
-                    if (d !== rangeTypeDropdown) d.classList.remove('active');
-                });
-                rangeTypeDropdown.classList.toggle('active');
-            });
-
-            rangeTypeDropdown.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const item = e.target.closest('.toolbar-dropdown-item');
-                if (!item) return;
-                const mode = item.dataset.range;
-                const normalized = mode === 'price' ? 'price' : mode === 'time' ? 'time' : 'both';
-                drawing.style.rangeMode = normalized;
-                rangeTypeDropdown.querySelectorAll('.toolbar-dropdown-item').forEach(i => i.classList.remove('active'));
-                item.classList.add('active');
-                rangeTypeDropdown.classList.remove('active');
-                if (this.onUpdate) this.onUpdate(drawing);
             });
         }
 
@@ -1705,7 +1510,7 @@ class DrawingToolbar {
                 
                 // Update icon
                 lockBtn.innerHTML = `
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         ${drawing.locked ? 
                             '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>' :
                             '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M17 11V7a5 5 0 00-5-5 5 5 0 00-3 .9"/>'}
@@ -1721,12 +1526,34 @@ class DrawingToolbar {
         if (executeBtn) {
             executeBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                
+                // Check if already executed
+                if (drawing.meta?.executed) {
+                    return;
+                }
+                
+                // Mark as executed
+                if (!drawing.meta) drawing.meta = {};
+                drawing.meta.executed = true;
+                
+                // Execute the order
                 if (typeof drawing.executeOrder === 'function') {
                     const entry = drawing.points[0];
                     const stop = drawing.points[1];
                     const target = drawing.points[2];
                     drawing.executeOrder(entry, stop, target);
                 }
+                
+                // Update button appearance
+                executeBtn.style.color = '#22c55e';
+                executeBtn.classList.add('executed');
+                executeBtn.title = 'Order Executed';
+                executeBtn.innerHTML = `
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                `;
+                
                 if (this.onUpdate) this.onUpdate(drawing);
             });
         }
@@ -1835,12 +1662,12 @@ class DrawingToolbar {
     }
 
     isTextTool(drawing) {
-        const textTypes = ['text', 'anchored-text', 'note', 'callout', 'price-label', 'pin', 'comment'];
+        const textTypes = ['text', 'anchored-text', 'note', 'callout', 'price-label', 'pin'];
         return drawing && textTypes.includes(drawing.type);
     }
 
     isNoteBox(drawing) {
-        const noteTypes = ['notebox', 'note', 'price-note', 'callout', 'pin', 'comment'];
+        const noteTypes = ['notebox', 'note', 'price-note', 'callout', 'pin'];
         return drawing && noteTypes.includes(drawing.type);
     }
 
@@ -1941,7 +1768,7 @@ class DrawingToolbar {
 
     getSavedTemplates(toolType) {
         const key = this.getTemplatesKey(toolType);
-        const saved = userStorage.getItem(key);
+        const saved = localStorage.getItem(key);
         return saved ? JSON.parse(saved) : [];
     }
 
@@ -1955,7 +1782,7 @@ class DrawingToolbar {
                     <span>${t.name}</span>
                 </div>
                 <div class="template-item-delete" data-template-id="${t.id}">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M18 6L6 18M6 6l12 12"/>
                     </svg>
                 </div>
@@ -2008,7 +1835,7 @@ class DrawingToolbar {
                 ">Cancel</button>
                 <button id="template-save-btn" style="
                     padding: 6px 14px;
-                    background: var(--sp-accent);
+                    background: #2962ff;
                     border: none;
                     border-radius: 4px;
                     color: #fff;
@@ -2069,7 +1896,7 @@ class DrawingToolbar {
                 opacity: (styleSnapshot && styleSnapshot.opacity !== undefined) ? styleSnapshot.opacity : (actualDrawing.style && actualDrawing.style.opacity)
             };
             templates.push(newTemplate);
-            userStorage.setItem(this.getTemplatesKey(actualDrawing.type), JSON.stringify(templates));
+            localStorage.setItem(this.getTemplatesKey(actualDrawing.type), JSON.stringify(templates));
 
             window.dispatchEvent(new CustomEvent('drawingTemplatesUpdated', {
                 detail: { toolType: actualDrawing.type }
@@ -2141,7 +1968,7 @@ class DrawingToolbar {
     deleteTemplate(toolType, templateId) {
         let templates = this.getSavedTemplates(toolType);
         templates = templates.filter(t => t.id !== templateId);
-        userStorage.setItem(this.getTemplatesKey(toolType), JSON.stringify(templates));
+        localStorage.setItem(this.getTemplatesKey(toolType), JSON.stringify(templates));
         window.dispatchEvent(new CustomEvent('drawingTemplatesUpdated', {
             detail: { toolType }
         }));
@@ -2149,45 +1976,27 @@ class DrawingToolbar {
     }
 
     showNotification(message) {
-        const accent = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
-        const el = document.createElement('div');
-        el.style.cssText = [
-            'position:fixed',
-            'top:18px',
-            'right:22px',
-            'display:flex',
-            'align-items:center',
-            'gap:10px',
-            'padding:11px 18px',
-            'border-radius:10px',
-            'font-size:13px',
-            'font-weight:600',
-            'color:#fff',
-            'background:' + accent,
-            'box-shadow:0 8px 28px rgba(0,0,0,0.45),0 0 0 1px rgba(255,255,255,0.10)',
-            'backdrop-filter:blur(8px)',
-            '-webkit-backdrop-filter:blur(8px)',
-            'z-index:2147483647',
-            'opacity:0',
-            'transform:translateY(-8px) scale(0.97)',
-            'transition:opacity 0.22s ease,transform 0.22s ease',
-            'pointer-events:none',
-            'max-width:340px',
-            'white-space:nowrap',
-            'overflow:hidden',
-            'text-overflow:ellipsis'
-        ].join(';');
-        el.textContent = message;
-        document.body.appendChild(el);
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-            el.style.opacity = '1';
-            el.style.transform = 'translateY(0) scale(1)';
-        }));
+        // Create a simple notification
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2a2e39;
+            color: #d1d4dc;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 13px;
+            z-index: 10002;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        `;
+        notification.textContent = message;
+        document.body.appendChild(notification);
+        
         setTimeout(() => {
-            el.style.opacity = '0';
-            el.style.transform = 'translateY(-8px) scale(0.97)';
-            setTimeout(() => el.remove(), 260);
-        }, 2500);
+            notification.remove();
+        }, 2000);
     }
 
     saveToolbarPosition() {
@@ -2195,7 +2004,7 @@ class DrawingToolbar {
         const rect = this.toolbar.getBoundingClientRect();
         const position = { left: rect.left, top: rect.top };
         try {
-            userStorage.setItem(this.storageKey, JSON.stringify(position));
+            localStorage.setItem(this.storageKey, JSON.stringify(position));
             this.savedPosition = position;
         } catch (err) {
             console.warn('⚠️ Failed to save toolbar position', err);
@@ -2205,7 +2014,7 @@ class DrawingToolbar {
     loadToolbarPosition() {
         if (this.savedPosition) return; // Already loaded
         try {
-            const stored = userStorage.getItem(this.storageKey);
+            const stored = localStorage.getItem(this.storageKey);
             if (stored) {
                 this.savedPosition = JSON.parse(stored);
             }

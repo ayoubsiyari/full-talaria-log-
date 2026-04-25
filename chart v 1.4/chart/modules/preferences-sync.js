@@ -77,7 +77,7 @@ class PreferencesSyncManager {
      */
     getLocalItem(key, defaultValue) {
         try {
-            const item = userStorage.getItem(key);
+            const item = localStorage.getItem(key);
             if (!item) return defaultValue;
             return JSON.parse(item);
         } catch (e) {
@@ -105,9 +105,9 @@ class PreferencesSyncManager {
      */
     getMarketConfig() {
         return {
-            marketType: userStorage.getItem('chart_marketType') || 'forex',
-            pipSize: userStorage.getItem('chart_pipSize') || '0.0001',
-            pipValuePerLot: userStorage.getItem('chart_pipValuePerLot') || '10'
+            marketType: localStorage.getItem('chart_marketType') || 'forex',
+            pipSize: localStorage.getItem('chart_pipSize') || '0.0001',
+            pipValuePerLot: localStorage.getItem('chart_pipValuePerLot') || '10'
         };
     }
 
@@ -136,41 +136,42 @@ class PreferencesSyncManager {
         try {
             switch (field) {
                 case 'tool_defaults':
-                    userStorage.setItem('toolDefaults', JSON.stringify(value));
+                    localStorage.setItem('toolDefaults', JSON.stringify(value));
                     break;
                 case 'timeframe_favorites':
-                    userStorage.setItem('chart_timeframe_favorites', JSON.stringify(value));
+                    localStorage.setItem('chart_timeframe_favorites', JSON.stringify(value));
                     break;
                 case 'chart_templates':
-                    userStorage.setItem('chart_user_templates', JSON.stringify(value));
+                    localStorage.setItem('chart_user_templates', JSON.stringify(value));
                     break;
                 case 'keyboard_shortcuts':
-                    userStorage.setItem('chart_custom_shortcuts', JSON.stringify(value));
+                    localStorage.setItem('chart_custom_shortcuts', JSON.stringify(value));
                     break;
                 case 'drawing_tool_styles':
-                    userStorage.setItem('drawingToolStyles', JSON.stringify(value));
+                    localStorage.setItem('drawingToolStyles', JSON.stringify(value));
                     break;
                 case 'panel_sync_settings':
-                    userStorage.setItem('chart_panel_sync_settings', JSON.stringify(value));
+                    localStorage.setItem('chart_panel_sync_settings', JSON.stringify(value));
                     break;
                 case 'panel_settings':
+                    // Save individual panel settings
                     Object.keys(value).forEach(panelIndex => {
-                        userStorage.setItem(`chart_panel_${panelIndex}_settings`, JSON.stringify(value[panelIndex]));
+                        localStorage.setItem(`chart_panel_${panelIndex}_settings`, JSON.stringify(value[panelIndex]));
                     });
                     break;
                 case 'market_config':
-                    if (value.marketType) userStorage.setItem('chart_marketType', value.marketType);
-                    if (value.pipSize) userStorage.setItem('chart_pipSize', value.pipSize);
-                    if (value.pipValuePerLot) userStorage.setItem('chart_pipValuePerLot', value.pipValuePerLot);
+                    if (value.marketType) localStorage.setItem('chart_marketType', value.marketType);
+                    if (value.pipSize) localStorage.setItem('chart_pipSize', value.pipSize);
+                    if (value.pipValuePerLot) localStorage.setItem('chart_pipValuePerLot', value.pipValuePerLot);
                     break;
                 case 'protection_settings':
-                    userStorage.setItem('protectionSettings', JSON.stringify(value));
+                    localStorage.setItem('protectionSettings', JSON.stringify(value));
                     break;
                 case 'general_settings':
-                    userStorage.setItem('talaria_general_settings', JSON.stringify(value));
+                    localStorage.setItem('talaria_general_settings', JSON.stringify(value));
                     break;
                 case 'keep_drawing_enabled':
-                    userStorage.setItem('chart_keep_drawing', value ? '1' : '0');
+                    localStorage.setItem('chart_keep_drawing', value ? '1' : '0');
                     break;
             }
         } catch (e) {

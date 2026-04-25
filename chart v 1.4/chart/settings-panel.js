@@ -7,10 +7,10 @@ window._spPanels = {};
     function ch()      { return window.chart || window.mainChart || null; }
     function apply()   { var c=ch(); if(!c) return; if(c.applyChartSettings) c.applyChartSettings(); if(c.scheduleRender) c.scheduleRender(); else if(c.render) c.render(); try{if(c.saveSettings)c.saveSettings();}catch(e){} }
     function set(k,v)  { var c=ch(); if(!c) return; c.chartSettings=c.chartSettings||{}; c.chartSettings[k]=v; apply(); }
-    function sess()    { try{return window.backtestingSession||JSON.parse(userStorage.getItem('backtestingSession')||'{}')||{};}catch(e){return{};} }
-    function saveSess(s){ window.backtestingSession=s; try{userStorage.setItem('backtestingSession',JSON.stringify(s));}catch(e){} var c=ch(); if(c) c.backtestingSession=s; }
-    function gLoad()   { try{return JSON.parse(userStorage.getItem('talaria_general_settings')||'{}');}catch(e){return{};} }
-    function gSave(p)  { var c=Object.assign({},gLoad(),p); try{userStorage.setItem('talaria_general_settings',JSON.stringify(c));}catch(e){} window.generalSettings=c; return c; }
+    function sess()    { try{return window.backtestingSession||JSON.parse(localStorage.getItem('backtestingSession')||'{}')||{};}catch(e){return{};} }
+    function saveSess(s){ window.backtestingSession=s; try{localStorage.setItem('backtestingSession',JSON.stringify(s));}catch(e){} var c=ch(); if(c) c.backtestingSession=s; }
+    function gLoad()   { try{return JSON.parse(localStorage.getItem('talaria_general_settings')||'{}');}catch(e){return{};} }
+    function gSave(p)  { var c=Object.assign({},gLoad(),p); try{localStorage.setItem('talaria_general_settings',JSON.stringify(c));}catch(e){} window.generalSettings=c; return c; }
 
     /* expose to Part 2 */
     window._spH = { ch:ch, apply:apply, set:set, sess:sess, saveSess:saveSess, gLoad:gLoad, gSave:gSave };
@@ -38,8 +38,8 @@ window._spPanels = {};
     }
 
     window._spLoad = function(type, el) {
-        /* update active state (scope to settings nav only — other panels also use .sp-nav-item) */
-        panel.querySelectorAll('.sp-nav-item[data-settings]').forEach(function(n){ n.classList.remove('active'); });
+        /* update active state */
+        panel.querySelectorAll('.sp-nav-item').forEach(function(n){ n.classList.remove('active'); });
         if (el) el.classList.add('active');
         loadSection(type);
     };
@@ -51,41 +51,34 @@ window._spPanels = {};
         item.addEventListener('click', function(e){
             e.stopPropagation();
             var type = this.dataset.settings;
-            panel.querySelectorAll('.sp-nav-item[data-settings]').forEach(function(n){ n.classList.remove('active'); });
+            panel.querySelectorAll('.sp-nav-item').forEach(function(n){ n.classList.remove('active'); });
             this.classList.add('active');
             loadSection(type);
         });
     });
 
     function loadSection(type) {
-        if (type === 'help') {
-            if (typeof window.closePanel === 'function') window.closePanel();
-            if (typeof window._openProfileHelpPanel === 'function') window._openProfileHelpPanel();
-            return;
-        }
-        /* Match index.html: canvas tab uses the same panel builder as symbol */
-        if (type === 'canvas') type = 'symbol';
-        /* Prefer window.P (rich Chart/Trading/… builders in index.html), then _spPanels from this file + ext */
-        var def = (window.P && window.P[type]) || (window._spPanels && window._spPanels[type]);
-        console.log('[SP] loadSection:', type, '| panel:', !!def, '| contEl:', !!contEl);
+        console.log('[SP] loadSection:', type, '| panel registered:', !!window._spPanels[type], '| contEl:', !!contEl);
         currentType = type;
         var titles = { general:'General Settings', chart:'Chart Settings', project:'Project Settings', leverage:'Leverage', symbol:'Symbol Properties', commissions:'Commissions' };
         if (titleEl) titleEl.textContent = titles[type] || type;
-        panel.querySelectorAll('.sp-nav-item[data-settings]').forEach(function(n){
+        panel.querySelectorAll('.sp-nav-item').forEach(function(n){
             n.classList.toggle('active', n.dataset.settings === type);
         });
         /* re-query contEl in case DOM changed */
         var el = document.getElementById('settingsPanelContent');
         if (!el) { console.warn('[SP] settingsPanelContent not found'); return; }
         try {
-            el.innerHTML = def ? def.build() : '<p style="color:#787b86;padding:20px 0;">Coming soon — <b>'+type+'</b></p>';
+            var p = window._spPanels[type];
+            el.innerHTML = p ? p.build() : '<p style="color:#787b86;padding:20px 0;">Coming soon — <b>'+type+'</b></p>';
             console.log('[SP] content set, length:', el.innerHTML.length);
         } catch(e) {
             el.innerHTML = '<p style="color:#f23645;padding:20px;">Build error: '+e.message+'</p>';
             console.error('[SP] build error:', e);
         }
         try {
-            if (def && def.wire) def.wire();
+            var p2 = window._spPanels[type];
+            if (p2 && p2.wire) p2.wire();
         } catch(e) { console.error('[SP] wire error:', e); }
     }
 
@@ -101,10 +94,10 @@ window._spPanels = {};
     function chk(label,id,on){ return '<div class="settings-checkbox-item'+(on?' checked':'')+'" id="ck_'+id+'" style="cursor:pointer;"><div class="settings-checkbox">'+CSV+'</div><span class="settings-checkbox-label">'+label+'</span></div>'; }
     function irow(label,id,val,mn,mx,step){ return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><input type="number" id="nr_'+id+'" class="settings-input" value="'+val+'" min="'+mn+'" max="'+mx+'" step="'+(step||1)+'"></div>'; }
     function sel(label,id,opts,cur){ var o=opts.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===String(cur)?' selected':'')+'>'+x[1]+'</option>';}).join(''); return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><select id="sl_'+id+'" class="settings-select" style="margin-left:auto;max-width:168px;">'+o+'</select></div>'; }
-    function clr(label,id,val){ var h=toHex(val); return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><label style="cursor:pointer;display:flex;align-items:center;margin-left:auto;flex-shrink:0;position:relative;"><div id="sw_'+id+'" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:'+val+';transition:transform .12s,box-shadow .12s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 0 0 2px rgba(var(--sp-accent-rgb),0.45)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'"></div><input type="color" id="cp_'+id+'" value="'+h+'" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;"></label></div>'; }
-    function rng(label,id,val,mn,mx){ return '<div class="settings-slider-group"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><div class="settings-slider-label" style="margin:0;">'+label+'</div><span id="rv_'+id+'" style="color:var(--sp-accent);font-size:12px;font-weight:600;">'+val+'</span></div><input type="range" class="settings-slider" id="rng_'+id+'" min="'+mn+'" max="'+mx+'" value="'+val+'"><div style="display:flex;justify-content:space-between;font-size:11px;color:#787b86;margin-top:5px;"><span>'+mn+'</span><span>'+mx+'</span></div></div>'; }
-    function savebtn(id,label){ return '<button id="'+id+'" style="width:100%;padding:10px;background:var(--sp-accent);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;margin-top:12px;">'+label+'</button>'; }
-    function cancelbtn(id,label){ return '<button id="'+id+'" style="width:100%;padding:10px;background:rgba(var(--sp-accent-rgb),0.12);color:var(--sp-accent);border:1px solid rgba(var(--sp-accent-rgb),0.25);border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;margin-top:6px;">'+label+'</button>'; }
+    function clr(label,id,val){ var h=toHex(val); return '<div class="settings-input-row"><span class="settings-input-label">'+label+'</span><label style="cursor:pointer;display:flex;align-items:center;"><div id="sw_'+id+'" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:'+val+';transition:transform .12s,box-shadow .12s;" onmouseover="this.style.transform=\'scale(1.1)\';this.style.boxShadow=\'0 0 0 2px rgba(41,98,255,0.45)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.boxShadow=\'none\'"></div><input type="color" id="cp_'+id+'" value="'+h+'" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;"></label></div>'; }
+    function rng(label,id,val,mn,mx){ return '<div class="settings-slider-group"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><div class="settings-slider-label" style="margin:0;">'+label+'</div><span id="rv_'+id+'" style="color:#2962ff;font-size:12px;font-weight:600;">'+val+'</span></div><input type="range" class="settings-slider" id="rng_'+id+'" min="'+mn+'" max="'+mx+'" value="'+val+'"><div style="display:flex;justify-content:space-between;font-size:11px;color:#787b86;margin-top:5px;"><span>'+mn+'</span><span>'+mx+'</span></div></div>'; }
+    function savebtn(id,label){ return '<button id="'+id+'" style="width:100%;padding:10px;background:#2962ff;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;margin-top:12px;">'+label+'</button>'; }
+    function cancelbtn(id,label){ return '<button id="'+id+'" style="width:100%;padding:10px;background:transparent;color:#787b86;border:1px solid rgba(255,255,255,0.1);border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;margin-top:6px;">'+label+'</button>'; }
 
     function toHex(c){
         if(!c) return '#000000';
@@ -297,20 +290,30 @@ window._spPanels = {};
     window._spPanels['profile'] = {
         title: 'Profile',
         build: function(){
-            if (window.P && window.P['profile'] && typeof window.P['profile'].build === 'function')
-                return window.P['profile'].build();
-            return '<p style="color:#787b86;padding:20px 0;">Profile unavailable.</p>';
+            var src = document.querySelector('#profilePanel .side-panel-body');
+            return src ? src.innerHTML : '';
         },
         wire: function(){
-            if (window.P && window.P['profile'] && typeof window.P['profile'].wire === 'function')
-                window.P['profile'].wire();
+            var ctx = document.getElementById('settingsPanelContent');
+            if (!ctx) return;
+            var t = ctx.querySelector('#profileTheme2');
+            if (t) t.onclick = function(){
+                document.body.classList.toggle('light-mode');
+                var isDark = !document.body.classList.contains('light-mode');
+                var v = ctx.querySelector('#profileThemeValue2');
+                if (v) v.textContent = isDark ? 'Dark' : 'Light';
+            };
+            var a = ctx.querySelector('#profileAccount2');
+            if (a) a.onclick = function(){ window.location.href = '/profile'; };
+            var l = ctx.querySelector('#profileLogout2');
+            if (l) l.onclick = function(){ window.location.href = '/logout'; };
         }
     };
 
     /* ── _spOpen: open panel on a specific section ── */
     window._spOpen = function(section) {
         if (!panel) return;
-        panel.querySelectorAll('.sp-nav-item[data-settings]').forEach(function(n){ n.classList.remove('active'); });
+        panel.querySelectorAll('.sp-nav-item').forEach(function(n){ n.classList.remove('active'); });
         var navItem = panel.querySelector('.sp-nav-item[data-settings="'+section+'"]');
         if (navItem) navItem.classList.add('active');
         if (panel.classList.contains('open')) {

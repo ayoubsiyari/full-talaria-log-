@@ -17,15 +17,28 @@ class FibChannelTool extends BaseDrawing {
         if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
         if (this.style.levelsLabelMode !== 'percent' && this.style.levelsLabelMode !== 'values') this.style.levelsLabelMode = 'values';
         if (this.style.backgroundOpacity === undefined || this.style.backgroundOpacity === null || isNaN(parseFloat(this.style.backgroundOpacity))) this.style.backgroundOpacity = 0.08;
-        // Core 7 Fibonacci levels (0 and 1 fixed at top)
+        // TradingView-like default Fibonacci levels (fixed 20 like Fib Retracement)
         const defaultLevels = [
+            { value: -0.618, label: '-0.618', color: '#9c27b0', enabled: false },
+            { value: -0.5, label: '-0.5', color: '#673ab7', enabled: false },
+            { value: -0.382, label: '-0.382', color: '#2196f3', enabled: false },
+            { value: -0.236, label: '-0.236', color: '#00bcd4', enabled: false },
             { value: 0, label: '0', color: '#787b86', enabled: true },
-            { value: 1, label: '1', color: '#787b86', enabled: true },
             { value: 0.236, label: '0.236', color: '#f23645', enabled: true },
             { value: 0.382, label: '0.382', color: '#ff9800', enabled: true },
             { value: 0.5, label: '0.5', color: '#ffeb3b', enabled: true },
             { value: 0.618, label: '0.618', color: '#4caf50', enabled: true },
-            { value: 0.786, label: '0.786', color: '#2196f3', enabled: true }
+            { value: 0.786, label: '0.786', color: '#2196f3', enabled: true },
+            { value: 1, label: '1', color: '#787b86', enabled: true },
+            { value: 1.272, label: '1.272', color: '#00bcd4', enabled: false },
+            { value: 1.414, label: '1.414', color: '#4caf50', enabled: false },
+            { value: 1.618, label: '1.618', color: '#9c27b0', enabled: false },
+            { value: 2, label: '2', color: '#e91e63', enabled: false },
+            { value: 2.272, label: '2.272', color: '#ff9800', enabled: false },
+            { value: 2.618, label: '2.618', color: '#f44336', enabled: false },
+            { value: 3.618, label: '3.618', color: '#b71c1c', enabled: false },
+            { value: 4.236, label: '4.236', color: '#607d8b', enabled: false },
+            { value: 5, label: '5', color: '#3f51b5', enabled: false }
         ];
         this.levels = (Array.isArray(style.levels) && style.levels.length)
             ? style.levels
@@ -342,7 +355,7 @@ class FibTimeZoneTool extends BaseDrawing {
             .attr('data-id', this.id)
             .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
 
-        const getXFromIndex = (xIdx) => scales.chart?.dataIndexToPixel ?
+        const getXFromIndex = (xIdx) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(xIdx) : scales.xScale(xIdx);
         const getY = (p) => scales.yScale(p.y);
         const chartHeight = scales.chart?.h || 500;
@@ -380,7 +393,7 @@ class FibTimeZoneTool extends BaseDrawing {
             const baseType = (typeof fibObj === 'object' && fibObj.lineType != null) ? `${fibObj.lineType}` : '';
             const lineWidth = globalLevelsWidth !== null ? globalLevelsWidth : baseWidth;
             const lineType = globalLevelsDash !== null ? globalLevelsDash : baseType;
-
+            
             if (!enabled) return;
 
             const fibN = parseFloat(fib);
@@ -733,7 +746,7 @@ class FibSpeedFanTool extends BaseDrawing {
 class TrendFibTimeTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('trend-fib-time', points, style);
-        this.requiredPoints = 3;
+        this.requiredPoints = 2;
         this.style.stroke = style.stroke || '#9c27b0';
         this.style.strokeWidth = style.strokeWidth || 1;
         if (this.style.showZones === undefined) this.style.showZones = true;
@@ -752,7 +765,7 @@ class TrendFibTimeTool extends BaseDrawing {
 
     render(container, scales) {
         if (this.group) this.group.remove();
-        if (this.points.length === 0) return;
+        if (this.points.length < 2) return;
 
         const globalLevelsDash = (this.style.levelsLineDasharray != null) ? `${this.style.levelsLineDasharray}` : null;
         const globalLevelsWidth = (this.style.levelsLineWidth != null && !isNaN(parseInt(this.style.levelsLineWidth))) ? parseInt(this.style.levelsLineWidth) : null;
@@ -767,142 +780,106 @@ class TrendFibTimeTool extends BaseDrawing {
         const chartHeight = scales.chart?.h || 500;
         const getXFromIndex = (idx) => scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(idx) : scales.xScale(idx);
         const getY = (p) => scales.yScale(p.y);
-        const anchorStrokeWidth = Math.max(0.5, (this.style.strokeWidth || 1) * scaleFactor);
-
-        // 1-point preview: dot only
-        if (this.points.length === 1) {
-            this.group.append('circle')
-                .attr('cx', getXFromIndex(this.points[0].x))
-                .attr('cy', getY(this.points[0]))
-                .attr('r', 4)
-                .attr('fill', this.style.stroke);
-            return this.group;
-        }
 
         const p1 = this.points[0];
         const p2 = this.points[1];
         const xIndex1 = p1.x;
         const xIndex2 = p2.x;
         const baseDx = xIndex2 - xIndex1;
+        if (!baseDx) {
+            this.createHandles(this.group, scales);
+            return this.group;
+        }
+
         const x1 = getXFromIndex(xIndex1);
         const y1 = getY(p1);
         const x2 = getXFromIndex(xIndex2);
         const y2 = getY(p2);
 
-        // Always draw base interval anchor line (P1 → P2)
+        // Anchor segment (TradingView-like)
         this.group.append('line')
             .attr('x1', x1).attr('y1', y1)
             .attr('x2', x2).attr('y2', y2)
             .attr('stroke', '#787b86')
-            .attr('stroke-width', anchorStrokeWidth)
+            .attr('stroke-width', Math.max(0.5, (this.style.strokeWidth || 1) * scaleFactor))
             .attr('stroke-dasharray', '6,6')
             .attr('opacity', 0.7)
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        // 2-point preview: show base interval line + endpoint dots, await 3rd click
-        if (this.points.length === 2) {
-            [p1, p2].forEach(p => {
-                this.group.append('circle')
-                    .attr('cx', getXFromIndex(p.x)).attr('cy', getY(p))
-                    .attr('r', 4)
-                    .attr('fill', this.style.stroke);
-            });
-            return this.group;
+        const showZones = !!this.style.showZones;
+        const bgOpacity = (this.style.backgroundOpacity != null && !isNaN(parseFloat(this.style.backgroundOpacity)))
+            ? parseFloat(this.style.backgroundOpacity)
+            : 0.12;
+
+        const enabledLevels = (this.levels || [])
+            .filter(l => l && l.enabled !== false)
+            .map(l => ({
+                value: parseFloat(l.value),
+                color: l.color || this.style.stroke,
+                lineWidth: l.lineWidth,
+                lineType: l.lineType
+            }))
+            .filter(l => isFinite(l.value))
+            .sort((a, b) => a.value - b.value);
+
+        const xAt = (level) => getXFromIndex(xIndex2 + (baseDx * level));
+
+        // Zones between consecutive enabled levels (full chart height)
+        if (showZones && enabledLevels.length >= 2) {
+            for (let i = 0; i < enabledLevels.length - 1; i++) {
+                const xa = xAt(enabledLevels[i].value);
+                const xb = xAt(enabledLevels[i + 1].value);
+                const xLeft = Math.min(xa, xb);
+                const width = Math.abs(xb - xa);
+
+                this.group.insert('rect', ':first-child')
+                    .attr('x', xLeft)
+                    .attr('y', 0)
+                    .attr('width', width)
+                    .attr('height', chartHeight)
+                    .attr('fill', enabledLevels[i].color)
+                    .attr('opacity', bgOpacity)
+                    .style('pointer-events', 'none');
+            }
         }
 
-        // Full 3-point render
-        if (this.points.length >= 3 && baseDx !== 0) {
-            const p3 = this.points[2];
-            const xIndex3 = p3.x;
-            const x3 = getXFromIndex(xIndex3);
-            const y3 = getY(p3);
+        // Vertical lines at each level
+        enabledLevels.forEach(lvl => {
+            const level = lvl.value;
+            const x = xAt(level);
+            const baseWidth = (lvl.lineWidth != null && !isNaN(parseInt(lvl.lineWidth)))
+                ? parseInt(lvl.lineWidth)
+                : (level === 0 || level === 1 ? 2 : 1);
+            const baseType = (lvl.lineType != null) ? `${lvl.lineType}` : '';
+            const lineWidth = globalLevelsWidth !== null ? globalLevelsWidth : baseWidth;
+            const lineType = globalLevelsDash !== null ? globalLevelsDash : baseType;
 
-            // Second leg: P2 → P3
+            const scaledWidth = Math.max(0.5, parseFloat(lineWidth) * scaleFactor);
+            const hitWidth = Math.max(10, scaledWidth * 6);
+
+            // Hit area (solid, nearly invisible) so verticals are easy to click
             this.group.append('line')
-                .attr('x1', x2).attr('y1', y2)
-                .attr('x2', x3).attr('y2', y3)
-                .attr('stroke', '#787b86')
-                .attr('stroke-width', anchorStrokeWidth)
-                .attr('stroke-dasharray', '6,6')
-                .attr('opacity', 0.7)
+                .attr('class', 'fib-level-hit')
+                .attr('x1', x).attr('y1', 0)
+                .attr('x2', x).attr('y2', chartHeight)
+                .attr('stroke', 'rgba(255,255,255,0.001)')
+                .attr('stroke-width', hitWidth)
+                .attr('stroke-dasharray', '')
+                .attr('opacity', 1)
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
 
-            const showZones = !!this.style.showZones;
-            const bgOpacity = (this.style.backgroundOpacity != null && !isNaN(parseFloat(this.style.backgroundOpacity)))
-                ? parseFloat(this.style.backgroundOpacity)
-                : 0.12;
-
-            const enabledLevels = (this.levels || [])
-                .filter(l => l && l.enabled !== false)
-                .map(l => ({
-                    value: parseFloat(l.value),
-                    color: l.color || this.style.stroke,
-                    lineWidth: l.lineWidth,
-                    lineType: l.lineType
-                }))
-                .filter(l => isFinite(l.value))
-                .sort((a, b) => a.value - b.value);
-
-            // Project fib lines from P3 using P1-P2 as base interval
-            const xAt = (level) => getXFromIndex(xIndex3 + (baseDx * level));
-
-            // Zones between consecutive enabled levels
-            if (showZones && enabledLevels.length >= 2) {
-                for (let i = 0; i < enabledLevels.length - 1; i++) {
-                    const xa = xAt(enabledLevels[i].value);
-                    const xb = xAt(enabledLevels[i + 1].value);
-                    const xLeft = Math.min(xa, xb);
-                    const width = Math.abs(xb - xa);
-
-                    this.group.insert('rect', ':first-child')
-                        .attr('x', xLeft)
-                        .attr('y', 0)
-                        .attr('width', width)
-                        .attr('height', chartHeight)
-                        .attr('fill', enabledLevels[i].color)
-                        .attr('opacity', bgOpacity)
-                        .style('pointer-events', 'none');
-                }
-            }
-
-            // Vertical lines at each level
-            enabledLevels.forEach(lvl => {
-                const level = lvl.value;
-                const x = xAt(level);
-                const baseWidth = (lvl.lineWidth != null && !isNaN(parseInt(lvl.lineWidth)))
-                    ? parseInt(lvl.lineWidth)
-                    : (level === 0 || level === 1 ? 2 : 1);
-                const baseType = (lvl.lineType != null) ? `${lvl.lineType}` : '';
-                const lineWidth = globalLevelsWidth !== null ? globalLevelsWidth : baseWidth;
-                const lineType = globalLevelsDash !== null ? globalLevelsDash : baseType;
-
-                const scaledWidth = Math.max(0.5, parseFloat(lineWidth) * scaleFactor);
-                const hitWidth = Math.max(10, scaledWidth * 6);
-
-                this.group.append('line')
-                    .attr('class', 'fib-level-hit')
-                    .attr('x1', x).attr('y1', 0)
-                    .attr('x2', x).attr('y2', chartHeight)
-                    .attr('stroke', 'rgba(255,255,255,0.001)')
-                    .attr('stroke-width', hitWidth)
-                    .attr('stroke-dasharray', '')
-                    .attr('opacity', 1)
-                    .style('pointer-events', 'stroke')
-                    .style('cursor', 'move');
-
-                this.group.append('line')
-                    .attr('x1', x).attr('y1', 0)
-                    .attr('x2', x).attr('y2', chartHeight)
-                    .attr('stroke', lvl.color)
-                    .attr('stroke-width', scaledWidth)
-                    .attr('stroke-dasharray', lineType || 'none')
-                    .attr('opacity', 0.9)
-                    .style('pointer-events', 'stroke')
-                    .style('cursor', 'move');
-            });
-        }
+            this.group.append('line')
+                .attr('x1', x).attr('y1', 0)
+                .attr('x2', x).attr('y2', chartHeight)
+                .attr('stroke', lvl.color)
+                .attr('stroke-width', scaledWidth)
+                .attr('stroke-dasharray', lineType || 'none')
+                .attr('opacity', 0.9)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+        });
 
         this.createHandles(this.group, scales);
         return this.group;
@@ -1242,10 +1219,10 @@ class FibArcsTool extends BaseDrawing {
             return this.group;
         }
 
-        // Like fib-circles but only half: arcs face the direction price came from
+        // Like fib-circles but only half: arc direction depends on where point2 is
         const isDown = y2 >= y1;
-        const sweep = isDown ? 0 : 1;
-        const innerSweep = isDown ? 1 : 0;
+        const sweep = isDown ? 1 : 0;
+        const innerSweep = isDown ? 0 : 1;
 
         const showZones = this.style.showZones !== false;
         const zonesOpacity = (this.style.backgroundOpacity != null) ? this.style.backgroundOpacity : 0.12;
@@ -3008,15 +2985,15 @@ class GannFanTool extends BaseDrawing {
         // Fan levels use a multiplier of the 1/1 slope.
         // Label format matches TradingView-style fractions seen in the screenshot.
         const defaultFanLevels = [
-            { value: 0.125, label: '1/8', enabled: true, color: '#ff9800' },
-            { value: 0.25,  label: '1/4', enabled: true, color: '#4caf50' },
-            { value: 1 / 3, label: '1/3', enabled: true, color: '#00c853' },
-            { value: 0.5,   label: '1/2', enabled: true, color: '#00bcd4' },
-            { value: 1,     label: '1/1', enabled: true, color: '#2962ff' },
-            { value: 2,     label: '2/1', enabled: true, color: '#9c27b0' },
-            { value: 3,     label: '3/1', enabled: true, color: '#e91e63' },
-            { value: 4,     label: '4/1', enabled: true, color: '#f23645' },
-            { value: 8,     label: '8/1', enabled: true, color: '#b71c1c' }
+            { value: 8, label: '1/8', enabled: true, color: '#ff9800' },
+            { value: 4, label: '1/4', enabled: true, color: '#4caf50' },
+            { value: 3, label: '1/3', enabled: true, color: '#00c853' },
+            { value: 2, label: '1/2', enabled: true, color: '#00bcd4' },
+            { value: 1, label: '1/1', enabled: true, color: '#2962ff' },
+            { value: 0.5, label: '2/1', enabled: true, color: '#9c27b0' },
+            { value: 1 / 3, label: '3/1', enabled: true, color: '#e91e63' },
+            { value: 0.25, label: '4/1', enabled: true, color: '#f23645' },
+            { value: 0.125, label: '8/1', enabled: true, color: '#b71c1c' }
         ];
 
         // Back-compat: migrate style.angles (label like 1×8) into style.fanLevels.
@@ -3030,7 +3007,7 @@ class GannFanTool extends BaseDrawing {
                         const parts = label.split('×').map(s => s.trim());
                         const n = parseFloat(parts[0]);
                         const d = parseFloat(parts[1]);
-                        if (isFinite(n) && isFinite(d) && d !== 0) mult = n / d;
+                        if (isFinite(n) && isFinite(d) && n !== 0) mult = d / n;
                     }
                     const mappedLabel = label.includes('×') ? label.replace('×', '/') : (label || '1/1');
                     return {
@@ -3266,15 +3243,28 @@ class TrendFibExtensionTool extends BaseDrawing {
         if (!this.style.trendLineColor) this.style.trendLineColor = this.style.stroke;
         if (this.style.trendLineDasharray === undefined || this.style.trendLineDasharray === null) this.style.trendLineDasharray = '2,2';
         if (this.style.trendLineWidth === undefined || this.style.trendLineWidth === null) this.style.trendLineWidth = 1;
-        // Core 7 Fibonacci levels (0 and 1 fixed at top)
+        // TradingView-like Fibonacci levels (fixed 20 like Fib Retracement)
         const defaultLevels = [
+            { value: -0.618, label: '-0.618', color: '#9c27b0', enabled: false },
+            { value: -0.5, label: '-0.5', color: '#673ab7', enabled: false },
+            { value: -0.382, label: '-0.382', color: '#2196f3', enabled: false },
+            { value: -0.236, label: '-0.236', color: '#00bcd4', enabled: false },
             { value: 0, label: '0', color: '#787b86', enabled: true },
-            { value: 1, label: '1', color: '#2962ff', enabled: true },
             { value: 0.236, label: '0.236', color: '#f23645', enabled: true },
             { value: 0.382, label: '0.382', color: '#ff9800', enabled: true },
             { value: 0.5, label: '0.5', color: '#ffeb3b', enabled: true },
             { value: 0.618, label: '0.618', color: '#4caf50', enabled: true },
-            { value: 0.786, label: '0.786', color: '#00bcd4', enabled: true }
+            { value: 0.786, label: '0.786', color: '#00bcd4', enabled: true },
+            { value: 1, label: '1', color: '#2962ff', enabled: true },
+            { value: 1.272, label: '1.272', color: '#00bcd4', enabled: false },
+            { value: 1.414, label: '1.414', color: '#4caf50', enabled: false },
+            { value: 1.618, label: '1.618', color: '#9c27b0', enabled: false },
+            { value: 2, label: '2', color: '#e91e63', enabled: false },
+            { value: 2.272, label: '2.272', color: '#ff9800', enabled: false },
+            { value: 2.618, label: '2.618', color: '#f44336', enabled: false },
+            { value: 3.618, label: '3.618', color: '#b71c1c', enabled: false },
+            { value: 4.236, label: '4.236', color: '#607d8b', enabled: false },
+            { value: 5, label: '5', color: '#3f51b5', enabled: false }
         ];
 
         this.levels = (Array.isArray(style.levels) && style.levels.length)

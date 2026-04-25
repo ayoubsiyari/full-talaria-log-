@@ -64,15 +64,14 @@ class ParallelChannelTool extends BaseDrawing {
             const perpX = -baseY / baseLen;
             const perpY = baseX / baseLen;
 
-            // Use vertical-only (price-space) offset so channel sides are always vertical
-            const channelHeight = p2.y - p0.y;
-            const offsetX = 0;
-            const offsetY = channelHeight;
+            const offsetX = p2.x - p0.x;
+            const offsetY = p2.y - p0.y;
 
             const moveP0PreserveOffset = (newP0) => {
+                const dx = newP0.x - p0.x;
                 const dy = newP0.y - p0.y;
                 this.points[0] = { x: newP0.x, y: newP0.y };
-                this.points[2] = { x: newP0.x, y: p2.y + dy };
+                this.points[2] = { x: p2.x + dx, y: p2.y + dy };
                 this.meta.updatedAt = Date.now();
                 return true;
             };
@@ -84,21 +83,31 @@ class ParallelChannelTool extends BaseDrawing {
             };
             
             if (handleRole === 'top-mid') {
-                // Move top line vertically; preserve channel height
+                // Middle of top line - move both p0 and p1 perpendicular
+                const midX = (p0.x + p1.x) / 2;
                 const midY = (p0.y + p1.y) / 2;
-                const deltaY = dataPoint.y - midY;
-                this.points[0] = { x: p0.x, y: p0.y + deltaY };
-                this.points[1] = { x: p1.x, y: p1.y + deltaY };
-                this.points[2] = { x: p0.x, y: p2.y + deltaY };
+                const toMouseX = dataPoint.x - midX;
+                const toMouseY = dataPoint.y - midY;
+                const perpDist = toMouseX * perpX + toMouseY * perpY;
+                
+                this.points[0] = { x: p0.x + perpX * perpDist, y: p0.y + perpY * perpDist };
+                this.points[1] = { x: p1.x + perpX * perpDist, y: p1.y + perpY * perpDist };
                 this.meta.updatedAt = Date.now();
                 return true;
             }
             
             if (handleRole === 'bottom-mid') {
-                // Adjust channel height vertically
-                const topMidY = (p0.y + p1.y) / 2;
-                const newHeight = dataPoint.y - topMidY;
-                this.points[2] = { x: p0.x, y: p0.y + newHeight };
+                // Middle of bottom line - adjust channel width (move p2)
+                const bottomMidX = (p0.x + p1.x) / 2 + offsetX;
+                const bottomMidY = (p0.y + p1.y) / 2 + offsetY;
+                
+                const toMouseX = dataPoint.x - bottomMidX;
+                const toMouseY = dataPoint.y - bottomMidY;
+                const perpDist = toMouseX * perpX + toMouseY * perpY;
+                this.points[2] = {
+                    x: p2.x + perpX * perpDist,
+                    y: p2.y + perpY * perpDist
+                };
                 this.meta.updatedAt = Date.now();
                 return true;
             }
@@ -142,9 +151,30 @@ class ParallelChannelTool extends BaseDrawing {
             return true;
         }
         
-        // Point 2 (parallel line handle) - vertical movement only (price-space offset)
+        // Point 2 (parallel line handle) - constrain to perpendicular movement
         if (index === 2 && this.points.length >= 3) {
-            this.points[2] = { x: this.points[0].x, y: dataPoint.y };
+            const p0 = this.points[0];
+            const p1 = this.points[1];
+            
+            const baseX = p1.x - p0.x;
+            const baseY = p1.y - p0.y;
+            const baseLen = Math.sqrt(baseX * baseX + baseY * baseY);
+            
+            if (baseLen === 0) {
+                this.points[2] = { x: p0.x, y: dataPoint.y };
+            } else {
+                const perpX = -baseY / baseLen;
+                const perpY = baseX / baseLen;
+                const toMouseX = dataPoint.x - p0.x;
+                const toMouseY = dataPoint.y - p0.y;
+                const perpDist = toMouseX * perpX + toMouseY * perpY;
+                
+                this.points[2] = {
+                    x: p0.x + perpX * perpDist,
+                    y: p0.y + perpY * perpDist
+                };
+            }
+            
             this.meta.updatedAt = Date.now();
             return true;
         }
@@ -189,14 +219,12 @@ class ParallelChannelTool extends BaseDrawing {
 
             const dx = x2 - x1;
             const dy = y2 - y1;
-            // Vertical-only offset: measure Y distance from baseline at P3's x, use 0 for X
-            const slope = dx !== 0 ? dy / dx : 0;
-            const yBaselineAtP3 = y1 + slope * (x3 - x1);
-            const offsetX = 0;
-            const offsetY = y3 - yBaselineAtP3;
+            const offsetX = x3 - x1;
+            const offsetY = y3 - y1;
 
             // Get chart boundaries from scale range
             const xRange = scales.xScale.range();
+            const slope = dx !== 0 ? dy / dx : 0;
 
             // Helper to calculate line endpoints with extension
             const getLineEndpoints = (baseStartX, baseStartY, baseEndX, baseEndY) => {
@@ -390,13 +418,8 @@ class ParallelChannelTool extends BaseDrawing {
             scales.chart.dataIndexToPixel(p3.x) : scales.xScale(p3.x);
         const y3 = scales.yScale(p3.y);
         
-        // Vertical-only offset for handle positions
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const slope = dx !== 0 ? dy / dx : 0;
-        const yBaselineAtP3 = y1 + slope * (x3 - x1);
-        const offsetX = 0;
-        const offsetY = y3 - yBaselineAtP3;
+        const offsetX = x3 - x1;
+        const offsetY = y3 - y1;
         
         // Handle positions: corners + middle points on top and bottom lines
         const handlePositions = [
@@ -429,11 +452,25 @@ class ParallelChannelTool extends BaseDrawing {
                 .attr('data-handle-role', isStringIndex ? pos.index : null);
             
             if (pos.type === 'middle') {
-                handleGroup.append('circle')
+                handleGroup.append('rect')
+                    .attr('class', 'resize-handle-bg')
+                    .attr('x', pos.cx - middleHandleBgSize / 2)
+                    .attr('y', pos.cy - middleHandleBgSize / 2)
+                    .attr('width', middleHandleBgSize)
+                    .attr('height', middleHandleBgSize)
+                    .attr('rx', middleHandleCornerRadius)
+                    .attr('ry', middleHandleCornerRadius)
+                    .style('pointer-events', 'none')
+                    .style('opacity', this.selected ? 1 : 0);
+
+                handleGroup.append('rect')
                     .attr('class', 'resize-handle')
-                    .attr('cx', pos.cx)
-                    .attr('cy', pos.cy)
-                    .attr('r', handleRadius)
+                    .attr('x', pos.cx - middleHandleSize / 2)
+                    .attr('y', pos.cy - middleHandleSize / 2)
+                    .attr('width', middleHandleSize)
+                    .attr('height', middleHandleSize)
+                    .attr('rx', middleHandleCornerRadius)
+                    .attr('ry', middleHandleCornerRadius)
                     .attr('fill', handleFill)
                     .attr('stroke', handleStroke)
                     .attr('stroke-width', handleStrokeWidth)
@@ -927,11 +964,14 @@ class RegressionTrendTool extends BaseDrawing {
         
         // Display Pearson's R if enabled
         if (this.style.showPearsonsR && r2 !== undefined) {
+            // Position at the bottom-left corner like TradingView
+            // Use the start point X position
             const deviationOffsetLower = this.style.lowerDeviation * stdDev;
+            
+            // Calculate Y position on the lower deviation line at the start index
             const lowerStartRegressionY = scales.yScale(a + deviationOffsetLower);
-            const lowerEndRegressionY = lowerEndY !== undefined ? lowerEndY : lowerStartRegressionY;
-            const angle = Math.atan2(lowerEndRegressionY - lowerStartRegressionY, endX - x1) * (180 / Math.PI);
-            this.renderPearsonsR(scales, r2, x1, lowerStartRegressionY, angle);
+            
+            this.renderPearsonsR(scales, r2, x1, lowerStartRegressionY);
         }
         
         // Create handles if selected
@@ -969,23 +1009,24 @@ class RegressionTrendTool extends BaseDrawing {
         }
     }
 
-    renderPearsonsR(scales, r2, x, y, angle) {
+    renderPearsonsR(scales, r2, x, y) {
         if (!this.group) return;
         
-        // Format R value with 4 decimal places
-        const r2Text = `R = ${r2.toFixed(4)}`;
+        // Format R value with "R" prefix
+        const r2Text = `R ${r2.toFixed(14)}`;
         
-        // Anchor just below the start of the lower deviation line
+        // Position the text well below the regression line, centered
         const textX = x;
-        const textY = y + 14;
+        const textY = y + 35; // 35 pixels below the line for better visibility
         
+        // Add the text without background, centered
+        // Use the lower line color for the text
         this.group.append('text')
             .attr('class', 'pearson-r-text')
             .attr('x', textX)
             .attr('y', textY)
-            .attr('text-anchor', 'start')
-            .attr('transform', `rotate(${angle}, ${textX}, ${textY})`)
-            .style('font-size', `${this.style.fontSize || 12}px`)
+            .attr('text-anchor', 'middle') // Center the text horizontally
+            .style('font-size', `${this.style.fontSize}px`)
             .style('font-family', this.style.fontFamily)
             .style('font-weight', this.style.fontWeight)
             .style('fill', this.style.lowerStroke || this.style.stroke)
@@ -1006,7 +1047,7 @@ class RegressionTrendTool extends BaseDrawing {
         group.selectAll('.resize-handle-hit').remove();
         group.selectAll('.vertical-guide').remove();
         
-        const showFull = this.selected;
+        if (!this.selected) return;
         
         // Get chart data for regression calculation
         const chart = scales.chart || window.chart || this.chart;
@@ -1061,20 +1102,18 @@ class RegressionTrendTool extends BaseDrawing {
             const regressionValue = a + b * dataIndex;
             const cy = scales.yScale(regressionValue);
             
-            // Draw vertical guide line for this handle (selected only)
-            if (showFull) {
-                group.append('line')
-                    .attr('class', 'vertical-guide')
-                    .attr('x1', cx)
-                    .attr('y1', topY)
-                    .attr('x2', cx)
-                    .attr('y2', bottomY)
-                    .attr('stroke', this.style.stroke || '#2962FF')
-                    .attr('stroke-width', 1)
-                    .attr('stroke-dasharray', '3,3')
-                    .attr('opacity', 0.4)
-                    .style('pointer-events', 'none');
-            }
+            // Draw vertical guide line for this handle
+            group.append('line')
+                .attr('class', 'vertical-guide')
+                .attr('x1', cx)
+                .attr('y1', topY)
+                .attr('x2', cx)
+                .attr('y2', bottomY)
+                .attr('stroke', this.style.stroke || '#2962FF')
+                .attr('stroke-width', 1)
+                .attr('stroke-dasharray', '3,3')
+                .attr('opacity', 0.4)
+                .style('pointer-events', 'none');
             
             const handleGroup = group.append('g')
                 .attr('class', 'resize-handle-group')
@@ -1087,7 +1126,7 @@ class RegressionTrendTool extends BaseDrawing {
                 .attr('r', hitRadius)
                 .attr('fill', 'transparent')
                 .attr('stroke', 'none')
-                .style('cursor', 'ew-resize')
+                .style('cursor', 'nwse-resize')
                 .style('pointer-events', 'all')
                 .attr('data-point-index', index);
             
@@ -1099,9 +1138,8 @@ class RegressionTrendTool extends BaseDrawing {
                 .attr('fill', handleFill)
                 .attr('stroke', handleStroke)
                 .attr('stroke-width', handleStrokeWidth)
-                .style('cursor', 'ew-resize')
-                .style('pointer-events', showFull ? 'all' : 'none')
-                .style('opacity', showFull ? 1 : 0)
+                .style('cursor', 'nwse-resize')
+                .style('pointer-events', 'all')
                 .attr('data-point-index', index);
             
             this.handles.push({ element: handle, point, index });
@@ -1144,7 +1182,6 @@ class FlatTopBottomTool extends BaseDrawing {
         this.style.strokeDasharray = style.strokeDasharray || '0';
         this.style.extendLeft = style.extendLeft || false;
         this.style.extendRight = style.extendRight || false;
-        if (this.style.showHandlePrices === undefined) this.style.showHandlePrices = true;
         this.ensureTextDefaults();
     }
 
@@ -1377,145 +1414,7 @@ class FlatTopBottomTool extends BaseDrawing {
             // Clear virtual points if we don't have 3 points
             this.virtualPoints = null;
         }
-        this.renderHandlePriceLabels(scales);
         this.createHandles(this.group, scales);
-    }
-
-    /**
-     * Price labels next to each anchor (TradingView-style), toggled via style.showHandlePrices.
-     * Uses exterior-angle bisectors at corners, then enforces clearance from all four edges
-     * (diagonal, bottom, left/right verticals) so text does not overlap strokes.
-     */
-    renderHandlePriceLabels(scales) {
-        if (this.style.showHandlePrices === false) return;
-        if (!this.virtualPoints || this.virtualPoints.length !== 4 || !this.group) return;
-
-        let priceDecimals = 5;
-        const ch = this.chart;
-        if (ch) {
-            const _precisionSetting = ch.chartSettings && ch.chartSettings.precision;
-            if (_precisionSetting && _precisionSetting !== 'Default') {
-                priceDecimals = Math.max(0, Math.min(8, parseInt(_precisionSetting, 10) || 5));
-            } else if (typeof ch.getPriceDecimals === 'function' && scales && scales.yScale) {
-                const _d = scales.yScale.domain();
-                const _range = Math.abs((Array.isArray(_d) && _d.length === 2) ? (_d[1] - _d[0]) : 0);
-                priceDecimals = ch.getPriceDecimals(_range);
-            } else {
-                priceDecimals = ch.priceDecimals || 5;
-            }
-        }
-
-        const toSX = (p) => (scales.chart && scales.chart.dataIndexToPixel ?
-            scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x));
-        const toSY = (p) => scales.yScale(p.y);
-
-        const screen = this.virtualPoints.map((p) => ({ sx: toSX(p), sy: toSY(p) }));
-        const centX = screen.reduce((s, c) => s + c.sx, 0) / 4;
-        const centY = screen.reduce((s, c) => s + c.sy, 0) / 4;
-
-        const outwardNormalEdge = (ax, ay, bx, by) => {
-            const ex = bx - ax, ey = by - ay;
-            const elen = Math.hypot(ex, ey) || 1;
-            let nx = -ey / elen, ny = ex / elen;
-            const mx = (ax + bx) / 2, my = (ay + by) / 2;
-            if (nx * (centX - mx) + ny * (centY - my) > 0) {
-                nx = -nx; ny = -ny;
-            }
-            return { nx, ny };
-        };
-
-        // CCW boundary order: TL(0) -> TR(1) -> BR(3) -> BL(2)
-        const boundaryOrder = [0, 1, 3, 2];
-        const cornerBisector = (i) => {
-            const k = boundaryOrder.indexOf(i);
-            const iPrev = boundaryOrder[(k + 3) % 4];
-            const iNext = boundaryOrder[(k + 1) % 4];
-            const A = screen[iPrev], P = screen[i], B = screen[iNext];
-            const n1 = outwardNormalEdge(A.sx, A.sy, P.sx, P.sy);
-            const n2 = outwardNormalEdge(P.sx, P.sy, B.sx, B.sy);
-            let bx = n1.nx + n2.nx, by = n1.ny + n2.ny;
-            const bl = Math.hypot(bx, by);
-            if (bl > 1e-6) {
-                bx /= bl; by /= bl;
-            } else {
-                bx = n1.nx; by = n1.ny;
-            }
-            return { bx, by };
-        };
-
-        const minClear = 16;
-        const baseDist = 22;
-
-        const pushClearOfSegment = (px, py, ax, ay, bx, by) => {
-            const abx = bx - ax, aby = by - ay;
-            const abLen = Math.hypot(abx, aby);
-            if (abLen < 1e-12) return { x: px, y: py };
-            const ux = abx / abLen, uy = aby / abLen;
-            let t = ((px - ax) * ux + (py - ay) * uy);
-            t = Math.max(0, Math.min(abLen, t));
-            const qx = ax + ux * t, qy = ay + uy * t;
-            const dx = px - qx, dy = py - qy;
-            const d = Math.hypot(dx, dy);
-            if (d >= minClear) return { x: px, y: py };
-            let nx, ny;
-            if (d > 0.5) {
-                nx = dx / d; ny = dy / d;
-            } else {
-                nx = -uy; ny = ux;
-                const mx = (ax + bx) / 2, my = (ay + by) / 2;
-                if (nx * (centX - mx) + ny * (centY - my) > 0) {
-                    nx = -nx; ny = -ny;
-                }
-            }
-            const target = minClear + 4;
-            return { x: qx + nx * target, y: qy + ny * target };
-        };
-
-        const s = screen;
-        const obstacleSegs = [
-            [s[0].sx, s[0].sy, s[1].sx, s[1].sy],
-            [s[2].sx, s[2].sy, s[3].sx, s[3].sy],
-            [s[0].sx, s[0].sy, s[2].sx, s[2].sy],
-            [s[1].sx, s[1].sy, s[3].sx, s[3].sy]
-        ];
-
-        const fill = this.style.stroke || '#ff9800';
-        const fontSize = 11;
-
-        this.virtualPoints.forEach((point, index) => {
-            const price = point.y;
-            if (price === undefined || price === null || !Number.isFinite(Number(price))) return;
-
-            const cx = screen[index].sx;
-            const cy = screen[index].sy;
-            const label = Number(price).toFixed(priceDecimals);
-
-            const { bx, by } = cornerBisector(index);
-            let ox = cx + bx * baseDist;
-            let oy = cy + by * baseDist;
-
-            for (let pass = 0; pass < 3; pass++) {
-                for (let si = 0; si < obstacleSegs.length; si++) {
-                    const seg = obstacleSegs[si];
-                    const r = pushClearOfSegment(ox, oy, seg[0], seg[1], seg[2], seg[3]);
-                    ox = r.x; oy = r.y;
-                }
-            }
-
-            this.group.append('text')
-                .attr('class', 'flat-top-bottom-handle-price')
-                .attr('x', ox)
-                .attr('y', oy)
-                .attr('text-anchor', 'middle')
-                .attr('dominant-baseline', 'middle')
-                .attr('fill', fill)
-                .attr('font-size', fontSize)
-                .attr('font-weight', '500')
-                .attr('font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif')
-                .style('pointer-events', 'none')
-                .style('user-select', 'none')
-                .text(label);
-        });
     }
 
     renderTextLabel(scales) {
@@ -1881,6 +1780,10 @@ class DisjointChannelTool extends BaseDrawing {
                 .style('cursor', 'default');
         }
 
+        if (this.text && this.text.trim()) {
+            this.renderTextLabel(scales);
+        }
+        
         // Create handles if selected - add 4th virtual handle at end of second line
         if (this.points.length === 3) {
             // Use the same calculation as the render logic for consistency

@@ -31,14 +31,13 @@ class ReplaySystem {
         this.tickInterval = null;
         this.animatingCandle = null;
         this.tickProgress = 0;
-        // More steps = smaller price jumps per frame (smoother wicks, same wall-clock per candle)
-        this.ticksPerCandle = 72;
+        this.ticksPerCandle = 60; // 60 ticks = 60 frames for real-time (1 frame per second at 1x)
         this.realTimeMode = true; // Real-time mode: 1min candle = 60 seconds at 1x speed
         
         // === DETERMINISTIC TICK PATH CACHE ===
         // Pre-generated tick paths for each candle, keyed by timestamp
         // This ensures consistent tick animation across all timeframes
-        this.tickPathCache = {};  // { timestamp: [price0, ... priceN-1] } length === ticksPerCandle
+        this.tickPathCache = {};  // { timestamp: [price0, price1, ...price59] }
         this.tickPathCacheBuilt = false;
         this._prngSeed = 12345; // Seeded PRNG state
         this._nextCandleTimer = null; // Tracks the between-candle timer so it can be cancelled
@@ -86,11 +85,6 @@ class ReplaySystem {
         this.cutLine = null;
         this.cutLineLabel = null;
         this.pickModeOverlay = null;
-
-        /** When true, go-back pick UI spans every panel (multi-layout). */
-        this._goBackMultiPanel = false;
-        /** @type {Array<{chart: *, wrapper: HTMLElement, pickModeOverlay: HTMLElement, clickCaptureLayer: HTMLElement, cutLine: *, cutLineLabel: HTMLElement|null}>|null} */
-        this._goBackEntries = null;
 
         this.init();
     }
@@ -200,9 +194,6 @@ class ReplaySystem {
             return;
         }
 
-        this.attachPlaybackModeOptionEvents(this.toolbar);
-        this.attachPlaybackModeTriggerEvents(this.toolbar);
-        this.attachPlaybackModeOutsideClickHandler();
         this.syncPlaybackModeControls();
 
         this.attachButtonEvents();
@@ -241,11 +232,14 @@ class ReplaySystem {
         }
         
         if (this.goBackBtn) {
+            console.log('✅ Go Back button found, attaching listener');
             this.goBackBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                console.log('🔙 Go Back button clicked!');
                 this.goBackToPickPoint();
             });
         } else {
+            console.log('❌ Go Back button NOT found');
         }
 
         if (this.speedSelect) {
@@ -257,6 +251,7 @@ class ReplaySystem {
 
         if (this.timeframeSelect) {
             this.timeframeSelect.addEventListener('change', (e) => {
+                console.log(`⏱️ Replay timeframe changed to ${e.target.value}`);
             });
         }
 
@@ -270,111 +265,17 @@ class ReplaySystem {
             this.followBtn.addEventListener('click', () => this.enableAutoScroll());
         }
     }
-
-    attachPlaybackModeOptionEvents(root = document) {
-        if (!root || typeof root.querySelectorAll !== 'function') return;
-
-        const modeButtons = root.querySelectorAll('.replay-mode-option');
-        modeButtons.forEach((button) => {
-            if (!button || button.dataset.modeBound === '1') return;
-
-            button.dataset.modeBound = '1';
-            button.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const mode = button.dataset.mode === 'candle' ? 'candle' : 'tick';
-                this.setPlaybackMode(mode);
-                this.closePlaybackModeDropdowns();
-            });
-        });
-    }
-
-    attachPlaybackModeTriggerEvents(root = document) {
-        if (!root || typeof root.querySelectorAll !== 'function') return;
-
-        const triggerButtons = root.querySelectorAll('.replay-mode-trigger, .replay-mode-dropdown-arrow');
-        triggerButtons.forEach((button) => {
-            if (!button || button.dataset.modeTriggerBound === '1') return;
-
-            button.dataset.modeTriggerBound = '1';
-            button.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const container = button.closest('.replay-playback-mode-settings');
-                this.togglePlaybackModeDropdown(container);
-            });
-        });
-    }
-
-    togglePlaybackModeDropdown(container) {
-        if (!container) return;
-
-        const dropdown = container.querySelector('.replay-mode-dropdown');
-        if (!dropdown) return;
-
-        const isOpen = dropdown.classList.contains('show');
-        this.closePlaybackModeDropdowns();
-
-        if (isOpen) return;
-
-        // Keep replay dropdowns and interval panels mutually exclusive.
-        if (typeof window !== 'undefined' && typeof window._replayCloseIntervalPanels === 'function') {
-            window._replayCloseIntervalPanels();
-        }
-
-        dropdown.classList.add('show');
-        dropdown.style.display = 'flex';
-
-        const arrow = container.querySelector('.replay-mode-dropdown-arrow');
-        if (arrow) {
-            arrow.classList.add('dropdown-open');
-        }
-
-        const trigger = container.querySelector('.replay-mode-trigger');
-        if (trigger) {
-            trigger.setAttribute('aria-expanded', 'true');
-            trigger.classList.remove('active');
-            trigger.classList.add('replay-open');
-        }
-    }
-
-    attachPlaybackModeOutsideClickHandler() {
-        if (this._playbackModeOutsideClickBound) return;
-        this._playbackModeOutsideClickBound = true;
-
-        document.addEventListener('click', (e) => {
-            if (e.target.closest('.replay-playback-mode-settings')) return;
-            this.closePlaybackModeDropdowns();
-        });
-    }
-
-    closePlaybackModeDropdowns() {
-        document.querySelectorAll('.replay-mode-dropdown').forEach((dropdown) => {
-            dropdown.classList.remove('show');
-            dropdown.style.display = 'none';
-        });
-
-        document.querySelectorAll('.replay-mode-dropdown-arrow').forEach((arrow) => {
-            arrow.classList.remove('dropdown-open');
-        });
-
-        document.querySelectorAll('.replay-mode-trigger').forEach((button) => {
-            button.setAttribute('aria-expanded', 'false');
-            button.classList.remove('active');
-            button.classList.remove('replay-open');
-        });
-    }
     
     /**
      * Attach event listeners for speed selection buttons
      */
     attachSpeedButtonEvents() {
         if (!this.speedSelectBar) {
+            console.log('⚠️ Speed select bar not found');
             return;
         }
         
+        console.log('✅ Attaching speed button events');
         
         const buttons = this.speedSelectBar.querySelectorAll('.speed-option');
         buttons.forEach(btn => {
@@ -383,6 +284,7 @@ class ReplaySystem {
                 if (!isNaN(speed)) {
                     this.setSpeed(speed);
                     this.updateSpeedButtonUI(speed);
+                    console.log(`🎚️ Speed set to ${speed}x`);
                 }
             });
         });
@@ -411,32 +313,11 @@ class ReplaySystem {
 
     syncPlaybackModeControls() {
         const mode = this.getPlaybackMode();
-        const modeSelects = document.querySelectorAll(
-            '#replayPlaybackMode, #replayPlaybackModeClone, #replayPlaybackModeFloatingClone'
-        );
+        const modeSelects = document.querySelectorAll('#replayPlaybackMode, #replayPlaybackModeClone');
         modeSelects.forEach(select => {
             if (select && select.value !== mode) {
                 select.value = mode;
             }
-        });
-
-        const modeLabels = document.querySelectorAll('.replay-mode-current-label');
-        modeLabels.forEach(label => {
-            if (label) {
-                label.textContent = mode === 'candle' ? 'Candle' : 'Tick';
-            }
-        });
-
-        const modeButtons = document.querySelectorAll('.replay-mode-option');
-        modeButtons.forEach((button) => {
-            if (!button) return;
-
-            const optionMode = button.dataset.mode === 'candle' ? 'candle' : 'tick';
-            const isActive = optionMode === mode;
-
-            button.classList.remove('active');
-            button.classList.toggle('replay-selected', isActive);
-            button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         });
     }
 
@@ -451,6 +332,7 @@ class ReplaySystem {
 
         if (!modeChanged) return;
 
+        console.log(`🎛️ Replay playback mode set to ${normalizedMode}`);
 
         if (this.isPlaying && restartPlayback) {
             // Restart playback immediately so mode change applies without extra clicks.
@@ -669,7 +551,7 @@ class ReplaySystem {
         closeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             clone.remove();
-            userStorage.removeItem('replayToolbarClonePosition');
+            localStorage.removeItem('replayToolbarClonePosition');
             if (this.toolbar) {
                 this.toolbar.style.opacity = '1';
             }
@@ -811,22 +693,11 @@ class ReplaySystem {
                 this.setPlaybackMode(e.target.value);
             });
         }
-
-        clone.querySelectorAll('.replay-mode-option').forEach((button) => {
-            button.removeAttribute('data-mode-bound');
-        });
-        clone.querySelectorAll('.replay-mode-trigger, .replay-mode-dropdown-arrow').forEach((button) => {
-            button.removeAttribute('data-mode-trigger-bound');
-        });
-
-        this.attachPlaybackModeOptionEvents(clone);
-        this.attachPlaybackModeTriggerEvents(clone);
-        this.syncPlaybackModeControls();
     }
 
     saveFloatingClonePosition(left, top) {
         try {
-            userStorage.setItem('replayToolbarClonePosition', JSON.stringify({ left, top }));
+            localStorage.setItem('replayToolbarClonePosition', JSON.stringify({ left, top }));
         } catch (err) {
             console.warn('⚠️ Failed to save floating clone position', err);
         }
@@ -834,7 +705,7 @@ class ReplaySystem {
 
     loadFloatingClonePosition() {
         try {
-            const stored = userStorage.getItem('replayToolbarClonePosition');
+            const stored = localStorage.getItem('replayToolbarClonePosition');
             if (stored) {
                 return JSON.parse(stored);
             }
@@ -849,7 +720,7 @@ class ReplaySystem {
         const rect = this.toolbar.getBoundingClientRect();
         const position = { left: rect.left, top: rect.top };
         try {
-            userStorage.setItem(this.storageKey, JSON.stringify(position));
+            localStorage.setItem(this.storageKey, JSON.stringify(position));
         } catch (err) {
             console.warn('⚠️ Failed to save replay toolbar position', err);
         }
@@ -858,7 +729,7 @@ class ReplaySystem {
     loadToolbarPosition() {
         if (!this.toolbar) return;
         try {
-            const stored = userStorage.getItem(this.storageKey);
+            const stored = localStorage.getItem(this.storageKey);
             if (!stored) return;
             const { left, top } = JSON.parse(stored);
             if (Number.isFinite(left) && Number.isFinite(top)) {
@@ -898,6 +769,7 @@ class ReplaySystem {
     }
 
     togglePlayUI(isPlaying) {
+        console.log(`🎮 togglePlayUI(${isPlaying})`);
         
         // Update the SPEED BAR play button (main play button)
         const speedBtn = document.getElementById('speedSliderPlayBtn');
@@ -912,6 +784,7 @@ class ReplaySystem {
             speedBtn.classList.add('btn-clicked');
             setTimeout(() => speedBtn.classList.remove('btn-clicked'), 150);
             
+            console.log(`✅ Speed bar button updated - playing: ${isPlaying}`);
         }
         
         // Also update the old replayPlayPause button if it exists (for backwards compatibility)
@@ -970,6 +843,7 @@ class ReplaySystem {
             return;
         }
         
+        console.log('🎯 Entering Pick Point Mode...');
         this.isPickingPoint = true;
         
         // Update button appearance
@@ -1004,6 +878,7 @@ class ReplaySystem {
      * Exit pick point mode
      */
     exitPickPointMode() {
+        console.log('❌ Exiting Pick Point Mode');
         this.isPickingPoint = false;
         
         // Reset button appearance
@@ -1162,28 +1037,7 @@ class ReplaySystem {
      */
     handlePickModeMouseMove(e) {
         if (!this.isPickingPoint) return;
-
-        if (this.isGoingBack && this._goBackMultiPanel) {
-            const chart = e.currentTarget && e.currentTarget._goBackChart;
-            if (!chart || !chart.canvas) return;
-            const wrapper = chart.canvas.parentElement;
-            if (!wrapper) return;
-            const rect = wrapper.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            if (x < chart.margin.l || x > chart.w - chart.margin.r) {
-                this.hideAllGoBackVisualsMulti();
-                return;
-            }
-            const candleIndex = this.getCandleIndexAtXForChart(chart, x);
-            if (candleIndex < 0 || !chart.data[candleIndex]) {
-                this.hideAllGoBackVisualsMulti();
-                return;
-            }
-            const targetTime = chart.data[candleIndex].t;
-            this.applyGoBackVisualsForTimestamp(targetTime);
-            return;
-        }
-
+        
         const wrapper = this.chartWrapper || document.getElementById('chartWrapper') || this.chart.canvas?.parentElement;
         if (!wrapper) return;
         
@@ -1261,6 +1115,7 @@ class ReplaySystem {
             return;
         }
         
+        console.log(`🎯 Replay start point selected: index ${candleIndex}`);
         
         // Exit pick mode
         this.exitPickPointMode();
@@ -1273,237 +1128,26 @@ class ReplaySystem {
      * Get candle index at x position
      */
     getCandleIndexAtX(x) {
-        return this.getCandleIndexAtXForChart(this.chart, x);
-    }
-
-    getCandleIndexAtXForChart(chart, x) {
-        if (!chart || !chart.data) return -1;
-
-        if (chart.pixelToDataIndex) {
-            let index = Math.round(chart.pixelToDataIndex(x));
-            index = Math.max(0, Math.min(chart.data.length - 1, index));
+        if (!this.chart.data) return -1;
+        
+        // Use the chart's pixelToDataIndex method for accurate conversion
+        if (this.chart.pixelToDataIndex) {
+            let index = Math.round(this.chart.pixelToDataIndex(x));
+            index = Math.max(0, Math.min(this.chart.data.length - 1, index));
             return index;
         }
-
-        if (!chart.xScale) return -1;
-
-        const chartX = x - chart.margin.l;
-        const candleWidth = chart.xScale.bandwidth ? chart.xScale.bandwidth() :
-            (chart.w - chart.margin.l - chart.margin.r) / chart.data.length;
-
-        let index = Math.floor(chartX / candleWidth) + (chart.startIndex || 0);
-        index = Math.max(0, Math.min(chart.data.length - 1, index));
-
+        
+        // Fallback: Use xScale if pixelToDataIndex not available
+        if (!this.chart.xScale) return -1;
+        
+        const chartX = x - this.chart.margin.l;
+        const candleWidth = this.chart.xScale.bandwidth ? this.chart.xScale.bandwidth() : 
+            (this.chart.w - this.chart.margin.l - this.chart.margin.r) / this.chart.data.length;
+        
+        let index = Math.floor(chartX / candleWidth) + (this.chart.startIndex || 0);
+        index = Math.max(0, Math.min(this.chart.data.length - 1, index));
+        
         return index;
-    }
-
-    collectGoBackPanelEntries() {
-        const out = [];
-        const pm = typeof window !== 'undefined' ? window.panelManager : null;
-        if (pm && Array.isArray(pm.panels) && pm.panels.length > 1) {
-            pm.panels.forEach((panel, i) => {
-                const c = panel.chartInstance;
-                if (!c || !c.canvas) return;
-                const wrapper = c.canvas.parentElement;
-                if (!wrapper) return;
-                out.push({ chart: c, wrapper, panelIndex: i });
-            });
-            if (out.length > 0) {
-                return out;
-            }
-        }
-        const w = document.getElementById('chartWrapper') ||
-            document.querySelector('.chart-wrapper') ||
-            this.chart?.canvas?.parentElement;
-        if (this.chart && w) {
-            out.push({ chart: this.chart, wrapper: w, panelIndex: 0 });
-        }
-        return out;
-    }
-
-    findLastDataIndexAtOrBefore(chart, ts) {
-        if (!chart || !chart.data || chart.data.length === 0) return -1;
-        let idx = -1;
-        for (let i = 0; i < chart.data.length; i++) {
-            if (chart.data[i].t <= ts) idx = i;
-            else break;
-        }
-        return idx;
-    }
-
-    /** Used by pick / go-back hover labels (timezone manager when available). */
-    formatDateTime(date) {
-        const d = date instanceof Date ? date : new Date(date);
-        if (Number.isNaN(d.getTime())) return '—';
-        if (typeof window !== 'undefined' && window.timezoneManager &&
-            typeof window.timezoneManager.formatTime === 'function') {
-            return window.timezoneManager.formatTime(d.getTime(), 'full');
-        }
-        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        const dayName = days[d.getDay()];
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        const hours = String(d.getHours()).padStart(2, '0');
-        const minutes = String(d.getMinutes()).padStart(2, '0');
-        const seconds = String(d.getSeconds()).padStart(2, '0');
-        return `(${dayName}) ${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-    }
-
-    hideAllGoBackVisualsMulti() {
-        if (!this._goBackEntries) return;
-        this._goBackEntries.forEach((entry) => {
-            if (entry.cutLine) entry.cutLine.attr('opacity', 0);
-            if (entry.pickModeOverlay) entry.pickModeOverlay.style.width = '0';
-            if (entry.cutLineLabel) entry.cutLineLabel.style.opacity = '0';
-        });
-    }
-
-    applyGoBackVisualsForTimestamp(ts) {
-        if (!this._goBackEntries) return;
-        this._goBackEntries.forEach((entry) => {
-            const { chart, pickModeOverlay, cutLine, cutLineLabel } = entry;
-            if (!chart.data || chart.data.length === 0) {
-                if (cutLine) cutLine.attr('opacity', 0);
-                if (pickModeOverlay) pickModeOverlay.style.width = '0';
-                if (cutLineLabel) cutLineLabel.style.opacity = '0';
-                return;
-            }
-            const idx = this.findLastDataIndexAtOrBefore(chart, ts);
-            if (idx < 0) {
-                if (cutLine) cutLine.attr('opacity', 0);
-                if (pickModeOverlay) pickModeOverlay.style.width = '0';
-                if (cutLineLabel) cutLineLabel.style.opacity = '0';
-                return;
-            }
-            let x;
-            if (typeof chart.dataIndexToPixel === 'function') {
-                x = chart.dataIndexToPixel(idx);
-            } else {
-                return;
-            }
-            if (x < chart.margin.l || x > chart.w - chart.margin.r) {
-                if (cutLine) cutLine.attr('opacity', 0);
-                if (pickModeOverlay) pickModeOverlay.style.width = '0';
-                if (cutLineLabel) cutLineLabel.style.opacity = '0';
-                return;
-            }
-            if (cutLine) {
-                cutLine.attr('x1', x).attr('x2', x).attr('opacity', 1);
-            }
-            if (pickModeOverlay) {
-                const rightWidth = chart.w - x;
-                pickModeOverlay.style.left = 'auto';
-                pickModeOverlay.style.right = '0';
-                pickModeOverlay.style.width = `${rightWidth}px`;
-            }
-            if (cutLineLabel) {
-                const dateStr = this.formatDateTime(new Date(ts));
-                cutLineLabel.textContent = `⏪ Go back to: ${dateStr}`;
-                cutLineLabel.style.left = `${x + 10}px`;
-                cutLineLabel.style.opacity = '1';
-            }
-        });
-    }
-
-    setupGoBackMultiPanelUI(entries) {
-        this._goBackMultiPanel = true;
-        this._goBackEntries = [];
-
-        const isLightMode = document.body.classList.contains('light-mode');
-        const overlayColor = isLightMode ? 'rgba(244, 246, 250, 0.10)' : 'rgba(236, 240, 246, 0.10)';
-
-        document.querySelectorAll('.indicator-icon, .drawing-tool, .chart-annotation, [class*="indicator"], .svg-overlay, .drawings-layer').forEach(el => {
-            el.dataset.originalPointerEvents = el.style.pointerEvents;
-            el.style.pointerEvents = 'none';
-        });
-
-        entries.forEach((entry, i) => {
-            const { chart, wrapper } = entry;
-            const pickModeOverlay = document.createElement('div');
-            pickModeOverlay.id = `replayPickOverlay-${i}`;
-            pickModeOverlay.style.cssText = `
-                position: absolute;
-                top: 0;
-                right: 0;
-                width: 0;
-                height: 100%;
-                background: ${overlayColor};
-                pointer-events: none;
-                z-index: 40;
-            `;
-            wrapper.appendChild(pickModeOverlay);
-
-            const clickCaptureLayer = document.createElement('div');
-            clickCaptureLayer.id = `replayClickCapture-${i}`;
-            clickCaptureLayer.style.cssText = `
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                z-index: 50;
-                cursor: crosshair;
-            `;
-            clickCaptureLayer._goBackChart = chart;
-            wrapper.appendChild(clickCaptureLayer);
-
-            clickCaptureLayer.addEventListener('mousemove', this.onPickModeMouseMove);
-            clickCaptureLayer.addEventListener('click', this.onGoBackClick);
-
-            const svgElement = chart.svgOverlay || chart.svg;
-            let cutLine = null;
-            if (svgElement) {
-                cutLine = svgElement.append('line')
-                    .attr('id', `replayCutLine-${i}`)
-                    .attr('class', 'replay-cut-line')
-                    .attr('y1', chart.margin.t)
-                    .attr('y2', chart.h - chart.margin.b)
-                    .attr('stroke', '#2196f3')
-                    .attr('stroke-width', 1)
-                    .attr('stroke-dasharray', '6,3')
-                    .attr('opacity', 0)
-                    .style('pointer-events', 'none');
-            }
-
-            let cutLineLabel = null;
-            if (i === 0) {
-                cutLineLabel = document.createElement('div');
-                cutLineLabel.id = 'replayCutLineLabel';
-                cutLineLabel.style.cssText = `
-                    position: absolute;
-                    top: 10px;
-                    background: #2196f3;
-                    color: white;
-                    padding: 6px 12px;
-                    border-radius: 4px;
-                    font-size: 12px;
-                    font-weight: 600;
-                    white-space: nowrap;
-                    pointer-events: none;
-                    z-index: 45;
-                    opacity: 0;
-                    transition: opacity 0.1s;
-                `;
-                wrapper.appendChild(cutLineLabel);
-            }
-
-            wrapper.style.cursor = 'crosshair';
-
-            this._goBackEntries.push({
-                chart,
-                wrapper,
-                pickModeOverlay,
-                clickCaptureLayer,
-                cutLine,
-                cutLineLabel
-            });
-        });
-
-        this.pickModeOverlay = this._goBackEntries[0] ? this._goBackEntries[0].pickModeOverlay : null;
-        this.clickCaptureLayer = this._goBackEntries[0] ? this._goBackEntries[0].clickCaptureLayer : null;
-        this.cutLine = this._goBackEntries[0] ? this._goBackEntries[0].cutLine : null;
-        this.cutLineLabel = this._goBackEntries[0] ? this._goBackEntries[0].cutLineLabel : null;
     }
     
     /**
@@ -1512,6 +1156,7 @@ class ReplaySystem {
     startReplayAtIndex(candleIndex) {
         // === PROTECT: Don't reinitialize if during timeframe change ===
         if (this._timeframeChanging) {
+            console.log('⚠️ startReplayAtIndex called during timeframe change - ignoring');
             return;
         }
         
@@ -1523,6 +1168,7 @@ class ReplaySystem {
         let rawIndex = this.chart.rawData.findIndex(c => c.t >= targetTime);
         if (rawIndex < 0) rawIndex = this.chart.rawData.length - 1;
         
+        console.log(`🎬 Starting replay at raw index ${rawIndex} (time: ${new Date(targetTime).toLocaleString()})`);
         
         this.isActive = true;
         this.autoScrollEnabled = true;
@@ -1560,6 +1206,7 @@ class ReplaySystem {
         // Filter data and render
         this.updateChartData();
         
+        console.log(`✅ Replay Mode Active - Starting at bar ${this.currentIndex}/${this.fullRawData.length}`);
     }
     
     /**
@@ -1575,18 +1222,12 @@ class ReplaySystem {
             return;
         }
 
+        console.log('🔙 Go Back mode activated');
         
         // Stop playback if playing
         if (this.isPlaying) {
             this.stop();
         }
-
-        // Clear stale animation state so the price line snaps to the
-        // current bar's close instead of showing a mid-tick price.
-        this._savedTickState = null;
-        this.animatingCandle = null;
-        this.tickProgress = 0;
-        this.tickElapsedMs = 0;
         
         // Keep replay active, just enter pick mode to select earlier point
         this.isPickingPoint = true;
@@ -1599,22 +1240,21 @@ class ReplaySystem {
             this.replayBtn.style.borderColor = '#2196f3';
         }
         
+        // Get the chart wrapper element
+        this.chartWrapper = document.getElementById('chartWrapper') || 
+                           document.querySelector('.chart-wrapper') ||
+                           this.chart.canvas?.parentElement;
+        
         // Bind handlers FIRST before creating overlay
         this.onGoBackClick = this.handleGoBackClick.bind(this);
         this.onPickModeMouseMove = this.handlePickModeMouseMove.bind(this);
-
-        const goBackEntries = this.collectGoBackPanelEntries();
-        if (goBackEntries.length > 1) {
-            this.chartWrapper = goBackEntries[0].wrapper;
-            this.setupGoBackMultiPanelUI(goBackEntries);
-        } else {
-            this.chartWrapper = document.getElementById('chartWrapper') ||
-                document.querySelector('.chart-wrapper') ||
-                this.chart.canvas?.parentElement;
-            this.createGoBackOverlay();
-            this.createCutLine();
-        }
-
+        
+        // Create overlay for pick mode (but only on visible area)
+        this.createGoBackOverlay();
+        
+        // Create cut line elements
+        this.createCutLine();
+        
         // Show instruction
         this.showGoBackInstruction();
     }
@@ -1764,93 +1404,67 @@ class ReplaySystem {
             this.exitGoBackMode();
             return;
         }
-
-        const sourceChart = (this._goBackMultiPanel && e.currentTarget && e.currentTarget._goBackChart)
-            ? e.currentTarget._goBackChart
-            : this.chart;
-        if (!sourceChart || !sourceChart.canvas) return;
-
-        const wrapper = sourceChart.canvas.parentElement;
+        
+        const wrapper = this.chartWrapper || document.getElementById('chartWrapper') || this.chart.canvas?.parentElement;
         if (!wrapper) return;
-
+        
         const rect = wrapper.getBoundingClientRect();
         const x = e.clientX - rect.left;
-
-        if (x < sourceChart.margin.l || x > sourceChart.w - sourceChart.margin.r) {
+        
+        // Only accept clicks in chart area
+        if (x < this.chart.margin.l || x > this.chart.w - this.chart.margin.r) {
             return;
         }
-
-        const candleIndex = this.getCandleIndexAtXForChart(sourceChart, x);
-
+        
+        // Find the candle index at click position
+        const candleIndex = this.getCandleIndexAtX(x);
+        
         if (candleIndex < 0) {
             console.warn('Could not find candle at click position');
             return;
         }
-
-        const candle = sourceChart.data[candleIndex];
+        
+        // Get the candle time from current visible data
+        const candle = this.chart.data[candleIndex];
         if (!candle) return;
         
         const targetTime = candle.t;
-
-        // Cut so the clicked candle is EXCLUDED (hidden). The replay resumes
-        // from the raw bar just before the clicked display candle's start.
-        let newRawIndex = 0;
-        if (Array.isArray(this.fullRawData) && this.fullRawData.length > 0) {
-            let idx = (typeof this._bsearchTimestamp === 'function')
-                ? this._bsearchTimestamp(this.fullRawData, targetTime)
-                : this.fullRawData.findIndex(c => (c && c.t) >= targetTime);
-            if (idx < 0) idx = this.fullRawData.length - 1;
-            idx = Math.max(0, Math.min(idx, this.fullRawData.length - 1));
-            while (idx > 0 && (this.fullRawData[idx]?.t || 0) > targetTime) idx--;
-            // Step back so the clicked candle itself is the next to be revealed
-            if (idx > 0) idx--;
-            newRawIndex = idx;
+        
+        // Find corresponding index in fullRawData - need exact match
+        let newRawIndex = this.fullRawData.findIndex(c => c.t === targetTime);
+        
+        // If no exact match, find closest
+        if (newRawIndex < 0) {
+            newRawIndex = this.fullRawData.findIndex(c => c.t >= targetTime);
+        }
+        if (newRawIndex < 0) newRawIndex = 0;
+        
+        // We want to KEEP this candle and remove everything after
+        // So we set currentIndex to newRawIndex + 1 (to include the clicked candle)
+        newRawIndex = newRawIndex + 1;
+        
+        console.log(`⏪ Going back to index ${newRawIndex} (time: ${new Date(targetTime).toLocaleString()})`);
+        
+        // Flash effect on the cut line before transitioning
+        if (this.cutLine) {
+            this.cutLine
+                .attr('stroke', '#4caf50')
+                .attr('stroke-width', 2);
         }
         
-        
-        const flashCutLines = () => {
-            if (this._goBackMultiPanel && this._goBackEntries) {
-                this._goBackEntries.forEach((ent) => {
-                    if (ent.cutLine) {
-                        ent.cutLine.attr('stroke', '#4caf50').attr('stroke-width', 2);
-                    }
-                });
-            } else if (this.cutLine) {
-                this.cutLine.attr('stroke', '#4caf50').attr('stroke-width', 2);
-            }
-        };
-        flashCutLines();
-        
-        // Selectively close only orders/trades that occurred AFTER the cut point;
-        // trades completed before targetTime keep their markers.
-        if (this.chart.orderManager && typeof this.chart.orderManager.forceCloseAllOrders === 'function') {
-            this.chart.orderManager.forceCloseAllOrders(targetTime);
-        }
-
-        // Kill all animation state and update currentIndex NOW so any
-        // intermediate renders during the delay show the correct price line.
-        this.isPlaying = false;
-        this._savedTickState = null;
-        this.animatingCandle = null;
-        this.tickProgress = 0;
-        this.tickElapsedMs = 0;
-        this.currentIndex = newRawIndex;
-
-        const rawBar = this.fullRawData[newRawIndex];
-        if (rawBar && Number.isFinite(rawBar.t)) {
-            this.replayTimestamp = rawBar.t;
-        }
-
-        // Brief delay for visual feedback then update chart data
+        // Brief delay for visual feedback then update
         setTimeout(() => {
+            // Exit go back mode
             this.exitGoBackMode();
+            
+            // Update current index to go back
+            this.currentIndex = newRawIndex;
+            
+            // Update chart data with smooth transition
             this.updateChartData();
+            
+            // Update time display
             this.updateTimeDisplay();
-
-            // Redraw preserved trade markers now that chart data/scales are current
-            if (this.chart.orderManager && typeof this.chart.orderManager.redrawPreservedTradeMarkers === 'function') {
-                setTimeout(() => this.chart.orderManager.redrawPreservedTradeMarkers(), 100);
-            }
         }, 150);
     }
     
@@ -1858,6 +1472,7 @@ class ReplaySystem {
      * Exit go back mode
      */
     exitGoBackMode() {
+        console.log('❌ Exiting Go Back Mode');
         this.isPickingPoint = false;
         this.isGoingBack = false;
         
@@ -1868,14 +1483,11 @@ class ReplaySystem {
             this.replayBtn.style.borderColor = '';
         }
         
-        if (this._goBackMultiPanel && this._goBackEntries) {
-            this._goBackEntries.forEach((ent) => {
-                if (ent.wrapper) ent.wrapper.style.cursor = '';
-            });
-        } else if (this.chartWrapper) {
+        // Reset cursor
+        if (this.chartWrapper) {
             this.chartWrapper.style.cursor = '';
         }
-
+        
         // Remove overlay, cut line and capture layer
         this.removePickModeElements();
     }
@@ -1884,51 +1496,30 @@ class ReplaySystem {
      * Remove pick mode elements
      */
     removePickModeElements() {
-        if (this._goBackMultiPanel && this._goBackEntries) {
-            this._goBackEntries.forEach((entry) => {
-                if (entry.cutLine) {
-                    entry.cutLine.remove();
-                }
-                if (entry.cutLineLabel) {
-                    entry.cutLineLabel.remove();
-                }
-                if (entry.pickModeOverlay) {
-                    entry.pickModeOverlay.remove();
-                }
-                if (entry.clickCaptureLayer) {
-                    entry.clickCaptureLayer.removeEventListener('mousemove', this.onPickModeMouseMove);
-                    entry.clickCaptureLayer.removeEventListener('click', this.onGoBackClick);
-                    entry.clickCaptureLayer.remove();
-                }
-            });
-            this._goBackEntries = null;
-            this._goBackMultiPanel = false;
+        // Remove cut line
+        if (this.cutLine) {
+            this.cutLine.remove();
             this.cutLine = null;
+        }
+        
+        // Remove cut line label
+        if (this.cutLineLabel) {
+            this.cutLineLabel.remove();
             this.cutLineLabel = null;
+        }
+        
+        // Remove overlay
+        if (this.pickModeOverlay) {
+            this.pickModeOverlay.remove();
             this.pickModeOverlay = null;
+        }
+        
+        // Remove click capture layer
+        if (this.clickCaptureLayer) {
+            this.clickCaptureLayer.removeEventListener('mousemove', this.onPickModeMouseMove);
+            this.clickCaptureLayer.removeEventListener('click', this.onGoBackClick);
+            this.clickCaptureLayer.remove();
             this.clickCaptureLayer = null;
-        } else {
-            if (this.cutLine) {
-                this.cutLine.remove();
-                this.cutLine = null;
-            }
-
-            if (this.cutLineLabel) {
-                this.cutLineLabel.remove();
-                this.cutLineLabel = null;
-            }
-
-            if (this.pickModeOverlay) {
-                this.pickModeOverlay.remove();
-                this.pickModeOverlay = null;
-            }
-
-            if (this.clickCaptureLayer) {
-                this.clickCaptureLayer.removeEventListener('mousemove', this.onPickModeMouseMove);
-                this.clickCaptureLayer.removeEventListener('click', this.onGoBackClick);
-                this.clickCaptureLayer.remove();
-                this.clickCaptureLayer = null;
-            }
         }
         
         // Restore pointer-events on indicators/drawings
@@ -1956,9 +1547,11 @@ class ReplaySystem {
     enterReplayMode(options = {}) {
         // === PROTECT: Don't reinitialize if already active or during timeframe change ===
         if (this.isActive) {
+            console.log('⚠️ enterReplayMode called but replay already active - ignoring');
             return;
         }
         if (this._timeframeChanging) {
+            console.log('⚠️ enterReplayMode called during timeframe change - ignoring');
             return;
         }
         
@@ -1967,6 +1560,8 @@ class ReplaySystem {
             return;
         }
 
+        console.log('🎬 Entering Replay Mode...');
+        console.log(`📊 Chart data: ${this.chart.rawData.length} candles in rawData`);
         
         // Ensure chart is ready to render
         this.chart.isLoading = false;
@@ -1985,9 +1580,11 @@ class ReplaySystem {
         if (isBacktesting) {
             // Start at first candle for backtesting
             this.currentIndex = Math.min(10, this.chart.rawData.length - 1); // Show first 10 candles for context
+            console.log(`📍 ${mode} mode: Starting at first candle`);
         } else {
             // Normal replay: start at 10% for context
             this.currentIndex = Math.floor(this.chart.rawData.length * 0.1);
+            console.log('📍 Normal mode: Starting at 10% of data');
         }
         
         // Store full datasets
@@ -2011,9 +1608,13 @@ class ReplaySystem {
             }
         } catch (e) {}
         
-        // Tick path cache is built lazily on demand via getTickPath()
-        this.tickPathCache = {};
-        this.tickPathCacheBuilt = false;
+        console.log(`💾 Stored ${this.fullRawData.length} candles, starting at index ${this.currentIndex}`);
+        console.log(`⏱️ Virtual time: ${new Date(this.replayTimestamp).toISOString()}`);
+        
+        // === BUILD DETERMINISTIC TICK PATH CACHE ===
+        // Pre-generate tick paths for all candles using seeded random
+        // This ensures consistent tick animation across all timeframes
+        this.buildTickPathCache();
         
         // Apply any pending speed set before replay was entered
         if (window._pendingReplaySpeed != null) {
@@ -2029,12 +1630,14 @@ class ReplaySystem {
         // Filter data and render
         this.updateChartData();
         
+        console.log(`✅ Replay Mode Active - Starting at bar ${this.currentIndex}/${this.fullRawData.length}`);
     }
 
     /**
      * Exit replay mode
      */
     exitReplayMode() {
+        console.log('🛑 Exiting Replay Mode...');
         
         this.isActive = false;
         this.stop();
@@ -2042,7 +1645,7 @@ class ReplaySystem {
         const floatingClone = document.getElementById('replayToolbarClone');
         if (floatingClone) {
             floatingClone.remove();
-            userStorage.removeItem('replayToolbarClonePosition');
+            localStorage.removeItem('replayToolbarClonePosition');
         }
         if (this.toolbar) {
             this.toolbar.style.opacity = '1';
@@ -2069,6 +1672,7 @@ class ReplaySystem {
         // Hide control bar
         this.hideToolbar();
         
+        console.log('✅ Replay Mode Exited');
     }
 
     getReplayAutoScrollState(chartInstance = this.chart) {
@@ -2119,27 +1723,19 @@ class ReplaySystem {
             return;
         }
         
+        console.log(`🔄 Updating chart data to index ${this.currentIndex} of ${this.fullRawData.length}`);
+        
         // Ensure currentIndex is valid
         if (this.currentIndex < 0) this.currentIndex = 0;
         if (this.currentIndex >= this.fullRawData.length) this.currentIndex = this.fullRawData.length - 1;
-
-        // Keep virtual replay time aligned with the current bar. Without this, multi-panel charts
-        // that load a different pair (_panelFullRawData) still use a stale replayTimestamp in
-        // syncPanelCharts() until the next play/tick advances it — so "go back" looked correct on
-        // the main chart but other pairs kept future candles until play.
-        const midTickAnimation = !!(this.animatingCandle && (this.tickProgress || 0) > 0);
-        if (!midTickAnimation) {
-            const curBar = this.fullRawData[this.currentIndex];
-            if (curBar && Number.isFinite(curBar.t)) {
-                this.replayTimestamp = curBar.t;
-            }
-        }
 
         this.updateSliderRange();
         
         // Slice rawData to current position (minimum 1 candle)
         const sliceEnd = Math.max(this.currentIndex + 1, 1);
         this.chart.rawData = this.fullRawData.slice(0, sliceEnd);
+        
+        console.log(`📊 Sliced to ${this.chart.rawData.length} candles (from 0 to ${sliceEnd})`);
         
         if (this.chart.rawData.length === 0) {
             console.error('❌ Sliced data is empty! Restoring full data...');
@@ -2175,7 +1771,10 @@ class ReplaySystem {
             const autoScrollState = this.getReplayAutoScrollState(this.chart);
             if (autoScrollState) {
                 this.chart.offsetX = autoScrollState.offsetX;
+                console.log(`📍 Auto-scroll: data=${this.chart.data.length}, visible=${autoScrollState.numVisibleCandles}, rightGap=${autoScrollState.rightGapCandles}, offset=${this.chart.offsetX}`);
             }
+        } else {
+            console.log(`📍 Keeping current view position (no auto-scroll)`);
         }
         
         // Update UI elements
@@ -2190,8 +1789,17 @@ class ReplaySystem {
             this.chart.constrainOffset();
         }
         
+        // Force render
+        console.log('🎨 Forcing render at index', this.currentIndex);
+        console.log('   - data.length:', this.chart.data.length);
+        console.log('   - offsetX:', this.chart.offsetX);
+        console.log('   - renderPending:', this.chart.renderPending);
+        console.log('   - isLoading:', this.chart.isLoading);
+        
         this.chart.renderPending = true;
         this.chart.render();
+        
+        console.log('   - render() called');
         
         // Force a reflow to commit the canvas changes
         if (this.chart.canvas) {
@@ -2207,10 +1815,12 @@ class ReplaySystem {
 
         setTimeout(() => {
             this.chart.renderPending = true;
+            console.log('   - renderPending set again via setTimeout');
         }, 0);
         
         requestAnimationFrame(() => {
             this.chart.renderPending = true;
+            console.log('   - renderPending set again via RAF');
         });
         
         // Update order manager positions after each candle
@@ -2218,15 +1828,12 @@ class ReplaySystem {
             this.chart.orderManager.updatePositions();
         }
         
-        // Sync all panel charts with the current replay position
-        this.syncPanelCharts();
-        
         // Update follow button visibility based on whether last candle is visible
         this.updateAutoScrollIndicator();
 
         // Persist replay state per session
         if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function' && this.isActive) {
-            const replayPatch = {
+            this.chart.scheduleSessionStateSave({
                 replay: {
                     replayTimestamp: this.replayTimestamp,
                     currentIndex: this.currentIndex,
@@ -2236,13 +1843,10 @@ class ReplaySystem {
                     timeframe: this.chart.currentTimeframe,
                     isActive: true
                 }
-            };
-            this.chart.scheduleSessionStateSave(replayPatch);
-            if (typeof this.chart.queueCriticalSessionStateSave === 'function') {
-                this.chart.queueCriticalSessionStateSave(replayPatch);
-            }
+            });
         }
         
+        console.log('✅ Chart update complete for index', this.currentIndex, '/', this.fullRawData.length);
     }
 
     /**
@@ -2252,12 +1856,14 @@ class ReplaySystem {
         // Prevent rapid toggling (debounce 50ms - shorter for better responsiveness)
         const now = Date.now();
         if (this._lastToggleTime && (now - this._lastToggleTime) < 50) {
+            console.log('⏸️ Toggle debounced, ignoring rapid call');
             return;
         }
         this._lastToggleTime = now;
         
         // Read current state and toggle
         const wasPlaying = this.isPlaying;
+        console.log(`🔄 togglePlay called - wasPlaying: ${wasPlaying}`);
         
         if (wasPlaying) {
             this.pause();
@@ -2277,6 +1883,7 @@ class ReplaySystem {
      */
     syncPlayPauseUI() {
         this.togglePlayUI(this.isPlaying);
+        console.log(`🔄 UI synced to isPlaying: ${this.isPlaying}`);
     }
 
     /**
@@ -2284,6 +1891,7 @@ class ReplaySystem {
      */
     play() {
         if (!this.isActive) {
+            console.log('⚠️ Cannot play - replay not active');
             this.syncPlayPauseUI();
             return;
         }
@@ -2291,31 +1899,17 @@ class ReplaySystem {
         const playbackMode = this.getPlaybackMode();
         const useTickAnimation = playbackMode === 'tick';
         
-        // Restore partial tick state saved during pause so animation continues
-        // from where it was instead of restarting the candle.
-        if (useTickAnimation && this._savedTickState) {
-            this.animatingCandle = this._savedTickState.animatingCandle;
-            this.tickProgress = this._savedTickState.tickProgress;
-            this.tickElapsedMs = this._savedTickState.tickElapsedMs;
-            this._savedTickState = null;
-        }
-
         // Tick mode can resume partial animation state. Candle mode always resumes on full candles.
         const isResumingTick = useTickAnimation && this.animatingCandle && this.tickProgress > 0;
         if (isResumingTick) {
             this._preserveTickProgress = true;
+            console.log(`▶️ RESUMING from tick ${this.tickProgress}, price=${this.animatingCandle.close}`);
         } else {
             this._preserveTickProgress = false;
         }
         
         // Stop any existing playback first (will preserve state if _preserveTickProgress is set)
         this.stopAllPlayback();
-
-        // Refresh SL/TP/entry guards so the current candle's pre-existing OHLC
-        // doesn't immediately trigger orders when playback resumes after a seek.
-        if (this.chart?.orderManager?._refreshAllGuardsToCurrentCandle) {
-            this.chart.orderManager._refreshAllGuardsToCurrentCandle();
-        }
         
         this.isPlaying = true;
         
@@ -2327,6 +1921,7 @@ class ReplaySystem {
         if (useTickAnimation) {
             this.startTickAnimation();
             if (!isResumingTick) {
+                console.log(`▶️ Playing at ${this.speed}x speed with TICK animation`);
             }
         } else {
             // Candle mode should advance complete candles only.
@@ -2334,6 +1929,7 @@ class ReplaySystem {
             this.tickProgress = 0;
             this.tickElapsedMs = 0;
             this.startCandleByCandle(true);
+            console.log(`▶️ Playing at ${this.speed}x speed with CANDLE mode`);
         }
     }
     
@@ -2357,13 +1953,16 @@ class ReplaySystem {
      */
     startCandleByCandle(startImmediately = true) {
         if (!this.isActive || !this.isPlaying) {
+            console.log('⚠️ Cannot start candle-by-candle - not active or not playing');
             this.syncPlayPauseUI();
             return;
         }
         
+        console.log('🎬 Starting candle-by-candle mode at speed:', this.speed);
         
         // Calculate interval based on speed (candles per second)
         const interval = Math.max(20, 1000 / this.speed); // Min 20ms
+        console.log('⏱️ Candle interval:', interval, 'ms');
         
         // Optionally advance immediately (used on first play).
         if (startImmediately) {
@@ -2398,6 +1997,7 @@ class ReplaySystem {
             // Before giving up, try to trigger pan-loading for more data.
             // We also allow a few forced probes in case local hasMoreRight got stale.
             if (this.tryRequestForwardDataProbe()) {
+                console.log('⏳ Reached end of loaded data, requesting/probing more...');
                 if (this.isPlaying && !this._nextCandleTimer) {
                     this.scheduleForwardEdgeRetry(() => {
                         if (this.isPlaying) {
@@ -2407,6 +2007,7 @@ class ReplaySystem {
                 }
                 return; // Don't pause yet — data may still arrive
             }
+            console.log('⏭️ Reached end of all data');
             this.pause();
             return;
         }
@@ -2422,6 +2023,7 @@ class ReplaySystem {
         // Get the target index respecting timeframe selection
         const oldIndex = this.currentIndex;
         const targetIndex = this.calculateNextIndex();
+        console.log(`🎯 simpleStepForward: ${oldIndex} -> ${targetIndex} (jumped ${targetIndex - oldIndex} candles)`);
         this.currentIndex = targetIndex;
         this.edgeProbeRetryCount = 0;
         
@@ -2459,19 +2061,23 @@ class ReplaySystem {
             }
         }
         
+        console.log(`📊 calculateNextIndex - selectedTimeframe: "${selectedTimeframe}"`);
         
         // If "sync" is selected, use the chart's current timeframe
         if (selectedTimeframe === 'sync') {
             selectedTimeframe = this.chart.currentTimeframe;
+            console.log(`📊 Sync mode - using chart timeframe: ${selectedTimeframe}`);
         }
         
         if (!selectedTimeframe) {
             // No timeframe selector - advance by one raw candle
+            console.log(`📊 No timeframe selected, advancing by 1`);
             return this.currentIndex + 1;
         }
         
         // Convert timeframe to milliseconds
         const tfMs = this.timeframeToMs(selectedTimeframe);
+        console.log(`📊 Timeframe "${selectedTimeframe}" = ${tfMs}ms`);
         if (!tfMs) {
             return this.currentIndex + 1;
         }
@@ -2492,6 +2098,7 @@ class ReplaySystem {
         const candlesToSkip = Math.max(1, Math.round(tfMs / rawCandleIntervalMs));
         const targetIndex = Math.min(this.currentIndex + candlesToSkip, this.fullRawData.length - 1);
         
+        console.log(`📊 Raw candle interval: ${rawCandleIntervalMs}ms, Skip ${candlesToSkip} candles, target index: ${targetIndex}`);
         
         return targetIndex;
     }
@@ -2576,6 +2183,7 @@ class ReplaySystem {
 
         this.edgeProbeRetryCount += 1;
         if (this.edgeProbeRetryCount === 1 || this.edgeProbeRetryCount % 5 === 0 || this.edgeProbeRetryCount >= retryLimit) {
+            console.log(`⏳ Forward edge probe ${this.edgeProbeRetryCount}/${retryLimit}`);
         }
         return true;
     }
@@ -2696,10 +2304,12 @@ class ReplaySystem {
         // Priority 1: Use chart's current timeframe setting (most reliable)
         if (this.chart.currentTimeframe) {
             candleTimeframeMs = this.timeframeToMs(this.chart.currentTimeframe) || 60000;
+            console.log(`📊 Using chart timeframe: ${this.chart.currentTimeframe} = ${candleTimeframeMs}ms`);
         }
         // Priority 2: Detect from resampled display data (chart.data)
         else if (this.chart.data && this.chart.data.length > 1) {
             candleTimeframeMs = this.chart.data[1].t - this.chart.data[0].t;
+            console.log(`📊 Detected from display data: ${candleTimeframeMs}ms`);
         }
         // Priority 3: Fallback to raw data detection
         else if (this.fullRawData.length > 1 && this.currentIndex > 0) {
@@ -2752,6 +2362,7 @@ class ReplaySystem {
                 this.fastModeInterval = 16;
             }
             
+            console.log(`🚀 FAST MODE: Speed=${this.speed}x, ${rawCandlesPerSecond.toFixed(1)} raw candles/sec, ${this.candlesPerFrame} candles/frame, ${this.fastModeInterval}ms interval`);
             
             this.volumeTickData = {
                 baseInterval: this.fastModeInterval,
@@ -2774,35 +2385,35 @@ class ReplaySystem {
             }
             
             // Preserve existing animating candle state if flag is set
+            console.log(`🎬 startTickAnimation - _preserveTickProgress=${this._preserveTickProgress}, hasAnimatingCandle=${!!this.animatingCandle}, tickProgress=${this.tickProgress}`);
             
             if (!this._preserveTickProgress || !this.animatingCandle) {
-                // Pre-fetch the tick path so the very first render already
-                // shows a small movement from open (avoids a flat doji flash).
-                const prePath = this.getTickPath(targetCandle);
-                const seed0 = (prePath && prePath.length > 0) ? prePath[0] : targetCandle.o;
+                // Create new animating candle from scratch
+                console.log(`   🆕 Creating NEW animatingCandle (preserve=${this._preserveTickProgress}, existing=${!!this.animatingCandle})`);
                 this.animatingCandle = {
                     target: targetCandle,
                     open: targetCandle.o,
-                    high: Math.max(targetCandle.o, seed0),
-                    low: Math.min(targetCandle.o, seed0),
-                    close: seed0,
+                    high: targetCandle.o,
+                    low: targetCandle.o,
+                    close: targetCandle.o,
                     targetHigh: targetCandle.h,
                     targetLow: targetCandle.l,
                     targetClose: targetCandle.c,
                     volume: 0,
                     targetVolume: targetCandle.v || 0,
-                    t: targetCandle.t,
-                    cachedPath: prePath
+                    t: targetCandle.t
                 };
                 this.tickProgress = 0;
                 this.tickElapsedMs = 0;
             } else {
                 // Keep existing animatingCandle and tickProgress
+                console.log(`   ♻️ KEEPING existing animatingCandle (close=${this.animatingCandle.close}, tickProgress=${this.tickProgress})`);
             }
             
             this._preserveTickProgress = false;
             
-            this.currentTicksPerCandle = this.ticksPerCandle || 72;
+            // Use 60 ticks for smooth animation
+            this.currentTicksPerCandle = 60;
             
             // Base tick interval = candle duration / ticks
             const baseTickInterval = Math.max(16, realTimeCandleDuration / this.currentTicksPerCandle);
@@ -2816,6 +2427,7 @@ class ReplaySystem {
                     candleVolume: targetCandle.v || 0,
                     tickVolumes: null
                 };
+                console.log(`🎬 SMOOTH MODE (constant cadence): Speed=${this.speed}x, Duration=${realTimeCandleDuration.toFixed(0)}ms, Interval=${baseTickInterval.toFixed(0)}ms`);
             } else {
                 // Optional legacy mode with volume-weighted cadence.
                 const volumeMultiplier = this.calculateVolumeMultiplier(targetCandle, nextIndex);
@@ -2823,8 +2435,9 @@ class ReplaySystem {
                     baseInterval: baseTickInterval,
                     volumeMultiplier: volumeMultiplier,
                     candleVolume: targetCandle.v || 0,
-                    tickVolumes: this.generateVolumeDistribution(this.currentTicksPerCandle || 72, volumeMultiplier, targetCandle.t)
+                    tickVolumes: this.generateVolumeDistribution(60, volumeMultiplier, targetCandle.t)
                 };
+                console.log(`🎬 SMOOTH MODE (volume-weighted): Speed=${this.speed}x, Duration=${realTimeCandleDuration.toFixed(0)}ms, Interval=${baseTickInterval.toFixed(0)}ms`);
             }
         }
         
@@ -2872,6 +2485,7 @@ class ReplaySystem {
         // Clamp between 0.3 and 2.0 to avoid extreme speeds
         const multiplier = Math.max(0.3, Math.min(2.0, 1 / Math.sqrt(volumeRatio)));
         
+        console.log(`📊 Volume: ${targetCandle.v.toFixed(0)}, Avg: ${avgVolume.toFixed(0)}, Ratio: ${volumeRatio.toFixed(2)}, SpeedMult: ${multiplier.toFixed(2)}`);
         
         return multiplier;
     }
@@ -2956,7 +2570,7 @@ class ReplaySystem {
             
             // Schedule next tick if still animating
             if (this.isPlaying && this.animatingCandle && 
-                this.tickProgress < (this.currentTicksPerCandle || this.ticksPerCandle || 72)) {
+                this.tickProgress < (this.currentTicksPerCandle || 60)) {
                 this.scheduleNextTick();
             }
         }, tickInterval);
@@ -3022,23 +2636,9 @@ class ReplaySystem {
             target.high = Math.max(target.high, currentPrice);
             target.low = Math.min(target.low, currentPrice);
             
-            // Volume arrives in bursts, not linearly. A cumulative curve
-            // is generated once per candle so the profile is deterministic.
-            if (!target._volumeCurve) {
-                const vRng = this.createSeededRandom(tc.t + 7919);
-                const curve = new Array(ticksNeeded);
-                let sum = 0;
-                for (let vi = 0; vi < ticksNeeded; vi++) {
-                    let tickVol = 0.5 + vRng() * 1.0;
-                    if (vRng() < 0.20) tickVol *= 2 + vRng() * 2;
-                    sum += tickVol;
-                    curve[vi] = sum;
-                }
-                for (let vi = 0; vi < ticksNeeded; vi++) curve[vi] /= sum;
-                target._volumeCurve = curve;
-            }
-            const volIdx = Math.min(this.tickProgress - 1, ticksNeeded - 1);
-            target.volume = target.targetVolume * target._volumeCurve[volIdx];
+            // Update volume progressively (use seeded random for consistency)
+            const seededRandom = this.createSeededRandom(tc.t + this.tickProgress);
+            target.volume = target.targetVolume * progress * (0.8 + seededRandom() * 0.4);
             
         } else {
             // Final tick: set exact target values
@@ -3052,7 +2652,7 @@ class ReplaySystem {
         this.updateChartWithAnimatedCandle();
         
         // Check if animation is complete (ticksNeeded already defined above)
-        if (this.tickProgress >= (this.currentTicksPerCandle || this.ticksPerCandle || 72)) {
+        if (this.tickProgress >= (this.currentTicksPerCandle || this.ticksPerCandle)) {
             this.completeTickAnimation();
         }
     }
@@ -3169,17 +2769,6 @@ class ReplaySystem {
         this.chart.renderPending = true;
         this.chart.render();
 
-        // Same as updateChartData: floating PnL / SL-TP logic must track the latest candle.
-        if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
-            this.chart.orderManager.updatePositions();
-        }
-
-        // Sync panels (throttle every 3rd update to keep fast mode responsive)
-        if (!this._fastSyncCounter) this._fastSyncCounter = 0;
-        if (++this._fastSyncCounter % 3 === 0) {
-            this.syncPanelCharts();
-        }
-
         // Keep follow/jump-to-latest button responsive in fast mode too.
         // Throttle checks to avoid unnecessary work at high replay speeds.
         if (!this.autoScrollEnabled) {
@@ -3187,24 +2776,6 @@ class ReplaySystem {
             if (!this._lastFollowIndicatorCheckTs || now - this._lastFollowIndicatorCheckTs >= 100) {
                 this._lastFollowIndicatorCheckTs = now;
                 this.updateAutoScrollIndicator();
-            }
-        }
-
-        if (this.chart && typeof this.chart.scheduleSessionStateSave === 'function' && this.isActive) {
-            const replayPatch = {
-                replay: {
-                    replayTimestamp: this.replayTimestamp,
-                    currentIndex: this.currentIndex,
-                    tickElapsedMs: this.tickElapsedMs,
-                    speed: this.speed,
-                    playbackMode: this.getPlaybackMode(),
-                    timeframe: this.chart.currentTimeframe,
-                    isActive: true
-                }
-            };
-            this.chart.scheduleSessionStateSave(replayPatch);
-            if (typeof this.chart.queueCriticalSessionStateSave === 'function') {
-                this.chart.queueCriticalSessionStateSave(replayPatch);
             }
         }
     }
@@ -3234,33 +2805,37 @@ class ReplaySystem {
             return;
         }
         
+        console.log(`🔧 Building tick path cache for ${this.fullRawData.length} candles...`);
         const startTime = performance.now();
         
         this.tickPathCache = {};
         
-        const n = this.ticksPerCandle || 72;
         for (const candle of this.fullRawData) {
-            const path = this.generateRandomPath(candle.o, candle.h, candle.l, candle.c, n, candle.t);
+            // Use candle timestamp as seed for deterministic generation
+            const path = this.generateRandomPath(candle.o, candle.h, candle.l, candle.c, 60, candle.t);
             this.tickPathCache[candle.t] = path;
         }
         
         this.tickPathCacheBuilt = true;
         const elapsed = performance.now() - startTime;
+        console.log(`✅ Tick path cache built in ${elapsed.toFixed(1)}ms (${this.fullRawData.length} paths)`);
     }
     
     /**
      * Get tick path for a candle, using cache if available
      * @param {object} candle - The candle object with o,h,l,c,t
-     * @returns {array} Price samples for tick animation (length === ticksPerCandle)
+     * @returns {array} Array of 60 price values representing tick animation
      */
     getTickPath(candle) {
         if (!candle || !candle.t) return null;
-
-        const n = this.ticksPerCandle || 72;
-        const cached = this.tickPathCache[candle.t];
-        if (cached && cached.length === n) return cached;
-
-        const path = this.generateRandomPath(candle.o, candle.h, candle.l, candle.c, n, candle.t);
+        
+        // Check cache first
+        if (this.tickPathCache[candle.t]) {
+            return this.tickPathCache[candle.t];
+        }
+        
+        // Generate and cache if not found
+        const path = this.generateRandomPath(candle.o, candle.h, candle.l, candle.c, 60, candle.t);
         this.tickPathCache[candle.t] = path;
         return path;
     }
@@ -3295,7 +2870,7 @@ class ReplaySystem {
         return {
             path: aggregatedPath,
             rawCandles: rawCandles,
-            ticksPerRawCandle: this.ticksPerCandle || 72,
+            ticksPerRawCandle: 60,
             totalTicks: aggregatedPath.length
         };
     }
@@ -3306,26 +2881,19 @@ class ReplaySystem {
      * @returns {number|null} Current animated price or null if not available
      */
     getCurrentAnimatedPrice() {
+        if (!this.isPlaying) return null;
         if (!this.fullRawData || this.fullRawData.length === 0) return null;
 
-        if (this.animatingCandle) {
-            if (this.tickProgress > 0) {
-                if (!this.animatingCandle.cachedPath) {
-                    this.animatingCandle.cachedPath = this.getTickPath(this.animatingCandle.target || this.animatingCandle);
-                }
-                const path = this.animatingCandle.cachedPath;
-                const pathIndex = Math.min(Math.max(0, this.tickProgress - 1), path.length - 1);
-                const price = path[pathIndex];
-                if (Number.isFinite(price)) return price;
-                if (Number.isFinite(this.animatingCandle.close)) return this.animatingCandle.close;
+        // Prefer the actively animating candle path (source of truth during playback).
+        if (this.animatingCandle && this.tickProgress > 0) {
+            if (!this.animatingCandle.cachedPath) {
+                this.animatingCandle.cachedPath = this.getTickPath(this.animatingCandle.target || this.animatingCandle);
             }
-            // When paused mid-candle, tickProgress is 0 but animatingCandle.close
-            // holds the last animated price. Use it instead of snapping to open.
-            if (!this.isPlaying && Number.isFinite(this.animatingCandle.close)) {
-                return this.animatingCandle.close;
-            }
-            const openPx = Number.parseFloat(this.animatingCandle.open);
-            if (Number.isFinite(openPx)) return openPx;
+            const path = this.animatingCandle.cachedPath;
+            const pathIndex = Math.min(Math.max(0, this.tickProgress - 1), path.length - 1);
+            const price = path[pathIndex];
+            if (Number.isFinite(price)) return price;
+            if (Number.isFinite(this.animatingCandle.close)) return this.animatingCandle.close;
         }
 
         // Fallback when no intra-candle animation is available.
@@ -3334,226 +2902,184 @@ class ReplaySystem {
     }
     
     /**
-     * Deterministic intra-candle price path that respects OHLC logic.
-     *
-     * State-machine microstructure tick path.
-     *
-     * Four market states cycle randomly each candle:
-     *   CHOP     – two-sided noise, indecisive
-     *   BURST    – aggressive directional push
-     *   STALL    – absorption / consolidation (tiny moves)
-     *   PULLBACK – counter-trend retrace
-     *
-     * The candle is split into 3 segments between randomised anchors
-     * (e.g. O→L→H→C or O→H→L→C). Each segment runs its own state
-     * machine walk. Seeded RNG keeps it deterministic for pause/resume.
+     * Generate a REALISTIC random price path with natural market volatility
+     * Uses SEEDED random for deterministic output based on candle timestamp
+     * Simulates real tick-by-tick movement with momentum, reversals, and noise
+     * @param {number} open - Candle open price
+     * @param {number} high - Candle high price  
+     * @param {number} low - Candle low price
+     * @param {number} close - Candle close price
+     * @param {number} numTicks - Number of ticks to generate (default 60)
+     * @param {number} seed - Seed for deterministic random (use candle timestamp)
      */
     generateRandomPath(open, high, low, close, numTicks, seed = Date.now()) {
-        const rng = this.createSeededRandom(seed);
-        const n = Math.max(2, Math.floor(numTicks) || 2);
-
-        if (![open, high, low, close].every(Number.isFinite)) return new Array(n).fill(open || 0);
-
-        const range = high - low;
-        if (range <= 0) {
-            const p = new Array(n);
-            for (let i = 0; i < n; i++) p[i] = open + (close - open) * (i / (n - 1));
-            p[n - 1] = close;
-            return p;
-        }
-
-        const isBullish = close >= open;
-        const maxStep = range / (n * 0.13);
-        const vol = range * 0.09;
-
-        // Randomised anchor order (not always O→L→H→C)
-        const visitLowFirst = isBullish ? (rng() < 0.60) : (rng() < 0.40);
-        const anchors = visitLowFirst ? [open, low, high, close] : [open, high, low, close];
-
-        // Budget per segment — proportional to distance with random jitter
-        const dists = [];
-        let totalDist = 0;
-        for (let i = 0; i < anchors.length - 1; i++) {
-            const d = Math.abs(anchors[i + 1] - anchors[i]) || range * 0.05;
-            dists.push(d);
-            totalDist += d;
-        }
-        const raw = dists.map(d => (d / totalDist) * n * (0.7 + rng() * 0.6));
-        const rawSum = raw.reduce((a, b) => a + b, 0);
-        const budgets = raw.map(b => Math.max(4, Math.round((b / rawSum) * (n - 1))));
-        let budgetSum = budgets.reduce((a, b) => a + b, 0);
-        while (budgetSum > n - 1) { budgets[budgets.indexOf(Math.max(...budgets))]--; budgetSum--; }
-        while (budgetSum < n - 1) { budgets[budgets.indexOf(Math.min(...budgets))]++; budgetSum++; }
-
-        // State-machine segment generator
-        const segment = (start, end, ticks) => {
-            if (ticks <= 1) return [start, end];
-            const direction = end > start ? 1 : -1;
-            const seg = [start];
-            let px = start;
-            let mom = 0;
-            let state = 0;     // 0=CHOP 1=BURST 2=STALL 3=PULLBACK
-            let stateDur = 0;
-
-            for (let i = 1; i < ticks; i++) {
-                const progress = i / ticks;
-                const rem = ticks - i;
-                const targetDrift = (end - px) / rem;
-
-                stateDur++;
-                const r = rng();
-                if (state === 0) {
-                    if      (r < 0.12 && rem > 4) { state = 1; stateDur = 0; }
-                    else if (r < 0.20 && rem > 3) { state = 2; stateDur = 0; }
-                    else if (r < 0.28 && rem > 5 && progress > 0.08) { state = 3; stateDur = 0; }
-                } else if (state === 1 && stateDur > 2 + r * 3) {
-                    state = r < 0.35 ? 2 : (r < 0.55 ? 3 : 0); stateDur = 0;
-                } else if (state === 2 && stateDur > 1 + r * 3) {
-                    state = r < 0.45 ? 1 : 0; stateDur = 0;
-                } else if (state === 3 && stateDur > 2 + r * 3) {
-                    state = r < 0.3 ? 1 : 0; stateDur = 0;
-                }
-
-                const noise = (rng() - 0.5) * 2;
-                let delta = 0;
-
-                if (state === 0) {        // CHOP — heavier two-sided noise
-                    mom = mom * 0.25 + noise * 0.75;
-                    delta = targetDrift * 0.30 + mom * vol * 0.8 + noise * vol * 0.65;
-                    if (rng() < 0.12) delta += (rng() - 0.5) * vol * 1.4;
-                } else if (state === 1) { // BURST — more aggressive
-                    mom = mom * 0.75 + direction * 0.35;
-                    delta = direction * vol * (1.1 + rng() * 1.6) + targetDrift * 0.20;
-                    delta += noise * vol * 0.25;
-                } else if (state === 2) { // STALL — small but alive
-                    mom *= 0.08;
-                    delta = noise * vol * 0.18 * (0.5 + rng());
-                    if (rng() < 0.15) delta += (rng() - 0.5) * vol * 0.5;
-                } else if (state === 3) { // PULLBACK — wilder counter-trend
-                    mom = mom * 0.45 - direction * 0.55;
-                    delta = -direction * vol * (0.6 + rng() * 1.2) + noise * vol * 0.5;
-                }
-
-                // Random micro-spikes on any state (bid/ask bounce)
-                if (rng() < 0.08) delta += (rng() - 0.5) * vol * 1.8;
-
-                delta += targetDrift * progress * progress * 1.6;
-
-                // Repel from candle boundaries to prevent vibration at edges
-                const edgeDist = range * 0.04;
-                if (px - low < edgeDist && delta < 0)  delta *= 0.15;
-                if (high - px < edgeDist && delta > 0)  delta *= 0.15;
-                if (px <= low + range * 0.005) delta += range * 0.006;
-                if (px >= high - range * 0.005) delta -= range * 0.006;
-
-                delta = Math.max(-maxStep, Math.min(maxStep, delta));
-                px = Math.max(low, Math.min(high, px + delta));
-                seg.push(px);
-            }
-            seg.push(end);
-            return seg;
-        };
-
-        // Build full path from segments
+        // Create seeded random function for deterministic output
+        const random = this.createSeededRandom(seed);
+        
         const path = [];
-        for (let s = 0; s < anchors.length - 1; s++) {
-            const sub = segment(anchors[s], anchors[s + 1], budgets[s]);
-            if (s === 0) {
-                for (let j = 0; j < sub.length; j++) path.push(sub[j]);
-            } else {
-                for (let j = 1; j < sub.length; j++) path.push(sub[j]);
+        const range = high - low;
+        const isBullish = close >= open;
+        const body = Math.abs(close - open);
+        const upperWick = high - Math.max(open, close);
+        const lowerWick = Math.min(open, close) - low;
+        
+        // Dynamic volatility based on candle characteristics
+        const baseVolatility = range / numTicks * (1.5 + random() * 2);
+        
+        // Track if we've touched high/low (must happen naturally)
+        let touchedHigh = false;
+        let touchedLow = false;
+        
+        // Random walk state
+        let price = open;
+        let velocity = 0;
+        let acceleration = 0;
+        
+        // Market microstructure simulation
+        const tickSize = range * 0.001; // Minimum price movement
+        let lastDirection = 0;
+        let directionStreak = 0;
+        let inMomentumBurst = false;
+        let burstDirection = 0;
+        let burstTicksRemaining = 0;
+        
+        // Generate random "event" times (news spikes, order flow bursts)
+        const numEvents = 2 + Math.floor(random() * 4);
+        const eventTicks = [];
+        for (let i = 0; i < numEvents; i++) {
+            eventTicks.push({
+                tick: Math.floor(random() * (numTicks - 5)) + 2,
+                magnitude: 0.3 + random() * 0.7,
+                direction: random() > 0.5 ? 1 : -1
+            });
+        }
+        
+        for (let t = 0; t < numTicks; t++) {
+            const progress = t / (numTicks - 1);
+            const remainingTicks = numTicks - t;
+            
+            // FINAL TICK: Must close at exact close price
+            if (t === numTicks - 1) {
+                path.push(close);
+                continue;
             }
-        }
-
-        // Pad or trim to exact length n
-        while (path.length < n) path.push(close);
-        if (path.length > n) path.length = n;
-        path[n - 1] = close;
-
-        // Smooth ensure high/low are touched
-        let pMin = path[0], pMax = path[0], minI = 0, maxI = 0;
-        for (let i = 1; i < n - 1; i++) {
-            if (path[i] < pMin) { pMin = path[i]; minI = i; }
-            if (path[i] > pMax) { pMax = path[i]; maxI = i; }
-        }
-        const sp = Math.max(4, Math.floor(n * 0.07));
-        if (pMin > low + range * 0.003) {
-            const gap = low - pMin;
-            for (let j = -sp; j <= sp; j++) {
-                const k = minI + j;
-                // Never warp index 0: tick 1 reads path[0]; smoothing it off `open` caused a one-tick flicker at candle open.
-                if (k <= 0 || k >= n - 1) continue;
-                path[k] = Math.max(low, path[k] + gap * (1 - Math.abs(j) / (sp + 1)));
+            
+            // Check for event triggers (sudden volatility spikes)
+            const event = eventTicks.find(e => e.tick === t);
+            if (event) {
+                inMomentumBurst = true;
+                burstDirection = event.direction;
+                burstTicksRemaining = 3 + Math.floor(random() * 5);
+                velocity += event.magnitude * range * 0.1 * event.direction;
             }
-        }
-        if (pMax < high - range * 0.003) {
-            const gap = high - pMax;
-            for (let j = -sp; j <= sp; j++) {
-                const k = maxI + j;
-                if (k <= 0 || k >= n - 1) continue;
-                path[k] = Math.min(high, path[k] + gap * (1 - Math.abs(j) / (sp + 1)));
-            }
-        }
-
-        for (let i = 0; i < n; i++) path[i] = Math.max(low, Math.min(high, path[i]));
-        path[n - 1] = close;
-        path[0] = open;
-
-        // ── Tick-grid snap ────────────────────────────────────────────────────
-        // Futures/crypto only trade at discrete tick increments (NQ = 0.25, GC = 0.10,
-        // CL = 0.01, BTCUSD = 0.1, USDJPY = 0.001, …). The state-machine walk above
-        // produces continuous floats; without snapping, the forming candle's `close`
-        // slides through values that never exist on a real exchange (e.g. NQ at
-        // `20150.34` or `20151.02`). Snapping here makes the live price LINE advance
-        // in realistic ticks: `20150.25 → 20150.50 → 20150.75 → …`.
-        //
-        // Guards:
-        //   1. Only snap when the chart actually has a registered instrument — the
-        //      fallback tick (`10^-precision`) on unknown symbols would introduce
-        //      float-quantisation noise for data already stored at the native precision.
-        //   2. Keep open/close EXACTLY as provided by the data (path endpoints are
-        //      what everything else references; altering them would desync OHLC stats).
-        //   3. Skip if tick ≥ half the candle range (would collapse the path to a
-        //      single value and kill all intra-candle animation).
-        try {
-            const chart = this.chart;
-            const tick = (chart && typeof chart.getTickSize === 'function') ? chart.getTickSize() : null;
-            const hasRegistrySpec = !!(
-                chart && chart.currentSymbol && typeof window !== 'undefined' && window.marketCalcEngine
-                && (() => {
-                    try {
-                        const calc = window.marketCalcEngine.getCalculator(chart.currentSymbol);
-                        return !!(calc && calc.specs
-                            && (Number.isFinite(calc.specs.tickSize) || Number.isFinite(calc.specs.pipSize)));
-                    } catch (_) { return false; }
-                })()
-            );
-            if (hasRegistrySpec && Number.isFinite(tick) && tick > 0 && tick < range * 0.5) {
-                for (let i = 1; i < n - 1; i++) {
-                    const snapped = Math.round(path[i] / tick) * tick;
-                    // Clamp inside OHLC range after snapping (edge points could round past high/low).
-                    path[i] = Math.max(low, Math.min(high, snapped));
+            
+            // Decay momentum burst
+            if (inMomentumBurst) {
+                burstTicksRemaining--;
+                if (burstTicksRemaining <= 0) {
+                    inMomentumBurst = false;
                 }
             }
-        } catch (_) { /* registry lookup failed — leave path unsnapped */ }
-
+            
+            // === PRICE PHYSICS ===
+            
+            // 1. Mean reversion towards eventual close (stronger near end)
+            const closeAttraction = progress > 0.7 ? 
+                (close - price) / remainingTicks * (1 + (progress - 0.7) * 3) :
+                (close - price) / (remainingTicks + 20) * 0.3;
+            
+            // 2. Random acceleration (Brownian motion)
+            const randomAccel = (random() - 0.5) * baseVolatility * 0.5;
+            
+            // 3. Momentum (velocity persistence with decay)
+            velocity = velocity * 0.85 + randomAccel;
+            
+            // 4. Direction streak logic (markets tend to move in bursts)
+            const currentDir = velocity > 0 ? 1 : -1;
+            if (currentDir === lastDirection) {
+                directionStreak++;
+                // Longer streaks have higher chance of reversal
+                if (directionStreak > 3 && random() < directionStreak * 0.08) {
+                    velocity *= -0.5; // Reversal
+                    directionStreak = 0;
+                }
+            } else {
+                directionStreak = 1;
+            }
+            lastDirection = currentDir;
+            
+            // 5. Boundary awareness (natural pull towards high/low if not touched)
+            if (!touchedHigh && progress > 0.3 && random() < 0.15) {
+                velocity += (high - price) * 0.05;
+            }
+            if (!touchedLow && progress > 0.3 && random() < 0.15) {
+                velocity += (low - price) * 0.05;
+            }
+            
+            // 6. Apply forces
+            let newPrice = price + velocity + closeAttraction;
+            
+            // 7. Add micro-noise (bid-ask bounce simulation)
+            const microNoise = (random() - 0.5) * tickSize * 10;
+            newPrice += microNoise;
+            
+            // 8. Enforce high/low boundaries with bounce
+            if (newPrice >= high) {
+                newPrice = high - random() * range * 0.02;
+                touchedHigh = true;
+                velocity = -Math.abs(velocity) * 0.3; // Bounce down
+            }
+            if (newPrice <= low) {
+                newPrice = low + random() * range * 0.02;
+                touchedLow = true;
+                velocity = Math.abs(velocity) * 0.3; // Bounce up
+            }
+            
+            // 9. Force touch high/low before candle ends if not yet touched
+            if (!touchedHigh && remainingTicks < 10 && remainingTicks > 2) {
+                if (random() < 0.3) {
+                    newPrice = high - random() * range * 0.01;
+                    touchedHigh = true;
+                }
+            }
+            if (!touchedLow && remainingTicks < 10 && remainingTicks > 2) {
+                if (random() < 0.3) {
+                    newPrice = low + random() * range * 0.01;
+                    touchedLow = true;
+                }
+            }
+            
+            // 10. Final clamp
+            newPrice = Math.max(low, Math.min(high, newPrice));
+            
+            price = newPrice;
+            path.push(price);
+        }
+        
+        // Post-process: ensure high and low were actually touched
+        // Use seeded random for deterministic placement
+        if (!touchedHigh) {
+            const highIdx = Math.floor(numTicks * (0.2 + random() * 0.5));
+            if (highIdx < path.length - 1) path[highIdx] = high;
+        }
+        if (!touchedLow) {
+            const lowIdx = Math.floor(numTicks * (0.2 + random() * 0.5));
+            if (lowIdx < path.length - 1 && lowIdx !== path.indexOf(high)) path[lowIdx] = low;
+        }
+        
         return path;
     }
     
     /**
-     * Update chart display with the currently animating candle.
-     * Uses a cached slice to avoid copying fullRawData on every tick.
+     * Update chart display with the currently animating candle
      */
     updateChartWithAnimatedCandle() {
         if (!this.animatingCandle || !this.chart) return;
-
-        // Build the base slice once; reuse on subsequent ticks of the same candle.
-        if (!this._animSlice || this._animSliceIdx !== this.currentIndex) {
-            this._animSlice = this.fullRawData.slice(0, this.currentIndex + 1);
-            this._animSlice.push(null); // placeholder for animated candle
-            this._animSliceIdx = this.currentIndex;
-        }
-
+        
+        // Create animated data up to current index plus the forming candle
+        const slicedRaw = this.fullRawData.slice(0, this.currentIndex + 1);
+        
+        // Add the animated candle
         const animatedCandle = {
             t: this.animatingCandle.t,
             o: this.animatingCandle.open,
@@ -3562,41 +3088,41 @@ class ReplaySystem {
             c: this.animatingCandle.close,
             v: this.animatingCandle.volume
         };
-        this._animSlice[this._animSlice.length - 1] = animatedCandle;
-
-        this.chart.rawData = this._animSlice;
-
-        // Fast-path: only update the last resampled candle instead of
-        // re-running the full resample loop on every single tick.
-        const chartData = this.chart.data;
-        if (chartData && chartData.length > 0 && this.tickProgress > 1) {
-            const last = chartData[chartData.length - 1];
-            last.h = Math.max(last.h, animatedCandle.h);
-            last.l = Math.min(last.l, animatedCandle.l);
-            last.c = animatedCandle.c;
-            last.v = animatedCandle.v;
-        } else {
-            this.chart.data = this.chart.resampleData(this._animSlice, this.chart.currentTimeframe);
-        }
-
-        if (this.tickProgress % 18 === 0 && this.chart.recalculateAllIndicators) {
+        slicedRaw.push(animatedCandle);
+        
+        // Update chart data
+        this.chart.rawData = slicedRaw;
+        this.chart.data = this.chart.resampleData(slicedRaw, this.chart.currentTimeframe);
+        
+        // Only recalculate indicators every 10th tick to reduce lag
+        if (this.tickProgress % 10 === 0 && this.chart.recalculateAllIndicators) {
             this.chart.recalculateAllIndicators();
         }
-
-        if (this.autoScrollEnabled && this.tickProgress % 8 === 0) {
+        
+        // Auto-scroll if enabled (only check occasionally)
+        if (this.autoScrollEnabled && this.tickProgress % 5 === 0) {
             this.chart.fitToView();
         }
-
+        
+        // Render immediately without scheduling for smoother animation
         if (this.chart.render) {
             this.chart.render();
         }
-
-        // Keep panels in lockstep with the main chart every tick. Throttling to every 4th tick
-        // made order/preview lines and the last candle jump on panel surfaces while the main chart stayed smooth.
-        this.syncPanelChartsWithAnimatedCandle(this._animSlice, animatedCandle);
-
+        
+        // SYNC ANIMATED CANDLE TO ALL PANEL CHARTS
+        // Update every 2nd tick to reduce lag while keeping panels in sync
+        if (this.tickProgress % 2 === 0) {
+            this.syncPanelChartsWithAnimatedCandle(slicedRaw, animatedCandle);
+        }
+        
+        // Check order manager for SL/TP hits during tick animation
+        // Only check every 3rd tick to reduce lag, but always check on final ticks
+        const ticksNeeded = this.currentTicksPerCandle || this.ticksPerCandle;
+        const isNearEnd = this.tickProgress > ticksNeeded * 0.8;
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
-            this.chart.orderManager.updatePositions();
+            if (this.tickProgress % 3 === 0 || isNearEnd) {
+                this.chart.orderManager.updatePositions();
+            }
         }
     }
     
@@ -3621,6 +3147,7 @@ class ReplaySystem {
         };
         slicedRaw.push(animatedCandle);
         
+        console.log(`   💰 Animating candle close: ${animatedCandle.c}`);
         
         // Update chart data
         this.chart.rawData = slicedRaw;
@@ -3645,64 +3172,59 @@ class ReplaySystem {
         this.updateSlider();
         this.updateTimeDisplay();
         
+        console.log(`   📊 Chart updated with animated candle, data.length=${this.chart.data.length}`);
     }
     
     /**
      * Sync all panel charts with the animated candle during tick animation
      */
     syncPanelChartsWithAnimatedCandle(slicedRaw, animatedCandle) {
+        // Check if panel manager exists and has panels
         if (!window.panelManager || !window.panelManager.panels || window.panelManager.panels.length === 0) {
             return;
         }
         
-        const mainChart = this.chart;
-        const mainSymbol = mainChart ? mainChart.currentSymbol : null;
-        const replayTs = this.replayTimestamp;
-        
+        // Update each panel chart with the same animated data
         window.panelManager.panels.forEach((panel, index) => {
-            const pc = panel.chartInstance;
-            if (!pc || !pc.isPanel || pc === mainChart) return;
-            
-            try {
-                const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
-
-                if (hasOwnData) {
-                    const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
-                    const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
-                    pc.rawData = panelSlice;
-                    pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
-                } else {
-                    if (mainSymbol && pc.currentSymbol !== mainSymbol) {
-                        pc.currentSymbol = mainSymbol;
-                        if (mainChart) pc.currentFileId = mainChart.currentFileId;
-                        if (typeof pc.updateChartOHLCSymbol === 'function') pc.updateChartOHLCSymbol(mainSymbol);
-                        pc.priceZoom = 1;
-                        pc.priceOffset = 0;
-                        pc.autoScale = true;
-                        if (pc.priceScale) pc.priceScale.autoScale = true;
-                        pc.manualCenterPrice = null;
-                        pc.manualRange = null;
+            if (panel.chartInstance && panel.chartInstance.isPanel) {
+                try {
+                    // Update raw data to same slice (includes animated candle)
+                    panel.chartInstance.rawData = [...slicedRaw];
+                    
+                    // Resample to panel's timeframe
+                    panel.chartInstance.data = panel.chartInstance.resampleData(
+                        slicedRaw, 
+                        panel.chartInstance.currentTimeframe
+                    );
+                    
+                    // Recalculate indicators every 10th tick
+                    if (this.tickProgress % 10 === 0 && typeof panel.chartInstance.recalculateIndicators === 'function') {
+                        try {
+                            panel.chartInstance.recalculateIndicators();
+                        } catch (error) {
+                            // Silent fail for indicator errors during animation
+                        }
                     }
-                    pc.rawData = [...slicedRaw];
-                    pc.data = pc.resampleData(slicedRaw, pc.currentTimeframe);
-                }
-                
-                if (this.tickProgress % 18 === 0 && typeof pc.recalculateIndicators === 'function') {
-                    try { pc.recalculateIndicators(); } catch (e) {}
-                }
-
-                if (this.autoScrollEnabled && this.tickProgress % 8 === 0) {
-                    if (pc.fitToView) {
-                        pc.fitToView();
-                    } else {
-                        const st = this.getReplayAutoScrollState(pc);
-                        if (st) pc.offsetX = st.offsetX;
+                    
+                    // Auto-scroll panel if enabled (every 5th tick)
+                    if (this.autoScrollEnabled && this.tickProgress % 5 === 0) {
+                        if (panel.chartInstance.fitToView) {
+                            panel.chartInstance.fitToView();
+                        } else {
+                            const panelAutoScrollState = this.getReplayAutoScrollState(panel.chartInstance);
+                            if (panelAutoScrollState) {
+                                panel.chartInstance.offsetX = panelAutoScrollState.offsetX;
+                            }
+                        }
                     }
+                    
+                    // Render panel
+                    if (panel.chartInstance.render) {
+                        panel.chartInstance.render();
+                    }
+                } catch (error) {
+                    // Silent fail during animation to prevent lag
                 }
-
-                if (pc.render) pc.render();
-            } catch (error) {
-                // Silent fail during animation to prevent lag
             }
         });
     }
@@ -3760,20 +3282,26 @@ class ReplaySystem {
      * If _preserveTickProgress is set, keeps animatingCandle and tickProgress intact
      */
     stopTickAnimation() {
+        console.log(`🛑 stopTickAnimation called - _preserveTickProgress=${this._preserveTickProgress}, hasAnimatingCandle=${!!this.animatingCandle}`);
+        
         if (this.tickInterval) {
-            clearTimeout(this.tickInterval);
+            clearTimeout(this.tickInterval); // Changed to clearTimeout for volume-weighted scheduling
             this.tickInterval = null;
         }
-
+        
+        // Only clear animation state if NOT preserving for timeframe change
         if (!this._preserveTickProgress) {
+            console.log(`   ❌ Clearing animatingCandle and tickProgress`);
             this.animatingCandle = null;
             this.tickProgress = 0;
             this.tickElapsedMs = 0;
+        } else {
+            console.log(`   ✅ PRESERVING animatingCandle (close=${this.animatingCandle?.close}) and tickProgress=${this.tickProgress}`);
         }
-
-        this._animSlice = null;
-        this._animSliceIdx = -1;
-        this.volumeTickData = null;
+        
+        this.volumeTickData = null; // Clear volume data
+        
+        // Reset tick progress indicator
         this.updateTickProgress(0);
     }
 
@@ -3798,19 +3326,19 @@ class ReplaySystem {
             this.playInterval = null;
         }
 
-        // Save partial tick state so resume can pick up where we left off.
-        // The animated candle stays visible on screen (frozen in place).
+        // Discard partial intra-candle state on pause so timeframe switches
+        // always compare using the same finalized raw candle snapshot.
         const hadPartialState = this.tickProgress > 0 || !!this.animatingCandle;
         if (hadPartialState) {
-            this._savedTickState = {
-                animatingCandle: this.animatingCandle,
-                tickProgress: this.tickProgress,
-                tickElapsedMs: this.tickElapsedMs
-            };
-            // Keep animatingCandle alive so the chart keeps showing the
-            // partial candle.  Only clear the timer-driven fields.
+            this.animatingCandle = null;
             this.tickProgress = 0;
             this.tickElapsedMs = 0;
+            if (this.fullRawData && this.fullRawData[this.currentIndex]) {
+                this.replayTimestamp = this.fullRawData[this.currentIndex].t;
+            }
+            if (this.isActive) {
+                this.updateChartData(false);
+            }
         }
         
         // Hide tick progress indicator
@@ -3819,6 +3347,7 @@ class ReplaySystem {
         // Update button UI immediately
         this.togglePlayUI(false);
         
+        console.log(`⏸️ Paused - tickProgress=${this.tickProgress}, animatingCandle.close=${this.animatingCandle?.close}`);
     }
 
     /**
@@ -3836,9 +3365,6 @@ class ReplaySystem {
         if (this.isPlaying) {
             this.pause();
         }
-        this._savedTickState = null;
-        this.animatingCandle = null;
-        this.tickProgress = 0;
         this.stepForward();
     }
 
@@ -3850,9 +3376,6 @@ class ReplaySystem {
         if (this.isPlaying) {
             this.pause();
         }
-        this._savedTickState = null;
-        this.animatingCandle = null;
-        this.tickProgress = 0;
         this.stepBackward();
     }
 
@@ -3861,25 +3384,32 @@ class ReplaySystem {
      */
     stepForward() {
         if (!this.isActive || !this.fullRawData || this.fullRawData.length === 0) {
+            console.log('⏭️ Replay not active or no data');
             return;
         }
         
         if (this.currentIndex >= this.fullRawData.length - 1) {
+            console.log('⏭️ Already at last candle');
             return;
         }
 
+        console.log('🔧 DEBUG - timeframeSelect element:', this.timeframeSelect);
+        console.log('🔧 DEBUG - timeframeSelect.value:', this.timeframeSelect ? this.timeframeSelect.value : 'NULL');
         
         let selectedTimeframe = this.timeframeSelect ? this.timeframeSelect.value : null;
         
         // If "sync" is selected, use the chart's current timeframe
         if (selectedTimeframe === 'sync') {
             selectedTimeframe = this.chart.currentTimeframe;
+            console.log(`📊 Sync mode - using chart timeframe: ${selectedTimeframe}`);
         }
         
+        console.log(`🔍 Step Forward - Selected TF: ${selectedTimeframe}, Current Index: ${this.currentIndex}`);
         
         if (!selectedTimeframe) {
             // No timeframe selector - advance by one raw candle
             this.currentIndex++;
+            console.log(`⏭️ Step forward to index ${this.currentIndex}`);
             if (this.fullRawData[this.currentIndex]) {
                 this.replayTimestamp = this.fullRawData[this.currentIndex].t;
                 this.tickElapsedMs = 0;
@@ -3890,9 +3420,11 @@ class ReplaySystem {
 
         // Resample fullRawData to selected timeframe
         const resampledData = this.chart.resampleData(this.fullRawData, selectedTimeframe);
+        console.log(`📊 Resampled data: ${resampledData.length} candles`);
         
         // Find current position timestamp
         const currentTimestamp = this.fullRawData[this.currentIndex].t;
+        console.log(`⏰ Current timestamp: ${new Date(currentTimestamp).toISOString()}`);
         
         // Find which resampled candle we're currently in or past
         let currentResampledIndex = -1;
@@ -3905,10 +3437,12 @@ class ReplaySystem {
             }
         }
         
+        console.log(`📍 Current resampled index: ${currentResampledIndex}/${resampledData.length - 1}`);
         
         if (currentResampledIndex === -1 || currentResampledIndex >= resampledData.length - 1) {
             // Already at or past last candle of selected timeframe
             this.currentIndex = this.fullRawData.length - 1;
+            console.log('⏭️ Already at last candle of selected timeframe');
             if (this.fullRawData[this.currentIndex]) {
                 this.replayTimestamp = this.fullRawData[this.currentIndex].t;
                 this.tickElapsedMs = 0;
@@ -3939,6 +3473,7 @@ class ReplaySystem {
         }
         
         this.currentIndex = Math.max(this.currentIndex + 1, targetIndex);
+        console.log(`⏭️ Step forward by ${selectedTimeframe} to index ${this.currentIndex} (${new Date(this.fullRawData[this.currentIndex].t).toISOString()})`);
         if (this.fullRawData[this.currentIndex]) {
             this.replayTimestamp = this.fullRawData[this.currentIndex].t;
             this.tickElapsedMs = 0;
@@ -3951,6 +3486,7 @@ class ReplaySystem {
      */
     stepBackward() {
         if (!this.isActive || !this.fullRawData || this.fullRawData.length === 0) {
+            console.log('⏮️ Replay not active or no data');
             return;
         }
 
@@ -3960,6 +3496,7 @@ class ReplaySystem {
         }
         
         if (this.currentIndex <= 0) {
+            console.log('⏮️ Already at first candle');
             return;
         }
 
@@ -3968,12 +3505,15 @@ class ReplaySystem {
         // If "sync" is selected, use the chart's current timeframe
         if (selectedTimeframe === 'sync') {
             selectedTimeframe = this.chart.currentTimeframe;
+            console.log(`📊 Sync mode - using chart timeframe: ${selectedTimeframe}`);
         }
         
+        console.log(`🔍 Step Backward - Selected TF: ${selectedTimeframe}, Current Index: ${this.currentIndex}`);
         
         if (!selectedTimeframe) {
             // No timeframe selector - go back by one raw candle
             this.currentIndex--;
+            console.log(`⏮️ Step backward to index ${this.currentIndex}`);
             if (this.fullRawData[this.currentIndex]) {
                 this.replayTimestamp = this.fullRawData[this.currentIndex].t;
                 this.tickElapsedMs = 0;
@@ -3984,9 +3524,11 @@ class ReplaySystem {
 
         // Resample fullRawData to selected timeframe
         const resampledData = this.chart.resampleData(this.fullRawData, selectedTimeframe);
+        console.log(`📊 Resampled data: ${resampledData.length} candles`);
         
         // Find current position timestamp
         const currentTimestamp = this.fullRawData[this.currentIndex].t;
+        console.log(`⏰ Current timestamp: ${new Date(currentTimestamp).toISOString()}`);
         
         // Find which resampled candle we're currently in or past
         let currentResampledIndex = -1;
@@ -3999,10 +3541,12 @@ class ReplaySystem {
             }
         }
         
+        console.log(`📍 Current resampled index: ${currentResampledIndex}/${resampledData.length - 1}`);
         
         if (currentResampledIndex === -1 || currentResampledIndex <= 0) {
             // Already at first candle of selected timeframe
             this.currentIndex = 0;
+            console.log('⏮️ Already at first candle of selected timeframe');
             if (this.fullRawData[this.currentIndex]) {
                 this.replayTimestamp = this.fullRawData[this.currentIndex].t;
                 this.tickElapsedMs = 0;
@@ -4027,6 +3571,7 @@ class ReplaySystem {
         }
         
         this.currentIndex = targetIndex;
+        console.log(`⏮️ Step backward by ${selectedTimeframe} to index ${this.currentIndex} (${new Date(this.fullRawData[this.currentIndex].t).toISOString()})`);
         if (this.fullRawData[this.currentIndex]) {
             this.replayTimestamp = this.fullRawData[this.currentIndex].t;
             this.tickElapsedMs = 0;
@@ -4039,6 +3584,7 @@ class ReplaySystem {
      */
     setSpeed(speed) {
         this.speed = speed;
+        console.log(`🎚️ Speed set to ${speed}x`);
         
         // Update button UI to show active state
         this.updateSpeedButtonUI(speed);
@@ -4102,107 +3648,11 @@ class ReplaySystem {
         // === UPDATE VIRTUAL TIME: Sync replayTimestamp with new position ===
         if (this.fullRawData && this.fullRawData[this.currentIndex]) {
             this.replayTimestamp = this.fullRawData[this.currentIndex].t;
-            this.tickElapsedMs = 0;
-        }
-        // Clear stale animation state so the price line reflects the
-        // seeked-to candle, not the old animation close.
-        this.animatingCandle = null;
-        this.tickProgress = 0;
-
-        // Pre-arm guards before updateChartData so updatePositions() doesn't
-        // fire SL/TP on the seeked-to candle's stale OHLC.  We use the raw
-        // bar's timestamp (resampled candle time may differ, but this is a
-        // safe upper bound that will be refreshed again after the chart updates).
-        const om = this.chart?.orderManager;
-        if (om && typeof om._refreshAllGuardsToCurrentCandle === 'function') {
-            const rawBar = this.fullRawData[this.currentIndex];
-            if (rawBar) {
-                om._refreshAllGuardsToTimestamp(rawBar.t);
-            }
+            this.tickElapsedMs = 0; // Reset elapsed time when seeking
         }
         
         const autoScroll = fromDrag ? false : this.autoScrollEnabled;
         this.updateChartData(autoScroll);
-
-        // Final refresh with resampled candle data for precision
-        if (om && typeof om._refreshAllGuardsToCurrentCandle === 'function') {
-            om._refreshAllGuardsToCurrentCandle();
-        }
-    }
-
-    /**
-     * Seek replay to the bar matching a wall-clock / session timestamp (multi-instrument sync).
-     * @param {number|string|Date} targetTimestamp
-     * @param {{ preserveVisibleWindow?: boolean }} options — if true, do not auto-scroll the chart
-     */
-    goToReplayTimestamp(targetTimestamp, options = {}) {
-        const preserveVisibleWindow = !!(options && options.preserveVisibleWindow);
-        const centerOnCandle = !!(options && options.centerOnCandle);
-        if (!this.isActive || !Array.isArray(this.fullRawData) || this.fullRawData.length === 0) {
-            return false;
-        }
-
-        const chart = this.chart;
-        const ts = chart && typeof chart.normalizeTimestampMs === 'function'
-            ? chart.normalizeTimestampMs(targetTimestamp)
-            : Number(targetTimestamp);
-        if (!Number.isFinite(ts)) {
-            return false;
-        }
-
-        let idx = 0;
-        if (chart && typeof chart.findGoToTargetIndex === 'function') {
-            idx = chart.findGoToTargetIndex(this.fullRawData, ts);
-        }
-        if (idx < 0) {
-            idx = this.fullRawData.findIndex(c => Number(c?.t) >= ts);
-        }
-        if (idx < 0) {
-            idx = this.fullRawData.length - 1;
-        }
-        idx = Math.min(Math.max(idx, 0), this.fullRawData.length - 1);
-
-        this.currentIndex = idx;
-        this.replayTimestamp = this.fullRawData[idx]?.t ?? ts;
-        this.tickElapsedMs = 0;
-        this.animatingCandle = null;
-        this.tickProgress = 0;
-
-        // Pre-arm guards before chart update
-        const om2 = this.chart?.orderManager;
-        if (om2 && typeof om2._refreshAllGuardsToTimestamp === 'function') {
-            const rawBar = this.fullRawData[idx];
-            if (rawBar) om2._refreshAllGuardsToTimestamp(rawBar.t);
-        }
-
-        const autoScroll = (preserveVisibleWindow || centerOnCandle) ? false : this.autoScrollEnabled;
-        this.updateChartData(autoScroll);
-
-        // Final refresh with resampled candle data
-        if (om2 && typeof om2._refreshAllGuardsToCurrentCandle === 'function') {
-            om2._refreshAllGuardsToCurrentCandle();
-        }
-
-        if (centerOnCandle && chart && Array.isArray(chart.data) && chart.data.length > 0) {
-            const candleSpacing = typeof chart.getCandleSpacing === 'function'
-                ? chart.getCandleSpacing()
-                : (chart.candleWidth + (chart.candleGap || 2));
-            if (Number.isFinite(candleSpacing) && candleSpacing > 0) {
-                const m = chart.margin || { l: 0, r: 70 };
-                const chartAreaW = Math.max(0, (chart.w || 0) - (m.l || 0) - (m.r || 0));
-                const numVisible = Math.max(1, Math.floor(chartAreaW / candleSpacing));
-                const lastIdx = chart.data.length - 1;
-                const scrollPos = Math.max(0, lastIdx - Math.floor(numVisible * 0.7));
-                chart.offsetX = -scrollPos * candleSpacing;
-                if (typeof chart.constrainOffset === 'function') chart.constrainOffset();
-                chart.render();
-            }
-        }
-
-        if (typeof this.updateSliderRange === 'function') this.updateSliderRange();
-        if (typeof this.updateSlider === 'function') this.updateSlider();
-        if (typeof this.updateTimeDisplay === 'function') this.updateTimeDisplay();
-        return true;
     }
 
     /**
@@ -4211,6 +3661,7 @@ class ReplaySystem {
     onUserPan() {
         if (!this.isActive) return;
         
+        console.log('👆 User manually panned - disabling auto-scroll');
         this.autoScrollEnabled = false;
         this.userHasPanned = true;
         
@@ -4222,6 +3673,7 @@ class ReplaySystem {
      * Re-enable auto-scroll (follow mode)
      */
     enableAutoScroll() {
+        console.log('🎯 Re-enabling auto-scroll');
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
         
@@ -4244,6 +3696,7 @@ class ReplaySystem {
      */
     isLastCandleVisible() {
         if (!this.chart || !this.chart.data || this.chart.data.length === 0) {
+            console.log('⚠️ No chart or data available');
             return true;
         }
         
@@ -4257,6 +3710,7 @@ class ReplaySystem {
             visibleEnd = this.chart.visibleEndIndex || 0;
         }
         
+        console.log('📊 Last candle check - lastIndex:', lastIndex, 'visibleEnd:', visibleEnd, 'diff:', lastIndex - visibleEnd);
         
         // Last candle is visible if it's within the visible range (with small buffer)
         const isVisible = visibleEnd >= (lastIndex - 1);
@@ -4267,35 +3721,32 @@ class ReplaySystem {
      * Update visual indicator for auto-scroll status
      */
     updateAutoScrollIndicator() {
-        const showFollow = this.isActive && !this.isLastCandleVisible();
-
-        if (this.followBtn) {
-            if (!this.isActive) {
-                this.followBtn.style.display = 'none';
-            } else if (showFollow) {
-                this.followBtn.style.display = 'flex';
-                this.followBtn.style.opacity = '1';
-            } else {
-                this.followBtn.style.display = 'none';
-            }
+        if (!this.followBtn) {
+            console.log('⚠️ Follow button not found');
+            return;
         }
-
-        // Update panel follow buttons
-        const pm = window.panelManager;
-        if (pm && pm.panels) {
-            pm.panels.forEach((panel, idx) => {
-                const btn = document.getElementById(`panelFollow${idx}`);
-                if (!btn) return;
-                if (!this.isActive) { btn.style.display = 'none'; return; }
-                const pc = panel.chartInstance;
-                if (!pc || !pc.data || pc.data.length === 0) { btn.style.display = 'none'; return; }
-                const m = pc.margin || { l: 0, r: 0 };
-                const spacing = typeof pc.getCandleSpacing === 'function' ? pc.getCandleSpacing() : (pc.candleWidth + 2);
-                const lastX = m.l + (pc.data.length - 1) * spacing + (pc.offsetX || 0);
-                const visible = lastX >= 0 && lastX <= (pc.w || 0) + spacing * 2;
-                btn.style.display = visible ? 'none' : 'flex';
-                if (!visible) btn.style.opacity = '1';
-            });
+        const followBtn = this.followBtn;
+        
+        // Only show during replay mode
+        if (!this.isActive) {
+            console.log('🔴 Follow button hidden - replay not active');
+            followBtn.style.display = 'none';
+            return;
+        }
+        
+        // Check if last candle is visible
+        const lastCandleVisible = this.isLastCandleVisible();
+        console.log('👁️ Last candle visible:', lastCandleVisible);
+        
+        // Hide button when last candle is visible, show when scrolled away
+        if (lastCandleVisible) {
+            console.log('🔴 Follow button hidden - last candle visible');
+            followBtn.style.display = 'none';
+        } else {
+            console.log('🟢 Follow button shown - scrolled away from last candle');
+            followBtn.style.display = 'flex';
+            followBtn.style.opacity = '1';
+            // Position is handled by CSS (absolute positioning inside chart-wrapper)
         }
     }
 
@@ -4317,19 +3768,6 @@ class ReplaySystem {
         if (window.timezoneManager) {
             const timeStr = window.timezoneManager.formatTime(currentBar.t, 'full');
             this.timeLabel.textContent = timeStr;
-            try {
-                const ts = Number.isFinite(this.replayTimestamp)
-                    ? this.replayTimestamp
-                    : currentBar.t;
-                if (Number.isFinite(ts)) {
-                    const sym = this.chart && this.chart.currentSymbol
-                        ? String(this.chart.currentSymbol)
-                        : '';
-                    window.dispatchEvent(new CustomEvent('replayVirtualTimeChanged', {
-                        detail: { timestamp: ts, symbol: sym }
-                    }));
-                }
-            } catch (e) { /* ignore */ }
             return;
         }
 
@@ -4353,21 +3791,6 @@ class ReplaySystem {
         const timeStr = `(${dayName}) ${year}-${month}-${day} ${hours}:${minutes}`;
 
         this.timeLabel.textContent = timeStr;
-
-        // Forex news panel: virtual time + symbol for period-matched headlines (TradingView-style)
-        try {
-            const ts = Number.isFinite(this.replayTimestamp)
-                ? this.replayTimestamp
-                : (currentBar && currentBar.t);
-            if (Number.isFinite(ts)) {
-                const sym = this.chart && this.chart.currentSymbol
-                    ? String(this.chart.currentSymbol)
-                    : '';
-                window.dispatchEvent(new CustomEvent('replayVirtualTimeChanged', {
-                    detail: { timestamp: ts, symbol: sym }
-                }));
-            }
-        } catch (e) { /* ignore */ }
     }
 
     /**
@@ -4404,6 +3827,7 @@ class ReplaySystem {
      */
     onTimeframeChange() {
         if (!this.isActive) {
+            console.log('⚠️ onTimeframeChange called but replay not active');
             return;
         }
 
@@ -4443,6 +3867,8 @@ class ReplaySystem {
             savedAnimatedPrice = this.animatingCandle.close;
         }
         
+        console.log(`🔄 TIMEFRAME CHANGE: ${newTimeframe}`);
+        console.log(`   📍 STATE: index=${savedCurrentIndex}, tickProgress=${savedTickProgress}, price=${savedAnimatedPrice}`);
         
         // === STOP ANIMATION CLEANLY ===
         if (this.tickInterval) {
@@ -4513,6 +3939,7 @@ class ReplaySystem {
                 lastCandle.c = savedAnimatedPrice;
                 if (savedAnimatedPrice > lastCandle.h) lastCandle.h = savedAnimatedPrice;
                 if (savedAnimatedPrice < lastCandle.l) lastCandle.l = savedAnimatedPrice;
+                console.log(`   💰 Set price from tick cache: ${savedAnimatedPrice}`);
             }
             
             this.chart.renderPending = true;
@@ -4524,6 +3951,7 @@ class ReplaySystem {
             // === UNLOCK STATE ===
             this._timeframeChanging = false;
             
+            console.log(`   ✅ TF CHANGE DONE: index=${this.currentIndex}, tickProgress=${this.tickProgress}`);
             
             // === RECREATE ANIMATING CANDLE STATE ===
             const nextCandle = this.fullRawData[this.currentIndex + 1];
@@ -4541,7 +3969,7 @@ class ReplaySystem {
                     targetHigh: nextCandle.h,
                     targetLow: nextCandle.l,
                     targetClose: nextCandle.c,
-                    volume: (nextCandle.v || 0) * (savedTickProgress / (this.ticksPerCandle || 72)),
+                    volume: (nextCandle.v || 0) * (savedTickProgress / 60),
                     targetVolume: nextCandle.v || 0,
                     t: nextCandle.t,
                     cachedPath: tickPath
@@ -4552,6 +3980,7 @@ class ReplaySystem {
                     this.animatingCandle.low = Math.min(this.animatingCandle.low, tickPath[i]);
                 }
                 
+                console.log(`   🎯 Rebuilt animatingCandle: price=${currentPrice}, tickProgress=${savedTickProgress}`);
                 this.updateChartWithAnimatedCandle();
             }
             
@@ -4559,6 +3988,7 @@ class ReplaySystem {
             if (wasPlaying) {
                 this._preserveTickProgress = true;
                 this.speed = savedSpeed;
+                console.log(`   ▶️ RESUME: tickProgress=${this.tickProgress}, price=${this.animatingCandle?.close}`);
                 this.play();
             }
         }, 50);
@@ -4567,122 +3997,65 @@ class ReplaySystem {
     /**
      * Synchronize all panel charts with current replay position
      */
-    _bsearchTimestamp(data, ts) {
-        if (!data || data.length === 0) return 0;
-        let lo = 0, hi = data.length - 1;
-        while (lo < hi) {
-            const mid = (lo + hi) >>> 1;
-            if ((data[mid].t || 0) < ts) lo = mid + 1;
-            else hi = mid;
-        }
-        if (lo > 0 && Math.abs((data[lo - 1].t || 0) - ts) < Math.abs((data[lo].t || 0) - ts)) {
-            return lo - 1;
-        }
-        return lo;
-    }
-
-    /**
-     * Last raw bar index with t <= ts (sorted ascending by .t).
-     * Used so every pair ends on the same wall-clock cut as main replayTimestamp.
-     * @returns {number} index, or -1 if every bar has t > ts (no wall-clock overlap with replay time).
-     */
-    _findLastRawIndexAtOrBefore(data, ts) {
-        if (!Array.isArray(data) || data.length === 0) return -1;
-        if (!Number.isFinite(ts)) return Math.max(0, data.length - 1);
-        let lo = 0;
-        let hi = data.length - 1;
-        let ans = -1;
-        while (lo <= hi) {
-            const mid = (lo + hi) >>> 1;
-            const t = data[mid]?.t || 0;
-            if (t <= ts) {
-                ans = mid;
-                lo = mid + 1;
-            } else {
-                hi = mid - 1;
-            }
-        }
-        return ans;
-    }
-
-    /**
-     * End index (inclusive) for a panel's raw series during replay when it has its own `_panelFullRawData`.
-     * Always uses the same wall-clock cut as the main chart (`replayTimestamp`): last bar with t <= replayTs.
-     * Progress-based fallbacks were removed — they desynced calendar dates across pairs. If no bar exists at/before
-     * replay time (idx < 0), clamp to 0 so at least the series start shows; use overlapping session data for full sync.
-     */
-    _resolvePanelRawEndIndexForReplay(panelFullRawData, replayTs) {
-        if (!Array.isArray(panelFullRawData) || panelFullRawData.length === 0) return 0;
-        const idx = this._findLastRawIndexAtOrBefore(panelFullRawData, replayTs);
-        if (idx < 0) return 0;
-        return Math.min(idx, panelFullRawData.length - 1);
-    }
-
     syncPanelCharts() {
+        // Check if panel manager exists and has panels
         if (!window.panelManager || !window.panelManager.panels || window.panelManager.panels.length === 0) {
             return;
         }
         
+        console.log(`🔄 Syncing ${window.panelManager.panels.length} panel charts with replay position ${this.currentIndex}`);
+        
+        // Get the sliced raw data (same as main chart)
         const sliceEnd = Math.max(this.currentIndex + 1, 1);
         const slicedRawData = this.fullRawData.slice(0, sliceEnd);
-        const replayTs = this.replayTimestamp;
         
-        const mainChart = this.chart;
-        const mainSymbol = mainChart ? mainChart.currentSymbol : null;
-        const mainFileId = mainChart ? mainChart.currentFileId : null;
-        
+        // Update each panel chart
         window.panelManager.panels.forEach((panel, index) => {
-            const pc = panel.chartInstance;
-            if (!pc || !pc.isPanel) return;
-            if (pc === mainChart) return;
-            
-            try {
-                const hasOwnData = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
-
-                if (hasOwnData) {
-                    const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
-                    const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
-                    pc.rawData = panelSlice;
-                    pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
-                } else {
-                    if (mainSymbol && pc.currentSymbol !== mainSymbol) {
-                        pc.currentSymbol = mainSymbol;
-                        pc.currentFileId = mainFileId;
-                        if (typeof pc.updateChartTitle === 'function') pc.updateChartTitle(mainSymbol);
-                        if (typeof pc.updateChartOHLCSymbol === 'function') pc.updateChartOHLCSymbol(mainSymbol);
-                        // Reset Y-axis scale for the new pair's price range
-                        pc.priceZoom = 1;
-                        pc.priceOffset = 0;
-                        pc.autoScale = true;
-                        if (pc.priceScale) pc.priceScale.autoScale = true;
-                        pc.manualCenterPrice = null;
-                        pc.manualRange = null;
-                        pc._chartViewRestored = false;
+            if (panel.chartInstance && panel.chartInstance.isPanel) {
+                try {
+                    // Update raw data to same slice
+                    panel.chartInstance.rawData = slicedRawData;
+                    
+                    // Resample to panel's timeframe
+                    panel.chartInstance.data = panel.chartInstance.resampleData(
+                        slicedRawData, 
+                        panel.chartInstance.currentTimeframe
+                    );
+                    
+                    // Recalculate indicators if available
+                    if (typeof panel.chartInstance.recalculateIndicators === 'function') {
+                        try {
+                            panel.chartInstance.recalculateIndicators();
+                        } catch (error) {
+                            console.warn(`⚠️ Error recalculating indicators for panel ${index}:`, error);
+                        }
                     }
-                    pc.rawData = slicedRawData;
-                    pc.data = pc.resampleData(slicedRawData, pc.currentTimeframe);
+                    
+                    // Auto-scroll panel if enabled
+                    if (this.autoScrollEnabled) {
+                        const panelAutoScrollState = this.getReplayAutoScrollState(panel.chartInstance);
+                        if (panelAutoScrollState) {
+                            panel.chartInstance.offsetX = panelAutoScrollState.offsetX;
+                        }
+                    }
+                    
+                    // Apply constraints
+                    if (typeof panel.chartInstance.constrainOffset === 'function') {
+                        panel.chartInstance.constrainOffset();
+                    }
+                    
+                    // Render panel
+                    panel.chartInstance.renderPending = true;
+                    panel.chartInstance.render();
+                    
+                    console.log(`  ✅ Panel ${index} synced: ${panel.chartInstance.data.length} candles (${panel.chartInstance.currentTimeframe})`);
+                } catch (error) {
+                    console.error(`❌ Error syncing panel ${index}:`, error);
                 }
-                
-                if (typeof pc.bumpDataVersion === 'function') pc.bumpDataVersion();
-                
-                if (typeof pc.recalculateIndicators === 'function') {
-                    try { pc.recalculateIndicators(); } catch (e) {}
-                }
-                
-                if (this.autoScrollEnabled) {
-                    const st = this.getReplayAutoScrollState(pc);
-                    if (st) pc.offsetX = st.offsetX;
-                }
-                
-                if (typeof pc.constrainOffset === 'function') pc.constrainOffset();
-                
-                pc.renderPending = true;
-                pc.render();
-                
-            } catch (error) {
-                console.error(`Error syncing panel ${index}:`, error);
             }
         });
+        
+        console.log(`✅ All panels synced to replay position ${this.currentIndex}`);
     }
 }
 
@@ -4697,5 +4070,10 @@ if (typeof window !== 'undefined') {
 
 // Debug function for console
 window.debugReplay = function() {
+    console.log('=== REPLAY SYSTEM DEBUG ===');
     
+    console.log('Toolbar element:', document.getElementById('replayToolbar'));
+    console.log('Replay button:', document.getElementById('replayModeBtn'));
+    console.log('Replay system instance:', window.chart && window.chart.replaySystem);
+    console.log('=========================');
 };

@@ -32,19 +32,6 @@ const INDICATOR_DEFINITIONS = {
             { id: 'fillColor', label: 'Fill Color (RGBA)', type: 'text', default: 'rgba(41,98,255,0.1)' }
         ]
     },
-    envelope: {
-        name: 'SMA Envelope',
-        type: 'overlay',
-        params: [
-            { id: 'period', label: 'SMA length', type: 'number', default: 20, min: 1 },
-            { id: 'percent', label: 'Band %', type: 'number', default: 2.5, min: 0.1, step: 0.1 },
-            { id: 'upperColor', label: 'Upper band', type: 'color', default: '#2962ff' },
-            { id: 'middleColor', label: 'Middle (SMA)', type: 'color', default: '#787b86' },
-            { id: 'lowerColor', label: 'Lower band', type: 'color', default: '#2962ff' },
-            { id: 'fillColor', label: 'Fill (RGBA)', type: 'text', default: 'rgba(41,98,255,0.08)' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4 }
-        ]
-    },
     rsi: {
         name: 'Relative Strength Index',
         type: 'separate',
@@ -181,7 +168,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'showBoxInfo', label: 'Box Labels', type: 'checkbox', default: true },
             { id: 'showDeviations', label: 'Deviations', type: 'checkbox', default: false },
             { id: 'deviationCount', label: 'Deviation Count', type: 'number', default: 2, min: 1, max: 5 },
-            { id: 'boxTransparency', label: 'Box Transparency', type: 'number', default: 88, min: 0, max: 100 },
+            { id: 'boxTransparency', label: 'Box Transparency', type: 'number', default: 85, min: 0, max: 100 },
             // Session Times (NY Timezone)
             { id: 'cbdrStart', label: 'CBDR Start (NY)', type: 'time', default: '14:00' },
             { id: 'cbdrEnd', label: 'CBDR End (NY)', type: 'time', default: '20:00' },
@@ -202,521 +189,8 @@ const INDICATOR_DEFINITIONS = {
             { id: 'nyMidnightColor', label: 'NY Midnight Color', type: 'color', default: '#2d62b6' },
             { id: 'textColor', label: 'Text Color', type: 'color', default: '#5c71af' }
         ]
-    },
-    dema: {
-        name: 'Double EMA (DEMA)',
-        type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'color', label: 'Color', type: 'color', default: '#00bcd4' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    tema: {
-        name: 'Triple EMA (TEMA)',
-        type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'color', label: 'Color', type: 'color', default: '#ab47bc' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    hma: {
-        name: 'Hull Moving Average',
-        type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'color', label: 'Color', type: 'color', default: '#26c6da' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    roc: {
-        name: 'Rate of Change',
-        type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 12, min: 1 },
-            { id: 'color', label: 'Color', type: 'color', default: '#ffa726' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    mom: {
-        name: 'Momentum',
-        type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 10, min: 1 },
-            { id: 'color', label: 'Color', type: 'color', default: '#66bb6a' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    obv: {
-        name: 'On Balance Volume',
-        type: 'separate',
-        params: [
-            { id: 'color', label: 'Line Color', type: 'color', default: '#78909c' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    willr: {
-        name: 'Williams %R',
-        type: 'separate',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
-            { id: 'color', label: 'Line Color', type: 'color', default: '#ec407a' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    mfi: {
-        name: 'Money Flow Index',
-        type: 'separate',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 14, min: 2 },
-            { id: 'color', label: 'Line Color', type: 'color', default: '#5c6bc0' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    donchian: {
-        name: 'Donchian Channels',
-        type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'upperColor', label: 'Upper Band Color', type: 'color', default: '#2962ff' },
-            { id: 'middleColor', label: 'Middle Band Color', type: 'color', default: '#787b86' },
-            { id: 'lowerColor', label: 'Lower Band Color', type: 'color', default: '#2962ff' },
-            { id: 'fillColor', label: 'Fill Color (RGBA)', type: 'text', default: 'rgba(41,98,255,0.06)' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 1, min: 1, max: 4 }
-        ]
-    },
-    keltner: {
-        name: 'Keltner Channels',
-        type: 'overlay',
-        params: [
-            { id: 'emaPeriod', label: 'EMA Length', type: 'number', default: 20, min: 1 },
-            { id: 'atrPeriod', label: 'ATR Length', type: 'number', default: 10, min: 1 },
-            { id: 'multiplier', label: 'ATR Multiplier', type: 'number', default: 2, min: 0.1, step: 0.1 },
-            { id: 'upperColor', label: 'Upper Band Color', type: 'color', default: '#2962ff' },
-            { id: 'middleColor', label: 'Middle Band Color', type: 'color', default: '#787b86' },
-            { id: 'lowerColor', label: 'Lower Band Color', type: 'color', default: '#2962ff' },
-            { id: 'fillColor', label: 'Fill Color (RGBA)', type: 'text', default: 'rgba(41,98,255,0.05)' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 1, min: 1, max: 4 }
-        ]
-    },
-    aroon: {
-        name: 'Aroon',
-        type: 'separate',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
-            { id: 'upColor', label: 'Aroon Up Color', type: 'color', default: '#00e676' },
-            { id: 'downColor', label: 'Aroon Down Color', type: 'color', default: '#f23645' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    cmf: {
-        name: 'Chaikin Money Flow',
-        type: 'separate',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'color', label: 'Line Color', type: 'color', default: '#29b6f6' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    trix: {
-        name: 'TRIX',
-        type: 'separate',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
-            { id: 'color', label: 'Line Color', type: 'color', default: '#8d6e63' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    psar: {
-        name: 'Parabolic SAR',
-        type: 'overlay',
-        params: [
-            { id: 'step', label: 'Start AF (step)', type: 'number', default: 0.02, min: 0.001, step: 0.001 },
-            { id: 'maxStep', label: 'Max AF', type: 'number', default: 0.2, min: 0.01, step: 0.01 },
-            { id: 'bullColor', label: 'Bull Color', type: 'color', default: '#26a69a' },
-            { id: 'bearColor', label: 'Bear Color', type: 'color', default: '#ef5350' },
-            { id: 'lineWidth', label: 'Dot Size (rel.)', type: 'number', default: 2, min: 1, max: 6 }
-        ]
-    },
-    sessionsplus: {
-        name: 'Sessions+ (multi-session, UTC)',
-        type: 'overlay',
-        params: [
-            { id: 'showSydney', label: 'Sydney', type: 'checkbox', default: true },
-            { id: 'sydneyStart', label: 'Sydney start (UTC)', type: 'time', default: '21:00' },
-            { id: 'sydneyEnd', label: 'Sydney end (UTC)', type: 'time', default: '06:00' },
-            { id: 'sydneyColor', label: 'Sydney color', type: 'color', default: 'rgba(156, 39, 176, 0.14)' },
-            { id: 'showTokyo', label: 'Tokyo', type: 'checkbox', default: true },
-            { id: 'tokyoStart', label: 'Tokyo start (UTC)', type: 'time', default: '00:00' },
-            { id: 'tokyoEnd', label: 'Tokyo end (UTC)', type: 'time', default: '09:00' },
-            { id: 'tokyoColor', label: 'Tokyo color', type: 'color', default: 'rgba(255, 152, 0, 0.14)' },
-            { id: 'showAsian', label: 'Asian (alias band)', type: 'checkbox', default: true },
-            { id: 'asianStart', label: 'Asian start (UTC)', type: 'time', default: '00:00' },
-            { id: 'asianEnd', label: 'Asian end (UTC)', type: 'time', default: '09:00' },
-            { id: 'asianColor', label: 'Asian color', type: 'color', default: 'rgba(255, 193, 7, 0.12)' },
-            { id: 'showFrankfurt', label: 'Frankfurt', type: 'checkbox', default: true },
-            { id: 'frankfurtStart', label: 'Frankfurt start (UTC)', type: 'time', default: '07:00' },
-            { id: 'frankfurtEnd', label: 'Frankfurt end (UTC)', type: 'time', default: '10:00' },
-            { id: 'frankfurtColor', label: 'Frankfurt color', type: 'color', default: 'rgba(3, 169, 244, 0.14)' },
-            { id: 'showLondon', label: 'London', type: 'checkbox', default: true },
-            { id: 'londonStart', label: 'London start (UTC)', type: 'time', default: '08:00' },
-            { id: 'londonEnd', label: 'London end (UTC)', type: 'time', default: '16:00' },
-            { id: 'londonColor', label: 'London color', type: 'color', default: 'rgba(33, 150, 243, 0.14)' },
-            { id: 'showNewYork', label: 'New York', type: 'checkbox', default: true },
-            { id: 'newYorkStart', label: 'NY start (UTC)', type: 'time', default: '13:00' },
-            { id: 'newYorkEnd', label: 'NY end (UTC)', type: 'time', default: '21:00' },
-            { id: 'newYorkColor', label: 'NY color', type: 'color', default: 'rgba(76, 175, 80, 0.14)' }
-        ]
-    },
-    openingrange: {
-        name: 'Opening range (UTC day, first N min)',
-        type: 'overlay',
-        params: [
-            { id: 'minutes', label: 'Minutes from UTC midnight', type: 'number', default: 30, min: 1, max: 1440 },
-            { id: 'upperColor', label: 'High band color', type: 'color', default: '#2962ff' },
-            { id: 'middleColor', label: 'Midline color', type: 'color', default: '#787b86' },
-            { id: 'lowerColor', label: 'Low band color', type: 'color', default: '#2962ff' },
-            { id: 'fillColor', label: 'Fill (RGBA)', type: 'text', default: 'rgba(41, 98, 255, 0.06)' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4 }
-        ]
-    },
-    supertrend: {
-        name: 'Supertrend',
-        type: 'overlay',
-        params: [
-            { id: 'period', label: 'ATR length', type: 'number', default: 10, min: 1 },
-            { id: 'multiplier', label: 'ATR multiplier', type: 'number', default: 3, min: 0.1, step: 0.1 },
-            { id: 'upColor', label: 'Bull line color', type: 'color', default: '#26a69a' },
-            { id: 'downColor', label: 'Bear line color', type: 'color', default: '#ef5350' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    stddev: {
-        name: 'Close volatility (rolling stdev)',
-        type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 2 },
-            { id: 'color', label: 'Line color', type: 'color', default: '#ab47bc' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    ao: {
-        name: 'Awesome Oscillator',
-        type: 'separate',
-        params: [
-            { id: 'color', label: 'Bar / line color', type: 'color', default: '#26a69a' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    uo: {
-        name: 'Ultimate Oscillator',
-        type: 'separate',
-        params: [
-            { id: 'period1', label: 'Period 1', type: 'number', default: 7, min: 1 },
-            { id: 'period2', label: 'Period 2', type: 'number', default: 14, min: 1 },
-            { id: 'period3', label: 'Period 3', type: 'number', default: 28, min: 1 },
-            { id: 'color', label: 'Line color', type: 'color', default: '#7e57c2' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    vortex: {
-        name: 'Vortex Indicator',
-        type: 'separate',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
-            { id: 'plusColor', label: '+VI color', type: 'color', default: '#00e676' },
-            { id: 'minusColor', label: '-VI color', type: 'color', default: '#f23645' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    ppo: {
-        name: 'Percentage Price Oscillator',
-        type: 'separate',
-        params: [
-            { id: 'fast', label: 'Fast length', type: 'number', default: 12, min: 1 },
-            { id: 'slow', label: 'Slow length', type: 'number', default: 26, min: 1 },
-            { id: 'signal', label: 'Signal length', type: 'number', default: 9, min: 1 },
-            { id: 'macdColor', label: 'PPO line color', type: 'color', default: '#2962ff' },
-            { id: 'signalColor', label: 'Signal color', type: 'color', default: '#f23645' },
-            { id: 'histogramColor', label: 'Histogram color', type: 'color', default: '#787b86' }
-        ]
-    },
-    dpo: {
-        name: 'Detrended Price Oscillator',
-        type: 'separate',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 2 },
-            { id: 'color', label: 'Line color', type: 'color', default: '#78909c' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    stochrsi: {
-        name: 'Stochastic RSI',
-        type: 'separate',
-        params: [
-            { id: 'rsiPeriod', label: 'RSI length', type: 'number', default: 14, min: 2 },
-            { id: 'stochLen', label: 'Stoch lookback', type: 'number', default: 14, min: 2 },
-            { id: 'smoothK', label: '%K smoothing', type: 'number', default: 3, min: 1 },
-            { id: 'smoothD', label: '%D smoothing', type: 'number', default: 3, min: 1 },
-            { id: 'kColor', label: '%K color', type: 'color', default: '#2962ff' },
-            { id: 'dColor', label: '%D color', type: 'color', default: '#f23645' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    massindex: {
-        name: 'Mass Index',
-        type: 'separate',
-        params: [
-            { id: 'emaPeriod', label: 'EMA length', type: 'number', default: 9, min: 2 },
-            { id: 'sumPeriod', label: 'Sum length', type: 'number', default: 25, min: 2 },
-            { id: 'color', label: 'Line color', type: 'color', default: '#00bcd4' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    coppock: {
-        name: 'Coppock Curve',
-        type: 'separate',
-        params: [
-            { id: 'wmaPeriod', label: 'WMA length', type: 'number', default: 10, min: 2 },
-            { id: 'color', label: 'Line color', type: 'color', default: '#8e24aa' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    rvi: {
-        name: 'Relative Vigor Index',
-        type: 'separate',
-        params: [
-            { id: 'period', label: 'Smoothing length', type: 'number', default: 10, min: 2 },
-            { id: 'color', label: 'Line color', type: 'color', default: '#ffa726' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    elderray: {
-        name: 'Elder Ray (Bull / Bear power)',
-        type: 'separate',
-        params: [
-            { id: 'period', label: 'EMA length', type: 'number', default: 13, min: 2 },
-            { id: 'bullColor', label: 'Bull power', type: 'color', default: '#26a69a' },
-            { id: 'bearColor', label: 'Bear power', type: 'color', default: '#ef5350' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    seasonality: {
-        name: 'Seasonality (avg % by calendar date)',
-        type: 'separate',
-        params: [
-            {
-                id: 'minSamples',
-                label: 'Min samples per date (years of that month/day in history)',
-                type: 'number',
-                default: 2,
-                min: 1,
-                max: 50
-            },
-            { id: 'color', label: 'Line color', type: 'color', default: '#ff9800' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    cotnet: {
-        name: 'COT — Net commercial vs non-commercial',
-        type: 'separate',
-        params: [
-            {
-                id: 'cftcCode',
-                label: 'CFTC code (Legacy Combined)',
-                type: 'text',
-                default: 'auto'
-            },
-            {
-                id: 'dataUrl',
-                label: 'Custom data URL (optional)',
-                type: 'text',
-                default: ''
-            },
-            { id: 'showCommercial', label: 'Show commercial net', type: 'checkbox', default: true },
-            { id: 'showLarge', label: 'Show non-commercial net', type: 'checkbox', default: true },
-            { id: 'bullColor', label: 'Commercial (net)', type: 'color', default: '#26a69a' },
-            { id: 'bearColor', label: 'Non-commercial (net)', type: 'color', default: '#ef5350' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
-    },
-    ictpd: {
-        name: 'ICT — Previous day PD (UTC)',
-        type: 'overlay',
-        params: [
-            { id: 'upperColor', label: 'Prior day high', type: 'color', default: '#2962ff' },
-            { id: 'middleColor', label: 'Equilibrium (50%)', type: 'color', default: '#787b86' },
-            { id: 'lowerColor', label: 'Prior day low', type: 'color', default: '#2962ff' },
-            { id: 'fillColor', label: 'Zone fill (RGBA)', type: 'text', default: 'rgba(41, 98, 255, 0.04)' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4 }
-        ]
-    },
-    ictasian: {
-        name: 'ICT — Asian range (UTC)',
-        type: 'overlay',
-        params: [
-            { id: 'rangeStart', label: 'Range start (UTC)', type: 'time', default: '00:00' },
-            { id: 'rangeEnd', label: 'Range end (UTC)', type: 'time', default: '09:00' },
-            { id: 'upperColor', label: 'Asian high', type: 'color', default: '#ff9800' },
-            { id: 'middleColor', label: 'Midline', type: 'color', default: '#787b86' },
-            { id: 'lowerColor', label: 'Asian low', type: 'color', default: '#ff9800' },
-            { id: 'fillColor', label: 'Zone fill (RGBA)', type: 'text', default: 'rgba(255, 152, 0, 0.06)' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4 }
-        ]
-    },
-    ictote: {
-        name: 'ICT — OTE zone (rolling range)',
-        type: 'overlay',
-        params: [
-            { id: 'lookback', label: 'Swing lookback (bars)', type: 'number', default: 24, min: 5 },
-            { id: 'fibLow', label: 'Lower fib (e.g. 0.62)', type: 'number', default: 0.62, min: 0.01, max: 0.99, step: 0.01 },
-            { id: 'fibHigh', label: 'Upper fib (e.g. 0.79)', type: 'number', default: 0.79, min: 0.01, max: 0.99, step: 0.01 },
-            { id: 'upperColor', label: 'Upper band', type: 'color', default: '#7c4dff' },
-            { id: 'middleColor', label: 'Midline', type: 'color', default: '#787b86' },
-            { id: 'lowerColor', label: 'Lower band', type: 'color', default: '#7c4dff' },
-            { id: 'fillColor', label: 'Zone fill (RGBA)', type: 'text', default: 'rgba(124, 77, 255, 0.08)' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4 }
-        ]
-    },
-    ictfvg: {
-        name: 'ICT — Fair value gaps (3-bar)',
-        type: 'overlay',
-        params: [
-            { id: 'extendBars', label: 'Box length (bars)', type: 'number', default: 80, min: 5, max: 500 },
-            { id: 'maxBoxes', label: 'Max gaps drawn', type: 'number', default: 120, min: 8, max: 400 },
-            { id: 'minGapPct', label: 'Min gap vs price (0 = off)', type: 'number', default: 0, min: 0, step: 0.00001 },
-            { id: 'bullColor', label: 'Bullish FVG fill', type: 'color', default: 'rgba(38, 166, 154, 0.22)' },
-            { id: 'bearColor', label: 'Bearish FVG fill', type: 'color', default: 'rgba(239, 83, 80, 0.22)' },
-            { id: 'lineWidth', label: 'Border thickness', type: 'number', default: 1, min: 1, max: 3 }
-        ]
-    },
-    ictsesspd: {
-        name: 'ICT — Session PD (prev session, UTC)',
-        type: 'overlay',
-        params: [
-            { id: 'rangeStart', label: 'Session start (UTC)', type: 'time', default: '13:00' },
-            { id: 'rangeEnd', label: 'Session end (UTC)', type: 'time', default: '21:00' },
-            { id: 'maxLookbackDays', label: 'Max days to find prior session', type: 'number', default: 6, min: 1, max: 14 },
-            { id: 'upperColor', label: 'Session high', type: 'color', default: '#00e676' },
-            { id: 'middleColor', label: 'Equilibrium', type: 'color', default: '#787b86' },
-            { id: 'lowerColor', label: 'Session low', type: 'color', default: '#f23645' },
-            { id: 'fillColor', label: 'Zone fill (RGBA)', type: 'text', default: 'rgba(0, 230, 118, 0.05)' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4 }
-        ]
-    },
-    ictliquidity: {
-        name: 'ICT — Equal highs / lows (liquidity)',
-        type: 'overlay',
-        params: [
-            { id: 'fractalWidth', label: 'Fractal bars (each side)', type: 'number', default: 2, min: 1, max: 5 },
-            { id: 'tolerancePct', label: 'Cluster tolerance (% of price)', type: 'number', default: 0.03, min: 0.001, max: 1, step: 0.001 },
-            { id: 'minTouches', label: 'Min swings in cluster', type: 'number', default: 2, min: 2, max: 10 },
-            { id: 'extendBars', label: 'Extend line right (bars)', type: 'number', default: 12, min: 0, max: 200 },
-            { id: 'maxSegments', label: 'Max lines drawn', type: 'number', default: 80, min: 8, max: 200 },
-            { id: 'highColor', label: 'Equal highs', type: 'color', default: '#f23645' },
-            { id: 'lowColor', label: 'Equal lows', type: 'color', default: '#2962ff' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 3 }
-        ]
-    },
-    custom: {
-        name: 'Custom (sandboxed JS)',
-        type: 'overlay',
-        params: [
-            { id: 'name', label: 'Name', type: 'text', default: 'Custom' },
-            {
-                id: 'placement',
-                label: 'Placement',
-                type: 'select',
-                options: [
-                    { value: 'overlay', label: 'On price chart' },
-                    { value: 'panel', label: 'Separate panel' }
-                ],
-                default: 'overlay'
-            },
-            {
-                id: 'script',
-                label: 'JavaScript — must define compute(bars, params) (Pine Script will not run)',
-                type: 'textarea',
-                default:
-                    'function compute(bars, params) {\n' +
-                    '  const c = bars.close;\n' +
-                    '  const n = c.length;\n' +
-                    '  const p = params.period != null ? params.period : 20;\n' +
-                    '  const out = new Array(n).fill(null);\n' +
-                    '  let s = 0;\n' +
-                    '  for (let i = 0; i < n; i++) {\n' +
-                    '    s += c[i];\n' +
-                    '    if (i >= p) s -= c[i - p];\n' +
-                    '    if (i >= p - 1) out[i] = s / p;\n' +
-                    '  }\n' +
-                    '  return {\n' +
-                    '    overlay: true,\n' +
-                    "    plots: [{ type: 'line', values: out, color: '#2962ff', name: 'SMA' }]\n" +
-                    '  };\n' +
-                    '}'
-            },
-            { id: 'period', label: 'Example param (params.period)', type: 'number', default: 20, min: 1 }
-        ]
     }
 };
-
-/**
- * Close chart type / toolbar dropdowns when opening indicator modals so two overlays never stack.
- */
-function dismissToolbarDropdownsForModal() {
-    try {
-        const chartTypeDropdown = document.getElementById('chartTypeDropdown');
-        const chartTypeArrow = document.getElementById('chartTypeDropdownArrow');
-        if (chartTypeDropdown) chartTypeDropdown.classList.remove('show');
-        if (chartTypeArrow) chartTypeArrow.classList.remove('dropdown-open');
-
-        document.querySelectorAll('.tool-dropdown.show').forEach(function(dd) {
-            dd.classList.remove('show');
-            if (dd.id === 'visibility-toolbar-dropdown' || dd.id === 'delete-toolbar-dropdown') {
-                dd.style.display = 'none';
-            }
-        });
-        document.querySelectorAll('.tool-group-btn[data-group]').forEach(function(btn) {
-            btn.classList.remove('dropdown-open');
-        });
-        document.querySelectorAll('.cursor-dropdown-arrow, .dropdown-arrow').forEach(function(arr) {
-            arr.classList.remove('dropdown-open');
-        });
-
-        const timeframeDropdown = document.getElementById('timeframeDropdown');
-        const timeframeDropdownMenu = document.getElementById('timeframeDropdownMenu');
-        if (timeframeDropdownMenu) timeframeDropdownMenu.style.display = 'none';
-        if (timeframeDropdown) timeframeDropdown.classList.remove('open');
-
-        if (window.timeframeFavorites && typeof window.timeframeFavorites._closeTfFlyout === 'function') {
-            window.timeframeFavorites._closeTfFlyout();
-        }
-    } catch (err) {
-        /* ignore */
-    }
-}
-
-function closeIndicatorSelectionMenuIfOpen() {
-    try {
-        const menu = document.getElementById('indicatorSelectionMenu');
-        const backdrop = document.getElementById('indicatorMenuBackdrop');
-        if (menu && menu.classList.contains('visible')) {
-            menu.classList.remove('visible');
-        }
-        if (backdrop) {
-            backdrop.style.visibility = 'hidden';
-            backdrop.style.opacity = '0';
-        }
-    } catch (err) {
-        /* ignore */
-    }
-}
-
-if (typeof window !== 'undefined') {
-    window.dismissToolbarDropdownsForModal = dismissToolbarDropdownsForModal;
-    window.closeIndicatorSelectionMenuIfOpen = closeIndicatorSelectionMenuIfOpen;
-}
 
 const INDICATOR_COLOR_ROWS = [
     ['#FFFFFF', '#EBEBEB', '#D6D6D6', '#BFBFBF', '#A8A8A8', '#8F8F8F', '#757575', '#5C5C5C', '#434343', '#000000'],
@@ -731,41 +205,6 @@ const INDICATOR_COLOR_ROWS = [
 
 const INDICATOR_COLOR_RECENTS = ['#131722', '#2962FF', '#1E3A5F', '#262B3E'];
 
-/** Indicator legend chips — flat tint + blur (no gradient); text color via .talaria-ind-chip-name (matches OHLC labels in CSS) */
-const TALARIA_IND_CHIP_BORDER = 'rgba(255, 255, 255, 0.2)';
-const TALARIA_IND_CHIP_BG = 'rgba(19, 23, 34, 0.32)';
-const TALARIA_INDICATOR_GLASS =
-    'backdrop-filter:saturate(1.5) blur(20px);-webkit-backdrop-filter:saturate(1.5) blur(20px);';
-const TALARIA_INDICATOR_CHIP_CSS =
-    'display:inline-flex;align-items:center;gap:6px;min-height:22px;box-sizing:border-box;' +
-    'padding:3px 8px 3px 6px;margin:0;border-radius:4px;line-height:1.25;' +
-    'border:1px solid ' + TALARIA_IND_CHIP_BORDER + ';' +
-    'background:' + TALARIA_IND_CHIP_BG + ';' +
-    TALARIA_INDICATOR_GLASS +
-    'box-shadow:inset 0 1px 0 rgba(255,255,255,0.18),0 2px 8px rgba(0,0,0,0.06);' +
-    'transform:translateZ(0);-webkit-transform:translateZ(0);' +
-    'cursor:pointer;vertical-align:middle;' +
-    'font-family:-apple-system,BlinkMacSystemFont,Trebuchet MS,Roboto,Ubuntu,sans-serif;';
-const TALARIA_INDICATOR_CHIP_BG = TALARIA_IND_CHIP_BG;
-const TALARIA_INDICATOR_CHIP_BG_HOVER = 'rgba(30, 34, 44, 0.48)';
-const TALARIA_INDICATOR_CHIP_BORDER_HOVER = 'rgba(255, 255, 255, 0.3)';
-const TALARIA_INDICATOR_COLOR_STRIP = (color) =>
-    'display:inline-block;width:3px;height:14px;border-radius:1px;background:' + color + ';flex-shrink:0;';
-function setTalariaIndChipNameEl(el, visible) {
-    el.className = 'talaria-ind-chip-name' + (visible ? '' : ' talaria-ind-chip-name--hidden');
-}
-const TALARIA_IND_ACTION_BTN =
-    'display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:2px;cursor:pointer;transition:background .15s,color .15s;flex-shrink:0;';
-
-if (typeof window !== 'undefined') {
-    window.TALARIA_INDICATOR_CHIP_CSS = TALARIA_INDICATOR_CHIP_CSS;
-    window.TALARIA_INDICATOR_CHIP_BG = TALARIA_INDICATOR_CHIP_BG;
-    window.TALARIA_INDICATOR_CHIP_BG_HOVER = TALARIA_INDICATOR_CHIP_BG_HOVER;
-    window.TALARIA_INDICATOR_CHIP_BORDER_HOVER = TALARIA_INDICATOR_CHIP_BORDER_HOVER;
-    window.TALARIA_IND_CHIP_BORDER = TALARIA_IND_CHIP_BORDER;
-    window.TALARIA_INDICATOR_COLOR_STRIP = TALARIA_INDICATOR_COLOR_STRIP;
-}
-
 function ensureIndicatorColorStyles(panel) {
     if (panel.querySelector('#indicator-color-picker-styles')) {
         return;
@@ -779,7 +218,6 @@ function ensureIndicatorColorStyles(panel) {
             align-items: center;
             gap: 12px;
             position: relative;
-            margin-left: auto;
         }
         #indicatorSettingsPanel .indicator-color-preview-wrapper {
             position: relative;
@@ -788,43 +226,44 @@ function ensureIndicatorColorStyles(panel) {
         #indicatorSettingsPanel .indicator-color-preview {
             width: 28px;
             height: 28px;
-            border-radius: 6px;
-            border: 1px solid var(--sp-input-border, rgba(255,255,255,0.14));
+            border-radius: 4px;
+            border: 2px solid #363a45;
             cursor: pointer;
-            transition: transform 0.15s, box-shadow 0.15s, border-color 0.2s;
+            transition: border-color 0.2s;
         }
         #indicatorSettingsPanel .indicator-color-preview:hover {
-            border-color: rgba(var(--sp-accent-rgb, 41,98,255), 0.8);
-            transform: scale(1.08);
-            box-shadow: 0 0 0 2px rgba(var(--sp-accent-rgb, 41,98,255), 0.35);
+            border-color: #2962ff;
         }
-        /* Palette is appended to document.body (avoids transform offset bugs). Styles must NOT depend on #indicatorSettingsPanel ancestor. */
-        .indicator-color-palette {
-            position: fixed;
-            top: 0;
-            left: 0;
-            transform: none;
-            background: var(--sp-ui-chrome-bg, #131722);
-            border: 1px solid var(--sp-input-border, rgba(255,255,255,0.14));
+        #indicatorSettingsPanel .indicator-color-value {
+            color: #d1d4dc;
+            font-size: 12px;
+            font-weight: 500;
+            min-width: 90px;
+        }
+        #indicatorSettingsPanel .indicator-color-palette {
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2a2e39;
             border-radius: 8px;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
             padding: 16px;
             display: none;
             flex-direction: column;
             gap: 12px;
-            z-index: 100000;
+            z-index: 10001;
             min-width: 280px;
-            max-width: min(92vw, 340px);
         }
-        .indicator-color-palette.active {
+        #indicatorSettingsPanel .indicator-color-palette.active {
             display: flex;
         }
-        .indicator-color-palette .indicator-color-grid {
+        #indicatorSettingsPanel .indicator-color-grid {
             display: grid;
             grid-template-columns: repeat(10, 1fr);
             gap: 4px;
         }
-        .indicator-color-palette .indicator-color-swatch {
+        #indicatorSettingsPanel .indicator-color-swatch {
             width: 22px;
             height: 22px;
             border-radius: 3px;
@@ -832,28 +271,28 @@ function ensureIndicatorColorStyles(panel) {
             border: 2px solid transparent;
             transition: all 0.15s;
         }
-        .indicator-color-palette .indicator-color-swatch:hover {
+        #indicatorSettingsPanel .indicator-color-swatch:hover {
             transform: scale(1.1);
             border-color: #ffffff;
         }
-        .indicator-color-palette .indicator-color-swatch.selected {
+        #indicatorSettingsPanel .indicator-color-swatch.selected {
             border-color: #ffffff;
             box-shadow: 0 0 0 1px #2a2e39, 0 0 0 3px #ffffff;
         }
-        .indicator-color-palette .indicator-color-divider {
+        #indicatorSettingsPanel .indicator-color-divider {
             height: 1px;
             background: #3a3e49;
         }
-        .indicator-color-palette .indicator-color-recent {
+        #indicatorSettingsPanel .indicator-color-recent {
             display: flex;
             align-items: center;
             gap: 10px;
         }
-        .indicator-color-palette .indicator-color-recent-items {
+        #indicatorSettingsPanel .indicator-color-recent-items {
             display: flex;
             gap: 6px;
         }
-        .indicator-color-palette .indicator-color-add {
+        #indicatorSettingsPanel .indicator-color-add {
             width: 22px;
             height: 22px;
             border-radius: 3px;
@@ -867,26 +306,26 @@ function ensureIndicatorColorStyles(panel) {
             font-size: 18px;
             transition: all 0.15s;
         }
-        .indicator-color-palette .indicator-color-add:hover {
+        #indicatorSettingsPanel .indicator-color-add:hover {
             background: #4a4e59;
             border-color: #7a7e89;
             color: #ffffff;
         }
-        .indicator-color-palette .indicator-color-opacity {
+        #indicatorSettingsPanel .indicator-color-opacity {
             display: flex;
             flex-direction: column;
             gap: 8px;
         }
-        .indicator-color-palette .indicator-color-opacity-label {
+        #indicatorSettingsPanel .indicator-color-opacity-label {
             color: #8a8e99;
             font-size: 12px;
         }
-        .indicator-color-palette .indicator-color-opacity-control {
+        #indicatorSettingsPanel .indicator-color-opacity-control {
             display: flex;
             align-items: center;
             gap: 12px;
         }
-        .indicator-color-palette .indicator-color-opacity-slider {
+        #indicatorSettingsPanel .indicator-color-opacity-slider {
             flex: 1;
             -webkit-appearance: none;
             appearance: none;
@@ -896,7 +335,7 @@ function ensureIndicatorColorStyles(panel) {
             outline: none;
             cursor: pointer;
         }
-        .indicator-color-palette .indicator-color-opacity-slider::-webkit-slider-thumb {
+        #indicatorSettingsPanel .indicator-color-opacity-slider::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
             width: 16px;
@@ -907,7 +346,7 @@ function ensureIndicatorColorStyles(panel) {
             cursor: pointer;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
-        .indicator-color-palette .indicator-color-opacity-slider::-moz-range-thumb {
+        #indicatorSettingsPanel .indicator-color-opacity-slider::-moz-range-thumb {
             width: 16px;
             height: 16px;
             border-radius: 50%;
@@ -916,7 +355,7 @@ function ensureIndicatorColorStyles(panel) {
             cursor: pointer;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
-        .indicator-color-palette .indicator-color-opacity-value {
+        #indicatorSettingsPanel .indicator-color-opacity-value {
             color: #ffffff;
             font-size: 14px;
             font-weight: 500;
@@ -1065,7 +504,11 @@ function createIndicatorColorControl(paramId, initialValue, closeAllPalettes) {
 
     const palette = document.createElement('div');
     palette.className = 'indicator-color-palette';
-    document.body.appendChild(palette);
+    previewWrapper.appendChild(palette);
+
+    const valueLabel = document.createElement('span');
+    valueLabel.className = 'indicator-color-value';
+    container.appendChild(valueLabel);
 
     const hiddenInput = document.createElement('input');
     hiddenInput.type = 'hidden';
@@ -1194,34 +637,7 @@ function createIndicatorColorControl(paramId, initialValue, closeAllPalettes) {
         preview.style.background = displayColor;
         hiddenInput.value = displayColor;
         sliderValue.textContent = `${Math.round(opacity * 100)}%`;
-    };
-
-    const positionPalette = () => {
-        const rect = preview.getBoundingClientRect();
-        // `panel` is not in scope here — resolve the modal from DOM (same id as createIndicatorSettingsPanel).
-        const settingsPanelEl = document.getElementById('indicatorSettingsPanel');
-        const panelRect = settingsPanelEl
-            ? settingsPanelEl.getBoundingClientRect()
-            : { left: 0, top: 0, width: 400, height: 400 };
-        const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
-        const vh = window.innerHeight || document.documentElement.clientHeight || 720;
-        const paletteWidth = Math.min(320, vw - 16);
-        const estimatedHeight = 260;
-        const anchorLeft = Number.isFinite(rect.left) ? rect.left : panelRect.left + panelRect.width * 0.5;
-        const anchorTop = Number.isFinite(rect.top) ? rect.top : panelRect.top + 80;
-        const anchorWidth = Number.isFinite(rect.width) ? rect.width : 24;
-        const anchorBottom = Number.isFinite(rect.bottom) ? rect.bottom : (anchorTop + 24);
-        let left = anchorLeft + anchorWidth / 2 - paletteWidth / 2;
-        let top = anchorBottom + 8;
-        left = Math.max(8, Math.min(left, vw - paletteWidth - 8));
-        if (top + estimatedHeight > vh - 8) {
-            top = Math.max(8, anchorTop - estimatedHeight - 8);
-        }
-        palette.style.right = 'auto';
-        palette.style.bottom = 'auto';
-        palette.style.left = `${left}px`;
-        palette.style.top = `${top}px`;
-        palette.style.width = `${paletteWidth}px`;
+        valueLabel.textContent = `${normalizeHex(baseColor)} • ${Math.round(opacity * 100)}%`;
     };
 
     const close = () => {
@@ -1233,7 +649,17 @@ function createIndicatorColorControl(paramId, initialValue, closeAllPalettes) {
         const wasActive = palette.classList.contains('active');
         closeAllPalettes();
         if (!wasActive) {
-            positionPalette();
+            updateSliderGradient();
+            updateSelectedSwatches();
+            palette.classList.add('active');
+        }
+    });
+
+    valueLabel.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const wasActive = palette.classList.contains('active');
+        closeAllPalettes();
+        if (!wasActive) {
             updateSliderGradient();
             updateSelectedSwatches();
             palette.classList.add('active');
@@ -1252,174 +678,195 @@ function createIndicatorColorControl(paramId, initialValue, closeAllPalettes) {
         container,
         input: hiddenInput,
         close,
-        contains: (target) => container.contains(target) || palette.contains(target),
-        destroy: () => {
-            palette.classList.remove('active');
-            if (palette.parentElement) palette.parentElement.removeChild(palette);
-        }
+        contains: (target) => container.contains(target)
     };
 }
 
 // 2. UI Generation Functions
 
 function createIndicatorSelectionMenu(chartInstance) {
+    // Check if light mode
+    const isLightMode = document.body.classList.contains('light-mode');
+    
+    // Define categories
     const categories = {
         favorites: { name: 'Favorites', icon: '☆', indicators: [] },
-        technicals: {
-            name: 'Technicals',
+        technicals: { 
+            name: 'Technicals', 
             icon: '',
-            indicators: [
-                'sma', 'ema', 'wma', 'dema', 'tema', 'hma', 'bb', 'envelope', 'vwap', 'donchian', 'keltner', 'psar', 'supertrend', 'stddev',
-                'roc', 'mom',
-                'rsi', 'macd', 'ppo', 'stoch', 'stochrsi', 'atr', 'cci', 'adx', 'willr', 'mfi', 'aroon', 'cmf', 'trix', 'ao', 'uo', 'vortex', 'dpo',
-                'massindex', 'coppock', 'rvi', 'elderray', 'seasonality', 'cotnet',
-                'obv', 'adr', 'volume'
-            ]
+            indicators: ['sma', 'ema', 'bb', 'rsi', 'macd', 'wma', 'vwap', 'stoch', 'atr', 'cci', 'adx', 'adr', 'volume']
         },
         sessions: {
             name: 'Sessions',
             icon: '',
-            indicators: ['sessions', 'sessionsplus', 'openingrange', 'killzones']
-        },
-        ict: {
-            name: 'ICT',
-            icon: '',
-            indicators: ['ictpd', 'ictsesspd', 'ictasian', 'ictote', 'ictfvg', 'ictliquidity']
-        },
-        script: {
-            name: 'Custom',
-            icon: '',
-            indicators: ['custom']
+            indicators: ['sessions', 'killzones']
         }
     };
-
+    
+    // Create backdrop
     const backdrop = document.createElement('div');
     backdrop.id = 'indicatorMenuBackdrop';
     backdrop.style.cssText = `
-        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(0,0,0,0.55);
-        z-index: 9998; visibility: hidden; opacity: 0;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: ${isLightMode ? 'rgba(0, 0, 0, 0.3)' : 'rgba(0, 0, 0, 0.6)'};
+        z-index: 9998;
+        visibility: hidden;
+        opacity: 0;
         transition: opacity 0.2s ease, visibility 0.2s ease;
     `;
     document.body.appendChild(backdrop);
 
+    // Create floating menu - TradingView style
     const menu = document.createElement('div');
     menu.id = 'indicatorSelectionMenu';
     menu.style.cssText = `
-        position: fixed; top: 50%; left: 50%;
+        position: fixed;
+        top: 50%;
+        left: 50%;
         transform: translate(-50%, -50%);
-        width: 720px; max-width: 92vw;
-        height: 520px; max-height: 82vh;
-        background: var(--sp-ui-chrome-bg, #131722);
-        border: 1px solid var(--sp-ui-border, rgba(42,46,57,0.65));
+        width: 700px;
+        max-width: 90vw;
+        height: 500px;
+        max-height: 80vh;
+        background: ${isLightMode ? '#ffffff' : '#000000'};
+        border: 1px solid ${isLightMode ? '#e0e3eb' : 'transparent'};
         border-radius: 8px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.03) inset;
-        z-index: 9999; visibility: hidden; opacity: 0;
+        box-shadow: ${isLightMode ? '0 8px 32px rgba(0, 0, 0, 0.15)' : '0 16px 48px rgba(0, 0, 0, 0.4)'};
+        z-index: 9999;
+        visibility: hidden;
+        opacity: 0;
         transition: opacity 0.15s ease, visibility 0.15s ease;
-        display: flex; flex-direction: column; overflow: hidden;
-        font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
     `;
 
+    // Header with title and close button
     const header = document.createElement('div');
     header.style.cssText = `
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 17px 22px 15px;
-        border-bottom: 1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
-        background: var(--sp-ui-chrome-bg, #131722);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 20px;
+        border-bottom: 1px solid ${isLightMode ? '#e0e3eb' : '#2a2e39'};
         flex-shrink: 0;
     `;
-
+    
     const title = document.createElement('span');
     title.textContent = 'Indicators, metrics, and strategies';
     title.style.cssText = `
-        font-size: 15px; font-weight: 600;
-        color: var(--sp-text, #d1d4dc);
-        letter-spacing: 0.01em;
+        font-size: 16px;
+        font-weight: 500;
+        color: ${isLightMode ? '#131722' : '#d1d4dc'};
     `;
-
+    
     const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+    closeBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"/>
+        <line x1="6" y1="6" x2="18" y2="18"/>
     </svg>`;
     closeBtn.style.cssText = `
-        background: none; border: none; cursor: pointer;
-        padding: 6px; display: flex; align-items: center;
-        color: var(--sp-text-muted, #787b86);
-        border-radius: 5px; transition: all 0.15s;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 6px;
+        display: flex;
+        align-items: center;
+        color: #787b86;
+        border-radius: 4px;
+        transition: all 0.15s;
     `;
-    closeBtn.onmouseenter = () => { closeBtn.style.background = 'var(--sp-hover-bg, rgba(42,46,57,0.6))'; closeBtn.style.color = 'var(--sp-text, #d1d4dc)'; };
-    closeBtn.onmouseleave = () => { closeBtn.style.background = 'none'; closeBtn.style.color = 'var(--sp-text-muted, #787b86)'; };
+    closeBtn.onmouseenter = () => { closeBtn.style.background = isLightMode ? '#f0f3fa' : '#2a2e39'; };
+    closeBtn.onmouseleave = () => { closeBtn.style.background = 'none'; };
     closeBtn.onclick = () => closeMenu();
+    
     header.appendChild(title);
     header.appendChild(closeBtn);
     menu.appendChild(header);
 
+    // Search bar
     const searchContainer = document.createElement('div');
     searchContainer.style.cssText = `
-        padding: 11px 16px;
-        border-bottom: 1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
-        background: var(--sp-ui-chrome-bg, #131722);
+        padding: 12px 20px;
+        border-bottom: 1px solid ${isLightMode ? '#e0e3eb' : '#2a2e39'};
         flex-shrink: 0;
     `;
-
+    
     const searchWrapper = document.createElement('div');
     searchWrapper.style.cssText = `
-        position: relative; display: flex; align-items: center;
-        background: var(--sp-ui-surface-bg, #1e2740);
-        border: 1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
-        border-radius: 6px; padding: 0 12px;
-        transition: border-color 0.15s;
+        position: relative;
+        display: flex;
+        align-items: center;
+        background: ${isLightMode ? '#f0f3fa' : '#2a2e39'};
+        border-radius: 6px;
+        padding: 0 12px;
     `;
-
+    
     const searchIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    searchIcon.setAttribute('width', '14'); searchIcon.setAttribute('height', '14');
-    searchIcon.setAttribute('viewBox', '0 0 24 24'); searchIcon.setAttribute('fill', 'none');
-    searchIcon.setAttribute('stroke', 'var(--sp-text-muted, #787b86)'); searchIcon.setAttribute('stroke-width', '2');
+    searchIcon.setAttribute('width', '16');
+    searchIcon.setAttribute('height', '16');
+    searchIcon.setAttribute('viewBox', '0 0 24 24');
+    searchIcon.setAttribute('fill', 'none');
+    searchIcon.setAttribute('stroke', '#787b86');
+    searchIcon.setAttribute('stroke-width', '2');
     searchIcon.innerHTML = '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>';
     searchIcon.style.cssText = 'flex-shrink: 0;';
-
+    
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
     searchInput.id = 'indicatorMenuSearch';
-    searchInput.placeholder = 'Search indicators...';
+    searchInput.placeholder = 'Search';
     searchInput.style.cssText = `
-        flex: 1; padding: 9px 10px;
-        border: none; font-size: 13px;
-        color: var(--sp-text, #d1d4dc);
-        background: transparent; outline: none;
-        font-family: 'Roboto', -apple-system, sans-serif;
+        flex: 1;
+        padding: 10px 12px;
+        border: none;
+        font-size: 14px;
+        color: ${isLightMode ? '#131722' : '#d1d4dc'};
+        background: transparent;
+        outline: none;
     `;
-    searchInput.onfocus = () => { searchWrapper.style.borderColor = 'var(--sp-accent, #2962ff)'; };
-    searchInput.onblur  = () => { searchWrapper.style.borderColor = 'var(--sp-ui-border, rgba(42,46,57,0.55))'; };
-
+    
     searchWrapper.appendChild(searchIcon);
     searchWrapper.appendChild(searchInput);
     searchContainer.appendChild(searchWrapper);
     menu.appendChild(searchContainer);
 
+    // Main content area with sidebar and list
     const contentArea = document.createElement('div');
-    contentArea.style.cssText = `display: flex; flex: 1; overflow: hidden;`;
+    contentArea.style.cssText = `
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+    `;
 
+    // Left sidebar
     const sidebar = document.createElement('div');
     sidebar.style.cssText = `
-        width: 176px;
-        border-right: 1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
-        padding: 8px 0; overflow-y: auto; flex-shrink: 0;
-        background: var(--sp-ui-sidebar-bg, #1a1f2e);
+        width: 180px;
+        border-right: 1px solid ${isLightMode ? '#e0e3eb' : '#2a2e39'};
+        padding: 8px 0;
+        overflow-y: auto;
+        flex-shrink: 0;
     `;
 
     let activeCategory = 'technicals';
     const categoryButtons = {};
 
+    // Create category items
     const createCategoryItem = (key, cat, isSection = false) => {
         if (isSection) {
             const section = document.createElement('div');
             section.style.cssText = `
-                padding: 14px 14px 5px;
-                font-size: 10px; font-weight: 700;
-                color: var(--sp-text-muted, #787b86);
-                text-transform: uppercase; letter-spacing: 0.8px;
-                font-family: 'Roboto', -apple-system, sans-serif;
+                padding: 12px 16px 6px;
+                font-size: 11px;
+                font-weight: 600;
+                color: #787b86;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
             `;
             section.textContent = cat;
             return section;
@@ -1428,168 +875,160 @@ function createIndicatorSelectionMenu(chartInstance) {
         const item = document.createElement('div');
         item.dataset.category = key;
         item.style.cssText = `
-            display: flex; align-items: center; gap: 8px;
-            padding: 8px 12px 8px 9px; cursor: pointer;
-            font-size: 13px; font-weight: 500;
-            color: var(--sp-text, #d1d4dc);
-            transition: background 0.12s, color 0.12s, border-color 0.12s;
-            margin: 2px 8px; border-radius: 4px;
-            border-left: 3px solid transparent;
-            font-family: 'Roboto', -apple-system, sans-serif;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 13px;
+            color: ${isLightMode ? '#000000ff' : '#d1d4dc'};
+            transition: all 0.15s;
+            border-radius: 0;
+            margin: 0 8px;
+            border-radius: 4px;
         `;
-
+        
         const icon = document.createElement('span');
         icon.textContent = cat.icon;
-        icon.style.cssText = 'font-size: 13px; width: 18px; text-align: center; flex-shrink: 0;';
-
+        icon.style.cssText = 'font-size: 14px; width: 20px; text-align: center;';
+        
         const name = document.createElement('span');
         name.textContent = cat.name;
-
+        
         item.appendChild(icon);
         item.appendChild(name);
-
+        
         item.onmouseenter = () => {
             if (activeCategory !== key) {
-                item.style.background = 'rgba(255, 255, 255, 0.05)';
+                item.style.background = isLightMode ? '#f0f3fa' : '#2a2e39';
             }
         };
         item.onmouseleave = () => {
-            if (activeCategory !== key) item.style.background = 'transparent';
+            if (activeCategory !== key) {
+                item.style.background = 'transparent';
+            }
         };
-
+        
         item.onclick = () => {
-            const ac = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
+            // Update active state
             Object.keys(categoryButtons).forEach(k => {
                 categoryButtons[k].style.background = 'transparent';
-                categoryButtons[k].style.color = 'var(--sp-text, #d1d4dc)';
-                categoryButtons[k].style.fontWeight = '500';
-                categoryButtons[k].style.borderLeftColor = 'transparent';
+                categoryButtons[k].style.color = isLightMode ? '#131722' : '#d1d4dc';
             });
-            item.style.background = 'rgba(41, 98, 255, 0.16)';
+            item.style.background = '#2962ff';
             item.style.color = '#ffffff';
-            item.style.fontWeight = '600';
-            item.style.borderLeftColor = ac;
             activeCategory = key;
             filterByCategory(key);
         };
-
+        
         categoryButtons[key] = item;
         return item;
     };
 
+    // Add sections and categories
     sidebar.appendChild(createCategoryItem(null, 'BUILT-IN', true));
     sidebar.appendChild(createCategoryItem('technicals', categories.technicals));
     sidebar.appendChild(createCategoryItem('sessions', categories.sessions));
-    sidebar.appendChild(createCategoryItem('ict', categories.ict));
-    sidebar.appendChild(createCategoryItem(null, 'SCRIPT', true));
-    sidebar.appendChild(createCategoryItem('script', categories.script));
     sidebar.appendChild(createCategoryItem(null, 'PERSONAL', true));
     sidebar.appendChild(createCategoryItem('favorites', categories.favorites));
 
-    const initAc = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
-    categoryButtons['technicals'].style.background = 'rgba(41, 98, 255, 0.16)';
+    // Set initial active
+    categoryButtons['technicals'].style.background = '#2962ff';
     categoryButtons['technicals'].style.color = '#ffffff';
-    categoryButtons['technicals'].style.fontWeight = '600';
-    categoryButtons['technicals'].style.borderLeftColor = initAc;
 
     contentArea.appendChild(sidebar);
 
+    // Right content - indicator list
     const listContainer = document.createElement('div');
     listContainer.style.cssText = `
-        flex: 1; display: flex; flex-direction: column; overflow: hidden;
-        background: var(--sp-ui-chrome-bg, #131722);
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
     `;
 
+    // List header
     const listHeader = document.createElement('div');
     listHeader.style.cssText = `
-        display: flex; padding: 8px 18px;
-        border-bottom: 1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
-        font-size: 10px; font-weight: 700;
-        color: var(--sp-text-muted, #787b86);
-        text-transform: uppercase; letter-spacing: 0.8px;
+        display: flex;
+        padding: 8px 16px;
+        border-bottom: 1px solid ${isLightMode ? '#e0e3eb' : '#2a2e39'};
+        font-size: 11px;
+        font-weight: 500;
+        color: #787b86;
+        text-transform: uppercase;
         flex-shrink: 0;
-        font-family: 'Roboto', -apple-system, sans-serif;
     `;
-    listHeader.innerHTML = `<span style="flex:1;">Indicator Name</span>`;
+    listHeader.innerHTML = `<span style="flex: 1;">Indicator Name</span>`;
     listContainer.appendChild(listHeader);
 
+    // Indicator list
     const indicatorList = document.createElement('div');
     indicatorList.style.cssText = `
-        flex: 1; overflow-y: auto; padding: 4px 0;
-        scrollbar-width: thin;
-        scrollbar-color: var(--sp-ui-border, rgba(42,46,57,0.55)) transparent;
+        flex: 1;
+        overflow-y: auto;
+        padding: 4px 0;
     `;
 
+    // Store indicator items for filtering
     const indicatorItems = [];
 
     Object.keys(INDICATOR_DEFINITIONS).forEach(key => {
         const def = INDICATOR_DEFINITIONS[key];
         const item = document.createElement('div');
         item.style.cssText = `
-            display: flex; align-items: center;
-            padding: 10px 16px; cursor: pointer;
+            display: flex;
+            align-items: center;
+            padding: 10px 16px;
+            cursor: pointer;
             transition: background 0.1s;
-            font-size: 13px; font-weight: 400;
-            color: var(--sp-text, #d1d4dc);
-            font-family: 'Roboto', -apple-system, sans-serif;
-            border-radius: 4px; margin: 1px 10px;
+            font-size: 13px;
+            color: ${isLightMode ? '#131722' : '#d1d4dc'};
         `;
         item.dataset.name = def.name.toLowerCase();
         item.dataset.key = key;
-
+        
+        // Star icon for favorites
         const star = document.createElement('span');
         star.innerHTML = '★';
         star.style.cssText = `
-            color: var(--sp-text-muted, #5d606b);
-            margin-right: 12px; font-size: 12px;
-            cursor: pointer; transition: color 0.15s; flex-shrink: 0;
-            opacity: 0.85;
+            color: #787b86;
+            margin-right: 12px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: color 0.15s;
         `;
         star.onclick = (e) => {
             e.stopPropagation();
             const isFav = star.style.color === 'rgb(255, 193, 7)';
-            star.style.color = isFav ? 'var(--sp-text-muted, #787b86)' : '#ffc107';
+            star.style.color = isFav ? '#787b86' : '#ffc107';
+            // Toggle in favorites
             const idx = categories.favorites.indicators.indexOf(key);
-            if (isFav && idx > -1) categories.favorites.indicators.splice(idx, 1);
-            else if (!isFav) categories.favorites.indicators.push(key);
+            if (isFav && idx > -1) {
+                categories.favorites.indicators.splice(idx, 1);
+            } else if (!isFav) {
+                categories.favorites.indicators.push(key);
+            }
         };
-
+        
         const nameSpan = document.createElement('span');
         nameSpan.textContent = def.name;
         nameSpan.style.flex = '1';
-
+        
         item.appendChild(star);
         item.appendChild(nameSpan);
-
-        item.onmouseenter = () => { item.style.background = 'rgba(255, 255, 255, 0.06)'; };
-        item.onmouseleave = () => { item.style.background = 'transparent'; };
-
+        
+        item.onmouseenter = () => item.style.background = isLightMode ? '#f0f3fa' : '#2a2e39';
+        item.onmouseleave = () => item.style.background = 'transparent';
+        
         item.onclick = () => {
             console.log('📊 Indicator clicked:', key, def.name);
+            console.log('📊 Chart instance:', chartInstance);
+            console.log('📊 Has addIndicator:', typeof chartInstance?.addIndicator);
             closeMenu();
-            if (key === 'custom') {
-                createIndicatorSettingsPanel(chartInstance, 'custom');
-                return;
-            }
-            const defaultParams = {};
-            const defaultStyle = {};
-            def.params.forEach(param => {
-                if (param.default === undefined) return;
-                if (param.id.toLowerCase().includes('color') || param.id.toLowerCase().includes('width') || param.id.toLowerCase().includes('fill')) {
-                    defaultStyle[param.id] = param.default;
-                } else {
-                    defaultParams[param.id] = param.default;
-                }
-            });
-            let targetChart = (typeof window.getActiveChart === 'function' ? window.getActiveChart() : null) || chartInstance;
-            if (typeof targetChart.addIndicator !== 'function') {
-                targetChart = window.chart || window.mainChart;
-            }
-            if (targetChart && typeof targetChart.addIndicator === 'function') {
-                targetChart.addIndicator(key, { ...defaultParams, ...defaultStyle });
-            }
+            createIndicatorSettingsPanel(chartInstance, key);
         };
-
+        
         indicatorList.appendChild(item);
         indicatorItems.push(item);
     });
@@ -1598,6 +1037,7 @@ function createIndicatorSelectionMenu(chartInstance) {
     contentArea.appendChild(listContainer);
     menu.appendChild(contentArea);
 
+    // Filter by category
     function filterByCategory(categoryKey) {
         const cat = categories[categoryKey];
         indicatorItems.forEach(item => {
@@ -1611,17 +1051,21 @@ function createIndicatorSelectionMenu(chartInstance) {
         });
     }
 
+    // Search functionality
     searchInput.addEventListener('input', function() {
         const searchTerm = this.value.toLowerCase().trim();
         if (searchTerm) {
+            // Show all matching indicators regardless of category
             indicatorItems.forEach(item => {
-                item.style.display = item.dataset.name.includes(searchTerm) ? 'flex' : 'none';
+                const matches = item.dataset.name.includes(searchTerm);
+                item.style.display = matches ? 'flex' : 'none';
             });
         } else {
             filterByCategory(activeCategory);
         }
     });
 
+    // Close menu function
     function closeMenu() {
         menu.classList.remove('visible');
         backdrop.style.visibility = 'hidden';
@@ -1630,33 +1074,66 @@ function createIndicatorSelectionMenu(chartInstance) {
         filterByCategory(activeCategory);
     }
 
+    // Keyboard support
     searchInput.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') closeMenu();
     });
 
+    // Click backdrop to close
     backdrop.onclick = closeMenu;
 
+    // Function to update theme colors dynamically
     function updateThemeColors() {
-        const ac = getComputedStyle(document.documentElement).getPropertyValue('--sp-accent').trim() || '#2962ff';
+        const lightMode = document.body.classList.contains('light-mode');
+        
+        // Update backdrop
+        backdrop.style.background = lightMode ? 'rgba(0, 0, 0, 0.3)' : 'rgba(0, 0, 0, 0.6)';
+        
+        // Update menu
+        menu.style.background = lightMode ? '#ffffff' : '#000000';
+        menu.style.border = `1px solid ${lightMode ? '#e0e3eb' : 'transparent'}`;
+        menu.style.boxShadow = lightMode ? '0 8px 32px rgba(0, 0, 0, 0.15)' : '0 16px 48px rgba(0, 0, 0, 0.4)';
+        
+        // Update header
+        header.style.borderBottom = `1px solid ${lightMode ? '#e0e3eb' : '#2a2e39'}`;
+        title.style.color = lightMode ? '#131722' : '#d1d4dc';
+        
+        // Update search
+        searchContainer.style.borderBottom = `1px solid ${lightMode ? '#e0e3eb' : '#2a2e39'}`;
+        searchWrapper.style.background = lightMode ? '#f0f3fa' : '#2a2e39';
+        searchInput.style.color = lightMode ? '#131722' : '#d1d4dc';
+        
+        // Update sidebar
+        sidebar.style.borderRight = `1px solid ${lightMode ? '#e0e3eb' : '#2a2e39'}`;
+        
+        // Update category buttons
         Object.keys(categoryButtons).forEach(k => {
             if (activeCategory !== k) {
-                categoryButtons[k].style.background = 'transparent';
-                categoryButtons[k].style.color = 'var(--sp-text, #d1d4dc)';
-                categoryButtons[k].style.fontWeight = '500';
-                categoryButtons[k].style.borderLeftColor = 'transparent';
-            } else {
-                categoryButtons[k].style.background = 'rgba(41, 98, 255, 0.16)';
-                categoryButtons[k].style.color = '#ffffff';
-                categoryButtons[k].style.fontWeight = '600';
-                categoryButtons[k].style.borderLeftColor = ac;
+                categoryButtons[k].style.color = lightMode ? '#131722' : '#d1d4dc';
             }
         });
+        
+        // Update list header
+        listHeader.style.borderBottom = `1px solid ${lightMode ? '#e0e3eb' : '#2a2e39'}`;
+        
+        // Update indicator items
+        indicatorItems.forEach(item => {
+            item.style.color = lightMode ? '#131722' : '#d1d4dc';
+            item.onmouseenter = () => item.style.background = lightMode ? '#f0f3fa' : '#2a2e39';
+            item.onmouseleave = () => item.style.background = 'transparent';
+        });
+        
+        // Update close button hover
+        closeBtn.onmouseenter = () => { closeBtn.style.background = lightMode ? '#f0f3fa' : '#2a2e39'; };
+        closeBtn.onmouseleave = () => { closeBtn.style.background = 'none'; };
     }
 
+    // Visibility observer
     const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
             if (mutation.attributeName === 'class') {
                 if (menu.classList.contains('visible')) {
+                    // Update theme colors each time menu opens
                     updateThemeColors();
                     menu.style.visibility = 'visible';
                     menu.style.opacity = '1';
@@ -1674,7 +1151,9 @@ function createIndicatorSelectionMenu(chartInstance) {
     });
     observer.observe(menu, { attributes: true });
 
+    // Initial filter
     filterByCategory('technicals');
+
     return menu;
 }
 
@@ -1685,8 +1164,6 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         console.error('❌ No definition found for indicator type:', indicatorType);
         return;
     }
-
-    dismissToolbarDropdownsForModal();
 
     // Remove any existing panel and backdrop
     const existingPanel = document.getElementById('indicatorSettingsPanel');
@@ -1710,26 +1187,22 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
 
     const panel = document.createElement('div');
     panel.id = 'indicatorSettingsPanel';
-    const isCustomPanel = indicatorType === 'custom';
     panel.style.cssText = `
         position: fixed;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: var(--sp-ui-chrome-bg, #131722);
-        border: 1px solid var(--sp-ui-border, rgba(42,46,57,0.55));
-        border-radius: 10px;
-        box-shadow: 0 24px 64px rgba(0,0,0,0.65);
+        background: #000000;
+        border: 1px solid #363a45;
+        border-radius: 8px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
         z-index: 10000;
-        min-width: ${isCustomPanel ? '480px' : '360px'};
-        max-width: ${isCustomPanel ? '640px' : '460px'};
-        width: ${isCustomPanel ? 'min(92vw, 600px)' : 'auto'};
+        min-width: 350px;
+        max-width: 450px;
         max-height: 80vh;
-        padding: 22px;
+        padding: 20px;
         display: flex;
         flex-direction: column;
-        font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
-        overflow: visible;
     `;
 
     const title = document.createElement('div');
@@ -1737,19 +1210,6 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     title.textContent = existingIndicator ? `Edit ${def.name}` : `Add ${def.name}`;
     title.style.flexShrink = '0';
     panel.appendChild(title);
-
-    if (indicatorType === 'custom') {
-        const hint = document.createElement('p');
-        hint.textContent =
-            'This runs sandboxed JavaScript only. TradingView Pine Script is not supported. ' +
-            'Use the default template: function compute(bars, params) { return { overlay, plots }; } ' +
-            'where plots are line or histogram series. For built-in EMA/RSI/MACD, use the Technicals list instead.';
-        hint.style.cssText =
-            'font-size:12px;line-height:1.45;color:var(--sp-text-muted,#787b86);' +
-            'margin:0 0 12px 0;padding:10px 12px;border-radius:6px;' +
-            'background:rgba(255,193,7,0.07);border:1px solid rgba(255,193,7,0.28);';
-        panel.appendChild(hint);
-    }
 
     const form = document.createElement('div');
     form.style.display = 'flex';
@@ -1761,38 +1221,28 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     form.style.marginTop = '10px';
     // Add scrollbar styling
     form.style.scrollbarWidth = 'thin';
-    form.style.scrollbarColor = 'var(--sp-ui-border, rgba(42,46,57,0.55)) transparent';
+    form.style.scrollbarColor = '#363a45 #1e222d';
 
     const initialParams = existingIndicator ? existingIndicator.params : {};
     const initialStyle = existingIndicator ? existingIndicator.style : {};
     const allParams = { ...initialParams, ...initialStyle };
-    if (indicatorType === 'custom' && existingIndicator && existingIndicator.params) {
-        if (allParams.placement === undefined || allParams.placement === '') {
-            allParams.placement = existingIndicator.params.separatePanel ? 'panel' : 'overlay';
-        }
-        const cp = existingIndicator.params.customParams;
-        if ((allParams.period === undefined || allParams.period === '') && cp && cp.period != null) {
-            allParams.period = cp.period;
-        }
-    }
 
     const colorControls = [];
     const closeAllPalettes = () => {
         colorControls.forEach(control => control.close());
     };
-    const destroyAllPalettes = () => {
-        colorControls.forEach(control => {
-            if (typeof control.destroy === 'function') control.destroy();
-        });
-    };
 
     def.params.forEach(param => {
         const wrapper = document.createElement('div');
-        wrapper.className = 'settings-input-row';
+        wrapper.style.display = 'flex';
+        wrapper.style.justifyContent = 'space-between';
+        wrapper.style.alignItems = 'center';
+        wrapper.style.padding = '3px 0';
 
         const label = document.createElement('label');
-        label.className = 'settings-input-label';
         label.textContent = param.label;
+        label.style.fontSize = '12px';
+        label.style.color = '#d1d4dc';
         wrapper.appendChild(label);
 
         let input;
@@ -1801,12 +1251,17 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         if (param.type === 'number') {
             input = document.createElement('input');
             input.type = 'number';
-            input.className = 'settings-input';
             input.value = currentValue;
             input.min = param.min || 1;
             if (param.max) input.max = param.max;
             if (param.step) input.step = param.step;
-            input.style.width = '160px';
+            input.style.width = '80px';
+            input.style.padding = '4px 8px';
+            input.style.borderRadius = '4px';
+            input.style.border = '1px solid #363a45';
+            input.style.background = '#000000';
+            input.style.color = '#d1d4dc';
+            input.style.textAlign = 'right';
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
             wrapper.appendChild(input);
@@ -1827,55 +1282,16 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
             wrapper.appendChild(input);
-        } else if (param.type === 'select' && Array.isArray(param.options)) {
-            input = document.createElement('select');
-            input.className = 'settings-input';
-            input.style.width = '100%';
-            input.style.maxWidth = '100%';
-            input.style.padding = '8px 10px';
-            input.style.borderRadius = '6px';
-            input.style.cursor = 'pointer';
-            input.style.background = 'var(--sp-ui-surface-bg, #1e2740)';
-            input.style.color = 'var(--sp-text, #d1d4dc)';
-            input.style.border = '1px solid var(--sp-ui-border, rgba(42,46,57,0.55))';
-            param.options.forEach(opt => {
-                const o = document.createElement('option');
-                o.value = opt.value;
-                o.textContent = opt.label;
-                if (String(opt.value) === String(currentValue != null ? currentValue : param.default)) {
-                    o.selected = true;
-                }
-                input.appendChild(o);
-            });
-            input.setAttribute('data-param-id', param.id);
-            input.setAttribute('data-param-type', param.type);
-            wrapper.appendChild(input);
-        } else if (param.type === 'textarea') {
-            input = document.createElement('textarea');
-            input.className = 'settings-input';
-            input.rows = 16;
-            input.value = currentValue != null ? currentValue : (param.default || '');
-            input.style.width = '100%';
-            input.style.boxSizing = 'border-box';
-            input.style.fontFamily = 'ui-monospace, Menlo, Consolas, monospace';
-            input.style.fontSize = '11px';
-            input.style.lineHeight = '1.35';
-            input.style.padding = '10px';
-            input.style.borderRadius = '6px';
-            input.style.resize = 'vertical';
-            input.style.minHeight = '220px';
-            input.style.background = 'var(--sp-ui-surface-bg, #1e2740)';
-            input.style.color = 'var(--sp-text, #d1d4dc)';
-            input.style.border = '1px solid var(--sp-ui-border, rgba(42,46,57,0.55))';
-            input.setAttribute('data-param-id', param.id);
-            input.setAttribute('data-param-type', param.type);
-            wrapper.appendChild(input);
         } else if (param.type === 'time') {
             input = document.createElement('input');
             input.type = 'time';
-            input.className = 'settings-input';
             input.value = currentValue || param.default;
-            input.style.width = '160px';
+            input.style.width = '90px';
+            input.style.padding = '4px 8px';
+            input.style.borderRadius = '4px';
+            input.style.border = '1px solid #363a45';
+            input.style.background = '#000000';
+            input.style.color = '#d1d4dc';
             input.style.cursor = 'pointer';
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
@@ -1896,9 +1312,14 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             }
             input = document.createElement('input');
             input.type = 'text';
-            input.className = 'settings-input';
             input.value = currentValue;
-            input.style.width = '160px';
+            input.style.width = '120px';
+            input.style.padding = '4px 8px';
+            input.style.borderRadius = '4px';
+            input.style.border = '1px solid #363a45';
+            input.style.background = '#000000';
+            input.style.color = '#d1d4dc';
+            input.style.textAlign = 'right';
             input.setAttribute('data-param-id', param.id);
             input.setAttribute('data-param-type', param.type);
             wrapper.appendChild(input);
@@ -1909,10 +1330,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     panel.appendChild(form);
 
     const handleOutsideClick = (event) => {
-        const clickedInsideColorControl = colorControls.some(control =>
-            typeof control.contains === 'function' && control.contains(event.target)
-        );
-        if (!panel.contains(event.target) && !clickedInsideColorControl) {
+        if (!panel.contains(event.target)) {
             closeAllPalettes();
         }
     };
@@ -1920,17 +1338,28 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
 
     // Buttons
     const buttonWrapper = document.createElement('div');
-    buttonWrapper.className = 'settings-actions';
-    buttonWrapper.style.cssText = 'display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:15px;padding:0;';
+    buttonWrapper.style.display = 'flex';
+    buttonWrapper.style.gap = '10px';
+    buttonWrapper.style.marginTop = '15px';
 
     const saveBtn = document.createElement('button');
-    saveBtn.className = 'settings-btn settings-btn-save';
-    saveBtn.style.cssText = 'flex:0 0 auto;min-width:150px;width:auto;padding:10px 22px;';
+    saveBtn.style.cssText = `
+        background: #2962ff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+    `;
     saveBtn.textContent = existingIndicator ? 'Apply Changes' : 'Add Indicator';
+    saveBtn.onmouseenter = () => { saveBtn.style.background = '#1e53e5'; };
+    saveBtn.onmouseleave = () => { saveBtn.style.background = '#2962ff'; };
     const closePanel = () => {
         document.removeEventListener('click', handleOutsideClick, true);
         closeAllPalettes();
-        destroyAllPalettes();
         backdrop.remove();
         panel.remove();
     };
@@ -1966,9 +1395,11 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             }
         });
 
-        let targetChart = (typeof window.getActiveChart === 'function' ? window.getActiveChart() : null) || chartInstance;
+        // Get the chart instance - fallback to global chart if method not available
+        let targetChart = chartInstance;
         if (typeof targetChart.addIndicator !== 'function') {
             targetChart = window.chart || window.mainChart;
+            console.log('Using fallback chart instance');
         }
         
         if (!targetChart || typeof targetChart.addIndicator !== 'function') {
@@ -1978,31 +1409,10 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             return;
         }
 
-        if (indicatorType === 'custom') {
-            const mergedEarly = { ...newParams, ...newStyle };
-            const TC = typeof window.TalariaCustomIndicators !== 'undefined' ? window.TalariaCustomIndicators : null;
-            if (TC && typeof TC.validateCustomScriptSource === 'function') {
-                const check = TC.validateCustomScriptSource(mergedEarly.script);
-                if (!check.ok) {
-                    alert(check.error || 'Invalid script');
-                    return;
-                }
-            }
-        }
-
         if (existingIndicator) {
             // Edit existing indicator
             const mergedParams = { ...newParams, ...newStyle };
-            if (indicatorType === 'custom' && typeof targetChart.updateIndicator === 'function') {
-                const p = { ...mergedParams };
-                p.customParams = { period: p.period };
-                delete p.period;
-                p.separatePanel = p.placement === 'panel';
-                p.overlay = p.placement !== 'panel';
-                delete p.placement;
-                targetChart.updateIndicator(existingIndicator.id, p);
-                console.log(`✅ Updated ${existingIndicator.name} on panel ${targetChart.panelIndex || 'main'}`);
-            } else if (typeof targetChart.updateIndicator === 'function') {
+            if (typeof targetChart.updateIndicator === 'function') {
                 targetChart.updateIndicator(existingIndicator.id, mergedParams);
                 console.log(`✅ Updated ${existingIndicator.name} on panel ${targetChart.panelIndex || 'main'}`);
             } else if (typeof targetChart.editIndicator === 'function') {
@@ -2010,20 +1420,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             }
         } else {
             // Add new indicator
-            if (indicatorType === 'custom') {
-                const raw = { ...newParams, ...newStyle };
-                const payload = {
-                    name: raw.name,
-                    script: raw.script,
-                    customParams: { period: raw.period },
-                    separatePanel: raw.placement === 'panel',
-                    overlay: raw.placement !== 'panel',
-                    customApiVersion: (typeof window.TalariaCustomIndicators !== 'undefined' && window.TalariaCustomIndicators.API_VERSION) || 1
-                };
-                targetChart.addIndicator('custom', payload);
-            } else {
-                targetChart.addIndicator(indicatorType, { ...newParams, ...newStyle });
-            }
+            targetChart.addIndicator(indicatorType, { ...newParams, ...newStyle });
         }
 
         // Also close the indicator selection menu if it's open
@@ -2044,9 +1441,20 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     };
 
     const cancelBtn = document.createElement('button');
-    cancelBtn.className = 'settings-btn settings-btn-close';
-    cancelBtn.style.cssText = 'flex:0 0 auto;min-width:130px;width:auto;padding:10px 22px;';
+    cancelBtn.style.cssText = `
+        background: #363a45;
+        color: #d1d4dc;
+        border: none;
+        border-radius: 4px;
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+    `;
     cancelBtn.textContent = 'Cancel';
+    cancelBtn.onmouseenter = () => { cancelBtn.style.background = '#434651'; };
+    cancelBtn.onmouseleave = () => { cancelBtn.style.background = '#363a45'; };
     cancelBtn.onclick = () => {
         closePanel();
     };
@@ -2074,14 +1482,6 @@ function setupIndicatorUI(chartInstance) {
     const menu = createIndicatorSelectionMenu(chartInstance);
     document.body.appendChild(menu);
 
-    try {
-        const syncIndBtnActive = () => {
-            indicatorsBtn.classList.toggle('active', menu.classList.contains('visible'));
-        };
-        syncIndBtnActive();
-        new MutationObserver(syncIndBtnActive).observe(menu, { attributes: true, attributeFilter: ['class'] });
-    } catch (err) { /* ignore */ }
-
     indicatorsBtn.onclick = (e) => {
         e.stopPropagation();
         // Toggle visibility of the selection menu
@@ -2094,7 +1494,6 @@ function setupIndicatorUI(chartInstance) {
         if (isVisible) {
             menu.classList.remove('visible');
         } else {
-            dismissToolbarDropdownsForModal();
             // Show centered menu (position is set in CSS)
             menu.classList.add('visible');
         }
@@ -2138,31 +1537,29 @@ function setupIndicatorUI(chartInstance) {
         for (let i = 0; i < overlayIndicators.length; i++) {
             const indicator = overlayIndicators[i];
             const item = document.createElement('div');
-            item.style.cssText = TALARIA_INDICATOR_CHIP_CSS;
+            item.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; cursor: pointer; padding: 2px 6px; margin-right: 8px; border-radius: 3px; transition: background 0.2s;';
 
             item.onmouseenter = function() {
-                item.style.background = TALARIA_INDICATOR_CHIP_BG_HOVER;
-                item.style.borderColor = TALARIA_INDICATOR_CHIP_BORDER_HOVER;
+                item.style.background = 'rgba(120, 123, 134, 0.1)';
             };
             item.onmouseleave = function() {
-                item.style.background = TALARIA_INDICATOR_CHIP_BG;
-                item.style.borderColor = TALARIA_IND_CHIP_BORDER;
+                item.style.background = 'transparent';
             };
 
             // Color indicator
             const colorBox = document.createElement('span');
             const displayColor = indicator.style.color || indicator.style.middleColor || '#2962ff';
-            colorBox.style.cssText = TALARIA_INDICATOR_COLOR_STRIP(displayColor);
+            colorBox.style.cssText = 'width: 12px; height: 2px; background: ' + displayColor + '; border-radius: 1px;';
             item.appendChild(colorBox);
 
             // Name (dimmed when hidden)
             const nameSpan = document.createElement('span');
             nameSpan.textContent = indicator.name;
-            setTalariaIndChipNameEl(nameSpan, indicator.visible !== false);
+            nameSpan.style.cssText = 'color: #787b86; font-size: 11px; font-weight: 500; opacity: ' + (indicator.visible !== false ? '1' : '0.5') + ';';
             item.appendChild(nameSpan);
 
             const actions = document.createElement('span');
-            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;';
+            actions.style.cssText = 'display: inline-flex; align-items: center; gap: 4px; margin-left: 4px;';
 
             const self = this;
             const id = indicator.id;
@@ -2170,11 +1567,11 @@ function setupIndicatorUI(chartInstance) {
 
             // Visibility toggle (eye icon) - for first occurrence
             const visibilityBtn = document.createElement('span');
-            visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';  // SVG eye icons
-            visibilityBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#787b86;opacity:' + (indicator.visible !== false ? '1' : '0.5') + ';';
+            visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';  // SVG eye icons
+            visibilityBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 2px 4px; border-radius: 3px; cursor: pointer; font-size: 14px; transition: all 0.2s; opacity: ' + (indicator.visible !== false ? '1' : '0.5') + ';';
             visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
             visibilityBtn.onmouseenter = function() {
-                visibilityBtn.style.background = 'rgba(255, 255, 255, 0.08)';
+                visibilityBtn.style.background = 'rgba(120, 123, 134, 0.2)';
             };
             visibilityBtn.onmouseleave = function() {
                 visibilityBtn.style.background = 'transparent';
@@ -2185,11 +1582,12 @@ function setupIndicatorUI(chartInstance) {
                 indicator.visible = indicator.visible === false ? true : false;
                 
                 // Update icon
-                visibilityBtn.innerHTML = indicator.visible ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+                visibilityBtn.innerHTML = indicator.visible ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
                 visibilityBtn.style.opacity = indicator.visible ? '1' : '0.5';
                 visibilityBtn.title = indicator.visible ? 'Click to hide' : 'Click to show';
                 
-                setTalariaIndChipNameEl(nameSpan, indicator.visible);
+                // Update name opacity
+                nameSpan.style.opacity = indicator.visible ? '1' : '0.5';
                 
                 // Hide/show indicator data to actually hide it from chart
                 if (!indicator.visible) {
@@ -2228,15 +1626,15 @@ function setupIndicatorUI(chartInstance) {
             actions.appendChild(visibilityBtn);
 
             const settingsBtn = document.createElement('span');
-            settingsBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-            settingsBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#787b86;';
+            settingsBtn.textContent = '✎';  // Using pencil symbol instead of gear
+            settingsBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 2px 4px; border-radius: 3px; cursor: pointer; color: #2962ff; font-size: 14px; transition: all 0.2s;';
             settingsBtn.title = 'Edit settings';
             settingsBtn.onmouseenter = function() {
                 settingsBtn.style.color = '#ffffff';
-                settingsBtn.style.background = self._cachedAccentColor || '#2962ff';
+                settingsBtn.style.background = '#2962ff';
             };
             settingsBtn.onmouseleave = function() {
-                settingsBtn.style.color = '#787b86';
+                settingsBtn.style.color = '#2962ff';
                 settingsBtn.style.background = 'transparent';
             };
             settingsBtn.onclick = function(e) {
@@ -2261,13 +1659,15 @@ function setupIndicatorUI(chartInstance) {
             // Add a small 'x' button to remove
             const removeBtn = document.createElement('span');
             removeBtn.textContent = '×';
-            removeBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#f23645;font-size:14px;font-weight:600;line-height:1;';
+            removeBtn.style.cssText = 'font-size: 16px; font-weight: bold; color: #787b86; cursor: pointer; padding: 0 2px; transition: all 0.2s;';
             removeBtn.title = 'Remove indicator';
             removeBtn.onmouseenter = function() {
-                removeBtn.style.background = 'rgba(242, 54, 69, 0.2)';
+                removeBtn.style.color = '#f23645';
+                removeBtn.style.transform = 'scale(1.2)';
             };
             removeBtn.onmouseleave = function() {
-                removeBtn.style.background = 'transparent';
+                removeBtn.style.color = '#787b86';
+                removeBtn.style.transform = 'scale(1)';
             };
             removeBtn.onclick = function(e) {
                 e.stopPropagation();
@@ -2287,20 +1687,30 @@ function setupIndicatorUI(chartInstance) {
 window.INDICATOR_DEFINITIONS = INDICATOR_DEFINITIONS;
 window.setupIndicatorUI = setupIndicatorUI;
 
-// Auto-initialize: retry until a chart instance is available (handles async chart init)
-let _indicatorUIReady = false;
-function _tryInitIndicatorUI() {
-    if (_indicatorUIReady) return;
-    const chartInstance = window.chart || window.mainChart;
-    if (chartInstance) {
-        _indicatorUIReady = true;
-        console.log('🎨 Setting up indicator UI');
-        setupIndicatorUI(chartInstance);
-    } else {
-        setTimeout(_tryInitIndicatorUI, 150);
+// Auto-initialize when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+        // Apply to main chart if it exists
+        if (window.chart) {
+            console.log('🎨 Setting up indicator UI for main chart');
+            setupIndicatorUI(window.chart);
+        }
+        if (window.mainChart) {
+            console.log('🎨 Setting up indicator UI for mainChart');
+            setupIndicatorUI(window.mainChart);
+        }
+    });
+} else {
+    // DOM already loaded
+    if (window.chart) {
+        console.log('🎨 Setting up indicator UI for main chart');
+        setupIndicatorUI(window.chart);
+    }
+    if (window.mainChart) {
+        console.log('🎨 Setting up indicator UI for mainChart');
+        setupIndicatorUI(window.mainChart);
     }
 }
-_tryInitIndicatorUI();
 
 // Add updateIndicator function if it doesn't exist
 if (typeof Chart !== 'undefined' && !Chart.prototype.updateIndicator) {
@@ -2554,31 +1964,29 @@ if (typeof Chart !== 'undefined') {
         for (let i = 0; i < overlayIndicators.length; i++) {
             const indicator = overlayIndicators[i];
             const item = document.createElement('div');
-            item.style.cssText = TALARIA_INDICATOR_CHIP_CSS;
+            item.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; cursor: pointer; padding: 2px 6px; margin-right: 8px; border-radius: 3px; transition: background 0.2s;';
 
             item.onmouseenter = function() {
-                item.style.background = TALARIA_INDICATOR_CHIP_BG_HOVER;
-                item.style.borderColor = TALARIA_INDICATOR_CHIP_BORDER_HOVER;
+                item.style.background = 'rgba(120, 123, 134, 0.1)';
             };
             item.onmouseleave = function() {
-                item.style.background = TALARIA_INDICATOR_CHIP_BG;
-                item.style.borderColor = TALARIA_IND_CHIP_BORDER;
+                item.style.background = 'transparent';
             };
 
             // Color indicator
             const colorBox = document.createElement('span');
             const displayColor = indicator.style.color || indicator.style.middleColor || '#2962ff';
-            colorBox.style.cssText = TALARIA_INDICATOR_COLOR_STRIP(displayColor);
+            colorBox.style.cssText = 'width: 12px; height: 2px; background: ' + displayColor + '; border-radius: 1px;';
             item.appendChild(colorBox);
 
             // Name (dimmed when hidden)
             const nameSpan = document.createElement('span');
             nameSpan.textContent = indicator.name;
-            setTalariaIndChipNameEl(nameSpan, indicator.visible !== false);
+            nameSpan.style.cssText = 'color: #787b86; font-size: 11px; font-weight: 500; opacity: ' + (indicator.visible !== false ? '1' : '0.5') + ';';
             item.appendChild(nameSpan);
 
             const actions = document.createElement('span');
-            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;';
+            actions.style.cssText = 'display: inline-flex; align-items: center; gap: 4px; margin-left: 4px;';
 
             const self = this;
             const id = indicator.id;
@@ -2586,11 +1994,11 @@ if (typeof Chart !== 'undefined') {
 
             // Visibility toggle (eye icon)
             const visibilityBtn = document.createElement('span');
-            visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';  // SVG eye icons
-            visibilityBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#787b86;opacity:' + (indicator.visible !== false ? '1' : '0.5') + ';';
+            visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';  // SVG eye icons
+            visibilityBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 2px 4px; border-radius: 3px; cursor: pointer; font-size: 14px; transition: all 0.2s; opacity: ' + (indicator.visible !== false ? '1' : '0.5') + ';';
             visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
             visibilityBtn.onmouseenter = function() {
-                visibilityBtn.style.background = 'rgba(255, 255, 255, 0.08)';
+                visibilityBtn.style.background = 'rgba(120, 123, 134, 0.2)';
             };
             visibilityBtn.onmouseleave = function() {
                 visibilityBtn.style.background = 'transparent';
@@ -2601,11 +2009,12 @@ if (typeof Chart !== 'undefined') {
                 indicator.visible = indicator.visible === false ? true : false;
                 
                 // Update icon
-                visibilityBtn.innerHTML = indicator.visible ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+                visibilityBtn.innerHTML = indicator.visible ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
                 visibilityBtn.style.opacity = indicator.visible ? '1' : '0.5';
                 visibilityBtn.title = indicator.visible ? 'Click to hide' : 'Click to show';
                 
-                setTalariaIndChipNameEl(nameSpan, indicator.visible);
+                // Update name opacity
+                nameSpan.style.opacity = indicator.visible ? '1' : '0.5';
                 
                 // Hide/show indicator data to actually hide it from chart
                 if (!indicator.visible) {
@@ -2644,15 +2053,15 @@ if (typeof Chart !== 'undefined') {
             actions.appendChild(visibilityBtn);
 
             const settingsBtn = document.createElement('span');
-            settingsBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-            settingsBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#787b86;';
+            settingsBtn.textContent = '✎';  // Using pencil symbol
+            settingsBtn.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; padding: 2px 4px; border-radius: 3px; cursor: pointer; color: #2962ff; font-size: 14px; transition: all 0.2s;';
             settingsBtn.title = 'Edit settings';
             settingsBtn.onmouseenter = function() {
                 settingsBtn.style.color = '#ffffff';
-                settingsBtn.style.background = self._cachedAccentColor || '#2962ff';
+                settingsBtn.style.background = '#2962ff';
             };
             settingsBtn.onmouseleave = function() {
-                settingsBtn.style.color = '#787b86';
+                settingsBtn.style.color = '#2962ff';
                 settingsBtn.style.background = 'transparent';
             };
             settingsBtn.onclick = function(e) {
@@ -2677,13 +2086,15 @@ if (typeof Chart !== 'undefined') {
             // Add a small 'x' button to remove
             const removeBtn = document.createElement('span');
             removeBtn.textContent = '×';
-            removeBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#f23645;font-size:14px;font-weight:600;line-height:1;';
+            removeBtn.style.cssText = 'font-size: 16px; font-weight: bold; color: #787b86; cursor: pointer; padding: 0 2px; transition: all 0.2s;';
             removeBtn.title = 'Remove indicator';
             removeBtn.onmouseenter = function() {
-                removeBtn.style.background = 'rgba(242, 54, 69, 0.2)';
+                removeBtn.style.color = '#f23645';
+                removeBtn.style.transform = 'scale(1.2)';
             };
             removeBtn.onmouseleave = function() {
-                removeBtn.style.background = 'transparent';
+                removeBtn.style.color = '#787b86';
+                removeBtn.style.transform = 'scale(1)';
             };
             removeBtn.onclick = function(e) {
                 e.stopPropagation();

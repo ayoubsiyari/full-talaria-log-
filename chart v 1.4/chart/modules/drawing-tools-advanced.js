@@ -41,16 +41,6 @@ class RulerTool extends BaseDrawing {
             scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
         const y2 = scales.yScale(p2.y);
 
-        // Wide invisible hit area — allows selection from anywhere near the line
-        this.group.append('line')
-            .attr('x1', x1).attr('y1', y1)
-            .attr('x2', x2).attr('y2', y2)
-            .attr('stroke', 'rgba(255,255,255,0.001)')
-            .attr('stroke-width', 20)
-            .attr('fill', 'none')
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
-
         // Draw the measurement line
         this.group.append('line')
             .attr('x1', x1)
@@ -61,7 +51,7 @@ class RulerTool extends BaseDrawing {
             .attr('stroke-width', this.style.strokeWidth || 2)
             .attr('stroke-dasharray', '4,4')
             .attr('opacity', this.style.opacity)
-            .style('pointer-events', 'none')
+            .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
         // Calculate measurements
@@ -162,8 +152,8 @@ class DatePriceRangeTool extends BaseDrawing {
         this.style.strokeWidth = style.strokeWidth || 2;
         this.style.strokeDasharray = style.strokeDasharray || '';
         this.style.fill = style.fill || 'rgba(41, 98, 255, 0.15)';
-        this.style.showBackground = style.showBackground === undefined ? false : !!style.showBackground;
-        this.style.borderEnabled = style.borderEnabled === undefined ? false : !!style.borderEnabled;
+        this.style.showBackground = style.showBackground !== false;
+        this.style.borderEnabled = style.borderEnabled !== false;
         this.style.borderColor = style.borderColor || this.style.stroke;
         this.style.borderDasharray = style.borderDasharray || '';
         this.style.borderWidth = style.borderWidth || 1;
@@ -172,11 +162,14 @@ class DatePriceRangeTool extends BaseDrawing {
         this.style.fontSize = style.fontSize || 12;
         this.style.showLabelBackground = style.showLabelBackground !== false;
         this.style.labelBackgroundColor = style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)';
-        this.style.rangeMode = this.normalizeRangeMode(style.rangeMode);
-        const defaultInfoSettings = this.getDefaultInfoSettings(this.style.rangeMode);
-        this.style.infoSettings = {
-            ...defaultInfoSettings,
-            ...(style.infoSettings || {})
+        this.style.infoSettings = style.infoSettings || {
+            showInfo: true,
+            priceRange: true,
+            percentChange: true,
+            changeInPips: true,
+            barsRange: true,
+            dateTimeRange: true,
+            volume: true
         };
     }
 
@@ -191,137 +184,9 @@ class DatePriceRangeTool extends BaseDrawing {
         return value > 0 ? '#22c55e' : '#ef4444';
     }
 
-    normalizeRangeMode(mode) {
-        const value = String(mode || '').toLowerCase().trim();
-        if (value === 'price') return 'price';
-        if (value === 'time' || value === 'date') return 'time';
-        return 'both';
-    }
-
-    getRangeMode() {
-        if (this.style && this.style.rangeMode !== undefined) {
-            return this.normalizeRangeMode(this.style.rangeMode);
-        }
-        if (this.type === 'price-range') return 'price';
-        if (this.type === 'date-range') return 'time';
-        return 'both';
-    }
-
-    getDefaultInfoSettings(mode = 'both') {
-        const normalizedMode = this.normalizeRangeMode(mode);
-
-        if (normalizedMode === 'price') {
-            return {
-                showInfo: true,
-                priceRange: true,
-                percentChange: true,
-                changeInPips: true,
-                barsRange: false,
-                dateTimeRange: false,
-                volume: false
-            };
-        }
-
-        if (normalizedMode === 'time') {
-            return {
-                showInfo: true,
-                priceRange: false,
-                percentChange: false,
-                changeInPips: false,
-                barsRange: true,
-                dateTimeRange: true,
-                volume: false
-            };
-        }
-
-        return {
-            showInfo: true,
-            priceRange: true,
-            percentChange: true,
-            changeInPips: true,
-            barsRange: true,
-            dateTimeRange: true,
-            volume: true
-        };
-    }
-
-    setModeVirtualHandlePoints(mode = this.getRangeMode()) {
-        const normalizedMode = this.normalizeRangeMode(mode);
-        this.virtualPoints = null;
-
-        if (!Array.isArray(this.points) || this.points.length < 2) return;
-
-        const p1 = this.points[0];
-        const p2 = this.points[1];
-
-        if (normalizedMode === 'price') {
-            const midX = (p1.x + p2.x) / 2;
-            this.virtualPoints = [
-                { x: midX, y: p1.y },
-                { x: midX, y: p2.y }
-            ];
-            return;
-        }
-
-        if (normalizedMode === 'time') {
-            const midY = (p1.y + p2.y) / 2;
-            this.virtualPoints = [
-                { x: p1.x, y: midY },
-                { x: p2.x, y: midY }
-            ];
-        }
-    }
-
-    updateHandleCursor(mode = this.getRangeMode()) {
-        if (!this.group) return;
-
-        const normalizedMode = this.normalizeRangeMode(mode);
-        let cursor = 'nwse-resize';
-        if (normalizedMode === 'price') cursor = 'ns-resize';
-        if (normalizedMode === 'time') cursor = 'ew-resize';
-
-        this.group
-            .selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group')
-            .style('cursor', cursor);
-    }
-
-    onPointHandleDrag(index, context = {}) {
-        const { point } = context;
-        if (!point || !Number.isFinite(index) || index < 0 || index >= this.points.length) {
-            return false;
-        }
-
-        const mode = this.getRangeMode();
-
-        if (mode === 'price') {
-            const nextPoints = this.points.map(p => ({ ...p }));
-            nextPoints[index] = {
-                ...nextPoints[index],
-                y: point.y
-            };
-            this.points = nextPoints;
-            this.meta.updatedAt = Date.now();
-            return true;
-        }
-
-        if (mode === 'time') {
-            const nextPoints = this.points.map(p => ({ ...p }));
-            nextPoints[index] = {
-                ...nextPoints[index],
-                x: point.x
-            };
-            this.points = nextPoints;
-            this.meta.updatedAt = Date.now();
-            return true;
-        }
-
-        return false;
-    }
-
     buildRangeInfoLines(p1, p2, scales) {
         const info = this.style.infoSettings || {};
         if (info.showInfo === false) return [];
-        const mode = this.getRangeMode();
 
         const tickSize = this.getTickSize(scales);
         const decimals = this.getPriceDecimals(scales);
@@ -358,13 +223,13 @@ class DatePriceRangeTool extends BaseDrawing {
         const timeLine = timeParts.length > 0 ? timeParts.join(', ') : '';
 
         const lines = [];
-        if (mode !== 'time' && priceLine) {
+        if (priceLine) {
             lines.push({ text: priceLine, fill: neutral });
         }
-        if (mode !== 'price' && timeLine) {
+        if (timeLine) {
             lines.push({ text: timeLine, fill: neutral });
         }
-        if (mode === 'both' && info.volume !== false && volume !== null) {
+        if (info.volume !== false && volume !== null) {
             lines.push({ text: `Vol ${this.formatCompactVolume(volume)}`, fill: neutral });
         }
         return lines;
@@ -377,7 +242,7 @@ class DatePriceRangeTool extends BaseDrawing {
 
         let savedPipSize = NaN;
         if (typeof localStorage !== 'undefined') {
-            savedPipSize = Number(userStorage.getItem('chart_pipSize'));
+            savedPipSize = Number(localStorage.getItem('chart_pipSize'));
         }
         if (isFinite(savedPipSize) && savedPipSize > 0) return savedPipSize;
 
@@ -501,283 +366,9 @@ class DatePriceRangeTool extends BaseDrawing {
         return `${minutes}m`;
     }
 
-    renderPriceRangeMode(container, scales) {
-        if (this.group) this.group.remove();
-        if (this.points.length < 2) return;
-
-        this.group = container.append('g')
-            .attr('class', 'drawing date-price-range range-mode-price')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
-
-        const p1 = this.points[0];
-        const p2 = this.points[1];
-        const x1 = scales.chart && scales.chart.dataIndexToPixel
-            ? scales.chart.dataIndexToPixel(p1.x)
-            : scales.xScale(p1.x);
-        const x2 = scales.chart && scales.chart.dataIndexToPixel
-            ? scales.chart.dataIndexToPixel(p2.x)
-            : scales.xScale(p2.x);
-        const x = (x1 + x2) / 2;
-        const y1 = scales.yScale(p1.y);
-        const y2 = scales.yScale(p2.y);
-
-        const top = Math.min(y1, y2);
-        const bottom = Math.max(y1, y2);
-
-        const priceDiff = p2.y - p1.y;
-        const isDown = priceDiff < 0;
-
-        const selectionWidth = this.style.selectionWidth || 30;
-        const left = x - selectionWidth / 2;
-        const right = x + selectionWidth / 2;
-
-        const svg = d3.select(container.node().ownerSVGElement);
-        const markerEnd = `dpr-price-end-${this.id}`;
-        if (typeof SVGHelpers !== 'undefined') {
-            SVGHelpers.createArrowMarker(svg, markerEnd, this.style.stroke || '#2962ff');
-        }
-
-        this.group.append('rect')
-            .attr('class', 'range-fill-hit')
-            .attr('x', left)
-            .attr('y', top)
-            .attr('width', selectionWidth)
-            .attr('height', Math.max(0, bottom - top))
-            .attr('fill', this.style.showBackground ? this.style.fill : 'transparent')
-            .attr('stroke', this.style.borderEnabled ? this.style.borderColor : 'none')
-            .attr('stroke-width', this.style.borderEnabled ? this.style.borderWidth : 0)
-            .attr('stroke-dasharray', this.style.borderEnabled ? (this.style.borderDasharray || null) : null)
-            .style('pointer-events', 'none')
-            .style('cursor', 'default');
-
-        this.group.append('line')
-            .attr('class', 'range-cap-line')
-            .attr('x1', left).attr('y1', top)
-            .attr('x2', right).attr('y2', top)
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', this.style.strokeWidth)
-            .attr('stroke-dasharray', this.style.strokeDasharray || null)
-            .style('pointer-events', 'none')
-            .style('cursor', 'default');
-
-        if (isDown) {
-            this.group.append('line')
-                .attr('class', 'range-cap-line')
-                .attr('x1', left).attr('y1', bottom)
-                .attr('x2', right).attr('y2', bottom)
-                .attr('stroke', this.style.stroke)
-                .attr('stroke-width', this.style.strokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || null)
-                .style('pointer-events', 'none')
-                .style('cursor', 'default');
-        }
-
-        this.group.append('line')
-            .attr('class', 'range-mid-line-hit')
-            .attr('x1', x).attr('y1', isDown ? top : bottom)
-            .attr('x2', x).attr('y2', isDown ? bottom : top)
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', this.style.strokeWidth)
-            .attr('stroke-dasharray', this.style.strokeDasharray || null)
-            .attr('marker-end', `url(#${markerEnd})`)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
-
-        if (this.style.showLabel) {
-            const tickSize = this.getTickSize(scales);
-            const decimals = this.getPriceDecimals(scales);
-            const pct = (p1.y !== 0) ? (priceDiff / p1.y * 100) : 0;
-            const ticks = tickSize ? Math.round(priceDiff / tickSize) : 0;
-
-            const priceDiffStr = this.normalizeNegativeZeroString(priceDiff.toFixed(decimals));
-            const pctStr = this.normalizeNegativeZeroString(pct.toFixed(2));
-            const label = `${priceDiffStr} (${pctStr}%) ${ticks}`;
-
-            if (label) {
-                const labelGroup = this.group.append('g').style('pointer-events', 'none');
-                const labelY = isDown ? (bottom + 34) : (top - 12);
-                const text = labelGroup.append('text')
-                    .attr('x', x)
-                    .attr('y', labelY)
-                    .attr('text-anchor', 'middle')
-                    .attr('dominant-baseline', 'auto')
-                    .attr('fill', this.style.textColor || '#d1d4dc')
-                    .attr('font-size', `${this.style.fontSize || 12}px`)
-                    .attr('font-weight', '600')
-                    .attr('font-family', TRENDLINE_INFO_FONT_FAMILY)
-                    .text('');
-
-                text.append('tspan')
-                    .attr('x', x)
-                    .attr('dy', 0)
-                    .attr('fill', this.style.textColor || '#d1d4dc')
-                    .text(label);
-
-                const bbox = text.node().getBBox();
-                if (this.style.showLabelBackground) {
-                    const horizontalPadding = 8;
-                    const verticalPadding = 8;
-                    labelGroup.insert('rect', 'text')
-                        .attr('class', 'range-info-box')
-                        .attr('x', bbox.x - horizontalPadding)
-                        .attr('y', bbox.y - verticalPadding)
-                        .attr('width', bbox.width + (horizontalPadding * 2))
-                        .attr('height', bbox.height + (verticalPadding * 2))
-                        .attr('fill', this.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)')
-                        .attr('stroke', 'none')
-                        .attr('stroke-width', 0)
-                        .attr('stroke-dasharray', null)
-                        .attr('rx', 8);
-                }
-            }
-        }
-
-        this.setModeVirtualHandlePoints('price');
-        this.createHandles(this.group, scales);
-        this.updateHandleCursor('price');
-        return this.group;
-    }
-
-    renderTimeRangeMode(container, scales) {
-        if (this.group) this.group.remove();
-        if (this.points.length < 2) return;
-
-        this.group = container.append('g')
-            .attr('class', 'drawing date-price-range range-mode-time')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
-
-        const p1 = this.points[0];
-        const p2 = this.points[1];
-        const x1 = scales.chart && scales.chart.dataIndexToPixel
-            ? scales.chart.dataIndexToPixel(p1.x)
-            : scales.xScale(p1.x);
-        const x2 = scales.chart && scales.chart.dataIndexToPixel
-            ? scales.chart.dataIndexToPixel(p2.x)
-            : scales.xScale(p2.x);
-        const y1 = scales.yScale(p1.y);
-        const y2 = scales.yScale(p2.y);
-        const y = (y1 + y2) / 2;
-
-        const left = Math.min(x1, x2);
-        const right = Math.max(x1, x2);
-        const midX = (left + right) / 2;
-
-        const selectionHeight = this.style.selectionHeight || 30;
-        const top = y - selectionHeight / 2;
-        const bottom = y + selectionHeight / 2;
-
-        const svg = d3.select(container.node().ownerSVGElement);
-        const markerStart = `dpr-time-start-${this.id}`;
-        const markerEnd = `dpr-time-end-${this.id}`;
-        if (typeof SVGHelpers !== 'undefined') {
-            SVGHelpers.createArrowMarker(svg, markerStart, this.style.stroke || '#2962ff', true);
-            SVGHelpers.createArrowMarker(svg, markerEnd, this.style.stroke || '#2962ff');
-        }
-
-        this.group.append('rect')
-            .attr('class', 'range-fill-hit')
-            .attr('x', left)
-            .attr('y', top)
-            .attr('width', Math.max(0, right - left))
-            .attr('height', selectionHeight)
-            .attr('fill', this.style.showBackground ? this.style.fill : 'transparent')
-            .attr('stroke', this.style.borderEnabled ? this.style.borderColor : 'none')
-            .attr('stroke-width', this.style.borderEnabled ? this.style.borderWidth : 0)
-            .attr('stroke-dasharray', this.style.borderEnabled ? (this.style.borderDasharray || null) : null)
-            .style('pointer-events', 'none')
-            .style('cursor', 'default');
-
-        this.group.append('line')
-            .attr('class', 'range-cap-line')
-            .attr('x1', left).attr('y1', top)
-            .attr('x2', left).attr('y2', bottom)
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', this.style.strokeWidth)
-            .attr('stroke-dasharray', this.style.strokeDasharray || null)
-            .style('pointer-events', 'none')
-            .style('cursor', 'default');
-
-        this.group.append('line')
-            .attr('class', 'range-cap-line')
-            .attr('x1', right).attr('y1', top)
-            .attr('x2', right).attr('y2', bottom)
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', this.style.strokeWidth)
-            .attr('stroke-dasharray', this.style.strokeDasharray || null)
-            .style('pointer-events', 'none')
-            .style('cursor', 'default');
-
-        this.group.append('line')
-            .attr('class', 'range-mid-line-hit')
-            .attr('x1', left).attr('y1', y)
-            .attr('x2', right).attr('y2', y)
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', this.style.strokeWidth)
-            .attr('stroke-dasharray', this.style.strokeDasharray || null)
-            .attr('marker-start', `url(#${markerStart})`)
-            .attr('marker-end', `url(#${markerEnd})`)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
-
-        if (this.style.showLabel) {
-            const bars = Math.abs(Math.round(p2.x) - Math.round(p1.x));
-            const t1 = this.getTimestampAtIndex(Math.round(p1.x), scales);
-            const t2 = this.getTimestampAtIndex(Math.round(p2.x), scales);
-            const duration = this.formatDuration(t2 - t1);
-
-            const label = `${bars} bars, ${duration}`;
-            if (label) {
-                const labelGroup = this.group.append('g').style('pointer-events', 'none');
-                const text = labelGroup.append('text')
-                    .attr('x', midX)
-                    .attr('y', top - 12)
-                    .attr('text-anchor', 'middle')
-                    .attr('fill', this.style.textColor || '#d1d4dc')
-                    .attr('font-size', `${this.style.fontSize || 12}px`)
-                    .attr('font-weight', '600')
-                    .attr('font-family', TRENDLINE_INFO_FONT_FAMILY)
-                    .text(label);
-
-                const bbox = text.node().getBBox();
-                if (this.style.showLabelBackground) {
-                    const horizontalPadding = 8;
-                    const verticalPadding = 8;
-                    labelGroup.insert('rect', 'text')
-                        .attr('class', 'range-info-box')
-                        .attr('x', bbox.x - horizontalPadding)
-                        .attr('y', bbox.y - verticalPadding)
-                        .attr('width', bbox.width + (horizontalPadding * 2))
-                        .attr('height', bbox.height + (verticalPadding * 2))
-                        .attr('fill', this.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)')
-                        .attr('stroke', 'none')
-                        .attr('stroke-width', 0)
-                        .attr('stroke-dasharray', null)
-                        .attr('rx', 8);
-                }
-            }
-        }
-
-        this.setModeVirtualHandlePoints('time');
-        this.createHandles(this.group, scales);
-        this.updateHandleCursor('time');
-        return this.group;
-    }
-
     render(container, scales) {
         if (this.group) this.group.remove();
         if (this.points.length < 2) return;
-
-        const mode = this.getRangeMode();
-        if (mode === 'price') {
-            return this.renderPriceRangeMode(container, scales);
-        }
-        if (mode === 'time') {
-            return this.renderTimeRangeMode(container, scales);
-        }
-
-        this.setModeVirtualHandlePoints('both');
 
         this.group = container.append('g')
             .attr('class', 'drawing date-price-range')
@@ -819,11 +410,10 @@ class DatePriceRangeTool extends BaseDrawing {
             .attr('stroke', this.style.borderEnabled ? this.style.borderColor : 'none')
             .attr('stroke-width', this.style.borderEnabled ? this.style.borderWidth : 0)
             .attr('stroke-dasharray', this.style.borderEnabled ? (this.style.borderDasharray || null) : null)
-            .style('pointer-events', 'none')
-            .style('cursor', 'default');
+            .style('pointer-events', 'all')
+            .style('cursor', 'move');
 
         this.group.append('line')
-            .attr('class', 'range-mid-line-hit')
             .attr('x1', left).attr('y1', midY)
             .attr('x2', right).attr('y2', midY)
             .attr('stroke', this.style.stroke)
@@ -834,7 +424,6 @@ class DatePriceRangeTool extends BaseDrawing {
             .style('cursor', 'move');
 
         this.group.append('line')
-            .attr('class', 'range-mid-line-hit')
             .attr('x1', midX).attr('y1', top)
             .attr('x2', midX).attr('y2', bottom)
             .attr('stroke', this.style.stroke)
@@ -848,7 +437,6 @@ class DatePriceRangeTool extends BaseDrawing {
             const lines = this.buildRangeInfoLines(p1, p2, scales);
             if (lines.length === 0) {
                 this.createHandles(this.group, scales);
-                this.updateHandleCursor('both');
                 return this.group;
             }
 
@@ -902,21 +490,311 @@ class DatePriceRangeTool extends BaseDrawing {
         }
 
         this.createHandles(this.group, scales);
-        this.updateHandleCursor('both');
         return this.group;
     }
 
     static fromJSON(data, chart = null) {
-        const inferredMode = (data && data.type === 'price-range')
-            ? 'price'
-            : ((data && data.type === 'date-range') ? 'time' : 'both');
-        const style = {
-            ...(data.style || {}),
-            rangeMode: (data && data.style && data.style.rangeMode !== undefined)
-                ? data.style.rangeMode
-                : inferredMode
-        };
-        const tool = new DatePriceRangeTool(data.points, style);
+        const tool = new DatePriceRangeTool(data.points, data.style);
+        tool.id = data.id;
+        tool.visible = data.visible !== undefined ? data.visible : true;
+        tool.meta = data.meta || { createdAt: Date.now(), updatedAt: Date.now() };
+        tool.chart = chart;
+        if (data.coordinateSystem === 'timestamp' && data.points) {
+            tool.timestampPoints = data.points.map(p => ({
+                timestamp: p.timestamp,
+                price: p.price || p.y
+            }));
+        }
+        return tool;
+    }
+}
+
+class PriceRangeTool extends DatePriceRangeTool {
+    constructor(points = [], style = {}) {
+        super(points, style);
+        this.type = 'price-range';
+        this.requiredPoints = 2;
+    }
+
+    render(container, scales) {
+        if (this.group) this.group.remove();
+        if (this.points.length < 2) return;
+
+        this.group = container.append('g')
+            .attr('class', 'drawing price-range')
+            .attr('data-id', this.id)
+            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+
+        const p1 = this.points[0];
+        const p2 = this.points[1];
+        const x = scales.chart && scales.chart.dataIndexToPixel ?
+            scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
+        const y1 = scales.yScale(p1.y);
+        const y2 = scales.yScale(p2.y);
+
+        const top = Math.min(y1, y2);
+        const bottom = Math.max(y1, y2);
+
+        const priceDiff = p2.y - p1.y;
+        const isDown = priceDiff < 0;
+
+        const selectionWidth = this.style.selectionWidth || 70;
+        const left = x - selectionWidth / 2;
+        const right = x + selectionWidth / 2;
+
+        const svg = d3.select(container.node().ownerSVGElement);
+        const markerStart = `pr-start-${this.id}`;
+        const markerEnd = `pr-end-${this.id}`;
+        if (typeof SVGHelpers !== 'undefined') {
+            SVGHelpers.createArrowMarker(svg, markerStart, this.style.stroke || '#2962ff', true);
+            SVGHelpers.createArrowMarker(svg, markerEnd, this.style.stroke || '#2962ff');
+        }
+
+        const selectionRect = this.group.append('rect')
+            .attr('class', 'range-fill-hit')
+            .attr('x', left)
+            .attr('y', top)
+            .attr('width', selectionWidth)
+            .attr('height', Math.max(0, bottom - top))
+            .attr('fill', this.style.showBackground ? this.style.fill : 'transparent')
+            .attr('stroke', this.style.borderEnabled ? this.style.borderColor : 'none')
+            .attr('stroke-width', this.style.borderEnabled ? this.style.borderWidth : 0)
+            .attr('stroke-dasharray', this.style.borderEnabled ? (this.style.borderDasharray || null) : null)
+            .style('pointer-events', 'all')
+            .style('cursor', 'move');
+
+        this.group.append('line')
+            .attr('x1', left).attr('y1', top)
+            .attr('x2', right).attr('y2', top)
+            .attr('stroke', this.style.stroke)
+            .attr('stroke-width', this.style.strokeWidth)
+            .attr('stroke-dasharray', this.style.strokeDasharray || null)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
+        if (isDown) {
+            this.group.append('line')
+                .attr('x1', left).attr('y1', bottom)
+                .attr('x2', right).attr('y2', bottom)
+                .attr('stroke', this.style.stroke)
+                .attr('stroke-width', this.style.strokeWidth)
+                .attr('stroke-dasharray', this.style.strokeDasharray || null)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+        }
+
+        this.group.append('line')
+            .attr('x1', x).attr('y1', isDown ? top : bottom)
+            .attr('x2', x).attr('y2', isDown ? bottom : top)
+            .attr('stroke', this.style.stroke)
+            .attr('stroke-width', this.style.strokeWidth)
+            .attr('stroke-dasharray', this.style.strokeDasharray || null)
+            .attr('marker-end', `url(#${markerEnd})`)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
+        if (this.style.showLabel) {
+            const tickSize = this.getTickSize(scales);
+            const decimals = this.getPriceDecimals(scales);
+            const pct = (p1.y !== 0) ? (priceDiff / p1.y * 100) : 0;
+            const ticks = tickSize ? Math.round(priceDiff / tickSize) : 0;
+
+            const priceDiffStr = this.normalizeNegativeZeroString(priceDiff.toFixed(decimals));
+            const pctStr = this.normalizeNegativeZeroString(pct.toFixed(2));
+
+            const label = `${priceDiffStr} (${pctStr}%) ${ticks}`;
+            if (!label) {
+                this.createHandles(this.group, scales);
+                return this.group;
+            }
+
+            const labelGroup = this.group.append('g').style('pointer-events', 'none');
+            const labelY = isDown ? (bottom + 34) : (top - 12);
+            const text = labelGroup.append('text')
+                .attr('x', x)
+                .attr('y', labelY)
+                .attr('text-anchor', 'middle')
+                .attr('dominant-baseline', 'auto')
+                .attr('fill', this.style.textColor || '#d1d4dc')
+                .attr('font-size', `${this.style.fontSize || 12}px`)
+                .attr('font-weight', '600')
+                .attr('font-family', TRENDLINE_INFO_FONT_FAMILY)
+                .text('');
+
+            const neutral = this.style.textColor || '#d1d4dc';
+            text.append('tspan')
+                .attr('x', x)
+                .attr('dy', 0)
+                .attr('fill', neutral)
+                .text(label);
+
+            const bbox = text.node().getBBox();
+            if (this.style.showLabelBackground) {
+                const horizontalPadding = 8;
+                const verticalPadding = 8;
+                labelGroup.insert('rect', 'text')
+                    .attr('class', 'range-info-box')
+                    .attr('x', bbox.x - horizontalPadding)
+                    .attr('y', bbox.y - verticalPadding)
+                    .attr('width', bbox.width + (horizontalPadding * 2))
+                    .attr('height', bbox.height + (verticalPadding * 2))
+                    .attr('fill', this.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)')
+                    .attr('stroke', 'none')
+                    .attr('stroke-width', 0)
+                    .attr('stroke-dasharray', null)
+                    .attr('rx', 8);
+            }
+        }
+
+        this.createHandles(this.group, scales);
+        return this.group;
+    }
+
+    static fromJSON(data, chart = null) {
+        const tool = new PriceRangeTool(data.points, data.style);
+        tool.id = data.id;
+        tool.visible = data.visible !== undefined ? data.visible : true;
+        tool.meta = data.meta || { createdAt: Date.now(), updatedAt: Date.now() };
+        tool.chart = chart;
+        if (data.coordinateSystem === 'timestamp' && data.points) {
+            tool.timestampPoints = data.points.map(p => ({
+                timestamp: p.timestamp,
+                price: p.price || p.y
+            }));
+        }
+        return tool;
+    }
+}
+
+class DateRangeTool extends DatePriceRangeTool {
+    constructor(points = [], style = {}) {
+        super(points, style);
+        this.type = 'date-range';
+        this.requiredPoints = 2;
+    }
+
+    render(container, scales) {
+        if (this.group) this.group.remove();
+        if (this.points.length < 2) return;
+
+        this.group = container.append('g')
+            .attr('class', 'drawing date-range')
+            .attr('data-id', this.id)
+            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+
+        const p1 = this.points[0];
+        const p2 = this.points[1];
+        const x1 = scales.chart && scales.chart.dataIndexToPixel ?
+            scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
+        const x2 = scales.chart && scales.chart.dataIndexToPixel ?
+            scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
+        const y = scales.yScale(p1.y);
+
+        const left = Math.min(x1, x2);
+        const right = Math.max(x1, x2);
+        const midX = (left + right) / 2;
+
+        const selectionHeight = this.style.selectionHeight || 70;
+        const top = y - selectionHeight / 2;
+        const bottom = y + selectionHeight / 2;
+
+        const svg = d3.select(container.node().ownerSVGElement);
+        const markerStart = `dr-start-${this.id}`;
+        const markerEnd = `dr-end-${this.id}`;
+        if (typeof SVGHelpers !== 'undefined') {
+            SVGHelpers.createArrowMarker(svg, markerStart, this.style.stroke || '#2962ff', true);
+            SVGHelpers.createArrowMarker(svg, markerEnd, this.style.stroke || '#2962ff');
+        }
+
+        const selectionRect = this.group.append('rect')
+            .attr('class', 'range-fill-hit')
+            .attr('x', left)
+            .attr('y', top)
+            .attr('width', Math.max(0, right - left))
+            .attr('height', selectionHeight)
+            .attr('fill', this.style.showBackground ? this.style.fill : 'transparent')
+            .attr('stroke', this.style.borderEnabled ? this.style.borderColor : 'none')
+            .attr('stroke-width', this.style.borderEnabled ? this.style.borderWidth : 0)
+            .attr('stroke-dasharray', this.style.borderEnabled ? (this.style.borderDasharray || null) : null)
+            .style('pointer-events', 'all')
+            .style('cursor', 'move');
+
+        this.group.append('line')
+            .attr('x1', left).attr('y1', top)
+            .attr('x2', left).attr('y2', bottom)
+            .attr('stroke', this.style.stroke)
+            .attr('stroke-width', this.style.strokeWidth)
+            .attr('stroke-dasharray', this.style.strokeDasharray || null)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
+        this.group.append('line')
+            .attr('x1', right).attr('y1', top)
+            .attr('x2', right).attr('y2', bottom)
+            .attr('stroke', this.style.stroke)
+            .attr('stroke-width', this.style.strokeWidth)
+            .attr('stroke-dasharray', this.style.strokeDasharray || null)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
+        this.group.append('line')
+            .attr('x1', left).attr('y1', y)
+            .attr('x2', right).attr('y2', y)
+            .attr('stroke', this.style.stroke)
+            .attr('stroke-width', this.style.strokeWidth)
+            .attr('stroke-dasharray', this.style.strokeDasharray || null)
+            .attr('marker-start', `url(#${markerStart})`)
+            .attr('marker-end', `url(#${markerEnd})`)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
+        if (this.style.showLabel) {
+            const bars = Math.abs(Math.round(p2.x) - Math.round(p1.x));
+            const t1 = this.getTimestampAtIndex(Math.round(p1.x), scales);
+            const t2 = this.getTimestampAtIndex(Math.round(p2.x), scales);
+            const duration = this.formatDuration(t2 - t1);
+
+            const label = `${bars} bars, ${duration}`;
+            if (!label) {
+                this.createHandles(this.group, scales);
+                return this.group;
+            }
+
+            const labelGroup = this.group.append('g').style('pointer-events', 'none');
+            const text = labelGroup.append('text')
+                .attr('x', midX)
+                .attr('y', top - 12)
+                .attr('text-anchor', 'middle')
+                .attr('fill', this.style.textColor || '#d1d4dc')
+                .attr('font-size', `${this.style.fontSize || 12}px`)
+                .attr('font-weight', '600')
+                .attr('font-family', TRENDLINE_INFO_FONT_FAMILY)
+                .text(label);
+
+            const bbox = text.node().getBBox();
+            if (this.style.showLabelBackground) {
+                const horizontalPadding = 8;
+                const verticalPadding = 8;
+                labelGroup.insert('rect', 'text')
+                    .attr('class', 'range-info-box')
+                    .attr('x', bbox.x - horizontalPadding)
+                    .attr('y', bbox.y - verticalPadding)
+                    .attr('width', bbox.width + (horizontalPadding * 2))
+                    .attr('height', bbox.height + (verticalPadding * 2))
+                    .attr('fill', this.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)')
+                    .attr('stroke', 'none')
+                    .attr('stroke-width', 0)
+                    .attr('stroke-dasharray', null)
+                    .attr('rx', 8);
+            }
+        }
+
+        this.createHandles(this.group, scales);
+        return this.group;
+    }
+
+    static fromJSON(data, chart = null) {
+        const tool = new DateRangeTool(data.points, data.style);
         tool.id = data.id;
         tool.visible = data.visible !== undefined ? data.visible : true;
         tool.meta = data.meta || { createdAt: Date.now(), updatedAt: Date.now() };
@@ -934,11 +812,6 @@ class DatePriceRangeTool extends BaseDrawing {
 // ============================================================================
 // Risk-Reward Tools
 // ============================================================================
-/** Default spacing for a new ladder entry from primary (tool “+” / panel): toward reward (above E1 long / below E1 short). Pip/tick-based only — %-of-price was placing E2 at TP. */
-const RR_EXTRA_ENTRY_OFFSET_FRAC = 0.00002;
-/** Match order-manager default ladder step when OM does not seed multi-entry (tool-only fallback). */
-const RR_EXTRA_ENTRY_MIN_TICK_MULT = 20;
-
 class BaseRiskRewardTool extends BaseDrawing {
     constructor(type, points = [], style = {}) {
         super(type, points, style);
@@ -960,380 +833,11 @@ class BaseRiskRewardTool extends BaseDrawing {
             this.meta.zoneWidthRatio = null;
         }
         this.lastRenderMeta = null;
-        this._ensureExtraLevelMeta();
         this.ensureRiskSettings();
     }
 
     get isLong() {
         return this.meta.orientation === 'long';
-    }
-
-    /** Extra TP/entry/SL levels (prices only); primary triple stays in points[0..2]. */
-    _ensureExtraLevelMeta() {
-        if (!Array.isArray(this.meta.extraTargets)) this.meta.extraTargets = [];
-        if (!Array.isArray(this.meta.extraEntries)) this.meta.extraEntries = [];
-        if (!Array.isArray(this.meta.extraStops)) this.meta.extraStops = [];
-        if (!Number.isFinite(this.meta.extraLevelIdCounter)) this.meta.extraLevelIdCounter = 1;
-    }
-
-    _nextExtraLevelId() {
-        this._ensureExtraLevelMeta();
-        return this.meta.extraLevelIdCounter++;
-    }
-
-    getPriceStep() {
-        const inc = this.chart && Number.isFinite(this.chart.priceIncrement) && this.chart.priceIncrement > 0
-            ? this.chart.priceIncrement
-            : 0.0001;
-        return inc;
-    }
-
-    /** DrawingToolsManager instance — drawings only get `chart` set, not `manager`. */
-    _drawingManager() {
-        if (this.manager) return this.manager;
-        const fromChart = this.chart && this.chart.drawingManager;
-        if (fromChart) return fromChart;
-        if (typeof window !== 'undefined' && window.chart && window.chart.drawingManager) {
-            return window.chart.drawingManager;
-        }
-        return null;
-    }
-
-    /** Shift all extra level prices by dy (data space); used when the whole tool moves vertically. */
-    afterPointsMoveDelta(dx, dy) {
-        const ddx = Number.isFinite(dx) ? dx : 0;
-        const ddy = Number.isFinite(dy) ? dy : 0;
-        if (ddx === 0 && ddy === 0) return;
-        if (ddy !== 0) {
-            this._ensureExtraLevelMeta();
-            ['extraTargets', 'extraEntries', 'extraStops'].forEach((key) => {
-                const arr = this.meta[key];
-                arr.forEach((row) => {
-                    if (row && Number.isFinite(row.y)) row.y += ddy;
-                });
-            });
-            if (this.meta.rrBreakevenLine && Number.isFinite(this.meta.rrBreakevenLine.y)) {
-                this.meta.rrBreakevenLine.y += ddy;
-            }
-            // Do not call normalizeRiskRewardTargetLevels here: it re-sorts TP primary vs extras and
-            // can make ladder levels look "stuck" vs entry after a rigid vertical move. Normalize only
-            // after order-manager sync / load (_afterRiskRewardOrderManagerSync, baseFromJSON).
-        }
-        this.meta.updatedAt = Date.now();
-        if (typeof this.ensureRiskSettings === 'function') {
-            this.ensureRiskSettings();
-        }
-    }
-
-    _allStopPrices() {
-        const p = this.points[1] ? this.points[1].y : null;
-        const ex = (this.meta.extraStops || []).map((r) => r.y).filter(Number.isFinite);
-        return Number.isFinite(p) ? [p, ...ex] : ex.slice();
-    }
-
-    _allTargetPrices() {
-        const p = this.points[2] ? this.points[2].y : null;
-        const ex = (this.meta.extraTargets || []).map((r) => r.y).filter(Number.isFinite);
-        return Number.isFinite(p) ? [p, ...ex] : ex.slice();
-    }
-
-    _allEntryPrices() {
-        const p = this.points[0] ? this.points[0].y : null;
-        const ex = (this.meta.extraEntries || []).map((r) => r.y).filter(Number.isFinite);
-        return Number.isFinite(p) ? [p, ...ex] : ex.slice();
-    }
-
-    /**
-     * VWAP-style average entry: weights = implied lots per row (same as order panel / _calcLevelLotSizeNumeric).
-     * Leg prices and SL follow the drawing so whole-tool moves stay consistent with mini badges.
-     */
-    _getWeightedAverageEntryPrice() {
-        const p0 = this.points[0]?.y;
-        if (!Number.isFinite(p0)) return NaN;
-        const extras = (this.meta.extraEntries || []).map((r) => r.y).filter(Number.isFinite);
-        if (!extras.length) return p0;
-        const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
-        if (!om?.isMultiEntryMode || !Array.isArray(om.multiEntryLevels) || typeof om._calcLevelLotSizeNumeric !== 'function') {
-            return (p0 + extras.reduce((s, x) => s + x, 0)) / (1 + extras.length);
-        }
-        const prec = typeof om.getPricePrecision === 'function' ? om.getPricePrecision() : 5;
-        const rrRoundPx = (p) => (Number.isFinite(p) ? parseFloat(Number(p).toFixed(prec)) : p);
-        const stop = this.points[1];
-        const slPrice = rrRoundPx(
-            Number.isFinite(stop?.y) ? stop.y : parseFloat(document.getElementById('slPrice')?.value || '') || 0
-        );
-        const pipS = om.pipSize || (typeof this.getPriceStep === 'function' ? this.getPriceStep() : 0.0001);
-        const pipV = om.pipValuePerLot || 10;
-
-        let sumW = 0;
-        let sumPW = 0;
-        const nLegs = 1 + extras.length;
-        for (let i = 0; i < nLegs; i++) {
-            const lv = om.multiEntryLevels[i];
-            if (!lv) continue;
-            if (i > 0) {
-                const ex = (this.meta.extraEntries || [])[i - 1];
-                if (!ex || !Number.isFinite(ex.y)) continue;
-            }
-            const rowY = i === 0 ? p0 : (this.meta.extraEntries || [])[i - 1].y;
-            if (!Number.isFinite(rowY) || rowY <= 0) continue;
-            const legPx = rrRoundPx(rowY);
-            const levelForLots = { ...lv, price: legPx };
-            const w = om._calcLevelLotSizeNumeric(levelForLots, slPrice, pipS, pipV);
-            if (Number.isFinite(w) && w > 0) {
-                sumW += w;
-                sumPW += legPx * w;
-            }
-        }
-        if (sumW > 1e-12) return sumPW / sumW;
-        return (p0 + extras.reduce((s, x) => s + x, 0)) / (1 + extras.length);
-    }
-
-    /**
-     * VWAP-style average take-profit price across all TP legs (primary + extras).
-     * When multi-TP is on and panel `tpTargets` align with ladder prices, weights = distribution % (same as mini-badges).
-     * Otherwise falls back to the arithmetic mean of ladder TP prices.
-     */
-    _getWeightedAverageTargetPrice() {
-        const tPrimary = this.points[2]?.y;
-        const extras = (this.meta.extraTargets || []).map((r) => r.y).filter(Number.isFinite);
-        const allPrices = Number.isFinite(tPrimary) ? [tPrimary, ...extras] : extras.slice();
-        if (allPrices.length < 2) return NaN;
-
-        const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
-        const prec = typeof om?.getPricePrecision === 'function' ? om.getPricePrecision() : 5;
-        const rrRoundPx = (p) => (Number.isFinite(p) ? parseFloat(Number(p).toFixed(prec)) : p);
-        const mtOn = typeof document !== 'undefined' && document.getElementById('multipleTPToggle')?.checked;
-
-        const meanFallback = () => allPrices.reduce((s, p) => s + p, 0) / allPrices.length;
-
-        if (mtOn && om?.tpTargets?.length > 1) {
-            const sortedOm = [...om.tpTargets].sort((a, b) =>
-                (this.isLong ? a.price - b.price : b.price - a.price));
-            const refP = sortedOm.find((t) => t && Number.isFinite(t.price))?.price;
-            const epsPx = Math.max(1e-10, (Math.abs(refP) || 1) * 1e-9);
-
-            if (sortedOm.length === allPrices.length) {
-                let sumW = 0;
-                let sumPW = 0;
-                let allMatched = true;
-                for (const py of allPrices) {
-                    const pr = rrRoundPx(py);
-                    const leg = sortedOm.find((t) => t && Number.isFinite(t.price)
-                        && Math.abs(rrRoundPx(t.price) - pr) <= epsPx);
-                    if (!leg || !Number.isFinite(leg.percentage)) {
-                        allMatched = false;
-                        break;
-                    }
-                    const w = Number(leg.percentage);
-                    if (w > 0) {
-                        sumW += w;
-                        sumPW += py * w;
-                    }
-                }
-                if (allMatched && sumW > 1e-9) {
-                    return sumPW / sumW;
-                }
-            }
-        }
-        return meanFallback();
-    }
-
-    /** Worst-case stop price for zone shading (furthest into loss). */
-    getAggregatedStopPrice() {
-        const s = this._allStopPrices();
-        if (!s.length) return this.points[1]?.y;
-        return this.isLong ? Math.min(...s) : Math.max(...s);
-    }
-
-    /** Farthest target price for zone shading. */
-    getAggregatedTargetPrice() {
-        const t = this._allTargetPrices();
-        if (!t.length) return this.points[2]?.y;
-        return this.isLong ? Math.max(...t) : Math.min(...t);
-    }
-
-    sanitizeExtraEntryPrice(price) {
-        if (!Array.isArray(this.points) || this.points.length < 3) return price;
-        const eps = this.getPriceStep() * 0.5 || 0.00001;
-        const stops = this._allStopPrices();
-        const tgts = this._allTargetPrices();
-        if (!stops.length || !tgts.length) return price;
-        if (this.isLong) {
-            const lo = Math.max(...stops) + eps;
-            const hi = Math.min(...tgts) - eps;
-            if (hi <= lo) return price;
-            return Math.min(Math.max(price, lo), hi);
-        }
-        const lo = Math.max(...tgts) + eps;
-        const hi = Math.min(...stops) - eps;
-        if (hi <= lo) return price;
-        return Math.min(Math.max(price, lo), hi);
-    }
-
-    addExtraTarget() {
-        if (!Array.isArray(this.points) || this.points.length < 3) return;
-        const om = window.chart?.orderManager;
-        if (om && typeof om.riskRewardAddTPFromTool === 'function') {
-            om.riskRewardAddTPFromTool(this);
-            this._afterRiskRewardOrderManagerSync();
-        } else {
-            this._ensureExtraLevelMeta();
-            const step = this.getPriceStep();
-            const all = this._allTargetPrices();
-            const ref = Math.min(...all);
-            const y = ref - step;
-            this.meta.extraTargets.push({ id: this._nextExtraLevelId(), y: this.sanitizeTargetPrice(y) });
-            this.ensureRiskSettings();
-        }
-        const dm = this._drawingManager();
-        if (dm) {
-            dm.renderDrawing(this);
-            dm.saveDrawings();
-        }
-    }
-
-    addExtraStop(clickEvent) {
-        if (!Array.isArray(this.points) || this.points.length < 3) return;
-        const om = window.chart?.orderManager;
-        if (om && typeof om.showRiskRewardSlPlusDialog === 'function') {
-            om.showRiskRewardSlPlusDialog(this, clickEvent);
-            return;
-        }
-        if (om && typeof om.riskRewardAddBEFromTool === 'function') {
-            om.riskRewardAddBEFromTool(this);
-            this._afterRiskRewardOrderManagerSync();
-        } else {
-            this._ensureExtraLevelMeta();
-            const entry = this.points[0].y;
-            const tp = typeof this.getAggregatedTargetPrice === 'function'
-                ? this.getAggregatedTargetPrice()
-                : this.points[2].y;
-            const mid = (entry + tp) / 2;
-            const y = this.sanitizeBreakevenTriggerPrice(mid);
-            this.meta.rrBreakevenLine = {
-                id: this._nextExtraLevelId(),
-                y
-            };
-            this.ensureRiskSettings();
-        }
-        const dmStop = this._drawingManager();
-        if (dmStop) {
-            dmStop.renderDrawing(this);
-            dmStop.saveDrawings();
-        }
-    }
-
-    addExtraEntry() {
-        if (!Array.isArray(this.points) || this.points.length < 3) return;
-        const om = window.chart?.orderManager;
-        if (om && typeof om.riskRewardAddEntryFromTool === 'function') {
-            om.riskRewardAddEntryFromTool(this);
-            this._afterRiskRewardOrderManagerSync();
-        } else {
-            this._ensureExtraLevelMeta();
-            const step = this.getPriceStep();
-            const e = this.points[0].y;
-            const offset = Math.max(
-                step * RR_EXTRA_ENTRY_MIN_TICK_MULT,
-                Math.abs(e) * RR_EXTRA_ENTRY_OFFSET_FRAC,
-                step * 8
-            );
-            const y = this.isLong ? e + offset : e - offset;
-            this.meta.extraEntries.push({ id: this._nextExtraLevelId(), y: this.sanitizeExtraEntryPrice(y) });
-            this.ensureRiskSettings();
-        }
-        const dmEntry = this._drawingManager();
-        if (dmEntry) {
-            dmEntry.renderDrawing(this);
-            dmEntry.saveDrawings();
-        }
-    }
-
-    /**
-     * Merge primary + extra TP prices, drop invalid (wrong side of entry), assign farthest TP to points[2]
-     * and intermediates to extraTargets — keeps multi-TP lines inside the profit zone.
-     */
-    normalizeRiskRewardTargetLevels() {
-        if (!Array.isArray(this.points) || this.points.length < 3) return;
-        this._ensureExtraLevelMeta();
-        const entry = this.points[0].y;
-        if (!Number.isFinite(entry)) return;
-
-        const step = (typeof this.getPriceStep === 'function' ? this.getPriceStep() : 0.0001);
-        const eps = Math.max(Math.abs(entry) * 1e-8, step * 0.5 || 0.00001);
-
-        const raw = [];
-        if (Number.isFinite(this.points[2]?.y)) raw.push(this.points[2].y);
-        (this.meta.extraTargets || []).forEach((r) => {
-            if (r && Number.isFinite(r.y)) raw.push(r.y);
-        });
-        if (raw.length === 0) return;
-
-        const oldExtras = (this.meta.extraTargets || []).filter((r) => r && Number.isFinite(r.y));
-
-        const clampSide = (p) => (this.isLong ? Math.max(p, entry + eps) : Math.min(p, entry - eps));
-
-        if (raw.length === 1) {
-            const p = this.sanitizeTargetPrice(clampSide(raw[0]));
-            this.points[2] = { ...this.points[2], y: p };
-            this.meta.extraTargets = [];
-            return;
-        }
-
-        const cleaned = raw.map(clampSide);
-        const uniqueSorted = this.isLong
-            ? [...new Set(cleaned)].sort((a, b) => a - b)
-            : [...new Set(cleaned)].sort((a, b) => b - a);
-
-        if (uniqueSorted.length === 1) {
-            const p = this.sanitizeTargetPrice(uniqueSorted[0]);
-            this.points[2] = { ...this.points[2], y: p };
-            this.meta.extraTargets = [];
-            return;
-        }
-
-        const primary = uniqueSorted[uniqueSorted.length - 1];
-        const extraPrices = uniqueSorted.slice(0, -1);
-
-        const oldSorted = this.isLong
-            ? [...oldExtras].sort((a, b) => a.y - b.y)
-            : [...oldExtras].sort((a, b) => b.y - a.y);
-
-        this.meta.extraTargets = extraPrices.map((price, i) => ({
-            id: oldSorted[i]?.id ?? this._nextExtraLevelId(),
-            y: this.sanitizeTargetPrice(price)
-        }));
-        this.points[2] = { ...this.points[2], y: this.sanitizeTargetPrice(primary) };
-    }
-
-    /** Re-apply chart clamps after order-manager push/pull so drawing stays consistent with panel math. */
-    _afterRiskRewardOrderManagerSync() {
-        this.normalizeRiskRewardTargetLevels();
-        (this.meta.extraEntries || []).forEach((row) => {
-            if (row && Number.isFinite(row.y)) row.y = this.sanitizeExtraEntryPrice(row.y);
-        });
-        if (this.meta.rrBreakevenLine && Number.isFinite(this.meta.rrBreakevenLine.y)) {
-            this.meta.rrBreakevenLine.y = this.sanitizeBreakevenTriggerPrice(this.meta.rrBreakevenLine.y);
-        }
-        if (this.points[2] && Number.isFinite(this.points[2].y)) {
-            this.setTargetPrice(this.points[2].y);
-        }
-        this.ensureRiskSettings();
-        this.recalculateLotSizeFromRisk();
-    }
-
-    _setExtraLevelY(kind, index, y) {
-        this._ensureExtraLevelMeta();
-        const key = kind === 'target' ? 'extraTargets' : kind === 'stop' ? 'extraStops' : 'extraEntries';
-        const arr = this.meta[key];
-        if (!arr || index < 0 || index >= arr.length) return;
-        let next = y;
-        if (kind === 'target') next = this.sanitizeTargetPrice(y);
-        else if (kind === 'stop') next = this.sanitizeStopPrice(y);
-        else next = this.sanitizeExtraEntryPrice(y);
-        arr[index] = { ...arr[index], y: next };
-        this.ensureRiskSettings();
     }
 
     ensureRiskSettings() {
@@ -1409,67 +913,12 @@ class BaseRiskRewardTool extends BaseDrawing {
         return price < entryPrice - epsilon ? price : entryPrice - epsilon;
     }
 
-    /** BE trigger sits between entry and TP (not a second SL). */
-    sanitizeBreakevenTriggerPrice(price) {
-        if (!Array.isArray(this.points) || this.points.length < 3) return price;
-        const entry = this.points[0].y;
-        const tp = typeof this.getAggregatedTargetPrice === 'function'
-            ? this.getAggregatedTargetPrice()
-            : this.points[2].y;
-        if (!Number.isFinite(entry) || !Number.isFinite(tp)) return price;
-        const step = Math.max(this.getPriceStep() * 2, 1e-12);
-        if (this.isLong) {
-            const lo = entry + step;
-            const hi = tp - step;
-            if (hi <= lo) return price;
-            return Math.min(Math.max(price, lo), hi);
-        }
-        const lo = tp + step;
-        const hi = entry - step;
-        if (hi <= lo) return price;
-        return Math.min(Math.max(price, lo), hi);
-    }
-
-    /**
-     * Drop stale rrBreakevenLine when auto-BE is off or SL disabled — same rules as pullRiskRewardToolFromManager.
-     * Prevents BE line/badge from saved state or old sync when the panel is not active.
-     */
-    _syncBreakevenMetaWithPanel() {
-        if (typeof document === 'undefined') return;
-        if (!document.getElementById('autoBreakevenToggle')) return;
-        const beOn = document.getElementById('autoBreakevenToggle')?.checked;
-        const slEn = document.getElementById('enableSL')?.checked;
-        const slPx = parseFloat(document.getElementById('slPrice')?.value || '');
-        if (!beOn || !slEn || !Number.isFinite(slPx) || !(slPx > 0)) {
-            if (this.meta?.rrBreakevenLine) delete this.meta.rrBreakevenLine;
-        }
-    }
-
     setEntryPrice(price) {
         if (!Array.isArray(this.points) || this.points.length === 0) return;
         const delta = price - this.points[0].y;
         this.points = this.points.map(point => ({ ...point, y: point.y + delta }));
-        this.afterPointsMoveDelta(0, delta);
         this.ensureRiskSettings();
         this.recalculateLotSizeFromRisk(); // Recalculate to maintain constant risk
-    }
-
-    /**
-     * Clamp primary entry between stop and target so dragging the entry line resizes risk/reward zones,
-     * not the whole tool (SL/TP prices stay fixed).
-     */
-    clampPrimaryEntryPrice(newY) {
-        if (!Array.isArray(this.points) || this.points.length < 3) return newY;
-        const sl = this.points[1].y;
-        const tp = this.points[2].y;
-        if (!Number.isFinite(newY) || !Number.isFinite(sl) || !Number.isFinite(tp)) return newY;
-        const lo = Math.min(sl, tp);
-        const hi = Math.max(sl, tp);
-        const step = this.getPriceStep();
-        const span = hi - lo;
-        const eps = Math.max(step * 0.5, span * 1e-9, 1e-12);
-        if (span <= eps * 2) return this.points[0].y;
-        return Math.min(hi - eps, Math.max(lo + eps, newY));
     }
 
     setStopPrice(price) {
@@ -1491,52 +940,31 @@ class BaseRiskRewardTool extends BaseDrawing {
     
     recalculateLotSizeFromRisk() {
         if (!this.meta.risk) return;
-
-        const mode = this.meta.risk.riskMode || this.meta.risk.positionSizeMode || 'risk-usd';
-        if (mode === 'lot-size') {
-            const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
-            const pip = om?.pipSize || (typeof this.getPriceStep === 'function' ? this.getPriceStep() : 0.0001);
-            let lots = parseFloat(
-                typeof document !== 'undefined' ? document.getElementById('lotSizeAmount')?.value : ''
-            );
-            if (!Number.isFinite(lots) || lots <= 0) {
-                lots = Number(this.meta.risk.lotSize) || 0.01;
-            }
-            this.meta.risk.lotSize = Math.max(0.01, lots);
-            this.meta.risk.riskMode = 'lot-size';
-            const entry = this.meta.risk.entryPrice || 0;
-            const stop = this.meta.risk.stopPrice || 0;
-            const slPips = entry && stop ? Math.abs(entry - stop) / pip : 0;
-            const pipVal = om?.pipValuePerLot || 10;
-            const riskUsd = slPips > 0 ? lots * slPips * pipVal : 0;
-            console.log(`🔄 Lot size mode: ${this.meta.risk.lotSize.toFixed(2)} lots → ~$${riskUsd.toFixed(2)} risk @ ${slPips.toFixed(1)} pips`);
-            return;
-        }
-
+        
         const entry = this.meta.risk.entryPrice || 0;
         const stop = this.meta.risk.stopPrice || 0;
         const slDistance = Math.abs(entry - stop);
-
+        
         if (slDistance === 0 || entry === 0) {
             this.meta.risk.lotSize = 0.01;
             return;
         }
-
+        
+        // Get risk amount in USD
         let riskUSD = 0;
-        if (mode === 'risk-usd') {
+        if (this.meta.risk.riskMode === 'risk-usd') {
             riskUSD = this.meta.risk.riskAmountUSD || 100;
         } else {
             const accountSize = this.meta.risk.accountSize || 10000;
             riskUSD = (accountSize * (this.meta.risk.riskPercent || 1)) / 100;
         }
-
-        const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
-        const pip = om?.pipSize || 0.0001;
-        const pipValue = om?.pipValuePerLot || 10;
-        const slPips = slDistance / pip;
+        
+        // Calculate lot size using proper pip value formula
+        const slPips = slDistance / 0.0001;
+        const pipValue = 10;
         const calculatedLots = riskUSD / (slPips * pipValue);
         this.meta.risk.lotSize = Math.max(0.01, calculatedLots);
-
+        
         console.log(`🔄 Lot size recalculated: ${this.meta.risk.lotSize.toFixed(2)} lots for risk $${riskUSD.toFixed(2)} @ ${slPips.toFixed(1)} pips`);
     }
 
@@ -1623,6 +1051,30 @@ class BaseRiskRewardTool extends BaseDrawing {
         const buttonX = entryX + zoneWidth + 15; // Position to the right of zones
         const buttonY = entryY - buttonHeight / 2;
 
+        // Check if already executed
+        if (this.meta.executed) {
+            // Show "Executed" text instead of button
+            this.group.append('rect')
+                .attr('x', buttonX)
+                .attr('y', buttonY)
+                .attr('width', buttonWidth)
+                .attr('height', buttonHeight)
+                .attr('fill', '#4b5563')
+                .attr('rx', 4)
+                .style('opacity', 0.5);
+            
+            this.group.append('text')
+                .attr('x', buttonX + buttonWidth / 2)
+                .attr('y', buttonY + buttonHeight / 2 + 4)
+                .attr('text-anchor', 'middle')
+                .attr('fill', '#ffffff')
+                .attr('font-size', '11px')
+                .attr('font-weight', '700')
+                .style('pointer-events', 'none')
+                .text('✓ Executed');
+            return;
+        }
+
         // Button background
         const btnBg = this.group.append('rect')
             .attr('x', buttonX)
@@ -1652,9 +1104,29 @@ class BaseRiskRewardTool extends BaseDrawing {
             d3.select(this).style('opacity', 0.9);
         });
 
+        // Click handler - can only be clicked once
         btnBg.on('click', (event) => {
             event.stopPropagation();
+            
+            // Mark as executed to prevent double-click
+            if (this.meta.executed) {
+                return;
+            }
+            this.meta.executed = true;
+            
+            // Execute the order
             this.executeOrder(entry, stop, target);
+            
+            // Disable button visually
+            btnBg
+                .attr('fill', '#4b5563')
+                .style('cursor', 'not-allowed')
+                .style('opacity', 0.5);
+            
+            btnText.text('✓ Executed');
+            
+            // Remove hover effects
+            btnBg.on('mouseover', null).on('mouseout', null);
         });
     }
 
@@ -1672,11 +1144,6 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (!orderManager.replaySystem || !orderManager.replaySystem.isActive) {
             alert('⚠️ Replay mode must be active to place orders');
             return;
-        }
-
-        // Panel may be in "Make new order" state after a pending order — calculations/preview are gated until then.
-        if (typeof orderManager.exitOrderPlacedAwaitingReset === 'function') {
-            orderManager.exitOrderPlacedAwaitingReset();
         }
 
         // Ensure risk settings are calculated
@@ -1711,27 +1178,18 @@ class BaseRiskRewardTool extends BaseDrawing {
             self.prefillOrderPanel(orderManager, direction, entryPrice, slPrice, tpPrice, quantity, riskAmount);
             console.log('📋 Order panel pre-filled with position tool values');
         }, 200);
+        
+        // Mark as executed for visual feedback
+        this.meta.executed = true;
+        if (this.manager) {
+            this.manager.renderDrawing(this);
+        }
     }
 
     prefillOrderPanel(orderManager, direction, entryPrice, slPrice, tpPrice, quantity, riskAmount) {
-        this.ensureRiskSettings();
-        const entryList = this._allEntryPrices();
-        // Primary leg = tool zone boundary (points[0] first in _allEntryPrices). Never use a mean here:
-        // writing avg into #orderEntryPrice and dispatching 'input' before multi-entry rows exist made
-        // pullRiskRewardToolFromManager snap points[0] to the average and clear extraEntries.
-        const primaryEntry = entryList.length > 0 ? entryList[0] : entryPrice;
-        const stops = this._allStopPrices();
-        const tgs = this._allTargetPrices();
-        if (stops.length) {
-            slPrice = this.isLong ? Math.min(...stops) : Math.max(...stops);
-        }
-        if (tgs.length) {
-            tpPrice = this.isLong ? Math.max(...tgs) : Math.min(...tgs);
-        }
-
         console.log(`📋 Prefilling order panel:`);
         console.log(`   Direction: ${direction}`);
-        console.log(`   Entry (primary): ${primaryEntry}`);
+        console.log(`   Entry: ${entryPrice}`);
         console.log(`   SL: ${slPrice}`);
         console.log(`   TP: ${tpPrice}`);
         
@@ -1757,10 +1215,10 @@ class BaseRiskRewardTool extends BaseDrawing {
         let orderType = 'limit'; // Default to limit for pending orders
         
         if (currentPrice > 0) {
-            const priceDiff = primaryEntry - currentPrice;
+            const priceDiff = entryPrice - currentPrice;
             const tolerance = currentPrice * 0.0001; // 0.01% tolerance for "at market"
             
-            console.log(`   Price comparison: Entry=${primaryEntry.toFixed(5)}, Current=${currentPrice.toFixed(5)}, Diff=${priceDiff.toFixed(5)}`);
+            console.log(`   Price comparison: Entry=${entryPrice.toFixed(5)}, Current=${currentPrice.toFixed(5)}, Diff=${priceDiff.toFixed(5)}`);
             
             if (Math.abs(priceDiff) <= tolerance) {
                 // Entry is at current price - Market order
@@ -1812,33 +1270,10 @@ class BaseRiskRewardTool extends BaseDrawing {
             }
         }
 
-        // Multiple entries (ladder) MUST run before #orderEntryPrice input events, or pull() sees
-        // isMultiEntryMode false and overwrites the tool's primary with the main field value.
-        if (entryList.length > 1 && typeof orderManager.setEntryMode === 'function') {
-            if (!Number.isFinite(orderManager.multiEntryIdCounter)) orderManager.multiEntryIdCounter = 1;
-            const prec = typeof orderManager.getPricePrecision === 'function' ? orderManager.getPricePrecision() : 5;
-            const riskUsd = this.meta.risk?.riskAmountUSD
-                ?? this.meta.risk?.riskAmount
-                ?? riskAmount
-                ?? 100;
-            const n = entryList.length;
-            const amt = Math.max(1, Math.round(riskUsd / n));
-            // Same ladder order as the tool (E1 = primary), not price-sorted.
-            orderManager.multiEntryLevels = entryList.map((price) => ({
-                id: orderManager.multiEntryIdCounter++,
-                price: parseFloat(price.toFixed(prec)),
-                amount: amt
-            }));
-            orderManager.setEntryMode(true);
-        }
-
-        // Fill in the entry price (primary leg — matches RR zone boundary)
+        // Fill in the entry price
         const entryInput = document.getElementById('orderEntryPrice');
         if (entryInput) {
-            const prec = typeof orderManager.getPricePrecision === 'function' ? orderManager.getPricePrecision() : 5;
-            entryInput.value = typeof orderManager.formatPrice === 'function'
-                ? orderManager.formatPrice(primaryEntry)
-                : primaryEntry.toFixed(prec);
+            entryInput.value = entryPrice.toFixed(5);
             entryInput.dispatchEvent(new Event('input', { bubbles: true }));
         }
 
@@ -1850,8 +1285,8 @@ class BaseRiskRewardTool extends BaseDrawing {
             enableTP.dispatchEvent(new Event('change', { bubbles: true }));
             tpInput.value = tpPrice.toFixed(5);
             tpInput.dispatchEvent(new Event('input', { bubbles: true }));
-            const tpCardMain = document.getElementById('tpCardMain');
-            if (tpCardMain) tpCardMain.style.display = 'flex';
+            const tpInputs = document.getElementById('tpInputs');
+            if (tpInputs) tpInputs.style.display = 'grid';
             console.log(`   TP input set to: ${tpInput.value}`);
         }
 
@@ -1868,87 +1303,25 @@ class BaseRiskRewardTool extends BaseDrawing {
             console.log(`   SL input set to: ${slInput.value}`);
         }
 
-        // Multiple take profits (order panel multi-TP UI)
-        if (tgs.length > 1 && typeof orderManager.renderTPTargets === 'function') {
-            const prec = typeof orderManager.getPricePrecision === 'function' ? orderManager.getPricePrecision() : 5;
-            const sortedTp = [...tgs].sort((a, b) => (this.isLong ? a - b : b - a));
-            const sortedPrices = sortedTp.map((p) => parseFloat(Number(p).toFixed(prec)));
-            const eps = Math.max(1e-10, Math.abs(sortedPrices[0] || 1) * 1e-9);
-            const share = parseFloat((100 / sortedTp.length).toFixed(1));
-
-            // Keep panel % splits when re-prefilling from the same RR setup (Execute was resetting to equal shares).
-            const prevSorted = Array.isArray(orderManager.tpTargets) && orderManager.tpTargets.length === sortedTp.length
-                ? [...orderManager.tpTargets].sort((a, b) =>
-                    (this.isLong ? a.price - b.price : b.price - a.price))
-                : null;
-            let preservedPct = null;
-            if (prevSorted && prevSorted.length === sortedTp.length) {
-                let ok = true;
-                for (let i = 0; i < sortedPrices.length; i++) {
-                    const t = prevSorted[i];
-                    if (!t || !Number.isFinite(t.price) || t.percentage == null) {
-                        ok = false;
-                        break;
-                    }
-                    if (Math.abs(parseFloat(Number(t.price).toFixed(prec)) - sortedPrices[i]) > eps) {
-                        ok = false;
-                        break;
-                    }
-                }
-                if (ok) {
-                    preservedPct = prevSorted.map((t) => parseFloat(Number(t.percentage).toFixed(1)));
-                }
-            }
-
-            orderManager.tpTargets = sortedTp.map((price, i) => ({
-                id: i + 1,
-                price: sortedPrices[i],
-                percentage: preservedPct != null && Number.isFinite(preservedPct[i])
-                    ? preservedPct[i]
-                    : (i === sortedTp.length - 1
-                        ? parseFloat((100 - share * (sortedTp.length - 1)).toFixed(1))
-                        : share)
-            }));
-            const multipleTPToggle = document.getElementById('multipleTPToggle');
-            const multipleTPSettings = document.getElementById('multipleTPSettings');
-            const multiTPBtn = document.getElementById('multiTPBtn');
-            const tpSingleView = document.querySelector('.order-tp-single');
-            if (multipleTPToggle) multipleTPToggle.checked = true;
-            if (multipleTPSettings) multipleTPSettings.classList.remove('is-hidden');
-            if (tpSingleView) tpSingleView.classList.add('is-hidden');
-            if (multiTPBtn) {
-                multiTPBtn.textContent = 'Single';
-                multiTPBtn.classList.add('active');
-            }
-            const numTPInput = document.getElementById('numTPTargets');
-            if (numTPInput) numTPInput.value = String(sortedTp.length);
-            orderManager.renderTPTargets();
-            if (typeof orderManager.updatePreviewLines === 'function') {
-                orderManager.updatePreviewLines();
-            }
-        }
-
-        if (typeof orderManager.calculatePositionFromRisk === 'function') {
-            orderManager.calculatePositionFromRisk();
+        // Update calculated lot size display
+        const calculatedLots = document.getElementById('calculatedLots');
+        if (calculatedLots) {
+            calculatedLots.textContent = `${quantity.toFixed(2)} Lots`;
         }
         
         // Also set on orderManager for calculations
         if (orderManager.tpPrice !== undefined) orderManager.tpPrice = tpPrice;
         if (orderManager.slPrice !== undefined) orderManager.slPrice = slPrice;
-        if (orderManager.entryPrice !== undefined) orderManager.entryPrice = primaryEntry;
+        if (orderManager.entryPrice !== undefined) orderManager.entryPrice = entryPrice;
     }
 
     render(container, scales) {
         this.ensureRiskSettings();
-        this._syncBreakevenMetaWithPanel();
         if (this.group) {
             this.group.remove();
         }
 
         if (this.points.length < 3) return;
-
-        /** Vertical hit for primary entry drag — sized to cover .center-info pill when selected (kept tighter than before). */
-        let primaryEntryHitHeight = 20;
 
         this.group = container.append('g')
             .attr('class', `drawing risk-reward ${this.meta.orientation}`)
@@ -2028,125 +1401,43 @@ class BaseRiskRewardTool extends BaseDrawing {
         const stopY = scales.yScale(stop.y);
         const targetY = scales.yScale(target.y);
 
-        const hasMultiEntry = (this.meta.extraEntries || []).length > 0;
-        let zoneEntryPrice = entry.y;
-        if (hasMultiEntry) {
-            const wAvg = this._getWeightedAverageEntryPrice();
-            if (Number.isFinite(wAvg)) zoneEntryPrice = wAvg;
-        }
-        const avgEntryYpx = scales.yScale(zoneEntryPrice);
-
-        const worstStopPx = scales.yScale(this.getAggregatedStopPrice());
-        const bestTargetPx = scales.yScale(this.getAggregatedTargetPrice());
-
-        const hasMultiTP = (this.meta.extraTargets || []).length > 0;
-        let avgTpPrice = NaN;
-        if (hasMultiTP && typeof this._getWeightedAverageTargetPrice === 'function') {
-            avgTpPrice = this._getWeightedAverageTargetPrice();
-        }
-        const avgTpYpx = Number.isFinite(avgTpPrice) ? scales.yScale(avgTpPrice) : NaN;
-
-        // Zone fill split at weighted avg (multi-entry). Drag gap / primary strip stay on E1 (below).
-        const riskTop = Math.min(avgEntryYpx, worstStopPx);
-        const riskBot = Math.max(avgEntryYpx, worstStopPx);
-        const riskHeight = riskBot - riskTop;
-
-        const rewTop = Math.min(avgEntryYpx, bestTargetPx);
-        const rewBot = Math.max(avgEntryYpx, bestTargetPx);
-        const rewardHeight = rewBot - rewTop;
-
-        // R:R text uses same avg reference as the zone boundary.
-        const risk = Math.max(Math.abs(zoneEntryPrice - stop.y), 0.0000001);
-        const reward = Math.abs(target.y - zoneEntryPrice);
+        const riskHeight = Math.abs(stopY - entryY);
+        const rewardHeight = Math.abs(targetY - entryY);
+        const risk = Math.max(Math.abs(entry.y - stop.y), 0.0000001);
+        const reward = Math.abs(target.y - entry.y);
         const rrRatio = (reward / risk).toFixed(2);
-
-        const dashExtra = '6 4';
 
         this.group.insert('rect', ':first-child')
             .attr('class', 'position-zone')
             .attr('x', zoneX1)
-            .attr('y', riskTop)
+            .attr('y', Math.min(entryY, stopY))
             .attr('width', zoneWidth)
             .attr('height', riskHeight)
             .attr('fill', this.style.riskColor)
             .attr('stroke', 'none')
-            // When selected, zones must not steal events — whole-tool drag uses .rr-body-drag instead
-            // so the entry hit strip (painted later) wins on the middle row.
-            .style('pointer-events', this.selected ? 'none' : 'all')
+            .style('pointer-events', 'all')
             .style('cursor', 'move');
 
         this.group.insert('rect', ':first-child')
             .attr('class', 'position-zone')
             .attr('x', zoneX1)
-            .attr('y', rewTop)
+            .attr('y', Math.min(entryY, targetY))
             .attr('width', zoneWidth)
             .attr('height', rewardHeight)
             .attr('fill', this.style.rewardColor)
-            .attr('stroke', 'none')
-            .style('pointer-events', this.selected ? 'none' : 'all')
+            .style('pointer-events', 'all')
             .style('cursor', 'move');
 
-        const bodyTopPx = Math.min(riskTop, rewTop);
-        const bodyBotPx = Math.max(riskBot, rewBot);
-        // Entry-row gap only around E1 (same as single-entry). E2/E3 use their own .rr-extra-drag-hit strips.
-        const entryRowGapPx = 36;
-        const gapHalf = entryRowGapPx / 2;
-        const bandTop = entryY - gapHalf;
-        const bandBot = entryY + gapHalf;
-        const upperBodyH = Math.max(0, bandTop - bodyTopPx);
-        const lowerBodyY = bandBot;
-        const lowerBodyH = Math.max(0, bodyBotPx - lowerBodyY);
-        const appendBodyDrag = (y0, h) => {
-            if (h < 1) return;
-            this.group.append('rect')
-                .attr('class', 'rr-body-drag')
-                .attr('x', zoneX1)
-                .attr('y', y0)
-                .attr('width', zoneWidth)
-                .attr('height', h)
-                .attr('fill', 'rgba(0,0,0,0)')
-                .attr('stroke', 'none')
-                .style('pointer-events', this.selected ? 'all' : 'none')
-                .style('cursor', 'move');
-        };
-        appendBodyDrag(bodyTopPx, upperBodyH);
-        appendBodyDrag(lowerBodyY, lowerBodyH);
-
-        // Multi: solid line at avg (visual zone edge, not a whole-tool drag target). Dashed E1 = ladder leg.
-        // Single: one rr-entry-stroke at E1 as before.
-        if (hasMultiEntry) {
-            this.group.append('line')
-                .attr('class', 'rr-avg-zone-edge')
-                .attr('x1', zoneX1)
-                .attr('y1', avgEntryYpx)
-                .attr('x2', zoneX2)
-                .attr('y2', avgEntryYpx)
-                .attr('stroke', this.style.entryColor || '#565656ff')
-                .attr('stroke-width', 2)
-                .style('pointer-events', 'none')
-                .style('cursor', 'inherit');
-            this.group.append('line')
-                .attr('class', 'rr-extra-line rr-extra-entry rr-e1-leg')
-                .attr('x1', zoneX1)
-                .attr('y1', entryY)
-                .attr('x2', zoneX2)
-                .attr('y2', entryY)
-                .attr('stroke', this.style.entryColor || '#2962FF')
-                .attr('stroke-width', 1)
-                .attr('stroke-dasharray', dashExtra)
-                .style('pointer-events', 'none');
-        } else {
-            this.group.append('line')
-                .attr('class', 'shape-border rr-entry-stroke')
-                .attr('x1', zoneX1)
-                .attr('y1', entryY)
-                .attr('x2', zoneX2)
-                .attr('y2', entryY)
-                .attr('stroke', this.style.entryColor || '#565656ff')
-                .attr('stroke-width', 1.5)
-                .style('pointer-events', 'none')
-                .style('cursor', 'inherit');
-        }
+        this.group.append('line')
+            .attr('class', 'shape-border')
+            .attr('x1', zoneX1)
+            .attr('y1', entryY)
+            .attr('x2', zoneX2)
+            .attr('y2', entryY)
+            .attr('stroke', this.style.entryColor || '#565656ff')
+            .attr('stroke-width', 1.5)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
 
         this.group.append('line')
             .attr('x1', zoneX1)
@@ -2162,157 +1453,24 @@ class BaseRiskRewardTool extends BaseDrawing {
             .attr('y2', targetY)
             .style('pointer-events', 'none');
 
-        /** Full-width drag strip height for extra SL / BE (tighter vertical grab). */
-        const extraDragHitW = 8;
-        /** Inner TP levels (TP2, …): strip + mini controls — keep slightly wider than extra SL. */
-        const extraTpDragHitW = 24;
-        /** E2/E3 entry legs: strip + nudged labels — keep slightly wider than extra SL. */
-        const extraEntryDragHitW = 24;
-        // Full-width rect (not a thick stroke on <line>) so the whole horizontal band hits — transparent
-        // strokes often miss the middle of the line in SVG, so users could only grab endpoints / small nodes.
-        const appendExtraDragHit = (yy, role, hitW = extraDragHitW) => {
-            const w = Math.max(1, zoneX2 - zoneX1);
-            this.group.append('rect')
-                .attr('class', 'custom-handle rr-extra-drag-hit')
-                .attr('data-handle-role', role)
-                .attr('x', zoneX1)
-                .attr('y', yy - hitW / 2)
-                .attr('width', w)
-                .attr('height', hitW)
-                .attr('fill', 'rgba(0, 0, 0, 0.02)')
-                .attr('stroke', 'none')
-                .style('pointer-events', this.selected ? 'all' : 'none')
-                .style('cursor', 'ns-resize');
-        };
-        (this.meta.extraStops || []).forEach((row, idx) => {
-            if (!row || !Number.isFinite(row.y)) return;
-            const yy = scales.yScale(row.y);
-            this.group.append('line')
-                .attr('class', 'rr-extra-line rr-extra-stop')
-                .attr('x1', zoneX1)
-                .attr('y1', yy)
-                .attr('x2', zoneX2)
-                .attr('y2', yy)
-                .attr('stroke', '#ef4444')
-                .attr('stroke-width', 1)
-                .attr('stroke-dasharray', dashExtra)
-                .style('pointer-events', 'none');
-            // Drag hit lines for extra stops/targets are painted after the primary entry rect (see end of render)
-            // so E2 / TP2 strips stay above the wide middle hit rect and receive clicks.
-        });
-        let beLinePx = null;
-        if (this.meta.rrBreakevenLine && Number.isFinite(this.meta.rrBreakevenLine.y)) {
-            beLinePx = scales.yScale(this.meta.rrBreakevenLine.y);
-            this.group.append('line')
-                .attr('class', 'rr-extra-line rr-extra-be')
-                .attr('x1', zoneX1)
-                .attr('y1', beLinePx)
-                .attr('x2', zoneX2)
-                .attr('y2', beLinePx)
-                .attr('stroke', '#f59e0b')
-                .attr('stroke-width', 1)
-                .attr('stroke-dasharray', dashExtra)
-                .style('pointer-events', 'none');
-        }
-        (this.meta.extraTargets || []).forEach((row, idx) => {
-            if (!row || !Number.isFinite(row.y)) return;
-            const yy = scales.yScale(row.y);
-            this.group.append('line')
-                .attr('class', 'rr-extra-line rr-extra-target')
-                .attr('x1', zoneX1)
-                .attr('y1', yy)
-                .attr('x2', zoneX2)
-                .attr('y2', yy)
-                .attr('stroke', '#22c55e')
-                .attr('stroke-width', 1)
-                .attr('stroke-dasharray', dashExtra)
-                .style('pointer-events', 'none');
-        });
-        // Multi-TP: solid line at distribution-weighted average TP (same weights as panel % when aligned).
-        if (hasMultiTP && Number.isFinite(avgTpYpx)) {
-            this.group.append('line')
-                .attr('class', 'rr-avg-tp-zone-edge')
-                .attr('x1', zoneX1)
-                .attr('y1', avgTpYpx)
-                .attr('x2', zoneX2)
-                .attr('y2', avgTpYpx)
-                .attr('stroke', '#e8a060')
-                .attr('stroke-width', 0.5)
-                .style('pointer-events', 'none')
-                .style('cursor', 'inherit');
-        }
-        (this.meta.extraEntries || []).forEach((row, idx) => {
-            if (!row || !Number.isFinite(row.y)) return;
-            const yy = scales.yScale(row.y);
-            this.group.append('line')
-                .attr('class', 'rr-extra-line rr-extra-entry')
-                .attr('x1', zoneX1)
-                .attr('y1', yy)
-                .attr('x2', zoneX2)
-                .attr('y2', yy)
-                .attr('stroke', this.style.entryColor || '#2962FF')
-                .attr('stroke-width', 1)
-                .attr('stroke-dasharray', dashExtra)
-                .style('pointer-events', 'none');
-            // E2+ drag hits appended after primary entry strip (see end of render).
-        });
-
         // Recalculate lot size from risk before rendering labels
         this.recalculateLotSizeFromRisk();
 
         const showDetails = this.selected;
 
         if (showDetails) {
-            const self = this;
-            // Percent / ticks vs weighted avg entry when E2+ (same reference as zone boundary & R:R pill).
-            const entryPrice = zoneEntryPrice;
+            // Calculate percentages and amounts
+            const entryPrice = entry.y;
             const stopPrice = stop.y;
             const targetPrice = target.y;
-
-            const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
-            const rrPrec = typeof om?.getPricePrecision === 'function' ? om.getPricePrecision() : 5;
-            const rrRoundPx = (p) => (Number.isFinite(p) ? parseFloat(Number(p).toFixed(rrPrec)) : p);
-            const slFromDrawing = rrRoundPx(
-                Number.isFinite(stop.y) ? stop.y : parseFloat(document.getElementById('slPrice')?.value || '') || 0
-            );
-
-            if (om && typeof om.calculateAdvancedRiskReward === 'function') {
-                try {
-                    om.calculateAdvancedRiskReward();
-                } catch (_) { /* ignore */ }
-            }
-
-            const parsePanelSummaryAmount = (el) => {
-                const t = el?.textContent?.trim() ?? '';
-                if (!t || t === '—' || t === '--') return null;
-                return t;
-            };
-            const formatRrDistFromPx = (distAbs) => {
-                if (!Number.isFinite(distAbs) || distAbs <= 0) return '';
-                const cfg = om?.getMarketConfig?.() || {};
-                const pip = Number.isFinite(om?.pipSize) && om.pipSize > 0
-                    ? om.pipSize
-                    : (Number.isFinite(cfg.pipSize) && cfg.pipSize > 0 ? cfg.pipSize : 0.0001);
-                if (cfg.showPips) return `${(distAbs / pip).toFixed(2)} pips`;
-                if (cfg.showTicks) return `${(distAbs / pip).toFixed(2)} pts`;
-                return `${distAbs.toFixed(cfg.symbolPrecision ?? 5)} pts`;
-            };
 
             const targetPercent = ((Math.abs(targetPrice - entryPrice) / entryPrice) * 100).toFixed(3);
             const stopPercent = ((Math.abs(stopPrice - entryPrice) / entryPrice) * 100).toFixed(3);
 
-            const cfgForPip = om?.getMarketConfig?.() || {};
-            const effectivePipForFb = Number.isFinite(om?.pipSize) && om.pipSize > 0
-                ? om.pipSize
-                : (Number.isFinite(cfgForPip.pipSize) && cfgForPip.pipSize > 0 ? cfgForPip.pipSize : 0.0001);
-            const targetTicksFb = (Math.abs(targetPrice - entryPrice) / effectivePipForFb).toFixed(1);
-            const stopTicksFb = (Math.abs(stopPrice - entryPrice) / effectivePipForFb).toFixed(1);
+            const targetTicks = (Math.abs(targetPrice - entryPrice) / 0.0001).toFixed(1);
+            const stopTicks = (Math.abs(stopPrice - entryPrice) / 0.0001).toFixed(1);
 
-            let panelOrderQty = parseFloat(document.getElementById('orderQuantity')?.value || '');
-            if (!Number.isFinite(panelOrderQty) || panelOrderQty <= 0) {
-                panelOrderQty = Number(this.meta.risk?.lotSize) || 0.01;
-            }
-            const quantity = panelOrderQty;
+            const quantity = this.meta.risk?.lotSize || 0.01;
 
             // Get risk amount from settings (THIS is the amount we're risking)
             let riskUSD = 100; // Default
@@ -2324,6 +1482,13 @@ class BaseRiskRewardTool extends BaseDrawing {
                     riskUSD = (accountSize * (this.meta.risk.riskPercent || 1)) / 100;
                 }
             }
+
+            // Stop Loss Amount = Your Risk Amount (what you're willing to lose)
+            const stopAmount = Math.round(riskUSD);
+
+            // Target Amount = Risk × R:R Ratio (potential reward)
+            // Use rrRatio already calculated above
+            const targetAmount = Math.round(riskUSD * parseFloat(rrRatio));
 
             const labelPaddingX = 10;
             const labelPaddingY = 4;
@@ -2340,12 +1505,10 @@ class BaseRiskRewardTool extends BaseDrawing {
             const compressedGap = 18;
             const wideSnapThreshold = 260;
 
-            const createEdgeLabel = ({ className, text, lineY, fill, side, extraEdgeGap = 0 }) => {
-                // Outer group: className only. Inner `rr-no-hit` holds pill + text so drags pass through.
-                const labelOuter = this.group.append('g').attr('class', className);
-                const hitBlock = labelOuter.append('g').attr('class', 'rr-no-hit');
+            const createEdgeLabel = ({ className, text, lineY, fill, side }) => {
+                const labelGroup = this.group.append('g').attr('class', className);
 
-                const textNode = hitBlock.append('text')
+                const textNode = labelGroup.append('text')
                     .attr('x', 0)
                     .attr('y', 0)
                     .attr('text-anchor', 'middle')
@@ -2361,99 +1524,42 @@ class BaseRiskRewardTool extends BaseDrawing {
                 const labelHeight = textBBox.height + (labelPaddingY * 2);
 
                 const hasInnerSpace = zoneWidth >= wideSnapThreshold;
-                const offset = (hasInnerSpace ? edgeSnapGap : compressedGap) + (Number.isFinite(extraEdgeGap) ? extraEdgeGap : 0);
+                const offset = hasInnerSpace ? edgeSnapGap : compressedGap;
                 const rectTop = side === 'top'
                     ? lineY - labelHeight - offset
                     : lineY + offset;
                 const centeredRectX = (zoneX1 + (zoneWidth / 2)) - (labelWidth / 2);
                 const rectX = centeredRectX;
 
-                hitBlock.insert('rect', 'text')
+                labelGroup.insert('rect', 'text')
                     .attr('x', rectX)
                     .attr('y', rectTop)
                     .attr('width', labelWidth)
                     .attr('height', labelHeight)
                     .attr('fill', fill)
-                    .attr('rx', edgeLabelRadius)
-                    .style('pointer-events', 'none');
+                    .attr('rx', edgeLabelRadius);
 
                 textNode
                     .attr('x', rectX + (labelWidth / 2))
-                    .attr('y', rectTop + labelPaddingY)
-                    .style('pointer-events', 'none');
+                    .attr('y', rectTop + labelPaddingY);
             };
 
             const targetLabelFill = '#22c55e';
             const stopLabelFill = '#ef4444';
 
-            const tpDistPanel = document.getElementById('tpDistanceDisplay')?.textContent?.trim() || '';
-            const slDistPanel = document.getElementById('slPipsDisplay')?.textContent?.trim() || '';
-            const tpDistSeg = (tpDistPanel && tpDistPanel !== '—')
-                ? tpDistPanel
-                : (formatRrDistFromPx(Math.abs(targetPrice - entryPrice)) || targetTicksFb);
-            const slDistSeg = (slDistPanel && slDistPanel !== '—')
-                ? slDistPanel
-                : (formatRrDistFromPx(Math.abs(stopPrice - entryPrice)) || stopTicksFb);
-
-            const fallbackRewardUsd = Math.round(riskUSD * parseFloat(rrRatio));
-            let targetAmountStr = parsePanelSummaryAmount(document.getElementById('rewardAmount'));
-            const rewNumFromPanel = targetAmountStr != null
-                ? parseFloat(String(targetAmountStr).replace(/[^0-9.-]+/g, ''))
-                : NaN;
-            if (targetAmountStr == null || !Number.isFinite(rewNumFromPanel)
-                || (rewNumFromPanel === 0 && !String(targetAmountStr).includes('∞'))) {
-                targetAmountStr = `$${fallbackRewardUsd}`;
-            }
-            let stopAmountStr = parsePanelSummaryAmount(document.getElementById('riskAmount'));
-            if (stopAmountStr == null) {
-                stopAmountStr = `$${Math.round(riskUSD)}`;
-            }
-
-            let targetRewardUsdForBadges = fallbackRewardUsd;
-            const rewNum = parseFloat(String(targetAmountStr).replace(/[^0-9.-]+/g, ''));
-            if (Number.isFinite(rewNum) && targetAmountStr && !String(targetAmountStr).includes('∞')) {
-                targetRewardUsdForBadges = rewNum;
-            }
-
-            const tpPriceStr = typeof om?.formatPrice === 'function' ? om.formatPrice(targetPrice) : targetPrice.toFixed(5);
-            const slPriceStr = typeof om?.formatPrice === 'function' ? om.formatPrice(stopPrice) : stopPrice.toFixed(5);
-
-            // Primary TP handle is the farthest target; panel `rewardAmount` is sum of all legs. For multi-TP, show
-            // the same per-leg $ as the TP2 (etc.) preview line — not the aggregate — so Amount matches that level.
-            let targetAmountStrForLabel = targetAmountStr;
-            const mtOnForTargetLabel = typeof document !== 'undefined'
-                && document.getElementById('multipleTPToggle')?.checked;
-            if (mtOnForTargetLabel && om?.tpTargets?.length > 1
-                && typeof om.getMultiTpLegProfitUsdForChartBadge === 'function') {
-                const sideEarly = this.isLong ? 'BUY' : 'SELL';
-                const legUsd = om.getMultiTpLegProfitUsdForChartBadge(
-                    this.chart,
-                    sideEarly,
-                    rrRoundPx(targetPrice),
-                    rrPrec
-                );
-                if (legUsd != null && Number.isFinite(legUsd)) {
-                    targetAmountStrForLabel = `$${Number(legUsd).toFixed(2)}`;
-                }
-            }
-
-            // Target / Stop labels — same distance + $ readouts as order panel (TP/SL cards + summary).
-            // TP leg (TPn · %) is shown as a separate mini-badge on the line, like other TP levels.
-            const targetLabelText = `Target: ${tpPriceStr} (${targetPercent}%) ${tpDistSeg}, Amount: ${targetAmountStrForLabel}`;
-            const targetSide = targetY <= avgEntryYpx ? 'top' : 'bottom';
-            // Multi-TP: TP mini-badge sits on the same price line — nudge the Target pill farther from the line so it does not overlap.
-            const targetLabelExtraGap = (mtOnForTargetLabel && om?.tpTargets?.length > 1) ? 22 : 0;
+            // Target / Stop labels: TV-like behavior (wide = edge-snapped, narrow = floated with fixed spacing)
+            const targetLabelText = `Target: ${targetPrice.toFixed(5)} (${targetPercent}%) ${targetTicks}, Amount: ${targetAmount}`;
+            const targetSide = targetY <= entryY ? 'top' : 'bottom';
             createEdgeLabel({
                 className: 'target-label',
                 text: targetLabelText,
                 lineY: targetY,
                 fill: targetLabelFill,
-                side: targetSide,
-                extraEdgeGap: targetLabelExtraGap
+                side: targetSide
             });
 
-            const stopLabelText = `Stop: ${slPriceStr} (${stopPercent}%) ${slDistSeg}, Amount: ${stopAmountStr}`;
-            const stopSide = stopY <= avgEntryYpx ? 'top' : 'bottom';
+            const stopLabelText = `Stop: ${stopPrice.toFixed(5)} (${stopPercent}%) ${stopTicks}, Amount: ${stopAmount}`;
+            const stopSide = stopY <= entryY ? 'top' : 'bottom';
             createEdgeLabel({
                 className: 'stop-label',
                 text: stopLabelText,
@@ -2462,46 +1568,11 @@ class BaseRiskRewardTool extends BaseDrawing {
                 side: stopSide
             });
 
-            // Center Info Box — qty + R:R (panel-aligned); optional avg entry when multi-entry
-            const parseMoneyReadout = (el) => {
-                const t = el?.textContent?.trim() ?? '';
-                if (!t || t === '—' || t === '∞' || t === '--') return null;
-                const n = parseFloat(t.replace(/[^0-9.-]+/g, ''));
-                return Number.isFinite(n) ? n : null;
-            };
-            let panelRRLabel = String(rrRatio);
-            const tpRRParsed = parseFloat(document.getElementById('tpRRInput')?.value || '');
-            if (Number.isFinite(tpRRParsed) && tpRRParsed > 0) {
-                panelRRLabel = tpRRParsed.toFixed(1);
-            } else {
-                const summaryTxt = document.getElementById('tpSummaryRRDisplay')?.textContent?.trim() || '';
-                const sm = summaryTxt.match(/1\s*:\s*([\d.]+)/);
-                if (sm) {
-                    const v = parseFloat(sm[1]);
-                    if (Number.isFinite(v) && v > 0) panelRRLabel = v.toFixed(1);
-                } else {
-                    const rewUsd = parseMoneyReadout(document.getElementById('rewardAmount'));
-                    const riskUsd = parseMoneyReadout(document.getElementById('riskAmount'));
-                    if (rewUsd != null && riskUsd != null && riskUsd > 0 && rewUsd >= 0) {
-                        const rv = rewUsd / riskUsd;
-                        if (Number.isFinite(rv) && rv > 0) panelRRLabel = rv.toFixed(1);
-                    }
-                }
-            }
-
-            const sideStr = this.isLong ? 'BUY' : 'SELL';
-            const avgEntryStr = typeof om?.formatPrice === 'function'
-                ? om.formatPrice(zoneEntryPrice)
-                : (Number.isFinite(zoneEntryPrice) ? zoneEntryPrice.toFixed(rrPrec) : '—');
-            const centerInfoLine0 = hasMultiEntry && Number.isFinite(zoneEntryPrice)
-                ? `Avg entry: ${avgEntryStr}`
-                : null;
-            const centerInfoLine1 = `Qty: ${quantity.toFixed(2)}`;
-            const centerInfoLine2 = `Risk/Reward Ratio: ${panelRRLabel}`;
-            // Multi-entry: pill on weighted-avg (middle) line; draggable = whole-tool move so E1/E2/SL/TP follow (avg moves with ladder).
-            const centerInfo = this.group.append('g')
-                .attr('class', hasMultiEntry ? 'center-info rr-multi-pill-drag' : 'center-info rr-no-hit')
-                .style('pointer-events', hasMultiEntry ? null : 'none');
+            // Center Info Box (TradingView-like red pill with border)
+            const pnl = 0; // Will be calculated when order is active
+            const centerInfoLine1 = `Open P&L: ${pnl.toFixed(0)}, Qty: ${quantity.toFixed(2)}`;
+            const centerInfoLine2 = `Risk/Reward Ratio: ${rrRatio}`;
+            const centerInfo = this.group.append('g').attr('class', 'center-info');
 
             // Calculate center X position of the zone
             const zoneCenterX = zoneX1 + (zoneWidth / 2);
@@ -2518,14 +1589,6 @@ class BaseRiskRewardTool extends BaseDrawing {
 
             const centerLineHeight = Math.round(labelFontSize * 1.2);
 
-            let centerLine0 = null;
-            if (centerInfoLine0) {
-                centerLine0 = centerTextNode.append('tspan')
-                    .attr('x', 0)
-                    .attr('y', 0)
-                    .text(centerInfoLine0);
-            }
-
             const centerLine1 = centerTextNode.append('tspan')
                 .attr('x', 0)
                 .attr('y', 0)
@@ -2537,21 +1600,18 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .text(centerInfoLine2);
 
             const centerTextBBox = centerTextNode.node().getBBox();
-            const centerPaddingX = 16;
-            const centerPaddingY = 9;
+            const centerPaddingX = 12;
+            const centerPaddingY = 6;
             const centerWidth = centerTextBBox.width + (centerPaddingX * 2);
             const centerHeight = centerTextBBox.height + (centerPaddingY * 2);
 
-            primaryEntryHitHeight = Math.max(26, centerHeight + 4);
-
             const centerRectX = zoneCenterX - (centerWidth / 2);
 
-            const centerLineYpx = hasMultiEntry ? avgEntryYpx : entryY;
-            const centerRectY = centerLineYpx - (centerHeight / 2);
+            const centerRectY = entryY - (centerHeight / 2);
 
             const centerInfoFill = this.isLong ? stopLabelFill : targetLabelFill;
 
-            const centerPillRect = centerInfo.insert('rect', 'text')
+            centerInfo.insert('rect', 'text')
                 .attr('x', centerRectX)
                 .attr('y', centerRectY)
                 .attr('width', centerWidth)
@@ -2560,702 +1620,23 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('stroke', '#ffffff')
                 .attr('stroke-width', 2)
                 .attr('rx', centerLabelRadius);
-            if (hasMultiEntry) {
-                centerPillRect.style('pointer-events', 'all').style('cursor', 'move');
-            } else {
-                centerPillRect.style('pointer-events', 'none');
-            }
 
             const centerTextX = centerRectX + (centerWidth / 2);
             const centerTextY = centerRectY + centerPaddingY;
 
-            const lineBaseY = centerTextY;
-            if (centerLine0) {
-                centerLine0
-                    .attr('x', centerTextX)
-                    .attr('y', lineBaseY);
-            }
-            const y1 = lineBaseY + (centerLine0 ? centerLineHeight : 0);
-            const y2 = y1 + centerLineHeight;
             centerLine1
                 .attr('x', centerTextX)
-                .attr('y', y1);
+                .attr('y', centerTextY);
 
             centerLine2
                 .attr('x', centerTextX)
-                .attr('y', y2);
-
-            /** Right-edge mini badges: one horizontal line (e.g. "BE 1.56R", "E1 0.05 lot"). Optional handleRole = same drag as price line. */
-            const appendRrMiniBadge = (lineYpx, lineTexts, bgFill, handleRole = null) => {
-                const parts = (lineTexts || []).filter((x) => x != null && String(x).length > 0);
-                if (!parts.length) return;
-                const line = parts.join(' ');
-                const padX = 6;
-                const padY = 3;
-                const edgePad = 4;
-                const g = this.group.append('g').attr('class', 'rr-mini-level-badge').style('pointer-events', 'none');
-                const tmp = g.append('text')
-                    .attr('x', 0)
-                    .attr('y', 0)
-                    .attr('dominant-baseline', 'hanging')
-                    .attr('font-size', '10px')
-                    .attr('font-weight', '600')
-                    .attr('font-family', labelFontFamily)
-                    .attr('opacity', 0)
-                    .text(line);
-                const bb = tmp.node().getBBox();
-                tmp.remove();
-                const bw = bb.width + padX * 2;
-                const bh = bb.height + padY * 2;
-                const bx = Math.max(zoneX1 + edgePad, zoneX2 - bw - edgePad);
-                const by = lineYpx - bh / 2;
-                g.append('rect')
-                    .attr('x', bx)
-                    .attr('y', by)
-                    .attr('width', bw)
-                    .attr('height', bh)
-                    .attr('rx', 4)
-                    .attr('fill', bgFill)
-                    .attr('stroke', 'rgba(255,255,255,0.14)');
-                g.append('text')
-                    .attr('x', bx + padX)
-                    .attr('y', by + padY)
-                    .attr('dominant-baseline', 'hanging')
-                    .attr('fill', '#f1f5f9')
-                    .attr('font-size', '10px')
-                    .attr('font-weight', '600')
-                    .attr('font-family', labelFontFamily)
-                    .text(line);
-                if (this.selected && handleRole) {
-                    g.append('rect')
-                        .attr('class', 'custom-handle rr-mini-badge-drag-hit')
-                        .attr('data-handle-role', handleRole)
-                        .attr('x', bx)
-                        .attr('y', by)
-                        .attr('width', bw)
-                        .attr('height', bh)
-                        .attr('rx', 4)
-                        .attr('fill', 'transparent')
-                        .style('cursor', 'ns-resize');
-                }
-            };
-
-            // SL/leg prices must come from the drawing (points), not panel-only OM rows: whole-tool moves
-            // update the drawing every frame while multiEntryLevels can lag or differ in float noise → lots jitter.
-            const pipS = om?.pipSize || this.getPriceStep();
-            const pipV = om?.pipValuePerLot || 10;
-            /** Same value as order panel amount column ($ / split % / lots per leg), not implied lots from SL distance. */
-            const formatMultiEntryAmountForBadge = (lv) => {
-                if (!lv) return '—';
-                const psm = om?.positionSizeMode || 'risk-usd';
-                const a = Number(lv.amount);
-                if (!Number.isFinite(a)) return '—';
-                if (psm === 'risk-usd') return `$${Math.round(a)}`;
-                if (psm === 'risk-percent') return `${a.toFixed(1)}%`;
-                return `${a.toFixed(2)} lot`;
-            };
-            const entryFill = 'rgba(30, 64, 175, 0.92)';
-            const tpInnerFill = 'rgba(22, 101, 52, 0.92)';
-            const beFill = 'rgba(120, 53, 15, 0.92)';
-            const slExtraFill = 'rgba(127, 29, 29, 0.88)';
-
-            const hasDrawnExtras = (this.meta.extraEntries || []).length > 0;
-            const omMulti = om?.isMultiEntryMode && Array.isArray(om.multiEntryLevels) && om.multiEntryLevels.length > 0;
-            /** Only show E1/E2+ mini-badges when there is a real ladder (2+ rungs). One OM row = single entry — no "E1" label. */
-            const omMultiEntryLadder = omMulti && om.multiEntryLevels.length > 1;
-            const showEntryQtyControls = omMultiEntryLadder
-                && typeof om.adjustMultiEntryLevelAmount === 'function';
-
-            /**
-             * Multi-entry: mini badge plus [−]/[+] (same steps as panel multi-entry amount steppers).
-             */
-            const appendRrEntryMiniBadgeWithQtyControls = (lineYpx, lineTexts, bgFill, entryLevelIndex) => {
-                const parts = (lineTexts || []).filter((x) => x != null && String(x).length > 0);
-                if (!parts.length) return;
-                const line = parts.join(' ');
-                const padX = 6;
-                const padY = 3;
-                const edgePad = 4;
-                const ctrlSize = 14;
-                const cg = 2;
-                const measure = this.group.append('g').attr('opacity', 0);
-                const tmp = measure.append('text')
-                    .attr('x', 0)
-                    .attr('y', 0)
-                    .attr('dominant-baseline', 'hanging')
-                    .attr('font-size', '10px')
-                    .attr('font-weight', '600')
-                    .attr('font-family', labelFontFamily)
-                    .text(line);
-                const bb = tmp.node().getBBox();
-                measure.remove();
-                const bw = bb.width + padX * 2;
-                const bh = bb.height + padY * 2;
-                const by = lineYpx - bh / 2;
-                const rightX = zoneX2 - edgePad;
-
-                const controlsW = ctrlSize * 3 + cg * 2;
-                const totalW = (showEntryQtyControls ? controlsW + cg : 0) + bw;
-                const leftX = Math.max(zoneX1 + edgePad, rightX - totalW);
-                const badgeBx = showEntryQtyControls ? (leftX + controlsW + cg) : (rightX - bw);
-                const cy = by + bh / 2 - ctrlSize / 2;
-
-                const root = this.group.append('g')
-                    .attr('class', 'rr-entry-mini-qty-controls')
-                    .style('pointer-events', 'all');
-
-                const wireEntryQtyClick = (dir) => (event) => {
-                    event.stopPropagation();
-                    if (typeof event.preventDefault === 'function') event.preventDefault();
-                    if (!om || typeof om.adjustMultiEntryLevelAmount !== 'function') return;
-                    om.adjustMultiEntryLevelAmount(entryLevelIndex, dir);
-                    if (typeof om.syncSelectedRiskRewardDrawingFromPanel === 'function') {
-                        om.syncSelectedRiskRewardDrawingFromPanel();
-                    }
-                    const dmR = self._drawingManager();
-                    if (dmR) dmR.renderDrawing(self);
-                };
-
-                if (showEntryQtyControls) {
-                    const hitPad = 2;
-                    const mk = (x, sym, dir, stroke, fill) => {
-                        const h = root.append('g')
-                            .attr('transform', `translate(${x},${cy})`)
-                            .style('cursor', 'pointer');
-                        h.append('rect')
-                            .attr('width', ctrlSize)
-                            .attr('height', ctrlSize)
-                            .attr('rx', 3)
-                            .attr('fill', fill)
-                            .attr('stroke', stroke)
-                            .attr('stroke-width', 1);
-                        h.append('text')
-                            .attr('x', ctrlSize / 2)
-                            .attr('y', ctrlSize / 2)
-                            .attr('dy', '0.35em')
-                            .attr('text-anchor', 'middle')
-                            .attr('fill', stroke)
-                            .attr('font-size', '13px')
-                            .attr('font-weight', '700')
-                            .attr('pointer-events', 'none')
-                            .style('pointer-events', 'none')
-                            .text(sym);
-                        const hitSz = ctrlSize + hitPad * 2;
-                        h.append('rect')
-                            .attr('x', -hitPad)
-                            .attr('y', -hitPad)
-                            .attr('width', hitSz)
-                            .attr('height', hitSz)
-                            .attr('fill', '#000')
-                            .attr('fill-opacity', 0.001)
-                            .attr('pointer-events', 'all')
-                            .style('pointer-events', 'all')
-                            .style('cursor', 'pointer')
-                            .on('mousedown', (e) => {
-                                if (e.button !== 0) return;
-                                e.stopPropagation();
-                                if (typeof e.preventDefault === 'function') e.preventDefault();
-                            })
-                            .on('click', wireEntryQtyClick(dir));
-                    };
-                    const wireEntryRemove = (event) => {
-                        event.stopPropagation();
-                        if (typeof event.preventDefault === 'function') event.preventDefault();
-                        if (!om || typeof om.pushRiskRewardToolToManager !== 'function'
-                            || typeof om.removeMultiEntryLevel !== 'function') return;
-                        om.pushRiskRewardToolToManager(self);
-                        const lv = om.multiEntryLevels && om.multiEntryLevels[entryLevelIndex];
-                        if (!lv || lv.id == null) return;
-                        om.removeMultiEntryLevel(lv.id);
-                        if (typeof om.syncSelectedRiskRewardDrawingFromPanel === 'function') {
-                            om.syncSelectedRiskRewardDrawingFromPanel();
-                        }
-                        const dmR = self._drawingManager();
-                        if (dmR) dmR.renderDrawing(self);
-                    };
-                    const mkDel = (x, onClick) => {
-                        const h = root.append('g')
-                            .attr('transform', `translate(${x},${cy})`)
-                            .style('cursor', 'pointer');
-                        h.append('rect')
-                            .attr('width', ctrlSize)
-                            .attr('height', ctrlSize)
-                            .attr('rx', 3)
-                            .attr('fill', 'rgba(148, 163, 184, 0.18)')
-                            .attr('stroke', '#94a3b8')
-                            .attr('stroke-width', 1);
-                        h.append('text')
-                            .attr('x', ctrlSize / 2)
-                            .attr('y', ctrlSize / 2)
-                            .attr('dy', '0.35em')
-                            .attr('text-anchor', 'middle')
-                            .attr('fill', '#e2e8f0')
-                            .attr('font-size', '12px')
-                            .attr('font-weight', '700')
-                            .attr('pointer-events', 'none')
-                            .style('pointer-events', 'none')
-                            .text('×');
-                        const hitSz = ctrlSize + hitPad * 2;
-                        h.append('rect')
-                            .attr('x', -hitPad)
-                            .attr('y', -hitPad)
-                            .attr('width', hitSz)
-                            .attr('height', hitSz)
-                            .attr('fill', '#000')
-                            .attr('fill-opacity', 0.001)
-                            .attr('pointer-events', 'all')
-                            .style('pointer-events', 'all')
-                            .style('cursor', 'pointer')
-                            .on('mousedown', (e) => {
-                                if (e.button !== 0) return;
-                                e.stopPropagation();
-                                if (typeof e.preventDefault === 'function') e.preventDefault();
-                            })
-                            .on('click', onClick);
-                    };
-                    mk(leftX, '-', -1, '#ef4444', 'rgba(239, 68, 68, 0.2)');
-                    mk(leftX + ctrlSize + cg, '+', 1, '#089981', 'rgba(8, 153, 129, 0.2)');
-                    mkDel(leftX + 2 * (ctrlSize + cg), wireEntryRemove);
-                }
-
-                root.append('rect')
-                    .attr('x', badgeBx)
-                    .attr('y', by)
-                    .attr('width', bw)
-                    .attr('height', bh)
-                    .attr('rx', 4)
-                    .attr('fill', bgFill)
-                    .attr('stroke', 'rgba(255,255,255,0.14)')
-                    .style('pointer-events', 'none');
-                root.append('text')
-                    .attr('x', badgeBx + padX)
-                    .attr('y', by + padY)
-                    .attr('dominant-baseline', 'hanging')
-                    .attr('fill', '#f1f5f9')
-                    .attr('font-size', '10px')
-                    .attr('font-weight', '600')
-                    .attr('font-family', labelFontFamily)
-                    .style('pointer-events', 'none')
-                    .text(line);
-                if (this.selected) {
-                    const er = entryLevelIndex === 0
-                        ? 'rr-primary-entry'
-                        : `rr-extra-entry-${entryLevelIndex - 1}`;
-                    root.append('rect')
-                        .attr('class', 'custom-handle rr-mini-badge-drag-hit')
-                        .attr('data-handle-role', er)
-                        .attr('x', badgeBx)
-                        .attr('y', by)
-                        .attr('width', bw)
-                        .attr('height', bh)
-                        .attr('rx', 4)
-                        .attr('fill', 'transparent')
-                        .style('cursor', 'ns-resize');
-                }
-            };
-
-            // Entry mini-badges: paint in **screen Y** order (larger y = lower on chart first, smaller y last)
-            // so the upper badge is always on top when levels overlap — fixed E1-then-E2 order hid E1 under E2.
-            // When two legs are very close in px, **nudge** upper badge centers upward so both labels stay readable
-            // (otherwise opaque rects stack and look like both disappeared).
-            const ENTRY_BADGE_MIN_V_SEP = 24;
-            const applyEntryBadgeVerticalSpread = (rows) => {
-                if (!rows || rows.length < 2) {
-                    if (rows && rows[0]) rows[0].displayY = rows[0].yPix;
-                    return;
-                }
-                rows.sort((a, b) => b.yPix - a.yPix);
-                rows[0].displayY = rows[0].yPix;
-                for (let j = 1; j < rows.length; j++) {
-                    const prev = rows[j - 1];
-                    const cur = rows[j];
-                    const prevY = prev.displayY;
-                    if (prevY - cur.yPix < ENTRY_BADGE_MIN_V_SEP) {
-                        cur.displayY = prevY - ENTRY_BADGE_MIN_V_SEP;
-                    } else {
-                        cur.displayY = cur.yPix;
-                    }
-                }
-            };
-            if (omMultiEntryLadder) {
-                const entryBadgeRows = [];
-                om.multiEntryLevels.forEach((lv, i) => {
-                    if (!lv) return;
-                    if (i > 0) {
-                        const ex = (this.meta.extraEntries || [])[i - 1];
-                        if (!ex || !Number.isFinite(ex.y)) return;
-                    }
-                    const rowY = i === 0 ? entry.y : (this.meta.extraEntries || [])[i - 1].y;
-                    if (!Number.isFinite(rowY) || rowY <= 0) return;
-                    const yPix = scales.yScale(rowY);
-                    const amtLine = formatMultiEntryAmountForBadge(lv);
-                    const psm = om?.positionSizeMode || 'risk-usd';
-                    const impliedEntryLots = om && typeof om.getMultiEntryLegImpliedLotsForChartBadge === 'function'
-                        ? om.getMultiEntryLegImpliedLotsForChartBadge(i)
-                        : null;
-                    const entryLineParts = [`E${i + 1}`, amtLine];
-                    if (psm !== 'lot-size' && impliedEntryLots != null && impliedEntryLots > 0) {
-                        entryLineParts.push(`${parseFloat(impliedEntryLots.toFixed(2))} lot`);
-                    }
-                    entryBadgeRows.push({ i, yPix, entryLineParts });
-                });
-                applyEntryBadgeVerticalSpread(entryBadgeRows);
-                entryBadgeRows.forEach(({ i, yPix, displayY, entryLineParts }) => {
-                    const lineY = Number.isFinite(displayY) ? displayY : yPix;
-                    const entryRole = i === 0 ? 'rr-primary-entry' : `rr-extra-entry-${i - 1}`;
-                    if (showEntryQtyControls) {
-                        appendRrEntryMiniBadgeWithQtyControls(lineY, entryLineParts, entryFill, i);
-                    } else {
-                        appendRrMiniBadge(lineY, entryLineParts, entryFill, entryRole);
-                    }
-                });
-            } else if (hasDrawnExtras) {
-                const fallbackLot = Number.isFinite(quantity) ? quantity.toFixed(2) : '—';
-                const entryBadgeRows = [{ yPix: entryY, lineTexts: ['E1', `${fallbackLot} lot`] }];
-                (this.meta.extraEntries || []).forEach((row, i) => {
-                    if (!row || !Number.isFinite(row.y)) return;
-                    entryBadgeRows.push({
-                        yPix: scales.yScale(row.y),
-                        lineTexts: [`E${i + 2}`, `${fallbackLot} lot`],
-                    });
-                });
-                applyEntryBadgeVerticalSpread(entryBadgeRows);
-                entryBadgeRows.forEach((r, idx) => {
-                    const lineY = Number.isFinite(r.displayY) ? r.displayY : r.yPix;
-                    const entryRole = idx === 0 ? 'rr-primary-entry' : `rr-extra-entry-${idx - 1}`;
-                    appendRrMiniBadge(lineY, r.lineTexts, entryFill, entryRole);
-                });
-            }
-
-            // TP mini-badges: label by *price order* (TP1 = first hit for long = lowest TP), matching OM tpTargets sort.
-            // Primary handle is the farthest TP (points[2]); extras are inner levels — use TP1…TP(n-1), not TP2… .
-            const mtOn = typeof document !== 'undefined' && document.getElementById('multipleTPToggle')?.checked;
-            if ((this.meta.extraTargets || []).length) {
-                const tpRound = (p) => (Number.isFinite(p) ? parseFloat(Number(p).toFixed(rrPrec)) : p);
-                const allTpPrices = [];
-                if (Number.isFinite(this.points[2]?.y)) allTpPrices.push(this.points[2].y);
-                (this.meta.extraTargets || []).forEach((r) => {
-                    if (r && Number.isFinite(r.y)) allTpPrices.push(r.y);
-                });
-                const uniqSorted = [...new Set(allTpPrices.map(tpRound))].sort((a, b) =>
-                    (this.isLong ? a - b : b - a));
-                const epsPx = Math.max(1e-10, (Math.abs(uniqSorted[0]) || 1) * 1e-9);
-                const sortedOm = (mtOn && om?.tpTargets?.length > 1)
-                    ? [...om.tpTargets].sort((a, b) =>
-                        (this.isLong ? a.price - b.price : b.price - a.price))
-                    : [];
-
-                const findOmTpTargetIndex = (priceR) => {
-                    if (!om?.tpTargets?.length) return -1;
-                    for (let ti = 0; ti < om.tpTargets.length; ti++) {
-                        const t = om.tpTargets[ti];
-                        if (!t || !Number.isFinite(t.price)) continue;
-                        if (Math.abs(tpRound(t.price) - priceR) <= epsPx) return ti;
-                    }
-                    return -1;
-                };
-
-                const epsPrice = Math.max(1e-10, (Math.abs(uniqSorted[0] || 1)) * 1e-9);
-                const tpRoleForRp = (priceR) => {
-                    const pr = tpRound(priceR);
-                    if (Number.isFinite(this.points[2]?.y) && Math.abs(tpRound(this.points[2].y) - pr) <= epsPrice) {
-                        return 'rr-primary-tp';
-                    }
-                    const extras = this.meta.extraTargets || [];
-                    for (let ti = 0; ti < extras.length; ti++) {
-                        const row = extras[ti];
-                        if (!row || !Number.isFinite(row.y)) continue;
-                        if (Math.abs(tpRound(row.y) - pr) <= epsPrice) return `rr-extra-target-${ti}`;
-                    }
-                    return 'rr-primary-tp';
-                };
-
-                /**
-                 * Multi-TP: mini badge plus [−]/[+] (same ±5 as order panel `adjustTPPercentage`).
-                 */
-                const appendRrTpMiniBadgeWithPctControls = (lineYpx, lineTexts, bgFill, tpTargetIndex, handleRole = null) => {
-                    const parts = (lineTexts || []).filter((x) => x != null && String(x).length > 0);
-                    if (!parts.length) return;
-                    const line = parts.join(' ');
-                    const padX = 6;
-                    const padY = 3;
-                    const edgePad = 4;
-                    const ctrlSize = 14;
-                    const cg = 2;
-                    const measure = this.group.append('g').attr('opacity', 0);
-                    const tmp = measure.append('text')
-                        .attr('x', 0)
-                        .attr('y', 0)
-                        .attr('dominant-baseline', 'hanging')
-                        .attr('font-size', '10px')
-                        .attr('font-weight', '600')
-                        .attr('font-family', labelFontFamily)
-                        .text(line);
-                    const bb = tmp.node().getBBox();
-                    measure.remove();
-                    const bw = bb.width + padX * 2;
-                    const bh = bb.height + padY * 2;
-                    const by = lineYpx - bh / 2;
-                    const rightX = zoneX2 - edgePad;
-
-                    const showPct = !!(mtOn && sortedOm.length > 1
-                        && typeof tpTargetIndex === 'number' && tpTargetIndex >= 0
-                        && om && typeof om.adjustTPPercentage === 'function');
-
-                    const controlsW = ctrlSize * 3 + cg * 2;
-                    const totalW = (showPct ? controlsW + cg : 0) + bw;
-                    const leftX = Math.max(zoneX1 + edgePad, rightX - totalW);
-                    const badgeBx = showPct ? (leftX + controlsW + cg) : (rightX - bw);
-                    const cy = by + bh / 2 - ctrlSize / 2;
-
-                    const root = this.group.append('g')
-                        .attr('class', 'rr-tp-mini-pct-controls')
-                        // Let drags hit `rr-extra-drag-hit` under the TP pill; [−]/[+/× keep their own pointer-events.
-                        .style('pointer-events', 'none');
-
-                    const wirePctClick = (delta) => (event) => {
-                        event.stopPropagation();
-                        if (typeof event.preventDefault === 'function') event.preventDefault();
-                        if (!om || typeof om.adjustTPPercentage !== 'function') return;
-                        om.adjustTPPercentage(tpTargetIndex, delta);
-                        if (typeof om.syncSelectedRiskRewardDrawingFromPanel === 'function') {
-                            om.syncSelectedRiskRewardDrawingFromPanel();
-                        }
-                        const dmR = self._drawingManager();
-                        if (dmR) dmR.renderDrawing(self);
-                    };
-
-                    if (showPct) {
-                        const hitPad = 2;
-                        const mk = (x, sym, delta, stroke, fill) => {
-                            const h = root.append('g')
-                                .attr('transform', `translate(${x},${cy})`)
-                                .style('cursor', 'pointer');
-                            h.append('rect')
-                                .attr('width', ctrlSize)
-                                .attr('height', ctrlSize)
-                                .attr('rx', 3)
-                                .attr('fill', fill)
-                                .attr('stroke', stroke)
-                                .attr('stroke-width', 1);
-                            h.append('text')
-                                .attr('x', ctrlSize / 2)
-                                .attr('y', ctrlSize / 2)
-                                .attr('dy', '0.35em')
-                                .attr('text-anchor', 'middle')
-                                .attr('fill', stroke)
-                                .attr('font-size', '13px')
-                                .attr('font-weight', '700')
-                                .attr('pointer-events', 'none')
-                                .style('pointer-events', 'none')
-                                .text(sym);
-                            const hitSz = ctrlSize + hitPad * 2;
-                            h.append('rect')
-                                .attr('x', -hitPad)
-                                .attr('y', -hitPad)
-                                .attr('width', hitSz)
-                                .attr('height', hitSz)
-                                .attr('fill', '#000')
-                                .attr('fill-opacity', 0.001)
-                                .attr('pointer-events', 'all')
-                                .style('pointer-events', 'all')
-                                .style('cursor', 'pointer')
-                                .on('mousedown', (e) => {
-                                    if (e.button !== 0) return;
-                                    e.stopPropagation();
-                                    if (typeof e.preventDefault === 'function') e.preventDefault();
-                                })
-                                .on('click', wirePctClick(delta));
-                        };
-                        const wireTpRemove = (event) => {
-                            event.stopPropagation();
-                            if (typeof event.preventDefault === 'function') event.preventDefault();
-                            if (!om || typeof om.pushRiskRewardToolToManager !== 'function'
-                                || typeof om.removeTPTarget !== 'function') return;
-                            om.pushRiskRewardToolToManager(self);
-                            const t = om.tpTargets && om.tpTargets[tpTargetIndex];
-                            if (!t || t.id == null) return;
-                            om.removeTPTarget(t.id);
-                            if (typeof om.syncSelectedRiskRewardDrawingFromPanel === 'function') {
-                                om.syncSelectedRiskRewardDrawingFromPanel();
-                            }
-                            const dmR = self._drawingManager();
-                            if (dmR) dmR.renderDrawing(self);
-                        };
-                        const mkDel = (x, onClick) => {
-                            const h = root.append('g')
-                                .attr('transform', `translate(${x},${cy})`)
-                                .style('cursor', 'pointer');
-                            h.append('rect')
-                                .attr('width', ctrlSize)
-                                .attr('height', ctrlSize)
-                                .attr('rx', 3)
-                                .attr('fill', 'rgba(148, 163, 184, 0.18)')
-                                .attr('stroke', '#94a3b8')
-                                .attr('stroke-width', 1);
-                            h.append('text')
-                                .attr('x', ctrlSize / 2)
-                                .attr('y', ctrlSize / 2)
-                                .attr('dy', '0.35em')
-                                .attr('text-anchor', 'middle')
-                                .attr('fill', '#e2e8f0')
-                                .attr('font-size', '12px')
-                                .attr('font-weight', '700')
-                                .attr('pointer-events', 'none')
-                                .style('pointer-events', 'none')
-                                .text('×');
-                            const hitSz = ctrlSize + hitPad * 2;
-                            h.append('rect')
-                                .attr('x', -hitPad)
-                                .attr('y', -hitPad)
-                                .attr('width', hitSz)
-                                .attr('height', hitSz)
-                                .attr('fill', '#000')
-                                .attr('fill-opacity', 0.001)
-                                .attr('pointer-events', 'all')
-                                .style('pointer-events', 'all')
-                                .style('cursor', 'pointer')
-                                .on('mousedown', (e) => {
-                                    if (e.button !== 0) return;
-                                    e.stopPropagation();
-                                    if (typeof e.preventDefault === 'function') e.preventDefault();
-                                })
-                                .on('click', onClick);
-                        };
-                        mk(leftX, '-', -5, '#ef4444', 'rgba(239, 68, 68, 0.2)');
-                        mk(leftX + ctrlSize + cg, '+', 5, '#089981', 'rgba(8, 153, 129, 0.2)');
-                        mkDel(leftX + 2 * (ctrlSize + cg), wireTpRemove);
-                    }
-
-                    root.append('rect')
-                        .attr('x', badgeBx)
-                        .attr('y', by)
-                        .attr('width', bw)
-                        .attr('height', bh)
-                        .attr('rx', 4)
-                        .attr('fill', bgFill)
-                        .attr('stroke', 'rgba(255,255,255,0.14)')
-                        .style('pointer-events', 'none');
-                    root.append('text')
-                        .attr('x', badgeBx + padX)
-                        .attr('y', by + padY)
-                        .attr('dominant-baseline', 'hanging')
-                        .attr('fill', '#f1f5f9')
-                        .attr('font-size', '10px')
-                        .attr('font-weight', '600')
-                        .attr('font-family', labelFontFamily)
-                        .style('pointer-events', 'none')
-                        .text(line);
-                    if (this.selected && handleRole) {
-                        root.append('rect')
-                            .attr('class', 'custom-handle rr-mini-badge-drag-hit')
-                            .attr('data-handle-role', handleRole)
-                            .attr('x', badgeBx)
-                            .attr('y', by)
-                            .attr('width', bw)
-                            .attr('height', bh)
-                            .attr('rx', 4)
-                            .attr('fill', 'transparent')
-                            .style('cursor', 'ns-resize');
-                    }
-                };
-
-                const drawOneTpBadge = (yy, rp) => {
-                    const si = uniqSorted.findIndex((p) => Math.abs(p - rp) <= epsPx);
-                    const tpNum = si >= 0 ? si + 1 : 1;
-                    let pctStr = '—';
-                    let usd = null;
-                    if (sortedOm.length > 1) {
-                        const leg = sortedOm.find((t) => t && Number.isFinite(t.price)
-                            && Math.abs(tpRound(t.price) - rp) <= epsPx);
-                        if (leg && Number.isFinite(leg.percentage)) {
-                            const pct = Number(leg.percentage);
-                            pctStr = `${Math.round(pct)}%`;
-                            const usdLeg = om && typeof om.getMultiTpLegProfitUsdForChartBadge === 'function'
-                                ? om.getMultiTpLegProfitUsdForChartBadge(this.chart, sideStr, rp, rrPrec)
-                                : null;
-                            usd = usdLeg != null ? usdLeg : null;
-                        }
-                    }
-                    const lotsLeg = om && typeof om.getMultiTpLegShareLotsForChartBadge === 'function'
-                        ? om.getMultiTpLegShareLotsForChartBadge(this.chart, sideStr, rp, rrPrec)
-                        : null;
-                    const subParts = [];
-                    if (usd != null) subParts.push(`$${Number(usd).toFixed(2)}`);
-                    if (pctStr !== '—') subParts.push(pctStr);
-                    if (lotsLeg != null && Number.isFinite(lotsLeg) && lotsLeg > 0) {
-                        subParts.push(`${parseFloat(lotsLeg.toFixed(2))} lot`);
-                    }
-                    const sub = subParts.length ? subParts.join(' · ') : '—';
-                    const tIdx = findOmTpTargetIndex(rp);
-                    const hr = tpRoleForRp(rp);
-                    if (sortedOm.length > 1 && tIdx >= 0) {
-                        appendRrTpMiniBadgeWithPctControls(yy, [`TP${tpNum}`, sub], tpInnerFill, tIdx, hr);
-                    } else {
-                        appendRrMiniBadge(yy, [`TP${tpNum}`, sub], tpInnerFill, hr);
-                    }
-                };
-
-                (this.meta.extraTargets || []).forEach((row) => {
-                    if (!row || !Number.isFinite(row.y)) return;
-                    const yy = scales.yScale(row.y);
-                    const rp = tpRound(row.y);
-                    drawOneTpBadge(yy, rp);
-                });
-
-                const extraYRounded = new Set(
-                    (this.meta.extraTargets || [])
-                        .map((r) => (r && Number.isFinite(r.y) ? tpRound(r.y) : null))
-                        .filter((v) => v != null)
-                );
-                if (Number.isFinite(this.points[2]?.y)) {
-                    const rpPrim = tpRound(this.points[2].y);
-                    if (!extraYRounded.has(rpPrim)) {
-                        drawOneTpBadge(scales.yScale(this.points[2].y), rpPrim);
-                    }
-                }
-            }
-
-            (this.meta.extraStops || []).forEach((row, i) => {
-                if (!row || !Number.isFinite(row.y)) return;
-                appendRrMiniBadge(scales.yScale(row.y), [`SL${i + 2}`], slExtraFill, `rr-extra-stop-${i}`);
-            });
-
-            if (beLinePx != null) {
-                const beMode = om?.breakevenMode || 'rr';
-                const beInput = typeof document !== 'undefined' ? document.getElementById('breakevenPips') : null;
-                const beAmtInput = typeof document !== 'undefined' ? document.getElementById('breakevenAmount') : null;
-                const rawBe = parseFloat(beInput?.value || '0.5');
-                let beSub = '';
-                if (beMode === 'rr') {
-                    beSub = `${Number.isFinite(rawBe) ? rawBe : 0.5}R`;
-                } else if (beMode === 'pips') {
-                    beSub = `${Number.isFinite(rawBe) ? rawBe : 10} pips`;
-                } else {
-                    const a = parseFloat(beAmtInput?.value || '50');
-                    beSub = Number.isFinite(a) ? `$${Math.round(a)}` : '—';
-                }
-                appendRrMiniBadge(beLinePx, ['BE', beSub], beFill, 'rr-be-line');
-            }
-
-            if (hasMultiTP && Number.isFinite(avgTpYpx) && Number.isFinite(avgTpPrice)) {
-                const avgTpFill = 'rgba(240, 170, 120, 0.92)';
-                const lotStr = Number.isFinite(quantity) && quantity > 0 ? quantity.toFixed(2) : '—';
-                appendRrMiniBadge(avgTpYpx, ['Avg TP', `${lotStr} lot`], avgTpFill, null);
-            }
+                .attr('y', centerTextY + centerLineHeight);
 
             // Execute button moved to floating toolbar
         }
 
-        // Include avg entry, E1, E2+, TP/SL/BE so corner handles span the full ladder.
-        const entryLegPixels = [avgEntryYpx, entryY];
-        (this.meta.extraEntries || []).forEach((row) => {
-            if (row && Number.isFinite(row.y)) entryLegPixels.push(scales.yScale(row.y));
-        });
-        const entrySpanMinPx = Math.min(...entryLegPixels);
-        const entrySpanMaxPx = Math.max(...entryLegPixels);
-        const upperY = Math.min(entrySpanMinPx, bestTargetPx, worstStopPx, beLinePx != null ? beLinePx : entrySpanMinPx);
-        const lowerY = Math.max(entrySpanMaxPx, bestTargetPx, worstStopPx, beLinePx != null ? beLinePx : entrySpanMaxPx);
+        const upperY = Math.min(stopY, targetY);
+        const lowerY = Math.max(stopY, targetY);
 
         this.lastRenderMeta = {
             entryX,
@@ -3268,173 +1649,9 @@ class BaseRiskRewardTool extends BaseDrawing {
         };
 
         this.createHandles(this.group, scales);
-
         this.createCornerHandles(scales, zoneX1, zoneX2, upperY, lowerY);
 
-        // Primary entry hit rect first (below); extra TP/SL/E drag lines after (on top) so E2 is draggable
-        // and does not lose events to this wide strip.
-        if (this.selected) {
-            // + buttons sit past zoneX2; primary entry strip can use full zone width.
-            const entryDragX2 = zoneX2;
-            const hasExtraEntries = (this.meta.extraEntries || []).length > 0;
-            const hitH = hasExtraEntries
-                ? Math.max(22, Math.min(primaryEntryHitHeight, 34))
-                : Math.max(20, primaryEntryHitHeight);
-            const hitW = Math.max(1, entryDragX2 - zoneX1);
-            this.group.append('rect')
-                .attr('class', 'custom-handle rr-primary-entry-drag-hit')
-                .attr('data-handle-role', 'rr-primary-entry')
-                .attr('x', zoneX1)
-                .attr('y', entryY - hitH / 2)
-                .attr('width', hitW)
-                .attr('height', hitH)
-                .attr('fill', 'rgba(0, 0, 0, 0.02)')
-                .attr('stroke', 'none')
-                .style('pointer-events', 'all')
-                .style('cursor', 'ns-resize');
-
-            // Primary SL / farthest TP: same full-zone drag as entry — left resize dots alone are easy to miss.
-            const legStripH = 16;
-            const legW = Math.max(1, zoneX2 - zoneX1);
-            this.group.append('rect')
-                .attr('class', 'custom-handle rr-primary-leg-drag-hit')
-                .attr('data-handle-role', 'rr-primary-stop')
-                .attr('x', zoneX1)
-                .attr('y', stopY - legStripH / 2)
-                .attr('width', legW)
-                .attr('height', legStripH)
-                .attr('fill', 'rgba(0, 0, 0, 0.02)')
-                .attr('stroke', 'none')
-                .style('pointer-events', 'all')
-                .style('cursor', 'ns-resize');
-            this.group.append('rect')
-                .attr('class', 'custom-handle rr-primary-leg-drag-hit')
-                .attr('data-handle-role', 'rr-primary-tp')
-                .attr('x', zoneX1)
-                .attr('y', targetY - legStripH / 2)
-                .attr('width', legW)
-                .attr('height', legStripH)
-                .attr('fill', 'rgba(0, 0, 0, 0.02)')
-                .attr('stroke', 'none')
-                .style('pointer-events', 'all')
-                .style('cursor', 'ns-resize');
-        }
-
-        (this.meta.extraStops || []).forEach((row, idx) => {
-            if (!row || !Number.isFinite(row.y)) return;
-            const yy = scales.yScale(row.y);
-            appendExtraDragHit(yy, `rr-extra-stop-${idx}`);
-        });
-        if (this.meta.rrBreakevenLine && Number.isFinite(this.meta.rrBreakevenLine.y)) {
-            appendExtraDragHit(scales.yScale(this.meta.rrBreakevenLine.y), 'rr-be-line');
-        }
-        (this.meta.extraTargets || []).forEach((row, idx) => {
-            if (!row || !Number.isFinite(row.y)) return;
-            const yy = scales.yScale(row.y);
-            appendExtraDragHit(yy, `rr-extra-target-${idx}`, extraTpDragHitW);
-        });
-        (this.meta.extraEntries || []).forEach((row, idx) => {
-            if (!row || !Number.isFinite(row.y)) return;
-            const yy = scales.yScale(row.y);
-            appendExtraDragHit(yy, `rr-extra-entry-${idx}`, extraEntryDragHitW);
-        });
-
-        // + buttons last in paint order so drag hit rects / lines do not sit on top and eat clicks.
-        // Large transparent hit circle = full control target (not just the glyph).
-        if (this.selected) {
-            const plusR = 9;
-            // Keep hit disc smaller than before: a 20px radius reached back to ~zoneX2−3 and sat on top of the
-            // right-edge width handle (custom-handle at zoneX2), stealing drags from the small blue ring.
-            const plusHitR = 11;
-            const plusOutsideGap = 12;
-            const plusX = zoneX2 + plusOutsideGap + plusR;
-            const mkPlus = (lineY, fill, handler) => {
-                const g = this.group.append('g').attr('class', 'rr-plus-btn');
-                const onClick = (e) => {
-                    e.stopPropagation();
-                    if (typeof e.preventDefault === 'function') e.preventDefault();
-                    handler(e);
-                };
-                // Paint visible glyph first; put the hit target LAST so it sits on top. Relying on
-                // pointer-events:none on text/circle is flaky in SVG — without a top hit layer,
-                // only stroke/edge regions feel clickable.
-                g.append('circle')
-                    .attr('class', 'rr-plus-visible')
-                    .attr('cx', plusX)
-                    .attr('cy', lineY)
-                    .attr('r', plusR)
-                    .attr('fill', fill)
-                    .attr('stroke', 'rgba(255,255,255,0.85)')
-                    .attr('stroke-width', 1)
-                    .attr('pointer-events', 'none')
-                    .style('pointer-events', 'none')
-                    .style('cursor', 'inherit');
-                g.append('text')
-                    .attr('x', plusX)
-                    .attr('y', lineY + 4)
-                    .attr('text-anchor', 'middle')
-                    .attr('fill', '#ffffff')
-                    .attr('font-size', '12px')
-                    .attr('font-weight', '700')
-                    .attr('pointer-events', 'none')
-                    .style('pointer-events', 'none')
-                    .text('+');
-                g.append('circle')
-                    .attr('class', 'rr-plus-hit')
-                    .attr('cx', plusX)
-                    .attr('cy', lineY)
-                    .attr('r', plusHitR)
-                    .attr('fill', '#000000')
-                    .attr('fill-opacity', 0.04)
-                    .attr('stroke', 'none')
-                    .attr('pointer-events', 'all')
-                    .style('pointer-events', 'all')
-                    .style('cursor', 'pointer')
-                    .on('mousedown', (e) => {
-                        if (e.button !== 0) return;
-                        e.stopPropagation();
-                    })
-                    .on('click', onClick);
-            };
-            mkPlus(targetY, '#16a34a', () => this.addExtraTarget());
-            mkPlus(entryY, '#2962FF', () => this.addExtraEntry());
-            mkPlus(stopY, '#ef4444', (e) => this.addExtraStop(e));
-        }
-
-        if (this.selected && hasMultiEntry) {
-            const pill = this.group.select('g.center-info.rr-multi-pill-drag');
-            if (!pill.empty()) pill.raise();
-        }
-
-        // Keep full-width TP/SL/E drag slabs above zone / body-drag / labels so the entire line is grabbable.
-        this.group.selectAll('.rr-extra-drag-hit, .rr-primary-leg-drag-hit').raise();
-
-        // Right-edge labels must sit above transparent drag strips (`rr-primary-entry-drag-hit`, `rr-extra-drag-hit`),
-        // otherwise badges look missing / unclickable. `rr-mini-level-badge` (fallback E1/E2, SL, BE, Avg TP) was not
-        // raised before — only TP/entry qty groups were.
-        this.group.selectAll('g.rr-mini-level-badge').raise();
-        this.group.selectAll('g.rr-tp-mini-pct-controls').raise();
-        this.group.selectAll('g.rr-entry-mini-qty-controls').raise();
-
         return this.group;
-    }
-
-    /**
-     * Primary entry line drag — parallel to how TP uses riskRewardSyncPrimaryTpDragFromTool + OM pull.
-     */
-    applyPrimaryEntryLineDragY(newY, context = {}) {
-        const om = window.chart?.orderManager;
-        if (om && typeof om.riskRewardSyncPrimaryEntryDragFromTool === 'function') {
-            om.riskRewardSyncPrimaryEntryDragFromTool(this, newY);
-            this._afterRiskRewardOrderManagerSync();
-            return true;
-        }
-        const clamped = this.clampPrimaryEntryPrice(newY);
-        if (!Number.isFinite(clamped) || Math.abs(clamped - this.points[0].y) < 1e-12) return true;
-        this.points[0] = { ...this.points[0], y: clamped };
-        this.ensureRiskSettings();
-        this.recalculateLotSizeFromRisk();
-        return true;
     }
 
     onPointHandleDrag(index, context = {}) {
@@ -3442,7 +1659,10 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (!point) return false;
 
         if (index === 0) {
-            return this.applyPrimaryEntryLineDragY(point.y, context);
+            const deltaY = point.y - this.points[0].y;
+            this.points = this.points.map(p => ({ ...p, y: p.y + deltaY }));
+            this.ensureRiskSettings();
+            return true;
         }
 
         if (index === 1) {
@@ -3451,13 +1671,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         }
 
         if (index === 2) {
-            const om = window.chart?.orderManager;
-            if (om && typeof om.riskRewardSyncPrimaryTpDragFromTool === 'function') {
-                om.riskRewardSyncPrimaryTpDragFromTool(this, point.y);
-                this._afterRiskRewardOrderManagerSync();
-            } else {
-                this.setTargetPrice(point.y);
-            }
+            this.setTargetPrice(point.y);
             return true;
         }
 
@@ -3474,80 +1688,6 @@ class BaseRiskRewardTool extends BaseDrawing {
     }
 
     handleCustomHandleDrag(handleRole, context = {}) {
-        if (handleRole === 'rr-primary-entry') {
-            const py = context.point?.y ?? context.dataPoint?.y;
-            if (Number.isFinite(py)) {
-                return this.applyPrimaryEntryLineDragY(py, context);
-            }
-            return false;
-        }
-
-        if (handleRole === 'rr-primary-stop') {
-            const py = context.point?.y ?? context.dataPoint?.y;
-            if (Number.isFinite(py)) {
-                this.setStopPrice(py);
-                return true;
-            }
-            return false;
-        }
-
-        if (handleRole === 'rr-primary-tp') {
-            const py = context.point?.y ?? context.dataPoint?.y;
-            if (!Number.isFinite(py)) return false;
-            const om = window.chart?.orderManager;
-            if (om && typeof om.riskRewardSyncPrimaryTpDragFromTool === 'function') {
-                om.riskRewardSyncPrimaryTpDragFromTool(this, py);
-                this._afterRiskRewardOrderManagerSync();
-            } else {
-                this.setTargetPrice(py);
-            }
-            return true;
-        }
-
-        if (handleRole === 'rr-be-line') {
-            const py = context.point?.y ?? context.dataPoint?.y;
-            const omBe = window.chart?.orderManager;
-            if (omBe && typeof omBe.riskRewardSyncBEDragFromTool === 'function' && Number.isFinite(py)) {
-                omBe.riskRewardSyncBEDragFromTool(this, py);
-                this._afterRiskRewardOrderManagerSync();
-                return true;
-            }
-            if (Number.isFinite(py)) {
-                const y = this.sanitizeBreakevenTriggerPrice(py);
-                if (!this.meta.rrBreakevenLine) {
-                    this._ensureExtraLevelMeta();
-                    this.meta.rrBreakevenLine = { id: this._nextExtraLevelId(), y };
-                } else {
-                    this.meta.rrBreakevenLine = { ...this.meta.rrBreakevenLine, y };
-                }
-                this.ensureRiskSettings();
-                return true;
-            }
-            return false;
-        }
-
-        if (typeof handleRole === 'string' && handleRole.startsWith('rr-extra-')) {
-            const m = handleRole.match(/^rr-extra-(target|entry|stop)-(\d+)$/);
-            const py = context.point?.y ?? context.dataPoint?.y;
-            if (m && Number.isFinite(py)) {
-                const kind = m[1];
-                const idx = parseInt(m[2], 10);
-                const om = window.chart?.orderManager;
-                if (kind === 'target' && om && typeof om.riskRewardSyncTpDragFromTool === 'function') {
-                    om.riskRewardSyncTpDragFromTool(this, idx, py);
-                    this._afterRiskRewardOrderManagerSync();
-                } else if (kind === 'entry' && om && typeof om.riskRewardSyncEntryDragFromTool === 'function') {
-                    om.riskRewardSyncEntryDragFromTool(this, idx, py);
-                    this._afterRiskRewardOrderManagerSync();
-                } else {
-                    this._setExtraLevelY(kind, idx, py);
-                    this.recalculateLotSizeFromRisk();
-                }
-                return true;
-            }
-            return false;
-        }
-
         if (!handleRole || !this.lastRenderMeta || !context) {
             return false;
         }
@@ -3634,8 +1774,7 @@ class BaseRiskRewardTool extends BaseDrawing {
     // Match default drawing handle visuals (same size/style as other tools)
     createHandles(group, scales) {
         const handleRadius = 3;
-        const hitRadius = 5;
-        const entryLineHitRadius = 8;
+        const hitRadius = 12;
         const handleStroke = '#2962FF';
         const handleStrokeWidth = 2;
         
@@ -3669,7 +1808,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('class', 'resize-handle-hit')
                 .attr('cx', entryX)
                 .attr('cy', y)
-                .attr('r', index === 0 ? entryLineHitRadius : hitRadius)
+                .attr('r', hitRadius)
                 .attr('fill', 'transparent')
                 .attr('stroke', 'none')
                 .style('cursor', 'ns-resize')
@@ -3707,57 +1846,6 @@ class BaseRiskRewardTool extends BaseDrawing {
             
             this.handles.push(handleGroup);
         });
-
-        group.selectAll('.rr-extra-handle-group').remove();
-        const zoneX2Right = Number.isFinite(this.lastRenderMeta?.zoneX2) ? this.lastRenderMeta.zoneX2 : null;
-        const appendExtraHandle = (yy, role) => {
-            const g = group.append('g')
-                .attr('class', 'rr-extra-handle-group')
-                .attr('data-handle-role', role);
-            g.append('circle')
-                .attr('class', 'rr-extra-handle-ring')
-                .attr('cx', entryX)
-                .attr('cy', yy)
-                .attr('r', handleRadius)
-                .attr('fill', 'transparent')
-                .attr('stroke', handleStroke)
-                .attr('stroke-width', handleStrokeWidth)
-                .style('pointer-events', 'none')
-                .style('opacity', this.selected ? 1 : 0);
-            // Rings were visual-only; without hit targets, TP2/SL2/BE relied on a thin line strip for drags.
-            const mkPointHit = (cx) => {
-                g.append('circle')
-                    .attr('class', 'custom-handle rr-extra-drag-hit')
-                    .attr('data-handle-role', role)
-                    .attr('cx', cx)
-                    .attr('cy', yy)
-                    .attr('r', hitRadius)
-                    .attr('fill', 'rgba(0, 0, 0, 0.02)')
-                    .attr('stroke', 'none')
-                    .style('pointer-events', this.selected ? 'all' : 'none')
-                    .style('cursor', 'ns-resize');
-            };
-            mkPointHit(entryX);
-            if (zoneX2Right != null && Math.abs(zoneX2Right - entryX) > 2) {
-                mkPointHit(zoneX2Right);
-            }
-            this.handles.push(g);
-        };
-        (this.meta.extraTargets || []).forEach((row, idx) => {
-            if (!row || !Number.isFinite(row.y)) return;
-            appendExtraHandle(scales.yScale(row.y), `rr-extra-target-${idx}`);
-        });
-        (this.meta.extraEntries || []).forEach((row, idx) => {
-            if (!row || !Number.isFinite(row.y)) return;
-            appendExtraHandle(scales.yScale(row.y), `rr-extra-entry-${idx}`);
-        });
-        (this.meta.extraStops || []).forEach((row, idx) => {
-            if (!row || !Number.isFinite(row.y)) return;
-            appendExtraHandle(scales.yScale(row.y), `rr-extra-stop-${idx}`);
-        });
-        if (this.meta.rrBreakevenLine && Number.isFinite(this.meta.rrBreakevenLine.y)) {
-            appendExtraHandle(scales.yScale(this.meta.rrBreakevenLine.y), 'rr-be-line');
-        }
     }
 
     createCornerHandles(scales, zoneX1, zoneX2, upperY, lowerY) {
@@ -3765,33 +1853,12 @@ class BaseRiskRewardTool extends BaseDrawing {
         const handleStroke = '#2962FF';
         const handleStrokeWidth = 2;
         
-        // Right-edge width handles (ew-resize). Left-side blue rings are price-only (vertical).
-        // Multi-entry: single width handle on the weighted *avg entry* line (middle), not on E1 — avoids
-        // a misleading handle when the ladder has many legs. Single-entry: keep handles at E1 / SL / TP when distinct.
-        const hasMultiEntry = (this.meta.extraEntries || []).length > 0;
-        let midLineY;
-        if (hasMultiEntry && typeof this._getWeightedAverageEntryPrice === 'function') {
-            const wAvg = this._getWeightedAverageEntryPrice();
-            midLineY = Number.isFinite(wAvg)
-                ? scales.yScale(wAvg)
-                : scales.yScale(this.points[0].y);
-        } else {
-            midLineY = scales.yScale(this.points[0].y);
-        }
-        const stopY = scales.yScale(this.points[1].y);
-        const targetY = scales.yScale(this.points[2].y);
-        const rawYs = hasMultiEntry
-            ? [midLineY]
-            : [midLineY, stopY, targetY];
-        const seenY = new Set();
-        const positions = [];
-        for (const y of rawYs) {
-            if (!Number.isFinite(y)) continue;
-            const key = Math.round(y * 1000) / 1000;
-            if (seenY.has(key)) continue;
-            seenY.add(key);
-            positions.push({ role: 'corner-entry-right', x: zoneX2, y, cursor: 'ew-resize' });
-        }
+        // Only create corner handles on entry line (for width adjustment)
+        const entryY = scales.yScale(this.points[0].y);
+        
+        const positions = [
+            { role: 'corner-entry-right', x: zoneX2, y: entryY, cursor: 'ew-resize' }
+        ];
 
         positions.forEach((pos) => {
             const group = this.group.append('g')
@@ -3849,19 +1916,14 @@ class BaseRiskRewardTool extends BaseDrawing {
         const instance = new Subclass(data.points, data.style);
         instance.id = data.id;
         instance.visible = data.visible;
-        instance.meta = { ...(instance.meta || {}), ...(data.meta || {}) };
+        instance.meta = data.meta || instance.meta;
         instance.meta.orientation = data.orientation || instance.meta.orientation;
         instance.meta.risk = {
             ...(instance.meta.risk || {}),
             ...(data.risk || {})
         };
         instance.chart = chart; // Set chart reference for multi-timeframe support
-        instance._ensureExtraLevelMeta();
         instance.ensureRiskSettings();
-        if (typeof instance.normalizeRiskRewardTargetLevels === 'function') {
-            instance.normalizeRiskRewardTargetLevels();
-            instance.ensureRiskSettings();
-        }
         return instance;
     }
 }
@@ -3906,7 +1968,7 @@ class PathTool extends BaseDrawing {
         }
     }
 
-    render(container, scales, isPreview = false) {
+    render(container, scales) {
         // Remove existing if any
         if (this.group) {
             this.group.remove();
@@ -3976,7 +2038,6 @@ class PathTool extends BaseDrawing {
                     .attr('y2', y2)
                     .attr('stroke', this.style.stroke || '#00E5FF')
                     .attr('stroke-width', this.style.strokeWidth || 2)
-                    .attr('stroke-dasharray', this.style.strokeDasharray || null)
                     .attr('opacity', this.style.opacity)
                     .style('pointer-events', 'none')
                     .style('cursor', 'move');
@@ -4024,7 +2085,7 @@ class PathTool extends BaseDrawing {
                 .attr('class', 'resize-handle')
                 .attr('data-point-index', i)
                 .style('pointer-events', 'none')
-                .style('opacity', (this.selected || isPreview) ? 1 : 0);
+                .style('opacity', this.selected ? 1 : 0);
         });
 
         return this.group;
@@ -4137,7 +2198,7 @@ class BrushTool extends BaseDrawing {
                 .attr('fill', handleFill)
                 .attr('stroke', handleStroke)
                 .attr('stroke-width', handleStrokeWidth)
-                .style('cursor', 'move')
+                .style('cursor', 'nwse-resize')
                 .style('pointer-events', 'all')
                 .style('opacity', this.selected ? 1 : 0)
                 .attr('data-point-index', index);
@@ -4195,7 +2256,7 @@ class PolylineTool extends BaseDrawing {
         this.style.fill = style.fill || 'none';
     }
 
-    render(container, scales, isPreview = false) {
+    render(container, scales) {
         // Remove existing if any
         if (this.group) {
             this.group.remove();
@@ -4236,7 +2297,6 @@ class PolylineTool extends BaseDrawing {
                 .attr('fill', this.style.fill)
                 .attr('stroke', this.style.stroke || '#00E5FF')
                 .attr('stroke-width', this.style.strokeWidth || 2)
-                .attr('stroke-dasharray', this.style.strokeDasharray || null)
                 .attr('opacity', this.style.opacity)
                 .style('pointer-events', 'none')
                 .style('cursor', 'move');
@@ -4272,7 +2332,6 @@ class PolylineTool extends BaseDrawing {
                         .attr('y2', y2)
                         .attr('stroke', this.style.stroke || '#00E5FF')
                         .attr('stroke-width', this.style.strokeWidth || 2)
-                        .attr('stroke-dasharray', this.style.strokeDasharray || null)
                         .attr('opacity', this.style.opacity)
                         .style('pointer-events', 'none')
                         .style('cursor', 'move');
@@ -4313,7 +2372,7 @@ class PolylineTool extends BaseDrawing {
                 .attr('class', 'resize-handle')
                 .attr('data-point-index', i)
                 .style('pointer-events', 'none')
-                .style('opacity', (this.selected || isPreview) ? 1 : 0);
+                .style('opacity', this.selected ? 1 : 0);
         });
 
         return this.group;

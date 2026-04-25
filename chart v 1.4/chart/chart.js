@@ -113,7 +113,7 @@ class TileManager {
 }
 
 class Chart {
-    constructor(canvasElement = null, svgElement = null, options = {}) {
+    constructor(canvasElement = null, svgElement = null) {
         // Support both main chart and panel instances
         if (canvasElement) {
             this.canvas = canvasElement;
@@ -121,10 +121,6 @@ class Chart {
         } else {
             this.canvas = document.getElementById('chartCanvas');
             this.isPanel = false;
-        }
-        // Set panelIndex early so DrawingToolsManager gets the correct value
-        if (options.panelIndex !== undefined) {
-            this.panelIndex = options.panelIndex;
         }
         
         if (!this.canvas) {
@@ -150,10 +146,8 @@ class Chart {
             .style('position', 'absolute')
             .style('top', '0')
             .style('left', '0')
-            .style('pointer-events', 'none');
-        if (!this.isPanel) {
-            this.svg.style('z-index', '2');
-        }
+            .style('z-index', '2') // Above canvas but below UI elements
+            .style('pointer-events', 'none'); // Allow clicks to pass through to canvas
         
         // Create context menu with unique ID for panels
         const menuId = this.isPanel ? `panel-context-menu-${Date.now()}` : 'main-context-menu';
@@ -162,11 +156,7 @@ class Chart {
             .attr('class', 'chart-context-menu')
             .attr('id', menuId)
             .style('position', 'fixed')  // Use fixed positioning for better panel support
-            .style('display', 'none')
             .style('visibility', 'hidden')
-            .style('opacity', '0')
-            .style('transform', 'none')
-            .style('transition', 'none')
             .style('background', 'rgba(5, 0, 40, 0.97)')
             .style('border', '1px solid #2a2e39')
             .style('border-radius', '4px')
@@ -180,7 +170,6 @@ class Chart {
         this.candleWidth = 8;
         this.offsetX = 0;
         this.priceZoom = 1;
-        this.minPriceZoom = 1e-9;
         this.priceOffset = 0;
         this.timeZoom = 1;
         this.autoScale = true;
@@ -192,12 +181,11 @@ class Chart {
         this.syncDrawings = true; // Enable drawing sync across panels
         this.syncCrosshair = true; // Enable crosshair sync across panels
         this.currentCrosshairTimestamp = null; // Track crosshair timestamp for sync
-        this.lockedCrosshairDataIndex = null;
         this.xScale = null;
         this.yScale = null;
         this.volumeScale = null;
         this.xBandScale = null;
-        this.margin = {t: 0, r: 60, b: 30, l: 0}; // Left margin 0 for full width (sidebar overlays)
+        this.margin = {t: 5, r: 60, b: 30, l: 0}; // Left margin 0 for full width (sidebar overlays)
         this.volumeHeight = 0.15;
         this.selectedDrawing = null;
         this.isLoading = false;
@@ -251,8 +239,7 @@ class Chart {
         this.cursor = {
             x: 0,
             y: 0,
-            mode: 'chart',               // 'chart', 'priceAxis', 'timeAxis', 'separatePanelAxis'
-            separatePanelSlot: null,     // slot hit on indicator pane price strip (from separatePanelInfo.panelSlots)
+            mode: 'chart',               // 'chart', 'priceAxis', 'timeAxis'
             dataIndex: 0,
             price: 0
         };
@@ -335,29 +322,12 @@ class Chart {
         this.apiUrl = window.CHART_API_URL || '/api';
         this.tileManager = new TileManager(this.apiUrl, 150);
         this.currentFileId = null;
-        /** Bumps on each server timeframe load so stale async responses are ignored. */
-        this._timeframeLoadSeq = 0;
         this.currentSymbol = null; // Store detected symbol from CSV
-        // Tracks the last symbol we resolved precision for. When currentSymbol changes
-        // we drop the cached precision so the registry is re-queried for the new tick
-        // size (prevents NQ inheriting EURUSD's 5dp when switching symbols mid-session).
-        this._symbolPrecisionResolvedFor = null;
         this._RAW_DATA_CAP = 300_000; // ring buffer: max candles in memory
-        /**
-         * Backtest: first GET /smart batch size (capped 5k–100k server-side).
-         * Instruments may hold 10–15+ years of 1m bars on disk — that full series is never loaded at once.
-         * Requests are scoped by session start/end; longer windows stream via replay forward /candles merge.
-         * Optional: set window.CHART_BACKTEST_SMART_INITIAL_LIMIT before chart.js loads for a heavier first batch.
-         * Default kept moderate so first paint stays fast; viewport/replay loads more as needed.
-         */
-        this.BACKTEST_SMART_INITIAL_LIMIT = 24000;
-
+        
         // Performance optimizations for large datasets
         this.totalCandles = 0; // Total number of candles in dataset
         this.loadedRanges = new Map(); // Cache loaded data ranges
-        this._smartPrefetchCache = new Map(); // LRU-ish cache for other symbols' /smart payloads
-        /** Incremented on each symbol switch; stale async responses must not overwrite the chart. */
-        this._symbolLoadSeq = 0;
         this.chunkSize = 5000; // Load data in chunks
         this.bufferSize = 1000; // Buffer size for smooth scrolling
         this.isLoadingChunk = false;
@@ -446,28 +416,10 @@ class Chart {
             borderDownColor: '#f23645',    // Border for down candles
             wickUpColor: '#089981',        // Wick for up candles
             wickDownColor: '#f23645',      // Wick for down candles
-            unifiedBarColorEnabled: false,
-            unifiedBarColor: '#089981',
             showCandleBody: true,
             showCandleBorders: true,
             showCandleWick: true,
             colorBasedOnPreviousClose: false,
-
-            // Price line (last close horizontal line)
-            showPriceLine: true,
-            priceLineColor: '#2962ff',
-
-            // Area / Baseline chart colors
-            areaLineColor: '#089981',
-            areaFillColor: 'rgba(8, 153, 129, 0.28)',
-            baselineColor: '#787b86',
-
-            // Settings panel theme
-            settingsPanelAccentColor: '#2962ff',
-            settingsPanelSecondaryColor: '#7b61ff',
-            settingsPanelTextColor: '#e0e3ea',
-            settingsPanelBgColor: '#050028',
-            settingsPanelSidebarBgColor: '#050028',
             
             // Volume
             volumeUpColor: 'rgba(8, 153, 129, 0.5)',
@@ -519,44 +471,55 @@ class Chart {
 
         this._defaultChartSettings = JSON.parse(JSON.stringify(this.chartSettings));
 	        
-	        // Pre-bind animate once so requestAnimationFrame doesn't allocate a new function every frame
-	        this._animateBound = this.animate.bind(this);
-	        
 	        this.init();
 	        this.animate(); // Start the animation loop
 	    }
 	
 	    init() {
+        console.log(`📊 Chart init() started (${this.isPanel ? 'Panel' : 'Main'})`);
+        console.log('Canvas:', this.canvas);
+        console.log('Canvas dimensions:', this.canvas.offsetWidth, 'x', this.canvas.offsetHeight);
         
         this.resize();
+        console.log('✓ Resized - Canvas:', this.w, 'x', this.h);
         
         this.setupEvents();
+        console.log('✓ Events setup');
         
         // Only setup UI controls for main chart
         if (!this.isPanel) {
             this.createTooltip();
+            console.log('✓ Tooltip created');
             
             this.setupChartSettingsMenu();
+            console.log('✓ Chart settings menu setup');
             
             this.setupCSVLoader();
+            console.log('✓ CSV loader setup');
             
             this.setupFileSelector();
-            this.setupSymbolSearchSwitcher();
+            console.log('✓ File selector setup');
             
             this.setupKeyboardShortcuts();
+            console.log('✓ Keyboard shortcuts setup');
             
             this.setupDateSearch();
+            console.log('✓ Date search setup');
             
             this.setupTimeframeButtons();
+            console.log('✓ Timeframe buttons setup');
             
             this.setupOHLCCollapse();
+            console.log('✓ OHLC collapse setup');
             
             this.setupChartClickToCloseMenus();
+            console.log('✓ Chart click to close menus setup');
             
             // Initialize OHLC panel with default values
             this.updateChartOHLCSymbol('CHART');
             
             this.loadAvailableFiles();
+            console.log('✓ Loading available files...');
             
             // Load saved drawings from localStorage
             this.loadDrawingsFromStorage();
@@ -587,14 +550,6 @@ class Chart {
                     return;
                 }
 
-                const dm = this.drawingManager;
-                if (dm && dm.currentTool && e.button === 0 && e.ctrlKey) {
-                    e.preventDefault();
-                    if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
-                    e.stopPropagation();
-                    return;
-                }
-
                 // Only show context menu if not on a drawing
                 if (!this.tool && !this.findDrawingAtPoint(e.offsetX, e.offsetY)) {
                     e.preventDefault();
@@ -607,14 +562,18 @@ class Chart {
         if (!this.isPanel) {
             // Main chart gets its own managers
             this.initDrawingTools();
+            console.log('✓ Drawing Tools Manager initialized');
             
             // Initialize Replay System (only for main chart)
             this.initReplaySystem();
+            console.log('✓ Replay System initialized');
         } else {
             // Panels get their own drawing manager but share replay/order systems
             this.initDrawingTools();
+            console.log('✓ Panel Drawing Tools Manager initialized');
             
             // Panels will reference the main chart's replay and order systems
+            console.log('✓ Panel chart - will use main chart replay/order systems');
         }
         
         // Initialize Indicators system
@@ -622,10 +581,11 @@ class Chart {
             this.initIndicators();
         }
         
-        // Initialize Compare Overlay per chart instance (main + panels)
-        if (typeof CompareOverlay !== 'undefined') {
+        // Initialize Compare Overlay (only for main chart)
+        if (!this.isPanel && typeof CompareOverlay !== 'undefined') {
             try {
                 this.compareOverlay = new CompareOverlay(this);
+                console.log('✓ Compare Overlay initialized');
             } catch (e) {
                 console.error('Failed to initialize CompareOverlay:', e);
             }
@@ -633,6 +593,7 @@ class Chart {
         
         this.fitToView(); // Position chart to show latest data on right
         this.render();
+        console.log('✓ Initial render complete');
         
         // Force a re-render after a short delay to ensure chart is visible after page reload
         // Also re-measure canvas dimensions after page layout completes to fix squished/broken appearance
@@ -640,11 +601,13 @@ class Chart {
             this.resize(); // Re-measure canvas after layout completes
             this.fitToView();
             this.render();
+            console.log('✓ Delayed re-render complete (ensures visibility and correct dimensions)');
         }, 100);
         
         // Listen for timezone changes (only for main chart)
         if (!this.isPanel && window.timezoneManager) {
             window.timezoneManager.addListener(() => {
+                console.log('🌍 Timezone changed, re-rendering chart');
                 this.scheduleRender();
             });
         }
@@ -658,146 +621,14 @@ class Chart {
     /**
      * Check if chart is loaded in backtesting mode and auto-start
      */
-    normalizeBacktestingSession(session) {
-        if (!session || typeof session !== 'object') return session;
-
-        const normalized = { ...session };
-        const sessionId = normalized.session_id || normalized.sessionId || normalized.id || null;
-        if (sessionId) {
-            normalized.session_id = String(sessionId);
-        }
-
-        const leverageText = normalized.leverage || normalized.accountLeverage || '1:30';
-        const leverageMatch = String(leverageText).match(/(\d+)\s*:\s*(\d+)/);
-        if (leverageMatch) {
-            const lev = Number.parseFloat(leverageMatch[2]);
-            if (Number.isFinite(lev) && lev > 0) normalized.leverageNumber = lev;
-        } else if (Number.isFinite(Number.parseFloat(leverageText))) {
-            normalized.leverageNumber = Number.parseFloat(leverageText);
-        }
-
-        const instrumentsMap = {};
-        if (Array.isArray(normalized.instruments)) {
-            normalized.instruments.forEach((row) => {
-                const ticker = String(row?.ticker || row?.symbol || row?.symbolName || '').toUpperCase();
-                if (!ticker) return;
-                instrumentsMap[ticker] = { ...row, ticker };
-            });
-        } else if (normalized.instruments && typeof normalized.instruments === 'object') {
-            Object.keys(normalized.instruments).forEach((key) => {
-                const row = normalized.instruments[key];
-                const ticker = String(row?.ticker || key || '').toUpperCase();
-                if (!ticker) return;
-                instrumentsMap[ticker] = { ...row, ticker };
-            });
-        } else if (Array.isArray(normalized.symbols)) {
-            normalized.symbols.forEach((row) => {
-                const ticker = String(row?.ticker || row?.symbol || row?.symbolName || '').toUpperCase();
-                if (!ticker) return;
-                instrumentsMap[ticker] = { ...row, ticker };
-            });
-        }
-        normalized.instruments = instrumentsMap;
-        normalized.instrumentTickers = Object.keys(instrumentsMap);
-        normalized.asset_class = normalized.asset_class || normalized.assetClass || 'Forex';
-        normalized.margin_call_level = Number.parseFloat(normalized.margin_call_level || normalized.marginCallLevel || 100);
-        normalized.stop_out_level = Number.parseFloat(normalized.stop_out_level || normalized.stopOutLevel || 50);
-
-        // Prop firm wizard saves `balance`; personal backtest saves `startBalance`. Unify for P&L + order account.
-        const rawStart = normalized.startBalance ?? normalized.start_balance ?? normalized.balance;
-        const parsedStart = Number.parseFloat(rawStart);
-        if (Number.isFinite(parsedStart) && parsedStart > 0) {
-            normalized.startBalance = parsedStart;
-        }
-
-        return normalized;
-    }
-
-    /**
-     * Personal and prop-firm sessions should use the same smart-window / replay data path as standard backtest.
-     * Prop sessions may briefly have no startDate until the UI loads file bounds — still treat as backtest style.
-     */
-    _isSessionBacktestStyle(session) {
-        if (!session || typeof session !== 'object') return false;
-        if (session.startDate) return true;
-        const t = session.type;
-        return t === 'propfirm' || t === 'standard';
-    }
-
-    getPrimarySessionFileId(session) {
-        if (!session) return null;
-        if (session.fileId) return session.fileId;
-        const firstTicker = Array.isArray(session.instrumentTickers) && session.instrumentTickers.length > 0
-            ? session.instrumentTickers[0]
-            : null;
-        if (firstTicker && session.instruments && session.instruments[firstTicker]) {
-            return session.instruments[firstTicker].fileId || session.instruments[firstTicker].datasetId || null;
-        }
-        return null;
-    }
-
-    _formatPairTicker(rawTicker, rawFileName) {
-        const ccys = new Set(['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','HKD','SGD','SEK','NOK','DKK','ZAR','TRY','MXN','BTC','ETH','XAU','XAG']);
-        const tryFormat = (s) => {
-            if (!s) return null;
-            const clean = String(s).replace(/\.(csv|CSV)$/i, '').replace(/^\d{8}_\d{6}_/, '');
-            const m6 = clean.replace(/[\s\-_\/\.]/g, '').match(/([A-Za-z]{6})/);
-            if (m6) {
-                const pair = m6[1].toUpperCase();
-                const base = pair.substring(0, 3);
-                const quote = pair.substring(3, 6);
-                if (ccys.has(base) || ccys.has(quote)) return base + '/' + quote;
-            }
-            return null;
-        };
-        return tryFormat(rawTicker) || tryFormat(rawFileName) || String(rawTicker || rawFileName || '').toUpperCase();
-    }
-
-    resolveSessionTickerForFileId(session, fileId) {
-        if (!session || !fileId) return null;
-        const fileKey = String(fileId);
-        if (session.instruments && typeof session.instruments === 'object') {
-            const keys = Object.keys(session.instruments);
-            for (let i = 0; i < keys.length; i += 1) {
-                const ticker = keys[i];
-                const row = session.instruments[ticker];
-                if (!row) continue;
-                const rowFileId = row.fileId || row.datasetId || row.sourceFileId;
-                if (String(rowFileId) === fileKey) {
-                    return this._formatPairTicker(ticker, row.fileName || row.name);
-                }
-            }
-        }
-        if (Array.isArray(session.files)) {
-            const file = session.files.find((f) => f && (String(f.id) === fileKey || String(f.fileId) === fileKey));
-            if (file && file.name) {
-                return this._formatPairTicker(file.name, null);
-            }
-        }
-        return null;
-    }
-
     async checkBacktestingMode() {
         const urlParams = new URLSearchParams(window.location.search);
         const mode = urlParams.get('mode');
         
         if (mode === 'backtest' || mode === 'propfirm') {
             const isPropFirm = mode === 'propfirm';
-
-            // Subscription gate (mirrors api_server auth middleware) — blocks back after pricing, etc.
-            try {
-                const mer = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
-                if (mer.ok) {
-                    const md = await mer.json();
-                    const u = md && md.user;
-                    if (u && u.role !== 'admin' && !u.has_journal_access) {
-                        window.location.replace('/journal/pricing');
-                        return;
-                    }
-                }
-            } catch (e) {
-                /* fall through; server middleware will also redirect on full navigation */
-            }
+            console.log(`🎯 ${isPropFirm ? 'Prop Firm' : 'Backtesting'} mode detected from URL`);
+            console.log('🔗 URL params:', window.location.search);
             
             // Show loading screen
             const loader = document.getElementById('backtestingLoader');
@@ -805,27 +636,8 @@ class Chart {
                 loader.classList.add('active');
                 this.updateLoaderProgress(0, 'Loading session data...');
             }
-            // Safety release: never allow preload gate to stay forever.
-            if (this._backtestLoaderSafetyTimer) clearTimeout(this._backtestLoaderSafetyTimer);
-            this._backtestLoaderSafetyTimer = setTimeout(() => {
-                try {
-                    const l = document.getElementById('backtestingLoader');
-                    if (l) l.classList.remove('active');
-                    document.documentElement.classList.remove('bt-preload');
-                } catch (e) {}
-            }, 20000);
             
             const sessionId = urlParams.get('sessionId');
-
-            // URL session always wins for persistence (journal PATCH / state). Stale
-            // active_trading_session_id in storage must not override ?sessionId=.
-            if (sessionId) {
-                const sid = String(sessionId);
-                this.activeTradingSessionId = sid;
-                try {
-                    userStorage.setItem('active_trading_session_id', sid);
-                } catch (e) {}
-            }
 
             let session = null;
             if (sessionId) {
@@ -834,13 +646,10 @@ class Chart {
                     if (res.ok) {
                         const payload = await res.json();
                         if (payload && payload.session && payload.session.config) {
-                            const st = String(payload.session.session_type || '').toLowerCase();
-                            const raw = payload.session.config || {};
-                            const merged = { ...raw, type: st === 'propfirm' ? 'propfirm' : 'standard' };
-                            session = this.normalizeBacktestingSession(merged);
+                            session = payload.session.config;
                             try {
-                                userStorage.setItem('backtestingSession', JSON.stringify(session));
-                                userStorage.setItem('active_trading_session_id', String(sessionId));
+                                localStorage.setItem('backtestingSession', JSON.stringify(session));
+                                localStorage.setItem('active_trading_session_id', String(sessionId));
                             } catch (e) {}
                             this.activeTradingSessionId = sessionId ? String(sessionId) : null;
                         }
@@ -852,43 +661,22 @@ class Chart {
 
             // Load session data from localStorage (fallback)
             if (!session) {
-                const sessionData = userStorage.getItem('backtestingSession');
+                const sessionData = localStorage.getItem('backtestingSession');
                 if (sessionData) {
-                    let parsed = JSON.parse(sessionData);
-                    if (!isPropFirm) {
-                        parsed = { ...parsed, type: 'standard' };
-                    }
-                    session = this.normalizeBacktestingSession(parsed);
+                    session = JSON.parse(sessionData);
                 }
             }
 
             if (session) {
+                console.log(`📋 Loading ${isPropFirm ? 'prop firm' : 'backtesting'} session:`, session);
                 
                 // Store session data in chart
-                this.backtestingSession = this.normalizeBacktestingSession(session);
+                this.backtestingSession = session;
                 this.isPropFirmMode = isPropFirm;
-
-                try {
-                    userStorage.setItem('backtestingSession', JSON.stringify(this.backtestingSession));
-                } catch (e) {}
-
-                if (this.orderManager && typeof this.orderManager.applySessionStartingBalance === 'function') {
-                    this.orderManager.applySessionStartingBalance();
-                }
-                if (typeof window.syncPropFirmTracker === 'function') {
-                    try {
-                        window.syncPropFirmTracker();
-                    } catch (e) {}
-                }
-                if (typeof window.applyChallengeToolbarVisibility === 'function') {
-                    try {
-                        window.applyChallengeToolbarVisibility();
-                    } catch (e) {}
-                }
 
                 if (!this.activeTradingSessionId) {
                     try {
-                        this.activeTradingSessionId = userStorage.getItem('active_trading_session_id');
+                        this.activeTradingSessionId = localStorage.getItem('active_trading_session_id');
                     } catch (e) {
                         this.activeTradingSessionId = null;
                     }
@@ -898,12 +686,11 @@ class Chart {
                 this.updateLoaderProgress(10, 'Session loaded');
                 this.updateLoaderStep(1, 'active');
                 
-                // Load ASAP after loader paints (avoid fixed 500ms wait — that only slowed first chart)
-                requestAnimationFrame(() => {
-                    requestAnimationFrame(() => {
-                        this.autoLoadBacktestingData(this.backtestingSession);
-                    });
-                });
+                // Load data directly (no file selector needed in backtesting mode)
+                console.log('⏳ Loading file data...');
+                setTimeout(() => {
+                    this.autoLoadBacktestingData(session);
+                }, 500);
             } else {
                 console.warn('⚠️ No backtesting session data found in localStorage');
                 alert('Backtesting session not found. Redirecting to setup...');
@@ -944,50 +731,11 @@ class Chart {
     
     hideLoader() {
         const loader = document.getElementById('backtestingLoader');
-        if (this._backtestLoaderSafetyTimer) {
-            clearTimeout(this._backtestLoaderSafetyTimer);
-            this._backtestLoaderSafetyTimer = null;
-        }
         if (loader) {
             setTimeout(() => {
                 loader.classList.remove('active');
-                try { document.documentElement.classList.remove('bt-preload'); } catch (e) {}
-            }, 180);
-        } else {
-            try { document.documentElement.classList.remove('bt-preload'); } catch (e) {}
+            }, 500);
         }
-    }
-
-    getGoToLoadingOverlay() {
-        const chartContainer = this.canvas?.closest('.chart-container') || document.getElementById('chartContainer');
-        if (!chartContainer) return null;
-        return chartContainer.querySelector('.loading-overlay');
-    }
-
-    showGoToLoadingOverlay() {
-        const overlay = this.getGoToLoadingOverlay();
-        if (!overlay) return;
-
-        if (this._goToLoadingHideTimer) {
-            clearTimeout(this._goToLoadingHideTimer);
-            this._goToLoadingHideTimer = null;
-        }
-
-        overlay.style.display = 'flex';
-    }
-
-    hideGoToLoadingOverlay(delayMs = 120) {
-        const overlay = this.getGoToLoadingOverlay();
-        if (!overlay) return;
-
-        if (this._goToLoadingHideTimer) {
-            clearTimeout(this._goToLoadingHideTimer);
-        }
-
-        this._goToLoadingHideTimer = setTimeout(() => {
-            overlay.style.display = 'none';
-            this._goToLoadingHideTimer = null;
-        }, delayMs);
     }
     
     /**
@@ -995,29 +743,14 @@ class Chart {
      */
     async autoLoadBacktestingData(session) {
         if (this.backtestingStarted) {
+            console.log('⚠️ Backtesting already started, skipping...');
             return;
         }
         
         this.backtestingStarted = true;
         
         const urlParams = new URLSearchParams(window.location.search);
-        session = this.normalizeBacktestingSession(session);
-        const missingInstrumentData = [];
-        if (session && session.instruments && typeof session.instruments === 'object') {
-            Object.keys(session.instruments).forEach((ticker) => {
-                const row = session.instruments[ticker];
-                if (!row) return;
-                const fileRef = row.fileId || row.datasetId || row.sourceFileId || null;
-                if (!fileRef) {
-                    missingInstrumentData.push(ticker);
-                }
-            });
-        }
-        if (missingInstrumentData.length > 0) {
-            console.warn('⚠️ Missing data source for instruments:', missingInstrumentData);
-            alert(`No data loaded for: ${missingInstrumentData.join(', ')}. Please load data or remove these instruments from the session.`);
-        }
-        const fileId = urlParams.get('fileId') || this.getPrimarySessionFileId(session);
+        const fileId = urlParams.get('fileId') || session.fileId;
         
         if (!fileId) {
             console.error('❌ No file ID provided');
@@ -1029,18 +762,14 @@ class Chart {
         try {
             const displayTf = this.currentTimeframe || '1m';
             const replayRawTf = '1m';
-            // Step 1 must stay active until the HTTP response is back — marking it complete before
-            // await made the UI show "Calculating indicators" during the real network wait.
-            this.updateLoaderStep(1, 'active');
-            this.updateLoaderProgress(20, 'Loading chart data...');
+            this.updateLoaderProgress(30, 'Loading chart data...');
+            this.updateLoaderStep(1, 'completed');
 
             const result = await this._fetchSmartWindow(fileId, replayRawTf, session);
-
-            if (!this._smartResponseHasPayload(result)) {
+            
+            if (!result || !result.data) {
                 throw new Error('No data in response');
             }
-
-            this.updateLoaderStep(1, 'completed');
             
             this.totalCandles = result.total;
             this._serverCursors = {
@@ -1052,26 +781,15 @@ class Chart {
             this._panLoading = false;
             
             this.loadedRanges.clear();
-            // Step 2: parse/normalize candles + first full render (not full-dataset indicator pass;
-            // indicators run on the small replay slice inside enterReplayMode → updateChartData).
-            this.updateLoaderStep(2, 'active');
-            this.updateLoaderProgress(45, 'Processing chart data...');
-            await new Promise(resolve => setTimeout(resolve, 0));
-            this.currentFileId = fileId;
-            // skipIndicators: enterReplayMode will recalculate on the 10% slice — no need on 100k
-            this._ingestSmartWindowResult(result, { skipIndicators: true, skipFitToView: true });
+            this.parseCSVChunk(result.data, 0);
             this.loadedRanges.set(0, result.returned);
-            this._scheduleSmartPrefetchOthers(fileId, replayRawTf, session);
-
+            this.currentFileId = fileId;
+            
+            console.log(`✅ Loaded ${this.rawData.length}/${result.total} raw candles at ${replayRawTf} (display: ${displayTf})`);
             this.updateLoaderProgress(70, 'Preparing chart...');
-
-            const resolvedTicker = this.resolveSessionTickerForFileId(session, fileId);
-            if (resolvedTicker) {
-                this.currentSymbol = resolvedTicker;
-            } else if (session.fileName) {
+            
+            if (session.fileName) {
                 this.currentSymbol = session.fileName.replace('.csv', '').toUpperCase();
-            } else if (session.instrumentTickers && session.instrumentTickers.length > 0) {
-                this.currentSymbol = session.instrumentTickers[0];
             } else if (session.symbol) {
                 this.currentSymbol = session.symbol;
             } else if (session.symbols && session.symbols.length > 0) {
@@ -1083,18 +801,26 @@ class Chart {
             this.updateChartTitle(this.currentSymbol);
             this.updateDateRange();
             
+            this.updateLoaderProgress(80, 'Calculating indicators...');
+            this.updateLoaderStep(2, 'active');
+            
+            if (typeof this.recalculateIndicators === 'function') {
+                this.recalculateIndicators();
+            }
+            
             this.updateLoaderStep(2, 'completed');
-            this.updateLoaderProgress(80, 'Calculating indicators & rendering...');
-
+            this.updateLoaderProgress(90, 'Rendering chart...');
+            
             this.fitToView();
             this.render();
-
-            // One rAF for paint; start replay on microtask (drops ~300ms of stacked timeouts)
+            
             requestAnimationFrame(() => {
                 this.render();
                 this.updateLoaderProgress(95, 'Starting replay mode...');
                 this.updateLoaderStep(3, 'active');
-                queueMicrotask(() => this.startBacktestingReplay(session));
+                setTimeout(() => {
+                    this.startBacktestingReplay(session);
+                }, 200);
             });
             
         } catch (error) {
@@ -1106,297 +832,55 @@ class Chart {
     }
     
     /**
-     * Build query string for GET /file/{id}/smart (shared by fetch + prefetch).
+     * Fetch a window of candles from /smart endpoint.
+     * Returns last N candles at the requested timeframe.
      */
-    _buildSmartWindowParams(fileId, timeframe, session, anchor, windowRange = null) {
-        const isBacktest = this._isSessionBacktestStyle(session);
+    async _fetchSmartWindow(fileId, timeframe, session, anchor) {
+        // In backtest mode, load from the START of the session range
+        // so replay begins at the right place. Pan-loading fills the rest.
+        const isBacktest = session && session.startDate;
         if (!anchor) anchor = isBacktest ? 'start' : 'end';
 
-        let backtestBatch = Number(this.BACKTEST_SMART_INITIAL_LIMIT);
-        if (!Number.isFinite(backtestBatch) || backtestBatch <= 0) backtestBatch = 100000;
-        if (typeof window !== 'undefined') {
-            const w = Number(window.CHART_BACKTEST_SMART_INITIAL_LIMIT);
-            if (Number.isFinite(w) && w > 0) backtestBatch = w;
-        }
-        const limit = isBacktest
-            ? String(Math.max(5000, Math.min(100000, backtestBatch)))
-            : '5000';
+        // In backtest mode, preload the maximum smart-window batch to reduce
+        // edge stalls when replay crosses the first loaded segment.
+        const limit = isBacktest ? '100000' : '5000';
         const params = new URLSearchParams({
             timeframe: timeframe,
             limit: limit,
-            anchor: anchor,
-            response_format: 'candles'
+            anchor: anchor
         });
 
-        const explicitStartTs = this.normalizeTimestampMs(windowRange?.startTs);
-        const explicitEndTs = this.normalizeTimestampMs(windowRange?.endTs);
-
-        if (Number.isFinite(explicitStartTs)) {
-            params.set('start_ts', String(Math.floor(explicitStartTs)));
-        }
-        if (Number.isFinite(explicitEndTs)) {
-            params.set('end_ts', String(Math.floor(explicitEndTs)));
-        }
-
-        if (!Number.isFinite(explicitStartTs) && session && session.startDate) {
+        if (session && session.startDate) {
             const ts = new Date(session.startDate).getTime();
             if (!isNaN(ts)) params.set('start_ts', String(ts));
         }
-        if (!Number.isFinite(explicitEndTs) && session && session.endDate) {
+        if (session && session.endDate) {
             const ts = new Date(session.endDate).getTime();
             if (!isNaN(ts)) params.set('end_ts', String(ts));
         }
 
-        return params;
-    }
-
-    _smartCacheKeyFromParams(fileId, params) {
-        return `${fileId}|${params.toString()}`;
-    }
-
-    _tryTakeSmartPrefetch(fileId, params) {
-        const key = this._smartCacheKeyFromParams(fileId, params);
-        const entry = this._smartPrefetchCache && this._smartPrefetchCache.get(key);
-        if (!entry || !entry.payload) return null;
-        if (String(entry.fileId || '') !== String(fileId)) {
-            this._smartPrefetchCache.delete(key);
-            return null;
-        }
-        if (Date.now() - entry.at > 180000) {
-            this._smartPrefetchCache.delete(key);
-            return null;
-        }
-        this._smartPrefetchCache.delete(key);
-        return entry.payload;
-    }
-
-    _scheduleSmartPrefetchOthers(activeFileId, timeframe, session) {
-        const ric = window.requestIdleCallback || ((cb) => setTimeout(cb, 250));
-        ric(() => {
-            if (!this._smartPrefetchCache) this._smartPrefetchCache = new Map();
-            const entries = this.getSymbolSwitcherEntries();
-            for (let i = 0; i < entries.length; i++) {
-                const e = entries[i];
-                if (!e || String(e.fileId) === String(activeFileId)) continue;
-                const params = this._buildSmartWindowParams(e.fileId, timeframe, session);
-                const key = this._smartCacheKeyFromParams(e.fileId, params);
-                if (this._smartPrefetchCache.has(key)) continue;
-                fetch(`${this.apiUrl}/file/${e.fileId}/smart?${params.toString()}`)
-                    .then((r) => (r.ok ? r.json() : null))
-                    .then((data) => {
-                        if (!data) return;
-                        const ok = (Array.isArray(data.candles) && data.candles.length) || data.data;
-                        if (!ok) return;
-                        this._smartPrefetchCache.set(key, { at: Date.now(), payload: data, fileId: String(e.fileId) });
-                        while (this._smartPrefetchCache.size > 4) {
-                            const first = this._smartPrefetchCache.keys().next().value;
-                            this._smartPrefetchCache.delete(first);
-                        }
-                    })
-                    .catch(() => {});
-            }
-        });
-    }
-
-    async _fetchSmartWindowWithParams(fileId, params) {
         const response = await fetch(`${this.apiUrl}/file/${fileId}/smart?${params.toString()}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
-    }
-
-    /**
-     * Fetch a window of candles from /smart endpoint.
-     * Server reads binary tiles/mmap; response uses native candle array when response_format=candles.
-     */
-    async _fetchSmartWindow(fileId, timeframe, session, anchor, windowRange = null) {
-        const params = this._buildSmartWindowParams(fileId, timeframe, session, anchor, windowRange);
-        return this._fetchSmartWindowWithParams(fileId, params);
-    }
-
-    _normalizeCandlesFromApi(candles) {
-        const out = [];
-        if (!Array.isArray(candles)) return out;
-        for (let i = 0; i < candles.length; i++) {
-            const c = candles[i];
-            if (!c || typeof c !== 'object') continue;
-            let t = Number(c.t ?? c.time);
-            let o = Number(c.o ?? c.open);
-            let h = Number(c.h ?? c.high);
-            let l = Number(c.l ?? c.low);
-            let cl = Number(c.c ?? c.close);
-            let v = Number(c.v ?? c.volume);
-            if (!Number.isFinite(v)) v = 0;
-            if (Number.isFinite(t) && t < 1e11) t *= 1000;
-            if (Number.isFinite(o) && Number.isFinite(h) && Number.isFinite(l) && Number.isFinite(cl) && Number.isFinite(t)) {
-                out.push({ t, o, h, l, c: cl, v });
-            }
-        }
-        return out;
-    }
-
-    /**
-     * Apply parsed OHLCV rows: resample, indicators, view fit, drawings, chartDataLoaded.
-     * @param {object} options skipIndicators, skipFitToView
-     */
-    _commitLoadedBars(newData, startIndex, options = {}) {
-        if (!newData || newData.length === 0) return;
-
-        if (startIndex === 0) {
-            this.rawData = newData;
-        } else {
-            this.rawData = this.rawData.slice(0, startIndex).concat(newData, this.rawData.slice(startIndex + newData.length));
-        }
-
-        this.data = this.resampleData(this.rawData, this.currentTimeframe);
-
-        if (!options.skipIndicators && typeof this.recalculateIndicators === 'function') {
-            this.recalculateIndicators();
-        }
-
-        this.updateDateRange();
-
-        if (this.currentSymbol) {
-            this.updateSymbolSelector(this.currentSymbol);
-        }
-
-        if (startIndex === 0 && !options.skipFitToView) {
-            this.resize();
-            this.fitToView();
-            this.scheduleRender();
-        }
-
-        if (startIndex === 0 && this.drawingManager) {
-            const fileChanged = this._lastLoadedFileId && this._lastLoadedFileId !== this.currentFileId;
-
-            if (fileChanged) {
-                if (this.drawingManager.drawings.length > 0) {
-                    this.drawingManager.drawings.forEach(d => d.destroy());
-                    this.drawingManager.drawings = [];
-                }
-                if (typeof this.drawingManager.loadDrawings === 'function') {
-                    this.drawingManager.loadDrawings();
-                }
-            } else if (!this._lastLoadedFileId) {
-                if (typeof this.drawingManager.loadDrawings === 'function') {
-                    this.drawingManager.loadDrawings();
-                }
-            }
-
-            this._lastLoadedFileId = this.currentFileId;
-        }
-
-        window.dispatchEvent(new CustomEvent('chartDataLoaded', {
-            detail: {
-                data: this.data,
-                rawData: this.rawData,
-                symbol: this.currentSymbol,
-                timeframe: this.currentTimeframe
-            }
-        }));
-    }
-
-    _smartResponseHasPayload(result) {
-        return !!(result && ((Array.isArray(result.candles) && result.candles.length > 0) || result.data));
-    }
-
-    /**
-     * Ingest /smart JSON: prefers native candle array; falls back to legacy CSV in result.data.
-     */
-    _ingestSmartWindowResult(result, options = {}) {
-        if (!result) return false;
-        if (Array.isArray(result.candles) && result.candles.length > 0) {
-            const newData = this._normalizeCandlesFromApi(result.candles);
-            if (newData.length === 0) {
-                console.error('❌ No valid candles after normalizing server response');
-                return false;
-            }
-            this._commitLoadedBars(newData, 0, options);
-            return true;
-        }
-        if (result.data) {
-            this.parseCSVChunk(result.data, 0, options);
-            return true;
-        }
-        return false;
     }
     
     /**
      * Switch to a different file/symbol without page reload
      */
     async loadFileData(fileId) {
-        const loadSeq = ++this._symbolLoadSeq;
-        const targetFileId = String(fileId);
-        let prevSymbol = this.currentSymbol;
-
+        console.log(`🔄 Switching to file: ${fileId}`);
+        
         try {
-            // If replay is active, preserve the current wall-clock replay time and visible window.
-            // This prevents switching pairs from jumping to "latest" on the right edge.
-            const replay = this.replaySystem;
-            const replayActiveBefore = !!(replay && replay.isActive);
-        const replayWasPlayingBefore = !!(replayActiveBefore && replay.isPlaying);
-            const replayTargetTs = replayActiveBefore && Number.isFinite(Number(replay.replayTimestamp))
-                ? Number(replay.replayTimestamp)
-                : null;
-
             const symbolDisplay = document.getElementById('symbolDisplay');
-
-            const session = this.backtestingSession || JSON.parse(userStorage.getItem('backtestingSession') || '{}');
-            const targetTicker = this.resolveSessionTickerForFileId(session, targetFileId) || this.currentSymbol;
-            if (this.orderManager && typeof this.orderManager.canSwitchToTicker === 'function') {
-                const canSwitch = this.orderManager.canSwitchToTicker(targetTicker);
-                if (!canSwitch) {
-                    if (typeof this.showNotification === 'function') {
-                        this.showNotification('You have active orders/tracking on another instrument. Close or complete them before switching chart in this phase.');
-                    }
-                    if (prevSymbol) this.updateChartTitle(prevSymbol);
-                    return false;
-                }
-            }
-            const isBacktestSession = this._isSessionBacktestStyle(session);
+            if (symbolDisplay) symbolDisplay.textContent = 'Loading...';
+            
+            const session = this.backtestingSession || JSON.parse(localStorage.getItem('backtestingSession') || '{}');
+            const isBacktestSession = !!(session && session.startDate);
             const requestTimeframe = isBacktestSession ? '1m' : (this.currentTimeframe || '1m');
-            const params = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
-
-            if (replayActiveBefore && Number.isFinite(replayTargetTs)) {
-                // For replay pair switches: fetch data centered around the replay time.
-                // Override start_ts to ensure data reaches the replay position, and
-                // keep session end_ts so there's forward data for continued replay.
-                const sessionStartMs = session?.startDate ? new Date(session.startDate).getTime() : 0;
-                const contextBars = isBacktestSession ? 80000 : 4000;
-                const contextMs = contextBars * 60 * 1000;
-                const adjustedStart = Math.max(sessionStartMs, replayTargetTs - contextMs);
-                params.set('start_ts', String(Math.floor(adjustedStart)));
-            }
-
-            let result = this._tryTakeSmartPrefetch(targetFileId, params);
-            if (!result) {
-                const prefetchParams = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
-                result = this._tryTakeSmartPrefetch(targetFileId, prefetchParams);
-            }
-            if (!result) {
-                result = await this._fetchSmartWindowWithParams(targetFileId, params);
-            }
-
-            if (loadSeq !== this._symbolLoadSeq) {
-                return false;
-            }
-
-            if (!this._smartResponseHasPayload(result)) throw new Error('No data in response');
-
-            // Persist drawings for the pair we are leaving *before* currentFileId changes.
-            // Otherwise saveDrawings()/storage keys target the new file and in-memory drawings are discarded.
-            if (
-                this.drawingManager &&
-                typeof this.drawingManager.saveDrawings === 'function' &&
-                this.currentFileId != null &&
-                String(this.currentFileId) !== String(targetFileId)
-            ) {
-                try {
-                    this.drawingManager.saveDrawings(String(this.currentFileId));
-                } catch (e) {
-                    console.warn('⚠️ Failed to save drawings before pair switch', e);
-                }
-            }
-
+            const result = await this._fetchSmartWindow(fileId, requestTimeframe, session);
+            
+            if (!result || !result.data) throw new Error('No data in response');
+            
             this.rawData = [];
             this.data = [];
             this.totalCandles = result.total;
@@ -1408,353 +892,40 @@ class Chart {
             };
             this._panLoading = false;
             this.loadedRanges.clear();
-
-            this.priceZoom = 1;
-            this.priceOffset = 0;
-            this.autoScale = true;
-            if (this.priceScale) this.priceScale.autoScale = true;
-            this.manualCenterPrice = null;
-            this.manualRange = null;
-            this._chartViewRestored = false;
-
-            this.currentFileId = targetFileId;
-            // Keep symbol in sync with file id before ingest / loadDrawings / order visuals — otherwise
-            // ticker-based checks briefly see the OLD pair name on the NEW dataset (wrong trade markers).
-            this.currentSymbol = targetTicker || (session.fileName ? session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase() : this.currentSymbol);
-
-            this._ingestSmartWindowResult(result, { skipFitToView: true });
+            
+            this.parseCSVChunk(result.data, 0);
             this.loadedRanges.set(0, result.returned);
-
-            this._scheduleSmartPrefetchOthers(targetFileId, requestTimeframe, session);
-
+            
+            this.currentFileId = fileId;
+            
+            if (session.fileName) {
+                this.currentSymbol = session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase();
+            }
+            
             this.updateChartTitle(this.currentSymbol);
-
-            this.resize();
+            if (symbolDisplay) symbolDisplay.textContent = this.currentSymbol.substring(0, 15);
+            
+            if (typeof this.recalculateIndicators === 'function') {
+                this.recalculateIndicators();
+            }
+            
             this.fitToView();
             this.render();
-
-            if (replay && replay.isActive && Array.isArray(this.rawData) && this.rawData.length > 0) {
-                // Clear partial-tick animation state BEFORE pause() to prevent
-                // pause() → updateChartData() from overwriting the new pair's rawData
-                // with stale sliced data from the old pair's fullRawData.
-                replay.animatingCandle = null;
-                replay.tickProgress = 0;
-                replay.tickElapsedMs = 0;
-
-                if (replay.isPlaying && typeof replay.pause === 'function') {
-                    replay.pause();
-                }
-
-                // Now safe to seed replay with the new pair's data
-                replay.fullRawData = [...this.rawData];
-                replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
-                replay.rawTimeframe = requestTimeframe;
-                replay._fullRawDataMatchesTF = false;
-                replay.tickPathCache = {};
-                replay.tickPathCacheBuilt = false;
-
-                // Use the most reliable timestamp for positioning:
-                // 1. replayTargetTs (captured before the fetch)
-                // 2. multiInstrumentSession.current_time (global session clock)
-                // 3. replay.replayTimestamp (last known replay position)
-                const sessionTime = Number(this.orderManager?.orderService?.multiInstrumentSession?.current_time);
-                const targetTs = Number.isFinite(replayTargetTs)
-                    ? replayTargetTs
-                    : (Number.isFinite(sessionTime) ? sessionTime : Number(replay.replayTimestamp));
-                console.log(`🔄 Pair switch during replay: targetTs=${targetTs}, replayTargetTs=${replayTargetTs}, sessionTime=${sessionTime}`);
-
-                if (typeof replay.goToReplayTimestamp === 'function' && Number.isFinite(targetTs)) {
-                    replay.goToReplayTimestamp(targetTs, { centerOnCandle: true });
-                } else {
-                    replay.currentIndex = Math.min(10, Math.max(0, replay.fullRawData.length - 1));
-                    if (replay.fullRawData[replay.currentIndex]) {
-                        replay.replayTimestamp = replay.fullRawData[replay.currentIndex].t;
-                    }
-                    replay.tickElapsedMs = 0;
-                    replay.updateChartData(true);
-                    if (typeof replay.updateSliderRange === 'function') replay.updateSliderRange();
-                    if (typeof replay.updateSlider === 'function') replay.updateSlider();
-                    if (typeof replay.updateTimeDisplay === 'function') replay.updateTimeDisplay();
-                }
-
-                // Ensure Y-axis auto-scales for the new pair's price range
-                this.priceZoom = 1;
-                this.priceOffset = 0;
-                this.autoScale = true;
-                if (this.priceScale) this.priceScale.autoScale = true;
-                this.render();
-
-                if (replayWasPlayingBefore && typeof replay.play === 'function') {
-                    replay.play();
-                }
+            
+            if (window.replaySystem) {
+                window.replaySystem.fullRawData = [...this.rawData];
+                window.replaySystem.rawTimeframe = requestTimeframe;
+                window.replaySystem.updateChartData();
             }
-
-            if (this.orderManager) {
-                if (typeof this.orderManager.syncPipFromActiveSymbol === 'function') {
-                    this.orderManager.syncPipFromActiveSymbol();
-                }
-                if (typeof this.orderManager.updateSLTPLines === 'function') this.orderManager.updateSLTPLines();
-                if (typeof this.orderManager.syncOrderVisualsToActiveChart === 'function') {
-                    this.orderManager.syncOrderVisualsToActiveChart();
-                }
-                if (typeof this.orderManager.updatePositionsPanel === 'function') this.orderManager.updatePositionsPanel();
-            }
-
-            // Trigger symbol sync if enabled
-            if (window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.symbol) {
-                const sourcePanel = this.panel || (window.panelManager.panels || []).find(p => p.chartInstance === this);
-                if (sourcePanel) {
-                    window.panelManager.syncSymbol(sourcePanel, this.currentSymbol, targetFileId);
-                }
-            }
-
-            return true;
+            
+            console.log(`✅ Switched to ${this.currentSymbol} with ${this.rawData.length}/${result.total} candles at ${requestTimeframe}`);
+            
         } catch (error) {
             console.error('❌ Failed to switch symbol:', error);
-            if (typeof this.showNotification === 'function') {
-                this.showNotification('Failed to load symbol: ' + error.message);
-            }
-            if (prevSymbol) this.updateChartTitle(prevSymbol);
-            return false;
+            alert('Failed to load symbol: ' + error.message);
         }
     }
     
-    /**
-     * Load a different pair into THIS panel independently (does not affect main chart or other panels).
-     * The panel maintains its own fullRawData and slices by the shared replay timestamp.
-     */
-    _getPanelOverlayContainer() {
-        if (!this.canvas) return null;
-        return this.canvas.closest('.chart-panel')
-            || this.canvas.closest('.panel-chart-container')
-            || this.canvas.closest('#chart-container')
-            || this.canvas.parentElement;
-    }
-
-    _showPanelLoadingOverlay() {
-        const container = this._getPanelOverlayContainer();
-        if (!container) return null;
-        if (getComputedStyle(container).position === 'static') {
-            container.style.position = 'relative';
-        }
-        let overlay = container.querySelector(':scope > .panel-loading-overlay');
-        if (!overlay) {
-            overlay = document.createElement('div');
-            overlay.className = 'panel-loading-overlay';
-            overlay.innerHTML = '<div class="panel-loading-spinner"></div>';
-            container.appendChild(overlay);
-        }
-        void overlay.offsetWidth;
-        overlay.classList.add('active');
-        return overlay;
-    }
-
-    _hidePanelLoadingOverlay() {
-        const container = this._getPanelOverlayContainer();
-        if (!container) return;
-        const overlay = container.querySelector(':scope > .panel-loading-overlay');
-        if (overlay) {
-            overlay.classList.remove('active');
-            setTimeout(() => { if (!overlay.classList.contains('active')) overlay.remove(); }, 400);
-        }
-    }
-
-    async loadPanelFileData(fileId) {
-        const loadSeq = (this._panelFileLoadSeq = (this._panelFileLoadSeq || 0) + 1);
-        const targetFileId = String(fileId);
-        const mainChart = window.chart;
-        this._showPanelLoadingOverlay();
-        try {
-            const outgoingPanelFileId = this.currentFileId != null ? String(this.currentFileId) : null;
-            const session = this.backtestingSession
-                || (mainChart && mainChart.backtestingSession)
-                || JSON.parse(userStorage.getItem('backtestingSession') || '{}');
-
-            const targetTicker = (mainChart && typeof mainChart.resolveSessionTickerForFileId === 'function')
-                ? mainChart.resolveSessionTickerForFileId(session, targetFileId)
-                : (typeof this.resolveSessionTickerForFileId === 'function'
-                    ? this.resolveSessionTickerForFileId(session, targetFileId)
-                    : this.currentSymbol);
-
-            const replay = this.replaySystem || (mainChart && mainChart.replaySystem);
-            const replayActiveBefore = !!(replay && replay.isActive);
-            const replayTs = replay && Number.isFinite(Number(replay.replayTimestamp))
-                ? Number(replay.replayTimestamp) : null;
-
-            const isBacktest = this._isSessionBacktestStyle(session);
-            const requestTimeframe = isBacktest ? '1m' : (this.currentTimeframe || '1m');
-            const params = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
-
-            if (replayActiveBefore && Number.isFinite(replayTs)) {
-                const sessionStartMs = session?.startDate ? new Date(session.startDate).getTime() : 0;
-                const ctxBars = isBacktest ? 80000 : 4000;
-                const ctxMs = ctxBars * 60 * 1000;
-                const adjStart = Math.max(sessionStartMs, replayTs - ctxMs);
-                params.set('start_ts', String(Math.floor(adjStart)));
-            }
-
-            // Try main chart's prefetch cache first (same as loadFileData)
-            let result = null;
-            if (mainChart && typeof mainChart._tryTakeSmartPrefetch === 'function') {
-                result = mainChart._tryTakeSmartPrefetch(targetFileId, params);
-                if (!result) {
-                    const prefetchParams = mainChart._buildSmartWindowParams(targetFileId, requestTimeframe, session);
-                    if (replayActiveBefore && Number.isFinite(replayTs)) {
-                        prefetchParams.set('end_ts', String(Math.floor(replayTs + 120000)));
-                    }
-                    result = mainChart._tryTakeSmartPrefetch(targetFileId, prefetchParams);
-                }
-            }
-            if (!result) {
-                result = await this._fetchSmartWindowWithParams(targetFileId, params);
-            }
-
-            if (loadSeq !== this._panelFileLoadSeq) {
-                return false;
-            }
-
-            if (!this._smartResponseHasPayload(result)) throw new Error('No data in response');
-
-            if (
-                this.drawingManager &&
-                typeof this.drawingManager.saveDrawings === 'function' &&
-                outgoingPanelFileId != null &&
-                String(outgoingPanelFileId) !== String(targetFileId)
-            ) {
-                try {
-                    this.drawingManager.saveDrawings(String(outgoingPanelFileId));
-                } catch (e) {
-                    console.warn('⚠️ Failed to save drawings before panel pair switch', e);
-                }
-            }
-
-            this.rawData = [];
-            this.data = [];
-            this.totalCandles = result.total;
-            this._serverCursors = {
-                firstTs: result.first_cursor,
-                lastTs: result.last_cursor,
-                hasMoreLeft: result.has_more_left,
-                hasMoreRight: result.has_more_right
-            };
-            this._panLoading = false;
-            this.loadedRanges.clear();
-
-            // Match main chart: file id + symbol before ingest so order/drawing logic never sees a mismatched pair.
-            this.currentFileId = targetFileId;
-            this.currentSymbol = targetTicker || this.currentSymbol;
-
-            this._isLoadingOwnPairData = true;
-            this._ingestSmartWindowResult(result, { skipFitToView: true });
-            this.loadedRanges.set(0, result.returned);
-            this._isLoadingOwnPairData = false;
-
-            if (mainChart && typeof mainChart._scheduleSmartPrefetchOthers === 'function') {
-                mainChart._scheduleSmartPrefetchOthers(targetFileId, requestTimeframe, session);
-            }
-
-            this._panelFullRawData = [...this.rawData];
-
-            if (replay && replay.isActive && Number.isFinite(replayTs) && this._panelFullRawData.length > 0) {
-                let idx;
-                if (replay && typeof replay._resolvePanelRawEndIndexForReplay === 'function') {
-                    idx = replay._resolvePanelRawEndIndexForReplay(this._panelFullRawData, replayTs);
-                } else {
-                    idx = -1;
-                    if (typeof this.findGoToTargetIndex === 'function') {
-                        idx = this.findGoToTargetIndex(this._panelFullRawData, replayTs);
-                    }
-                    if (idx < 0) {
-                        idx = this._panelFullRawData.findIndex(c => Number(c && c.t) >= replayTs);
-                    }
-                    if (idx < 0) idx = this._panelFullRawData.length - 1;
-                    idx = Math.max(0, Math.min(idx, this._panelFullRawData.length - 1));
-                }
-
-                const sliced = this._panelFullRawData.slice(0, idx + 1);
-                this.rawData = sliced;
-                this.data = this.resampleData(sliced, this.currentTimeframe);
-            }
-
-            this.updateChartOHLCSymbol(this.currentSymbol);
-
-            this.priceZoom = 1;
-            this.priceOffset = 0;
-            this.autoScale = true;
-            if (this.priceScale) this.priceScale.autoScale = true;
-            this.manualCenterPrice = null;
-            this.manualRange = null;
-            this._chartViewRestored = false;
-
-            if (typeof this.recalculateIndicators === 'function') {
-                try { this.recalculateIndicators(); } catch (e) {}
-            }
-
-            if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
-            this.resize();
-
-            const pm = window.panelManager;
-            const alignScrollToMain = !!(pm && pm.syncSettings
-                && (pm.syncSettings.time || pm.syncSettings.dateRange)
-                && mainChart && mainChart !== this && mainChart.data && mainChart.data.length > 0
-                && this.data && this.data.length > 0);
-
-            if (alignScrollToMain) {
-                const sourceSpacing = mainChart.getCandleSpacing
-                    ? mainChart.getCandleSpacing()
-                    : mainChart._getSpacingForCandleWidth(mainChart.candleWidth);
-                const targetSpacing = this.getCandleSpacing
-                    ? this.getCandleSpacing()
-                    : this._getSpacingForCandleWidth(this.candleWidth);
-                const ratio = sourceSpacing > 0 ? (targetSpacing / sourceSpacing) : 1;
-                this.offsetX = mainChart.offsetX * ratio;
-                if (this.constrainOffset) this.constrainOffset();
-            } else {
-                this.fitToView();
-            }
-
-            this.render();
-
-            requestAnimationFrame(() => {
-                if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
-                this.resize();
-                this._chartViewRestored = false;
-                this.fitToView();
-                this.render();
-            });
-            this._hidePanelLoadingOverlay();
-
-            if (window.panelManager && typeof window.panelManager.savePanelState === 'function') {
-                window.panelManager.savePanelState();
-            }
-
-            const mainOm = window.chart && window.chart.orderManager;
-            if (mainOm && typeof mainOm.syncPipFromActiveSymbol === 'function') {
-                mainOm.syncPipFromActiveSymbol();
-            }
-            if (mainOm && typeof mainOm.syncOrderVisualsToActiveChart === 'function') {
-                mainOm.syncOrderVisualsToActiveChart();
-            }
-
-            // Trigger symbol sync if enabled
-            if (window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.symbol) {
-                const sourcePanel = this.panel || (window.panelManager.panels || []).find(p => p.chartInstance === this);
-                if (sourcePanel) {
-                    window.panelManager.syncSymbol(sourcePanel, this.currentSymbol, targetFileId);
-                }
-            }
-
-            return true;
-        } catch (error) {
-            this._hidePanelLoadingOverlay();
-            console.error('Failed to load panel file data:', error);
-            if (typeof this.showNotification === 'function') {
-                this.showNotification('Failed to load symbol: ' + error.message);
-            }
-            return false;
-        }
-    }
-
     /**
      * Start replay mode for backtesting with date filtering
      */
@@ -1764,18 +935,36 @@ class Chart {
             return;
         }
         
+        console.log('🎬 Starting backtesting replay mode...');
+        console.log('📋 Session:', session.sessionName);
+        console.log('📁 File:', session.fileName);
         
         const startTime = new Date(session.startDate).getTime();
         const endTime = new Date(session.endDate).getTime();
         
+        console.log(`📅 Session range: ${new Date(startTime).toLocaleString()} to ${new Date(endTime).toLocaleString()}`);
+        console.log(`📊 Data loaded: ${this.rawData.length} candles`);
         if (this.rawData.length > 0) {
+            console.log(`📅 Data range: ${new Date(this.rawData[0].t).toLocaleString()} to ${new Date(this.rawData[this.rawData.length - 1].t).toLocaleString()}`);
         }
         
-        // parseCSVChunk already resampled this.data and recalculated indicators.
-        // Skip the redundant full-dataset pass here — enterReplayMode will set up
-        // the correct sliced data immediately after.
+        // Server already filtered data to session date range via start_ts/end_ts.
+        // Do NOT slice rawData here — that would break pan-loading which needs
+        // to append/prepend candles as the user scrolls through the full range.
+        // Just use the data as-is and let pan-loading fill in more as needed.
+        this.data = this.resampleData(this.rawData, this.currentTimeframe || '1m');
+        console.log(`📊 Using ${this.data.length} candles for ${this.currentTimeframe} timeframe (source: 1m raw)`);
+        
+        // Recalculate indicators
+        if (typeof this.recalculateIndicators === 'function') {
+            this.recalculateIndicators();
+            console.log('📈 Indicators recalculated');
+        }
+        
+        // Fit to view and render
         this.fitToView();
         this.render();
+        console.log('🎨 Chart rendered');
         
         // Auto-enter replay mode with first candle
         if (!this.replaySystem) {
@@ -1784,13 +973,25 @@ class Chart {
         }
 
         if (this.replaySystem) {
-            queueMicrotask(() => {
+            console.log('⏳ Entering replay mode in 1 second...');
+            setTimeout(() => {
+                console.log('🎮 Starting replay system...');
                 this.replaySystem.enterReplayMode();
+
                 this.loadTradingSessionStateIfNeeded();
+                
+                // Complete loader and hide it
                 this.updateLoaderProgress(100, 'Replay mode active!');
                 this.updateLoaderStep(3, 'completed');
-                requestAnimationFrame(() => this.hideLoader());
-            });
+                
+                setTimeout(() => {
+                    this.hideLoader();
+                }, 800);
+                
+                console.log('✅ Backtesting session started!');
+                console.log(`💰 Starting balance: $${session.startBalance}`);
+                console.log('🎯 Use the replay controls to navigate through time');
+            }, 1000);
         } else {
             console.error('❌ Replay system not available!');
             alert('Replay system not loaded. Please refresh the page.');
@@ -1799,417 +1000,41 @@ class Chart {
     }
 
     getActiveTradingSessionId() {
+        if (this.activeTradingSessionId) return String(this.activeTradingSessionId);
         try {
             const urlParams = new URLSearchParams(window.location.search);
             const fromUrl = urlParams.get('sessionId');
             if (fromUrl) return String(fromUrl);
         } catch (e) {}
-        if (this.activeTradingSessionId) return String(this.activeTradingSessionId);
         try {
-            const fromStorage = userStorage.getItem('active_trading_session_id');
+            const fromStorage = localStorage.getItem('active_trading_session_id');
             if (fromStorage) return String(fromStorage);
         } catch (e) {}
         return null;
-    }
-
-    /**
-     * localStorage key for drawings — must match DrawingToolsManager (session-scoped when a trading session is active).
-     * @param {string|null} fileIdOverride — persist under this dataset id (e.g. pair switch before currentFileId updates).
-     */
-    getDrawingsStorageKey(fileIdOverride = null) {
-        const fileId = fileIdOverride != null && String(fileIdOverride) !== ''
-            ? String(fileIdOverride)
-            : (this.currentFileId || 'default');
-        const sessionId = typeof this.getActiveTradingSessionId === 'function'
-            ? this.getActiveTradingSessionId()
-            : null;
-        if (sessionId) {
-            return `chart_drawings_s${sessionId}_${fileId}`;
-        }
-        return `chart_drawings_${fileId}`;
-    }
-
-    /** Session GET /state returned drawings before OHLC existed — applied after DrawingToolsManager finishes its first load. */
-    _applyPendingSessionDrawingsAfterManagerLoad() {
-        try {
-            const pending = this._pendingSessionDrawingsFromState;
-            if (!pending || !Array.isArray(pending) || pending.length === 0) return;
-            if (!this.drawingManager || typeof this.drawingManager.loadDrawingsFromData !== 'function') return;
-            if (!this.data || this.data.length === 0) return;
-            this._pendingSessionDrawingsFromState = null;
-            this.drawingManager.loadDrawingsFromData(pending);
-        } catch (e) {
-            console.warn('Failed to apply pending session drawings', e);
-        }
-    }
-
-    /**
-     * One-time read of pre-migration journal keys from localStorage; removes keys so data lives only in DB afterward.
-     * @returns {Array} parsed trades or []
-     */
-    _consumeLegacyJournalFromLocalStorage(sessionId) {
-        try {
-            const sid = String(sessionId);
-            const k = `tradeJournal_s${sid}`;
-            let raw = userStorage.getItem(k);
-            if (!raw) raw = userStorage.getItem('tradeJournal');
-            if (!raw) return [];
-            const arr = JSON.parse(raw);
-            if (!Array.isArray(arr) || arr.length === 0) return [];
-            userStorage.removeItem(k);
-            userStorage.removeItem(`${k}_perInstrumentStats`);
-            userStorage.removeItem(`${k}_byTicker`);
-            userStorage.removeItem('tradeJournal');
-            console.log(`📔 Migrated ${arr.length} journal row(s) from legacy browser storage → syncing to server`);
-            return arr;
-        } catch (e) {
-            console.warn('Legacy journal migration skipped:', e);
-            return [];
-        }
-    }
-
-    _tradingSessionLocalBackupKey(sessionId) {
-        return `talaria_bt_sess_v1_${String(sessionId)}`;
-    }
-
-    /** Last time PATCH /state reported success — used to prefer fresher local backup when API save fails. */
-    _sessionServerSyncStorageKey(sessionId) {
-        return `talaria_sess_srv_sync_${String(sessionId)}`;
-    }
-
-    _markSessionStateSyncedToServer(sessionId) {
-        try {
-            sessionStorage.setItem(this._sessionServerSyncStorageKey(sessionId), String(Date.now()));
-        } catch (e) {
-            /* ignore */
-        }
-    }
-
-    /** True if account_runtime carries at least one finite balance field (empty {} is not meaningful). */
-    _sessionStateHasMeaningfulAccountRuntime(ar) {
-        if (!ar || typeof ar !== 'object') return false;
-        const b = Number.parseFloat(ar.balance);
-        const e = Number.parseFloat(ar.equity);
-        const ib = Number.parseFloat(ar.initialBalance);
-        return Number.isFinite(b) || Number.isFinite(e) || Number.isFinite(ib);
-    }
-
-    /**
-     * True if state has open/pending orders or a real account snapshot.
-     * Avoid treating account_runtime: {} as authoritative — that caused server branch to wipe local backup.
-     */
-    _sessionStateHasRuntimeOrderState(state) {
-        if (!state || typeof state !== 'object') return false;
-        if (Array.isArray(state.pending_orders) && state.pending_orders.length > 0) return true;
-        if (Array.isArray(state.open_positions) && state.open_positions.length > 0) return true;
-        return this._sessionStateHasMeaningfulAccountRuntime(state.account_runtime);
-    }
-
-    _shouldPreferLocalBackupRuntime(sessionId, backupSnap) {
-        if (!backupSnap || !Number.isFinite(backupSnap.savedAt)) return false;
-        let lastSrv = NaN;
-        try {
-            lastSrv = parseInt(sessionStorage.getItem(this._sessionServerSyncStorageKey(sessionId)), 10);
-        } catch (e) {
-            lastSrv = NaN;
-        }
-        return !Number.isFinite(lastSrv) || backupSnap.savedAt > lastSrv;
-    }
-
-    _getOrderManagerForSessionPersistence() {
-        if (this.orderManager) return this.orderManager;
-        if (typeof window !== 'undefined' && window.chart && window.chart.orderManager) {
-            return window.chart.orderManager;
-        }
-        return null;
-    }
-
-    /**
-     * When PATCH /api/sessions/:id/state fails (Failed to fetch), persist journal + balance in
-     * localStorage so refresh still restores until nginx /api is fixed.
-     */
-    _writeTradingSessionLocalBackup() {
-        const sessionId = this.getActiveTradingSessionId();
-        const om = this._getOrderManagerForSessionPersistence();
-        if (!sessionId || !om) return;
-        try {
-            const safeClone = (arr) => {
-                try {
-                    return JSON.parse(JSON.stringify(Array.isArray(arr) ? arr : []));
-                } catch (e) {
-                    return [];
-                }
-            };
-            const payload = {
-                journal: safeClone(om.tradeJournal),
-                pending_orders: safeClone(om.pendingOrders),
-                open_positions: safeClone(om.openPositions),
-                account_runtime: {
-                    balance: om.balance,
-                    equity: om.equity,
-                    initialBalance: om.initialBalance,
-                    session_current_time:
-                        om.orderService && om.orderService.multiInstrumentSession
-                            ? om.orderService.multiInstrumentSession.current_time
-                            : undefined,
-                },
-                order_counters: {
-                    orderIdCounter: om.orderIdCounter,
-                    tradeGroupIdCounter: om.tradeGroupIdCounter,
-                },
-                savedAt: Date.now(),
-            };
-            if (typeof om.buildPerInstrumentStats === 'function') {
-                try {
-                    payload.per_instrument_stats = om.buildPerInstrumentStats();
-                } catch (e) {
-                    /* ignore */
-                }
-            }
-            if (typeof om.groupJournalByTicker === 'function') {
-                try {
-                    payload.journal_by_ticker = om.groupJournalByTicker();
-                } catch (e) {
-                    /* ignore */
-                }
-            }
-            userStorage.setItem(this._tradingSessionLocalBackupKey(sessionId), JSON.stringify(payload));
-        } catch (e) {
-            console.warn('local session backup write failed', e);
-        }
-    }
-
-    _readTradingSessionLocalBackup(sessionId) {
-        try {
-            const raw = userStorage.getItem(this._tradingSessionLocalBackupKey(sessionId));
-            if (!raw) return null;
-            return JSON.parse(raw);
-        } catch (e) {
-            return null;
-        }
-    }
-
-    /**
-     * GET /state failed or threw — restore journal + runtime from last local snapshot.
-     */
-    _applyTradingSessionFromLocalBackupOnly(sessionId) {
-        const backup = this._readTradingSessionLocalBackup(sessionId);
-        const om = this._getOrderManagerForSessionPersistence();
-        if (!backup || !om) return false;
-        this._restoredFromLocalBackupOnly = true;
-        this._sessionStateLoadedFor = String(sessionId);
-
-        const normalizeJournalTrade = (trade) => {
-            const ticker = String(trade?.ticker || trade?.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
-            return {
-                ...trade,
-                ticker,
-                symbol: trade?.symbol || ticker,
-            };
-        };
-        const tradeKey = (t) => {
-            if (!t || typeof t !== 'object') return null;
-            const id = t.tradeId != null ? t.tradeId : t.id;
-            return id != null ? String(id) : null;
-        };
-        const merged = new Map();
-        (Array.isArray(backup.journal) ? backup.journal : []).map(normalizeJournalTrade).forEach((t) => {
-            const k = tradeKey(t);
-            if (k) merged.set(k, t);
-        });
-        om.tradeJournal = Array.from(merged.values());
-        if (typeof om.normalizeJournalRowsInPlace === 'function') {
-            om.normalizeJournalRowsInPlace();
-        }
-        if (typeof om.restoreIdCountersFromJournal === 'function') {
-            om.restoreIdCountersFromJournal();
-        }
-
-        const backupHasRuntime = this._sessionStateHasRuntimeOrderState(backup);
-        if (backupHasRuntime && typeof om.restoreRuntimeOrderStateFromSession === 'function') {
-            om.restoreRuntimeOrderStateFromSession(backup);
-            if (typeof om._syncReplayHeaderStatsFromAccount === 'function') {
-                om._syncReplayHeaderStatsFromAccount();
-            }
-            const redrawLater = () => {
-                try {
-                    if (typeof om.redrawPreservedTradeMarkers === 'function') {
-                        om.redrawPreservedTradeMarkers();
-                    }
-                } catch (e) {
-                    /* ignore */
-                }
-            };
-            window.addEventListener('chartDataLoaded', redrawLater, { once: true });
-            setTimeout(redrawLater, 500);
-        } else if (typeof om.recomputeAccountFromJournal === 'function') {
-            om.recomputeAccountFromJournal();
-        }
-
-        if (typeof om.updateJournalTab === 'function') {
-            om.updateJournalTab();
-        }
-        if (!backupHasRuntime && typeof om.updatePositionsPanel === 'function') {
-            om.updatePositionsPanel();
-        }
-        if (typeof this.showNotification === 'function') {
-            this.showNotification(
-                'Restored trades from browser backup — API save failed. Configure nginx /api proxy so data syncs to the server.'
-            );
-        }
-        return true;
     }
 
     async loadTradingSessionStateIfNeeded() {
         const sessionId = this.getActiveTradingSessionId();
         if (!sessionId) return;
         if (this._sessionStateLoadedFor === String(sessionId)) return;
-        this._restoredFromLocalBackupOnly = false;
-
-        // Journal merge requires orderManager. Retry briefly so refresh doesn't mark the session
-        // "loaded" before OrderManager exists (race with initReplaySystem).
-        if (!this._getOrderManagerForSessionPersistence()) {
-            this._sessionStateLoadRetryCount = (this._sessionStateLoadRetryCount || 0) + 1;
-            if (this._sessionStateLoadRetryCount > 80) {
-                console.warn('⚠️ Trading session state: orderManager not ready after retries; open replay/backtest to restore journal');
-                return;
-            }
-            clearTimeout(this._sessionStateLoadRetryTimer);
-            this._sessionStateLoadRetryTimer = setTimeout(() => {
-                this._sessionStateLoadRetryTimer = null;
-                this.loadTradingSessionStateIfNeeded();
-            }, 50);
-            return;
-        }
-        this._sessionStateLoadRetryCount = 0;
 
         try {
             const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, { credentials: 'include' });
-            if (!res.ok) {
-                this._applyTradingSessionFromLocalBackupOnly(sessionId);
-                return;
-            }
+            if (!res.ok) return;
             const payload = await res.json();
             const state = payload && payload.state ? payload.state : null;
-            if (!state) {
-                this._applyTradingSessionFromLocalBackupOnly(sessionId);
-                return;
-            }
+            if (!state) return;
 
             this._sessionStateLoadedFor = String(sessionId);
 
-            // Only merge server drawings when non-empty. Session payloads often include `drawings: []`
-            // when the server never stored shapes — applying that would wipe shapes just loaded from localStorage.
-            if (
-                this.drawingManager &&
-                Array.isArray(state.drawings) &&
-                state.drawings.length > 0 &&
-                typeof this.drawingManager.loadDrawingsFromData === 'function'
-            ) {
-                if (this.data && this.data.length > 0) {
-                    this._pendingSessionDrawingsFromState = null;
-                    this.drawingManager.loadDrawingsFromData(state.drawings);
-                } else {
-                    this._pendingSessionDrawingsFromState = state.drawings;
-                }
-            } else if (Array.isArray(state.drawings) && state.drawings.length === 0) {
-                this._pendingSessionDrawingsFromState = null;
+            if (this.drawingManager && Array.isArray(state.drawings) && typeof this.drawingManager.loadDrawingsFromData === 'function') {
+                this.drawingManager.loadDrawingsFromData(state.drawings);
             }
 
-            // Always treat journal as an array (legacy/corrupt blobs may omit it or use a non-array).
-            if (this.orderManager) {
-                const normalizeJournalTrade = (trade) => {
-                    const ticker = String(trade?.ticker || trade?.symbol || 'UNKNOWN').replace('/', '').toUpperCase();
-                    return {
-                        ...trade,
-                        ticker,
-                        symbol: trade?.symbol || ticker
-                    };
-                };
-                const tradeKey = (t) => {
-                    if (!t || typeof t !== 'object') return null;
-                    const id = t.tradeId != null ? t.tradeId : t.id;
-                    return id != null ? String(id) : null;
-                };
-                const legacyJournal = this._consumeLegacyJournalFromLocalStorage(sessionId).map(normalizeJournalTrade);
-                const inMemory = Array.isArray(this.orderManager.tradeJournal)
-                    ? this.orderManager.tradeJournal.map(normalizeJournalTrade)
-                    : [];
-                const localJournal = [...inMemory, ...legacyJournal];
-                const rawJournal = state.journal;
-                const serverJournal = (Array.isArray(rawJournal) ? rawJournal : []).map(normalizeJournalTrade);
-                // Merge by trade id: in-memory + one-time legacy import + server (server wins field conflicts).
-                const merged = new Map();
-                localJournal.forEach((t) => {
-                    const k = tradeKey(t);
-                    if (k) merged.set(k, t);
-                });
-                serverJournal.forEach((t) => {
-                    const k = tradeKey(t);
-                    if (k) {
-                        const prev = merged.get(k);
-                        merged.set(k, prev ? { ...prev, ...t } : t);
-                    }
-                });
-                const backupSnap = this._readTradingSessionLocalBackup(sessionId);
-                const backupJournal = backupSnap && Array.isArray(backupSnap.journal) ? backupSnap.journal.map(normalizeJournalTrade) : [];
-                backupJournal.forEach((t) => {
-                    const k = tradeKey(t);
-                    if (k && !merged.has(k)) merged.set(k, t);
-                });
-                this.orderManager.tradeJournal = Array.from(merged.values());
-                if (typeof this.orderManager.normalizeJournalRowsInPlace === 'function') {
-                    this.orderManager.normalizeJournalRowsInPlace();
-                }
-                if (typeof this.orderManager.restoreIdCountersFromJournal === 'function') {
-                    this.orderManager.restoreIdCountersFromJournal();
-                }
-                if (typeof this.orderManager.persistJournal === 'function' && !this._restoredFromLocalBackupOnly) {
-                    this.orderManager.persistJournal();
-                }
-            }
-
-            // Restore open orders + account snapshot so refresh keeps in-progress trades and balance.
-            const backupSnapForRt = this._readTradingSessionLocalBackup(sessionId);
-            const hasRuntimeOrderState = this._sessionStateHasRuntimeOrderState(state);
-            const backupHasRuntime = backupSnapForRt && this._sessionStateHasRuntimeOrderState(backupSnapForRt);
-            const preferBackupRuntime = this._shouldPreferLocalBackupRuntime(sessionId, backupSnapForRt);
-            let runtimeSource = null;
-            if (preferBackupRuntime && backupHasRuntime) {
-                runtimeSource = backupSnapForRt;
-            } else if (hasRuntimeOrderState) {
-                runtimeSource = state;
-            } else if (backupHasRuntime) {
-                runtimeSource = backupSnapForRt;
-            }
-            if (runtimeSource && this.orderManager && typeof this.orderManager.restoreRuntimeOrderStateFromSession === 'function') {
-                this.orderManager.restoreRuntimeOrderStateFromSession(runtimeSource);
-                if (typeof this.orderManager._syncReplayHeaderStatsFromAccount === 'function') {
-                    this.orderManager._syncReplayHeaderStatsFromAccount();
-                }
-                // Session restore can run before OHLC is ready; redraw lines/markers after data exists.
-                const om = this.orderManager;
-                const redrawLater = () => {
-                    try {
-                        if (typeof om.redrawPreservedTradeMarkers === 'function') {
-                            om.redrawPreservedTradeMarkers();
-                        }
-                    } catch (e) {
-                        /* ignore */
-                    }
-                };
-                window.addEventListener('chartDataLoaded', redrawLater, { once: true });
-                setTimeout(redrawLater, 500);
-            } else if (this.orderManager && typeof this.orderManager.recomputeAccountFromJournal === 'function') {
-                this.orderManager.recomputeAccountFromJournal();
-            }
-
-            if (this.orderManager) {
+            if (this.orderManager && Array.isArray(state.journal)) {
+                this.orderManager.tradeJournal = state.journal;
                 if (typeof this.orderManager.updateJournalTab === 'function') {
                     this.orderManager.updateJournalTab();
-                }
-                if (!runtimeSource && typeof this.orderManager.updatePositionsPanel === 'function') {
-                    this.orderManager.updatePositionsPanel();
                 }
             }
 
@@ -2239,7 +1064,7 @@ class Chart {
                     this.priceOffset = v.priceOffset;
                 }
                 if (typeof v.priceZoom === 'number' && Number.isFinite(v.priceZoom)) {
-                    this.priceZoom = Math.max(this.minPriceZoom, v.priceZoom);
+                    this.priceZoom = Math.max(0.05, Math.min(20, v.priceZoom));
                 }
                 if (typeof v.autoScale === 'boolean') {
                     this.autoScale = v.autoScale;
@@ -2271,12 +1096,14 @@ class Chart {
                 // Validate restored view against real candles on next scale calculation
                 this._pendingChartViewSanityCheck = true;
                 this.scheduleRender();
+                console.log('📍 Restored chart view from session state');
             }
 
             // Restore chart settings (colors, type, etc.)
             if (state.chartSettings && typeof state.chartSettings === 'object') {
                 this.chartSettings = { ...this.chartSettings, ...state.chartSettings };
                 if (typeof this.applyChartSettings === 'function') this.applyChartSettings();
+                console.log('🎨 Restored chart settings from session state');
             }
 
             // Restore tool defaults (drawing colors/styles)
@@ -2286,6 +1113,7 @@ class Chart {
                         this.toolDefaults[tool] = { ...this.toolDefaults[tool], ...state.toolDefaults[tool] };
                     }
                 });
+                console.log('🖊️ Restored tool defaults from session state');
             }
 
             // Restore indicators
@@ -2296,12 +1124,8 @@ class Chart {
                     this._applyPersistedIndicators();
                 }
             }
-
-            // Server state was applied this load; next refresh compares backup.savedAt to this for stale-server vs fresh-backup.
-            this._markSessionStateSyncedToServer(sessionId);
         } catch (e) {
             console.warn('⚠️ Failed to load trading session state', e);
-            this._applyTradingSessionFromLocalBackupOnly(sessionId);
         }
     }
 
@@ -2325,37 +1149,16 @@ class Chart {
             }
         });
         if (typeof this.render === 'function') this.render();
-    }
-
-    /** Patches that must persist even if GET /state has not finished (race on first load). */
-    _sessionStatePatchIsJournalRelated(patch) {
-        if (!patch || typeof patch !== 'object') return false;
-        return (
-            patch.journal != null ||
-            patch.journal_by_ticker != null ||
-            patch.per_instrument_stats != null ||
-            patch.pending_orders != null ||
-            patch.open_positions != null ||
-            patch.account_runtime != null ||
-            patch.order_counters != null
-        );
-    }
-
-    /** Patches that may be queued before GET /state hydrates the client (journal, balance, drawings). */
-    _sessionStatePatchAllowedBeforeHydrate(patch) {
-        if (!patch || typeof patch !== 'object') return false;
-        if (this._sessionStatePatchIsJournalRelated(patch)) return true;
-        return Object.prototype.hasOwnProperty.call(patch, 'drawings');
+        console.log(`📈 Restored ${list.length} indicators from session state`);
     }
 
     scheduleSessionStateSave(patch) {
         const sessionId = this.getActiveTradingSessionId();
         if (!sessionId) return;
-        if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchAllowedBeforeHydrate(patch)) return;
+        if (this._sessionStateLoadedFor !== String(sessionId)) return;
         if (!patch || typeof patch !== 'object') return;
 
         this._pendingSessionStatePatch = Object.assign({}, this._pendingSessionStatePatch || {}, patch);
-        this._writeTradingSessionLocalBackup();
 
         if (this._sessionStateSaveTimer) return;
 
@@ -2365,120 +1168,24 @@ class Chart {
         }, 800);
     }
 
-    queueCriticalSessionStateSave(patch) {
-        const sessionId = this.getActiveTradingSessionId();
-        if (!sessionId) return;
-        if (!patch || typeof patch !== 'object') return;
-
-        this._pendingCriticalSessionStatePatch = Object.assign({}, this._pendingCriticalSessionStatePatch || {}, patch);
-        this._writeTradingSessionLocalBackup();
-        if (this._criticalSessionStateSaveTimer) {
-            clearTimeout(this._criticalSessionStateSaveTimer);
-            this._criticalSessionStateSaveTimer = null;
-        }
-        // Flush immediately so SL/TP/manual close journal hits the API in the same second (no setTimeout deferral).
-        void this.flushCriticalSessionStateSave();
-    }
-
-    async flushCriticalSessionStateSave() {
-        const sessionId = this.getActiveTradingSessionId();
-        if (!sessionId) return;
-        const patch = this._pendingCriticalSessionStatePatch;
-        if (!patch) return;
-        this._pendingCriticalSessionStatePatch = null;
-
-        try {
-            this._writeTradingSessionLocalBackup();
-            // Do NOT use fetch({ keepalive: true }) here — Chromium limits keepalive bodies to ~64KB.
-            // Journal payloads (base64 screenshots) exceed that and the request fails → nothing saved server-side.
-            const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify(patch)
-            });
-            if (!res.ok) {
-                const errText = await res.text().catch(() => '');
-                console.warn('⚠️ Critical session state PATCH failed', res.status, errText);
-                this._notifyJournalSaveFailed(res.status);
-                if (res.status === 403) {
-                    console.warn(
-                        'Journal not saved: API CSRF middleware blocked this Origin. GET /state still works, so trades disappear after refresh. ' +
-                        'Set env TRUSTED_ORIGINS to your site origin (e.g. http://31.97.192.82) or fix proxy Host / X-Forwarded-* headers.'
-                    );
-                }
-            } else {
-                this._markSessionStateSyncedToServer(sessionId);
-            }
-        } catch (e) {
-            let patchUrl = '';
-            try {
-                patchUrl = new URL(`/api/sessions/${encodeURIComponent(sessionId)}/state`, window.location.href).href;
-            } catch (_) {}
-            console.warn('⚠️ Failed to save critical trading session state', e, patchUrl ? `(PATCH ${patchUrl})` : '');
-            this._notifyJournalNetworkError();
-        }
-    }
-
-    /** Log only — no chart toast (operators use DevTools Network + server logs). */
-    _notifyJournalSaveFailed(status) {
-        let detail = `HTTP ${status}`;
-        if (status === 401) detail = 'HTTP 401 — sign in; open chart with ?sessionId= from your session.';
-        else if (status === 403) detail = 'HTTP 403 — set TRUSTED_ORIGINS / fix proxy Host & X-Forwarded-* headers.';
-        console.warn('⚠️ Session state not saved:', detail);
-    }
-
-    /** Log only — fetch threw before any HTTP status (proxy down, mixed content, wrong /api route). */
-    _notifyJournalNetworkError() {
-        console.warn(
-            '⚠️ Session state save failed (network). Check same-origin /api proxy to chart API and mixed HTTP/HTTPS.'
-        );
-    }
-
     async flushSessionStateSave() {
         const sessionId = this.getActiveTradingSessionId();
         if (!sessionId) return;
+        if (this._sessionStateLoadedFor !== String(sessionId)) return;
         const patch = this._pendingSessionStatePatch;
         if (!patch) return;
-        if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchAllowedBeforeHydrate(patch)) return;
-
-        const hadDrawings = !!(patch && patch.drawings != null);
         this._pendingSessionStatePatch = null;
 
         try {
-            this._writeTradingSessionLocalBackup();
-            const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
+            await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
+                keepalive: true,
                 body: JSON.stringify(patch)
             });
-            if (!res.ok) {
-                const errText = await res.text().catch(() => '');
-                console.warn('⚠️ Session state PATCH failed', res.status, errText);
-                this._notifyJournalSaveFailed(res.status);
-                if (res.status === 403) {
-                    console.warn(
-                        'Journal not saved: API CSRF middleware blocked this Origin. GET /state still works, so trades disappear after refresh. ' +
-                        'Set env TRUSTED_ORIGINS to your site origin (e.g. http://31.97.192.82) or fix proxy Host / X-Forwarded-* headers.'
-                    );
-                }
-            } else {
-                this._markSessionStateSyncedToServer(sessionId);
-            }
         } catch (e) {
-            let patchUrl = '';
-            try {
-                patchUrl = new URL(`/api/sessions/${encodeURIComponent(sessionId)}/state`, window.location.href).href;
-            } catch (_) {}
-            console.warn('⚠️ Failed to save trading session state', e, patchUrl ? `(PATCH ${patchUrl})` : '');
-            this._notifyJournalNetworkError();
-        } finally {
-            if (hadDrawings && this.drawingManager && typeof this.drawingManager._onSessionDrawingsSaveFinished === 'function') {
-                try {
-                    this.drawingManager._onSessionDrawingsSaveFinished();
-                } catch (_) { /* ignore */ }
-            }
+            console.warn('⚠️ Failed to save trading session state', e);
         }
     }
     
@@ -2488,6 +1195,7 @@ class Chart {
     initDrawingTools() {
         try {
             this.drawingManager = new DrawingToolsManager(this);
+            console.log('✅ Drawing Tools Manager created successfully');
             
             // Initialize Object Tree Manager
             if (typeof ObjectTreeManager !== 'undefined') {
@@ -2496,6 +1204,7 @@ class Chart {
                 // Store reference in drawing manager for callbacks
                 this.drawingManager.objectTreeManager = this.objectTreeManager;
                 
+                console.log('✅ Object Tree Manager created successfully');
             }
             
             // Initialize Favorites Manager
@@ -2505,9 +1214,11 @@ class Chart {
                 // Store reference in drawing manager for syncing active state
                 this.drawingManager.favoritesManager = this.favoritesManager;
                 
+                console.log('✅ Favorites Manager created successfully');
             }
         } catch (error) {
             console.error('❌ Failed to initialize Drawing Tools Manager:', error);
+            console.log('Drawing tools will not be available');
         }
     }
     
@@ -2521,6 +1232,7 @@ class Chart {
 
             if (typeof replaySystemCtor === 'function') {
                 this.replaySystem = new replaySystemCtor(this);
+                console.log('✅ Replay System initialized successfully');
                 
                 // Initialize Order Manager for backtesting
                 this.initOrderManager();
@@ -2534,7 +1246,6 @@ class Chart {
                     window.addEventListener('pagehide', () => {
                         try {
                             this.flushSessionStateSave();
-                            this.flushCriticalSessionStateSave();
                         } catch (e) {}
                     });
                 }
@@ -2543,6 +1254,7 @@ class Chart {
             }
         } catch (error) {
             console.error('❌ Failed to initialize Replay System:', error);
+            console.log('Replay mode will not be available');
         }
     }
     
@@ -2553,6 +1265,7 @@ class Chart {
         try {
             if (typeof OrderManager !== 'undefined' && this.replaySystem) {
                 this.orderManager = new OrderManager(this, this.replaySystem);
+                console.log('✅ Order Manager initialized successfully');
             }
         } catch (error) {
             console.error('❌ Failed to initialize Order Manager:', error);
@@ -2797,14 +1510,6 @@ class Chart {
                 return;
             }
 
-            const dm = this.drawingManager;
-            if (dm && dm.currentTool && e.button === 0 && e.ctrlKey) {
-                e.preventDefault();
-                if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
-                e.stopPropagation();
-                return;
-            }
-
             // Only show context menu if not on a drawing
             if (!this.tool && !this.findDrawingAtPoint(e.offsetX, e.offsetY)) {
                 e.preventDefault();
@@ -2813,19 +1518,20 @@ class Chart {
             }
         });
         
-        // Close menus on first outside press (capture phase) for smooth UX.
-        document.addEventListener('mousedown', (e) => {
-            if (!e.target.closest('.chart-context-menu') &&
-                !e.target.closest('.drawing-style-editor')) {
+        // Close menus when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.chart-context-menu') && 
+                !e.target.closest('canvas')) {
                 this.hideContextMenu();
             }
-        }, true);
+        });
     }
     
     saveSettings() {
         try {
             // 1. Save to localStorage immediately (instant, works offline)
-            userStorage.setItem('chartSettings', JSON.stringify(this.chartSettings));
+            localStorage.setItem('chartSettings', JSON.stringify(this.chartSettings));
+            console.log('✅ Chart settings saved to localStorage');
         } catch (error) {
             console.error('❌ Failed to save settings:', error);
         }
@@ -2883,6 +1589,7 @@ class Chart {
             
             if (response.ok) {
                 const result = await response.json();
+                console.log('✅ Chart settings synced to cloud');
             } else if (response.status === 401) {
                 console.warn('⚠️ Not authenticated - settings saved locally only');
             } else {
@@ -2940,58 +1647,39 @@ class Chart {
     }
     
     async loadSavedSettings() {
-        // Restore active template selections from dedicated key (fastest, most reliable path)
+        // Try loading from API first for cross-device sync
+        const apiSettings = await this.loadSettingsFromAPI();
+        
         try {
-            const _tplSel = JSON.parse(userStorage.getItem('chart_active_tpl') || 'null');
-            if (_tplSel) {
-                if (_tplSel.full)      { this._lastTemplateSelected   = _tplSel.full;      this.chartSettings.activeFullTemplate       = _tplSel.full; }
-                if (_tplSel.chartOnly) { this._lastChartOnlyTemplate  = _tplSel.chartOnly; this.chartSettings.activeChartOnlyTemplate  = _tplSel.chartOnly; }
-                if (_tplSel.panelOnly) { this._lastPanelOnlyTemplate  = _tplSel.panelOnly; this.chartSettings.activePanelOnlyTemplate  = _tplSel.panelOnly; }
-            }
-        } catch(e) {}
-
-        // Apply localStorage settings immediately (non-blocking) so the chart
-        // renders on the first frame without waiting for the API network call.
-        try {
-            const saved = userStorage.getItem('chartSettings');
-            if (saved) {
-                const settings = JSON.parse(saved);
-                this.chartSettings = { ...this.chartSettings, ...settings };
-                // Restore persisted template selections so dropdowns show correct state on reload
-                if (this.chartSettings.activeFullTemplate) this._lastTemplateSelected = this.chartSettings.activeFullTemplate;
-                if (this.chartSettings.activeChartOnlyTemplate) this._lastChartOnlyTemplate = this.chartSettings.activeChartOnlyTemplate;
-                if (this.chartSettings.activePanelOnlyTemplate) this._lastPanelOnlyTemplate = this.chartSettings.activePanelOnlyTemplate;
+            if (apiSettings && Object.keys(apiSettings).length > 0) {
+                // Use API data if available
+                this.chartSettings = { ...this.chartSettings, ...apiSettings };
+                console.log('📥 Chart settings loaded from cloud');
             } else {
-                // Only apply dark theme defaults if no saved settings exist
-                this.chartSettings.backgroundColor = '#050028';
-                this.chartSettings.scaleLinesColor = '#050028';
-                this.chartSettings.scaleTextColor = '#ffffff';
-                this.chartSettings.gridColor = 'rgba(42, 46, 57, 0.6)';
-                this.chartSettings.cursorLabelTextColor = '#d1d4dc';
-                this.chartSettings.cursorLabelBgColor = '#363a45';
-                this.chartSettings.symbolTextColor = '#d1d4dc';
-            }
-            // Apply immediately so first render uses correct colors
-            this._applyChartSettingsImmediate(null, null);
-        } catch (e) {
-            console.error('Failed to load local settings:', e);
-        }
-
-        // Sync from API in the background — does NOT block the initial render
-        this.loadSettingsFromAPI().then((apiSettings) => {
-            try {
-                if (apiSettings && Object.keys(apiSettings).length > 0) {
-                    this.chartSettings = { ...this.chartSettings, ...apiSettings };
-                    // Restore persisted template selections from cloud settings
-                    if (this.chartSettings.activeFullTemplate) this._lastTemplateSelected = this.chartSettings.activeFullTemplate;
-                    if (this.chartSettings.activeChartOnlyTemplate) this._lastChartOnlyTemplate = this.chartSettings.activeChartOnlyTemplate;
-                    if (this.chartSettings.activePanelOnlyTemplate) this._lastPanelOnlyTemplate = this.chartSettings.activePanelOnlyTemplate;
-                    this._applyChartSettingsImmediate(null, null);
+                // Fall back to localStorage
+                const saved = localStorage.getItem('chartSettings');
+                if (saved) {
+                    const settings = JSON.parse(saved);
+                    // Merge saved settings with defaults
+                    this.chartSettings = { ...this.chartSettings, ...settings };
+                    console.log('📥 Chart settings loaded from localStorage');
+                } else {
+                    // Only apply dark theme defaults if no saved settings exist
+                    this.chartSettings.backgroundColor = '#050028';
+                    this.chartSettings.scaleLinesColor = '#050028';
+                    this.chartSettings.scaleTextColor = '#ffffff';
+                    this.chartSettings.gridColor = 'rgba(42, 46, 57, 0.6)';
+                    this.chartSettings.cursorLabelTextColor = '#d1d4dc';
+                    this.chartSettings.cursorLabelBgColor = '#363a45';
+                    this.chartSettings.symbolTextColor = '#d1d4dc';
                 }
-            } catch (e) {
-                console.error('Failed to apply cloud settings:', e);
             }
-        }).catch(() => {});
+            
+            // Always apply chart settings (even with defaults)
+            this.applyChartSettings();
+        } catch (e) {
+            console.error('Failed to load settings:', e);
+        }
     }
     
     getChartViewSnapshot() {
@@ -3013,14 +1701,16 @@ class Chart {
 
     loadToolDefaults() {
         try {
-            const saved = userStorage.getItem('toolDefaults');
+            const saved = localStorage.getItem('toolDefaults');
             if (saved) {
                 const savedDefaults = JSON.parse(saved);
+                // Merge saved defaults with built-in defaults
                 Object.keys(savedDefaults).forEach(tool => {
                     if (this.toolDefaults[tool]) {
                         this.toolDefaults[tool] = { ...this.toolDefaults[tool], ...savedDefaults[tool] };
                     }
                 });
+                console.log('✅ Tool defaults loaded from localStorage');
             }
         } catch (e) {
             console.error('Failed to load tool defaults:', e);
@@ -3029,7 +1719,8 @@ class Chart {
     
     saveToolDefaults() {
         try {
-            userStorage.setItem('toolDefaults', JSON.stringify(this.toolDefaults));
+            localStorage.setItem('toolDefaults', JSON.stringify(this.toolDefaults));
+            console.log('💾 Tool defaults saved');
         } catch (e) {
             console.error('Failed to save tool defaults:', e);
         }
@@ -3038,19 +1729,18 @@ class Chart {
     
     loadDrawingsFromStorage() {
         try {
-            const key = this.getDrawingsStorageKey();
-            let saved = userStorage.getItem(key);
-            if (!saved && key.includes('_s')) {
-                const legacyKey = `chart_drawings_${this.currentFileId || 'default'}`;
-                saved = userStorage.getItem(legacyKey);
-            }
+            const saved = localStorage.getItem(`chart_drawings_${this.currentFileId || 'default'}`);
             if (saved) {
                 this.drawings = JSON.parse(saved);
+                console.log(`✅ Loaded ${this.drawings.length} drawings from localStorage`);
+                console.log('📋 Drawing colors:', this.drawings.map((d, i) => `${i}: type=${d.type}, color=${d.color}`));
                 
                 // Only redraw if scales are ready, otherwise wait for next render
                 if (this.xScale && this.yScale) {
+                    console.log('✓ Scales ready, redrawing loaded drawings');
                     this.redrawDrawings();
                 } else {
+                    console.log('⏳ Scales not ready, will draw on next render');
                     this.scheduleRender();
                 }
             }
@@ -3097,42 +1787,39 @@ class Chart {
     }
     
     showNotification(message) {
-        const el = document.createElement('div');
-        el.className = 'chart-notification';
-        el.style.cssText = [
-            'position:fixed',
-            'bottom:80px',
-            'left:50%',
-            'transform:translateX(-50%) translateY(6px)',
-            'padding:6px 14px',
-            'border-radius:20px',
-            'font-size:11px',
-            'font-weight:500',
-            'color:rgba(255,255,255,0.82)',
-            'background:rgba(20,20,35,0.82)',
-            'border:1px solid rgba(255,255,255,0.10)',
-            'backdrop-filter:blur(10px)',
-            '-webkit-backdrop-filter:blur(10px)',
-            'z-index:2147483647',
-            'opacity:0',
-            'transition:opacity 0.18s ease,transform 0.18s ease',
-            'pointer-events:none',
-            'max-width:280px',
-            'white-space:nowrap',
-            'overflow:hidden',
-            'text-overflow:ellipsis'
-        ].join(';');
-        el.textContent = message;
-        document.body.appendChild(el);
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-            el.style.opacity = '1';
-            el.style.transform = 'translateX(-50%) translateY(0)';
-        }));
+        // Create notification element
+        const notification = d3.select('body').append('div')
+            .attr('class', 'chart-notification')
+            .style('position', 'fixed')
+            .style('top', '20px')
+            .style('right', '20px')
+            .style('background', 'rgba(41, 98, 255, 0.95)')
+            .style('color', 'white')
+            .style('padding', '12px 20px')
+            .style('border-radius', '6px')
+            .style('font-size', '14px')
+            .style('font-weight', '600')
+            .style('box-shadow', '0 4px 12px rgba(0, 0, 0, 0.3)')
+            .style('z-index', '3000')
+            .style('opacity', '0')
+            .style('transform', 'translateY(-10px)')
+            .style('transition', 'all 0.3s ease')
+            .text(message);
+        
+        // Animate in
         setTimeout(() => {
-            el.style.opacity = '0';
-            el.style.transform = 'translateX(-50%) translateY(6px)';
-            setTimeout(() => el.remove(), 200);
-        }, 1800);
+            notification
+                .style('opacity', '1')
+                .style('transform', 'translateY(0)');
+        }, 10);
+        
+        // Remove after 3 seconds
+        setTimeout(() => {
+            notification
+                .style('opacity', '0')
+                .style('transform', 'translateY(-10px)');
+            setTimeout(() => notification.remove(), 300);
+        }, 3000);
     }
     
     ensureClearObjectsMenuStyles() {
@@ -3442,14 +2129,14 @@ class Chart {
         }
     }
 
-    clearOnlyDrawings({ confirmPrompt = false, skipBroadcast = false } = {}) {
+    clearOnlyDrawings({ confirmPrompt = false } = {}) {
         let cleared = false;
         if (this.drawingManager && typeof this.drawingManager.clearDrawings === 'function') {
-            cleared = this.drawingManager.clearDrawings({ confirmPrompt, skipBroadcast });
+            cleared = this.drawingManager.clearDrawings({ confirmPrompt });
         } else if (Array.isArray(this.drawings) && this.drawings.length > 0) {
             this.svg.selectAll('*').remove();
             this.drawings = [];
-            userStorage.setItem(this.getDrawingsStorageKey(), JSON.stringify([]));
+            localStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify([]));
             this.scheduleRender();
             cleared = true;
         }
@@ -3488,11 +2175,12 @@ class Chart {
             this.updateOHLCIndicators();
         }
 
+        console.log('🗑️ All indicators cleared (fallback)');
         return true;
     }
 
-    clearDrawingsAndIndicators({ confirmPrompt = false, skipBroadcast = false } = {}) {
-        const drawingsCleared = this.clearOnlyDrawings({ confirmPrompt, skipBroadcast });
+    clearDrawingsAndIndicators({ confirmPrompt = false } = {}) {
+        const drawingsCleared = this.clearOnlyDrawings({ confirmPrompt });
         const indicatorsCleared = this.clearOnlyIndicators({ confirmPrompt });
         return { drawingsCleared, indicatorsCleared };
     }
@@ -4069,8 +2757,10 @@ class Chart {
         // Title
         const titleRow = this.addSettingRow(section);
         const { input: titleInput } = this.addCheckbox(titleRow, 'Title', this.chartSettings.symbolTitle);
+        console.log('Title checkbox created, initial value:', this.chartSettings.symbolTitle);
         titleInput.on('change', () => {
             const newValue = titleInput.property('checked');
+            console.log('Title checkbox changed to:', newValue);
             this.chartSettings.symbolTitle = newValue;
             this.scheduleRender();
         });
@@ -4171,11 +2861,6 @@ class Chart {
         if (typeof this.chartSettings.showCandleBody === 'undefined') this.chartSettings.showCandleBody = true;
         if (typeof this.chartSettings.showCandleBorders === 'undefined') this.chartSettings.showCandleBorders = true;
         if (typeof this.chartSettings.showCandleWick === 'undefined') this.chartSettings.showCandleWick = true;
-        if (typeof this.chartSettings.unifiedBarColorEnabled === 'undefined') this.chartSettings.unifiedBarColorEnabled = false;
-        if (typeof this.chartSettings.unifiedBarColor === 'undefined') this.chartSettings.unifiedBarColor = this.chartSettings.bodyUpColor || '#089981';
-        if (typeof this.chartSettings.settingsPanelAccentColor === 'undefined') this.chartSettings.settingsPanelAccentColor = '#2962ff';
-        if (typeof this.chartSettings.settingsPanelBgColor === 'undefined') this.chartSettings.settingsPanelBgColor = '#050028';
-        if (typeof this.chartSettings.settingsPanelSidebarBgColor === 'undefined') this.chartSettings.settingsPanelSidebarBgColor = this.chartSettings.settingsPanelBgColor || '#050028';
         if (typeof this.chartSettings.sessionType === 'undefined') this.chartSettings.sessionType = 'Extended trading hours';
         if (typeof this.chartSettings.precision === 'undefined') this.chartSettings.precision = 'Default';
         if (typeof this.chartSettings.timezone === 'undefined') this.chartSettings.timezone = '(UTC-5) Toronto';
@@ -4259,17 +2944,8 @@ class Chart {
             candles.forEach((c, i) => {
                 const x = 18 + i * 21;
                 const bullish = c.c < c.o;
-                const useUnifiedBarColor = !!colors.unifiedBarColorEnabled;
-                const unifiedBarColor = colors.unifiedBarColor || colors.bodyUpColor || '#26a69a';
-                const bodyColor = useUnifiedBarColor
-                    ? unifiedBarColor
-                    : (bullish ? (colors.bodyUpColor || '#26a69a') : (colors.bodyDownColor || '#ef5350'));
-                const wickColor = useUnifiedBarColor
-                    ? unifiedBarColor
-                    : (bullish ? (colors.wickUpColor || '#26a69a') : (colors.wickDownColor || '#ef5350'));
-                const borderColor = useUnifiedBarColor
-                    ? unifiedBarColor
-                    : (bullish ? (colors.borderUpColor || bodyColor) : (colors.borderDownColor || bodyColor));
+                const bodyColor = bullish ? (colors.bodyUpColor || '#26a69a') : (colors.bodyDownColor || '#ef5350');
+                const wickColor = bullish ? (colors.wickUpColor || '#26a69a') : (colors.wickDownColor || '#ef5350');
                 
                 // Wick
                 previewCtx.strokeStyle = wickColor;
@@ -4286,7 +2962,7 @@ class Chart {
                 previewCtx.fillRect(x - 6, bodyTop, 12, bodyHeight);
                 
                 // Border
-                previewCtx.strokeStyle = borderColor;
+                previewCtx.strokeStyle = bullish ? (colors.borderUpColor || bodyColor) : (colors.borderDownColor || bodyColor);
                 previewCtx.strokeRect(x - 6, bodyTop, 12, bodyHeight);
             });
             
@@ -4334,8 +3010,10 @@ class Chart {
         // Body
         const bodyRow = this.addSettingRow(section);
         const { input: bodyInput } = this.addCheckbox(bodyRow, 'Body', this.chartSettings.showCandleBody);
+        console.log('Body checkbox created, initial value:', this.chartSettings.showCandleBody);
         bodyInput.on('change', () => {
             const newValue = bodyInput.property('checked');
+            console.log('Body checkbox changed to:', newValue);
             this.chartSettings.showCandleBody = newValue;
             this.scheduleRender();
         });
@@ -4357,94 +3035,16 @@ class Chart {
         // Wick
         const wickRow = this.addSettingRow(section);
         const { input: wickInput } = this.addCheckbox(wickRow, 'Wick', this.chartSettings.showCandleWick);
+        console.log('Wick checkbox created, initial value:', this.chartSettings.showCandleWick);
         wickInput.on('change', () => {
             const newValue = wickInput.property('checked');
+            console.log('Wick checkbox changed to:', newValue);
             this.chartSettings.showCandleWick = newValue;
             this.scheduleRender();
         });
         const wickColors = wickRow.append('div').style('display', 'flex').style('gap', '8px');
         this.addColorPreview(wickColors, this.chartSettings.wickUpColor, 'wickUpColor');
         this.addColorPreview(wickColors, this.chartSettings.wickDownColor, 'wickDownColor');
-
-        // Unified Bar Color
-        const unifiedColorRow = this.addSettingRow(section);
-        const { input: unifiedColorInput } = this.addCheckbox(unifiedColorRow, 'Unified bar color', this.chartSettings.unifiedBarColorEnabled);
-        unifiedColorInput.on('change', () => {
-            this.chartSettings.unifiedBarColorEnabled = unifiedColorInput.property('checked');
-            this.applyChartSettings('unifiedBarColorEnabled', this.chartSettings.unifiedBarColorEnabled);
-            if (typeof this._updateThemePreview === 'function') this._updateThemePreview(this.chartSettings);
-        });
-        this.addColorPreview(unifiedColorRow, this.chartSettings.unifiedBarColor, 'unifiedBarColor');
-
-        // SETTINGS PANEL THEME section
-        section.append('h3')
-            .style('margin', '32px 0 20px 0')
-            .style('font-size', '11px')
-            .style('font-weight', '600')
-            .style('color', '#888')
-            .style('text-transform', 'uppercase')
-            .style('letter-spacing', '0.5px')
-            .text('SETTINGS PANEL THEME');
-
-        const panelAccentRow = this.addSettingRow(section);
-        panelAccentRow.append('span')
-            .style('font-size', '15px')
-            .style('color', '#131722')
-            .style('min-width', '150px')
-            .text('Accent');
-        const panelAccentPreview = this.addColorPreview(panelAccentRow, this.chartSettings.settingsPanelAccentColor, 'settingsPanelAccentColor');
-
-        const panelBgRow = this.addSettingRow(section);
-        panelBgRow.append('span')
-            .style('font-size', '15px')
-            .style('color', '#131722')
-            .style('min-width', '150px')
-            .text('Panel background');
-        const panelBgPreview = this.addColorPreview(panelBgRow, this.chartSettings.settingsPanelBgColor, 'settingsPanelBgColor');
-
-        const panelThemeActionsRow = section.append('div')
-            .style('display', 'flex')
-            .style('justify-content', 'flex-end')
-            .style('padding', '8px 0 0 0');
-
-        panelThemeActionsRow.append('button')
-            .attr('type', 'button')
-            .style('padding', '7px 12px')
-            .style('border', '1px solid #d0d5df')
-            .style('border-radius', '6px')
-            .style('background', '#ffffff')
-            .style('color', '#131722')
-            .style('font-size', '12px')
-            .style('font-weight', '600')
-            .style('cursor', 'default')
-            .style('transition', 'all 0.15s ease')
-            .text('Reset theme')
-            .on('mouseenter', function() {
-                d3.select(this).style('border-color', '#2962ff').style('color', '#2962ff');
-            })
-            .on('mouseleave', function() {
-                d3.select(this).style('border-color', '#d0d5df').style('color', '#131722');
-            })
-            .on('click', () => {
-                const defaultAccent = (this._defaultChartSettings && this._defaultChartSettings.settingsPanelAccentColor)
-                    || '#2962ff';
-                const defaultBg = (this._defaultChartSettings && this._defaultChartSettings.settingsPanelBgColor)
-                    || '#050028';
-
-                this.chartSettings.settingsPanelAccentColor = defaultAccent;
-                this.chartSettings.settingsPanelBgColor = defaultBg;
-                this.chartSettings.settingsPanelSidebarBgColor = defaultBg;
-
-                if (panelAccentPreview) panelAccentPreview.style('background', defaultAccent);
-                if (panelBgPreview) panelBgPreview.style('background', defaultBg);
-
-                this.applyChartSettings('settingsPanelAccentColor', defaultAccent);
-                this.applyChartSettings('settingsPanelBgColor', defaultBg);
-
-                if (typeof this._updateThemePreview === 'function' && this._themePreviewChartSettings) {
-                    this._updateThemePreview(this._themePreviewChartSettings);
-                }
-            });
         
         // DATA MODIFICATION section
         section.append('h3')
@@ -4476,11 +3076,9 @@ class Chart {
             .style('color', '#131722')
             .style('min-width', '150px')
             .text('Precision');
-        const precisionDropdown = this.addDropdown(precisionRow, ['Default', '0', '1', '2', '3', '4', '5'], this.chartSettings.pricePrecision || 'default');
+        const precisionDropdown = this.addDropdown(precisionRow, ['Default', '0', '1', '2', '3', '4', '5'], this.chartSettings.precision);
         precisionDropdown.on('change', () => {
-            const val = precisionDropdown.property('value');
-            this.chartSettings.precision = val;
-            this.chartSettings.pricePrecision = val === 'Default' ? 'default' : val;
+            this.chartSettings.precision = precisionDropdown.property('value');
             this.scheduleRender();
         });
         
@@ -4897,24 +3495,8 @@ class Chart {
                     self.chartSettings[setting] = newColor;
                     // Apply to target chart (panel that opened settings)
                     self.applyChartSettings(setting, newColor);
-                    // Manual override: mark all template slots as Custom (user changed colors)
-                    self._pendingTemplate = null;
-                    self._lastTemplateSelected = null;
-                    self._lastChartOnlyTemplate = null;
-                    self._lastPanelOnlyTemplate = null;
-                    self.chartSettings.activeFullTemplate = null;
-                    self.chartSettings.activeChartOnlyTemplate = null;
-                    self.chartSettings.activePanelOnlyTemplate = null;
-                    try { userStorage.removeItem('chart_active_tpl'); } catch(e) {}
-                    d3.selectAll('.template-selector').property('value', '');
-                    if (typeof self.saveSettings === 'function') self.saveSettings();
-                    if (typeof self._updateThemePreview === 'function' && self._themePreviewChartSettings) {
-                        self._updateThemePreview(self._themePreviewChartSettings);
-                    }
                 });
             });
-
-        return preview;
     }
     
     showColorPalettePopup(previewElement, currentColor, onChange) {
@@ -5361,14 +3943,6 @@ class Chart {
                     colorPreview.style('background', newColor);
                     this.chartSettings[setting] = newColor;
                     this.applyChartSettings(setting, newColor);
-                    // Manual color change — mark as Custom
-                    this._lastTemplateSelected = null;
-                    this._lastChartOnlyTemplate = null;
-                    this._lastPanelOnlyTemplate = null;
-                    this.chartSettings.activeFullTemplate = null;
-                    this.chartSettings.activeChartOnlyTemplate = null;
-                    this.chartSettings.activePanelOnlyTemplate = null;
-                    try { userStorage.removeItem('chart_active_tpl'); } catch(e) {}
                 });
             });
         }
@@ -5495,10 +4069,7 @@ class Chart {
     hideSettingsMenu() {
         // Reset pending template
         this._pendingTemplate = null;
-        if (typeof window !== 'undefined' && window.chart) {
-            window.chart._settingsSourceChart = null;
-        }
-
+        
         // For panels, hide the main chart's settings modal
         if (this.isPanel && window.chart && window.chart.settingsModal) {
             window.chart.settingsModal.style('display', 'none');
@@ -5508,218 +4079,19 @@ class Chart {
     }
     
     applyChartSettings(settingKey = null, settingValue = null) {
-        // Debounce full (no-arg) calls so rapid startup calls don't each trigger
-        // 20+ CSS variable sets + querySelectorAll + scheduleRender.
-        if (settingKey === null && settingValue === null) {
-            if (this._applyChartSettingsPending) return;
-            this._applyChartSettingsPending = true;
-            const self = this;
-            requestAnimationFrame(function() {
-                self._applyChartSettingsPending = false;
-                self._applyChartSettingsImmediate(null, null);
-            });
-            return;
-        }
-        this._applyChartSettingsImmediate(settingKey, settingValue);
-    }
-
-    _applyChartSettingsImmediate(settingKey = null, settingValue = null) {
         // Determine which chart to apply settings to
         const targetChart = this._settingsSourceChart || this;
-        // In multi-panel mode the main chart is still `window.chart` but has isPanel=true; only that
-        // instance must drive global toolbar / body / chart-container chrome — never secondary panels.
-        const isMainAppChart = typeof window !== 'undefined' && window.chart && targetChart === window.chart;
-
-        const toRgbChannels = (color, fallback = '41, 98, 255') => {
-            if (!color) return fallback;
-            const value = String(color).trim();
-
-            const rgbMatch = value.match(/rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
-            if (rgbMatch) {
-                return `${rgbMatch[1]}, ${rgbMatch[2]}, ${rgbMatch[3]}`;
-            }
-
-            const hex = value.startsWith('#') ? value.slice(1) : value;
-            if (/^[0-9a-f]{3}$/i.test(hex)) {
-                const r = parseInt(hex[0] + hex[0], 16);
-                const g = parseInt(hex[1] + hex[1], 16);
-                const b = parseInt(hex[2] + hex[2], 16);
-                return `${r}, ${g}, ${b}`;
-            }
-            if (/^[0-9a-f]{6}$/i.test(hex)) {
-                const r = parseInt(hex.slice(0, 2), 16);
-                const g = parseInt(hex.slice(2, 4), 16);
-                const b = parseInt(hex.slice(4, 6), 16);
-                return `${r}, ${g}, ${b}`;
-            }
-
-            return fallback;
-        };
-
-        const toRgbArray = (color, fallback = [41, 98, 255]) => {
-            if (!color) return fallback.slice();
-            const value = String(color).trim();
-
-            const rgbMatch = value.match(/rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
-            if (rgbMatch) {
-                return [
-                    Math.max(0, Math.min(255, parseInt(rgbMatch[1], 10))),
-                    Math.max(0, Math.min(255, parseInt(rgbMatch[2], 10))),
-                    Math.max(0, Math.min(255, parseInt(rgbMatch[3], 10)))
-                ];
-            }
-
-            const hex = value.startsWith('#') ? value.slice(1) : value;
-            if (/^[0-9a-f]{3}$/i.test(hex)) {
-                return [
-                    parseInt(hex[0] + hex[0], 16),
-                    parseInt(hex[1] + hex[1], 16),
-                    parseInt(hex[2] + hex[2], 16)
-                ];
-            }
-            if (/^[0-9a-f]{6}$/i.test(hex)) {
-                return [
-                    parseInt(hex.slice(0, 2), 16),
-                    parseInt(hex.slice(2, 4), 16),
-                    parseInt(hex.slice(4, 6), 16)
-                ];
-            }
-
-            return fallback.slice();
-        };
-
-        const mixRgb = (from, to, weight = 0.5) => {
-            const w = Math.max(0, Math.min(1, weight));
-            return [0, 1, 2].map((i) => Math.round(from[i] * (1 - w) + to[i] * w));
-        };
-
-        const rgbToCss = (rgb) => `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
-        const rgbaToCss = (rgb, alpha = 1) => `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
         
         // If a specific setting was changed, only apply that to the target chart
         if (settingKey && settingValue !== null && targetChart !== this) {
             targetChart.chartSettings[settingKey] = settingValue;
         }
-
-        // Unified chrome background: panel + sidebar share one color input
-        if (targetChart.chartSettings) {
-            if (settingKey === 'settingsPanelSidebarBgColor' && settingValue !== null) {
-                targetChart.chartSettings.settingsPanelBgColor = settingValue;
-            } else if (settingKey === 'settingsPanelBgColor' && settingValue !== null) {
-                targetChart.chartSettings.settingsPanelSidebarBgColor = settingValue;
-            }
-
-            const unifiedUiBg = targetChart.chartSettings.settingsPanelBgColor
-                || targetChart.chartSettings.settingsPanelSidebarBgColor
-                || '#050028';
-
-            targetChart.chartSettings.settingsPanelBgColor = unifiedUiBg;
-            targetChart.chartSettings.settingsPanelSidebarBgColor = unifiedUiBg;
-
-            if (this.chartSettings && this.chartSettings !== targetChart.chartSettings) {
-                this.chartSettings.settingsPanelBgColor = unifiedUiBg;
-                this.chartSettings.settingsPanelSidebarBgColor = unifiedUiBg;
-            }
-        }
-
-        // Apply settings panel theme CSS variables (shared UI)
-        const root = document.documentElement;
-        if (root && targetChart.chartSettings) {
-            const accentColor = targetChart.chartSettings.settingsPanelAccentColor || '#2962ff';
-            const panelBg = targetChart.chartSettings.settingsPanelBgColor || '#050028';
-            const sidebarBg = panelBg;
-            const panelRgb = toRgbArray(panelBg, [5, 0, 40]);
-            const sidebarRgb = toRgbArray(sidebarBg, [4, 0, 31]);
-
-            // Detect light panel background (luminance > 160)
-            const panelLuminance = panelRgb[0] * 0.299 + panelRgb[1] * 0.587 + panelRgb[2] * 0.114;
-            const isLightPanel = panelLuminance > 160;
-
-            let chromeBg, surfaceBg, sidebarUiBg, borderColorRgb;
-            if (isLightPanel) {
-                // Light theme: mirror dark layering — chrome / surface / sidebar all near-white, subtle neutral borders
-                const W = [255, 255, 255];
-                chromeBg = mixRgb(panelRgb, W, 0.97);
-                surfaceBg = W.slice();
-                sidebarUiBg = mixRgb(panelRgb, W, 0.98);
-                borderColorRgb = mixRgb(W, [15, 23, 42], 0.14);
-            } else {
-                const deepUiBase = [8, 12, 28];
-                chromeBg = mixRgb(panelRgb, deepUiBase, 0.72);
-                surfaceBg = mixRgb(panelRgb, deepUiBase, 0.58);
-                sidebarUiBg = mixRgb(sidebarRgb, deepUiBase, 0.62);
-                borderColorRgb = mixRgb(surfaceBg, [162, 176, 216], 0.24);
-            }
-
-            // Secondary accent + text colors
-            const secondaryColor = targetChart.chartSettings.settingsPanelSecondaryColor || '#7b61ff';
-            const textColor = targetChart.chartSettings.settingsPanelTextColor || (isLightPanel ? '#000000' : '#e0e3ea');
-            const secondaryRgb = toRgbArray(secondaryColor, [123, 97, 255]);
-            const textRgb = toRgbArray(textColor, [224, 227, 234]);
-
-            // Derive muted text (mix text toward panel bg)
-            // Light: dark gray from primary text; dark: soften toward panel.
-            const textMutedRgb = isLightPanel
-                ? mixRgb(textRgb, [72, 72, 78], 0.42)
-                : mixRgb(textRgb, panelRgb, 0.52);
-            // Input/button bg: slightly darker for light themes, slightly lighter for dark themes
-            const inputBgRgb = isLightPanel
-                ? mixRgb(surfaceBg, [0, 0, 0], 0.06)
-                : mixRgb(surfaceBg, [255, 255, 255], 0.06);
-            const inputBorderRgb = isLightPanel
-                ? mixRgb(surfaceBg, [0, 0, 0], 0.20)
-                : mixRgb(surfaceBg, [255, 255, 255], 0.14);
-            const btnBorderRgb = isLightPanel
-                ? mixRgb(surfaceBg, [0, 0, 0], 0.25)
-                : mixRgb(surfaceBg, [255, 255, 255], 0.20);
-            const hoverBgRgb = isLightPanel
-                ? mixRgb(surfaceBg, [0, 0, 0], 0.05)
-                : mixRgb(surfaceBg, [255, 255, 255], 0.05);
-            const navIconRgb = mixRgb(textMutedRgb, panelRgb, 0.25);
-
-            // Cache accent color on both chart instances so render path avoids getComputedStyle
-            this._cachedAccentColor = accentColor;
-            targetChart._cachedAccentColor = accentColor;
-
-            // Only `window.chart` drives global toolbar / settings-panel / body.light-mode.
-            // Secondary panel instances call applyChartSettings and must not override app theme.
-            if (isMainAppChart) {
-                root.style.setProperty('--sp-accent', accentColor);
-                root.style.setProperty('--sp-accent-rgb', toRgbChannels(accentColor));
-                root.style.setProperty('--sp-secondary', secondaryColor);
-                root.style.setProperty('--sp-secondary-rgb', `${secondaryRgb[0]}, ${secondaryRgb[1]}, ${secondaryRgb[2]}`);
-                root.style.setProperty('--sp-text', rgbToCss(textRgb));
-                root.style.setProperty('--sp-text-muted', rgbToCss(textMutedRgb));
-                root.style.setProperty('--sp-text-active', isLightPanel ? '#000000' : '#ffffff');
-                root.style.setProperty('--sp-nav-icon-color', rgbToCss(navIconRgb));
-                root.style.setProperty('--sp-hover-bg', rgbaToCss(hoverBgRgb, 0.55));
-                root.style.setProperty('--sp-input-bg', rgbaToCss(inputBgRgb, 0.72));
-                root.style.setProperty('--sp-input-border', rgbaToCss(inputBorderRgb, 0.55));
-                root.style.setProperty('--sp-btn-border', rgbaToCss(btnBorderRgb, 0.65));
-                root.style.setProperty('--sp-select-bg', rgbaToCss(inputBgRgb, 0.72));
-                root.style.setProperty('--sp-bg', panelBg);
-                root.style.setProperty('--sp-sidebar-bg', sidebarBg);
-                root.style.setProperty('--sp-ui-chrome-bg', rgbToCss(chromeBg));
-                root.style.setProperty('--sp-ui-surface-bg', rgbToCss(surfaceBg));
-                root.style.setProperty('--sp-ui-sidebar-bg', rgbToCss(sidebarUiBg));
-                root.style.setProperty('--sp-ui-border', rgbaToCss(borderColorRgb, isLightPanel ? 0.80 : 0.42));
-                root.style.setProperty('--tv-panel-bg', rgbToCss(surfaceBg));
-                root.style.setProperty('--tv-settings-gradient-bg', rgbToCss(chromeBg));
-                root.style.setProperty('--tv-settings-gradient-bg-overlay', rgbToCss(surfaceBg));
-                if (document.body) {
-                    document.body.style.setProperty('--tv-panel-bg', rgbToCss(surfaceBg));
-                    document.body.style.setProperty('--tv-settings-gradient-bg', rgbToCss(chromeBg));
-                    document.body.style.setProperty('--tv-settings-gradient-bg-overlay', rgbToCss(surfaceBg));
-                    document.body.classList.toggle('light-mode', isLightPanel);
-                }
-            }
-        }
         
         // Apply background color to target chart
         targetChart.canvas.style.backgroundColor = targetChart.chartSettings.backgroundColor;
         
-        // Only `window.chart` updates the outer chart container background
-        if (isMainAppChart) {
+        // Only update container background for main chart
+        if (!targetChart.isPanel) {
             const chartContainer = document.querySelector('.chart-container');
             if (chartContainer) {
                 chartContainer.style.backgroundColor = targetChart.chartSettings.backgroundColor;
@@ -5779,14 +4151,9 @@ class Chart {
         // Re-render target chart to apply all settings
         targetChart.scheduleRender();
 
-        // Chart-corner logo (icon + wordmark) must track chart backgroundColor, not body.light-mode (panel chrome).
-        if (isMainAppChart && typeof targetChart.updateLogoForTheme === 'function') {
-            targetChart.updateLogoForTheme();
-        }
-
         // Apply Status Line visibility AFTER render (setTimeout ensures it runs after scheduleRender pipeline)
         const _tc = targetChart;
-        const _idSuffix = (_tc.panelIndex !== undefined && _tc.panelIndex !== 0) ? _tc.panelIndex : '';
+        const _idSuffix = (_tc.panelIndex !== undefined) ? _tc.panelIndex : '';
         setTimeout(function() {
             const el = document.getElementById('ohlcInfo' + _idSuffix) || document.querySelector('.ohlc-info');
             if (!el) return;
@@ -5809,11 +4176,6 @@ class Chart {
         if (targetChart.isPanel && targetChart.panelIndex !== undefined && window.panelManager) {
             window.panelManager.savePanelSettings(targetChart.panelIndex);
         }
-
-        if (!targetChart.isPanel && window.panelManager && typeof window.panelManager.refreshMultiPanelChrome === 'function'
-            && window.panelManager.currentLayout && String(window.panelManager.currentLayout) !== '1') {
-            window.panelManager.refreshMultiPanelChrome();
-        }
     }
     
     // Chart Templates
@@ -5831,16 +4193,46 @@ class Chart {
         }
 
         return `
-            <option value="">Custom</option>
+            <option value="">— Select Template —</option>
             ${customOptions}
-            <option value="tradingview-dark">Dark</option>
-            <option value="tradingview-light">Light</option>
+            <optgroup label="Professional">
+                <option value="tradingview-dark">TradingView Dark</option>
+                <option value="tradingview-light">TradingView Light</option>
+                <option value="binance">Binance</option>
+                <option value="bloomberg">Bloomberg</option>
+            </optgroup>
+            <optgroup label="Dark Themes">
+                <option value="classic-dark">Talaria Classic</option>
+                <option value="payout">Payout</option>
+                <option value="dark-blue">Dark blue</option>
+                <option value="night-blue">Night Blue</option>
+                <option value="midnight">Midnight Purple</option>
+                <option value="crypto-green">Crypto Green</option>
+                <option value="ocean">Ocean</option>
+                <option value="gold">Gold Finance</option>
+                <option value="forest">Forest</option>
+            </optgroup>
+            <optgroup label="Light Themes">
+                <option value="sepia">Sepia Vintage</option>
+                <option value="arctic">Arctic Ice</option>
+                <option value="monochrome">Monochrome</option>
+                <option value="hermes">Hermes</option>
+                <option value="kaito">Kaito</option>
+            </optgroup>
+            <optgroup label="Creative">
+                <option value="matrix">Matrix</option>
+                <option value="neon">Neon Glow</option>
+                <option value="sunset">Sunset</option>
+                <option value="candy">Candy</option>
+                <option value="blood">Blood Red</option>
+                <option value="high-contrast">High Contrast</option>
+            </optgroup>
         `;
     }
 
     getUserChartTemplates() {
         try {
-            const raw = userStorage.getItem('chart_user_templates');
+            const raw = localStorage.getItem('chart_user_templates');
             if (!raw) return {};
             const parsed = JSON.parse(raw);
             if (!parsed || typeof parsed !== 'object') return {};
@@ -5852,7 +4244,7 @@ class Chart {
 
     saveUserChartTemplates(templates) {
         try {
-            userStorage.setItem('chart_user_templates', JSON.stringify(templates || {}));
+            localStorage.setItem('chart_user_templates', JSON.stringify(templates || {}));
         } catch (e) {
         }
     }
@@ -5873,20 +4265,8 @@ class Chart {
             'borderDownColor',
             'wickUpColor',
             'wickDownColor',
-            'unifiedBarColorEnabled',
-            'unifiedBarColor',
-            'settingsPanelAccentColor',
-            'settingsPanelBgColor',
-            'settingsPanelSidebarBgColor',
             'volumeUpColor',
-            'volumeDownColor',
-            'showPriceLine',
-            'priceLineColor',
-            'areaLineColor',
-            'areaFillColor',
-            'baselineColor',
-            'settingsPanelSecondaryColor',
-            'settingsPanelTextColor'
+            'volumeDownColor'
         ];
 
         const snapshot = { name: name };
@@ -5923,297 +4303,443 @@ class Chart {
 
     getChartTemplates() {
         return {
-            /* ── PROFESSIONAL ── */
             'tradingview-dark': {
-                name: 'Dark',
+                name: 'TradingView Dark',
                 backgroundColor: '#1e222d',
                 gridColor: 'rgba(42, 46, 57, 0.6)',
-                bodyUpColor: '#089981', bodyDownColor: '#f23645',
-                borderUpColor: '#089981', borderDownColor: '#f23645',
-                wickUpColor: '#089981', wickDownColor: '#f23645',
-                scaleTextColor: '#d1d4dc', scaleLinesColor: '#d1d4dc',
+                bodyUpColor: '#089981',
+                bodyDownColor: '#f23645',
+                borderUpColor: '#089981',
+                borderDownColor: '#f23645',
+                wickUpColor: '#089981',
+                wickDownColor: '#f23645',
+                scaleTextColor: '#d1d4dc',
+                scaleLinesColor: '#050028',
                 symbolTextColor: '#d1d4dc',
                 crosshairColor: 'rgba(120, 123, 134, 0.4)',
-                cursorLabelTextColor: '#d1d4dc', cursorLabelBgColor: '#434651',
-                volumeUpColor: 'rgba(8, 153, 129, 0.5)', volumeDownColor: 'rgba(242, 54, 69, 0.5)',
-                settingsPanelBgColor: '#1e222d', settingsPanelAccentColor: '#2962ff',
-                settingsPanelSecondaryColor: '#7b61ff', settingsPanelTextColor: '#d1d4dc'
+                cursorLabelTextColor: '#d1d4dc',
+                cursorLabelBgColor: '#434651',
+                volumeUpColor: 'rgba(8, 153, 129, 0.5)',
+                volumeDownColor: 'rgba(242, 54, 69, 0.5)'
             },
             'tradingview-light': {
-                name: 'Light',
+                name: 'TradingView Light',
                 backgroundColor: '#ffffff',
-                gridColor: 'rgba(42, 46, 57, 0.22)',
-                bodyUpColor: '#089981', bodyDownColor: '#f23645',
-                borderUpColor: '#089981', borderDownColor: '#f23645',
-                wickUpColor: '#089981', wickDownColor: '#f23645',
-                scaleTextColor: '#000000', scaleLinesColor: '#787b86',
-                symbolTextColor: '#000000',
+                gridColor: 'rgba(42, 46, 57, 0.1)',
+                bodyUpColor: '#089981',
+                bodyDownColor: '#f23645',
+                borderUpColor: '#089981',
+                borderDownColor: '#f23645',
+                wickUpColor: '#089981',
+                wickDownColor: '#f23645',
+                scaleTextColor: '#131722',
+                scaleLinesColor: '#f0f3fa',
+                symbolTextColor: '#131722',
                 crosshairColor: 'rgba(120, 123, 134, 0.3)',
-                cursorLabelTextColor: '#ffffff', cursorLabelBgColor: '#000000',
-                volumeUpColor: 'rgba(8, 153, 129, 0.5)', volumeDownColor: 'rgba(242, 54, 69, 0.5)',
-                settingsPanelBgColor: '#ffffff',
-                settingsPanelSidebarBgColor: '#ffffff',
-                settingsPanelAccentColor: '#2962ff',
-                settingsPanelSecondaryColor: '#089981',
-                settingsPanelTextColor: '#000000'
+                cursorLabelTextColor: '#ffffff',
+                cursorLabelBgColor: '#131722',
+                volumeUpColor: 'rgba(8, 153, 129, 0.5)',
+                volumeDownColor: 'rgba(242, 54, 69, 0.5)'
             },
-            /* ── COLOR THEMES ── */
-            'ocean-blue': {
-                name: 'Ocean Blue',
-                backgroundColor: '#0a1929',
-                gridColor: 'rgba(41, 121, 255, 0.15)',
-                bodyUpColor: '#00bcd4', bodyDownColor: '#ff6b6b',
-                borderUpColor: '#00bcd4', borderDownColor: '#ff6b6b',
-                wickUpColor: '#00bcd4', wickDownColor: '#ff6b6b',
-                scaleTextColor: '#e3f2fd', scaleLinesColor: '#1976d2',
-                symbolTextColor: '#e3f2fd',
-                crosshairColor: 'rgba(41, 121, 255, 0.3)',
-                cursorLabelTextColor: '#0a1929', cursorLabelBgColor: '#2962ff',
-                volumeUpColor: 'rgba(0, 188, 212, 0.5)', volumeDownColor: 'rgba(255, 107, 107, 0.5)',
-                settingsPanelBgColor: '#0a1929', settingsPanelAccentColor: '#2962ff',
-                settingsPanelSecondaryColor: '#00bcd4', settingsPanelTextColor: '#e3f2fd'
-            },
-            'forest-green': {
-                name: 'Forest Green',
-                backgroundColor: '#0d2818',
-                gridColor: 'rgba(76, 175, 80, 0.15)',
-                bodyUpColor: '#4caf50', bodyDownColor: '#ff9800',
-                borderUpColor: '#4caf50', borderDownColor: '#ff9800',
-                wickUpColor: '#4caf50', wickDownColor: '#ff9800',
-                scaleTextColor: '#e8f5e8', scaleLinesColor: '#4caf50',
-                symbolTextColor: '#e8f5e8',
-                crosshairColor: 'rgba(76, 175, 80, 0.3)',
-                cursorLabelTextColor: '#0d2818', cursorLabelBgColor: '#4caf50',
-                volumeUpColor: 'rgba(76, 175, 80, 0.5)', volumeDownColor: 'rgba(255, 152, 0, 0.5)',
-                settingsPanelBgColor: '#0d2818', settingsPanelAccentColor: '#4caf50',
-                settingsPanelSecondaryColor: '#8bc34a', settingsPanelTextColor: '#e8f5e8'
-            },
-            'sunset-orange': {
-                name: 'Sunset Orange',
-                backgroundColor: '#2d1b0e',
-                gridColor: 'rgba(255, 152, 0, 0.15)',
-                bodyUpColor: '#ff9800', bodyDownColor: '#e91e63',
-                borderUpColor: '#ff9800', borderDownColor: '#e91e63',
-                wickUpColor: '#ff9800', wickDownColor: '#e91e63',
-                scaleTextColor: '#fff3e0', scaleLinesColor: '#ff9800',
-                symbolTextColor: '#fff3e0',
-                crosshairColor: 'rgba(255, 152, 0, 0.3)',
-                cursorLabelTextColor: '#2d1b0e', cursorLabelBgColor: '#ff9800',
-                volumeUpColor: 'rgba(255, 152, 0, 0.5)', volumeDownColor: 'rgba(233, 30, 99, 0.5)',
-                settingsPanelBgColor: '#2d1b0e', settingsPanelAccentColor: '#ff9800',
-                settingsPanelSecondaryColor: '#ffc107', settingsPanelTextColor: '#fff3e0'
-            },
-            'royal-purple': {
-                name: 'Royal Purple',
-                backgroundColor: '#1a0033',
-                gridColor: 'rgba(156, 39, 176, 0.15)',
-                bodyUpColor: '#9c27b0', bodyDownColor: '#ff5722',
-                borderUpColor: '#9c27b0', borderDownColor: '#ff5722',
-                wickUpColor: '#9c27b0', wickDownColor: '#ff5722',
-                scaleTextColor: '#f3e5f5', scaleLinesColor: '#9c27b0',
-                symbolTextColor: '#f3e5f5',
-                crosshairColor: 'rgba(156, 39, 176, 0.3)',
-                cursorLabelTextColor: '#1a0033', cursorLabelBgColor: '#9c27b0',
-                volumeUpColor: 'rgba(156, 39, 176, 0.5)', volumeDownColor: 'rgba(255, 87, 34, 0.5)',
-                settingsPanelBgColor: '#1a0033', settingsPanelAccentColor: '#9c27b0',
-                settingsPanelSecondaryColor: '#673ab7', settingsPanelTextColor: '#f3e5f5'
-            },
-            'ruby-red': {
-                name: 'Ruby Red',
-                backgroundColor: '#330011',
-                gridColor: 'rgba(244, 67, 54, 0.15)',
-                bodyUpColor: '#f44336', bodyDownColor: '#2196f3',
-                borderUpColor: '#f44336', borderDownColor: '#2196f3',
-                wickUpColor: '#f44336', wickDownColor: '#2196f3',
-                scaleTextColor: '#ffebee', scaleLinesColor: '#f44336',
-                symbolTextColor: '#ffebee',
-                crosshairColor: 'rgba(244, 67, 54, 0.3)',
-                cursorLabelTextColor: '#330011', cursorLabelBgColor: '#f44336',
-                volumeUpColor: 'rgba(244, 67, 54, 0.5)', volumeDownColor: 'rgba(33, 150, 243, 0.5)',
-                settingsPanelBgColor: '#330011', settingsPanelAccentColor: '#f44336',
-                settingsPanelSecondaryColor: '#e91e63', settingsPanelTextColor: '#ffebee'
-            },
-            'emerald': {
-                name: 'Emerald',
-                backgroundColor: '#0a2e0a',
-                gridColor: 'rgba(0, 230, 118, 0.15)',
-                bodyUpColor: '#00e676', bodyDownColor: '#ff4081',
-                borderUpColor: '#00e676', borderDownColor: '#ff4081',
-                wickUpColor: '#00e676', wickDownColor: '#ff4081',
-                scaleTextColor: '#e8f5e9', scaleLinesColor: '#00e676',
-                symbolTextColor: '#e8f5e9',
-                crosshairColor: 'rgba(0, 230, 118, 0.3)',
-                cursorLabelTextColor: '#0a2e0a', cursorLabelBgColor: '#00e676',
-                volumeUpColor: 'rgba(0, 230, 118, 0.5)', volumeDownColor: 'rgba(255, 64, 129, 0.5)',
-                settingsPanelBgColor: '#0a2e0a', settingsPanelAccentColor: '#00e676',
-                settingsPanelSecondaryColor: '#4caf50', settingsPanelTextColor: '#e8f5e9'
-            },
-            /* ── TALARIA THEMES ── */
-            'talaria-dark': {
-                name: 'Talaria Dark',
+            'classic-dark': {
+                name: 'Talaria Classic',
                 backgroundColor: '#050028',
-                gridColor: 'rgba(41, 98, 255, 0.1)',
-                bodyUpColor: '#00d4aa', bodyDownColor: '#ff4757',
-                borderUpColor: '#00d4aa', borderDownColor: '#ff4757',
-                wickUpColor: '#00d4aa', wickDownColor: '#ff4757',
-                scaleTextColor: '#ffffff', scaleLinesColor: '#2a2e39',
-                symbolTextColor: '#ffffff',
-                crosshairColor: 'rgba(41, 98, 255, 0.3)',
-                cursorLabelTextColor: '#050028', cursorLabelBgColor: '#2962ff',
-                volumeUpColor: 'rgba(0, 212, 170, 0.5)', volumeDownColor: 'rgba(255, 71, 87, 0.5)',
-                settingsPanelBgColor: '#050028', settingsPanelAccentColor: '#2962ff',
-                settingsPanelSecondaryColor: '#00d4aa', settingsPanelTextColor: '#ffffff'
+                gridColor: 'rgba(255, 255, 255, 0.06)',
+                bodyUpColor: '#26a69a',
+                bodyDownColor: '#ef5350',
+                borderUpColor: '#26a69a',
+                borderDownColor: '#ef5350',
+                wickUpColor: '#26a69a',
+                wickDownColor: '#ef5350',
+                scaleTextColor: '#d1d4dc',
+                symbolTextColor: '#d1d4dc',
+                crosshairColor: 'rgba(255, 255, 255, 0.3)',
+                cursorLabelTextColor: '#d1d4dc',
+                cursorLabelBgColor: '#2a2e39',
+                volumeUpColor: 'rgba(38, 166, 154, 0.5)',
+                volumeDownColor: 'rgba(239, 83, 80, 0.5)'
             },
-            /* ── PREMIUM THEMES ── */
-            'midnight': {
-                name: 'Midnight',
-                backgroundColor: '#000814',
-                gridColor: 'rgba(1, 114, 208, 0.15)',
-                bodyUpColor: '#0077b6', bodyDownColor: '#ff006e',
-                borderUpColor: '#0077b6', borderDownColor: '#ff006e',
-                wickUpColor: '#0077b6', wickDownColor: '#ff006e',
-                scaleTextColor: '#caf0f8', scaleLinesColor: '#023e8a',
-                symbolTextColor: '#caf0f8',
-                crosshairColor: 'rgba(1, 114, 208, 0.3)',
-                cursorLabelTextColor: '#000814', cursorLabelBgColor: '#0077b6',
-                volumeUpColor: 'rgba(0, 119, 182, 0.5)', volumeDownColor: 'rgba(255, 0, 110, 0.5)',
-                settingsPanelBgColor: '#000814', settingsPanelAccentColor: '#0077b6',
-                settingsPanelSecondaryColor: '#00b4d8', settingsPanelTextColor: '#caf0f8'
-            },
-            'aurora': {
-                name: 'Aurora',
-                backgroundColor: '#0a0e27',
-                gridColor: 'rgba(138, 43, 226, 0.15)',
-                bodyUpColor: '#8a2be2', bodyDownColor: '#ff1493',
-                borderUpColor: '#8a2be2', borderDownColor: '#ff1493',
-                wickUpColor: '#8a2be2', wickDownColor: '#ff1493',
-                scaleTextColor: '#e6e6fa', scaleLinesColor: '#8a2be2',
-                symbolTextColor: '#e6e6fa',
-                crosshairColor: 'rgba(138, 43, 226, 0.3)',
-                cursorLabelTextColor: '#0a0e27', cursorLabelBgColor: '#8a2be2',
-                volumeUpColor: 'rgba(138, 43, 226, 0.5)', volumeDownColor: 'rgba(255, 20, 147, 0.5)',
-                settingsPanelBgColor: '#0a0e27', settingsPanelAccentColor: '#8a2be2',
-                settingsPanelSecondaryColor: '#9370db', settingsPanelTextColor: '#e6e6fa'
-            },
-            'crimson': {
-                name: 'Crimson',
-                backgroundColor: '#220901',
-                gridColor: 'rgba(220, 20, 60, 0.15)',
-                bodyUpColor: '#dc143c', bodyDownColor: '#4169e1',
-                borderUpColor: '#dc143c', borderDownColor: '#4169e1',
-                wickUpColor: '#dc143c', wickDownColor: '#4169e1',
-                scaleTextColor: '#ffe4e1', scaleLinesColor: '#dc143c',
-                symbolTextColor: '#ffe4e1',
-                crosshairColor: 'rgba(220, 20, 60, 0.3)',
-                cursorLabelTextColor: '#220901', cursorLabelBgColor: '#dc143c',
-                volumeUpColor: 'rgba(220, 20, 60, 0.5)', volumeDownColor: 'rgba(65, 105, 225, 0.5)',
-                settingsPanelBgColor: '#220901', settingsPanelAccentColor: '#dc143c',
-                settingsPanelSecondaryColor: '#ff6347', settingsPanelTextColor: '#ffe4e1'
-            },
-            'gold': {
-                name: 'Gold',
-                backgroundColor: '#2c1810',
-                gridColor: 'rgba(255, 215, 0, 0.15)',
-                bodyUpColor: '#ffd700', bodyDownColor: '#c41e3a',
-                borderUpColor: '#ffd700', borderDownColor: '#c41e3a',
-                wickUpColor: '#ffd700', wickDownColor: '#c41e3a',
-                scaleTextColor: '#fff8dc', scaleLinesColor: '#daa520',
-                symbolTextColor: '#fff8dc',
-                crosshairColor: 'rgba(255, 215, 0, 0.3)',
-                cursorLabelTextColor: '#2c1810', cursorLabelBgColor: '#ffd700',
-                volumeUpColor: 'rgba(255, 215, 0, 0.5)', volumeDownColor: 'rgba(196, 30, 58, 0.5)',
-                settingsPanelBgColor: '#2c1810', settingsPanelAccentColor: '#ffd700',
-                settingsPanelSecondaryColor: '#ffed4e', settingsPanelTextColor: '#fff8dc'
-            },
-            'silver': {
-                name: 'Silver',
+            'payout': {
+                name: 'Payout',
                 backgroundColor: '#1a1a1a',
-                gridColor: 'rgba(192, 192, 192, 0.15)',
-                bodyUpColor: '#c0c0c0', bodyDownColor: '#ff6347',
-                borderUpColor: '#c0c0c0', borderDownColor: '#ff6347',
-                wickUpColor: '#c0c0c0', wickDownColor: '#ff6347',
-                scaleTextColor: '#f5f5f5', scaleLinesColor: '#c0c0c0',
-                symbolTextColor: '#f5f5f5',
-                crosshairColor: 'rgba(192, 192, 192, 0.3)',
-                cursorLabelTextColor: '#1a1a1a', cursorLabelBgColor: '#c0c0c0',
-                volumeUpColor: 'rgba(192, 192, 192, 0.5)', volumeDownColor: 'rgba(255, 99, 71, 0.5)',
-                settingsPanelBgColor: '#1a1a1a', settingsPanelAccentColor: '#c0c0c0',
-                settingsPanelSecondaryColor: '#d3d3d3', settingsPanelTextColor: '#f5f5f5'
+                gridColor: 'rgba(207, 207, 207, 0.1)',
+                bodyUpColor: '#008080',
+                bodyDownColor: '#2f4f4f',
+                borderUpColor: '#5f9ea0',
+                borderDownColor: '#2f4f4f',
+                wickUpColor: '#5f9ea0',
+                wickDownColor: '#2f4f4f',
+                scaleTextColor: '#cfcfcf',
+                scaleLinesColor: '#cfcfcf',
+                symbolTextColor: '#cfcfcf',
+                crosshairColor: 'rgba(207, 207, 207, 0.35)',
+                cursorLabelTextColor: '#1a1a1a',
+                cursorLabelBgColor: '#cfcfcf',
+                volumeUpColor: 'rgba(0, 128, 128, 0.5)',
+                volumeDownColor: 'rgba(47, 79, 79, 0.5)'
             },
-            'bronze': {
-                name: 'Bronze',
-                backgroundColor: '#2e1a0e',
-                gridColor: 'rgba(205, 127, 50, 0.15)',
-                bodyUpColor: '#cd7f32', bodyDownColor: '#8b4513',
-                borderUpColor: '#cd7f32', borderDownColor: '#8b4513',
-                wickUpColor: '#cd7f32', wickDownColor: '#8b4513',
-                scaleTextColor: '#f4e4c1', scaleLinesColor: '#cd7f32',
-                symbolTextColor: '#f4e4c1',
-                crosshairColor: 'rgba(205, 127, 50, 0.3)',
-                cursorLabelTextColor: '#2e1a0e', cursorLabelBgColor: '#cd7f32',
-                volumeUpColor: 'rgba(205, 127, 50, 0.5)', volumeDownColor: 'rgba(139, 69, 19, 0.5)',
-                settingsPanelBgColor: '#2e1a0e', settingsPanelAccentColor: '#cd7f32',
-                settingsPanelSecondaryColor: '#daa520', settingsPanelTextColor: '#f4e4c1'
+            'dark-blue': {
+                name: 'Dark blue',
+                backgroundColor: '#141414',
+                gridColor: 'rgba(224, 255, 255, 0.12)',
+                bodyUpColor: '#e0ffff',
+                bodyDownColor: '#4682b4',
+                borderUpColor: '#c0d9d9',
+                borderDownColor: '#3b6a93',
+                wickUpColor: '#e0ffff',
+                wickDownColor: '#4682b4',
+                scaleTextColor: '#e0ffff',
+                scaleLinesColor: '#e0ffff',
+                symbolTextColor: '#e0ffff',
+                crosshairColor: 'rgba(224, 255, 255, 0.35)',
+                cursorLabelTextColor: '#141414',
+                cursorLabelBgColor: '#e0ffff',
+                volumeUpColor: 'rgba(224, 255, 255, 0.5)',
+                volumeDownColor: 'rgba(70, 130, 180, 0.5)'
             },
-            'platinum': {
-                name: 'Platinum',
-                backgroundColor: '#1e1e1e',
-                gridColor: 'rgba(229, 228, 226, 0.15)',
-                bodyUpColor: '#e5e4e2', bodyDownColor: '#ff69b4',
-                borderUpColor: '#e5e4e2', borderDownColor: '#ff69b4',
-                wickUpColor: '#e5e4e2', wickDownColor: '#ff69b4',
-                scaleTextColor: '#f8f8ff', scaleLinesColor: '#e5e4e2',
-                symbolTextColor: '#f8f8ff',
-                crosshairColor: 'rgba(229, 228, 226, 0.3)',
-                cursorLabelTextColor: '#1e1e1e', cursorLabelBgColor: '#e5e4e2',
-                volumeUpColor: 'rgba(229, 228, 226, 0.5)', volumeDownColor: 'rgba(255, 105, 180, 0.5)',
-                settingsPanelBgColor: '#1e1e1e', settingsPanelAccentColor: '#e5e4e2',
-                settingsPanelSecondaryColor: '#dcdcdc', settingsPanelTextColor: '#f8f8ff'
+            'night-blue': {
+                name: 'Night Blue',
+                backgroundColor: '#0d1421',
+                gridColor: 'rgba(33, 150, 243, 0.1)',
+                bodyUpColor: '#00e676',
+                bodyDownColor: '#ff5252',
+                borderUpColor: '#00e676',
+                borderDownColor: '#ff5252',
+                wickUpColor: '#00e676',
+                wickDownColor: '#ff5252',
+                scaleTextColor: '#90caf9',
+                symbolTextColor: '#90caf9',
+                crosshairColor: 'rgba(33, 150, 243, 0.4)',
+                cursorLabelTextColor: '#ffffff',
+                cursorLabelBgColor: '#1565c0',
+                volumeUpColor: 'rgba(0, 230, 118, 0.4)',
+                volumeDownColor: 'rgba(255, 82, 82, 0.4)'
             },
-            'diamond': {
-                name: 'Diamond',
-                backgroundColor: '#0f0f0f',
-                gridColor: 'rgba(185, 242, 255, 0.15)',
-                bodyUpColor: '#b9f2ff', bodyDownColor: '#ff1744',
-                borderUpColor: '#b9f2ff', borderDownColor: '#ff1744',
-                wickUpColor: '#b9f2ff', wickDownColor: '#ff1744',
-                scaleTextColor: '#ffffff', scaleLinesColor: '#b9f2ff',
+            'crypto-green': {
+                name: 'Crypto Green',
+                backgroundColor: '#0a1f1a',
+                gridColor: 'rgba(0, 230, 118, 0.08)',
+                bodyUpColor: '#00e676',
+                bodyDownColor: '#ff1744',
+                borderUpColor: '#00e676',
+                borderDownColor: '#ff1744',
+                wickUpColor: '#00e676',
+                wickDownColor: '#ff1744',
+                scaleTextColor: '#a5d6a7',
+                symbolTextColor: '#a5d6a7',
+                crosshairColor: 'rgba(0, 230, 118, 0.3)',
+                cursorLabelTextColor: '#ffffff',
+                cursorLabelBgColor: '#1b5e20',
+                volumeUpColor: 'rgba(0, 230, 118, 0.4)',
+                volumeDownColor: 'rgba(255, 23, 68, 0.4)'
+            },
+            'ocean': {
+                name: 'Ocean',
+                backgroundColor: '#0a1929',
+                gridColor: 'rgba(0, 188, 212, 0.1)',
+                bodyUpColor: '#00bcd4',
+                bodyDownColor: '#ff6e40',
+                borderUpColor: '#00bcd4',
+                borderDownColor: '#ff6e40',
+                wickUpColor: '#00bcd4',
+                wickDownColor: '#ff6e40',
+                scaleTextColor: '#b3e5fc',
+                symbolTextColor: '#b3e5fc',
+                crosshairColor: 'rgba(0, 188, 212, 0.4)',
+                cursorLabelTextColor: '#ffffff',
+                cursorLabelBgColor: '#006064',
+                volumeUpColor: 'rgba(0, 188, 212, 0.4)',
+                volumeDownColor: 'rgba(255, 110, 64, 0.4)'
+            },
+            'midnight': {
+                name: 'Midnight Purple',
+                backgroundColor: '#1a1a2e',
+                gridColor: 'rgba(156, 39, 176, 0.1)',
+                bodyUpColor: '#7c4dff',
+                bodyDownColor: '#ff4081',
+                borderUpColor: '#7c4dff',
+                borderDownColor: '#ff4081',
+                wickUpColor: '#7c4dff',
+                wickDownColor: '#ff4081',
+                scaleTextColor: '#ce93d8',
+                symbolTextColor: '#ce93d8',
+                crosshairColor: 'rgba(156, 39, 176, 0.4)',
+                cursorLabelTextColor: '#ffffff',
+                cursorLabelBgColor: '#4a148c',
+                volumeUpColor: 'rgba(124, 77, 255, 0.4)',
+                volumeDownColor: 'rgba(255, 64, 129, 0.4)'
+            },
+            'high-contrast': {
+                name: 'High Contrast',
+                backgroundColor: '#000000',
+                gridColor: 'rgba(255, 255, 255, 0.15)',
+                bodyUpColor: '#00ff00',
+                bodyDownColor: '#ff0000',
+                borderUpColor: '#00ff00',
+                borderDownColor: '#ff0000',
+                wickUpColor: '#00ff00',
+                wickDownColor: '#ff0000',
+                scaleTextColor: '#ffffff',
                 symbolTextColor: '#ffffff',
-                crosshairColor: 'rgba(185, 242, 255, 0.3)',
-                cursorLabelTextColor: '#0f0f0f', cursorLabelBgColor: '#b9f2ff',
-                volumeUpColor: 'rgba(185, 242, 255, 0.5)', volumeDownColor: 'rgba(255, 23, 68, 0.5)',
-                settingsPanelBgColor: '#0f0f0f', settingsPanelAccentColor: '#b9f2ff',
-                settingsPanelSecondaryColor: '#64ffda', settingsPanelTextColor: '#ffffff'
-            },
-            'cyberpunk': {
-                name: 'Cyberpunk',
-                backgroundColor: '#0d0221',
-                gridColor: 'rgba(0, 255, 255, 0.15)',
-                bodyUpColor: '#00ffff', bodyDownColor: '#ff00ff',
-                borderUpColor: '#00ffff', borderDownColor: '#ff00ff',
-                wickUpColor: '#00ffff', wickDownColor: '#ff00ff',
-                scaleTextColor: '#ff00ff', scaleLinesColor: '#00ffff',
-                symbolTextColor: '#ff00ff',
-                crosshairColor: 'rgba(0, 255, 255, 0.3)',
-                cursorLabelTextColor: '#0d0221', cursorLabelBgColor: '#00ffff',
-                volumeUpColor: 'rgba(0, 255, 255, 0.5)', volumeDownColor: 'rgba(255, 0, 255, 0.5)',
-                settingsPanelBgColor: '#0d0221', settingsPanelAccentColor: '#00ffff',
-                settingsPanelSecondaryColor: '#ff00ff', settingsPanelTextColor: '#ff00ff'
+                crosshairColor: 'rgba(255, 255, 255, 0.5)',
+                cursorLabelTextColor: '#000000',
+                cursorLabelBgColor: '#ffffff',
+                volumeUpColor: 'rgba(0, 255, 0, 0.5)',
+                volumeDownColor: 'rgba(255, 0, 0, 0.5)'
             },
             'matrix': {
                 name: 'Matrix',
+                backgroundColor: '#0d0d0d',
+                gridColor: 'rgba(0, 255, 65, 0.08)',
+                bodyUpColor: '#00ff41',
+                bodyDownColor: '#003b00',
+                borderUpColor: '#00ff41',
+                borderDownColor: '#00ff41',
+                wickUpColor: '#00ff41',
+                wickDownColor: '#00ff41',
+                scaleTextColor: '#00ff41',
+                symbolTextColor: '#00ff41',
+                crosshairColor: 'rgba(0, 255, 65, 0.4)',
+                cursorLabelTextColor: '#000000',
+                cursorLabelBgColor: '#00ff41',
+                volumeUpColor: 'rgba(0, 255, 65, 0.5)',
+                volumeDownColor: 'rgba(0, 100, 30, 0.5)'
+            },
+            'sepia': {
+                name: 'Sepia Vintage',
+                backgroundColor: '#f5f0e1',
+                gridColor: 'rgba(139, 119, 101, 0.2)',
+                bodyUpColor: '#5d4e37',
+                bodyDownColor: '#8b4513',
+                borderUpColor: '#5d4e37',
+                borderDownColor: '#8b4513',
+                wickUpColor: '#5d4e37',
+                wickDownColor: '#8b4513',
+                scaleTextColor: '#6b5344',
+                symbolTextColor: '#3d2914',
+                crosshairColor: 'rgba(139, 119, 101, 0.4)',
+                cursorLabelTextColor: '#f5f0e1',
+                cursorLabelBgColor: '#5d4e37',
+                volumeUpColor: 'rgba(93, 78, 55, 0.5)',
+                volumeDownColor: 'rgba(139, 69, 19, 0.5)'
+            },
+            'neon': {
+                name: 'Neon Glow',
+                backgroundColor: '#0a0a0a',
+                gridColor: 'rgba(255, 0, 255, 0.1)',
+                bodyUpColor: '#00ffff',
+                bodyDownColor: '#ff00ff',
+                borderUpColor: '#00ffff',
+                borderDownColor: '#ff00ff',
+                wickUpColor: '#00ffff',
+                wickDownColor: '#ff00ff',
+                scaleTextColor: '#ff00ff',
+                symbolTextColor: '#00ffff',
+                crosshairColor: 'rgba(255, 255, 0, 0.4)',
+                cursorLabelTextColor: '#000000',
+                cursorLabelBgColor: '#ffff00',
+                volumeUpColor: 'rgba(0, 255, 255, 0.5)',
+                volumeDownColor: 'rgba(255, 0, 255, 0.5)'
+            },
+            'sunset': {
+                name: 'Sunset',
+                backgroundColor: '#1a1a2e',
+                gridColor: 'rgba(255, 107, 107, 0.1)',
+                bodyUpColor: '#ffd93d',
+                bodyDownColor: '#ff6b6b',
+                borderUpColor: '#ffd93d',
+                borderDownColor: '#ff6b6b',
+                wickUpColor: '#ffd93d',
+                wickDownColor: '#ff6b6b',
+                scaleTextColor: '#f8b500',
+                symbolTextColor: '#ffeaa7',
+                crosshairColor: 'rgba(255, 107, 107, 0.4)',
+                cursorLabelTextColor: '#1a1a2e',
+                cursorLabelBgColor: '#ffd93d',
+                volumeUpColor: 'rgba(255, 217, 61, 0.5)',
+                volumeDownColor: 'rgba(255, 107, 107, 0.5)'
+            },
+            'arctic': {
+                name: 'Arctic Ice',
+                backgroundColor: '#e8f4f8',
+                gridColor: 'rgba(0, 150, 199, 0.15)',
+                bodyUpColor: '#0096c7',
+                bodyDownColor: '#023e8a',
+                borderUpColor: '#0096c7',
+                borderDownColor: '#023e8a',
+                wickUpColor: '#0096c7',
+                wickDownColor: '#023e8a',
+                scaleTextColor: '#0077b6',
+                symbolTextColor: '#03045e',
+                crosshairColor: 'rgba(0, 150, 199, 0.4)',
+                cursorLabelTextColor: '#ffffff',
+                cursorLabelBgColor: '#0077b6',
+                volumeUpColor: 'rgba(0, 150, 199, 0.5)',
+                volumeDownColor: 'rgba(2, 62, 138, 0.5)'
+            },
+            'gold': {
+                name: 'Gold Finance',
+                backgroundColor: '#1c1c1c',
+                gridColor: 'rgba(212, 175, 55, 0.1)',
+                bodyUpColor: '#d4af37',
+                bodyDownColor: '#8b0000',
+                borderUpColor: '#d4af37',
+                borderDownColor: '#8b0000',
+                wickUpColor: '#d4af37',
+                wickDownColor: '#8b0000',
+                scaleTextColor: '#d4af37',
+                symbolTextColor: '#ffd700',
+                crosshairColor: 'rgba(212, 175, 55, 0.4)',
+                cursorLabelTextColor: '#1c1c1c',
+                cursorLabelBgColor: '#d4af37',
+                volumeUpColor: 'rgba(212, 175, 55, 0.5)',
+                volumeDownColor: 'rgba(139, 0, 0, 0.5)'
+            },
+            'forest': {
+                name: 'Forest',
+                backgroundColor: '#1a2f1a',
+                gridColor: 'rgba(34, 139, 34, 0.15)',
+                bodyUpColor: '#90ee90',
+                bodyDownColor: '#8b4513',
+                borderUpColor: '#90ee90',
+                borderDownColor: '#8b4513',
+                wickUpColor: '#90ee90',
+                wickDownColor: '#8b4513',
+                scaleTextColor: '#90ee90',
+                symbolTextColor: '#98fb98',
+                crosshairColor: 'rgba(144, 238, 144, 0.4)',
+                cursorLabelTextColor: '#1a2f1a',
+                cursorLabelBgColor: '#90ee90',
+                volumeUpColor: 'rgba(144, 238, 144, 0.5)',
+                volumeDownColor: 'rgba(139, 69, 19, 0.5)'
+            },
+            'candy': {
+                name: 'Candy',
+                backgroundColor: '#2d1b4e',
+                gridColor: 'rgba(255, 105, 180, 0.1)',
+                bodyUpColor: '#ff69b4',
+                bodyDownColor: '#00ced1',
+                borderUpColor: '#ff69b4',
+                borderDownColor: '#00ced1',
+                wickUpColor: '#ff69b4',
+                wickDownColor: '#00ced1',
+                scaleTextColor: '#ff69b4',
+                symbolTextColor: '#ffc0cb',
+                crosshairColor: 'rgba(255, 105, 180, 0.4)',
+                cursorLabelTextColor: '#2d1b4e',
+                cursorLabelBgColor: '#ff69b4',
+                volumeUpColor: 'rgba(255, 105, 180, 0.5)',
+                volumeDownColor: 'rgba(0, 206, 209, 0.5)'
+            },
+            'monochrome': {
+                name: 'Monochrome',
+                backgroundColor: '#ffffff',
+                gridColor: 'rgba(0, 0, 0, 0.1)',
+                bodyUpColor: '#333333',
+                bodyDownColor: '#999999',
+                borderUpColor: '#333333',
+                borderDownColor: '#999999',
+                wickUpColor: '#333333',
+                wickDownColor: '#999999',
+                scaleTextColor: '#666666',
+                symbolTextColor: '#000000',
+                crosshairColor: 'rgba(0, 0, 0, 0.3)',
+                cursorLabelTextColor: '#ffffff',
+                cursorLabelBgColor: '#333333',
+                volumeUpColor: 'rgba(51, 51, 51, 0.5)',
+                volumeDownColor: 'rgba(153, 153, 153, 0.5)'
+            },
+            'hermes': {
+                name: 'Hermes',
+                backgroundColor: '#f0f0f0',
+                gridColor: 'rgba(47, 79, 79, 0.12)',
+                bodyUpColor: '#2f4f4f',
+                bodyDownColor: '#a9a9a9',
+                borderUpColor: '#3e5f5f',
+                borderDownColor: '#909090',
+                wickUpColor: '#556b2f',
+                wickDownColor: '#696969',
+                scaleTextColor: '#2f4f4f',
+                scaleLinesColor: '#2f4f4f',
+                symbolTextColor: '#2f4f4f',
+                crosshairColor: 'rgba(47, 79, 79, 0.35)',
+                cursorLabelTextColor: '#f0f0f0',
+                cursorLabelBgColor: '#2f4f4f',
+                volumeUpColor: 'rgba(47, 79, 79, 0.5)',
+                volumeDownColor: 'rgba(169, 169, 169, 0.5)'
+            },
+            'kaito': {
+                name: 'Kaito',
+                backgroundColor: '#f5f5f5',
+                gridColor: 'rgba(51, 51, 51, 0.12)',
+                bodyUpColor: '#4d4d4d',
+                bodyDownColor: '#a9a9a9',
+                borderUpColor: '#3d3d3d',
+                borderDownColor: '#8a8a8a',
+                wickUpColor: '#696969',
+                wickDownColor: '#b0b0b0',
+                scaleTextColor: '#333333',
+                scaleLinesColor: '#333333',
+                symbolTextColor: '#333333',
+                crosshairColor: 'rgba(51, 51, 51, 0.3)',
+                cursorLabelTextColor: '#f5f5f5',
+                cursorLabelBgColor: '#333333',
+                volumeUpColor: 'rgba(77, 77, 77, 0.5)',
+                volumeDownColor: 'rgba(169, 169, 169, 0.5)'
+            },
+            'blood': {
+                name: 'Blood Red',
+                backgroundColor: '#1a0a0a',
+                gridColor: 'rgba(139, 0, 0, 0.15)',
+                bodyUpColor: '#ff0000',
+                bodyDownColor: '#8b0000',
+                borderUpColor: '#ff0000',
+                borderDownColor: '#8b0000',
+                wickUpColor: '#ff0000',
+                wickDownColor: '#8b0000',
+                scaleTextColor: '#ff4444',
+                symbolTextColor: '#ff6666',
+                crosshairColor: 'rgba(255, 0, 0, 0.4)',
+                cursorLabelTextColor: '#1a0a0a',
+                cursorLabelBgColor: '#ff0000',
+                volumeUpColor: 'rgba(255, 0, 0, 0.5)',
+                volumeDownColor: 'rgba(139, 0, 0, 0.5)'
+            },
+            'binance': {
+                name: 'Binance',
+                backgroundColor: '#0b0e11',
+                gridColor: 'rgba(71, 77, 87, 0.3)',
+                bodyUpColor: '#0ecb81',
+                bodyDownColor: '#f6465d',
+                borderUpColor: '#0ecb81',
+                borderDownColor: '#f6465d',
+                wickUpColor: '#0ecb81',
+                wickDownColor: '#f6465d',
+                scaleTextColor: '#848e9c',
+                symbolTextColor: '#eaecef',
+                crosshairColor: 'rgba(234, 236, 239, 0.3)',
+                cursorLabelTextColor: '#0b0e11',
+                cursorLabelBgColor: '#f0b90b',
+                volumeUpColor: 'rgba(14, 203, 129, 0.5)',
+                volumeDownColor: 'rgba(246, 70, 93, 0.5)'
+            },
+            'bloomberg': {
+                name: 'Bloomberg',
                 backgroundColor: '#000000',
-                gridColor: 'rgba(0, 255, 0, 0.15)',
-                bodyUpColor: '#00ff00', bodyDownColor: '#ff0000',
-                borderUpColor: '#00ff00', borderDownColor: '#ff0000',
-                wickUpColor: '#00ff00', wickDownColor: '#ff0000',
-                scaleTextColor: '#00ff00', scaleLinesColor: '#00ff00',
-                symbolTextColor: '#00ff00',
-                crosshairColor: 'rgba(0, 255, 0, 0.3)',
-                cursorLabelTextColor: '#000000', cursorLabelBgColor: '#00ff00',
-                volumeUpColor: 'rgba(0, 255, 0, 0.5)', volumeDownColor: 'rgba(255, 0, 0, 0.5)',
-                settingsPanelBgColor: '#000000', settingsPanelAccentColor: '#00ff00',
-                settingsPanelSecondaryColor: '#32cd32', settingsPanelTextColor: '#00ff00'
+                gridColor: 'rgba(255, 136, 0, 0.1)',
+                bodyUpColor: '#00ff00',
+                bodyDownColor: '#ff0000',
+                borderUpColor: '#00ff00',
+                borderDownColor: '#ff0000',
+                wickUpColor: '#00ff00',
+                wickDownColor: '#ff0000',
+                scaleTextColor: '#ff8800',
+                symbolTextColor: '#ff8800',
+                crosshairColor: 'rgba(255, 136, 0, 0.4)',
+                cursorLabelTextColor: '#000000',
+                cursorLabelBgColor: '#ff8800',
+                volumeUpColor: 'rgba(0, 255, 0, 0.5)',
+                volumeDownColor: 'rgba(255, 0, 0, 0.5)'
             }
         };
     }
@@ -6237,17 +4763,6 @@ class Chart {
         }
 
         this._lastTemplateSelected = resolvedName;
-        this.chartSettings.activeFullTemplate = resolvedName;
-        if (this.isUnifiedThemeTemplateId(resolvedName)) {
-            this.chartSettings.activeUnifiedTheme = resolvedName;
-            this._lastChartOnlyTemplate = resolvedName;
-            this._lastPanelOnlyTemplate = resolvedName;
-            this.chartSettings.activeChartOnlyTemplate = resolvedName;
-            this.chartSettings.activePanelOnlyTemplate = resolvedName;
-        } else if (this.chartSettings) {
-            this.chartSettings.activeUnifiedTheme = null;
-        }
-        try { userStorage.setItem('chart_active_tpl', JSON.stringify({ full: resolvedName, chartOnly: this._lastChartOnlyTemplate || null, panelOnly: this._lastPanelOnlyTemplate || null })); } catch(e) {}
 
         // Apply all template settings to chartSettings
         Object.keys(template).forEach(key => {
@@ -6255,11 +4770,6 @@ class Chart {
                 this.chartSettings[key] = template[key];
             }
         });
-
-        // If template doesn't define priceLineColor, derive it from the accent color
-        if (!template.priceLineColor && this.chartSettings.settingsPanelAccentColor) {
-            this.chartSettings.priceLineColor = this.chartSettings.settingsPanelAccentColor;
-        }
         
         // Refresh the current settings tab to show updated colors
         if (this.currentSettingsCategory) {
@@ -6268,271 +4778,15 @@ class Chart {
         
         // Apply settings to chart
         this.applyChartSettings();
-        this.syncTemplateToAllPanelCharts();
-
+        
         // Show notification
         this.showNotification(`Template "${template.name}" applied ✓`);
     }
 
-    applyChartOnlyTemplate(templateName) {
-        const PANEL_KEYS = new Set([
-            'settingsPanelAccentColor','settingsPanelBgColor','settingsPanelSidebarBgColor',
-            'settingsPanelSecondaryColor','settingsPanelTextColor'
-        ]);
-        let template = null;
-        if (templateName && typeof templateName === 'string' && templateName.startsWith('user:')) {
-            const id = templateName.slice(5);
-            const ut = this.getUserChartTemplates();
-            template = ut ? ut[id] : null;
-        } else {
-            const templates = this.getChartTemplates();
-            template = templates ? templates[templateName] : null;
-        }
-        if (!template) return;
-        this._lastChartOnlyTemplate = templateName;
-        this.chartSettings.activeChartOnlyTemplate = templateName;
-        // Keep chart-color template selection synchronized with unified-theme state.
-        this.chartSettings.activeUnifiedTheme = templateName;
-        const isPreview = (typeof window !== 'undefined' && window._templatePreviewMode === true);
-        if (!isPreview) {
-            try { userStorage.setItem('chart_active_tpl', JSON.stringify({ full: this._lastTemplateSelected || templateName || null, chartOnly: templateName, panelOnly: this._lastPanelOnlyTemplate || null })); } catch(e) {}
-        }
-        const chartKeys = Object.keys(template).filter(k => k !== 'name' && !PANEL_KEYS.has(k));
-        if (chartKeys.length > 0) {
-            chartKeys.forEach(key => { this.chartSettings[key] = template[key]; });
-            // Sync priceLineColor with accent if not explicitly in template
-            if (!template.priceLineColor && this.chartSettings.settingsPanelAccentColor) {
-                this.chartSettings.priceLineColor = this.chartSettings.settingsPanelAccentColor;
-            }
-        } else {
-            // Panel-only template: derive chart colors from panel settings
-            const bg  = template.settingsPanelBgColor       || '#1e222d';
-            const up  = template.settingsPanelSecondaryColor || '#089981';
-            const acc = template.settingsPanelAccentColor    || '#2962ff';
-            const txt = template.settingsPanelTextColor      || '#d1d4dc';
-            const dn  = '#f23645'; // keep standard bearish red
-            this.chartSettings.backgroundColor      = bg;
-            this.chartSettings.bodyUpColor          = up;
-            this.chartSettings.borderUpColor        = up;
-            this.chartSettings.wickUpColor          = up;
-            this.chartSettings.volumeUpColor        = up + '80';
-            this.chartSettings.bodyDownColor        = dn;
-            this.chartSettings.borderDownColor      = dn;
-            this.chartSettings.wickDownColor        = dn;
-            this.chartSettings.volumeDownColor      = dn + '80';
-            this.chartSettings.scaleTextColor       = txt;
-            this.chartSettings.symbolTextColor      = txt;
-            this.chartSettings.crosshairColor       = acc + '66';
-            this.chartSettings.cursorLabelBgColor   = acc;
-            this.chartSettings.cursorLabelTextColor = bg;
-            this.chartSettings.gridColor            = bg + '60';
-        }
-        if (this.currentSettingsCategory) this.showSettingsCategory(this.currentSettingsCategory);
-        this.applyChartSettings();
-        this.syncTemplateToAllPanelCharts();
-        this.showNotification(`Chart template "${template.name}" applied ✓`);
-    }
-
-    applyPanelOnlyTemplate(templateName) {
-        // When embedded in Talaria, non-admins may only use Dark/Light panel themes (toolbar toggle).
-        // Admin-only templates are UI-hidden; this blocks console bypass. Server also strips on sync.
-        const publicPanelTplIds = new Set(['tradingview-dark', 'tradingview-light']);
-        if (typeof window !== 'undefined' && typeof window.isTalariaAdmin === 'function' && !window.isTalariaAdmin()) {
-            const id = templateName && typeof templateName === 'string' ? templateName : '';
-            if (!publicPanelTplIds.has(id)) {
-                return;
-            }
-        }
-        const PANEL_KEYS = [
-            'settingsPanelAccentColor','settingsPanelBgColor','settingsPanelSidebarBgColor',
-            'settingsPanelSecondaryColor','settingsPanelTextColor'
-        ];
-        let template = null;
-        if (templateName && typeof templateName === 'string' && templateName.startsWith('user:')) {
-            const id = templateName.slice(5);
-            const ut = this.getUserChartTemplates();
-            template = ut ? ut[id] : null;
-        } else {
-            const templates = this.getChartTemplates();
-            template = templates ? templates[templateName] : null;
-        }
-        if (!template) return;
-        this._lastPanelOnlyTemplate = templateName;
-        this.chartSettings.activePanelOnlyTemplate = templateName;
-        // Keep panel/sidebar theme selection synchronized with unified-theme state.
-        this.chartSettings.activeUnifiedTheme = templateName;
-        const isPreview = (typeof window !== 'undefined' && window._templatePreviewMode === true);
-        if (!isPreview) {
-            try { userStorage.setItem('chart_active_tpl', JSON.stringify({ full: this._lastTemplateSelected || templateName || null, chartOnly: this._lastChartOnlyTemplate || null, panelOnly: templateName })); } catch(e) {}
-        }
-        const hasPanelKeys = PANEL_KEYS.some(k => template[k] !== undefined);
-        if (hasPanelKeys) {
-            PANEL_KEYS.forEach(key => {
-                if (template[key] !== undefined) {
-                    this.chartSettings[key] = template[key];
-                }
-            });
-        } else {
-            // Chart-only template: derive panel colors from chart settings
-            const bg  = template.backgroundColor  || '#1e222d';
-            const up  = template.bodyUpColor       || '#089981';
-            const acc = template.bodyDownColor     || '#f23645';
-            const txt = template.scaleTextColor    || '#d1d4dc';
-            this.chartSettings.settingsPanelBgColor        = bg;
-            this.chartSettings.settingsPanelSidebarBgColor = bg;
-            this.chartSettings.settingsPanelSecondaryColor = up;
-            this.chartSettings.settingsPanelAccentColor    = acc;
-            this.chartSettings.settingsPanelTextColor      = txt;
-        }
-        if (this.currentSettingsCategory) this.showSettingsCategory(this.currentSettingsCategory);
-        this.applyChartSettings();
-        this.syncTemplateToAllPanelCharts();
-        this.showNotification(`Panel template "${template.name}" applied ✓`);
-    }
-
-    /**
-     * Multi-panel: after a template is applied on one chart instance, copy the same
-     * chartSettings (and template id fields) to every other chart so all panels match immediately.
-     */
-    syncTemplateToAllPanelCharts() {
-        if (typeof window === 'undefined' || !window.panelManager) return;
-        const pm = window.panelManager;
-        if (typeof pm.getCurrentLayout === 'function' && pm.getCurrentLayout() === '1') return;
-
-        const source = this;
-        if (!source.chartSettings) return;
-
-        const snapshot = JSON.parse(JSON.stringify(source.chartSettings));
-        const tplFields = ['_lastTemplateSelected', '_lastChartOnlyTemplate', '_lastPanelOnlyTemplate'];
-        const copyTplFields = (dest) => {
-            tplFields.forEach((k) => {
-                if (source[k] !== undefined && source[k] !== null) {
-                    dest[k] = source[k];
-                }
-            });
-        };
-
-        const panels = typeof pm.getPanels === 'function' ? pm.getPanels() : [];
-        const toUpdate = [];
-        panels.forEach((panel) => {
-            const pc = panel.chartInstance;
-            if (pc && pc !== source) toUpdate.push(pc);
-        });
-        const main = window.chart;
-        if (main && main !== source) toUpdate.push(main);
-
-        toUpdate.forEach((pc) => {
-            pc.chartSettings = JSON.parse(JSON.stringify(snapshot));
-            copyTplFields(pc);
-            if (pc.canvas && snapshot.backgroundColor) {
-                pc.canvas.style.backgroundColor = snapshot.backgroundColor;
-            }
-            if (typeof pc.applyChartSettings === 'function') {
-                pc.applyChartSettings();
-            } else if (typeof pc.render === 'function') {
-                pc.render();
-            }
-        });
-    }
-
-    /** Chart templates — chart + panel stay in sync. */
-    getUnifiedThemeOrder() {
-        return [
-            { id: 'tradingview-dark', group: 'Professional' },
-            { id: 'tradingview-light', group: 'Professional' },
-            { id: 'talaria-dark', group: 'Talaria' },
-            { id: 'ocean-blue', group: 'Color Themes' },
-            { id: 'forest-green', group: 'Color Themes' },
-            { id: 'sunset-orange', group: 'Color Themes' },
-            { id: 'royal-purple', group: 'Color Themes' },
-            { id: 'ruby-red', group: 'Color Themes' },
-            { id: 'emerald', group: 'Color Themes' },
-            { id: 'midnight', group: 'Premium' },
-            { id: 'aurora', group: 'Premium' },
-            { id: 'crimson', group: 'Premium' },
-            { id: 'gold', group: 'Premium' },
-            { id: 'silver', group: 'Premium' },
-            { id: 'bronze', group: 'Premium' },
-            { id: 'platinum', group: 'Premium' },
-            { id: 'diamond', group: 'Premium' },
-            { id: 'cyberpunk', group: 'Special' },
-            { id: 'matrix', group: 'Special' }
-        ];
-    }
-
-    isUnifiedThemeTemplateId(id) {
-        return this.getUnifiedThemeOrder().some((e) => e.id === id);
-    }
-
-    getUnifiedThemeSwatches() {
-        const templates = this.getChartTemplates();
-        return this.getUnifiedThemeOrder().map(({ id, group }) => {
-            const t = templates[id];
-            if (!t) return null;
-            return {
-                id,
-                name: t.name || id,
-                group,
-                bg: t.settingsPanelBgColor || t.backgroundColor || '#1e222d',
-                accent: t.settingsPanelAccentColor || '#2962ff',
-                up: t.bodyUpColor || '#089981',
-                down: t.bodyDownColor || '#f23645'
-            };
-        }).filter(Boolean);
-    }
-
-    getActiveUnifiedThemeId() {
-        const ids = new Set(this.getUnifiedThemeOrder().map((e) => e.id));
-        if (this.chartSettings && this.chartSettings.activeUnifiedTheme && ids.has(this.chartSettings.activeUnifiedTheme)) {
-            return this.chartSettings.activeUnifiedTheme;
-        }
-        if (this._lastChartOnlyTemplate === this._lastPanelOnlyTemplate && ids.has(this._lastChartOnlyTemplate)) {
-            return this._lastChartOnlyTemplate;
-        }
-        if (this._lastTemplateSelected && ids.has(this._lastTemplateSelected)) {
-            return this._lastTemplateSelected;
-        }
-        return null;
-    }
-
-    applyUnifiedThemeTemplate(templateId) {
-        if (!this.isUnifiedThemeTemplateId(templateId)) {
-            console.warn('Not a unified theme id:', templateId);
-            return;
-        }
-        this.applyTemplate(templateId);
-    }
-
-    getPanelTemplateSwatches() {
-        const all = this.getUnifiedThemeSwatches() || [];
-        // Admins: same full list as chart / unified themes (panel chrome per template).
-        // Non-admins: only Dark & Light (matches applyPanelOnlyTemplate + toolbar policy).
-        if (typeof window !== 'undefined' && typeof window.isTalariaAdmin === 'function' && window.isTalariaAdmin()) {
-            return all;
-        }
-        return all.filter((tpl) => {
-            const name = String((tpl && tpl.name) || '').trim().toLowerCase();
-            return name === 'dark' || name === 'light';
-        });
-    }
-
-    getChartColorTemplateSwatches() {
-        return this.getUnifiedThemeSwatches();
-    }
-
-    getTalariaTemplateSwatches() {
-        return this.getUnifiedThemeSwatches();
-    }
-
     resetChartSettingsToDefault() {
         this.chartSettings = JSON.parse(JSON.stringify(this._defaultChartSettings || {}));
-        this._lastTemplateSelected = null;
-        this._lastChartOnlyTemplate = null;
-        this._lastPanelOnlyTemplate = null;
-        if (this.chartSettings) this.chartSettings.activeUnifiedTheme = null;
-        try { userStorage.removeItem('chart_active_tpl'); } catch(e) {}
         try {
-            userStorage.removeItem('chartSettings');
+            localStorage.removeItem('chartSettings');
         } catch (e) {
         }
         this.applyChartSettings();
@@ -6577,512 +4831,56 @@ class Chart {
             return;
         }
         
+        console.log('✓ File selector element found');
         fileSelect.addEventListener('change', async (e) => {
             const fileId = e.target.value;
+            console.log(`📁 File selected: ${fileId}`);
             if (!fileId) return;
             
             this.currentFileId = fileId;
             await this.loadFileFromServer(fileId);
         });
     }
-
-    setupSymbolSearchSwitcher() {
-        const group = document.getElementById('symbolSearchGroup');
-        if (!group) return;
-        if (this._symbolSwitcherSetup) return;
-        this._symbolSwitcherSetup = true;
-
-        let dropdown = document.getElementById('symbolSwitcherDropdown');
-        if (!dropdown) {
-            dropdown = document.createElement('div');
-            dropdown.className = 'symbol-switcher-dropdown';
-            dropdown.id = 'symbolSwitcherDropdown';
-            document.body.appendChild(dropdown);
-        }
-
-        const positionDropdown = () => {
-            const rect = group.getBoundingClientRect();
-            const vpW = window.innerWidth;
-            const ddW = 300;
-            let left = rect.left;
-            if (left + ddW > vpW - 8) left = vpW - ddW - 8;
-            if (left < 8) left = 8;
-            dropdown.style.top = (rect.bottom + 4) + 'px';
-            dropdown.style.left = left + 'px';
-            dropdown.style.width = ddW + 'px';
-        };
-
-        const closeDropdown = () => {
-            dropdown.classList.remove('open');
-        };
-
-        group.addEventListener('click', (event) => {
-            const plusBtn = event.target.closest('#symbolPlusBtn');
-            if (plusBtn) return;
-            event.stopPropagation();
-            if (dropdown.classList.contains('open')) {
-                closeDropdown();
-                return;
-            }
-            // Opening fresh: drop stale search text so the full session instrument list
-            // shows (a partial query from last open made the other pair look "gone").
-            const staleSearch = dropdown.querySelector('.ssd-search-input');
-            if (staleSearch) staleSearch.value = '';
-            this.renderSymbolSwitcherOptions(dropdown);
-            positionDropdown();
-            dropdown.classList.add('open');
-        });
-
-        dropdown.addEventListener('click', (event) => {
-            event.stopPropagation();
-            const item = event.target.closest('.ssd-item[data-file-id]');
-            if (!item) return;
-
-            const nextFileId = item.dataset.fileId;
-            const activeChart = (typeof window.getActiveChart === 'function') ? window.getActiveChart() : this;
-            const targetChart = activeChart || this;
-
-            if (!nextFileId || String(nextFileId) === String(targetChart.currentFileId || '')) {
-                closeDropdown();
-                return;
-            }
-
-            dropdown.querySelectorAll('.ssd-item.active').forEach(el => el.classList.remove('active'));
-            item.classList.add('active', 'loading');
-            closeDropdown();
-
-            const loadPromise = (targetChart.isPanel && targetChart !== window.chart && typeof targetChart.loadPanelFileData === 'function')
-                ? targetChart.loadPanelFileData(nextFileId)
-                : this.loadFileData(nextFileId);
-
-            loadPromise
-                .then(() => {
-                    this.renderSymbolSwitcherOptions(dropdown);
-                })
-                .catch((error) => {
-                    console.error('Failed to switch symbol:', error);
-                    this.renderSymbolSwitcherOptions(dropdown);
-                });
-        });
-
-        document.addEventListener('click', (event) => {
-            if (!group.contains(event.target) && !dropdown.contains(event.target)) {
-                closeDropdown();
-            }
-        });
-    }
-
-    getSymbolSwitcherEntries() {
-        const byFileId = new Map();
-        const addEntry = (fileId, ticker, subtitle = '') => {
-            if (fileId == null || fileId === '') return;
-            const fid = String(fileId);
-            if (byFileId.has(fid)) return;
-            byFileId.set(fid, {
-                fileId: fid,
-                ticker: String(ticker || fid).trim() || fid,
-                subtitle: String(subtitle || '')
-            });
-        };
-
-        const collectFromSession = (sessionRaw) => {
-            if (!sessionRaw || typeof sessionRaw !== 'object') return;
-            let session = sessionRaw;
-            try {
-                session = this.normalizeBacktestingSession(sessionRaw);
-            } catch (e) {
-                return;
-            }
-
-            if (session.instruments && typeof session.instruments === 'object') {
-                Object.keys(session.instruments).forEach((tickerKey) => {
-                    const row = session.instruments[tickerKey];
-                    if (!row) return;
-                    const fileId = row.fileId || row.datasetId || row.sourceFileId;
-                    if (!fileId) return;
-                    const rawTicker = String(row.ticker || tickerKey || '');
-                    const rawName = row.fileName || row.name || '';
-                    const displayTicker = this._formatPairTicker(rawTicker, rawName);
-                    addEntry(
-                        fileId,
-                        displayTicker || rawTicker.toUpperCase() || String(fileId),
-                        displayTicker !== rawName ? rawName : ''
-                    );
-                });
-            }
-
-            // Multi-instrument wizard always saves `files` (+ `symbols`). Some paths shrink
-            // `instruments` to the active chart only — still list every fileId from `files` / `symbols`.
-            if (Array.isArray(session.files)) {
-                session.files.forEach((f) => {
-                    if (!f) return;
-                    const fileId = f.id != null ? f.id : f.fileId;
-                    if (fileId == null) return;
-                    const rawName = String(f.name || f.fileName || '');
-                    const resolved = this.resolveSessionTickerForFileId(session, fileId);
-                    const displayTicker = resolved
-                        || this._formatPairTicker(rawName, '')
-                        || rawName.replace(/\.(csv|CSV)$/i, '').toUpperCase();
-                    addEntry(fileId, displayTicker, displayTicker !== rawName ? rawName : '');
-                });
-            }
-
-            if (Array.isArray(session.symbols)) {
-                session.symbols.forEach((row) => {
-                    if (!row) return;
-                    const fileId = row.fileId;
-                    if (fileId == null) return;
-                    const sym = String(row.symbolName || row.ticker || row.symbol || '').trim();
-                    const rawName = row.fileName || row.name || '';
-                    const displayTicker = this._formatPairTicker(sym, rawName) || sym.toUpperCase() || String(fileId);
-                    addEntry(fileId, displayTicker, displayTicker !== rawName ? rawName : '');
-                });
-            }
-        };
-
-        collectFromSession(this.backtestingSession);
-
-        let entries = Array.from(byFileId.values());
-
-        // When the wizard saved an explicit `files` list, only those datasets belong to this
-        // backtest — drop stray tickers that may linger in `instruments` from older API merges.
-        const filesList = this.backtestingSession && Array.isArray(this.backtestingSession.files)
-            ? this.backtestingSession.files
-            : null;
-        if (filesList && filesList.length > 0) {
-            const allowed = new Set(
-                filesList.map((f) => {
-                    if (!f) return null;
-                    const fileId = f.id != null ? f.id : f.fileId;
-                    return fileId != null ? String(fileId) : null;
-                }).filter(Boolean)
-            );
-            entries = entries.filter((e) => allowed.has(e.fileId));
-        }
-
-        if (entries.length === 0) {
-            const session = this.backtestingSession || {};
-            const fileSelect = document.getElementById('fileSelect');
-            if (fileSelect) {
-                Array.from(fileSelect.options).forEach((option) => {
-                    if (!option.value) return;
-                    if (String(option.value).startsWith('local_')) return;
-                    addEntry(
-                        option.value,
-                        this.resolveSessionTickerForFileId(session, option.value)
-                            || option.textContent.split(' ')[0]
-                            || String(option.value),
-                        option.textContent
-                    );
-                });
-                entries = Array.from(byFileId.values());
-            }
-        }
-
-        return entries;
-    }
-
-    _ssdNormalize(s) {
-        return String(s || '').toLowerCase().replace(/[\s\-_\/\.]/g, '');
-    }
-
-    _symbolMatches(entry, query) {
-        if (!query) return true;
-        const q = query.toLowerCase();
-        const qNorm = this._ssdNormalize(query);
-        const ticker = String(entry.ticker || '').toLowerCase();
-        const tickerNorm = this._ssdNormalize(entry.ticker);
-        const subtitle = String(entry.subtitle || '').toLowerCase();
-        const subtitleNorm = this._ssdNormalize(entry.subtitle);
-
-        if (ticker.includes(q)) return true;
-        if (tickerNorm.includes(qNorm)) return true;
-        const parts = ticker.split(/[\s\-_\/\.]/);
-        if (parts.some(p => p.startsWith(q) || p.includes(q))) return true;
-        if (subtitle.includes(q) || subtitleNorm.includes(qNorm)) return true;
-        return false;
-    }
-
-    _symbolScore(entry, query) {
-        if (!query) return 0;
-        const q = query.toLowerCase();
-        const qNorm = this._ssdNormalize(query);
-        const ticker = String(entry.ticker || '').toLowerCase();
-        const tickerNorm = this._ssdNormalize(entry.ticker);
-
-        if (ticker === q || tickerNorm === qNorm) return 100;
-        if (ticker.startsWith(q) || tickerNorm.startsWith(qNorm)) return 80;
-        const parts = ticker.split(/[\s\-_\/\.]/);
-        if (parts.some(p => p.startsWith(q))) return 70;
-        if (ticker.includes(q) || tickerNorm.includes(qNorm)) return 60;
-        return 40;
-    }
-
-    _ssdHighlight(text, query) {
-        const safe = String(text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        if (!query) return safe;
-        const idx = safe.toLowerCase().indexOf(query.toLowerCase());
-        if (idx === -1) {
-            const normQuery = this._ssdNormalize(query);
-            const normSafe = this._ssdNormalize(safe);
-            const normIdx = normSafe.indexOf(normQuery);
-            if (normIdx !== -1) {
-                let rawIdx = 0, normCount = 0;
-                while (rawIdx < safe.length && normCount < normIdx) {
-                    if (/[\s\-_\/\.]/.test(safe[rawIdx])) { rawIdx++; continue; }
-                    normCount++;
-                    rawIdx++;
-                }
-                let start = rawIdx;
-                let matchLen = 0;
-                while (rawIdx < safe.length && matchLen < normQuery.length) {
-                    if (/[\s\-_\/\.]/.test(safe[rawIdx])) { rawIdx++; continue; }
-                    matchLen++;
-                    rawIdx++;
-                }
-                return safe.slice(0, start) +
-                    '<span class="ssd-highlight">' + safe.slice(start, rawIdx) + '</span>' +
-                    safe.slice(rawIdx);
-            }
-            return safe;
-        }
-        return safe.slice(0, idx) +
-            '<span class="ssd-highlight">' + safe.slice(idx, idx + query.length) + '</span>' +
-            safe.slice(idx + query.length);
-    }
-
-    _currencyToCountry(ccy) {
-        const map = {
-            USD: 'us', EUR: 'eu', GBP: 'gb', JPY: 'jp', AUD: 'au', NZD: 'nz',
-            CAD: 'ca', CHF: 'ch', SEK: 'se', NOK: 'no', DKK: 'dk', SGD: 'sg',
-            HKD: 'hk', CNY: 'cn', CNH: 'cn', INR: 'in', ZAR: 'za', MXN: 'mx',
-            BRL: 'br', TRY: 'tr', PLN: 'pl', HUF: 'hu', CZK: 'cz', RUB: 'ru',
-            KRW: 'kr', TWD: 'tw', THB: 'th', MYR: 'my', PHP: 'ph', IDR: 'id',
-            ILS: 'il', CLP: 'cl', COP: 'co', PEN: 'pe', ARS: 'ar', RON: 'ro',
-            BGN: 'bg', HRK: 'hr', ISK: 'is', RSD: 'rs', UAH: 'ua', KES: 'ke',
-            NGN: 'ng', EGP: 'eg', SAR: 'sa', AED: 'ae', QAR: 'qa', KWD: 'kw',
-            BHD: 'bh', OMR: 'om', JOD: 'jo', XAU: 'xau', XAG: 'xag'
-        };
-        return map[(ccy || '').toUpperCase()] || null;
-    }
-
-    _parsePairCurrencies(ticker) {
-        const clean = String(ticker || '').replace(/[\s\-_\/\.]/g, '').toUpperCase();
-        if (clean.length >= 6) {
-            return { base: clean.slice(0, 3), quote: clean.slice(3, 6) };
-        }
-        if (clean.length === 6) {
-            return { base: clean.slice(0, 3), quote: clean.slice(3) };
-        }
-        return null;
-    }
-
-    /**
-     * Classify a ticker into one of fx | crypto | futures | stock. Uses the
-     * centrally-registered `MarketCalculationEngine.detectMarketType` when
-     * available so the same taxonomy drives P&L, icons, and health.
-     */
-    _detectTickerAssetClass(ticker) {
-        if (!ticker) return null;
-        try {
-            const MCE = (typeof window !== 'undefined') ? window.MarketCalculationEngine : null;
-            if (MCE && typeof MCE.detectMarketType === 'function') {
-                const t = MCE.detectMarketType(ticker);
-                if (t === 'forex')   return 'fx';
-                if (t === 'crypto')  return 'crypto';
-                if (t === 'futures') return 'futures';
-                if (t === 'stocks')  return 'stock';
-            }
-        } catch (_) { /* fallthrough to null */ }
-        return null;
-    }
-
-    /**
-     * Extract the crypto "base" symbol from a ticker (e.g. `BTCUSDT` → `BTC`,
-     * `ETH-USD` → `ETH`, `BTC` → `BTC`). Used to look up the icon in CoinCap.
-     */
-    _cryptoBase(ticker) {
-        const clean = String(ticker || '').replace(/[\s\-_\/\.]/g, '').toUpperCase();
-        const stripped = clean
-            .replace(/USDT$|USDC$|BUSD$|DAI$|TUSD$|USD$|EUR$|GBP$|PERP$/i, '')
-            .replace(/PERP$/i, '');
-        return stripped || clean;
-    }
-
-    /**
-     * Build a 30×30 asset-class-appropriate icon for the symbol-selector
-     * dropdown's `.ssd-item-icon` slot. Crypto pulls a real coin logo from
-     * CoinCap's CDN; futures/stock render a gradient badge with the ticker's
-     * leading letters. Falls back to plain initials if classification fails.
-     */
-    _buildAssetClassIconSSD(ticker) {
-        const raw = String(ticker || '');
-        const clean = raw.replace(/[\s\-_\/\.]/g, '').toUpperCase();
-        const cls = this._detectTickerAssetClass(raw);
-
-        if (cls === 'crypto') {
-            const base = this._cryptoBase(raw);
-            const iconUrl = `https://assets.coincap.io/assets/icons/${base.toLowerCase()}@2x.png`;
-            // Gradient badge sits underneath the <img>; if the CDN 404s we hide
-            // the image via onerror so the badge shows through.
-            return `<div class="ssd-item-icon ssd-crypto-icon" style="position:relative;padding:0;border:0;background:linear-gradient(135deg,#f7931a,#ffb347);color:#fff;font-weight:700;font-size:10px;overflow:hidden">
-                <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;letter-spacing:-0.3px">${base.slice(0,3)}</span>
-                <img src="${iconUrl}" alt="${base}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit" onerror="this.style.display='none'" />
-            </div>`;
-        }
-        if (cls === 'futures') {
-            const root = clean.slice(0, Math.min(3, clean.length)) || 'FX';
-            return `<div class="ssd-item-icon ssd-futures-icon" style="background:linear-gradient(135deg,#3b82f6,#6366f1);border-color:rgba(99,102,241,0.55);color:#fff;font-weight:700;font-size:11px">${root}</div>`;
-        }
-        if (cls === 'stock') {
-            const sym = clean.slice(0, Math.min(4, clean.length)) || 'ST';
-            const size = sym.length >= 4 ? '9px' : '11px';
-            return `<div class="ssd-item-icon ssd-stock-icon" style="background:linear-gradient(135deg,#10b981,#14b8a6);border-color:rgba(16,185,129,0.55);color:#fff;font-weight:700;font-size:${size};letter-spacing:-0.3px">${sym}</div>`;
-        }
-        const initials = clean.slice(0, 2).toUpperCase() || '•';
-        return `<div class="ssd-item-icon">${initials}</div>`;
-    }
-
-    _buildPairFlagIcon(ticker) {
-        // Route non-FX tickers to asset-class-specific icons first so crypto
-        // pairs like BTCUSD don't accidentally render as broken country flags.
-        const cls = this._detectTickerAssetClass(ticker);
-        if (cls === 'crypto' || cls === 'futures' || cls === 'stock') {
-            return this._buildAssetClassIconSSD(ticker);
-        }
-
-        const pair = this._parsePairCurrencies(ticker);
-        if (!pair) {
-            return this._buildAssetClassIconSSD(ticker);
-        }
-        const baseCC = this._currencyToCountry(pair.base);
-        const quoteCC = this._currencyToCountry(pair.quote);
-        if (!baseCC || !quoteCC) {
-            return this._buildAssetClassIconSSD(ticker);
-        }
-        const flagUrl = (cc) => {
-            if (cc === 'xau') return null;
-            if (cc === 'xag') return null;
-            return `https://flagcdn.com/w80/${cc}.png`;
-        };
-        const baseUrl = flagUrl(baseCC);
-        const quoteUrl = flagUrl(quoteCC);
-        if (!baseUrl || !quoteUrl) {
-            return `<div class="ssd-item-icon">${pair.base.slice(0,2)}</div>`;
-        }
-        return `<div class="ssd-pair-flags">
-            <img class="ssd-flag ssd-flag-base" src="${baseUrl}" alt="${pair.base}" onerror="this.style.display='none'" />
-            <img class="ssd-flag ssd-flag-quote" src="${quoteUrl}" alt="${pair.quote}" onerror="this.style.display='none'" />
-        </div>`;
-    }
-
-    _buildListContent(entries, query) {
-        if (entries.length === 0) return '<div class="ssd-empty">No instruments available</div>';
-        const activeChart = (typeof window.getActiveChart === 'function') ? window.getActiveChart() : this;
-        const currentId = String((activeChart && activeChart.currentFileId) || this.currentFileId || '');
-        const filtered = query
-            ? entries
-                .filter(e => this._symbolMatches(e, query))
-                .sort((a, b) => this._symbolScore(b, query) - this._symbolScore(a, query))
-            : entries;
-        if (filtered.length === 0) {
-            return `<div class="ssd-empty">No results for "<strong>${String(query).replace(/</g, '&lt;')}</strong>"</div>`;
-        }
-        return filtered.map((entry) => {
-            const activeClass = String(entry.fileId) === currentId ? ' active' : '';
-            const safeTicker = this._ssdHighlight(entry.ticker, query);
-            const rawSubtitle = String(entry.subtitle || '');
-            const safeSubtitle = query ? this._ssdHighlight(rawSubtitle, query) : rawSubtitle.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            const flagIcon = this._buildPairFlagIcon(entry.ticker);
-            return `<div class="ssd-item${activeClass}" data-file-id="${entry.fileId}">
-                ${flagIcon}
-                <div class="ssd-item-body">
-                    <div class="ssd-item-name">${safeTicker}</div>
-                    ${rawSubtitle ? `<div class="ssd-item-sub">${safeSubtitle}</div>` : ''}
-                </div>
-                <svg class="ssd-item-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-            </div>`;
-        }).join('');
-    }
-
-    renderSymbolSwitcherOptions(dropdown) {
-        if (!dropdown) return;
-        const entries = this.getSymbolSwitcherEntries();
-        const existingInput = dropdown.querySelector('.ssd-search-input');
-
-        if (existingInput) {
-            const query = existingInput.value.trim();
-            const list = dropdown.querySelector('.ssd-list');
-            if (list) {
-                list.innerHTML = this._buildListContent(entries, query);
-            }
-            return;
-        }
-
-        const listContent = this._buildListContent(entries, '');
-        dropdown.innerHTML = `<div class="ssd-search-wrapper">
-            <svg class="ssd-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-            <input class="ssd-search-input" placeholder="Search symbol..." autocomplete="off" spellcheck="false" dir="ltr" />
-        </div>
-        <div class="ssd-header">Instruments</div>
-        <div class="ssd-list">${listContent}</div>`;
-        this._bindDropdownSearch(dropdown);
-    }
-
-    _bindDropdownSearch(dropdown) {
-        const input = dropdown.querySelector('.ssd-search-input');
-        if (!input) return;
-        input.style.direction = 'ltr';
-        input.style.textAlign = 'left';
-        setTimeout(() => { try { input.focus(); } catch(e) {} }, 20);
-        input.addEventListener('input', () => {
-            const query = input.value.trim();
-            const entries = this.getSymbolSwitcherEntries();
-            const list = dropdown.querySelector('.ssd-list');
-            if (list) {
-                list.innerHTML = this._buildListContent(entries, query);
-            }
-        });
-        input.addEventListener('click', (e) => e.stopPropagation());
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                dropdown.classList.remove('open');
-            }
-            if (e.key === 'Enter') {
-                const firstItem = dropdown.querySelector('.ssd-item[data-file-id]');
-                if (firstItem) firstItem.click();
-            }
-        });
-    }
     
     async loadFileFromServer(fileId) {
         try {
+            console.log(`📥 Loading file ID: ${fileId} from server...`);
             this.isLoading = true;
             this.currentFileId = fileId;
             
             // First request to get metadata and initial chunk
             const url = `${this.apiUrl}/file/${fileId}?offset=0&limit=${this.chunkSize}`;
+            console.log(`📡 Fetching: ${url}`);
             
             const response = await fetch(url);
+            console.log(`📡 Response status: ${response.status}`);
             
             const result = await response.json();
+            console.log(`📦 Received data, total candles: ${result.total}, returned: ${result.returned}`);
             
             if (result.data) {
                 this.totalCandles = result.total;
                 this.loadedRanges.clear();
                 
+                console.log(`📝 Parsing CSV data (${result.data.length} chars)...`);
                 
                 // Parse initial chunk
                 this.parseCSVChunk(result.data, 0);
                 this.loadedRanges.set(0, this.chunkSize);
                 
+                console.log(`✅ Loaded initial chunk: ${result.returned}/${result.total} candles`);
+                console.log(`📊 Raw data length: ${this.rawData.length}`);
+                console.log(`📊 Working data length: ${this.data.length}`);
                 
                 // If dataset is small, load everything
                 if (result.total <= this.chunkSize) {
+                    console.log('📊 Small dataset - all data loaded');
                 } else {
+                    console.log(`📊 Large dataset detected (${result.total} candles) - using lazy loading`);
                 }
                 
                 // Force render to show data
+                console.log(' Forcing render...');
                 this.scheduleRender();
             } else {
                 console.error('❌ No data in response');
@@ -7103,9 +4901,9 @@ class Chart {
      * @param {string} csv - CSV data
      * @param {number} startIndex - Starting index in the full dataset
      */
-    parseCSVChunk(csv, startIndex, options = {}) {
+    parseCSVChunk(csv, startIndex) {
         try {
-            const lines = csv.split('\n');
+            const lines = csv.trim().split('\n').filter(line => line.trim().length > 0);
             if (lines.length < 1) return;
             
             // Try to parse first line to detect if it's a header or data
@@ -7184,29 +4982,28 @@ class Chart {
             // Store detected symbol
             if (detectedSymbol && startIndex === 0) {
                 this.currentSymbol = detectedSymbol;
+                console.log(`📊 Detected symbol: ${detectedSymbol}`);
             }
             
             // Parse new data
             const newData = [];
             for (let i = dataStartIdx; i < lines.length; i++) {
-                const line = lines[i];
-                if (!line || line.length < 5) continue;
-                const cols = line.split(separator);
+                const cols = lines[i].split(separator).map(c => c.trim());
                 if (cols.length < 5) continue;
                 
                 // Parse timestamp
                 let t;
                 if (dateIdx >= 0 && timeIdx >= 0 && timeIdx !== dateIdx) {
                     // Separate date and time columns
-                    const dateStr = cols[dateIdx].trim();
-                    const timeStr = cols[timeIdx].trim();
+                    const dateStr = cols[dateIdx];
+                    const timeStr = cols[timeIdx];
                     t = this.parseDateTime(dateStr, timeStr);
                 } else if (dateIdx >= 0) {
                     // Combined datetime column
-                    t = this.parseDateTime(cols[dateIdx].trim());
+                    t = this.parseDateTime(cols[dateIdx]);
                 } else if (timeIdx >= 0) {
                     // Time column only - check if it's an epoch timestamp
-                    const timeVal = cols[timeIdx].trim();
+                    const timeVal = cols[timeIdx];
                     if (/^\d+$/.test(timeVal)) {
                         // Numeric epoch timestamp
                         t = parseInt(timeVal, 10);
@@ -7238,8 +5035,85 @@ class Chart {
                 console.error('   Data start index:', dataStartIdx);
                 return;
             }
-
-            this._commitLoadedBars(newData, startIndex, options);
+            
+            // Merge with existing data
+            if (startIndex === 0) {
+                this.rawData = newData;
+            } else {
+                // Insert at correct position
+                this.rawData = this.rawData.slice(0, startIndex).concat(newData, this.rawData.slice(startIndex + newData.length));
+            }
+            
+            // Update working data
+            this.data = this.resampleData(this.rawData, this.currentTimeframe);
+            
+            // Recalculate indicators with new data
+            if (typeof this.recalculateIndicators === 'function') {
+                this.recalculateIndicators();
+            }
+            
+            console.log(`✅ Parsed ${newData.length} candles from CSV chunk`);
+            console.log(`📊 Total rawData: ${this.rawData.length} candles`);
+            console.log(`📊 Working data (${this.currentTimeframe}): ${this.data.length} candles`);
+            
+            // Update date range for date picker
+            this.updateDateRange();
+            
+            // Update symbol selector if symbol was detected
+            if (this.currentSymbol) {
+                this.updateSymbolSelector(this.currentSymbol);
+            }
+            
+            // On initial load (startIndex===0), position to show latest candles.
+            // Do NOT call jumpToLatest() here — it resets candleWidth/zoom on every chunk
+            // including pan-loads, which would destroy the user's current zoom level.
+            if (startIndex === 0) {
+                console.log('🎯 Auto-positioning to latest candles (initial load)...');
+                // Force resize first so this.w/h are accurate before fitToView calculates offsetX.
+                // Without this, fitToView may run with this.w=0 and compute a wrong offsetX.
+                this.resize();
+                this.fitToView();
+                this.scheduleRender();
+            }
+            
+            // Clear old drawings and load saved drawings ONLY when file changes (not on timeframe change)
+            if (startIndex === 0 && this.drawingManager) {
+                const fileChanged = this._lastLoadedFileId && this._lastLoadedFileId !== this.currentFileId;
+                
+                if (fileChanged) {
+                    // File changed - clear old drawings from previous file
+                    if (this.drawingManager.drawings.length > 0) {
+                        console.log('🗑️ Clearing old drawings from previous file...');
+                        this.drawingManager.drawings.forEach(d => d.destroy());
+                        this.drawingManager.drawings = [];
+                    }
+                    
+                    // Load drawings for the new file
+                    if (typeof this.drawingManager.loadDrawings === 'function') {
+                        console.log('🎨 Loading saved drawings for new file...');
+                        this.drawingManager.loadDrawings();
+                    }
+                } else if (!this._lastLoadedFileId) {
+                    // First load ever - load drawings
+                    if (typeof this.drawingManager.loadDrawings === 'function') {
+                        console.log('🎨 Loading saved drawings (initial load)...');
+                        this.drawingManager.loadDrawings();
+                    }
+                }
+                // On timeframe change (same file), do nothing - chartDataLoaded listener will handle refresh
+                
+                this._lastLoadedFileId = this.currentFileId;
+            }
+            
+            // Notify that data has been updated (for panels)
+            window.dispatchEvent(new CustomEvent('chartDataLoaded', {
+                detail: { 
+                    data: this.data,
+                    rawData: this.rawData,
+                    symbol: this.currentSymbol,
+                    timeframe: this.currentTimeframe
+                }
+            }));
             
         } catch (error) {
             console.error('CSV Parse Error:', error);
@@ -7364,6 +5238,7 @@ class Chart {
             if (result.data) {
                 this.parseCSVChunk(result.data, startIndex);
                 this.loadedRanges.set(startIndex, endIndex);
+                console.log(`📦 Loaded range: ${startIndex}-${endIndex}`);
             }
             
             this.isLoadingChunk = false;
@@ -7380,9 +5255,7 @@ class Chart {
         if (!this.currentFileId || this.totalCandles <= this.chunkSize) return;
         
         const m = this.margin;
-        // Include the right-axis zone in horizontal visibility so candles can move under it
-        // before dropping from render (TradingView-like edge behavior).
-        const cw = this.w - m.l;
+        const cw = this.w - m.l - m.r;
         const candleSpacing = this.getCandleSpacing();
         
         // Calculate visible range
@@ -7436,11 +5309,11 @@ class Chart {
     }
 
     setCursorType(type, skipSync = false) {
+        console.log('🖱️ setCursorType called with:', type);
         this.cursorType = type;
         
-        // Only clear drawing tools when EXPLICITLY changing cursor type from UI
-        // (not during panel init or sync). Drawing tools manage their own state.
-        if (!skipSync && this.drawingManager && type !== 'eraser') {
+        // Clear any active drawing tool when switching cursor types
+        if (this.drawingManager && type !== 'eraser') {
             this.drawingManager.clearTool();
         }
         this.tool = null;
@@ -7473,20 +5346,23 @@ class Chart {
         
         // Reset SVG pointer-events to allow chart panning (cursor modes don't need to capture events)
         // Eraser mode is an exception - it needs to capture clicks on drawings
-        // Don't override if a drawing tool is currently active on this chart
+        // Allow pointer-events on SVG for shape hover interactions when not in drawing mode
         if (this.svg) {
-            const dmToolActive = !!(this.drawingManager && this.drawingManager.currentTool);
             if (type === 'eraser') {
                 this.svg.style('pointer-events', 'all');
-            } else if (!dmToolActive) {
+            } else {
+                // Allow shapes to receive hover events while letting canvas handle panning
                 this.svg.style('pointer-events', 'none');
+                // Individual shapes will have pointer-events: 'all' set on them
             }
         }
         
         // If eraser mode, enable eraser functionality and add click handler
         if (type === 'eraser') {
+            console.log('🧹 Setting eraser mode ON, drawingManager exists:', !!this.drawingManager);
             if (this.drawingManager) {
                 this.drawingManager.setEraserMode(true);
+                console.log('🧹 Eraser mode set, current state:', this.drawingManager.eraserMode);
                 // Clear any active drawing tool to prevent drawing
                 this.tool = null;
             } else {
@@ -7495,6 +5371,7 @@ class Chart {
             // Add eraser click handler to SVG
             this.setupEraserClickHandler();
         } else {
+            console.log('🧹 Setting eraser mode OFF');
             if (this.drawingManager) {
                 this.drawingManager.setEraserMode(false);
             }
@@ -7513,6 +5390,7 @@ class Chart {
             this.syncCursorTypeToAllCharts(type);
         }
         
+        console.log('🖱️ Cursor type:', type);
     }
     
     /**
@@ -7614,6 +5492,7 @@ class Chart {
             // Only handle if in eraser mode
             if (!chartInstance.drawingManager || !chartInstance.drawingManager.eraserMode) return;
             
+            console.log('🧹 Eraser click detected');
             
             // Find if click was on a drawing element
             let target = event.target;
@@ -7624,6 +5503,7 @@ class Chart {
             while (target && target !== this && attempts < 10) {
                 if (target.hasAttribute && target.hasAttribute('data-id')) {
                     drawingId = target.getAttribute('data-id');
+                    console.log('🧹 Found drawing ID:', drawingId);
                     break;
                 }
                 target = target.parentElement;
@@ -7635,22 +5515,27 @@ class Chart {
                 event.stopPropagation();
                 event.preventDefault();
                 
+                console.log('🧹 Attempting to erase:', drawingId);
                 chartInstance.drawingManager.handleEraserClick(drawingId);
                 // Re-render to update the display
                 chartInstance.scheduleRender();
             } else {
+                console.log('🧹 No drawing found at click position');
             }
         });
         
         this._eraserHandlerAttached = true;
+        console.log('🧹 Eraser click handler attached');
     }
 
 	    resize() {
 	        const oldW = this.w;
 	        const oldH = this.h;
 	        
+	        // Get dimensions from PARENT container (chart-wrapper), not canvas itself
 	        const container = this.canvas.parentElement;
 	        if (!container) return;
+	        void container.offsetHeight; // Force reflow
 
 	        const dpr = window.devicePixelRatio || 1;
 	        const rect = container.getBoundingClientRect();
@@ -7659,70 +5544,59 @@ class Chart {
 	        const dprChanged = this._lastResizeDpr !== dpr;
 	        const sizeChanged = oldW !== nextW || oldH !== nextH;
 
-	        // Multi-panel / percentage layouts: first measure can be 0×0 before the browser
-	        // finishes reflow. Retrying avoids leaving this.w unset so axes never draw.
+	        // Browser minimize/restore can temporarily report 0x0; keep last valid size.
 	        if (nextW < 2 || nextH < 2) {
-	            this._resizeLayoutRetries = (this._resizeLayoutRetries || 0) + 1;
-	            if (this._resizeLayoutRetries <= 24 && !this._resizeZeroSizeScheduled) {
-	                this._resizeZeroSizeScheduled = true;
-	                requestAnimationFrame(() => {
-	                    this._resizeZeroSizeScheduled = false;
-	                    this.resize();
-	                });
-	            }
 	            return;
 	        }
-	        this._resizeLayoutRetries = 0;
 
+	        // Skip redundant resizes to avoid unnecessary canvas clears/flicker.
 	        if (!sizeChanged && !dprChanged) {
 	            return;
 	        }
 
 	        this._lastResizeDpr = dpr;
 	        
+	        // Set canvas physical size
 	        this.canvas.width = Math.max(1, Math.floor(nextW * dpr));
 	        this.canvas.height = Math.max(1, Math.floor(nextH * dpr));
+	        
+	        // Set canvas display size
 	        this.canvas.style.width = nextW + 'px';
 	        this.canvas.style.height = nextH + 'px';
 	        
+	        // Scale context for high DPI displays
 	        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 	        this.ctx.scale(dpr, dpr);
 	        
+	        // Update chart dimensions
 	        this.w = nextW;
 	        this.h = nextH;
-
-	        const isPanelDragResize = !!(window.panelManager && window.panelManager.isResizing);
-
-	        // Defer SVG resize during drag to avoid layout thrashing
-	        const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
-	        if (svgNode && !isPanelDragResize) {
-	            svgNode.setAttribute('width', this.w);
-	            svgNode.setAttribute('height', this.h);
-	            svgNode.style.width = this.w + 'px';
-	            svgNode.style.height = this.h + 'px';
-	        }
+	        this.svg.attr('width', this.w).attr('height', this.h);
+	        this.svg.style('width', this.w + 'px').style('height', this.h + 'px');
 	        
+	        // Adjust offsetX to keep the visible center point the same
 	        if (oldW && oldH) {
 	            const deltaW = this.w - oldW;
-	            this.offsetX = Math.round(this.offsetX + deltaW * 0.5);
+	            
+	            // Adjust horizontal offset to keep the center of the chart view stable
+	            this.offsetX += deltaW * 0.5;
+	            
 	            this.constrainOffset();
 	        } else {
+	            // Initial load
 	            this.fitToView();
 	        }
 	        
+	        this.scheduleRender();
+
+	        // Paint immediately after canvas resize to avoid one-frame blank flashes
+	        // during animated layout transitions (settings panel open/close).
 	        this.render();
 	        this.renderPending = false;
 	        
-	        if (!isPanelDragResize) {
-	            if (svgNode) {
-	                svgNode.setAttribute('width', this.w);
-	                svgNode.setAttribute('height', this.h);
-	                svgNode.style.width = this.w + 'px';
-	                svgNode.style.height = this.h + 'px';
-	            }
-	            if (this.replaySystem && this.replaySystem.isActive) {
-	                this.replaySystem.updateAutoScrollIndicator();
-	            }
+	        // Update follow button position after resize
+	        if (this.replaySystem && this.replaySystem.isActive) {
+	            this.replaySystem.updateAutoScrollIndicator();
 	        }
 	    }
     
@@ -7735,6 +5609,7 @@ class Chart {
         // Skip if chart view was already restored from session state
         // This preserves the user's scroll position when continuing a session
         if (this._chartViewRestored) {
+            console.log('📍 fitToView skipped - chart view already restored from session');
             return;
         }
         
@@ -7764,6 +5639,12 @@ class Chart {
             this.offsetX = cw - lastCandleX - padding;
         }
         
+        console.log('📍 fitToView:', {
+            dataLength: this.data.length,
+            offsetX: this.offsetX,
+            candleWidth: this.candleWidth,
+            candleSpacing: candleSpacing
+        });
         
         // Apply constraints to ensure valid position
         this.constrainOffset();
@@ -7774,6 +5655,7 @@ class Chart {
      * Resets zoom and shows the most recent data
      */
     jumpToLatest() {
+        console.log('🎯 Jumping to latest candles...');
         
         // Clear the restored flag so fitToView() can reposition
         this._chartViewRestored = false;
@@ -7790,26 +5672,9 @@ class Chart {
         // Re-render
         this.scheduleRender();
         
+        console.log('✅ Jumped to latest - showing last candles');
     }
     
-    /**
-     * Bar duration (ms) from series or current timeframe — used for visible time-range sync across panels.
-     */
-    inferBarDurationMs() {
-        if (this.data && this.data.length >= 2) {
-            const d = Math.abs(this.data[1].t - this.data[0].t);
-            if (Number.isFinite(d) && d > 0) return d;
-        }
-        const tf = this.currentTimeframe || '1m';
-        const tfMap = {
-            '1m': 60000, '2m': 120000, '3m': 180000, '4m': 240000, '5m': 300000,
-            '10m': 600000, '15m': 900000, '30m': 1800000, '45m': 2700000,
-            '1h': 3600000, '2h': 7200000, '4h': 14400000, '6h': 21600000, '12h': 43200000,
-            '1d': 86400000, '1w': 604800000, '1mo': 2592000000
-        };
-        return tfMap[tf] || 60000;
-    }
-
     /**
      * Dispatch scroll/zoom sync event for panel synchronization
      */
@@ -7817,30 +5682,16 @@ class Chart {
         if (!this.data || this.data.length === 0) return;
         // Allow main chart (panel 0) to sync to other panels too
         if (!window.panelManager || window.panelManager.currentLayout === '1') return;
-        if (this._suppressPanelScrollSync) return;
-        if (window.panelManager._isSyncing) return;
-        if (window.panelManager._syncingDateRange) return;
-
-        // Visible range: use same helpers as UI so timestamps match actual viewport (multi-TF sync).
-        const startIndex = typeof this.getVisibleStartIndex === 'function'
-            ? this.getVisibleStartIndex()
-            : 0;
-        const endIndex = typeof this.getVisibleEndIndex === 'function'
-            ? this.getVisibleEndIndex()
-            : Math.max(0, this.data.length - 1);
-
-        const startTimestamp = this.data[startIndex]?.t ?? 0;
-        const barMs = this.inferBarDurationMs();
-        // Exclusive end of the visible window (same wall-clock span on every timeframe).
-        const endTimestamp = (this.data[endIndex]?.t ?? 0) + barMs;
-
-        // Right-edge bar index (same geometry as wheel zoom) — used for Time sync discrete steps (range-by-range).
-        const m = this.margin || { l: 0, r: 60 };
-        const spacing = this.getCandleSpacing ? this.getCandleSpacing() : (this.candleWidth + 2);
-        const rightEdgePx = this.w - m.r;
-        const idxAtRight = (rightEdgePx - m.l - this.offsetX) / spacing;
-        const rightEdgeBarIndex = Math.max(0, Math.min(this.data.length - 1, Math.floor(idxAtRight)));
-        const timeSyncEndTimestamp = (this.data[rightEdgeBarIndex]?.t ?? 0) + barMs;
+        
+        // Calculate visible range
+        const spacing = this.getCandleSpacing();
+        const visibleCandles = Math.floor((this.w - this.margin.l - this.margin.r) / spacing);
+        const endIndex = Math.min(this.data.length - 1, Math.floor(-this.offsetX / spacing) + visibleCandles);
+        const startIndex = Math.max(0, endIndex - visibleCandles);
+        
+        // Get timestamps for visible range (use .t property)
+        const startTimestamp = this.data[startIndex]?.t || 0;
+        const endTimestamp = this.data[endIndex]?.t || 0;
         
         // Find which panel this chart belongs to
         let sourcePanel = this.panel || null;
@@ -7865,11 +5716,8 @@ class Chart {
                 panel: sourcePanel,
                 startIndex,
                 endIndex,
-                rightEdgeBarIndex,
-                timeSyncEndTimestamp,
                 startTimestamp,
                 endTimestamp,
-                rangeEndExclusive: endTimestamp,
                 offsetX: this.offsetX,
                 candleWidth: this.candleWidth
             }
@@ -7949,6 +5797,7 @@ class Chart {
         // Update the logo/title to show the symbol
         this.updateChartTitle(symbol);
         
+        console.log(`📊 Symbol selector updated: ${symbol}`);
     }
     
     /**
@@ -7983,7 +5832,8 @@ class Chart {
      * @param {string} symbol - Symbol to display
      */
     updateChartOHLCSymbol(symbol) {
-        const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? this.panelIndex : '';
+        // Determine ID suffix for panel charts
+        const idSuffix = (this.panelIndex !== undefined) ? this.panelIndex : '';
         
         const chartSymbol = document.getElementById('chartSymbol' + idSuffix);
         const chartTimeframe = document.getElementById('chartTimeframe' + idSuffix);
@@ -8006,69 +5856,6 @@ class Chart {
             };
             chartTimeframe.textContent = timeframeMap[this.currentTimeframe] || this.currentTimeframe;
         }
-
-        const dotEl = document.getElementById('ohlcSymbolDot' + idSuffix);
-        if (dotEl && symbol) {
-            // Reset every asset-class modifier before re-applying so toggling
-            // between e.g. EURUSD → BTC → AAPL doesn't leave stale styling.
-            dotEl.classList.remove('ohlc-dot-flags', 'ohlc-dot-asset',
-                'ohlc-dot-crypto', 'ohlc-dot-futures', 'ohlc-dot-stock');
-            dotEl.style.cssText = '';
-            dotEl.innerHTML = '';
-
-            const cls = this._detectTickerAssetClass(symbol);
-
-            // FX dual-flag pair (existing path). Only tried if the ticker
-            // hasn't already classified as crypto/futures/stock so compact
-            // crypto pairs like BTCUSD don't render as broken country flags.
-            if (cls !== 'crypto' && cls !== 'futures' && cls !== 'stock') {
-                const pair = this._parsePairCurrencies(symbol);
-                if (pair) {
-                    const baseCC = this._currencyToCountry(pair.base);
-                    const quoteCC = this._currencyToCountry(pair.quote);
-                    if (baseCC && quoteCC && baseCC !== 'xau' && baseCC !== 'xag' && quoteCC !== 'xau' && quoteCC !== 'xag') {
-                        const baseUrl = `https://flagcdn.com/w80/${baseCC}.png`;
-                        const quoteUrl = `https://flagcdn.com/w80/${quoteCC}.png`;
-                        dotEl.innerHTML = `<img class="ohlc-dot-flag ohlc-dot-flag-base" src="${baseUrl}" alt="${pair.base}" onerror="this.style.display='none'" /><img class="ohlc-dot-flag ohlc-dot-flag-quote" src="${quoteUrl}" alt="${pair.quote}" onerror="this.style.display='none'" />`;
-                        dotEl.classList.add('ohlc-dot-flags');
-                        return;
-                    }
-                }
-            }
-
-            // Crypto: CoinCap coin logo + orange gradient fallback behind.
-            if (cls === 'crypto') {
-                const base = this._cryptoBase(symbol);
-                const iconUrl = `https://assets.coincap.io/assets/icons/${base.toLowerCase()}@2x.png`;
-                dotEl.classList.add('ohlc-dot-asset', 'ohlc-dot-crypto');
-                dotEl.style.cssText = 'background:linear-gradient(135deg,#f7931a,#ffb347);color:#fff;font-weight:700;font-size:9px;overflow:hidden;position:relative;letter-spacing:-0.3px';
-                dotEl.innerHTML = `<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">${base.slice(0,3)}</span><img src="${iconUrl}" alt="${base}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit" onerror="this.style.display='none'" />`;
-                return;
-            }
-
-            // Futures: blue gradient + 2-3 letter root (ES, NQ, CL, ZC…).
-            if (cls === 'futures') {
-                const clean = String(symbol).replace(/[\s\-_\/\.]/g, '').toUpperCase();
-                const root = clean.slice(0, Math.min(3, clean.length)) || 'FX';
-                dotEl.classList.add('ohlc-dot-asset', 'ohlc-dot-futures');
-                dotEl.style.cssText = 'background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;font-weight:700;font-size:10px';
-                dotEl.textContent = root;
-                return;
-            }
-
-            // Stock: green/teal gradient + 3-4 letter ticker (AAPL, MSFT…).
-            if (cls === 'stock') {
-                const clean = String(symbol).replace(/[\s\-_\/\.]/g, '').toUpperCase();
-                const sym = clean.slice(0, Math.min(4, clean.length)) || 'ST';
-                const fs = sym.length >= 4 ? '8px' : '10px';
-                dotEl.classList.add('ohlc-dot-asset', 'ohlc-dot-stock');
-                dotEl.style.cssText = `background:linear-gradient(135deg,#10b981,#14b8a6);color:#fff;font-weight:700;font-size:${fs};letter-spacing:-0.3px`;
-                dotEl.textContent = sym;
-                return;
-            }
-
-            dotEl.textContent = '⚡';
-        }
     }
     
     /**
@@ -8079,12 +5866,19 @@ class Chart {
         // Skip UI updates for panel instances
         if (this.isPanel) return;
         
-        const _toolbarDec = this.getPriceDecimals(
-            this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0
-        );
         const formatPrice = (price, decimalOverride) => {
             if (!isFinite(price)) return '—';
-            const decimals = typeof decimalOverride === 'number' ? decimalOverride : _toolbarDec;
+            const abs = Math.abs(price);
+            let decimals;
+            if (typeof decimalOverride === 'number') {
+                decimals = decimalOverride;
+            } else if (abs >= 1000) {
+                decimals = 3;
+            } else if (abs >= 1) {
+                decimals = 4;
+            } else {
+                decimals = 5;
+            }
             return Number(price).toLocaleString(undefined, {
                 minimumFractionDigits: decimals,
                 maximumFractionDigits: decimals
@@ -8102,8 +5896,9 @@ class Chart {
                 return;
             }
 
-            sellElem.textContent = formatPrice(sellValue, _toolbarDec);
-            buyElem.textContent = formatPrice(buyValue, _toolbarDec);
+            const ticketDecimals = Math.abs(buyValue) >= 1000 ? 3 : 4;
+            sellElem.textContent = formatPrice(sellValue, ticketDecimals);
+            buyElem.textContent = formatPrice(buyValue, ticketDecimals);
         };
 
         const openElem = document.getElementById('toolbarOpen');
@@ -8182,17 +5977,15 @@ class Chart {
         const totalDataWidth = this.data.length * candleSpacing;
         
         // Right margin: Keep future space (TradingView style)
-        const rightMarginCandles = Number.isFinite(this.timeScale?.rightOffsetCandles)
-            ? this.timeScale.rightOffsetCandles
-            : 5;
-        const rightMargin = Math.max(0, rightMarginCandles) * candleSpacing;
+        const rightMarginCandles = 5;
+        const rightMargin = rightMarginCandles * candleSpacing;
         
         // Max offset: First candle can go up to right edge minus margin
         const maxOffset = cw - rightMargin;
         
-        // Min offset: stop left-pan when last candle reaches left chart edge
+        // Min offset: Last candle stays at 30% from left (keeps chart usable)
         const lastCandleX = (this.data.length - 1) * candleSpacing;
-        const minOffset = -lastCandleX;
+        const minOffset = cw * 0.3 - lastCandleX;
         
         // Proactive pan-loading: trigger when viewport is NEAR the edge (like TradingView)
         const isReplayActive = this.replaySystem && this.replaySystem.isActive;
@@ -8238,11 +6031,16 @@ class Chart {
         if (this.candleWidth > maxWidth) this.candleWidth = maxWidth;
         
         // Allow wider price zoom range
-        const minZoom = this.minPriceZoom;
+        const minZoom = 0.05;
+        const maxZoom = 20;
         
         if (this.priceZoom < minZoom) {
             const overshoot = minZoom - this.priceZoom;
             this.priceZoom = minZoom - Math.pow(overshoot, 0.88);
+            if (this.movement) this.movement.velocityY *= 0.5;
+        } else if (this.priceZoom > maxZoom) {
+            const overshoot = this.priceZoom - maxZoom;
+            this.priceZoom = maxZoom + Math.pow(overshoot, 0.88);
             if (this.movement) this.movement.velocityY *= 0.5;
         }
         
@@ -8255,7 +6053,7 @@ class Chart {
     constrainZoomTargets() {
         const m = this.margin;
         const cw = this.w - m.l - m.r;
-        const targetCandleSpacing = this._getSpacingForCandleWidth(this.zoomAnimation.targetCandleWidth);
+        const targetCandleSpacing = this.zoomAnimation.targetCandleWidth + 2;
         const totalDataWidth = this.data.length * targetCandleSpacing;
         
         const maxOffset = targetCandleSpacing * 2;
@@ -8268,7 +6066,7 @@ class Chart {
         
         this.zoomAnimation.targetOffsetX = Math.max(minOffset, Math.min(maxOffset, this.zoomAnimation.targetOffsetX));
         this.zoomAnimation.targetCandleWidth = Math.max(minWidth, Math.min(maxWidth, this.zoomAnimation.targetCandleWidth));
-        this.zoomAnimation.targetPriceZoom = Math.max(this.minPriceZoom, this.zoomAnimation.targetPriceZoom);
+        this.zoomAnimation.targetPriceZoom = Math.max(0.1, Math.min(10, this.zoomAnimation.targetPriceZoom));
     }
     
     // ═══════════════════════════════════════════════════════════════════
@@ -8283,7 +6081,7 @@ class Chart {
         const rightMargin = (this.timeScale?.rightOffsetCandles || 5) * candleSpacing;
         const maxOffset = cw - rightMargin;
         const lastCandleX = (this.data.length - 1) * candleSpacing;
-        const minOffset = -lastCandleX;
+        const minOffset = cw * 0.3 - lastCandleX;
         
         // Snap back if out of bounds
         if (this.offsetX > maxOffset) {
@@ -8352,7 +6150,7 @@ class Chart {
                 const paddedRange = newRange * 1.1;
                 const newZoom = this.priceZoom * (currentRange / paddedRange);
                 
-                this.priceZoom = Math.max(this.minPriceZoom, newZoom);
+                this.priceZoom = Math.max(0.1, Math.min(20, newZoom));
                 this.autoScale = false;
                 this.priceScale.autoScale = false;
                 
@@ -8388,6 +6186,7 @@ class Chart {
         this.scheduleRender();
         this.dispatchScrollSync();
         
+        console.log('📦 Box zoom applied:', { startIdx, endIdx, newCandleWidth });
     }
     
     // ═══════════════════════════════════════════════════════════════════
@@ -8513,6 +6312,7 @@ class Chart {
         if (!csvBtn || !csvInput) return;
         
         csvBtn.addEventListener('click', () => {
+            console.log('📂 CSV Upload button clicked');
             csvInput.click();
         });
         csvInput.addEventListener('change', async (e) => {
@@ -8528,6 +6328,8 @@ class Chart {
 	            reader.onload = async (e) => {
 	                const csvData = e.target.result;
 	                
+	                console.log(`📁 File loaded: ${file.name}`);
+	                console.log(`📏 File size: ${csvData.length} characters`);
 	                
 	                try {
 	                    // Use existing local parsing logic
@@ -8540,10 +6342,14 @@ class Chart {
 	                    if (!this.currentSymbol) {
 	                        this.currentSymbol = this.extractSymbolFromFilename(file.name);
 	                        if (this.currentSymbol) {
+	                            console.log(`📊 Extracted symbol from filename: ${this.currentSymbol}`);
 	                            this.updateSymbolSelector(this.currentSymbol);
 	                        }
 	                    }
 	                    
+	                    console.log(`✅ Successfully loaded "${file.name}"`);
+	                    console.log(`📊 Total candles: ${this.rawData.length}`);
+	                    console.log(`📊 Working data: ${this.data.length}`);
 	                    
 	                    this.jumpToLatest();
 	                    this.scheduleRender();
@@ -8584,6 +6390,7 @@ class Chart {
         // Use the new KeyboardShortcutsManager if available
         if (typeof KeyboardShortcutsManager !== 'undefined') {
             this.keyboardShortcuts = new KeyboardShortcutsManager(this);
+            console.log('⌨️ TradingView-style keyboard shortcuts initialized');
         } else {
             // Fallback to basic shortcuts
             console.warn('⚠️ KeyboardShortcutsManager not found, using basic shortcuts');
@@ -8600,12 +6407,8 @@ class Chart {
         
         document.addEventListener('keydown', (e) => {
             // Track CTRL key for tooltip showing
-            if (e.key === 'Control' || e.key === 'Meta') {
-                this.ctrlPressed = e.ctrlKey || e.metaKey;
-                this.refreshCrosshairFromLastPointer({
-                    ctrlKey: e.ctrlKey,
-                    metaKey: e.metaKey
-                });
+            if (e.key === 'Control') {
+                this.ctrlPressed = true;
             }
             
             // Escape - deselect tool
@@ -8623,7 +6426,7 @@ class Chart {
                 // Sync deletion to other panels
                 this.syncDrawingToOtherPanels(deletedDrawing, 'delete');
                 // Save to localStorage
-                userStorage.setItem(this.getDrawingsStorageKey(), JSON.stringify(this.drawings));
+                localStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
                 this.needsRender = true;
             }
             // Ctrl/Cmd + Z - undo last drawing
@@ -8632,13 +6435,14 @@ class Chart {
                 if (this.drawings.length > 0) {
                     this.drawings.pop();
                     // Save to localStorage
-                    userStorage.setItem(this.getDrawingsStorageKey(), JSON.stringify(this.drawings));
+                    localStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
                     this.needsRender = true;
                 }
             }
             // Home - jump to latest candles
             if (e.key === 'Home') {
                 e.preventDefault();
+                console.log('🏠 Home key pressed - jumping to latest');
                 this.jumpToLatest();
             }
             // M - toggle magnet mode
@@ -8654,6 +6458,7 @@ class Chart {
                     this.magnetMode = modes[(idx + 1) % modes.length];
                 }
                 this.syncMagnetButton();
+                console.log('🧲 Magnet mode:', this.magnetMode);
             }
             // Ctrl/Cmd + U - unlock all drawings
             if ((e.ctrlKey || e.metaKey) && (e.key === 'u' || e.key === 'U')) {
@@ -8666,8 +6471,10 @@ class Chart {
                     }
                 });
                 if (unlockedCount > 0) {
+                    console.log(`🔓 Unlocked ${unlockedCount} drawing(s)`);
                     this.scheduleRender();
                 } else {
+                    console.log('ℹ️ No locked drawings found');
                 }
             }
             // + or = to zoom in
@@ -8705,15 +6512,9 @@ class Chart {
         
         // Track CTRL key release - hide tooltip when CTRL is released
         document.addEventListener('keyup', (e) => {
-            if (e.key === 'Control' || e.key === 'Meta') {
-                this.ctrlPressed = e.ctrlKey || e.metaKey;
-                this.refreshCrosshairFromLastPointer({
-                    ctrlKey: e.ctrlKey,
-                    metaKey: e.metaKey
-                });
-                if (!this.ctrlPressed) {
-                    this.hideTooltip();
-                }
+            if (e.key === 'Control') {
+                this.ctrlPressed = false;
+                this.hideTooltip();
             }
         });
     }
@@ -8730,6 +6531,13 @@ class Chart {
         const settingsCancel = document.getElementById('goToSettingsCancel');
         const settingsCloseButtons = document.querySelectorAll('[data-go-to-settings-close]');
 
+        console.log('📅 setupDateSearch: found elements', {
+            dateInput: !!dateInput,
+            timeInput: !!timeInput,
+            toggle: !!toggle,
+            menu: !!menu,
+            settingsModal: !!settingsModal
+        });
 
         if (!toggle || !menu) {
             console.warn('⚠️ Go To controls not found, skipping setupDateSearch');
@@ -8778,6 +6586,7 @@ class Chart {
             menu.style.top = `${top}px`;
             menu.style.visibility = 'visible';
             
+            console.log('📅 Go To menu opened at', left, top);
         };
 
         const closeMenu = () => {
@@ -8894,7 +6703,7 @@ class Chart {
         };
 
         try {
-            const stored = userStorage.getItem('goToPresets');
+            const stored = window.localStorage.getItem('goToPresets');
             if (!stored) return defaultPresets;
             const parsed = JSON.parse(stored);
             return {
@@ -8941,7 +6750,7 @@ class Chart {
         };
 
         try {
-            userStorage.setItem('goToPresets', JSON.stringify(this.goToPresets));
+            window.localStorage.setItem('goToPresets', JSON.stringify(this.goToPresets));
         } catch (err) {
             console.warn('Failed to save go-to presets', err);
         }
@@ -9074,9 +6883,9 @@ class Chart {
             <!-- Footer -->
             <div class="go-to-menu-footer">
                 <button type="button" class="go-to-settings-btn go-to-menu-item" data-go-action="go-to-customize">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
                         <circle cx="12" cy="12" r="3"/>
-                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
                     </svg>
                     Settings
                 </button>
@@ -9134,7 +6943,7 @@ class Chart {
         }
         
         if (dateInput && dateBtn) {
-            const handleDateJump = async () => {
+            const handleDateJump = () => {
                 let dateStr = dateInput.value;
                 if (!dateStr) return;
                 
@@ -9143,37 +6952,40 @@ class Chart {
                     timeStr = timeInput.value;
                 }
                 
+                // Parse date/time as if it's in the selected timezone
                 const [year, month, day] = dateStr.split('-').map(Number);
                 const [hour, minute] = timeStr.split(':').map(Number);
-                if (![year, month, day, hour, minute].every(Number.isFinite)) return;
-
-                const tm = window.timezoneManager;
-                const utcTimestamp = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
-                const targetTimestamp = tm
-                    ? (utcTimestamp - tm.getOffsetMs())
-                    : new Date(year, month - 1, day, hour, minute, 0).getTime();
                 
-                if (!Number.isNaN(targetTimestamp)) {
-                    await chart.jumpToTimestamp(targetTimestamp, {
-                        forceWindowReload: true,
-                        showLoadingOverlay: true
-                    });
+                // Create a date in local time first
+                const localDate = new Date(year, month - 1, day, hour, minute, 0);
+                
+                // Convert from selected timezone to UTC
+                // The user entered a time in the chart's timezone, but Date() interprets it as local browser time
+                // We need to adjust for the difference between browser timezone and chart timezone
+                const tm = window.timezoneManager;
+                let targetTimestamp = localDate.getTime();
+                
+                if (tm) {
+                    // Get browser's local timezone offset in ms
+                    const browserOffset = -localDate.getTimezoneOffset() * 60 * 1000;
+                    // Get chart's timezone offset in ms
+                    const chartOffset = tm.getOffsetMs();
+                    // Adjust: remove browser offset, add chart offset to get the correct UTC time
+                    targetTimestamp = targetTimestamp + browserOffset - chartOffset;
+                }
+                
+                if (!isNaN(targetTimestamp)) {
+                    chart.jumpToTimestamp(targetTimestamp);
                     menu.classList.remove('open');
                 }
             };
-            dateBtn.addEventListener('click', () => {
-                void handleDateJump();
-            });
+            dateBtn.addEventListener('click', handleDateJump);
             dateInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    void handleDateJump();
-                }
+                if (e.key === 'Enter') handleDateJump();
             });
             if (timeInput) {
                 timeInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        void handleDateJump();
-                    }
+                    if (e.key === 'Enter') handleDateJump();
                 });
             }
         }
@@ -9221,6 +7033,7 @@ class Chart {
         }
         
         if (targetIndex === -1) {
+            console.log('📍 No bar found at price', targetPrice);
             return;
         }
         
@@ -9234,6 +7047,7 @@ class Chart {
             this.jumpToDate(dateStr);
         }
         
+        console.log('📍 Jumped to price', targetPrice, 'at index', targetIndex);
     }
     
     /**
@@ -9252,6 +7066,7 @@ class Chart {
         this.yScale.domain([newMin, newMax]);
         this.scheduleRender();
         
+        console.log('📍 Centered on price', targetPrice);
     }
 
     renderGoToSettings(container) {
@@ -9506,6 +7321,7 @@ class Chart {
         if (asianHigh !== null) {
             this.jumpToPrice(asianHigh);
         } else {
+            console.log('No Asian session high found');
         }
     }
     
@@ -9517,6 +7333,7 @@ class Chart {
         if (asianLow !== null) {
             this.jumpToPrice(asianLow);
         } else {
+            console.log('No Asian session low found');
         }
     }
     
@@ -9649,6 +7466,7 @@ class Chart {
         }
         
         if (!preset.enabled) {
+            console.log('Preset is disabled:', key);
             return;
         }
 
@@ -9834,6 +7652,8 @@ class Chart {
         this.dateRangeMin = minDate;
         this.dateRangeMax = maxDate;
         
+        console.log(`📅 Date range updated: ${minDateStr} to ${maxDateStr}`);
+        console.log(`   ${this.data.length} candles available`);
     }
     
     /**
@@ -9978,202 +7798,6 @@ class Chart {
     }
 
     /**
-     * Normalize timestamps to epoch milliseconds.
-     * Supports numbers, numeric strings, ISO-like date strings, and Date objects.
-     */
-    normalizeTimestampMs(value) {
-        if (value instanceof Date) {
-            const ts = value.getTime();
-            return Number.isFinite(ts) ? ts : NaN;
-        }
-
-        let ts = NaN;
-
-        if (typeof value === 'number') {
-            ts = value;
-        } else if (typeof value === 'string') {
-            const trimmed = value.trim();
-            if (!trimmed) return NaN;
-
-            const numeric = Number(trimmed);
-            if (Number.isFinite(numeric)) {
-                ts = numeric;
-            } else {
-                const parsed = Date.parse(trimmed);
-                if (Number.isFinite(parsed)) {
-                    ts = parsed;
-                }
-            }
-        }
-
-        if (!Number.isFinite(ts)) return NaN;
-
-        // Heuristic: values below 1e11 are treated as seconds and converted to ms.
-        if (Math.abs(ts) < 1e11) {
-            ts *= 1000;
-        }
-
-        return ts;
-    }
-
-    /**
-     * Resolve a Go To timestamp to a bar index.
-     * Prefers an exact timestamp match; otherwise the first bar on/after target time.
-     * Works even if sourceData is partially unsorted.
-     */
-    findGoToTargetIndex(sourceData, targetTimestamp) {
-        if (!Array.isArray(sourceData) || sourceData.length === 0) {
-            return -1;
-        }
-
-        const normalizedTarget = this.normalizeTimestampMs(targetTimestamp);
-        if (!Number.isFinite(normalizedTarget)) {
-            return -1;
-        }
-
-        let exactIndex = -1;
-        let firstOnOrAfterIndex = -1;
-        let firstOnOrAfterTs = Infinity;
-        let nearestIndex = -1;
-        let minDiff = Infinity;
-
-        for (let i = 0; i < sourceData.length; i++) {
-            const ts = this.normalizeTimestampMs(sourceData[i]?.t);
-            if (!Number.isFinite(ts)) continue;
-
-            if (ts === normalizedTarget && exactIndex === -1) {
-                exactIndex = i;
-            }
-
-            if (ts >= normalizedTarget && ts < firstOnOrAfterTs) {
-                firstOnOrAfterTs = ts;
-                firstOnOrAfterIndex = i;
-            }
-
-            const diff = Math.abs(ts - normalizedTarget);
-            if (diff < minDiff) {
-                minDiff = diff;
-                nearestIndex = i;
-            }
-        }
-
-        if (exactIndex !== -1) {
-            return exactIndex;
-        }
-
-        if (firstOnOrAfterIndex !== -1) {
-            return firstOnOrAfterIndex;
-        }
-
-        return nearestIndex;
-    }
-
-    /**
-     * Seek replay to target index and force viewport to follow this jump once,
-     * while keeping the user's follow mode preference unchanged.
-     */
-    jumpReplayToIndex(targetIndex, { forceScroll = true } = {}) {
-        if (!this.replaySystem || !this.replaySystem.isActive) {
-            return false;
-        }
-
-        const replay = this.replaySystem;
-        const previousAutoScrollEnabled = replay.autoScrollEnabled;
-
-        try {
-            if (forceScroll) {
-                replay.autoScrollEnabled = true;
-            }
-
-            if (typeof replay.seekTo === 'function') {
-                replay.seekTo(targetIndex, { fromDrag: false });
-            } else {
-                const maxIndex = Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0
-                    ? replay.fullRawData.length - 1
-                    : 0;
-                replay.currentIndex = Math.max(0, Math.min(targetIndex, maxIndex));
-                if (Array.isArray(replay.fullRawData) && replay.fullRawData[replay.currentIndex]) {
-                    replay.replayTimestamp = replay.fullRawData[replay.currentIndex].t;
-                }
-                replay.tickElapsedMs = 0;
-                replay.updateChartData(forceScroll);
-            }
-        } finally {
-            replay.autoScrollEnabled = previousAutoScrollEnabled;
-            if (typeof replay.updateAutoScrollIndicator === 'function') {
-                replay.updateAutoScrollIndicator();
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * Ensure a data window around target timestamp is loaded from server.
-     * Used by Go To when requested time is outside currently loaded candles.
-     */
-    async ensureGoToWindowContainsTimestamp(targetTimestamp, { usingReplay = false } = {}) {
-        if (!this.currentFileId || !Number.isFinite(targetTimestamp)) {
-            return false;
-        }
-
-        const session = this.backtestingSession || {};
-        const requestTimeframe = usingReplay
-            ? (this.replaySystem?.rawTimeframe || '1m')
-            : (this.currentTimeframe || '1m');
-
-        try {
-            const result = await this._fetchSmartWindow(
-                this.currentFileId,
-                requestTimeframe,
-                session,
-                'start',
-                { startTs: targetTimestamp }
-            );
-
-            if (!this._smartResponseHasPayload(result)) {
-                return false;
-            }
-
-            this.rawData = [];
-            this.data = [];
-            this.totalCandles = result.total;
-            this._serverCursors = {
-                firstTs: result.first_cursor,
-                lastTs: result.last_cursor,
-                hasMoreLeft: result.has_more_left,
-                hasMoreRight: result.has_more_right
-            };
-            this._panLoading = false;
-
-            this._ingestSmartWindowResult(result, {});
-
-            if (usingReplay && this.replaySystem && this.replaySystem.isActive) {
-                this.replaySystem.fullRawData = Array.isArray(this.rawData) ? [...this.rawData] : [];
-                this.replaySystem.rawTimeframe = requestTimeframe;
-                this.replaySystem._fullRawDataMatchesTF = false;
-
-                if (this.replaySystem.fullRawData.length > 0) {
-                    this.replaySystem.currentIndex = 0;
-                    this.replaySystem.replayStartTimestamp = this.replaySystem.fullRawData[0].t;
-                    this.replaySystem.replayEndTimestamp = this.replaySystem.fullRawData[this.replaySystem.fullRawData.length - 1].t;
-                    this.replaySystem.replayTimestamp = this.replaySystem.fullRawData[0].t;
-                    this.replaySystem.tickElapsedMs = 0;
-                }
-
-                if (typeof this.replaySystem.updateSliderRange === 'function') {
-                    this.replaySystem.updateSliderRange();
-                }
-            }
-
-            return Array.isArray(this.rawData) && this.rawData.length > 0;
-        } catch (error) {
-            console.warn('⚠️ Failed to load Go To window around target timestamp', error);
-            return false;
-        }
-    }
-
-    /**
      * Jump to a specific date/time on the chart
      * @param {string} dateString - Date string in YYYY-MM-DD format
      */
@@ -10184,25 +7808,15 @@ class Chart {
         }
 
         try {
-            let timeStr = '00:00';
+            // Build a full date-time string using optional time input
+            let dateTimeString = dateString;
             if (this.timeSearchInput && this.timeSearchInput.value) {
-                timeStr = this.timeSearchInput.value;
+                // Use selected time (HH:MM) in local timezone
+                dateTimeString = `${dateString}T${this.timeSearchInput.value}`;
             }
 
-            const [year, month, day] = String(dateString || '').split('-').map(Number);
-            const [hour = 0, minute = 0, second = 0] = String(timeStr || '').split(':').map(Number);
-
-            if (![year, month, day, hour, minute, second].every(Number.isFinite)) {
-                alert('Invalid date/time');
-                return;
-            }
-
-            const tm = window.timezoneManager;
-            const utcTimestamp = Date.UTC(year, month - 1, day, hour, minute, second, 0);
-            const targetTimestamp = tm
-                ? (utcTimestamp - tm.getOffsetMs())
-                : new Date(year, month - 1, day, hour, minute, second, 0).getTime();
-            const targetDate = new Date(targetTimestamp);
+            const targetDate = new Date(dateTimeString);
+            const targetTimestamp = targetDate.getTime();
 
             // Validate the date/time
             if (isNaN(targetTimestamp)) {
@@ -10210,6 +7824,8 @@ class Chart {
                 return;
             }
 
+            console.log(`📅 Jumping to: ${dateTimeString}`);
+            console.log(`🕐 Target timestamp: ${targetTimestamp}`);
 
             // Choose data source: full replay data when replay is active, otherwise current chart data
             let sourceData = this.data;
@@ -10225,8 +7841,17 @@ class Chart {
                 return;
             }
 
-            // Prefer first candle on/after target timestamp.
-            const closestIndex = this.findGoToTargetIndex(sourceData, targetTimestamp);
+            // Find the closest candle to the target timestamp
+            let closestIndex = -1;
+            let minDiff = Infinity;
+
+            for (let i = 0; i < sourceData.length; i++) {
+                const diff = Math.abs(sourceData[i].t - targetTimestamp);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestIndex = i;
+                }
+            }
 
             if (closestIndex === -1) {
                 alert('Could not find data for the specified date/time');
@@ -10234,19 +7859,21 @@ class Chart {
             }
 
             const closestCandle = sourceData[closestIndex];
-            const closestTs = this.normalizeTimestampMs(closestCandle?.t);
-            const closestDate = new Date(closestTs);
+            const closestDate = new Date(closestCandle.t);
+            console.log(`🎯 Closest candle found at: ${closestDate.toLocaleString()}`);
+            console.log(`📍 Index: ${closestIndex} of ${sourceData.length}`);
 
             // Check if the date is within a reasonable range
-            const daysDiff = Math.abs(targetTimestamp - closestTs) / (1000 * 60 * 60 * 24);
+            const daysDiff = Math.abs(targetTimestamp - closestCandle.t) / (1000 * 60 * 60 * 24);
             if (daysDiff > 30) {
                 const proceed = confirm(`The closest data found is ${Math.round(daysDiff)} days away from your selected date. Continue?`);
                 if (!proceed) return;
             }
 
             if (usingReplay) {
-                // Force one-off follow so Go To visibly moves even when replay follow mode is currently off.
-                this.jumpReplayToIndex(closestIndex, { forceScroll: true });
+                // When replay is active, move replay position and let replay system handle rendering & panel sync
+                this.replaySystem.currentIndex = closestIndex;
+                this.replaySystem.updateChartData(true);
             } else {
                 // Normal mode: center the candle on screen
                 const m = this.margin;
@@ -10269,6 +7896,7 @@ class Chart {
                 this.scheduleRender();
             }
 
+            console.log(`✅ Jumped to ${closestDate.toLocaleString()}`);
 
             // Show a brief notification
             if (typeof this.showNotification === 'function') {
@@ -10299,24 +7927,14 @@ class Chart {
      * Jump to a specific timestamp (UTC milliseconds)
      * @param {number} targetTimestamp - Unix timestamp in milliseconds
      */
-    async jumpToTimestamp(targetTimestamp, { skipWindowFetch = false, forceWindowReload = false, showLoadingOverlay = true } = {}) {
+    jumpToTimestamp(targetTimestamp) {
         if (!this.data || this.data.length === 0) {
             alert('No data loaded. Please upload a CSV file first.');
             return;
         }
 
-        const shouldToggleOverlay = showLoadingOverlay && !skipWindowFetch;
-        if (shouldToggleOverlay) {
-            this.showGoToLoadingOverlay();
-        }
-
         try {
-            const normalizedTarget = this.normalizeTimestampMs(targetTimestamp);
-            if (!Number.isFinite(normalizedTarget)) {
-                alert('Invalid timestamp');
-                return;
-            }
-
+            console.log(`📅 Jumping to timestamp: ${targetTimestamp} (${new Date(targetTimestamp).toISOString()})`);
 
             // Choose data source: full replay data when replay is active
             let sourceData = this.data;
@@ -10332,32 +7950,17 @@ class Chart {
                 return;
             }
 
-            let minLoadedTs = Infinity;
-            let maxLoadedTs = -Infinity;
+            // Find the closest candle to the target timestamp
+            let closestIndex = -1;
+            let minDiff = Infinity;
+
             for (let i = 0; i < sourceData.length; i++) {
-                const ts = this.normalizeTimestampMs(sourceData[i]?.t);
-                if (!Number.isFinite(ts)) continue;
-                if (ts < minLoadedTs) minLoadedTs = ts;
-                if (ts > maxLoadedTs) maxLoadedTs = ts;
-            }
-
-            const hasLoadedRange = Number.isFinite(minLoadedTs) && Number.isFinite(maxLoadedTs);
-            const targetOutsideLoadedRange = hasLoadedRange &&
-                (normalizedTarget < minLoadedTs || normalizedTarget > maxLoadedTs);
-
-            if (!skipWindowFetch && this.currentFileId && (forceWindowReload || targetOutsideLoadedRange)) {
-                const loaded = await this.ensureGoToWindowContainsTimestamp(normalizedTarget, { usingReplay });
-                if (loaded) {
-                    return this.jumpToTimestamp(normalizedTarget, {
-                        skipWindowFetch: true,
-                        forceWindowReload: false,
-                        showLoadingOverlay: false
-                    });
+                const diff = Math.abs(sourceData[i].t - targetTimestamp);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestIndex = i;
                 }
             }
-
-            // Prefer first candle on/after target timestamp.
-            const closestIndex = this.findGoToTargetIndex(sourceData, normalizedTarget);
 
             if (closestIndex === -1) {
                 alert('Could not find data for the specified date/time');
@@ -10365,22 +7968,22 @@ class Chart {
             }
 
             const closestCandle = sourceData[closestIndex];
-            const closestTs = this.normalizeTimestampMs(closestCandle?.t);
             
             // Display using timezone manager
             const tm = window.timezoneManager;
-            const displayDate = tm ? tm.convertToTimezone(closestTs) : new Date(closestTs);
+            const displayDate = tm ? tm.convertToTimezone(closestCandle.t) : new Date(closestCandle.t);
+            console.log(`🎯 Closest candle found at: ${tm ? tm.formatTime(closestCandle.t, 'full') : displayDate.toLocaleString()}`);
 
             // Check if the date is within a reasonable range
-            const daysDiff = Math.abs(normalizedTarget - closestTs) / (1000 * 60 * 60 * 24);
+            const daysDiff = Math.abs(targetTimestamp - closestCandle.t) / (1000 * 60 * 60 * 24);
             if (daysDiff > 30) {
                 const proceed = confirm(`The closest data found is ${Math.round(daysDiff)} days away from your selected date. Continue?`);
                 if (!proceed) return;
             }
 
             if (usingReplay) {
-                // Force one-off follow so Go To visibly moves even when replay follow mode is currently off.
-                this.jumpReplayToIndex(closestIndex, { forceScroll: true });
+                this.replaySystem.currentIndex = closestIndex;
+                this.replaySystem.updateChartData(true);
             } else {
                 const m = this.margin;
                 const cw = this.w - m.l - m.r;
@@ -10396,27 +7999,26 @@ class Chart {
                 this.scheduleRender();
             }
 
+            console.log(`✅ Jumped to ${tm ? tm.formatTime(closestCandle.t, 'full') : displayDate.toLocaleString()}`);
 
             if (typeof this.showNotification === 'function') {
-                this.showNotification(`Jumped to ${tm ? tm.formatTime(closestTs, 'datetime') : displayDate.toLocaleString()}`);
+                this.showNotification(`Jumped to ${tm ? tm.formatTime(closestCandle.t, 'datetime') : displayDate.toLocaleString()}`);
             }
 
         } catch (error) {
             console.error('Error jumping to timestamp:', error);
             alert(`Failed to jump: ${error.message}`);
-        } finally {
-            if (shouldToggleOverlay) {
-                this.hideGoToLoadingOverlay();
-            }
         }
     }
     
     setupTimeframeButtons() {
         const buttons = document.querySelectorAll('.timeframe-btn');
+        console.log(`✓ Found ${buttons.length} timeframe buttons`);
         
         buttons.forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const timeframe = e.target.dataset.timeframe;
+                console.log(`⏱️ Timeframe clicked: ${timeframe}`);
                 
                 document.querySelectorAll('.timeframe-btn').forEach(b => b.classList.remove('active'));
                 e.target.classList.add('active');
@@ -10452,10 +8054,8 @@ class Chart {
      * @param {string} timeframe - Timeframe identifier (e.g., '1m', '5m', '1h', '1d')
      */
     setTimeframe(timeframe) {
-        const hasData = Array.isArray(this.rawData) && this.rawData.length > 0;
-        // Empty rawData is normal during sync/replay races; still refetch when this panel is tied to a server file.
-        if (!hasData && !this.currentFileId) return;
-
+        if (!this.rawData || this.rawData.length === 0) return;
+        
         if (this.drawingManager && this.drawings && this.drawings.length > 0) {
             this.drawingManager.saveDrawings();
         }
@@ -10468,23 +8068,9 @@ class Chart {
         } else {
             this.updateChartOHLCSymbol(this.currentSymbol);
         }
-
-        // Trigger interval sync if enabled
-        if (window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.interval) {
-            const sourcePanel = this.panel || (window.panelManager.panels || []).find(p => p.chartInstance === this);
-            if (sourcePanel) {
-                window.panelManager.syncInterval(sourcePanel, timeframe);
-            }
-        }
         
         if (this.replaySystem && this.replaySystem.isActive) {
-            if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
-                this.compareOverlay.refreshForTimeframe(timeframe);
-            }
             this.replaySystem.onTimeframeChange();
-            if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
-                requestAnimationFrame(() => this.compareOverlay.refreshForTimeframe(timeframe));
-            }
             return;
         }
         
@@ -10495,15 +8081,12 @@ class Chart {
         }
         
         // Fallback for non-file data (small local datasets)
-        if (!hasData) return;
         this.data = this.resampleData(this.rawData, timeframe);
         if (typeof this.recalculateIndicators === 'function') this.recalculateIndicators();
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
             this.compareOverlay.refreshForTimeframe(timeframe);
         }
-        this._chartViewRestored = false;
-        this.resize();
-        this.fitToView();
+        this.fitToView(); // position to last candle after timeframe change
         this.scheduleRender();
         this._fireChartDataLoaded();
     }
@@ -10513,16 +8096,14 @@ class Chart {
      * Fetches last 5000 candles at the requested timeframe.
      */
     async _loadTimeframeFromServer(timeframe) {
-        const loadId = ++this._timeframeLoadSeq;
         try {
             if (this.showLoader) this.showLoader('Changing timeframe...');
-
+            
             const session = this.backtestingSession || {};
             const result = await this._fetchSmartWindow(this.currentFileId, timeframe, session);
-
-            if (loadId !== this._timeframeLoadSeq) return;
-            if (!this._smartResponseHasPayload(result)) throw new Error('No data');
-
+            
+            if (!result || !result.data) throw new Error('No data');
+            
             this.rawData = [];
             this.data = [];
             this.totalCandles = result.total;
@@ -10533,30 +8114,26 @@ class Chart {
                 hasMoreRight: result.has_more_right
             };
             this._panLoading = false;
-            this._chartViewRestored = false;
-
-            if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
-            this.resize();
-
-            this._ingestSmartWindowResult(result, {});
+            
+            this.parseCSVChunk(result.data, 0);
+            // NOTE: parseCSVChunk already resamples this.data to currentTimeframe
+            // do NOT overwrite it with rawData here (that would break non-1m timeframes)
+            
+            if (typeof this.recalculateIndicators === 'function') this.recalculateIndicators();
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(timeframe);
             }
+            
+            this.fitToView(); // position to last candle after timeframe change
+            this.scheduleRender();
             if (this.hideLoader) this.hideLoader();
-
-            requestAnimationFrame(() => {
-                if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
-                this.resize();
-                this._chartViewRestored = false;
-                this.fitToView();
-                this.render();
-            });
-
+            // NOTE: parseCSVChunk already dispatches chartDataLoaded internally,
+            // so we do NOT call _fireChartDataLoaded() here to avoid double-refresh of drawings
+            
+            console.log(`✅ ${timeframe}: loaded ${this.rawData.length}/${result.total} candles`);
         } catch (error) {
-            if (loadId === this._timeframeLoadSeq) {
-                console.error('❌ Timeframe change failed:', error);
-                if (this.hideLoader) this.hideLoader();
-            }
+            console.error('❌ Timeframe change failed:', error);
+            if (this.hideLoader) this.hideLoader();
         }
     }
     
@@ -10875,6 +8452,7 @@ class Chart {
                     this.scheduleRender();
                 }
                 
+                console.log(`📦 Pan ${direction}: +${uniqueNew.length} candles (master: ${isReplay ? this.replaySystem.fullRawData.length : this.rawData.length})`);
 
                 if (isReplay &&
                     direction === 'forward' &&
@@ -11025,6 +8603,7 @@ class Chart {
             this.parseCSVChunk(csv, 0);
             
             if (this.rawData.length > 0) {
+                console.log(`✅ Loaded ${this.rawData.length} candles from CSV file`);
             } else {
                 throw new Error('No valid data found in CSV');
             }
@@ -11036,28 +8615,15 @@ class Chart {
 
 
     /**
-     * Pixels between bar centers for a nominal candle width (used for layout, hit-testing, zoom animation).
-     * Gap scales linearly from 0 at sub-pixel widths to 2px at w >= 8, allowing deep zoom-out
-     * on high-frequency data (e.g. 3+ days on 1-minute charts).
-     */
-    _getSpacingForCandleWidth(cw) {
-        const w = Number(cw);
-        if (!Number.isFinite(w)) return 10;
-        if (w <= 0.5) return Math.max(0.2, w);
-        const gap = Math.min(2, (w - 0.5) * (2 / 7.5));
-        return w + gap;
-    }
-
-    /**
      * Get effective candle spacing based on zoom level
      * This ensures consistent spacing calculations throughout the chart
      */
     getCandleSpacing() {
-        // Memoize by candleWidth — called 10+ times per render frame
-        if (this._candleWidthAtCache === this.candleWidth) return this._candleSpacingCache;
-        this._candleSpacingCache = this._getSpacingForCandleWidth(this.candleWidth);
-        this._candleWidthAtCache = this.candleWidth;
-        return this._candleSpacingCache;
+        const FIXED_SPACING = 0;
+        const effectiveSpacing = this.candleWidth <= 3 ? 0 : // No spacing when very zoomed out
+                               this.candleWidth <= 5 ? 0 : // Minimal spacing when zoomed out
+                               FIXED_SPACING; // Normal spacing otherwise
+        return this.candleWidth + effectiveSpacing;
     }
     
     /**
@@ -11087,10 +8653,9 @@ class Chart {
         if (visible.length === 0) {
             // Only set default scales if we've never had valid data before
             if (!this.xScale || !this.yScale) {
-                const _indPanelH = this.separateIndicatorPanelHeight || 0;
                 this.xScale = d3.scaleLinear().domain([0, 1]).range([m.l, this.w - m.r]);
-                this.yScale = d3.scaleLinear().domain([0, 1]).range([this.h - m.b - volumeAreaHeight - _indPanelH, m.t]);
-                this.volumeScale = d3.scaleLinear().domain([0, 1]).range([this.h - m.b - _indPanelH, this.h - m.b - volumeAreaHeight - _indPanelH]);
+                this.yScale = d3.scaleLinear().domain([0, 1]).range([this.h - m.b - volumeAreaHeight, m.t]);
+                this.volumeScale = d3.scaleLinear().domain([0, 1]).range([this.h - m.b, this.h - m.b - volumeAreaHeight]);
             }
             // Otherwise, keep the existing scales so drawings remain visible
             return;
@@ -11106,9 +8671,9 @@ class Chart {
         
         // Dynamically calculate padding - smaller padding for better fit
         // Use 5% of price range as padding, but limit to reasonable visual space
-        let paddingPercent = 0.03; // Tighter default to reduce top/bottom empty space
-        if (this.priceZoom > 2) paddingPercent = 0.02;
-        if (this.priceZoom > 5) paddingPercent = 0.015;
+        let paddingPercent = 0.05; // 5% padding by default for better centering
+        if (this.priceZoom > 2) paddingPercent = 0.03;
+        if (this.priceZoom > 5) paddingPercent = 0.02;
         const padding = priceRange * paddingPercent;
         
         // Apply price zoom and offset with improved calculations
@@ -11169,19 +8734,6 @@ class Chart {
 
             this._pendingChartViewSanityCheck = false;
         }
-
-        // Include effective last price in Y domain so the price line/label stay drawable
-        // in auto-scale mode or when the right edge has no visible bars.
-        // Skip when user is manually zooming/panning so the price axis drag is unconstrained.
-        if (this.chartSettings.showPriceLine !== false && this.autoScale) {
-            const linePrice = this.resolveEffectiveCurrentPrice(visible);
-            if (Number.isFinite(linePrice)) {
-                const span = domainMax - domainMin;
-                const pad = Math.max(span * 0.02, Math.abs(linePrice) * 1e-9, 1e-10);
-                if (linePrice < domainMin) domainMin = linePrice - pad;
-                if (linePrice > domainMax) domainMax = linePrice + pad;
-            }
-        }
         
         // ✅ FIX: Use same candleAndSpacing for xScale domain to keep X-axis synchronized
         this.xScale = d3.scaleLinear()
@@ -11189,15 +8741,14 @@ class Chart {
                      Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)) + visible.length])
             .range([m.l, this.w - m.r]);
         
-        const indPanelH = this.separateIndicatorPanelHeight || 0;
         this.yScale = d3.scaleLinear()
             .domain([domainMin, domainMax])
-            .range([this.h - m.b - volumeAreaHeight - indPanelH, m.t]);
+            .range([this.h - m.b - volumeAreaHeight, m.t]);
         
         const maxVolume = Math.max(...visible.map(d => d.v), 1);
         this.volumeScale = d3.scaleLinear()
             .domain([0, maxVolume])
-            .range([this.h - m.b - indPanelH, this.h - m.b - volumeAreaHeight - indPanelH]);
+            .range([this.h - m.b, this.h - m.b - volumeAreaHeight]);
         
         // Create scales object for order manager compatibility
         this.scales = {
@@ -11323,7 +8874,7 @@ class Chart {
     }
     
     animate() {
-        requestAnimationFrame(this._animateBound);
+        requestAnimationFrame(this.animate.bind(this));
         
         this.animateZoom();
 
@@ -11377,14 +8928,11 @@ class Chart {
         // Build time-axis ticks ONCE – shared by drawGrid() and drawAxes() for perfect sync
         this._timeTicks = this._buildTimeTicks();
 
-        // Visible bar indices: derive from plot edges (matches dataIndexToPixel / panning).
-        // Using full canvas width for bar count was too wide vs the drawable area and caused
-        // separate-panel indicators to miss segments when scrolling into older bars.
-        const mVis = this.margin || { l: 0, r: 0, t: 0, b: 0 };
-        const plotRight = this.w - mVis.r;
-        const edgeBuf = 6;
-        const startIdx = Math.max(0, Math.floor(this.pixelToDataIndex(mVis.l)) - edgeBuf);
-        const endIdx = Math.min(this.data.length, Math.ceil(this.pixelToDataIndex(plotRight)) + edgeBuf);
+        const candleSpacing = this.getCandleSpacing();
+        const firstVisibleIndex = Math.floor(-this.offsetX / candleSpacing);
+        const numVisibleCandles = Math.ceil(this.w / candleSpacing);
+        const startIdx = Math.max(0, firstVisibleIndex);
+        const endIdx = Math.min(this.data.length, firstVisibleIndex + numVisibleCandles + 2);
         
         // Expose current visible range for indicator rendering
         this.visibleStartIndex = startIdx;
@@ -11406,12 +8954,13 @@ class Chart {
             // Still draw grid, axes, and drawings even when no candles are visible
             // This ensures drawings remain visible when scrolling past chart edges
             this.drawGrid();
-            const latestCandle = this.data[this.data.length - 1];
-            this.drawPriceLine([latestCandle]);
             this.drawAxes();
-            this.drawEconomicCalendarAxisMarkers();
             
-            this.drawCurrentPriceLabel([latestCandle]);
+            // Draw current price label using latest data candle
+            if (this.data.length > 0) {
+                const latestCandle = this.data[this.data.length - 1];
+                this.drawCurrentPriceLabel([latestCandle]);
+            }
             
             // Redraw drawings even when no candles are visible
             this.redrawDrawings();
@@ -11419,16 +8968,16 @@ class Chart {
             // Update order lines if order manager is active
             if (this.orderManager) {
                 if (typeof this.orderManager.updateOrderLines === 'function') {
-                    this.orderManager.updateOrderLines(this);
+                    this.orderManager.updateOrderLines();
+                }
+                if (typeof this.orderManager.updateSLTPLines === 'function') {
+                    this.orderManager.updateSLTPLines();
                 }
                 if (typeof this.orderManager.updatePreviewLinePositions === 'function') {
                     this.orderManager.updatePreviewLinePositions();
                 }
-                if (typeof this.orderManager._scheduleDraftPreviewRedrawIfNeeded === 'function') {
-                    this.orderManager._scheduleDraftPreviewRedrawIfNeeded(this);
-                }
                 if (typeof this.orderManager.updateMfeMaeMarkers === 'function') {
-                    this.orderManager.updateMfeMaeMarkers(this);
+                    this.orderManager.updateMfeMaeMarkers();
                 }
             }
             return;
@@ -11436,6 +8985,8 @@ class Chart {
         
         // Log first render with data
         if (!this.hasRenderedData) {
+            console.log(` First render with data! Visible candles: ${visible.length}, Total: ${this.data.length}`);
+            console.log('First visible candle:', visible[0]);
             this.hasRenderedData = true;
         }
 
@@ -11444,20 +8995,15 @@ class Chart {
             this.compareOverlay.updateLeftMargin();
         }
 
-        // Draw grid lines first
+        // Draw grid lines and axes
         this.drawGrid();
+        this.drawAxes();
 
         // Draw volume bars
         this.drawVolume(visible);
 
         // Draw candlesticks
         this.drawCandles(visible);
-
-        // Draw last-price line (if enabled)
-        this.drawPriceLine(visible);
-
-        // Optional marks overlay (TradingView-style "marks on bars")
-        this.drawMarksOnBars(visible);
 
         // Draw compare overlays (other symbols on same chart)
         if (this.compareOverlay && typeof this.compareOverlay.drawOverlays === 'function') {
@@ -11468,6 +9014,9 @@ class Chart {
             }
         }
 
+        // Draw current price indicator (latest close price)
+        this.drawCurrentPriceLabel(visible);
+        
         // Update logo for current theme
         this.updateLogoForTheme();
 
@@ -11490,16 +9039,16 @@ class Chart {
         // This happens AFTER scales are calculated in render()
         if (this.orderManager) {
             if (typeof this.orderManager.updateOrderLines === 'function') {
-                this.orderManager.updateOrderLines(this);
+                this.orderManager.updateOrderLines();
+            }
+            if (typeof this.orderManager.updateSLTPLines === 'function') {
+                this.orderManager.updateSLTPLines();
             }
             if (typeof this.orderManager.updatePreviewLinePositions === 'function') {
                 this.orderManager.updatePreviewLinePositions();
             }
-            if (typeof this.orderManager._scheduleDraftPreviewRedrawIfNeeded === 'function') {
-                this.orderManager._scheduleDraftPreviewRedrawIfNeeded(this);
-            }
             if (typeof this.orderManager.updateMfeMaeMarkers === 'function') {
-                this.orderManager.updateMfeMaeMarkers(this);
+                this.orderManager.updateMfeMaeMarkers();
             }
         }
 
@@ -11507,16 +9056,6 @@ class Chart {
         if (typeof this.drawSecondaryIndicators === 'function') {
             this.drawSecondaryIndicators();
         }
-
-        // Draw axes LAST so the price/time axis always overlays candles and other chart content.
-        // This makes candles hide behind the axis instead of drawing above it.
-        this.drawAxes();
-
-        // Economic calendar markers (Finnhub) on the time-axis row — after axes so they sit above the axis line.
-        this.drawEconomicCalendarAxisMarkers();
-
-        // Draw current price label AFTER axes so it isn't covered by the axis background fill
-        this.drawCurrentPriceLabel(visible);
         
         // Show loading indicator if loading data
         if (this.isLoadingChunk) {
@@ -11529,11 +9068,6 @@ class Chart {
         // Draw box zoom selection rectangle (STEP 8)
         if (this.boxZoom && this.boxZoom.active) {
             this.drawBoxZoom();
-        }
-
-        // Economic calendar: refetch Finnhub range when visible window date span changes (long histories / pan).
-        if (!this.isPanel && typeof window !== 'undefined' && typeof window.__economicCalendarNotifyChartRender === 'function') {
-            window.__economicCalendarNotifyChartRender(this);
         }
     }
     
@@ -11610,7 +9144,7 @@ class Chart {
         
         // Volume section separator (only show if volume is visible)
         if (this.chartSettings.showVolume && volumeAreaHeight > 0) {
-            this.ctx.strokeStyle = this.chartSettings.gridColor || 'rgba(255, 255, 255, 0.08)';
+            this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
             this.ctx.lineWidth = 1;
             this.ctx.beginPath();
             this.ctx.moveTo(m.l, this.h - m.b - volumeAreaHeight);
@@ -11638,11 +9172,11 @@ class Chart {
 
         // Draw Y-axis background area
         this.ctx.fillStyle = this.chartSettings.backgroundColor || '#050028';
-        this.ctx.fillRect(axisX, 0, axisW, this.h);
+        this.ctx.fillRect(axisX, 0, axisW, this.h - m.b);
         
         // Draw X-axis background area (time axis on the bottom) - uses same background as chart
         this.ctx.fillStyle = this.chartSettings.backgroundColor || '#050028';
-        this.ctx.fillRect(axisLeft ? axisW : 0, this.h - m.b, this.w - axisW, m.b);
+        this.ctx.fillRect(0, this.h - m.b, this.w, m.b);
         
         // Draw axis highlight zones (for selected drawings) - BEFORE labels so labels appear on top
         this.drawAxisHighlightZones();
@@ -11666,7 +9200,7 @@ class Chart {
         applyScaleLineStyle();
         this.ctx.beginPath();
         this.ctx.moveTo(axisBorderX, 0);
-        this.ctx.lineTo(axisBorderX, this.h);
+        this.ctx.lineTo(axisBorderX, this.h - m.b);
         this.ctx.stroke();
         
         // Draw X-axis border line (top edge of time axis) - subtle gray
@@ -11689,7 +9223,7 @@ class Chart {
         
         yTicks.forEach(price => {
             const y = this.yScale(price);
-            if (y > m.t + 8 && y < this.h - m.b - volumeAreaHeight - 8) {
+            if (y > m.t && y < this.h - m.b - volumeAreaHeight) {
                 const text = price.toFixed(decimals);
                 this.ctx.fillStyle = this.chartSettings.scaleTextColor;
                 this.ctx.fillText(text, axisMidX, y + 4);
@@ -11921,19 +9455,7 @@ class Chart {
     }
 
     /**
-     * Get appropriate decimal places for price display.
-     *
-     * Priority:
-     *   1. Manual user override in chart settings (explicit intent wins).
-     *   2. INSTRUMENT_REGISTRY via marketCalcEngine — always re-resolved against the
-     *      CURRENT symbol so switching from FX (5dp) → futures (2dp for NQ, 0dp for YM,
-     *      etc.) updates the axis immediately. Previously this was gated behind a
-     *      pre-synced `_symbolPrecision` cache that could be stuck at 5 (FX default) if
-     *      order-manager ran before the symbol had resolved, leaving NQ showing
-     *      `1340.80000` instead of `1340.75`.
-     *   3. The `_symbolPrecision` snapshot set by order-manager (e.g. for dataset-level
-     *      overrides pushed from `/api/admin/datasets/{id}/settings`).
-     *   4. Range-based heuristic for unregistered symbols.
+     * Get appropriate decimal places based on price range
      */
     getPriceDecimals(priceRange) {
         const override = this.chartSettings && this.chartSettings.pricePrecision;
@@ -11941,85 +9463,12 @@ class Chart {
             const n = parseInt(override, 10);
             if (!isNaN(n)) return n;
         }
-        // If the active symbol changed since we last resolved, drop the cached value so
-        // the registry is consulted fresh (prevents FX-default 5dp leaking into NQ/ES/GC).
-        if (this._symbolPrecisionResolvedFor !== this.currentSymbol) {
-            this._symbolPrecision = undefined;
-            this._symbolPrecisionResolvedFor = this.currentSymbol;
-        }
-        // Always consult the registry first — for a known symbol its tick size IS the
-        // correct decimal count, and it beats any cached value or range guess.
-        if (this.currentSymbol && typeof window !== 'undefined' && window.marketCalcEngine) {
-            try {
-                const calc = window.marketCalcEngine.getCalculator(this.currentSymbol);
-                const specs = calc && calc.specs;
-                if (specs) {
-                    // Prefer explicit `precision`; derive from `tickSize` if only that is set
-                    // (some futures specs use tickSize as the source of truth).
-                    if (Number.isFinite(specs.precision) && specs.precision >= 0) {
-                        this._symbolPrecision = specs.precision;
-                        return specs.precision;
-                    }
-                    if (Number.isFinite(specs.tickSize) && specs.tickSize > 0) {
-                        const s = String(specs.tickSize);
-                        let dec;
-                        if (s.includes('e-')) {
-                            dec = parseInt(s.split('e-')[1], 10) || 0;
-                        } else {
-                            const dot = s.indexOf('.');
-                            dec = dot === -1 ? 0 : s.length - dot - 1;
-                        }
-                        this._symbolPrecision = dec;
-                        return dec;
-                    }
-                }
-            } catch (_) { /* registry miss — fall through */ }
-        }
-        if (Number.isFinite(this._symbolPrecision) && this._symbolPrecision >= 0) {
-            return this._symbolPrecision;
-        }
         if (priceRange < 0.01) return 6;
-        if (priceRange < 0.1)  return 4;
-        if (priceRange < 1)    return 3;
-        if (priceRange < 10)   return 2;
+        if (priceRange < 0.1) return 4;
+        if (priceRange < 1) return 3;
+        if (priceRange < 10) return 2;
         if (priceRange < 1000) return 2;
         return 0;
-    }
-
-    /**
-     * Resolve the instrument's tick size (minimum price increment) from the registry.
-     * Used by the axis, crosshair, order drag-snap, and SL/TP input step. Falls back
-     * to `10^-precision` when the registry only carries precision.
-     *
-     * Examples: NQ/ES → 0.25, GC → 0.10, CL → 0.01, EURUSD → 0.00001, USDJPY → 0.001.
-     */
-    getTickSize() {
-        if (this.currentSymbol && typeof window !== 'undefined' && window.marketCalcEngine) {
-            try {
-                const calc = window.marketCalcEngine.getCalculator(this.currentSymbol);
-                const specs = calc && calc.specs;
-                if (specs) {
-                    if (Number.isFinite(specs.tickSize) && specs.tickSize > 0) return specs.tickSize;
-                    if (Number.isFinite(specs.pipSize)  && specs.pipSize  > 0) return specs.pipSize;
-                    if (Number.isFinite(specs.precision) && specs.precision >= 0) {
-                        return Math.pow(10, -specs.precision);
-                    }
-                }
-            } catch (_) { /* fall through */ }
-        }
-        const dec = (Number.isFinite(this._symbolPrecision) && this._symbolPrecision >= 0)
-            ? this._symbolPrecision
-            : 5;
-        return Math.pow(10, -dec);
-    }
-
-    /** Snap an arbitrary price to the instrument's tick grid (round-half-away-from-zero). */
-    snapPriceToTick(price) {
-        const p = Number(price);
-        if (!Number.isFinite(p)) return p;
-        const tick = this.getTickSize();
-        if (!Number.isFinite(tick) || tick <= 0) return p;
-        return Math.round(p / tick) * tick;
     }
 
     /**
@@ -12068,49 +9517,6 @@ class Chart {
     }
 
     /**
-     * Resolve effective current price used by both price-line and axis label.
-     * Keeps render sources consistent across live mode, replay mode, and panel charts.
-     */
-    resolveEffectiveCurrentPrice(visible) {
-        let price = null;
-
-        const lastVisible = (Array.isArray(visible) && visible.length > 0)
-            ? visible[visible.length - 1]
-            : null;
-        if (lastVisible && Number.isFinite(lastVisible.c)) {
-            price = lastVisible.c;
-        }
-
-        if (!Number.isFinite(price) && this.data && this.data.length > 0) {
-            const lastCandle = this.data[this.data.length - 1];
-            if (lastCandle && Number.isFinite(lastCandle.c)) price = lastCandle.c;
-        }
-
-        if (this.replaySystem && this.replaySystem.isActive) {
-            const hasOwnData = Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 0;
-            let replayPrice = null;
-
-            if (hasOwnData) {
-                if (this.data && this.data.length > 0) replayPrice = this.data[this.data.length - 1].c;
-            } else {
-                if (typeof this.replaySystem.getCurrentAnimatedPrice === 'function') {
-                    replayPrice = this.replaySystem.getCurrentAnimatedPrice();
-                }
-                if (!Number.isFinite(replayPrice) && this.replaySystem.animatingCandle) {
-                    replayPrice = this.replaySystem.animatingCandle.close;
-                }
-                if (!Number.isFinite(replayPrice) && this.replaySystem.fullRawData) {
-                    replayPrice = this.replaySystem.fullRawData[this.replaySystem.currentIndex]?.c;
-                }
-            }
-
-            if (Number.isFinite(replayPrice)) price = replayPrice;
-        }
-
-        return Number.isFinite(price) ? price : null;
-    }
-
-    /**
      * Draw current price label on the right side (live price indicator)
      */
     drawCurrentPriceLabel(visible) {
@@ -12147,9 +9553,28 @@ class Chart {
         }
         if (!displayCandle) return;
         
-        let currentPrice = this.resolveEffectiveCurrentPrice(visible);
-        if (!Number.isFinite(currentPrice) && Number.isFinite(displayCandle.c)) {
-            currentPrice = displayCandle.c;
+        // === USE REPLAY-SYNCED PRICE WHEN REPLAY IS ACTIVE ===
+        // Keep the right-side price label consistent across all timeframes.
+        let currentPrice = displayCandle.c; // Default when not in replay
+
+        if (this.replaySystem && this.replaySystem.isActive) {
+            let replayPrice = null;
+
+            if (typeof this.replaySystem.getCurrentAnimatedPrice === 'function') {
+                replayPrice = this.replaySystem.getCurrentAnimatedPrice();
+            }
+
+            if (!Number.isFinite(replayPrice) && this.replaySystem.isPlaying && this.replaySystem.animatingCandle) {
+                replayPrice = this.replaySystem.animatingCandle.close;
+            }
+
+            if (!Number.isFinite(replayPrice) && this.replaySystem.fullRawData) {
+                replayPrice = this.replaySystem.fullRawData[this.replaySystem.currentIndex]?.c;
+            }
+
+            if (Number.isFinite(replayPrice)) {
+                currentPrice = replayPrice;
+            }
         }
 
         if (!Number.isFinite(currentPrice)) return;
@@ -12158,11 +9583,21 @@ class Chart {
         // Only draw if within price chart area (not in volume area)
         if (y < m.t || y > this.h - m.b - volumeAreaHeight) return;
 
-        // Match the price line color so label and line are always the same color
-        const bgColor = this.chartSettings.priceLineColor || '#787B86';
+        // Neutral gray color (like TradingView)
+        const bgColor = '#787B86';
         
-        const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-        const decimals = this.getPriceDecimals(priceRange);
+        // Format price with stable precision across timeframes.
+        let decimals;
+        const precisionSetting = this.chartSettings ? this.chartSettings.precision : 'Default';
+        if (precisionSetting && precisionSetting !== 'Default') {
+            const parsed = parseInt(precisionSetting, 10);
+            decimals = Number.isFinite(parsed) ? Math.max(0, Math.min(8, parsed)) : 4;
+        } else {
+            const absPrice = Math.abs(Number(currentPrice));
+            if (absPrice >= 1000) decimals = 3;
+            else if (absPrice >= 1) decimals = 4;
+            else decimals = 5;
+        }
         const priceText = Number(currentPrice).toFixed(decimals);
 
         // Use fixed width matching the price axis area
@@ -12175,7 +9610,7 @@ class Chart {
         const radius = 2;
         
         // Check if in replay mode to combine labels
-        const inReplayMode = !!(this.replaySystem && this.replaySystem.isActive && this.replaySystem.isPlaying);
+        const inReplayMode = this.replaySystem && this.replaySystem.isActive && this.replaySystem.tickProgress !== undefined;
         let countdownText = '';
         
         if (inReplayMode) {
@@ -12206,7 +9641,7 @@ class Chart {
             }
             
             // Calculate total progress: completed raw candles + current tick progress
-            const ticksPerCandle = this.replaySystem.currentTicksPerCandle || this.replaySystem.ticksPerCandle || 72;
+            const ticksPerCandle = this.replaySystem.currentTicksPerCandle || this.replaySystem.ticksPerCandle || 60;
             const currentRawProgress = this.replaySystem.tickProgress / ticksPerCandle;
             const progress = (completedRawCandles - 1 + currentRawProgress) / rawCandlesPerDisplay;
             
@@ -12251,6 +9686,15 @@ class Chart {
             this.ctx.fillText(countdownText, labelX + labelWidth / 2, labelY + priceHeight + countdownHeight / 2);
         }
 
+        // Draw horizontal dotted line across entire chart
+        this.ctx.strokeStyle = bgColor;
+        this.ctx.lineWidth = 1;
+        this.ctx.setLineDash([3, 3]); // Dotted line
+        this.ctx.beginPath();
+        this.ctx.moveTo(m.l, y);
+        this.ctx.lineTo(this.w - m.r, y);
+        this.ctx.stroke();
+        this.ctx.setLineDash([]); // Reset to solid line
     }
     
     /**
@@ -12283,20 +9727,27 @@ class Chart {
     }
     
     /**
-     * Chart-corner lockup: icon + wordmark must follow **chart** backgroundColor only.
-     * `body.light-mode` is driven by panel chrome and must not flip these (querySelector
-     * previously matched only the first .logo-dark/.logo-light — the images — so the
-     * "Talaria-Log" spans still followed body.light-mode).
+     * Update logo visibility based on current theme (light/dark)
      */
     updateLogoForTheme() {
+        const logoDark = document.querySelector('.chart-brand .logo-dark');
+        const logoLight = document.querySelector('.chart-brand .logo-light');
+        
+        if (!logoDark || !logoLight) return;
+        
+        // Check if background is light or dark based on actual backgroundColor
         const bgColor = this.chartSettings?.backgroundColor || '#050028';
-        const darkEls = document.querySelectorAll('.chart-brand .logo-dark');
-        const lightEls = document.querySelectorAll('.chart-brand .logo-light');
-        if (!darkEls.length || !lightEls.length) return;
-
-        const isLight = this.isLightColor(bgColor);
-        darkEls.forEach((el) => { el.style.display = isLight ? 'none' : 'block'; });
-        lightEls.forEach((el) => { el.style.display = isLight ? 'block' : 'none'; });
+        const isLightTheme = this.isLightColor(bgColor);
+        
+        if (isLightTheme) {
+            // Light background - show dark/black logo
+            logoDark.style.display = 'none';
+            logoLight.style.display = 'block';
+        } else {
+            // Dark background - show light/white logo
+            logoDark.style.display = 'block';
+            logoLight.style.display = 'none';
+        }
     }
     
     /**
@@ -12472,10 +9923,8 @@ class Chart {
         this.ctx.stroke();
         this.ctx.setLineDash([]);
         
-        const _hoverDec = this.getPriceDecimals(
-            this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0
-        );
-        const text = price.toFixed(_hoverDec);
+        // Draw price label with modern style
+        const text = price.toFixed(2);
         this.ctx.font = `500 ${this.chartSettings.scaleTextSize}px Roboto`;
         this.ctx.textAlign = 'left';
         const textWidth = this.ctx.measureText(text).width;
@@ -12612,58 +10061,6 @@ class Chart {
         
         this.ctx.restore();
     }
-
-    drawMarksOnBars(visible) {
-        if (!this.chartSettings.showMarks || !visible || visible.length === 0 || !this.yScale) return;
-
-        const chartType = this.chartSettings.chartType || 'candles';
-        const supportedTypes = new Set(['candles', 'hollow', 'heikinashi', 'bars']);
-        if (!supportedTypes.has(chartType)) return;
-
-        const m = this.margin;
-        const ch = this.h - m.t - m.b;
-        const effectiveVolumeHeight = this.chartSettings.showVolume ? this.volumeHeight : 0;
-        const volumeAreaHeight = ch * effectiveVolumeHeight;
-        const priceAreaBottom = this.h - m.b - volumeAreaHeight;
-
-        const minSpacing = 8;
-        const step = Math.max(1, Math.ceil(minSpacing / Math.max(1, this.candleWidth)));
-        const radius = Math.max(1.5, Math.min(3.5, this.candleWidth * 0.22));
-        const startIdx = this.visibleStartIndex || 0;
-
-        this.ctx.save();
-
-        for (let i = 0; i < visible.length; i += step) {
-            const idx = startIdx + i;
-            const candle = chartType === 'heikinashi'
-                ? (this.getDisplayCandle(idx) || visible[i])
-                : visible[i];
-
-            if (!candle) continue;
-
-            const x = this.dataIndexToPixel(idx);
-            if (x < m.l - 4 || x > this.w - m.r + 4) continue;
-
-            const y = this.yScale(candle.c);
-            if (!Number.isFinite(y) || y < m.t || y > priceAreaBottom) continue;
-
-            const isUp = candle.c >= candle.o;
-            const color = isUp ? this.chartSettings.bodyUpColor : this.chartSettings.bodyDownColor;
-
-            this.ctx.beginPath();
-            this.ctx.globalAlpha = 0.8;
-            this.ctx.fillStyle = color;
-            this.ctx.arc(x, y, radius, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            this.ctx.globalAlpha = 0.95;
-            this.ctx.lineWidth = 1;
-            this.ctx.strokeStyle = 'rgba(5, 0, 40, 0.75)';
-            this.ctx.stroke();
-        }
-
-        this.ctx.restore();
-    }
     
     drawCandles(visible) {
         const m = this.margin;
@@ -12675,11 +10072,10 @@ class Chart {
         const volumeAreaHeight = ch * effectiveVolumeHeight;
         const priceAreaBottom = this.h - m.b - volumeAreaHeight;
         
-        // Create clipping region for chart body.
-        // Include the right axis zone so the last candle can slide behind it (TradingView-like).
+        // Create clipping region to prevent drawing outside chart area
         this.ctx.save();
         this.ctx.beginPath();
-        this.ctx.rect(m.l, m.t, this.w - m.l, priceAreaBottom - m.t);
+        this.ctx.rect(m.l, m.t, this.w - m.l - m.r, priceAreaBottom - m.t);
         this.ctx.clip();
         
         // Transform data for Heikin Ashi if needed
@@ -12842,33 +10238,15 @@ class Chart {
         this.ctx.lineTo(lastX, bottomY);
         this.ctx.closePath();
         
-        // Create gradient using areaFillColor
-        const areaLineColor = this.chartSettings.areaLineColor || this.chartSettings.bodyUpColor || '#089981';
-        const areaFillColor = this.chartSettings.areaFillColor || (areaLineColor + '40');
+        // Create gradient
         const gradient = this.ctx.createLinearGradient(0, m.t, 0, bottomY);
-        if (areaFillColor.startsWith('rgba') || areaFillColor.startsWith('rgb')) {
-            gradient.addColorStop(0, areaFillColor);
-            gradient.addColorStop(1, areaFillColor.replace(/,\s*[\d.]+\)$/, ', 0)'));
-        } else {
-            gradient.addColorStop(0, areaFillColor + '40');
-            gradient.addColorStop(1, areaFillColor + '05');
-        }
+        gradient.addColorStop(0, this.chartSettings.bodyUpColor + '40');
+        gradient.addColorStop(1, this.chartSettings.bodyUpColor + '05');
         this.ctx.fillStyle = gradient;
         this.ctx.fill();
-
-        // Draw line using areaLineColor
-        this.ctx.strokeStyle = areaLineColor;
-        this.ctx.lineWidth = 2;
-        this.ctx.lineJoin = 'round';
-        this.ctx.lineCap = 'round';
-        this.ctx.beginPath();
-        visible.forEach((d, i) => {
-            const idx = this.visibleStartIndex + i;
-            const x = this.dataIndexToPixel(idx);
-            const y = this.yScale(d.c);
-            if (i === 0) { this.ctx.moveTo(x, y); } else { this.ctx.lineTo(x, y); }
-        });
-        this.ctx.stroke();
+        
+        // Draw line on top
+        this.drawLineChart(visible);
     }
     
     /**
@@ -12959,7 +10337,7 @@ class Chart {
         }
         
         // Draw baseline (dashed line)
-        this.ctx.strokeStyle = this.chartSettings.baselineColor || '#787b86';
+        this.ctx.strokeStyle = '#787b86';
         this.ctx.lineWidth = 1;
         this.ctx.setLineDash([4, 4]);
         this.ctx.beginPath();
@@ -12970,55 +10348,11 @@ class Chart {
     }
     
     /**
-     * Draw last-price horizontal line (TradingView-style price line)
-     */
-    drawPriceLine(visible) {
-        if (this.chartSettings.showPriceLine === false) return;
-        if (!this.data || this.data.length === 0) return;
-        if (!this.yScale) return;
-
-        const price = this.resolveEffectiveCurrentPrice(visible);
-
-        if (!Number.isFinite(price)) return;
-        const y = this.yScale(price);
-        const m = this.margin;
-        const ch = this.h - m.t - m.b;
-        const effectiveVolumeHeight = this.chartSettings.showVolume ? this.volumeHeight : 0;
-        const volumeAreaHeight = ch * effectiveVolumeHeight;
-        const indPanelH = this.separateIndicatorPanelHeight || 0;
-        const yPlotBottom = this.h - m.b - volumeAreaHeight - indPanelH;
-        if (!isFinite(y) || y < m.t || y > yPlotBottom) return;
-
-        const color = this.chartSettings.priceLineColor || '#2962ff';
-        const axisLeft = !!this.priceAxisLeft;
-        const axisW = axisLeft ? m.l : m.r;
-        const axisX = axisLeft ? 0 : this.w - m.r;
-
-        this.ctx.save();
-
-        // Dashed line across chart area
-        this.ctx.strokeStyle = color;
-        this.ctx.lineWidth = 1;
-        this.ctx.setLineDash([4, 4]);
-        this.ctx.beginPath();
-        this.ctx.moveTo(m.l, y);
-        this.ctx.lineTo(this.w - m.r, y);
-        this.ctx.stroke();
-        this.ctx.setLineDash([]);
-
-        // Axis label is drawn by drawCurrentPriceLabel — no duplicate label here
-
-        this.ctx.restore();
-    }
-
-    /**
      * Draw OHLC Bars Chart
      */
     drawBarsChart(visible) {
         const m = this.margin;
         const tickWidth = Math.max(3, this.candleWidth / 3);
-        const useUnifiedBarColor = !!this.chartSettings.unifiedBarColorEnabled;
-        const unifiedBarColor = this.chartSettings.unifiedBarColor || this.chartSettings.bodyUpColor || '#089981';
         
         visible.forEach((d, i) => {
             const idx = this.visibleStartIndex + i;
@@ -13028,9 +10362,7 @@ class Chart {
             
             const [yo, yc, yh, yl] = [this.yScale(d.o), this.yScale(d.c), this.yScale(d.h), this.yScale(d.l)];
             const isUp = d.c >= d.o;
-            const color = useUnifiedBarColor
-                ? unifiedBarColor
-                : (isUp ? this.chartSettings.bodyUpColor : this.chartSettings.bodyDownColor);
+            const color = isUp ? this.chartSettings.bodyUpColor : this.chartSettings.bodyDownColor;
             
             this.ctx.strokeStyle = color;
             this.ctx.lineWidth = Math.max(1, this.candleWidth / 8);
@@ -13062,8 +10394,6 @@ class Chart {
         const m = this.margin;
         let drawn = 0;
         let skipped = 0;
-        const useUnifiedBarColor = !!this.chartSettings.unifiedBarColorEnabled;
-        const unifiedBarColor = this.chartSettings.unifiedBarColor || this.chartSettings.bodyUpColor || '#089981';
         
         // Use getCandleSpacing for consistency
         const candleSpacing = this.getCandleSpacing();
@@ -13075,11 +10405,11 @@ class Chart {
             // Calculate X position using our helper method
             const x = this.dataIndexToPixel(idx);
             
-            // Extend visible area to prevent popping on both edges.
+            // Extend left visible area to prevent popping, but stop at price axis on right
             const extendedMargin = this.candleWidth * 2;
             
-            // Allow drawing into right-axis zone so candles hide behind the axis instead of disappearing early.
-            if (x < m.l - extendedMargin || x > this.w + extendedMargin) {
+            // Visibility check - don't draw candles in the price axis area
+            if (x < m.l - extendedMargin || x > this.w - m.r - this.candleWidth) {
                 skipped++;
                 return;
             }
@@ -13088,18 +10418,9 @@ class Chart {
             const isUp = d.c >= d.o;
             
             // Get separate colors for wick, body, and border
-            const wickColor = useUnifiedBarColor
-                ? unifiedBarColor
-                : (isUp ? this.chartSettings.wickUpColor : this.chartSettings.wickDownColor);
-            const bodyColor = useUnifiedBarColor
-                ? unifiedBarColor
-                : (isUp ? this.chartSettings.bodyUpColor : this.chartSettings.bodyDownColor);
-            const borderColor = useUnifiedBarColor
-                ? unifiedBarColor
-                : (isUp ? this.chartSettings.borderUpColor : this.chartSettings.borderDownColor);
-
-            // Snap candle center to an integer pixel — both wick and body derive from this.
-            const cx = Math.round(x);
+            const wickColor = isUp ? this.chartSettings.wickUpColor : this.chartSettings.wickDownColor;
+            const bodyColor = isUp ? this.chartSettings.bodyUpColor : this.chartSettings.bodyDownColor;
+            const borderColor = isUp ? this.chartSettings.borderUpColor : this.chartSettings.borderDownColor;
 
             // Calculate wick width - always crisp
             const wickWidth = Math.max(1, Math.min(2, Math.ceil(this.candleWidth / 8)));
@@ -13110,19 +10431,16 @@ class Chart {
                 this.ctx.lineWidth = wickWidth;
                 this.ctx.lineCap = 'butt';
                 this.ctx.beginPath();
-                this.ctx.moveTo(cx, yh);
-                this.ctx.lineTo(cx, yl);
+                this.ctx.moveTo(Math.round(x), yh);
+                this.ctx.lineTo(Math.round(x), yl);
                 this.ctx.stroke();
             }
 
-            // Body geometry — always centered on the same cx as the wick.
-            // Use round + 0.42 so body fills ~80% of the slot at moderate zoom,
-            // keeping wicks visually thinner than the body (min 2px wide).
-            const halfBodyPx = Math.max(1, Math.round(this.candleWidth * 0.42));
-            const bodyWidthPx = halfBodyPx * 2;          // always even, symmetric around cx
-            const bodyLeft = cx - halfBodyPx;             // integer — no rounding needed
+            // Draw body with borders (use 60% width for spacing between candles, like overlay)
+            const bodyWidth = this.candleWidth * 0.6;
             const bodyHeight = Math.abs(yc - yo);
             const bodyTop = Math.min(yo, yc);
+            const bodyLeft = x - bodyWidth / 2;
             
             // Professional candle rendering
             if (bodyHeight < 1) {
@@ -13133,20 +10451,13 @@ class Chart {
                     this.ctx.lineCap = 'butt';
                     this.ctx.beginPath();
                     this.ctx.moveTo(bodyLeft, Math.round(yo));
-                    this.ctx.lineTo(bodyLeft + bodyWidthPx, Math.round(yo));
+                    this.ctx.lineTo(bodyLeft + bodyWidth, Math.round(yo));
                     this.ctx.stroke();
                 }
             } else {
                 // Regular candle
                 // For hollow candle mode, up candles are hollow, down candles are filled
                 const shouldBeHollow = isHollow && isUp;
-                // Anchor the open edge to a fixed pixel to prevent subpixel
-                // vibration during tick animation.  For bullish candles the open
-                // is the bottom edge; for bearish it's the top edge.
-                const roundedOpen  = Math.round(yo);
-                const roundedClose = Math.round(yc);
-                const bTop = isUp ? roundedClose : roundedOpen;
-                const bH   = Math.max(1, Math.abs(roundedOpen - roundedClose));
                 
                 if (isUp) {
                     // Draw body fill (if enabled)
@@ -13154,32 +10465,57 @@ class Chart {
                         if (shouldBeHollow) {
                             // Hollow style - clear inside and draw border
                             this.ctx.fillStyle = this.chartSettings.backgroundColor;
-                            this.ctx.fillRect(bodyLeft, bTop, bodyWidthPx, bH);
+                            this.ctx.fillRect(
+                                Math.round(bodyLeft),
+                                Math.round(bodyTop),
+                                Math.round(bodyWidth),
+                                Math.round(bodyHeight)
+                            );
                         } else {
                             // Filled with bodyUpColor
                             this.ctx.fillStyle = bodyColor;
-                            this.ctx.fillRect(bodyLeft, bTop, bodyWidthPx, bH);
+                            this.ctx.fillRect(
+                                Math.round(bodyLeft),
+                                Math.round(bodyTop),
+                                Math.round(bodyWidth),
+                                Math.round(bodyHeight)
+                            );
                         }
                     }
                     
                     // Draw border on top (if enabled or hollow mode)
                     if (this.chartSettings.showCandleBorders !== false || shouldBeHollow) {
                         this.ctx.strokeStyle = borderColor;
-                        this.ctx.lineWidth = shouldBeHollow ? 2 : Math.max(1, Math.min(2, bodyWidthPx / 6));
-                        this.ctx.strokeRect(bodyLeft + 0.5, bTop + 0.5, bodyWidthPx - 1, bH - 1);
+                        this.ctx.lineWidth = shouldBeHollow ? 2 : Math.max(1, Math.min(2, bodyWidth / 6));
+                        this.ctx.strokeRect(
+                            Math.round(bodyLeft) + 0.5,
+                            Math.round(bodyTop) + 0.5,
+                            Math.round(bodyWidth) - 1,
+                            Math.round(bodyHeight) - 1
+                        );
                     }
                 } else {
                     // Down candle - filled with body color (if enabled)
                     if (this.chartSettings.showCandleBody !== false) {
                         this.ctx.fillStyle = bodyColor;
-                        this.ctx.fillRect(bodyLeft, bTop, bodyWidthPx, bH);
+                        this.ctx.fillRect(
+                            Math.round(bodyLeft),
+                            Math.round(bodyTop),
+                            Math.round(bodyWidth),
+                            Math.round(bodyHeight)
+                        );
                     }
                     
                     // Add border for definition (if enabled)
-                    if (this.chartSettings.showCandleBorders !== false && bodyWidthPx >= 3) {
+                    if (this.chartSettings.showCandleBorders !== false && bodyWidth >= 3) {
                         this.ctx.strokeStyle = borderColor;
                         this.ctx.lineWidth = 1;
-                        this.ctx.strokeRect(bodyLeft + 0.5, bTop + 0.5, bodyWidthPx - 1, bH - 1);
+                        this.ctx.strokeRect(
+                            Math.round(bodyLeft) + 0.5,
+                            Math.round(bodyTop) + 0.5,
+                            Math.round(bodyWidth) - 1,
+                            Math.round(bodyHeight) - 1
+                        );
                     }
                 }
             }
@@ -13188,6 +10524,7 @@ class Chart {
         
         if (drawn === 0 && visible.length > 0) {
             console.warn('⚠️ No candles drawn! All', visible.length, 'candles are outside viewport. Skipped:', skipped);
+            console.log('   offsetX:', this.offsetX, 'Canvas width:', this.w);
         }
     }
 
@@ -13195,14 +10532,11 @@ class Chart {
      * Snap a price to the nearest OHLC value of a candle
      * @param {number} dataIdx - Data index
      * @param {number} price - Price to snap
-     * @param {object} options - Optional flags
-     * @param {boolean} options.force - Force snap even when magnet mode is off
      * @returns {number} Snapped price
      */
-    snapToOHLC(dataIdx, price, options = {}) {
-        const force = !!(options && options.force);
-        const mode = force ? 'strong' : this.magnetMode;
-        const isActive = force || (mode === true) || (typeof mode === 'string' && mode !== 'off');
+    snapToOHLC(dataIdx, price) {
+        const mode = this.magnetMode;
+        const isActive = (mode === true) || (typeof mode === 'string' && mode !== 'off');
         if (!isActive || dataIdx < 0 || dataIdx >= this.data.length) {
             return price;
         }
@@ -13251,6 +10585,7 @@ class Chart {
                     .on('start', (event) => {
                         circle.style('cursor', 'move');
                         event.sourceEvent.stopPropagation(); // Prevent shape drag
+                        console.log('🎯 Handle drag started:', handle.type);
                     })
                     .on('drag', (event) => {
                         const newX = event.x;
@@ -13307,12 +10642,9 @@ class Chart {
                         
                         // Save to localStorage directly using index
                         try {
-                            if (chart.drawingManager && typeof chart.drawingManager.saveDrawings === 'function') {
-                                chart.drawingManager.saveDrawings();
-                            } else {
-                                const drawingsData = JSON.stringify(chart.drawings);
-                                userStorage.setItem(chart.getDrawingsStorageKey(), drawingsData);
-                            }
+                            const drawingsData = JSON.stringify(chart.drawings);
+                            localStorage.setItem(`chart_drawings_${chart.currentFileId || 'default'}`, drawingsData);
+                            console.log('✅ Handle drag completed and saved');
                         } catch (e) {
                             console.error('Failed to save after resize:', e);
                         }
@@ -13346,261 +10678,6 @@ class Chart {
         const candleSpacing = this.getCandleSpacing();
         return this.margin.l + (dataIdx * candleSpacing) + this.offsetX;
     }
-
-    /** Fallback ms between bars when data-derived step is unavailable (matches crosshair / x-axis tf map). */
-    _estimateTimeframeStepMs() {
-        if (this.data && this.data.length >= 2) {
-            const d = this.data[1].t - this.data[0].t;
-            if (Number.isFinite(d) && d > 0) return d;
-        }
-        const tfMap = {
-            '1m': 60000, '2m': 120000, '3m': 180000, '4m': 240000, '5m': 300000, '10m': 600000,
-            '15m': 900000, '30m': 1800000, '45m': 2700000, '1h': 3600000, '2h': 7200000, '4h': 14400000,
-            '6h': 21600000, '12h': 43200000, '1d': 86400000, '1w': 604800000, '1mo': 2592000000
-        };
-        return tfMap[this.currentTimeframe || '1m'] || 60000;
-    }
-
-    /**
-     * Wall-clock ms for a fractional data index (crosshair time label).
-     * Past the last bar, extrapolate from the last bar step so empty plot area continues the date sequence
-     * (firstBar + index * avgStep drifts when bars have weekend/holiday gaps).
-     */
-    estimateTimestampForDataIndex(dataIdx) {
-        const data = this.data;
-        if (!data || data.length === 0 || !Number.isFinite(dataIdx)) return null;
-        const tfFallback = this._estimateTimeframeStepMs();
-        const n = data.length;
-        const first = data[0];
-        const last = data[n - 1];
-
-        if (dataIdx >= 0 && dataIdx < n) {
-            const i = Math.floor(dataIdx);
-            const frac = dataIdx - i;
-            const t0 = data[i].t;
-            if (!Number.isFinite(t0)) return null;
-            if (frac < 1e-6) return t0;
-            if (i + 1 < n) {
-                const t1 = data[i + 1].t;
-                if (Number.isFinite(t1)) return t0 + frac * (t1 - t0);
-            }
-            let step = i > 0 ? (t0 - data[i - 1].t) : (n > 1 ? data[1].t - first.t : tfFallback);
-            if (!Number.isFinite(step) || step <= 0) step = tfFallback;
-            return t0 + frac * step;
-        }
-        if (dataIdx >= n) {
-            const lastIdx = n - 1;
-            let step = n >= 2 ? (last.t - data[lastIdx - 1].t) : tfFallback;
-            if (!Number.isFinite(step) || step <= 0) step = tfFallback;
-            return last.t + (dataIdx - lastIdx) * step;
-        }
-        let step = n >= 2 ? (data[1].t - first.t) : tfFallback;
-        if (!Number.isFinite(step) || step <= 0) step = tfFallback;
-        return first.t + dataIdx * step;
-    }
-
-    /**
-     * Map wall-clock ms to fractional bar index (aligns with CoordinateUtils.timestampToIndex for marks).
-     */
-    _timestampToFractionalDataIndex(timestamp) {
-        const data = this.data;
-        if (!data || data.length === 0 || !Number.isFinite(timestamp)) return null;
-        let tf = String(this.currentTimeframe || '1m').toLowerCase().trim();
-        let interval = this.parseTimeframe(tf);
-        if (!Number.isFinite(interval) || interval <= 0) {
-            interval = data.length >= 2 ? (data[1].t - data[0].t) : 60000;
-        }
-        const firstCandle = data[0];
-        const lastCandle = data[data.length - 1];
-        if (timestamp < firstCandle.t) {
-            return -(firstCandle.t - timestamp) / interval;
-        }
-        if (timestamp > lastCandle.t) {
-            return (data.length - 1) + (timestamp - lastCandle.t) / interval;
-        }
-        for (let i = 0; i < data.length; i++) {
-            const candle = data[i];
-            const nextCandle = data[i + 1];
-            if (!nextCandle || timestamp < nextCandle.t) {
-                const fractionWithinCandle = (timestamp - candle.t) / interval;
-                return i + fractionWithinCandle;
-            }
-        }
-        return data.length - 1;
-    }
-
-    /**
-     * Economic calendar: neutral circular badges with country flag inside (no red/orange impact colors on canvas).
-     * Hover hit regions stored on this._economicCalendarHitRegions for updateEconomicCalendarHover.
-     */
-    drawEconomicCalendarAxisMarkers() {
-        this._economicCalendarHitRegions = [];
-        const api = typeof window !== 'undefined' ? window.__economicCalendarForChart : null;
-        if (!api || typeof api.getEvents !== 'function' || !this.data || this.data.length === 0) return;
-
-        let events;
-        try {
-            events = api.getEvents();
-        } catch (e) {
-            return;
-        }
-        if (!events || events.length === 0 || !this.ctx) return;
-
-        const m = this.margin;
-        const cs = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 8;
-        const radius = Math.max(10, Math.min(16, cs * 0.78));
-        const axisLineY = this.h - m.b;
-        const gapAboveLine = 8;
-        let cy = axisLineY - radius - gapAboveLine;
-        cy = Math.max(m.t + radius + 6, cy);
-
-        const bg = (this.chartSettings && this.chartSettings.backgroundColor) ? String(this.chartSettings.backgroundColor) : '';
-        const bodyLight = typeof document !== 'undefined' && document.body && document.body.classList.contains('light-mode');
-        const lightish = bodyLight || !bg || /#f{3,6}\b|#fff|white|rgb\s*\(\s*255/i.test(bg) || /245|250|252/.test(bg);
-        const fillCol = lightish ? 'rgba(255,255,255,0.96)' : 'rgba(54,58,69,0.96)';
-        const strokeCol = lightish ? 'rgba(120,123,134,0.88)' : 'rgba(150,153,165,0.65)';
-
-        const getFlag = (ev) => {
-            if (ev.flagEmoji) return ev.flagEmoji;
-            if (typeof api.getFlagEmoji === 'function') return api.getFlagEmoji(ev.country || ev.currency || '');
-            return '🌐';
-        };
-
-        this.ctx.save();
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
-
-        for (let i = 0; i < events.length; i++) {
-            const e = events[i];
-            const ts = e && e.t;
-            if (!Number.isFinite(ts)) continue;
-            const idx = this._timestampToFractionalDataIndex(ts);
-            if (idx == null || !Number.isFinite(idx)) continue;
-            const pad = radius + 8;
-            let x = this.dataIndexToPixel(idx);
-            if (idx < 0) {
-                x = m.l + pad;
-            }
-            if (x < m.l - pad || x > this.w - m.r + pad) continue;
-
-            const jitter = (i % 7) * (radius * 0.22) - (3 * (radius * 0.22));
-            const xi = x + jitter;
-            const flagStr = getFlag(e);
-
-            this.ctx.beginPath();
-            this.ctx.arc(xi, cy, radius, 0, Math.PI * 2);
-            this.ctx.fillStyle = fillCol;
-            this.ctx.fill();
-            this.ctx.strokeStyle = strokeCol;
-            this.ctx.lineWidth = Math.max(1, radius * 0.1);
-            this.ctx.stroke();
-
-            const innerFont = Math.max(9, Math.min(14, radius * 1.15));
-            this.ctx.font = `${innerFont}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
-            this.ctx.fillText(flagStr, xi, cy);
-
-            this._economicCalendarHitRegions.push({
-                left: xi - radius - 2,
-                right: xi + radius + 2,
-                top: cy - radius - 2,
-                bottom: cy + radius + 2,
-                event: e
-            });
-        }
-        this.ctx.restore();
-    }
-
-    _escapeHtmlForEconTooltip(str) {
-        if (str == null) return '';
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
-    }
-
-    ensureEconomicCalendarTooltipEl() {
-        if (this._econCalTooltipEl && this._econCalTooltipEl.parentNode) return this._econCalTooltipEl;
-        const el = document.createElement('div');
-        el.className = 'economic-calendar-chart-tooltip';
-        el.setAttribute('data-economic-calendar-tooltip', '1');
-        el.style.cssText = 'position:fixed;z-index:100050;display:none;max-width:300px;padding:10px 12px;font:12px/1.45 system-ui,-apple-system,sans-serif;background:#2a2e39;color:#d1d4dc;border:1px solid rgba(255,255,255,.12);border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.4);pointer-events:none;text-align:left;';
-        document.body.appendChild(el);
-        this._econCalTooltipEl = el;
-        return el;
-    }
-
-    hideEconomicCalendarTooltip() {
-        if (this._econCalTooltipEl) {
-            this._econCalTooltipEl.style.display = 'none';
-        }
-    }
-
-    showEconomicCalendarTooltip(ev, clientX, clientY) {
-        const el = this.ensureEconomicCalendarTooltipEl();
-        const tzDate = typeof this.convertToTimezone === 'function'
-            ? this.convertToTimezone(ev.t)
-            : new Date(ev.t);
-        const timeStr = tzDate.toLocaleString(undefined, {
-            month: 'short', day: 'numeric', year: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-        });
-        const impactLabel = ev.impact === 'high' ? 'High' : (ev.impact === 'medium' ? 'Medium' : ev.impact || '—');
-        const esc = (s) => this._escapeHtmlForEconTooltip(s);
-        const flag = ev.flagEmoji || '🌐';
-        el.innerHTML = `
-            <div style="font-weight:600;font-size:13px;margin-bottom:6px;color:#fff;">${flag} ${esc(ev.event)}</div>
-            <div style="opacity:.88;font-size:11px;margin-bottom:8px;">${esc(timeStr)}</div>
-            <div style="display:grid;grid-template-columns:72px 1fr;gap:4px 10px;font-size:11px;">
-                <span style="opacity:.75;">Country</span><span>${esc(ev.country || '—')}</span>
-                <span style="opacity:.75;">Currency</span><span>${esc(ev.currency || '—')}</span>
-                <span style="opacity:.75;">Impact</span><span>${esc(impactLabel)}</span>
-                <span style="opacity:.75;">Actual</span><span>${esc(ev.actual)}</span>
-                <span style="opacity:.75;">Forecast</span><span>${esc(ev.forecast)}</span>
-                <span style="opacity:.75;">Previous</span><span>${esc(ev.previous)}</span>
-            </div>`;
-        el.style.display = 'block';
-        const pad = 14;
-        let left = clientX + pad;
-        let top = clientY + pad;
-        const rect = el.getBoundingClientRect();
-        if (left + rect.width > window.innerWidth - 10) {
-            left = clientX - rect.width - pad;
-        }
-        if (top + rect.height > window.innerHeight - 10) {
-            top = clientY - rect.height - pad;
-        }
-        el.style.left = `${Math.max(8, left)}px`;
-        el.style.top = `${Math.max(8, top)}px`;
-    }
-
-    updateEconomicCalendarHover(mx, my, domEvent) {
-        if (this.isPanel) return;
-        if (this.drag && this.drag.active) {
-            this.hideEconomicCalendarTooltip();
-            return;
-        }
-        const regions = this._economicCalendarHitRegions;
-        if (!regions || regions.length === 0) {
-            this.hideEconomicCalendarTooltip();
-            return;
-        }
-        let hit = null;
-        for (let i = 0; i < regions.length; i++) {
-            const r = regions[i];
-            if (mx >= r.left && mx <= r.right && my >= r.top && my <= r.bottom) {
-                hit = r;
-                break;
-            }
-        }
-        if (hit && hit.event) {
-            this.showEconomicCalendarTooltip(hit.event, domEvent.clientX, domEvent.clientY);
-            this.canvas.style.cursor = 'pointer';
-            if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'pointer';
-        } else {
-            this.hideEconomicCalendarTooltip();
-        }
-    }
     
     /**
      * Get the index of the first visible candle
@@ -13618,9 +10695,7 @@ class Chart {
      */
     getVisibleEndIndex() {
         if (!this.data || this.data.length === 0) return 0;
-        // Treat the right-axis zone as part of the drawable viewport so the last candle
-        // remains rendered while moving behind the axis.
-        const endIdx = Math.ceil(this.pixelToDataIndex(this.w));
+        const endIdx = Math.ceil(this.pixelToDataIndex(this.w - this.margin.r));
         return Math.min(this.data.length - 1, endIdx);
     }
     
@@ -13635,29 +10710,19 @@ class Chart {
         let drawStart = null; 
         let drawStartData = null;
         
-        // Close context menu on first outside press (capture phase)
-        document.addEventListener('mousedown', (e) => {
+        // Handle clicks outside context menu to close it
+        document.addEventListener('click', (e) => {
             // Only hide if clicking outside both context menu and style editor
-            if (!e.target.closest('.chart-context-menu') &&
+            if (!e.target.closest('.chart-context-menu') && 
                 !e.target.closest('.drawing-style-editor')) {
                 this.hideContextMenu();
             }
-        }, true);
+        });
         
         // Prevent default context menu
         this.svg.node().addEventListener('contextmenu', (e) => {
             if (this.shouldSuppressRightClickContextMenu(e)) {
                 e.preventDefault();
-                e.stopPropagation();
-                return;
-            }
-
-            // macOS: Ctrl+primary-click emits contextmenu; do not toggle legacy tool state or
-            // hide menus while a DrawingToolsManager tool is active (magnet uses Ctrl/Cmd).
-            const dm = this.drawingManager;
-            if (dm && dm.currentTool && e.button === 0 && e.ctrlKey) {
-                e.preventDefault();
-                if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
                 e.stopPropagation();
                 return;
             }
@@ -13684,25 +10749,15 @@ class Chart {
             }
         });
         
+        console.log('🖱️  Setting up TradingView-style mouse events...');
         
         // ═══════════════════════════════════════════════════════════════════
         // STEP 2 — Mouse Position Detection Helper
         // ═══════════════════════════════════════════════════════════════════
         const detectCursorMode = (mx, my) => {
             const m = this.margin;
-            this.cursor.separatePanelSlot = null;
-            // Right margin: main price axis vs stacked indicator pane axes
+            // Price axis (right side) - full width of price axis area
             if (mx > this.w - m.r && my > m.t && my < this.h - m.b) {
-                const spi = this.separatePanelInfo;
-                if (spi && Array.isArray(spi.panelSlots)) {
-                    for (let si = 0; si < spi.panelSlots.length; si++) {
-                        const s = spi.panelSlots[si];
-                        if (my >= s.top && my <= s.bottom) {
-                            this.cursor.separatePanelSlot = s;
-                            return 'separatePanelAxis';
-                        }
-                    }
-                }
                 return 'priceAxis';
             // Time axis (bottom) - full height of time axis area
             } else if (my > this.h - m.b && mx > m.l && mx < this.w - m.r) {
@@ -13778,8 +10833,8 @@ class Chart {
             const candleSpacing = this.getCandleSpacing();
             const rightMargin = getRightOffset();
             const maxOffset = cw - rightMargin;
-            const lastCandleX = Math.max(0, ((this.data?.length || 1) - 1)) * candleSpacing;
-            const minOffset = -lastCandleX;
+            const lastCandleX = (this.data?.length || 1) * candleSpacing;
+            const minOffset = cw * 0.3 - lastCandleX;
             
             let resistedDx = dx;
             
@@ -13822,8 +10877,9 @@ class Chart {
 
             // Zoom direction: 1 = zoom in, -1 = zoom out
             const zoomDirection = e.deltaY < 0 ? 1 : -1;
+            // Use smaller base factors to slow zoom speed
             const basePriceZoomFactor = 1.06;   // vertical zoom
-            const baseTimeZoomFactor = 1.08;    // horizontal zoom
+            const baseTimeZoomFactor = 1.04;    // horizontal zoom
             const priceZoomFactor = zoomDirection > 0 ? basePriceZoomFactor : 1 / basePriceZoomFactor;
 
             // Current spacing before any zoom
@@ -13831,16 +10887,6 @@ class Chart {
 
             const priceLocked = this.priceScale && this.priceScale.locked;
             const timeLocked = this.timeScale && this.timeScale.locked;
-
-            // ─── Separate indicator pane (right strip) → vertical zoom for that pane only ───
-            if (this.cursor.mode === 'separatePanelAxis' &&
-                typeof this.applySeparatePanelAxisWheel === 'function') {
-                this.applySeparatePanelAxisWheel(priceZoomFactor, mx, my);
-                this.scheduleRender();
-                clearTimeout(this._wheelSaveTimer);
-                this._wheelSaveTimer = setTimeout(() => this.scheduleChartViewSave(), 600);
-                return;
-            }
 
             // ─── Price axis → vertical (price) zoom only (Ctrl/Meta disabled) ───
             if (this.cursor.mode === 'priceAxis') {
@@ -13854,7 +10900,7 @@ class Chart {
 
                 if (this.yScale) {
                     const oldZoom = this.priceZoom;
-                    const newZoom = Math.max(this.minPriceZoom, oldZoom * priceZoomFactor);
+                    const newZoom = Math.max(0.1, Math.min(20, oldZoom * priceZoomFactor));
 
                     if (newZoom !== oldZoom) {
                         const priceAreaHeight = this.h - m.t - m.b;
@@ -13944,40 +10990,24 @@ class Chart {
         // STEP 3 — Pan Logic (mousedown)
         // ═══════════════════════════════════════════════════════════════════
         this.canvas.addEventListener('mousedown', e => {
-            if (this.tool) return;
-            if (this.drawingManager && this.drawingManager.currentTool) return;
+            if (this.tool) return; // Drawing tool active
             
             const rect = this.canvas.getBoundingClientRect();
             const mx = e.clientX - rect.left;
             const my = e.clientY - rect.top;
             const mode = detectCursorMode(mx, my);
-
-            // Start separate indicator panel resize when dragging a panel separator.
-            if (e.button === 0 && typeof this.getSeparatePanelResizeHandleAt === 'function') {
-                const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my);
-                if (resizeHandle && typeof this.startSeparatePanelResize === 'function' && this.startSeparatePanelResize(resizeHandle, my)) {
-                    this.drag.active = true;
-                    this.drag.type = 'separatePanelResize';
-                    this.drag.startX = e.clientX;
-                    this.drag.startY = e.clientY;
-                    this.drag.lastX = e.clientX;
-                    this.drag.lastY = e.clientY;
-                    this.canvas.style.cursor = 'ns-resize';
-                    if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
-                    e.preventDefault();
-                    return;
-                }
-            }
             
             // Unlock axes IMMEDIATELY if clicking on them - before any other processing
             // Skip if we're currently processing a double-click event
             if (mode === 'priceAxis' && this.priceScale.locked && !this._isDoubleClicking) {
+                console.log('🔓 Price scale UNLOCKED (immediate on mousedown)');
                 this.priceScale.locked = false;
                 e.preventDefault();
             } else if (mode === 'timeAxis' && this.timeScale.locked && !this._isDoubleClicking) {
+                console.log('🔓 Time scale UNLOCKED (immediate on mousedown)');
                 this.timeScale.locked = false;
                 e.preventDefault();
-            } else if (mode === 'priceAxis' || mode === 'timeAxis' || mode === 'separatePanelAxis') {
+            } else if (mode === 'priceAxis' || mode === 'timeAxis') {
                 // Prevent text selection when dragging axes
                 e.preventDefault();
             }
@@ -14018,13 +11048,8 @@ class Chart {
             }
             
             // Set drag type based on cursor location
-            if (mode === 'separatePanelAxis' && this.cursor.separatePanelSlot) {
-                this.drag.type = 'separatePanelAxis';
-                this.drag.separatePanelSlot = this.cursor.separatePanelSlot;
-                this.isZooming = true;
-                this.canvas.style.cursor = 'ns-resize';
-                if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
-            } else if (mode === 'priceAxis') {
+            if (mode === 'priceAxis') {
+                console.log('🎯 Setting drag type to priceAxis, locked:', this.priceScale.locked, 'detail:', e.detail);
                 this.drag.type = 'priceAxis';
                 this.autoScale = false;
                 this.priceScale.autoScale = false;
@@ -14032,6 +11057,7 @@ class Chart {
                 // Ensure cursor is correct
                 this.canvas.style.cursor = 'ns-resize';
             } else if (mode === 'timeAxis') {
+                console.log('🎯 Setting drag type to timeAxis, locked:', this.timeScale.locked, 'detail:', e.detail);
                 this.drag.type = 'timeAxis';
                 this.isZooming = true;
             } else if (mode === 'chart') {
@@ -14042,10 +11068,6 @@ class Chart {
                 this.canvas.style.cursor = panCursor;
                 if (this.svg && this.svg.node()) {
                     this.svg.node().style.cursor = panCursor;
-                }
-                const chartWrapper = this.isPanel ? this.canvas?.parentElement : document.querySelector('.chart-wrapper');
-                if (chartWrapper) {
-                    chartWrapper.style.cursor = panCursor;
                 }
                 
                 if (this.replaySystem?.isActive && this.replaySystem.autoScrollEnabled) {
@@ -14087,25 +11109,10 @@ class Chart {
                 this.movement.lastTime = now;
                 
                 // Keep cursor style consistent with drag type (sticky behavior)
-                let dragCursor = null;
-                if (this.drag.type === 'priceAxis' || this.drag.type === 'separatePanelAxis') {
-                    dragCursor = 'ns-resize';
+                if (this.drag.type === 'priceAxis') {
+                    this.canvas.style.cursor = 'ns-resize';
                 } else if (this.drag.type === 'timeAxis') {
-                    dragCursor = 'ew-resize';
-                } else if (this.drag.type === 'pan') {
-                    dragCursor = this.cursorType === 'dot' ? 'none' : 'move';
-                } else if (this.drag.type === 'separatePanelResize') {
-                    dragCursor = 'ns-resize';
-                }
-                if (dragCursor !== null) {
-                    this.canvas.style.cursor = dragCursor;
-                    if (this.svg && this.svg.node()) {
-                        this.svg.node().style.cursor = dragCursor;
-                    }
-                    const chartWrapper = this.isPanel ? this.canvas?.parentElement : document.querySelector('.chart-wrapper');
-                    if (chartWrapper) {
-                        chartWrapper.style.cursor = dragCursor;
-                    }
+                    this.canvas.style.cursor = 'ew-resize';
                 }
                 
                 // ─── Chart Pan ───
@@ -14143,7 +11150,7 @@ class Chart {
                 // ─── Time Axis Drag Zoom ───
                 else if (this.drag.type === 'timeAxis') {
                     // Like price axis: dx controls horizontal zoom, anchored at right edge
-                    const sensitivity = 0.001;
+                    const sensitivity = 0.008;
                     const zoomFactor = 1 + dx * sensitivity;
                     const widths = this.zoomLevel.allowedWidths || [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
                     const minWidth = widths[0];
@@ -14173,15 +11180,10 @@ class Chart {
                     this.dispatchScrollSync();
                 }
                 // ─── Price Axis Drag Zoom ───
-                else if (this.drag.type === 'separatePanelAxis' && this.drag.separatePanelSlot &&
-                    typeof this.separatePanelAxisDragStep === 'function') {
-                    this.separatePanelAxisDragStep(this.drag.separatePanelSlot, dy, my);
-                    this.scheduleRender();
-                }
                 else if (this.drag.type === 'priceAxis' && this.yScale) {
-                    const sensitivity = 0.002;
-                    const zoomFactor = Math.max(0.01, 1 - dy * sensitivity);
-                    const newZoom = Math.max(this.minPriceZoom, this.priceZoom * zoomFactor);
+                    const sensitivity = 0.008;
+                    const zoomFactor = 1 - dy * sensitivity;
+                    const newZoom = Math.max(0.1, Math.min(20, this.priceZoom * zoomFactor));
                     
                     // Anchor at cursor Y
                     const m = this.margin;
@@ -14210,27 +11212,10 @@ class Chart {
                     }
                     this.scheduleRender();
                 }
-                // ─── Separate panel resize ───
-                else if (this.drag.type === 'separatePanelResize') {
-                    if (typeof this.updateSeparatePanelResize === 'function') {
-                        this.updateSeparatePanelResize(my);
-                        this.scheduleRender();
-                    }
-                }
                 
                 this.drag.lastX = e.clientX;
                 this.drag.lastY = e.clientY;
             } else {
-                if (typeof this.getSeparatePanelResizeHandleAt === 'function') {
-                    const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my);
-                    if (resizeHandle) {
-                        this.canvas.style.cursor = 'ns-resize';
-                        if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
-                        this.updateCrosshair(e);
-                        this.updateTooltip(e);
-                        return;
-                    }
-                }
                 // Update cursor based on mode
                 const mode = detectCursorMode(mx, my);
                 this.cursor.mode = mode;
@@ -14238,12 +11223,8 @@ class Chart {
                 // Remove axis cursor classes first
                 this.canvas.classList.remove('cursor-price-axis', 'cursor-time-axis');
                 
-                if (mode === 'priceAxis' || mode === 'separatePanelAxis') {
+                if (mode === 'priceAxis') {
                     this.canvas.classList.add('cursor-price-axis');
-                    if (mode === 'separatePanelAxis') {
-                        this.canvas.style.cursor = 'ns-resize';
-                        if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
-                    }
                 } else if (mode === 'timeAxis') {
                     this.canvas.classList.add('cursor-time-axis');
                 } else if (this.tool) {
@@ -14256,12 +11237,7 @@ class Chart {
                                           !e.target.classList.contains('chart-tooltip');
                     
                     const dm = this.drawingManager;
-                    if (dm && (dm.isResizing || dm.isCustomHandleDrag)) {
-                        this.canvas.style.cursor = 'ew-resize';
-                        if (this.svg && this.svg.node()) {
-                            this.svg.node().style.cursor = 'ew-resize';
-                        }
-                    } else if (dm && dm._cursorOverInlineText) {
+                    if (dm && dm._cursorOverInlineText) {
                         this.canvas.style.cursor = 'text';
                         if (this.svg && this.svg.node()) {
                             this.svg.node().style.cursor = 'text';
@@ -14331,15 +11307,7 @@ class Chart {
             }
             // Handle pan end - no inertia, stop immediately
             else if (dragType === 'pan' && wasDragging) {
-                const panClickThresholdPx = 5;
-                const panDx = e.clientX - (this.drag.startX ?? e.clientX);
-                const panDy = e.clientY - (this.drag.startY ?? e.clientY);
-                const isChartClick = e.button === 0 && Math.hypot(panDx, panDy) < panClickThresholdPx;
-                // Real pan → sync scroll to other panels. Tiny movement (click) → skip so Time-sync
-                // click handler can align by bar time without fighting right-edge sync.
-                if (!isChartClick) {
-                    this.dispatchScrollSync();
-                }
+                this.dispatchScrollSync();
                 this.scheduleChartViewSave();
 
                 // Re-check replay follow indicator after the pan settles.
@@ -14351,77 +11319,11 @@ class Chart {
                         }
                     });
                 }
-
-                // VP fill uses pointer-events none so pan reaches the canvas; treat a short click as
-                // select when the topmost hit at the release point is an unlocked volume profile.
-                if (isChartClick
-                    && !this.tool
-                    && this.drawingManager
-                    && !this.drawingManager.currentTool) {
-                    const svgNode = this.svg && this.svg.node();
-                    let vpHandled = false;
-                    if (svgNode) {
-                        const svgRect = svgNode.getBoundingClientRect();
-                        const mouseX = e.clientX - svgRect.left;
-                        const mouseY = e.clientY - svgRect.top;
-                        const hits = this.drawingManager.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true });
-                        const top = hits && hits.length ? hits[0] : null;
-                        if (top && !top.locked && this.drawingManager.isVolumeProfileToolType(top.type)) {
-                            this.drawingManager.selectDrawing(top, false);
-                            vpHandled = true;
-                        }
-                    }
-                    // Time sync (TradingView): click on bar → other panels show same date/time
-                    if (!vpHandled) {
-                        const pm = window.panelManager;
-                        if (pm && pm.syncSettings && pm.syncSettings.time && pm.currentLayout !== '1'
-                            && this.data && this.data.length) {
-                            const rect = this.canvas.getBoundingClientRect();
-                            const mx = e.clientX - rect.left;
-                            const my = e.clientY - rect.top;
-                            const mode = detectCursorMode(mx, my);
-                            if (mode === 'chart' || mode === 'timeAxis') {
-                                const idx = Math.floor(this.pixelToDataIndex(mx));
-                                const clamped = Math.max(0, Math.min(idx, this.data.length - 1));
-                                const ts = this.data[clamped]?.t;
-                                if (ts && typeof pm.syncTimeToClickedTimestamp === 'function') {
-                                    const mm = this.margin || { l: 0, r: 60 };
-                                    const cw = this.w - mm.l - mm.r;
-                                    const screenFrac = cw > 0 ? Math.max(0, Math.min(1, (mx - mm.l) / cw)) : 0.5;
-                                    let sourcePanel = this.panel || null;
-                                    if (!sourcePanel && typeof pm.getPanels === 'function') {
-                                        const panels = pm.getPanels();
-                                        for (let pi = 0; pi < panels.length; pi++) {
-                                            if (panels[pi].chartInstance === this) {
-                                                sourcePanel = panels[pi];
-                                                break;
-                                            }
-                                        }
-                                        if (!sourcePanel && this === window.chart && panels.length > 0) {
-                                            sourcePanel = panels[0];
-                                        }
-                                    }
-                                    if (sourcePanel) {
-                                        pm.syncTimeToClickedTimestamp(sourcePanel, ts, screenFrac);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            // Persist separate panel sizes once drag ends
-            else if (dragType === 'separatePanelResize' && wasDragging) {
-                if (typeof this.finishSeparatePanelResize === 'function') {
-                    this.finishSeparatePanelResize();
-                }
-                this.scheduleRender();
             }
             
             // Reset states
             this.drag.active = false;
             this.drag.type = null;
-            this.drag.separatePanelSlot = null;
             this.boxZoom.active = false;
             this.movement.isDragging = false;
             this.isZooming = false;
@@ -14441,40 +11343,16 @@ class Chart {
         // This prevents stuck drag state when mouse is released outside the chart area
         document.addEventListener('mouseup', handleMouseUp);
         
-        this.canvas.addEventListener('mouseleave', (e) => {
-            const hasPressedButton = !!(e && typeof e.buttons === 'number' && e.buttons !== 0);
-
-            // TradingView-like behavior: if user is still holding mouse button while
-            // leaving the chart, keep drag state alive so re-entering continues the drag.
-            if (this.drag.active && hasPressedButton) {
-                this.hideTooltip();
-                if (typeof this.hideEconomicCalendarTooltip === 'function') this.hideEconomicCalendarTooltip();
-                return;
-            }
-
+        this.canvas.addEventListener('mouseleave', () => {
             this.drag.active = false;
             this.drag.type = null;
             this.boxZoom.active = false;
             this.inertia.active = false;
-            const dm = this.drawingManager;
-            if (dm && (dm.isResizing || dm.isCustomHandleDrag)) {
-                this.canvas.style.cursor = 'ew-resize';
-                if (this.svg && this.svg.node()) {
-                    this.svg.node().style.cursor = 'ew-resize';
-                }
-            } else if (dm && (dm.isDragging || dm.isDraggingFirstTwo)) {
-                this.canvas.style.cursor = 'move';
-                if (this.svg && this.svg.node()) {
-                    this.svg.node().style.cursor = 'move';
-                }
-            } else {
-                this.canvas.style.cursor = 'default';
-            }
+            this.canvas.style.cursor = 'default';
             // hideCrosshair is NOT called here — the document-level capture listener
             // calls updateCrosshair() on every move; its own boundary check hides the
             // crosshair when the mouse is genuinely outside the chart area.
             this.hideTooltip();
-            if (typeof this.hideEconomicCalendarTooltip === 'function') this.hideEconomicCalendarTooltip();
         });
 
         // Global capture-phase mousemove: updates the crosshair regardless of which
@@ -14496,94 +11374,8 @@ class Chart {
                 }
             }
 
-            // Continue axis/pan drags even when mouse is outside the canvas
-            if (this.drag && this.drag.active && this.canvas) {
-                const rect = this.canvas.getBoundingClientRect();
-                const mx = e.clientX - rect.left;
-                const my = e.clientY - rect.top;
-                const isOutside = e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom;
-
-                if (isOutside) {
-                    const dx = e.clientX - this.drag.lastX;
-                    const dy = e.clientY - this.drag.lastY;
-
-                    if (this.drag.type === 'separatePanelAxis' && this.drag.separatePanelSlot &&
-                        typeof this.separatePanelAxisDragStep === 'function') {
-                        this.separatePanelAxisDragStep(this.drag.separatePanelSlot, dy, my);
-                        this.scheduleRender();
-                    } else if (this.drag.type === 'priceAxis' && this.yScale) {
-                        const sensitivity = 0.002;
-                        const zoomFactor = Math.max(0.01, 1 - dy * sensitivity);
-                        const newZoom = Math.max(this.minPriceZoom, this.priceZoom * zoomFactor);
-                        const m = this.margin;
-                        const priceAreaHeight = this.h - m.t - m.b;
-                        const cursorRatio = Math.max(0, Math.min(1, (my - m.t) / priceAreaHeight));
-                        const oldRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-                        const newRange = oldRange * (this.priceZoom / newZoom);
-                        const rangeChange = newRange - oldRange;
-                        this.priceOffset -= rangeChange * (0.5 - cursorRatio);
-                        this.priceZoom = newZoom;
-                        this.scheduleRender();
-                    } else if (this.drag.type === 'timeAxis') {
-                        const sensitivity = 0.001;
-                        const zoomFactor = 1 + dx * sensitivity;
-                        const widths = this.zoomLevel.allowedWidths || [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
-                        const newWidth = Math.max(widths[0], Math.min(widths[widths.length - 1], this.candleWidth * zoomFactor));
-                        const m = this.margin;
-                        const oldSpacing = this.getCandleSpacing();
-                        const rightEdge = this.w - m.r;
-                        const lastVisibleIdx = (rightEdge - m.l - this.offsetX) / oldSpacing;
-                        this.candleWidth = newWidth;
-                        const newSpacing = this.getCandleSpacing();
-                        this.offsetX = rightEdge - m.l - lastVisibleIdx * newSpacing;
-                        this.constrainOffset();
-                        this.scheduleRender();
-                        this.dispatchScrollSync();
-                    } else if (this.drag.type === 'pan') {
-                        let effectiveDx = this.timeScale.locked ? 0 : dx;
-                        let effectiveDy = this.priceScale.locked ? 0 : dy;
-                        this.offsetX += effectiveDx;
-                        if (this.yScale && effectiveDy !== 0) {
-                            this.autoScale = false;
-                            this.priceScale.autoScale = false;
-                            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-                            const pricePerPixel = priceRange / (this.h - this.margin.t - this.margin.b);
-                            this.priceOffset += effectiveDy * pricePerPixel;
-                        }
-                        this.constrainOffset();
-                        this.scheduleRender();
-                        this.dispatchScrollSync();
-                    }
-
-                    this.drag.lastX = e.clientX;
-                    this.drag.lastY = e.clientY;
-                }
-            }
-
             if (typeof this.updateCrosshair === 'function') this.updateCrosshair(e);
-
-            if (this.canvas && !this.isPanel) {
-                const rect = this.canvas.getBoundingClientRect();
-                const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
-                if (!inside && typeof this.hideEconomicCalendarTooltip === 'function') {
-                    this.hideEconomicCalendarTooltip();
-                }
-            }
         }, true);
-
-        // Bubble phase: run after canvas mousemove so cursor can show pointer over calendar flags (SVG may sit above canvas).
-        document.addEventListener('mousemove', (e) => {
-            if (!this.canvas || this.isPanel) return;
-            const rect = this.canvas.getBoundingClientRect();
-            const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
-            if (!inside) {
-                if (typeof this.hideEconomicCalendarTooltip === 'function') this.hideEconomicCalendarTooltip();
-                return;
-            }
-            if (typeof this.updateEconomicCalendarHover === 'function') {
-                this.updateEconomicCalendarHover(e.clientX - rect.left, e.clientY - rect.top, e);
-            }
-        }, false);
         
         // Prevent context menu for box zoom
         this.canvas.addEventListener('contextmenu', e => {
@@ -14606,14 +11398,6 @@ class Chart {
             const my = e.clientY - rect.top;
             const mode = this.cursor.mode || detectCursorMode(mx, my);
             
-            if (mode === 'separatePanelAxis' && this.cursor.separatePanelSlot &&
-                this.cursor.separatePanelSlot.indicator) {
-                const ind = this.cursor.separatePanelSlot.indicator;
-                ind._panelAxis = { zoom: 1, offset: 0 };
-                this.scheduleRender();
-                return;
-            }
-            
             if (mode === 'priceAxis') {
                 // Set flag to prevent unlock during this double-click
                 this._isDoubleClicking = true;
@@ -14627,12 +11411,14 @@ class Chart {
                 this.priceZoom = 1;
                 this.priceOffset = 0;
 
+                console.log('🔒 Price scale AUTO-SCALED and LOCKED (double-click)');
                 
                 this.scheduleRender();
             } else if (mode === 'timeAxis') {
                 // TradingView-style: reset zoom/size and jump to latest (current) candle
                 this.jumpToLatest();
 
+                console.log('🎯 Time axis double-click → reset zoom + jump to latest candle');
 
                 this.dispatchScrollSync();
             }
@@ -14650,6 +11436,7 @@ class Chart {
             'cross-line',
             // Shapes
             'rectangle',
+            'rotated-rectangle',
             'ellipse',
             'circle',
             'triangle',
@@ -14662,12 +11449,16 @@ class Chart {
             'arrow-mark-up',
             'arrow-mark-down',
             // Labels & Text
+            'label',
             'text', 
+            'notebox',
+            'anchored-text',
             'note',
             'price-note',
             'pin',
             'callout',
             'comment',
+            'price-label',
             'price-label-2',
             'signpost-2',
             'flag-mark',
@@ -14679,7 +11470,11 @@ class Chart {
             'highlighter',
             // Analysis
             'fibonacci-retracement', 
+            'fibonacci-extension',
+            'ruler',
             'date-price-range',
+            'price-range',
+            'date-range',
             'gann-box',
             'anchored-vwap',
             'volume-profile',
@@ -14688,7 +11483,9 @@ class Chart {
             'long-position',
             'short-position',
             // Patterns
+            'bars-pattern',
             'xabcd-pattern',
+            'cypher-pattern',
             'head-shoulders',
             'abcd-pattern',
             'triangle-pattern',
@@ -14699,6 +11496,10 @@ class Chart {
             'elliott-triangle',
             'elliott-double-combo',
             'elliott-triple-combo',
+            // Cycles
+            'cyclic-lines',
+            'time-cycles',
+            'sine-line',
             // Advanced Fibonacci
             'fib-channel',
             'fib-timezone',
@@ -14708,74 +11509,105 @@ class Chart {
             'fib-spiral',
             'fib-arcs',
             'fib-wedge',
+            'pitchfan',
             'trend-fib-extension',
             // Advanced Gann
             'gann-square-fixed',
+            'gann-square',
             'gann-fan'
         ];
 
-        if (!this.isPanel) {
         allTools.forEach(tool => {
             const btnId = tool + 'Tool';
             const btn = document.getElementById(btnId);
-            if (!btn) return;
+            if (!btn) {
+                console.warn(`Tool button not found: ${btnId}`);
+                return;
+            }
             btn.addEventListener('click', () => {
-                const target = (typeof window.getActiveChart === 'function' ? window.getActiveChart() : null) || this;
-                const dm = target.drawingManager;
-                if (!dm) return;
-
-                const parentDropdown = btn.closest('.tool-dropdown');
-                const dropdownIsOpen = parentDropdown && parentDropdown.classList.contains('show');
-
                 const isSameToolActive = !!(
-                    !dropdownIsOpen &&
-                    dm.currentTool === tool &&
+                    this.drawingManager &&
+                    this.drawingManager.currentTool === tool &&
                     btn.classList.contains('active')
                 );
 
+                // Toggle behavior: clicking the active tool again deselects it and returns to cursor mode.
                 if (isSameToolActive) {
-                    dm.clearTool();
-                    if (typeof dm.deselectAll === 'function') dm.deselectAll();
-                    target.setCursorType('cross');
+                    this.drawingManager.clearTool();
+                    if (typeof this.drawingManager.deselectAll === 'function') {
+                        this.drawingManager.deselectAll();
+                    }
+                    this.setCursorType('cross');
                     document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
                     const cursorBtn = document.getElementById('cursorTool');
                     if (cursorBtn) cursorBtn.classList.add('active');
-                    target.hideContextMenu();
-                    target.syncMagnetButton();
+                    this.hideContextMenu();
+                    this.syncMagnetButton();
                     return;
                 }
 
-                if (dm.eraserMode) {
-                    dm.setEraserMode(false);
-                    target.cursorType = 'cross';
-                    const cursorStyle = target.getCurrentCursorStyle();
-                    if (target.canvas) target.canvas.style.cursor = cursorStyle;
-                    const chartWrapper = target.isPanel ? target.canvas?.parentElement : document.querySelector('.chart-wrapper');
-                    if (chartWrapper) chartWrapper.style.cursor = cursorStyle;
-                    if (target.svg && target.svg.node()) target.svg.node().style.cursor = cursorStyle;
-                    if (typeof target.updateCrosshairVisibility === 'function') target.updateCrosshairVisibility('cross');
-                    if (typeof target.updateCursorDropdownUI === 'function') target.updateCursorDropdownUI('cross');
+                // If we were in eraser cursor mode, turn it off when selecting any drawing tool
+                // Do NOT call setCursorType('cross') here, because that would clear the
+                // drawingManager tool we are about to set. Instead, manually reset eraser state
+                // and cursor visuals.
+                if (this.drawingManager && this.drawingManager.eraserMode) {
+                    this.drawingManager.setEraserMode(false);
+                    this.cursorType = 'cross';
+                    const cursorStyle = this.getCurrentCursorStyle();
+
+                    // Update canvas cursor
+                    if (this.canvas) {
+                        this.canvas.style.cursor = cursorStyle;
+                    }
+
+                    // Update chart wrapper cursor
+                    const chartWrapper = this.isPanel ? this.canvas?.parentElement : document.querySelector('.chart-wrapper');
+                    if (chartWrapper) {
+                        chartWrapper.style.cursor = cursorStyle;
+                    }
+
+                    // Update SVG cursor
+                    if (this.svg && this.svg.node()) {
+                        this.svg.node().style.cursor = cursorStyle;
+                    }
+
+                    // Refresh crosshair visibility and cursor dropdown UI to reflect cross mode
+                    if (typeof this.updateCrosshairVisibility === 'function') {
+                        this.updateCrosshairVisibility('cross');
+                    }
+                    if (typeof this.updateCursorDropdownUI === 'function') {
+                        this.updateCursorDropdownUI('cross');
+                    }
                 }
 
-                dm.setTool(tool);
-                document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                target.syncMagnetButton();
+                if (this.drawingManager) {
+                    this.drawingManager.setTool(tool);
+                    // Update active state (but keep keepDrawingMode and magnetMode buttons as they are)
+                    document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                } else {
+                    this.setTool(tool); // Fallback to old method
+                }
+                this.syncMagnetButton();
             });
         });
-        }
 
         // Standalone emoji tool button (optional). Safe even if not present.
         const emojiBtn = document.getElementById('emojiToolStandalone');
 
+        console.log('🔍 Drawing manager:', !!this.drawingManager);
+        console.log('🔍 EmojiPickerPanel class:', typeof EmojiPickerPanel);
         
         if (emojiBtn && this.drawingManager) {
             // Initialize emoji picker
             if (typeof EmojiPickerPanel !== 'undefined') {
                 const emojiPicker = new EmojiPickerPanel();
+                console.log('✅ Emoji picker created:', emojiPicker);
+                console.log('✅ Picker panel element:', emojiPicker.panel);
                 
                 // Wire up selection callback
                 emojiPicker.onSelect = (options) => {
+                    console.log('🎨 Emoji selected:', options);
                     if (this.drawingManager && typeof this.drawingManager.handleEmojiSelection === 'function') {
                         this.drawingManager.handleEmojiSelection(options);
                         // Update active state
@@ -14792,11 +11624,20 @@ class Chart {
                 
                 // Toggle picker on button click
                 emojiBtn.addEventListener('click', (event) => {
+                    console.log('🖱️🖱️🖱️ EMOJI BUTTON CLICKED! 🖱️🖱️🖱️');
                     event.preventDefault();
                     event.stopPropagation();
+                    console.log('🔍 Event:', event);
+                    console.log('🔍 Picker object:', emojiPicker);
+                    console.log('🔍 Picker visible before toggle:', emojiPicker.visible);
+                    console.log('🔍 Calling toggle with button:', emojiBtn);
                     emojiPicker.toggle(emojiBtn);
+                    console.log('🔍 Picker visible after toggle:', emojiPicker.visible);
+                    console.log('🔍 Panel display:', emojiPicker.panel?.style.display);
+                    console.log('🔍 Panel className:', emojiPicker.panel?.className);
                 }, true);
                 
+                console.log('✅ Emoji picker initialized and event listener attached');
             } else {
                 console.warn('⚠️ EmojiPickerPanel not loaded');
             }
@@ -14816,10 +11657,12 @@ class Chart {
         this.cursorType = this.cursorType || 'cross';
         this.showCrosshairLines = true; // Default to showing crosshair lines (cross mode)
         
+        console.log('🖱️ Setting up cursor options, dropdown found:', !!cursorDropdown);
         
         // Cursor option handlers
         if (cursorDropdown) {
             const cursorOptions = cursorDropdown.querySelectorAll('.cursor-option');
+            console.log('🖱️ Found cursor options:', cursorOptions.length);
             
             // Set 'cross' as selected by default in the UI
             cursorOptions.forEach(option => {
@@ -14843,6 +11686,7 @@ class Chart {
                     const cursorType = option.getAttribute('data-cursor');
                     if (!cursorType) return;
                     
+                    console.log('🖱️ Cursor option clicked:', cursorType);
                     
                     // Set cursor type (this will handle tool clearing internally)
                     chartInstance.setCursorType(cursorType);
@@ -14895,6 +11739,7 @@ class Chart {
                         this.magnetMode = modes[(idx + 1) % modes.length];
                     }
                     this.syncMagnetButton();
+                    console.log('🧲 Magnet mode:', this.magnetMode);
                 });
             }
         });
@@ -14913,6 +11758,7 @@ class Chart {
                                 btn.setAttribute('title', `Keep Drawing Mode (${isOn ? 'ON' : 'OFF'})`);
                             }
                         });
+                        console.log('✏️ Keep Drawing mode:', isOn ? 'ON' : 'OFF');
                     }
                 });
             }
@@ -14959,6 +11805,7 @@ class Chart {
         const jumpLatestBtn = document.getElementById('jumpToLatest');
         if (jumpLatestBtn) {
             jumpLatestBtn.addEventListener('click', () => {
+                console.log('🏠 Jump to Latest button clicked');
                 this.jumpToLatest();
             });
         }
@@ -14967,41 +11814,52 @@ class Chart {
         const testBtn = document.getElementById('testInteraction');
         if (testBtn) {
             testBtn.addEventListener('click', () => {
+                console.log('🔍 TESTING CHART INTERACTION...');
+                console.log('Canvas element:', this.canvas);
+                console.log('Canvas display:', window.getComputedStyle(this.canvas).display);
+                console.log('Canvas pointer-events:', window.getComputedStyle(this.canvas).pointerEvents);
+                console.log('Canvas z-index:', window.getComputedStyle(this.canvas).zIndex);
+                console.log('Canvas position:', window.getComputedStyle(this.canvas).position);
+                console.log('Canvas dimensions:', this.canvas.offsetWidth, 'x', this.canvas.offsetHeight);
+                console.log('Data loaded:', this.data.length, 'candles');
                 
                 // Force enable pointer events
                 this.canvas.style.pointerEvents = 'auto';
                 this.canvas.style.touchAction = 'none';
+                console.log('✅ Forced pointer-events: auto');
                 
                 // Test by adding a one-time click listener
                 const testClick = () => {
+                    console.log('🎉 CANVAS CLICK WORKS!');
                     alert('Canvas is clickable! Mouse events are working.');
                     this.canvas.removeEventListener('click', testClick);
                 };
                 this.canvas.addEventListener('click', testClick);
+                console.log('👉 Now click anywhere on the chart area...');
             });
         }
 
                 let start = null, startData = null;
-                // Stable id used to live-sync an in-progress drawing across panels
-                let liveSyncDrawingId = null;
         
         // Handle SVG mousedown for drawing and selection
         this.svg.on('mousedown', (event) => {
+            console.log('🖱️ SVG mousedown detected');
             
             // SKIP if in eraser mode - let eraser handler handle it
             if (this.drawingManager && this.drawingManager.eraserMode) {
-                return;
-            }
-            
-            // SKIP if DrawingToolsManager has an active tool or is mid-drawing
-            if (this.drawingManager && (this.drawingManager.currentTool || this.drawingManager.drawingState?.isDrawing)) {
+                console.log('🧹 Eraser mode active - skipping drawing');
                 return;
             }
             
             const [x, y] = d3.pointer(event);
             
+            // Always stop propagation and prevent defaults for SVG interactions
+            event.stopPropagation(); // Prevent canvas drag
+            event.preventDefault(); // Prevent text selection
+            
             // Ensure we have valid scales before proceeding
             if (!this.xScale || !this.yScale) {
+                console.log('⚠️ Missing scales');
                 return;
             }
             
@@ -15009,40 +11867,22 @@ class Chart {
                 // Selection mode
                 const foundDrawing = this.findDrawingAtPoint(x, y);
                 if (foundDrawing) {
-                    event.stopPropagation();
-                    event.preventDefault();
+                    console.log('🎯 Drawing selected:', foundDrawing.drawing.type);
                     this.selectedDrawing = foundDrawing.index;
                     this.scheduleRender();
 
                     // Context menu is handled on contextmenu (right-click release),
                     // not on mousedown. This allows right-drag box zoom without
                     // opening the menu at the same time.
-                } else if (this.selectedDrawing !== null) {
-                    event.stopPropagation();
-                    event.preventDefault();
+                } else {
+                    console.log('   No drawing found - deselecting on canvas click');
                     this.selectedDrawing = null;
                     this.hideContextMenu();
-                    this.scheduleRender();
-                } else {
-                    // Nothing actionable on SVG — make SVG transparent and
-                    // forward this mousedown to canvas so panning/drag works
-                    // (subsequent mousemove/mouseup will reach canvas directly)
-                    this.svg.style('pointer-events', 'none');
-                    if (this.canvas) {
-                        const fwd = new MouseEvent('mousedown', {
-                            bubbles: true, cancelable: true,
-                            clientX: event.clientX, clientY: event.clientY,
-                            button: event.button, buttons: event.buttons,
-                            shiftKey: event.shiftKey, ctrlKey: event.ctrlKey,
-                            altKey: event.altKey, metaKey: event.metaKey
-                        });
-                        this.canvas.dispatchEvent(fwd);
-                    }
+                    this.scheduleRender(); // Update visual to show deselection
                 }
             } else {
-                // Drawing mode — always capture
-                event.stopPropagation();
-                event.preventDefault();
+                // Drawing mode
+                console.log('🖌️ Starting drawing with tool:', this.tool);
                 
                 // Calculate data coordinates - snap to candle center
                 const dataIdx = Math.round(this.pixelToDataIndex(x));
@@ -15055,19 +11895,20 @@ class Chart {
                 // Store start points - use snapped X for pixel position
                 start = [snappedX, y];
                 startData = {idx: dataIdx, price};
-                liveSyncDrawingId = `live_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+                console.log('Drawing started at:', {dataIdx, price});
             }
         });
         
         // Handle SVG mousemove for drawing preview and interaction
         this.svg.on('mousemove', (event) => {
+            event.stopPropagation(); // Prevent canvas events while interacting with SVG
+            event.preventDefault();
+            
             // Always update crosshair so lines follow the cursor when SVG intercepts events
             if (typeof this.updateCrosshair === 'function') this.updateCrosshair(event);
             
-            // Only block canvas events when actively drawing
+            // Skip if no active drawing
             if (!start || !startData || !this.tool) return;
-            event.stopPropagation();
-            event.preventDefault();
             
             // Get current pointer coordinates - snap to candle center
             const [rawX, y] = d3.pointer(event);
@@ -15174,24 +12015,6 @@ class Chart {
                         break;
                     }
                 }
-                // Live-sync the in-progress drawing to sibling panels (same TF)
-                if (liveSyncDrawingId) {
-                    let syncPreview = null;
-                    if (this.tool === 'trendline') {
-                        syncPreview = { type: 'trendline', x1: startData.idx, y1: startData.price, x2: snapIdx, y2: this.snapToOHLC(snapIdx, this.yScale.invert(y)), __syncId: liveSyncDrawingId };
-                    } else if (this.tool === 'horizontal') {
-                        syncPreview = { type: 'horizontal', price: startData.price, __syncId: liveSyncDrawingId };
-                    } else if (this.tool === 'vertical') {
-                        syncPreview = { type: 'vertical', x: snapIdx, __syncId: liveSyncDrawingId };
-                    } else if (this.tool === 'rectangle') {
-                        syncPreview = { type: 'rectangle', x1: startData.idx, y1: startData.price, x2: snapIdx, y2: this.snapToOHLC(snapIdx, this.yScale.invert(y)), __syncId: liveSyncDrawingId };
-                    } else if (this.tool === 'fibonacci') {
-                        syncPreview = { type: 'fibonacci', x1: startData.idx, y1: startData.price, x2: snapIdx, y2: this.snapToOHLC(snapIdx, this.yScale.invert(y)), __syncId: liveSyncDrawingId };
-                    }
-                    if (syncPreview && typeof this.syncDrawingToOtherPanels === 'function') {
-                        this.syncDrawingToOtherPanels(syncPreview, 'update');
-                    }
-                }
             } catch (error) {
                 console.error('Error drawing preview:', error);
                 // Clean up on error
@@ -15201,12 +12024,14 @@ class Chart {
         
         // Handle clicks on the SVG for drawing selection
         this.svg.on('click', (event) => {
+            console.log('🖱️ SVG Click detected at:', d3.pointer(event));
             
             // SKIP if click originated from toolbar or UI elements
             if (event.target.closest('.tool-btn') || 
                 event.target.closest('.tool-dropdown') || 
                 event.target.closest('.tool-group-btn') ||
                 event.target.closest('.toolbar')) {
+                console.log('   ⏭️ Skipping - click from toolbar');
                 return;
             }
             
@@ -15217,12 +12042,18 @@ class Chart {
             
             if (!this.tool) { // Only handle selection when not in drawing mode
                 const [x, y] = d3.pointer(event);
+                console.log('   Checking for drawings at:', {x, y});
                 const foundDrawing = this.findDrawingAtPoint(x, y);
                 
                 if (foundDrawing) {
+                    console.log('   ✅ Found drawing:', {
+                        type: foundDrawing.drawing.type,
+                        index: foundDrawing.index
+                    });
                     this.selectedDrawing = foundDrawing.index;
                     event.stopPropagation(); // Only stop if we found a drawing
                 } else {
+                    console.log('   ❌ No drawing found - deselecting');
                     this.selectedDrawing = null;
                     // Don't stop propagation - let it bubble to canvas
                 }
@@ -15288,7 +12119,7 @@ class Chart {
                     }
                     
                     if (newDrawing) {
-                        if (liveSyncDrawingId) newDrawing.__syncId = liveSyncDrawingId;
+                        console.log('✏️ Drawing completed:', newDrawing.type);
                         
                         // Apply saved tool defaults for this tool type
                         const defaults = this.toolDefaults[newDrawing.type] || {};
@@ -15297,6 +12128,7 @@ class Chart {
                         newDrawing.opacity = defaults.opacity !== undefined ? defaults.opacity : 1;
                         newDrawing.locked = false; // Ensure new drawings are not locked
                         
+                        console.log('New drawing created with color:', newDrawing.color, 'from defaults:', defaults.color);
                         
                         // Apply fill properties for shapes
                         if (newDrawing.type === 'rectangle' || newDrawing.type === 'fibonacci') {
@@ -15326,7 +12158,7 @@ class Chart {
                         this.updateToolDefaultsFromDrawing(newDrawing);
                         
                         // Save to localStorage
-                        userStorage.setItem(this.getDrawingsStorageKey(), JSON.stringify(this.drawings));
+                        localStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
                         
                         // For text tool, enter inline edit mode immediately
                         if (this.pendingTextEdit) {
@@ -15352,7 +12184,6 @@ class Chart {
                 // Reset drawing start points
                 start = null;
                 startData = null;
-                liveSyncDrawingId = null;
             }
         });
         
@@ -15362,6 +12193,13 @@ class Chart {
         // Make left sidebar draggable
         this.setupDraggableToolbox();
         
+        console.log('✅ All mouse event listeners attached successfully!');
+        console.log('   - Wheel (zoom)');
+        console.log('   - Double-click (jump to latest)');
+        console.log('   - Mouse down/move/up (pan and drag)');
+        console.log('   - Mouse leave (cleanup)');
+        console.log('   - Touch events (mobile support)');
+        console.log('👉 Try: Mouse wheel to zoom, drag to pan, double-click price axis');
     }
     
     setupTouchEvents() {
@@ -15502,7 +12340,7 @@ class Chart {
             const maxY = window.innerHeight - rect.height;
             
             currentX = Math.max(0, Math.min(currentX, maxX));
-            currentY = Math.max(54, Math.min(currentY, maxY)); // below fixed toolbar (6px bottom border)
+            currentY = Math.max(44, Math.min(currentY, maxY)); // 44px for toolbar
             
             sidebar.style.left = currentX + 'px';
             sidebar.style.top = currentY + 'px';
@@ -15537,13 +12375,7 @@ class Chart {
             document.getElementById('orderPanel').classList.contains('visible')
         );
 
-        const drawingSelectedOnChart = !!(
-            this.drawingManager &&
-            Array.isArray(this.drawingManager.selectedDrawings) &&
-            this.drawingManager.selectedDrawings.length > 0
-        );
-
-        if (legacyToolActive || drawingManagerActive || orderPreviewActive || drawingSelectedOnChart) {
+        if (legacyToolActive || drawingManagerActive || orderPreviewActive) {
             this.svg.style('pointer-events', 'all'); // Capture all events for drawing
         } else {
             this.svg.style('pointer-events', 'none'); // Let canvas handle panning, shapes handle their own events
@@ -15562,28 +12394,9 @@ class Chart {
         // Fallback to legacy drawing system
         // Store current drawings state before clearing
         const currentDrawings = [...this.drawings];
-
-        // Remove all SVG elements EXCEPT order / SL / TP / BE overlays (open + pending) and related UI.
-        // Pending uses separate class names; without these, chart.render() → redrawDrawings() strips TP/SL
-        // labels and leaves broken lines after e.g. deleting a pending multi-TP leg.
-        const _preserveOrderOverlay = [
-            'order-line', 'order-label', 'sl-line', 'sl-label', 'sl-label-box', 'sl-label-text', 'sl-close-btn', 'sl-price-box', 'sl-price-text',
-            'tp-line', 'tp-label', 'tp-label-box', 'tp-label-text', 'tp-close-btn', 'tp-price-box', 'tp-price-text',
-            'be-line', 'be-label-box', 'be-label-text', 'be-price-box', 'be-price-text',
-            'pending-order-line', 'pending-order-hit-line', 'pending-order-label-box', 'pending-order-label-text',
-            'pending-order-price-box', 'pending-order-price-text', 'pending-order-close-btn',
-            'pending-sl-badge', 'pending-tp-badge', 'pending-entry-plus-badge',
-            'pending-sl-line', 'pending-tp-line', 'pending-be-line',
-            'pending-sl-label', 'pending-tp-label', 'pending-be-label',
-            'pending-sl-hit-line', 'pending-tp-hit-line', 'pending-be-hit-line',
-            'pending-tp-pct-control', 'pending-tp-delete', 'pending-tp-split',
-            'exec-order-connector',
-            'split-avg-line', 'split-avg-label', 'split-avg-connector',
-            'multi-tp-avg-line', 'multi-tp-avg-label',
-            'order-overlay-sublayer'
-        ];
-        const _notOverlay = _preserveOrderOverlay.map((c) => `.${c}`).join('):not(');
-        this.svg.selectAll(`*:not(${_notOverlay})`).remove();
+        
+        // Remove all SVG elements EXCEPT order lines, SL, TP, and breakeven lines
+        this.svg.selectAll('*:not(.order-line):not(.order-label):not(.sl-line):not(.sl-label):not(.sl-label-box):not(.sl-label-text):not(.sl-close-btn):not(.sl-price-box):not(.sl-price-text):not(.tp-line):not(.tp-label):not(.tp-label-box):not(.tp-label-text):not(.tp-close-btn):not(.tp-price-box):not(.tp-price-text):not(.be-line):not(.be-label-box):not(.be-label-text):not(.be-price-box):not(.be-price-text)').remove();
         
         // SVG pointer-events strategy:
         // - SVG layer should always be able to receive events when there are drawings
@@ -15612,6 +12425,12 @@ class Chart {
             };
             
             if (idx === 0 || idx === 1) {
+                console.log(`Drawing ${idx}:`, {
+                    type: drawing.type,
+                    hasColor: !!drawing.color,
+                    colorValue: drawing.color,
+                    styleStroke: style.stroke
+                });
             }
             
             // Note: Don't initialize properties here - they're set when drawing is created
@@ -15968,11 +12787,18 @@ class Chart {
                 let hasMoved = false; // Track if shape actually moved
                 
                 element.on('mousedown', function(event) {
+                    console.log('🖱️ Mousedown on shape:', {
+                        type: drawing.type,
+                        locked: drawing.locked,
+                        button: event.button
+                    });
                     
                     if (drawing.locked) {
+                        console.log('❌ Shape is locked, cannot drag');
                         return; // Don't drag if locked
                     }
                     if (event.button !== 0) {
+                        console.log('❌ Not left mouse button');
                         return; // Only left mouse button
                     }
                     
@@ -15996,6 +12822,7 @@ class Chart {
                         type: drawing.type
                     };
                     
+                    console.log('🎯 Shape drag started:', drawing.type, dragStartData);
                     
                     element.style('cursor', 'move');
                     
@@ -16116,6 +12943,7 @@ class Chart {
                         if (didMove) {
                             chart.saveDrawingChanges(drawing);
                             chart.redrawDrawings();
+                            console.log('✅ Shape drag completed');
                         }
                     };
                     
@@ -16131,9 +12959,15 @@ class Chart {
                 element.on('click', (event) => {
                     event.stopPropagation(); // Prevent bubbling
                     
+                    console.log(`👆 Click event on shape ${idx}:`, {
+                        hasMoved,
+                        currentSelection: chart.selectedDrawing,
+                        type: drawing.type
+                    });
                     
                     // Don't change selection if we just finished dragging
                     if (hasMoved) {
+                        console.log('   ⏭️ Skipping click - shape was dragged');
                         hasMoved = false;
                         return;
                     }
@@ -16144,8 +12978,10 @@ class Chart {
                         // Clicking same shape = deselect
                         chart.selectedDrawing = null;
                         chart.hideContextMenu();
+                        console.log('   🔵 Deselected shape:', idx);
                     } else {
                         // Clicking different shape = select it
+                        console.log(`   🟢 Selecting shape ${idx} (previous: ${chart.selectedDrawing})`);
                         chart.selectedDrawing = idx;
                         // Show context menu automatically when selecting
                         chart.showContextMenu(event.clientX, event.clientY, {index: idx, drawing}, null);
@@ -16160,6 +12996,7 @@ class Chart {
                     if (chart.shouldSuppressRightClickContextMenu(event)) {
                         return;
                     }
+                    console.log('🖱️ Right-click on drawing');
                     chart.selectedDrawing = idx;
                     chart.showContextMenu(event.clientX, event.clientY, {index: idx, drawing}, null);
                     chart.scheduleRender();
@@ -16226,65 +13063,16 @@ class Chart {
         }
     }
     
-    refreshCrosshairFromLastPointer(keyState = {}) {
-        if (!this.canvas) return;
-        if (!Number.isFinite(this.mouseX) || !Number.isFinite(this.mouseY)) return;
-
-        // Only refresh if the mouse is actually inside this chart's canvas area.
-        // In multi-panel mode every chart registers a document keydown listener,
-        // so without this guard a Ctrl press would fire updateCrosshair on charts
-        // whose mouseX/mouseY are stale, causing them to hide the crosshair.
-        const m = this.margin || {};
-        const ml = m.l || 0, mr = m.r || 0, mt = m.t || 0, mb = m.b || 0;
-        if (this.mouseX < ml || this.mouseX > this.w - mr ||
-            this.mouseY < mt || this.mouseY > this.h - mb) {
-            return;
-        }
-
-        const rect = this.canvas.getBoundingClientRect();
-        const syntheticEvent = {
-            clientX: rect.left + this.mouseX,
-            clientY: rect.top + this.mouseY,
-            ctrlKey: keyState.ctrlKey !== undefined ? !!keyState.ctrlKey : !!this._lastCrosshairCtrlKey,
-            metaKey: keyState.metaKey !== undefined ? !!keyState.metaKey : !!this._lastCrosshairMetaKey
-        };
-
-        this.updateCrosshair(syntheticEvent);
-        if (typeof this.updateTooltip === 'function') {
-            this.updateTooltip(syntheticEvent);
-        }
-    }
-
     updateCrosshair(e) {
-        // Auto-fix stale dimensions: compare the parent wrapper size (which CSS
-        // already expanded) against the canvas/chart internal w/h.  When they
-        // diverge a layout change happened and resize() hasn't caught up yet.
-        const _ctrEl = this.canvas.parentElement;
-        if (_ctrEl) {
-            const _cR = _ctrEl.getBoundingClientRect();
-            const _cW = Math.floor(_cR.width || 0);
-            const _cH = Math.floor(_cR.height || 0);
-            if (_cW > 2 && _cH > 2 &&
-                (Math.abs(_cW - this.w) > 4 || Math.abs(_cH - this.h) > 4)) {
-                if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
-                if (typeof this.resize === 'function') this.resize();
-            }
-        }
-
         const rect = this.canvas.getBoundingClientRect();
         const x = e.clientX - rect.left, y = e.clientY - rect.top;
         const m = this.margin;
-
-        this.mouseX = x;
-        this.mouseY = y;
-        this._lastCrosshairCtrlKey = !!e.ctrlKey;
-        this._lastCrosshairMetaKey = !!e.metaKey;
         
         if (x < m.l || x > this.w - m.r || y < m.t || y > this.h - m.b) {
             this.hideCrosshair();
             this.currentCrosshairTimestamp = null;
             // Broadcast hide to other panels
-            if (this._crosshairPanelSyncAllowed()) {
+            if (this.syncCrosshair) {
                 this.broadcastCrosshairSync(null, null);
             }
             return;
@@ -16296,84 +13084,14 @@ class Chart {
         const hLine = container.querySelector('.crosshair-horizontal');
         const priceLabel = container.querySelector('.price-label');
         const timeLabel = container.querySelector('.time-label');
-        const _dm = this.drawingManager;
         
         // Snap crosshair to candle center (like TradingView)
-        const rawDataIdx = this.pixelToDataIndex(x);
-        let dataIdx = Math.round(rawDataIdx);
-        const isCrosshairLocked = !!this.chartSettings?.crosshairLocked;
-        if (isCrosshairLocked && Number.isFinite(this.lockedCrosshairDataIndex)) {
-            const lastIdx = Math.max(0, this.data.length - 1);
-            dataIdx = Math.max(0, Math.min(lastIdx, Math.round(this.lockedCrosshairDataIndex)));
-        }
+        const dataIdx = Math.round(this.pixelToDataIndex(x));
         const snappedX = this.dataIndexToPixel(dataIdx); // Already returns candle center
-        const hasSnappedCandle = dataIdx >= 0 && dataIdx < this.data.length;
-        const snappedCandle = hasSnappedCandle ? this.data[dataIdx] : null;
-
-        let crosshairY = y;
-        let crosshairPrice = this.yScale ? this.yScale.invert(y) : null;
-
-        // Snap horizontal crosshair to nearest OHLC when magnet is active or Ctrl+draw
-        const magnetMode = (this.drawingManager && this.drawingManager.magnetMode) || this.magnetMode || 'off';
-        const magnetActive = magnetMode === 'weak' || magnetMode === 'strong' || magnetMode === true;
-        const ctrlHeld = e.ctrlKey || e.metaKey;
-        const shouldSnapCrosshair = this.yScale && hasSnappedCandle && Number.isFinite(crosshairPrice)
-            && (magnetActive || ctrlHeld);
-        if (shouldSnapCrosshair) {
-            const candle = snappedCandle;
-            const ohlc = [candle.o, candle.h, candle.l, candle.c];
-            let closest = ohlc[0], minDist = Math.abs(crosshairPrice - closest);
-            for (let i = 1; i < ohlc.length; i++) {
-                const dist = Math.abs(crosshairPrice - ohlc[i]);
-                if (dist < minDist) { minDist = dist; closest = ohlc[i]; }
-            }
-            const closestPx = this.yScale(closest);
-            const pxDist = Math.abs(y - closestPx);
-            // 'weak' only snaps within 20px, 'strong' / ctrl always snaps
-            const forceSnap = magnetMode === 'strong' || magnetMode === true || ctrlHeld;
-            if (forceSnap || pxDist <= 30) {
-                crosshairPrice = closest;
-                crosshairY = closestPx;
-            }
-        }
-
-        // Tick-grid snap for instruments with a known tick size (NQ/ES → 0.25, GC → 0.10,
-        // CL → 0.01, USDJPY → 0.001, etc.). Real futures/crypto only trade at discrete tick
-        // increments, so the crosshair readout should reflect that instead of showing a
-        // free-floating `20150.68342`-style interpolation from `yScale.invert(y)`. The
-        // horizontal line snaps to the tick's pixel position too so the visual matches.
-        //
-        // Suppressed when the user is actively drawing (tool/drag) — drawings need sub-tick
-        // precision for price alignment on zoomed-in charts. The OHLC magnet above already
-        // handles OHLC snapping; for registered instruments OHLC values are themselves on
-        // the tick grid, so this second pass is a no-op there.
-        if (this.yScale && Number.isFinite(crosshairPrice)
-            && typeof this.getTickSize === 'function'
-            && !(_dm && (_dm.currentTool || _dm.isDrawing || _dm.isDragging))) {
-            const tick = this.getTickSize();
-            // Only snap for registered instruments — unregistered symbols return a 10^-precision
-            // fallback tick that would force weird rounding on arbitrary price data.
-            const hasRegistrySpec = this.currentSymbol
-                && typeof window !== 'undefined'
-                && window.marketCalcEngine
-                && (() => {
-                    try {
-                        const calc = window.marketCalcEngine.getCalculator(this.currentSymbol);
-                        return !!(calc && calc.specs
-                            && (Number.isFinite(calc.specs.tickSize) || Number.isFinite(calc.specs.pipSize)));
-                    } catch (_) { return false; }
-                })();
-            if (hasRegistrySpec && Number.isFinite(tick) && tick > 0) {
-                const snappedPrice = Math.round(crosshairPrice / tick) * tick;
-                if (Number.isFinite(snappedPrice)) {
-                    crosshairPrice = snappedPrice;
-                    crosshairY = this.yScale(snappedPrice);
-                }
-            }
-        }
         
         // Show crosshair lines for 'cross' cursor type, eraser, drawing tool active, or drawing selected/moved
         // DON'T show lines for 'dot' or 'arrow' cursor types
+        const _dm = this.drawingManager;
         const _drawingActive = !!(_dm && (_dm.currentTool || _dm.selectedDrawing || _dm.isDrawing || _dm.isDragging));
         const showLines = (this.cursorType === 'cross' || this.cursorType === 'eraser' || this.tool || _drawingActive) && this.cursorType !== 'dot';
         const crossColor = (this.chartSettings && this.chartSettings.crosshairColor) || 'rgba(120,123,134,0.4)';
@@ -16389,10 +13107,7 @@ class Chart {
             : crossPattern === 'dotted'
                 ? `repeating-linear-gradient(to right,${crossColor} 0px,${crossColor} 2px,transparent 2px,transparent 6px)`
                 : `repeating-linear-gradient(to right,${crossColor} 0px,${crossColor} 6px,transparent 6px,transparent 10px)`;
-        // Match receiveCrosshairSync / plot box: explicit top + span only the drawable width (not 100% of wrapper).
-        const plotW = Math.max(0, this.w - m.l - m.r);
         if (vLine) {
-            vLine.style.top = '0px';
             vLine.style.left = snappedX + 'px';
             vLine.style.width = crossWidth + 'px';
             vLine.style.height = 'calc(100% - 30px)';
@@ -16400,10 +13115,7 @@ class Chart {
             vLine.style.background = vBg;
         }
         if (hLine) {
-            hLine.style.left = m.l + 'px';
-            hLine.style.right = 'auto';
-            hLine.style.width = plotW + 'px';
-            hLine.style.top = crosshairY + 'px';
+            hLine.style.top = y + 'px';
             hLine.style.height = crossWidth + 'px';
             hLine.style.display = showLines ? 'block' : 'none';
             hLine.style.background = hBg;
@@ -16418,6 +13130,7 @@ class Chart {
             // Append to proper container - use chart wrapper for main chart, panel container for panels
             const appendTarget = this.isPanel ? container : (document.querySelector('.chart-wrapper') || document.body);
             appendTarget.appendChild(dotIndicator);
+            console.log('● Created dot indicator in:', appendTarget.className || appendTarget.tagName);
         }
         if (dotIndicator) {
             if (this.cursorType === 'dot' && !this.tool) {
@@ -16434,9 +13147,13 @@ class Chart {
         }
         
         if (priceLabel && this.yScale) {
-            const price = Number.isFinite(crosshairPrice) ? crosshairPrice : this.yScale.invert(y);
-            const _priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-            const decimals = this.getPriceDecimals(_priceRange);
+            const price = this.yScale.invert(y);
+            // Format price with appropriate decimals
+            let decimals = 2;
+            if (price < 0.01) decimals = 6;
+            else if (price < 1) decimals = 5;
+            else if (price < 10) decimals = 4;
+            else if (price < 1000) decimals = 3;
             priceLabel.textContent = price.toFixed(decimals);
             
             // Position label to match canvas current price label
@@ -16445,7 +13162,7 @@ class Chart {
             const _axisW = _axisLeft ? m.l : m.r;
             priceLabel.style.left = (_axisLeft ? 2 : (this.w - m.r)) + 'px';
             priceLabel.style.right = 'auto';
-            priceLabel.style.top = crosshairY + 'px';
+            priceLabel.style.top = y + 'px';
             priceLabel.style.transform = 'translateY(-50%)';
             priceLabel.style.width = (_axisW - 4) + 'px';
             priceLabel.style.textAlign = 'center';
@@ -16455,7 +13172,9 @@ class Chart {
             if (this.chartSettings.cursorLabelTextColor) priceLabel.style.color = this.chartSettings.cursorLabelTextColor;
         }
         
-        const snappedDataIdx = dataIdx;
+        const snappedDataIdx = Math.round(this.pixelToDataIndex(x));
+        const hasSnappedCandle = snappedDataIdx >= 0 && snappedDataIdx < this.data.length;
+        const snappedCandle = hasSnappedCandle ? this.data[snappedDataIdx] : null;
 
         if (timeLabel && this.xScale && this.data.length > 0) {
             
@@ -16464,18 +13183,19 @@ class Chart {
             if (this.data.length >= 2) {
                 timeframeMs = this.data[1].t - this.data[0].t;
             } else {
-                timeframeMs = this._estimateTimeframeStepMs();
+                // Auto-detect timeframe from data like x-axis does
+                let timeframe = this.currentTimeframe || '1m';
+                const tfMap = { '1m': 60000, '2m': 120000, '3m': 180000, '4m': 240000, '5m': 300000, '10m': 600000, '15m': 900000, '30m': 1800000, '45m': 2700000, '1h': 3600000, '2h': 7200000, '4h': 14400000, '6h': 21600000, '12h': 43200000, '1d': 86400000, '1w': 604800000, '1mo': 2592000000 };
+                timeframeMs = tfMap[timeframe] || 60000;
             }
             
-            // Time for label: match vertical line (locked crosshair uses clamped index, not raw mouse index).
-            const idxForTime = (isCrosshairLocked && Number.isFinite(this.lockedCrosshairDataIndex))
-                ? Math.max(0, Math.min(this.data.length - 1, Math.round(this.lockedCrosshairDataIndex)))
-                : rawDataIdx;
-            // Extrapolate past last / before first using last bar step (not firstBar + index * avg — wrong with gaps).
-            let timestamp = typeof this.estimateTimestampForDataIndex === 'function'
-                ? this.estimateTimestampForDataIndex(idxForTime)
-                : null;
-            if (timestamp != null && !Number.isFinite(timestamp)) timestamp = null;
+            // Use the real snapped candle time when available.
+            // Fallback to synthetic time only when cursor is in empty left/right chart space.
+            let timestamp = snappedCandle ? snappedCandle.t : null;
+            if ((timestamp == null || !Number.isFinite(timestamp)) && this.data.length > 0) {
+                const firstCandle = this.data[0];
+                timestamp = firstCandle.t + (snappedDataIdx * timeframeMs);
+            }
             
             // Show time label if we have a valid timestamp
             if (timestamp && timestamp > 0) {
@@ -16500,8 +13220,6 @@ class Chart {
                 
                 timeLabel.textContent = timeStr;
                 timeLabel.style.left = snappedX + 'px';
-                timeLabel.style.top = 'auto';
-                timeLabel.style.bottom = `${Math.max(2, Math.floor(m.b * 0.2))}px`;
                 timeLabel.style.transform = 'translateX(-50%)';
                 timeLabel.style.display = (showLines || this.cursorType === 'dot' || this.cursorType === 'eraser') ? 'block' : 'none';
                 // Enforce label colors from settings
@@ -16517,15 +13235,17 @@ class Chart {
                 
                 // Store and broadcast timestamp for panel sync
                 this.currentCrosshairTimestamp = candle.t;
-                if (this._crosshairPanelSyncAllowed() && this.yScale) {
-                    const price = Number.isFinite(crosshairPrice) ? crosshairPrice : this.yScale.invert(y);
+                if (this.syncCrosshair && this.yScale) {
+                    const price = this.yScale.invert(y);
                     this.broadcastCrosshairSync(candle.t, price);
                 }
                 
-                const _ohlcDec = this.getPriceDecimals(
-                    this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0
-                );
-                const formatPrice = (price) => price.toFixed(_ohlcDec);
+                // Format prices based on value
+                const formatPrice = (price) => {
+                    if (price > 1000) return price.toFixed(2);
+                    if (price > 1) return price.toFixed(4);
+                    return price.toFixed(5);
+                };
                 
                 // Determine ID suffix for panel charts
                 // Main chart (panel 0 when in multi-layout, or no panel) uses no suffix
@@ -16614,7 +13334,6 @@ class Chart {
     }
     
     updateTooltip(e) {
-        return; // Candle info tooltip disabled
         // Skip for panel instances
         if (this.isPanel) return;
         
@@ -16669,10 +13388,11 @@ class Chart {
             hour12: false
         });
         
-        const _tooltipDec = this.getPriceDecimals(
-            this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0
-        );
-        const formatPrice = (val) => val.toFixed(_tooltipDec);
+        // Enhanced price formatting
+        const formatPrice = (val) => {
+            const decimals = val < 0.1 ? 6 : val < 1 ? 5 : val < 10 ? 4 : val < 100 ? 3 : 2;
+            return val.toFixed(decimals);
+        };
         
         // Enhanced volume formatting
         const formatVol = (val) => {
@@ -16914,21 +13634,20 @@ class Chart {
         }
         
         const menu = this.contextMenu
-            .style('display', 'block')
             .style('visibility', 'visible')
             .style('left', menuX + 'px')
             .style('top', menuY + 'px')
-            .style('opacity', '1')
-            .style('transform', 'none')
-            .style('transition', 'none')
-            .style('min-width', '200px')
-            .style('padding', '8px 0')
-            .style('background', 'rgba(5, 0, 40, 0.97)')
-            .style('border', '1px solid #2a2e39')
-            .style('border-radius', '4px')
-            .style('box-shadow', '0 4px 12px rgba(0,0,0,0.4)')
+            .style('opacity', '0')
+            .style('transform', 'scale(0.95)')
+            .style('transition', 'all 0.1s ease-out')
             .html('');
             
+        // Trigger reflow and add entrance animation
+        setTimeout(() => {
+            menu.style('opacity', '1')
+                .style('transform', 'scale(1)');
+        }, 0);
+        
         // Store the previous tool state
         this._previousTool = previousTool;
         
@@ -17000,12 +13719,7 @@ class Chart {
     }
     
     hideContextMenu() {
-        this.contextMenu
-            .style('display', 'none')
-            .style('visibility', 'hidden')
-            .style('opacity', '0')
-            .style('transform', 'none')
-            .style('transition', 'none');
+        this.contextMenu.style('visibility', 'hidden');
         
         // Restore previous tool state if it exists
         if (this._previousTool) {
@@ -17020,12 +13734,7 @@ class Chart {
         }
 
         // Hide ALL chart context menus (from all panels and main chart)
-        d3.selectAll('.chart-context-menu')
-            .style('display', 'none')
-            .style('visibility', 'hidden')
-            .style('opacity', '0')
-            .style('transform', 'none')
-            .style('transition', 'none');
+        d3.selectAll('.chart-context-menu').style('visibility', 'hidden');
         
         // Get price at cursor position with proper formatting
         let priceAtCursor = null;
@@ -17037,12 +13746,10 @@ class Chart {
             const decimals = this.getPriceDecimals(priceRange);
             priceText = priceAtCursor.toFixed(decimals);
         }
-
-        const symbolName = this.getContextMenuSymbolName();
         
         // Position menu using client coordinates (for fixed positioning)
-        const menuWidth = 330;
-        const menuHeight = 520;
+        const menuWidth = 280;
+        const menuHeight = 350;
         const viewport = {
             width: window.innerWidth,
             height: window.innerHeight
@@ -17059,482 +13766,225 @@ class Chart {
         }
         
         const menu = this.contextMenu
-            .style('display', 'block')
             .style('visibility', 'visible')
             .style('left', menuX + 'px')
             .style('top', menuY + 'px')
-            .style('opacity', '1')
-            .style('transform', 'none')
-            .style('transition', 'none')
-            .style('min-width', '240px')
-            .style('width', 'fit-content')
-            .style('max-width', '330px')
-            .style('padding', '6px 0')
-            .style('background', 'rgba(25, 27, 33, 0.97)')
-            .style('border', '1px solid rgba(104, 113, 133, 0.35)')
-            .style('border-radius', '14px')
-            .style('box-shadow', '0 18px 46px rgba(0,0,0,0.45)')
+            .style('opacity', '0')
+            .style('transform', 'scale(0.95)')
+            .style('transition', 'all 0.1s ease-out')
             .html('');
-
-        // ── 1. Buy / Sell / Add Order ──────────────────────────────
-        if (priceAtCursor && priceText && this.orderManager) {
-            this.addTradingViewContextMenuItem(menu, {
-                icon: 'buy',
-                label: `Buy 1 ${symbolName} @ ${priceText} limit`,
-                shortcut: '⇧ B',
-                onClick: () => {
-                    this.openOrderPanelFromContext({ side: 'BUY', orderType: 'limit', entryPrice: priceAtCursor });
-                    this.hideContextMenu();
-                }
-            });
-
-            this.addTradingViewContextMenuItem(menu, {
-                icon: 'sell',
-                label: `Sell 1 ${symbolName} @ ${priceText} stop`,
-                shortcut: '⇧ S',
-                onClick: () => {
-                    this.openOrderPanelFromContext({ side: 'SELL', orderType: 'stop', entryPrice: priceAtCursor });
-                    this.hideContextMenu();
-                }
-            });
-
-            this.addTradingViewContextMenuItem(menu, {
-                icon: 'order',
-                label: `Add order on ${symbolName} at ${priceText}...`,
-                shortcut: '⇧ T',
-                onClick: () => {
-                    this.openOrderPanelFromContext({ entryPrice: priceAtCursor });
-                    this.hideContextMenu();
-                }
-            });
-
-            this.addTradingViewContextMenuDivider(menu);
-        }
-
-        // ── 2. Add Alert ────────────────────────────────────────────
+            
+        setTimeout(() => {
+            menu.style('opacity', '1')
+                .style('transform', 'scale(1)');
+        }, 0);
+        
+        // Add menu items
         if (priceAtCursor && priceText) {
-            this.addTradingViewContextMenuItem(menu, {
-                icon: 'alert',
-                label: `Add alert on ${symbolName} at ${priceText}...`,
-                shortcut: '⌥ A',
-                onClick: () => {
-                    if (window.alertSystem) {
-                        window.alertSystem.createAlertAtPrice(priceAtCursor);
-                    } else {
-                        this.showNotification('Alert system not initialized');
-                    }
-                    this.hideContextMenu();
-                }
+            this.addContextMenuItem(menu, `Copy price ${priceText}`, () => {
+                navigator.clipboard.writeText(priceText);
+                this.showNotification(`Price ${priceText} copied to clipboard ✓`);
+                this.hideContextMenu();
             });
-
-            this.addTradingViewContextMenuDivider(menu);
-        }
-
-        // ── 3. Copy price ───────────────────────────────────────────
-        if (priceAtCursor && priceText) {
-            this.addTradingViewContextMenuItem(menu, {
-                label: `Copy price ${priceText}`,
-                onClick: async () => {
-                    const copied = await this.writeTextToClipboard(priceText);
-                    this.showNotification(copied ? `Price ${priceText} copied ✓` : 'Clipboard blocked. Copy failed.');
-                    this.hideContextMenu();
+            
+            // Quick add alert at price (instant, no modal)
+            this.addContextMenuItem(menu, `🔔 Add alert at ${priceText}`, () => {
+                if (window.alertSystem) {
+                    window.alertSystem.createAlert({
+                        price: priceAtCursor,
+                        condition: 'crossing',
+                        expiration: 'every_time',
+                        color: '#ff9800',
+                        showPopup: true,
+                        playSound: true
+                    });
+                } else {
+                    this.showError('Alert system not initialized');
                 }
+                this.hideContextMenu();
+            });
+            
+            this.addContextMenuItem(menu, '🔔 Add alert...', () => {
+                if (window.alertSystem) {
+                    window.alertSystem.createAlertAtPrice(priceAtCursor);
+                } else {
+                    this.showError('Alert system not initialized');
+                }
+                this.hideContextMenu();
             });
         }
-
-        // ── 4. Paste ────────────────────────────────────────────────
-        this.addTradingViewContextMenuItem(menu, {
-            label: 'Paste',
-            shortcut: '⌘ V',
-            onClick: async () => {
-                if (this.drawingManager && this.drawingManager.clipboardDrawing && typeof this.drawingManager.pasteDrawing === 'function') {
-                    this.drawingManager.pasteDrawing();
-                    this.showNotification('Drawing pasted ✓');
-                    this.hideContextMenu();
-                    return;
-                }
-                const clipboardText = await this.readTextFromClipboard();
-                const parsedPrice = this.parseClipboardNumber(clipboardText);
-                if (Number.isFinite(parsedPrice)) {
-                    const added = this.addHorizontalLineAtPrice(parsedPrice);
-                    const _dec = this.getPriceDecimals(this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0);
-                    this.showNotification(added ? `Price line added at ${parsedPrice.toFixed(_dec)} ✓` : 'Could not paste chart element');
-                } else if (clipboardText) {
-                    this.showNotification(`Clipboard text: ${clipboardText.slice(0, 40)}`);
-                } else {
-                    this.showNotification('Nothing to paste');
+        
+        this.addContextMenuItem(menu, `Paste`, () => {
+            navigator.clipboard.readText().then(text => {
+                console.log('Pasted:', text);
+                this.showNotification('Paste: ' + text);
+            });
+            this.hideContextMenu();
+        });
+        
+        this.addContextMenuDivider(menu);
+        
+        // Toggle crosshair lock
+        const crosshairText = this.chartSettings.crosshairLocked 
+            ? 'Unlock vertical cursor line by time' 
+            : 'Lock vertical cursor line by time';
+        this.addContextMenuItem(menu, crosshairText, () => {
+            this.chartSettings.crosshairLocked = !this.chartSettings.crosshairLocked;
+            this.showNotification(this.chartSettings.crosshairLocked ? 'Crosshair locked ✓' : 'Crosshair unlocked ✓');
+            this.hideContextMenu();
+        });
+        
+        this.addContextMenuDivider(menu);
+        
+        this.addContextMenuItem(menu, 'Object Tree...', () => {
+            this.showObjectTree();
+            this.hideContextMenu();
+        });
+        
+        this.addContextMenuDivider(menu);
+        
+        // Count indicators (for demo purposes)
+        const indicatorCount = this.drawings.length;
+        if (indicatorCount > 0) {
+            this.addContextMenuItem(menu, `Remove ${indicatorCount} indicator${indicatorCount > 1 ? 's' : ''}`, () => {
+                if (confirm(`Remove all ${indicatorCount} drawings/indicators?`)) {
+                    this.drawings = [];
+                    // Save to localStorage
+                    localStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify([]));
+                    this.scheduleRender();
+                    this.showNotification('All drawings removed ✓');
                 }
                 this.hideContextMenu();
-            }
+            });
+        }
+        
+        this.addContextMenuDivider(menu);
+        
+        // Toggle marks on bars
+        const marksText = this.chartSettings.showMarks 
+            ? 'Hide marks on bars' 
+            : 'Show marks on bars';
+        this.addContextMenuItem(menu, marksText, () => {
+            this.chartSettings.showMarks = !this.chartSettings.showMarks;
+            this.scheduleRender();
+            this.showNotification(this.chartSettings.showMarks ? 'Marks shown ✓' : 'Marks hidden ✓');
+            this.hideContextMenu();
         });
-
-        this.addTradingViewContextMenuDivider(menu);
-
-        // ── 5. Show marks on bars ───────────────────────────────────
-        const marksText = this.chartSettings.showMarks ? 'Hide marks on bars' : 'Show marks on bars';
-        this.addTradingViewContextMenuItem(menu, {
-            label: marksText,
-            onClick: () => {
-                this.chartSettings.showMarks = !this.chartSettings.showMarks;
-                this.scheduleRender();
-                this.showNotification(this.chartSettings.showMarks ? 'Marks shown ✓' : 'Marks hidden ✓');
-                this.hideContextMenu();
+        
+        // Toggle trade markers (entry/exit signs)
+        const showTradeMarkers = this.chartSettings.showTradeMarkers !== false; // default true
+        const tradeMarkersText = showTradeMarkers 
+            ? 'Hide trade markers' 
+            : 'Show trade markers';
+        this.addContextMenuItem(menu, tradeMarkersText, () => {
+            this.chartSettings.showTradeMarkers = !showTradeMarkers;
+            // Toggle visibility of all trade markers
+            if (this.orderManager) {
+                this.orderManager.toggleTradeMarkers(this.chartSettings.showTradeMarkers);
             }
+            this.showNotification(this.chartSettings.showTradeMarkers ? 'Trade markers shown ✓' : 'Trade markers hidden ✓');
+            this.hideContextMenu();
         });
-
-        // ── 6. Trade markers ────────────────────────────────────────
-        const showTradeMarkers = this.chartSettings.showTradeMarkers !== false;
-        const tradeMarkersText = showTradeMarkers ? 'Hide trade markers' : 'Show trade markers';
-        this.addTradingViewContextMenuItem(menu, {
-            label: tradeMarkersText,
-            onClick: () => {
-                this.chartSettings.showTradeMarkers = !showTradeMarkers;
-                if (this.orderManager && typeof this.orderManager.toggleTradeMarkers === 'function') {
-                    this.orderManager.toggleTradeMarkers(this.chartSettings.showTradeMarkers);
-                }
-                this.showNotification(this.chartSettings.showTradeMarkers ? 'Trade markers shown ✓' : 'Trade markers hidden ✓');
-                this.hideContextMenu();
-            }
-        });
-
-        this.addTradingViewContextMenuDivider(menu);
-
-        // ── 7. Settings ─────────────────────────────────────────────
-        this.addTradingViewContextMenuItem(menu, {
-            icon: 'settings',
-            label: 'Settings',
-            onClick: () => {
-                this.openSettingsFromContextMenu();
-                this.hideContextMenu();
-            }
-        });
-    }
-
-    getContextMenuSymbolName() {
-        if (window.alertSystem && typeof window.alertSystem.getSymbolName === 'function') {
-            const symbol = window.alertSystem.getSymbolName();
-            if (symbol) return symbol;
-        }
-
-        if (this.currentFileId && typeof this.currentFileId === 'string') {
-            const parts = this.currentFileId.split('_');
-            return parts[parts.length - 1] || this.currentFileId;
-        }
-
-        return 'SYMBOL';
-    }
-
-    async writeTextToClipboard(text) {
-        if (!text) return false;
-
-        try {
-            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function' && window.isSecureContext) {
-                await navigator.clipboard.writeText(text);
-                return true;
-            }
-        } catch (error) {
-        }
-
-        try {
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
-            textarea.setAttribute('readonly', '');
-            textarea.style.position = 'fixed';
-            textarea.style.top = '-1000px';
-            textarea.style.left = '-1000px';
-            textarea.style.opacity = '0';
-            document.body.appendChild(textarea);
-            textarea.focus();
-            textarea.select();
-            const ok = document.execCommand('copy');
-            document.body.removeChild(textarea);
-            return !!ok;
-        } catch (error) {
-            return false;
-        }
-    }
-
-    async readTextFromClipboard() {
-        try {
-            if (navigator.clipboard && typeof navigator.clipboard.readText === 'function' && window.isSecureContext) {
-                return await navigator.clipboard.readText();
-            }
-        } catch (error) {
-        }
-        return '';
-    }
-
-    parseClipboardNumber(value) {
-        if (!value || typeof value !== 'string') return NaN;
-        const normalized = value.replace(/,/g, '').trim();
-        const parsed = Number.parseFloat(normalized);
-        return Number.isFinite(parsed) ? parsed : NaN;
-    }
-
-    addHorizontalLineAtPrice(price) {
-        if (!Number.isFinite(price)) return false;
-
-        const defaults = (this.toolDefaults && this.toolDefaults.horizontal) || {};
-        const newDrawing = {
-            type: 'horizontal',
-            price,
-            color: defaults.color || '#2962ff',
-            lineWidth: defaults.lineWidth || 2,
-            opacity: defaults.opacity !== undefined ? defaults.opacity : 1,
-            locked: false
-        };
-
-        this.drawings.push(newDrawing);
-        this.selectedDrawing = this.drawings.length - 1;
-
-        if (typeof this.syncDrawingToOtherPanels === 'function') {
-            this.syncDrawingToOtherPanels(newDrawing, 'add');
-        }
-
-        if (typeof this.updateToolDefaultsFromDrawing === 'function') {
-            this.updateToolDefaultsFromDrawing(newDrawing);
-        }
-
-        try {
-            userStorage.setItem(this.getDrawingsStorageKey(), JSON.stringify(this.drawings));
-        } catch (error) {
-        }
-
-        this.scheduleRender();
-        return true;
-    }
-
-    openOrderPanelFromContext({ side = null, orderType = null, entryPrice = null } = {}) {
-        const manager = this.orderManager;
-        if (!manager) {
-            this.showNotification('Order manager not available in this mode');
-            return;
-        }
-
-        if (typeof manager.openOrderPanel === 'function') {
-            manager.openOrderPanel();
-        } else if (typeof manager.toggleOrderPanel === 'function') {
-            manager.toggleOrderPanel();
-        }
-
-        const applyPrefill = () => {
-            if (side === 'BUY') {
-                document.getElementById('buyTab')?.click();
-            } else if (side === 'SELL') {
-                document.getElementById('sellTab')?.click();
-            }
-
-            if (orderType) {
-                const orderTypeBtn = document.querySelector(`.order-type-btn[data-type="${orderType}"]`);
-                if (orderTypeBtn && typeof orderTypeBtn.click === 'function') {
-                    orderTypeBtn.click();
-                } else {
-                    manager.orderType = orderType;
-                }
-            }
-
-            const entryInput = document.getElementById('orderEntryPrice');
-            if (entryInput && Number.isFinite(entryPrice)) {
-                const _eDec = this.getPriceDecimals(this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0);
-                entryInput.value = entryPrice.toFixed(_eDec);
-            }
-
-            manager.tpManuallyPositioned = false;
-            manager.slManuallyPositioned = false;
-
-            manager.syncDefaultTargetsToEntry?.();
-            manager.calculatePositionFromRisk?.();
-            manager.calculateAdvancedRiskReward?.();
-            manager.updatePlaceButtonText?.();
-            manager.updatePreviewLines?.();
-        };
-
-        requestAnimationFrame(() => requestAnimationFrame(applyPrefill));
-    }
-
-    showTableViewFromContextMenu() {
-        if (this.orderManager && typeof this.orderManager.showAllTradesTable === 'function') {
-            this.orderManager.showAllTradesTable();
-            return;
-        }
-
-        this.showNotification('Table view is available in trading mode');
-    }
-
-    openSettingsFromContextMenu() {
-        if (typeof window !== 'undefined') {
-            if (typeof window._openMode === 'function') {
-                window._openMode();
-                return;
-            }
-
-            if (typeof window._spOpen === 'function') {
-                window._spOpen('symbol');
-                return;
-            }
-        }
-
-        if (typeof this.showSettingsMenu === 'function') {
-            this.showSettingsMenu();
-            return;
-        }
-
-        this.showNotification('Settings unavailable');
-    }
-
-    openChartTemplateFromContextMenu() {
-        if (typeof window !== 'undefined') {
-            if (typeof window._openMode === 'function') {
-                window._openMode('template');
-                return;
-            }
-
-            if (typeof window._spOpen === 'function') {
-                window._spOpen('template');
-                return;
-            }
-        }
-
-        if (typeof this.showSettingsMenu === 'function') {
-            this.showSettingsMenu();
-            if (typeof this.showSettingsCategory === 'function') {
-                this.showSettingsCategory('candles');
-            }
-            return;
-        }
-
-        this.showNotification('Template menu unavailable');
-    }
-
-    addTradingViewContextMenuDivider(menu) {
-        menu.append('div')
-            .style('height', '1px')
-            .style('background', 'rgba(104, 113, 133, 0.38)')
-            .style('margin', '6px 0');
-    }
-
-    getTradingViewContextMenuIcon(iconKey = '') {
-        const icons = {
-            reset: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36" stroke-linecap="round" stroke-linejoin="round"></path><polyline points="3 4 3 10 9 10" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>',
-            alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M15 17h5l-1.4-1.4a2 2 0 0 1-.6-1.4V11a6 6 0 0 0-5-5.9V4a1 1 0 0 0-2 0v1.1A6 6 0 0 0 6 11v3.2a2 2 0 0 1-.6 1.4L4 17h5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M9.5 17a2.5 2.5 0 0 0 5 0" stroke-linecap="round"></path></svg>',
-            buy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M7 17L17 7" stroke-linecap="round"></path><polyline points="10 7 17 7 17 14" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>',
-            sell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M7 7l10 10" stroke-linecap="round"></path><polyline points="10 17 17 17 17 10" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>',
-            order: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M8 3h6l4 4v14H8z" stroke-linejoin="round"></path><path d="M14 3v4h4" stroke-linecap="round" stroke-linejoin="round"></path><line x1="10" y1="12" x2="16" y2="12" stroke-linecap="round"></line><line x1="10" y1="16" x2="15" y2="16" stroke-linecap="round"></line></svg>',
-            settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke-linecap="round" stroke-linejoin="round"></path></svg>'
-        };
-
-        return icons[iconKey] || '';
-    }
-
-    addTradingViewContextMenuItem(menu, options = {}) {
-        const {
-            icon = '',
-            label = '',
-            shortcut = '',
-            hasSubmenu = false,
-            onClick = null
-        } = options;
-
-        const item = menu.append('div')
-            .attr('class', 'context-menu-item tv-context-menu-item')
-            .style('padding', '8px 12px')
-            .style('cursor', 'default')
-            .style('user-select', 'none')
-            .style('transition', 'background 0.12s ease')
-            .style('color', '#d7d9df')
-            .style('font-size', '12px')
-            .style('line-height', '1.2');
-
-        const row = item.append('div')
-            .style('display', 'flex')
-            .style('align-items', 'center')
-            .style('justify-content', 'space-between')
-            .style('gap', '10px');
-
-        const left = row.append('div')
-            .style('display', 'flex')
-            .style('align-items', 'center')
-            .style('gap', icon ? '8px' : '0px')
-            .style('min-width', '0');
-
-        if (icon) {
-            const iconWrap = left.append('span')
-                .attr('class', 'tv-context-icon')
-                .style('width', 'var(--talaria-ui-icon-size, 18px)')
-                .style('height', 'var(--talaria-ui-icon-size, 18px)')
-                .style('display', 'inline-flex')
-                .style('align-items', 'center')
-                .style('justify-content', 'center')
-                .style('opacity', '0.9')
-                .style('flex-shrink', '0');
-
-            const iconSvg = this.getTradingViewContextMenuIcon(icon);
-            if (iconSvg) {
-                iconWrap.html(iconSvg);
-            } else {
-                iconWrap.style('text-align', 'center').text(icon);
-            }
-        }
-
-        left.append('span')
-            .style('overflow', 'hidden')
-            .style('text-overflow', 'ellipsis')
-            .style('white-space', 'nowrap')
-            .text(label);
-
-        if (hasSubmenu) {
-            row.append('span')
-                .style('flex-shrink', '0')
-                .style('color', 'rgba(189, 194, 207, 0.65)')
-                .style('font-size', '16px')
-                .style('font-weight', '500')
-                .text('›');
-        }
-
-        item.on('mouseenter', function() {
-            d3.select(this).style('background', 'rgba(92, 99, 116, 0.24)');
-        });
-
-        item.on('mouseleave', function() {
-            d3.select(this).style('background', 'transparent');
-        });
-
-        item.on('click', async () => {
-            if (typeof onClick === 'function') {
-                await onClick();
-            }
-        });
+        
+        this.addContextMenuDivider(menu);
     }
     
     showObjectTree() {
-        if (typeof window !== 'undefined') {
-            if (typeof window._openMode === 'function') {
-                window._openMode('objecttree');
-                return;
-            }
-
-            if (typeof window._spOpen === 'function') {
-                window._spOpen('objecttree');
-                return;
-            }
+        // Create object tree panel
+        const panel = d3.select('body')
+            .append('div')
+            .attr('class', 'object-tree-panel')
+            .style('position', 'fixed')
+            .style('right', '20px')
+            .style('top', '80px')
+            .style('width', '240px')
+            .style('max-height', '400px')
+            .style('background', 'rgba(5, 0, 40, 0.98)')
+            .style('border', '1px solid #2a2e39')
+            .style('border-radius', '6px')
+            .style('box-shadow', '0 8px 24px rgba(0,0,0,0.4)')
+            .style('z-index', '2000')
+            .style('overflow', 'hidden');
+        
+        // Header
+        const header = panel.append('div')
+            .style('padding', '10px 12px')
+            .style('border-bottom', '1px solid #2a2e39')
+            .style('background', 'linear-gradient(to right, rgba(41,98,255,0.1), transparent)')
+            .style('display', 'flex')
+            .style('justify-content', 'space-between')
+            .style('align-items', 'center');
+        
+        header.append('div')
+            .style('color', '#d1d4dc')
+            .style('font-weight', '600')
+            .style('font-size', '13px')
+            .text('📊 Object Tree');
+        
+        header.append('div')
+            .style('cursor', 'pointer')
+            .style('color', '#787b86')
+            .style('font-size', '18px')
+            .text('✕')
+            .on('click', () => panel.remove());
+        
+        // Content
+        const content = panel.append('div')
+            .style('padding', '10px')
+            .style('max-height', '350px')
+            .style('overflow-y', 'auto');
+        
+        if (this.drawings.length === 0) {
+            content.append('div')
+                .style('color', '#787b86')
+                .style('text-align', 'center')
+                .style('padding', '15px')
+                .style('font-size', '13px')
+                .text('No drawings or indicators');
+        } else {
+            this.drawings.forEach((drawing, idx) => {
+                const item = content.append('div')
+                    .style('padding', '8px 10px')
+                    .style('margin-bottom', '6px')
+                    .style('background', '#050028')
+                    .style('border-radius', '4px')
+                    .style('cursor', 'default')
+                    .style('transition', 'all 0.2s')
+                    .on('mouseenter', function() {
+                        d3.select(this).style('background', '#2962ff');
+                    })
+                    .on('mouseleave', function() {
+                        d3.select(this).style('background', '#050028');
+                    })
+                    .on('click', () => {
+                        this.selectedDrawing = idx;
+                        this.scheduleRender();
+                    });
+                
+                const icon = {
+                    trendline: '📈',
+                    horizontal: '⭐',
+                    vertical: '⭐',
+                    rectangle: '⬛',
+                    fibonacci: '🔢',
+                    text: '📝'
+                }[drawing.type] || '✏️';
+                
+                item.append('div')
+                    .style('display', 'flex')
+                    .style('justify-content', 'space-between')
+                    .style('align-items', 'center')
+                    .style('font-size', '13px')
+                    .html(`
+                        <span style="color: #d1d4dc;">
+                            ${icon} ${drawing.type.charAt(0).toUpperCase() + drawing.type.slice(1)}
+                        </span>
+                        <span style="color: #787b86; font-size: 11px;">
+                            ${drawing.locked ? '🔒' : ''}
+                        </span>
+                    `);
+            });
         }
-
-        if (this.objectTreeManager) {
-            if (typeof this.objectTreeManager.show === 'function') {
-                this.objectTreeManager.show();
-                if (typeof this.objectTreeManager.refresh === 'function') {
-                    this.objectTreeManager.refresh();
-                }
-                return;
-            }
-
-            if (typeof this.objectTreeManager.toggle === 'function') {
-                this.objectTreeManager.toggle();
-                return;
-            }
-        }
-
-        this.showNotification('Object tree unavailable');
     }
     
     showInlineTextEditor(drawing, drawingIndex) {
@@ -17709,6 +14159,12 @@ class Chart {
         // Always use the drawing from the array to ensure we have the correct reference
         const actualDrawing = this.drawings[drawingIndex];
         
+        console.log('🎨 Opening style editor for drawing:', {
+            index: drawingIndex,
+            type: actualDrawing.type,
+            color: actualDrawing.color,
+            sameReference: drawing === actualDrawing
+        });
         
         // Create or show style editor panel with enhanced UI
         const styleEditor = d3.select('body')
@@ -17759,6 +14215,7 @@ class Chart {
         this.positionsHidden = false;
         this.handleVisibilityMenuOutsideClick = this.handleVisibilityMenuOutsideClick.bind(this);
 
+        console.log('✅ Chart initialized with modular architecture');
             
         // Header with drawing type and icon
         const headerIcon = {
@@ -17897,7 +14354,11 @@ class Chart {
                 
         } else if (drawing.type === 'trendline' || drawing.type === 'rectangle') {
             this.addColorPicker(content, 'Line Color', actualDrawing.color || '#2962ff', (color) => {
+                console.log('🎨 Color picker changed to:', color);
+                console.log('   Drawing index:', drawingIndex);
                 actualDrawing.color = color;
+                console.log('   Drawing after:', actualDrawing.color);
+                console.log('   Array color:', chart.drawings[drawingIndex].color);
                 chart.saveDrawingChanges(actualDrawing);
                 chart.render();
             });
@@ -18327,17 +14788,23 @@ class Chart {
      * Only works for panel instances
      */
     syncDrawingToOtherPanels(drawing, action = 'add') {
-        // Use the chart-level sync pipeline as the single source of truth.
-        // Legacy window.panelDrawingSync causes duplicate/remap races.
-        if (typeof this.broadcastDrawingChange !== 'function') {
+        console.log(`🔍 syncDrawingToOtherPanels called:`, {
+            isPanel: this.isPanel,
+            hasPanel: !!this.panel,
+            hasSyncSystem: !!window.panelDrawingSync,
+            action: action,
+            drawingType: drawing.type
+        });
+        
+        // Only sync if this is a panel instance and sync system is available
+        if (!this.isPanel || !this.panel || !window.panelDrawingSync) {
+            console.log('⚠️ Sync skipped - not a panel or sync system not available');
             return;
         }
-        if (!drawing || typeof drawing !== 'object') return;
-        if (!drawing.id) {
-            drawing.id = `dr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        }
-        const mappedAction = action === 'delete' ? 'remove' : action;
-        this.broadcastDrawingChange(mappedAction, drawing);
+        
+        // Call the global sync system
+        console.log(`✅ Calling panelDrawingSync.syncDrawing for panel ${this.panel.index}`);
+        window.panelDrawingSync.syncDrawing(this.panel, drawing, action);
     }
     
     addQuickActionButton(container, icon, label, onClick) {
@@ -18401,6 +14868,7 @@ class Chart {
         const currentStyle = isSelected ? colors.selected : colors.default;
 
         function applyStyle(element, style, highlight = false) {
+            console.log('Applying style:', { type, highlight, style });
             
             const effectiveStyle = highlight ? {
                 ...style,
@@ -18451,6 +14919,7 @@ class Chart {
         // Add hover effects
         element
             .on('mouseenter', () => {
+                console.log('🖱️ Drawing hover:', type);
                 applyStyle(element, colors.hover, true);
                 element.style('cursor', 'default');
             })
@@ -18579,29 +15048,33 @@ class Chart {
     
     // Helper method to save drawing changes
     saveDrawingChanges(drawing) {
-        if (this.drawingManager && typeof this.drawingManager.saveDrawings === 'function') {
-            try {
-                this.drawingManager.saveDrawings();
-            } catch (e) {
-                console.error('Failed to save drawings:', e);
-            }
-            this.scheduleRender();
-            return;
-        }
         // Try to find by reference first (most reliable)
         let index = this.drawings.findIndex(d => d === drawing);
-
+        
+        // If not found by reference, the drawing object might be a copy
+        // In this case, just save the entire array since the drawing is already in it
         if (index === -1) {
             console.warn('Drawing not found by reference, saving entire array');
+        } else {
+            // Drawing was found - it's already updated in the array
+            console.log('💾 Saving drawing:', {
+                index,
+                type: this.drawings[index].type,
+                color: this.drawings[index].color,
+                fillColor: this.drawings[index].fillColor,
+                lineWidth: this.drawings[index].lineWidth
+            });
         }
-
+        
+        // Save all drawings to localStorage
         try {
             const drawingsData = JSON.stringify(this.drawings);
-            userStorage.setItem(this.getDrawingsStorageKey(), drawingsData);
+            localStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, drawingsData);
+            console.log('💾 Drawings saved to localStorage:', this.drawings.length, 'drawings');
         } catch (e) {
             console.error('Failed to save drawings to localStorage:', e);
         }
-
+        
         this.scheduleRender();
     }
     
@@ -18649,53 +15122,12 @@ class Chart {
         this.hideContextMenu();
         this.scheduleRender();
     }
-
-    /**
-     * Multi-panel: sync crosshair when either "Crosshair" or "Date range" sync is enabled.
-     * Date-range mode aligns charts by time; crosshair must follow the same wall-clock time on every TF.
-     */
-    _crosshairPanelSyncAllowed() {
-        const pm = window.panelManager;
-        if (!pm || pm.currentLayout === '1') return false;
-        const s = pm.syncSettings;
-        if (!s) return false;
-        if (!s.crosshair && !s.dateRange) return false;
-        if (s.dateRange) return true;
-        return !!this.syncCrosshair;
-    }
-
-    /**
-     * Last bar index with candle time <= timestamp (ms). Used so 1m/5m/30m bars share one crosshair moment.
-     */
-    findLastDataIndexAtOrBeforeTime(timestamp) {
-        if (!this.data || this.data.length === 0) return -1;
-        const ts = this.normalizeTimestampMs ? this.normalizeTimestampMs(timestamp) : Number(timestamp);
-        if (!Number.isFinite(ts)) return -1;
-        let lo = 0;
-        let hi = this.data.length - 1;
-        let ans = -1;
-        while (lo <= hi) {
-            const mid = (lo + hi) >>> 1;
-            const rawT = this.data[mid]?.t;
-            const mt = this.normalizeTimestampMs ? this.normalizeTimestampMs(rawT) : rawT;
-            if (!Number.isFinite(mt)) {
-                lo = mid + 1;
-                continue;
-            }
-            if (mt <= ts) {
-                ans = mid;
-                lo = mid + 1;
-            } else {
-                hi = mid - 1;
-            }
-        }
-        return ans >= 0 ? ans : 0;
-    }
     
     /**
      * Broadcast crosshair position to all other panels and main chart
      */
     broadcastCrosshairSync(timestamp, price = null) {
+        if (!this.syncCrosshair) return;
         if (!window.panelManager) return;
         
         // If single panel layout, no need to broadcast
@@ -18703,22 +15135,16 @@ class Chart {
         
         // Check if there are any panels to sync to
         if (!window.panelManager.panels || window.panelManager.panels.length <= 1) return;
-
-        if (!this._crosshairPanelSyncAllowed()) return;
+        
+        // Check if crosshair sync is enabled in panel manager settings
+        if (!window.panelManager.syncSettings.crosshair) return;
         
         // Find the candle at this timestamp to pass its data
         let candleData = null;
         if (this.data && this.data.length > 0) {
-            const dataIdx = this.data.findIndex(c => {
-                const ct = this.normalizeTimestampMs ? this.normalizeTimestampMs(c.t) : c.t;
-                const ts = this.normalizeTimestampMs ? this.normalizeTimestampMs(timestamp) : timestamp;
-                return ct === ts;
-            });
+            const dataIdx = this.data.findIndex(c => c.t === timestamp);
             if (dataIdx >= 0) {
                 candleData = this.data[dataIdx];
-            } else {
-                const idx = this.findLastDataIndexAtOrBeforeTime(timestamp);
-                if (idx >= 0 && this.data[idx]) candleData = this.data[idx];
             }
         }
         
@@ -18752,7 +15178,7 @@ class Chart {
      * @param {object} sourceCandle - Candle data from source chart (for OHLC display)
      */
     receiveCrosshairSync(timestamp, price = null, sourceCandle = null) {
-        if (!this._crosshairPanelSyncAllowed()) return;
+        if (!this.syncCrosshair) return;
         
         const container = this.isPanel ? this.canvas.parentElement : document;
         const vLine = container.querySelector('.crosshair-vertical');
@@ -18770,15 +15196,31 @@ class Chart {
             return;
         }
         
-        // Same wall-clock moment on every TF: use last bar with open time <= synced timestamp
+        // Find the candle closest to this timestamp in this chart's data
         let candle = null;
         let candleIndex = -1;
         
         if (this.data && this.data.length > 0) {
-            candleIndex = this.findLastDataIndexAtOrBeforeTime(timestamp);
-            if (candleIndex >= 0) {
-                candle = this.getDisplayCandle(candleIndex);
+            // Binary search for closest candle (faster for large datasets)
+            let left = 0, right = this.data.length - 1;
+            candleIndex = 0;
+            
+            while (left <= right) {
+                const mid = Math.floor((left + right) / 2);
+                if (this.data[mid].t === timestamp) {
+                    candleIndex = mid;
+                    break;
+                } else if (this.data[mid].t < timestamp) {
+                    left = mid + 1;
+                } else {
+                    right = mid - 1;
+                }
+                // Keep track of closest
+                if (Math.abs(this.data[mid].t - timestamp) < Math.abs(this.data[candleIndex].t - timestamp)) {
+                    candleIndex = mid;
+                }
             }
+            candle = this.getDisplayCandle(candleIndex);
         }
         
         // If no local candle but we have source candle, use it for OHLC display
@@ -18802,12 +15244,12 @@ class Chart {
         const isXVisible = x >= m.l && x <= this.w - m.r;
         const crossWidth = Math.max(1, parseInt(this.chartSettings?.crosshairWidth, 10) || 2);
         
-        // Vertical line — same geometry as updateCrosshair (top:0 + height calc) so lines stay aligned after sync.
+        // Vertical line styles (dashed like TradingView)
         const vBaseStyle = `
             position: absolute;
-            top: 0;
+            top: ${m.t}px;
             width: ${crossWidth}px;
-            height: calc(100% - 30px);
+            height: ${this.h - m.t - m.b}px;
             background: repeating-linear-gradient(to bottom, #787b86 0px, #787b86 4px, transparent 4px, transparent 8px);
             pointer-events: none;
             z-index: 100;
@@ -18815,7 +15257,7 @@ class Chart {
         
         if (vLine) {
             if (isXVisible) {
-                vLine.style.cssText = vBaseStyle + `left:${x}px;display:block;`;
+                vLine.style.cssText = vBaseStyle + `left:${x}px;height:calc(100% - 30px);display:block;`;
             } else {
                 // Hide if out of visible range
                 vLine.style.display = 'none';
@@ -18840,11 +15282,14 @@ class Chart {
             if (y >= m.t && y <= this.h - m.b) {
                 hLine.style.cssText = hBaseStyle + `top:${y}px;display:block;`;
                 
+                // Update price label with proper styling
                 if (priceLabel) {
-                    const _panelDec = this.getPriceDecimals(
-                        this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0
-                    );
-                    priceLabel.textContent = displayPrice.toFixed(_panelDec);
+                    const formatPrice = (p) => {
+                        if (p > 1000) return p.toFixed(2);
+                        if (p > 1) return p.toFixed(4);
+                        return p.toFixed(5);
+                    };
+                    priceLabel.textContent = formatPrice(displayPrice);
                     priceLabel.style.cssText = `
                         position: absolute;
                         right: 5px;
@@ -18864,54 +15309,30 @@ class Chart {
             }
         }
         
-        // Time label — use this panel candle time (target TF bucket), not source panel timestamp.
-        if (timeLabel && isXVisible && Number.isFinite(timestamp) && timestamp > 0) {
-            let timeframeMs = 60000;
-            if (this.data && this.data.length >= 2) {
-                timeframeMs = this.data[1].t - this.data[0].t;
-            } else {
-                const tfMap = { '1m': 60000, '2m': 120000, '3m': 180000, '4m': 240000, '5m': 300000, '10m': 600000, '15m': 900000, '30m': 1800000, '45m': 2700000, '1h': 3600000, '2h': 7200000, '4h': 14400000, '6h': 21600000, '12h': 43200000, '1d': 86400000, '1w': 604800000, '1mo': 2592000000 };
-                timeframeMs = tfMap[this.currentTimeframe || '1m'] || 60000;
-            }
-            // Synced crosshair: use the broadcast wall-clock moment so every panel shows the same date/time
-            // even when timeframes differ (local candle.t is the resampled bucket open).
-            let labelTimestamp = timestamp;
-            if (this.normalizeTimestampMs) {
-                const nt = this.normalizeTimestampMs(timestamp);
-                if (Number.isFinite(nt) && nt > 0) labelTimestamp = nt;
-            }
-            if (!Number.isFinite(labelTimestamp) || labelTimestamp <= 0) {
-                labelTimestamp = (candle && Number.isFinite(candle.t)) ? candle.t : timestamp;
-            }
-            const tzDate = this.convertToTimezone(labelTimestamp);
-            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            const month = months[tzDate.getMonth()];
-            const day = tzDate.getDate();
-            const year = tzDate.getFullYear();
-            const hours = String(tzDate.getHours()).padStart(2, '0');
-            const minutes = String(tzDate.getMinutes()).padStart(2, '0');
-            const seconds = String(tzDate.getSeconds()).padStart(2, '0');
-            let timeStr;
-            if (timeframeMs >= 86400000) {
-                timeStr = `${month} ${day}`;
-            } else {
-                timeStr = `${month} ${day}, ${year}, ${hours}:${minutes}:${seconds}`;
-            }
-            const timeLabelBottom = Math.max(2, Math.floor(m.b * 0.2));
+        // Time label with proper styling
+        if (timeLabel && isXVisible) {
+            const date = new Date(candle.t);
+            const timeStr = date.toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            });
             timeLabel.textContent = timeStr;
-            timeLabel.style.left = `${x}px`;
-            timeLabel.style.top = 'auto';
-            timeLabel.style.bottom = `${timeLabelBottom}px`;
-            timeLabel.style.transform = 'translateX(-50%)';
-            timeLabel.style.position = 'absolute';
-            timeLabel.style.background = this.chartSettings?.cursorLabelBgColor || '#363a45';
-            timeLabel.style.color = this.chartSettings?.cursorLabelTextColor || '#d1d4dc';
-            timeLabel.style.padding = '2px 6px';
-            timeLabel.style.fontSize = '11px';
-            timeLabel.style.borderRadius = '2px';
-            timeLabel.style.whiteSpace = 'nowrap';
-            timeLabel.style.zIndex = '101';
-            timeLabel.style.display = 'block';
+            timeLabel.style.cssText = `
+                position: absolute;
+                left: ${x - 50}px;
+                bottom: 38px;
+                background: #363a45;
+                color: #d1d4dc;
+                padding: 2px 6px;
+                font-size: 11px;
+                border-radius: 2px;
+                white-space: nowrap;
+                z-index: 101;
+                display: block;
+            `;
         } else if (timeLabel) {
             timeLabel.style.display = 'none';
         }
@@ -18928,10 +15349,12 @@ class Chart {
     updateOHLCFromCandle(candle) {
         if (!candle) return;
         
-        const _ohlcFromDec = this.getPriceDecimals(
-            this.yScale ? Math.abs(this.yScale.domain()[1] - this.yScale.domain()[0]) : 0
-        );
-        const formatPrice = (price) => price.toFixed(_ohlcFromDec);
+        // Format prices based on value
+        const formatPrice = (price) => {
+            if (price > 1000) return price.toFixed(2);
+            if (price > 1) return price.toFixed(4);
+            return price.toFixed(5);
+        };
         
         // Main chart (panel 0 when in multi-layout, or window.chart) uses no suffix
         // Other panels use their index as suffix
@@ -19010,207 +15433,35 @@ class Chart {
     /**
      * Broadcast drawing change to all other panels
      */
-    _findTargetIndexForTimestamp(ts) {
-        if (!Number.isFinite(ts) || !this.data || this.data.length === 0) return 0;
-        if (typeof this.findLastDataIndexAtOrBeforeTime === 'function') {
-            const i = this.findLastDataIndexAtOrBeforeTime(ts);
-            if (Number.isFinite(i)) return Math.max(0, Math.min(i, this.data.length - 1));
-        }
-        if (typeof this.findGoToTargetIndex === 'function') {
-            const i = this.findGoToTargetIndex(this.data, ts);
-            if (Number.isFinite(i)) return Math.max(0, Math.min(i, this.data.length - 1));
-        }
-        return 0;
-    }
-
-    _nearestOhlcKeyAtIndex(idx, y) {
-        if (!this.data || this.data.length === 0 || !Number.isFinite(y)) return null;
-        // Use floor (at-or-before) so cross-timeframe mapping uses containing candle semantics.
-        const i = Math.max(0, Math.min(this.data.length - 1, Math.floor(idx)));
-        const c = this.data[i];
-        if (!c) return null;
-        const levels = [['o', c.o], ['h', c.h], ['l', c.l], ['c', c.c]].filter((x) => Number.isFinite(x[1]));
-        if (!levels.length) return null;
-        let bestKey = levels[0][0];
-        let bestDiff = Math.abs(y - levels[0][1]);
-        for (let k = 1; k < levels.length; k++) {
-            const diff = Math.abs(y - levels[k][1]);
-            if (diff < bestDiff) {
-                bestDiff = diff;
-                bestKey = levels[k][0];
-            }
-        }
-        const hi = Number.isFinite(c.h) ? c.h : levels[0][1];
-        const lo = Number.isFinite(c.l) ? c.l : levels[0][1];
-        const op = Number.isFinite(c.o) ? c.o : levels[0][1];
-        const cl = Number.isFinite(c.c) ? c.c : levels[0][1];
-        const rangeTol = Math.abs(hi - lo) * 0.2;
-        const bodyTol = Math.abs(op - cl) * 0.2;
-        const priceTol = Math.max(...levels.map(([, v]) => Math.abs(v))) * 1e-6;
-        const snapTol = Math.max(rangeTol, bodyTol, priceTol, 1e-8);
-        return bestDiff <= snapTol ? bestKey : null;
-    }
-
-    _buildDrawingSyncAnchors(drawingData) {
-        if (!drawingData || !this.data || this.data.length === 0) return drawingData;
-        const out = JSON.parse(JSON.stringify(drawingData));
-        const mk = (x, y) => {
-            if (!Number.isFinite(Number(x))) return null;
-            // At-or-before source candle index (avoid nearest-candle drift on timeframe aggregation).
-            const idx = Math.max(0, Math.min(this.data.length - 1, Math.floor(Number(x))));
-            const c = this.data[idx];
-            if (!c || !Number.isFinite(c.t)) return null;
-            return {
-                timestamp: c.t,
-                ohlcKey: this._nearestOhlcKeyAtIndex(idx, Number(y)),
-                y: Number.isFinite(Number(y)) ? Number(y) : null
-            };
-        };
-        out.__syncAnchors = out.__syncAnchors || {};
-        if (out.x1 !== undefined) out.__syncAnchors.x1 = mk(out.x1, out.y1);
-        if (out.x2 !== undefined) out.__syncAnchors.x2 = mk(out.x2, out.y2);
-        if (out.x !== undefined) out.__syncAnchors.x = mk(out.x, (out.y !== undefined ? out.y : out.price));
-        if (Array.isArray(out.points)) {
-            out.__syncPointAnchors = out.points.map((p) => mk(p && p.x, p && (p.y !== undefined ? p.y : p.price)));
-        }
-        return out;
-    }
-
-    _applyDrawingSyncAnchors(drawingData) {
-        if (!drawingData || !this.data || this.data.length === 0) return drawingData;
-        const out = drawingData;
-        const readY = (anchor, idx) => {
-            if (!anchor) return null;
-            const i = Math.max(0, Math.min(this.data.length - 1, Math.round(idx)));
-            const c = this.data[i];
-            if (!c) return (Number.isFinite(anchor.y) ? anchor.y : null);
-            const key = anchor.ohlcKey;
-            if (key && Number.isFinite(c[key])) return c[key];
-            return (Number.isFinite(anchor.y) ? anchor.y : null);
-        };
-        const applyAnchor = (keyX, keyY) => {
-            const a = out.__syncAnchors && out.__syncAnchors[keyX];
-            if (!a || !Number.isFinite(a.timestamp)) return;
-            const idx = this._findTargetIndexForTimestamp(a.timestamp);
-            out[keyX] = idx;
-            const yVal = readY(a, idx);
-            if (keyY && yVal !== null) out[keyY] = yVal;
-        };
-        applyAnchor('x1', 'y1');
-        applyAnchor('x2', 'y2');
-        if (out.__syncAnchors && out.__syncAnchors.x) {
-            const a = out.__syncAnchors.x;
-            const idx = this._findTargetIndexForTimestamp(a.timestamp);
-            out.x = idx;
-            const yVal = readY(a, idx);
-            if (yVal !== null) {
-                if (out.y !== undefined) out.y = yVal;
-                if (out.price !== undefined) out.price = yVal;
-            }
-        }
-        if (Array.isArray(out.points) && Array.isArray(out.__syncPointAnchors)) {
-            out.points.forEach((p, i) => {
-                const a = out.__syncPointAnchors[i];
-                if (!p || !a || !Number.isFinite(a.timestamp)) return;
-                const idx = this._findTargetIndexForTimestamp(a.timestamp);
-                p.x = idx;
-                const yVal = readY(a, idx);
-                if (yVal !== null) {
-                    if (p.y !== undefined) p.y = yVal;
-                    if (p.price !== undefined) p.price = yVal;
-                }
-            });
-        }
-        return out;
-    }
-
-    _buildTimestampPointsFromSyncAnchors(drawingData) {
-        if (!drawingData) return null;
-        const out = [];
-        if (Array.isArray(drawingData.__syncPointAnchors) && Array.isArray(drawingData.points)) {
-            for (let i = 0; i < drawingData.__syncPointAnchors.length; i++) {
-                const a = drawingData.__syncPointAnchors[i];
-                const p = drawingData.points[i];
-                if (!a || !Number.isFinite(a.timestamp)) continue;
-                const price = p && Number.isFinite(p.price) ? p.price : (p && Number.isFinite(p.y) ? p.y : (Number.isFinite(a.y) ? a.y : null));
-                out.push({ timestamp: a.timestamp, price });
-            }
-        }
-        return out.length ? out : null;
-    }
-
-    _prepareTimestampPayloadFromSyncAnchors(drawingData) {
-        if (!drawingData) return;
-        if (drawingData.coordinateSystem !== 'timestamp') return;
-        if (!Array.isArray(drawingData.__syncPointAnchors)) return;
-        const tsPoints = this._buildTimestampPointsFromSyncAnchors(drawingData);
-        if (!tsPoints || !tsPoints.length) return;
-        // Keep conversion pipeline unchanged: provide timestamp-based points input.
-        drawingData.points = tsPoints.map((p) => ({ timestamp: p.timestamp, price: p.price }));
-    }
-
-    _pointsFromTimestampBuckets(points) {
-        if (!Array.isArray(points)) return points;
-        return points.map((p) => {
-            const ts = p && Number.isFinite(Number(p.timestamp)) ? Number(p.timestamp) : NaN;
-            const x = Number.isFinite(ts) ? this._findTargetIndexForTimestamp(ts) : 0;
-            const y = p && Number.isFinite(Number(p.price)) ? Number(p.price) : (p && Number.isFinite(Number(p.y)) ? Number(p.y) : null);
-            return { x, y };
-        });
-    }
-
-    _isLiveSyncDrawingId(id) {
-        return typeof id === 'string' && id.startsWith('live_');
-    }
-
-    _normalizeSymbolForDrawingSync(symbol) {
-        if (symbol === undefined || symbol === null) return '';
-        return String(symbol).replace(/\s+/g, '').replace(/\//g, '').toUpperCase();
-    }
-
-    _shouldSyncDrawingToChart(targetChart) {
-        if (!targetChart) return false;
-        const srcFile = this._normalizeSymbolForDrawingSync(this.currentFileId);
-        const dstFile = this._normalizeSymbolForDrawingSync(targetChart.currentFileId);
-        if (srcFile && dstFile) return srcFile === dstFile;
-        const srcSym = this._normalizeSymbolForDrawingSync(this.currentSymbol || this.symbol);
-        const dstSym = this._normalizeSymbolForDrawingSync(targetChart.currentSymbol || targetChart.symbol);
-        // If either side has no symbol context, keep previous behavior (allow sync).
-        if (!srcSym || !dstSym) return true;
-        return srcSym === dstSym;
-    }
-
     broadcastDrawingChange(action, drawing, drawingIndex = null) {
+        console.log(`✏️ Broadcast attempt: ${action}, isPanel=${this.isPanel}, syncEnabled=${window.panelManager?.syncSettings?.drawings}`);
         
         if (!window.panelManager || !window.panelManager.panels) {
+            console.log('   ❌ No panel manager');
             return;
         }
         
         // Check if drawings sync is enabled in panel manager
         if (!window.panelManager.syncSettings.drawings) {
+            console.log('   ❌ Drawings sync disabled');
             return;
         }
         
-        // Don't re-broadcast while applying a received sync change
-        if (this._receivingDrawingSync) {
+        // Only sync from panel charts
+        if (!this.isPanel) {
+            console.log('   ❌ Not a panel chart');
             return;
         }
         
-        // Allow syncing from both panel charts and the main/original chart in multi-panel layout.
-        if (window.panelManager.currentLayout === '1') {
-            return;
-        }
-        
+        console.log(`✏️ Broadcasting drawing ${action} to ${window.panelManager.panels.length - 1} other panels`);
         
         // Serialize the drawing for sync
-        const rawDrawingData = typeof drawing.toJSON === 'function' ? drawing.toJSON() : drawing;
-        const drawingData = this._buildDrawingSyncAnchors(rawDrawingData);
+        const drawingData = typeof drawing.toJSON === 'function' ? drawing.toJSON() : drawing;
         
         // Get all panel chart instances
         window.panelManager.panels.forEach(panel => {
             if (panel.chartInstance && panel.chartInstance !== this) {
-                // "clear all drawings" should apply to all synced panels immediately.
-                if (action !== 'clear' && !this._shouldSyncDrawingToChart(panel.chartInstance)) return;
+                console.log(`   → Sending to panel ${panel.index}`);
                 panel.chartInstance.receiveDrawingChange(action, drawingData, drawingIndex);
             }
         });
@@ -19220,13 +15471,18 @@ class Chart {
      * Receive and apply drawing change from another panel
      */
     receiveDrawingChange(action, drawing, drawingIndex = null) {
+        console.log(`📥 Receive attempt: ${action}, hasDrawingManager=${!!this.drawingManager}`);
         
         if (!this.drawingManager) {
+            console.log('   ❌ No drawing manager on this panel');
             return;
         }
         
-        // Per-chart flag to prevent re-broadcast while applying a received change
-        this._receivingDrawingSync = true;
+        // Temporarily disable sync to prevent infinite loop
+        const originalSetting = window.panelManager?.syncSettings?.drawings;
+        if (window.panelManager?.syncSettings) {
+            window.panelManager.syncSettings.drawings = false;
+        }
         
         try {
             const dm = this.drawingManager;
@@ -19234,58 +15490,12 @@ class Chart {
             if (action === 'add') {
                 // Clone the drawing data
                 const drawingData = typeof drawing.toJSON === 'function' ? drawing.toJSON() : JSON.parse(JSON.stringify(drawing));
-                this._applyDrawingSyncAnchors(drawingData);
-                const incomingId = drawingData && drawingData.id;
-                const existingById = incomingId ? dm.drawings.find(d => d && d.id === incomingId) : null;
-                const isLiveId = this._isLiveSyncDrawingId(incomingId);
-                if (!isLiveId) this._prepareTimestampPayloadFromSyncAnchors(drawingData);
-                // Live preview path may send repeated "add" for the same temp id; update in place.
-                if (existingById) {
-                    if (isLiveId && drawingData.points) {
-                        existingById.points = drawingData.points;
-                        existingById.coordinateSystem = 'index';
-                        if (Array.isArray(drawingData.__syncPointAnchors)) {
-                            const tsPoints = this._buildTimestampPointsFromSyncAnchors(drawingData);
-                            if (tsPoints) existingById.timestampPoints = tsPoints;
-                        }
-                    } else if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
-                        if (Array.isArray(drawingData.__syncPointAnchors)) {
-                            const originalTimestampPoints = drawingData.points.map(p => ({
-                                timestamp: p.timestamp,
-                                price: p.price || p.y
-                            }));
-                            drawingData.points = this._pointsFromTimestampBuckets(drawingData.points);
-                            existingById.points = drawingData.points;
-                            existingById.timestampPoints = originalTimestampPoints;
-                        } else if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
-                            const originalTimestampPoints = drawingData.points.map(p => ({
-                                timestamp: p.timestamp,
-                                price: p.price || p.y
-                            }));
-                            drawingData.points = CoordinateUtils.pointsFromTimestamps(drawingData.points, this.data, this.currentTimeframe);
-                            existingById.points = drawingData.points;
-                            existingById.timestampPoints = originalTimestampPoints;
-                        }
-                    } else if (drawingData.points) {
-                        existingById.points = drawingData.points;
-                    }
-                    if (drawingData.style) {
-                        existingById.style = { ...(existingById.style || {}), ...drawingData.style };
-                    }
-                    dm.renderDrawing(existingById);
-                    dm.saveDrawings();
-                } else {
+                console.log(`   Processing add: type=${drawingData.type}, id=${drawingData.id}`);
                 
                 // CRITICAL: Convert timestamp points to indices for THIS panel's data
                 if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
-                    if (Array.isArray(drawingData.__syncPointAnchors)) {
-                        const originalTimestampPoints = drawingData.points.map(p => ({
-                            timestamp: p.timestamp,
-                            price: p.price || p.y
-                        }));
-                        drawingData.points = this._pointsFromTimestampBuckets(drawingData.points);
-                        drawingData._originalTimestampPoints = originalTimestampPoints;
-                    } else if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
+                    console.log(`   Converting timestamps to indices for panel (TF: ${this.currentTimeframe}, data: ${this.data.length} candles)`);
+                    if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
                         // Preserve original timestamp points for storage
                         const originalTimestampPoints = drawingData.points.map(p => ({
                             timestamp: p.timestamp,
@@ -19293,10 +15503,13 @@ class Chart {
                         }));
                         
                         // Debug: Show what we're converting
+                        console.log(`   Original timestamp: ${originalTimestampPoints[0]?.timestamp} (${new Date(originalTimestampPoints[0]?.timestamp).toISOString()})`);
+                        console.log(`   Data range: ${this.data[0]?.t} - ${this.data[this.data.length-1]?.t}`);
                         
                         // Convert to index-based points for rendering (with correct timeframe)
                         drawingData.points = CoordinateUtils.pointsFromTimestamps(drawingData.points, this.data, this.currentTimeframe);
                         
+                        console.log(`   Converted to index: ${drawingData.points[0]?.x}`);
                         
                         // Store original timestamps in a separate field
                         drawingData._originalTimestampPoints = originalTimestampPoints;
@@ -19305,17 +15518,15 @@ class Chart {
                 
                 // Use drawing manager to create and add the drawing
                 const toolInfo = dm.toolRegistry ? dm.toolRegistry[drawingData.type] : null;
+                console.log(`   ToolInfo found: ${!!toolInfo}, hasFromJSON: ${!!(toolInfo?.class?.fromJSON)}`);
                 
                 if (toolInfo && toolInfo.class && toolInfo.class.fromJSON) {
-                    if (isLiveId) {
-                        drawingData.coordinateSystem = 'index';
-                    }
                     const drawingObj = toolInfo.class.fromJSON(drawingData, this);
                     drawingObj.chart = this;
                     drawingObj.id = drawingData.id; // Keep same ID for sync
                     
                     // Restore timestamp points for proper multi-timeframe support
-                    if (!isLiveId && drawingData._originalTimestampPoints) {
+                    if (drawingData._originalTimestampPoints) {
                         drawingObj.timestampPoints = drawingData._originalTimestampPoints;
                         drawingObj.coordinateSystem = 'timestamp';
                     }
@@ -19328,6 +15539,7 @@ class Chart {
                         if (this.data && this.data.length > 0 && this.xScale && this.yScale) {
                             try {
                                 dm.renderDrawing(drawingObj);
+                                console.log(`   ✅ Rendered on panel`);
                             } catch (err) {
                                 console.warn('   ⚠️ Render error:', err.message);
                             }
@@ -19338,6 +15550,7 @@ class Chart {
                     
                     if (!tryRender()) {
                         // Defer render - try a few times
+                        console.log('   ⏳ Chart not ready, deferring render...');
                         let attempts = 0;
                         const retryRender = setInterval(() => {
                             attempts++;
@@ -19348,10 +15561,12 @@ class Chart {
                     }
                     dm.saveDrawings();
                     
+                    console.log(`📥 ✅ Received drawing: ${drawingData.type}`);
                 } else {
+                    console.log(`   ❌ Could not find tool info for type: ${drawingData.type}`);
+                    console.log(`   Available tools:`, dm.toolRegistry ? Object.keys(dm.toolRegistry) : 'none');
                 }
-                }
-            } else if (action === 'remove' || action === 'delete') {
+            } else if (action === 'remove') {
                 // Find and remove drawing by ID
                 const drawingId = drawing.id;
                 const existingDrawing = dm.drawings.find(d => d.id === drawingId);
@@ -19360,6 +15575,7 @@ class Chart {
                     dm.drawings.splice(index, 1);
                     existingDrawing.destroy();
                     dm.saveDrawings();
+                    console.log(`📥 Removed drawing: ${drawingId}`);
                 }
             } else if (action === 'update') {
                 // Find and update drawing by ID
@@ -19367,33 +15583,20 @@ class Chart {
                 const existingDrawing = dm.drawings.find(d => d.id === drawingId);
                 if (existingDrawing) {
                     const drawingData = typeof drawing.toJSON === 'function' ? drawing.toJSON() : JSON.parse(JSON.stringify(drawing));
-                    this._applyDrawingSyncAnchors(drawingData);
-                    const isLiveId = this._isLiveSyncDrawingId(drawingId);
-                    if (!isLiveId) this._prepareTimestampPayloadFromSyncAnchors(drawingData);
                     
                     // Convert timestamp points to indices for THIS panel's data
-                    if (isLiveId && drawingData.points) {
-                        existingDrawing.points = drawingData.points;
-                        existingDrawing.coordinateSystem = 'index';
-                        if (Array.isArray(drawingData.__syncPointAnchors)) {
-                            const tsPoints = this._buildTimestampPointsFromSyncAnchors(drawingData);
-                            if (tsPoints) existingDrawing.timestampPoints = tsPoints;
-                        }
-                    } else if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
-                        if (Array.isArray(drawingData.__syncPointAnchors)) {
+                    if (drawingData.coordinateSystem === 'timestamp' && drawingData.points && this.data && this.data.length > 0) {
+                        if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
+                            // Preserve original timestamp points
                             const originalTimestampPoints = drawingData.points.map(p => ({
                                 timestamp: p.timestamp,
                                 price: p.price || p.y
                             }));
-                            drawingData.points = this._pointsFromTimestampBuckets(drawingData.points);
-                            existingDrawing.points = drawingData.points;
-                            existingDrawing.timestampPoints = originalTimestampPoints;
-                        } else if (typeof CoordinateUtils !== 'undefined' && CoordinateUtils.pointsFromTimestamps) {
-                            const originalTimestampPoints = drawingData.points.map(p => ({
-                                timestamp: p.timestamp,
-                                price: p.price || p.y
-                            }));
+                            
+                            // Convert to index-based points for rendering (with correct timeframe)
                             drawingData.points = CoordinateUtils.pointsFromTimestamps(drawingData.points, this.data, this.currentTimeframe);
+                            
+                            // Update drawing with new points
                             existingDrawing.points = drawingData.points;
                             existingDrawing.timestampPoints = originalTimestampPoints;
                         }
@@ -19407,50 +15610,29 @@ class Chart {
                     }
                     
                     dm.renderDrawing(existingDrawing);
-
-                    // Debounce save during rapid live updates (drag/resize) to
-                    // avoid serialising all drawings to localStorage on every frame.
-                    clearTimeout(this._syncUpdateSaveTimer);
-                    this._syncUpdateSaveTimer = setTimeout(() => {
-                        dm.saveDrawings();
-                    }, 300);
-                } else {
-                    // Robustness: if a panel missed the live "add", treat final update as add.
-                    this.receiveDrawingChange('add', drawing, drawingIndex);
+                    dm.saveDrawings();
+                    console.log(`📥 Updated drawing: ${drawingId}`);
                 }
             } else if (action === 'clear') {
-                // Use full clear path (SVG + storage) without re-broadcasting sync storms
-                if (typeof dm.clearDrawings === 'function') {
-                    dm.clearDrawings({ confirmPrompt: false, skipBroadcast: true });
-                } else {
-                    dm.drawings.forEach(d => {
-                        try { d.destroy(); } catch (_) {}
-                    });
-                    dm.drawings = [];
-                    dm.selectedDrawing = null;
-                    if (dm.drawingsGroup) dm.drawingsGroup.selectAll('*').remove();
-                    dm.saveDrawings();
-                }
-
-                if (Array.isArray(this.drawings) && this.drawings.length > 0) {
-                    this.drawings = [];
-                    if (typeof this.redrawDrawings === 'function') {
-                        try { this.redrawDrawings(); } catch (_) {}
-                    }
-                }
-                if (typeof this.render === 'function') {
-                    this.render();
-                }
+                // Clear all drawings
+                dm.drawings.forEach(d => d.destroy());
+                dm.drawings = [];
+                dm.saveDrawings();
+                console.log('📥 Cleared all drawings');
             }
             
         } finally {
-            this._receivingDrawingSync = false;
+            // Re-enable sync
+            if (window.panelManager?.syncSettings) {
+                window.panelManager.syncSettings.drawings = originalSetting;
+            }
         }
     }
 }
 
 // Initialize chart when DOM is ready
 document.addEventListener('DOMContentLoaded', async function() {
+    console.log('🚀 Initializing Trading Chart...');
 
     try {
         if (window.waitForD3 instanceof Promise) {
@@ -19469,10 +15651,12 @@ document.addEventListener('DOMContentLoaded', async function() {
     const chartInstance = new Chart();
     window.chart = chartInstance;
     window.mainChart = chartInstance;
+    console.log('✅ Chart initialized successfully');
     
     // Initialize timeframe favorites
     if (typeof TimeframeFavorites !== 'undefined') {
         window.timeframeFavorites = new TimeframeFavorites(chartInstance);
+        console.log('✅ Timeframe favorites initialized');
     }
     
     // Setup axis cursor zones to forward events to canvas
@@ -19516,9 +15700,11 @@ document.addEventListener('DOMContentLoaded', async function() {
         });
     }
     
+    console.log('✅ Axis cursor zones initialized');
     
     // Listen for panel creation events to ensure all tools work in multi-panel mode
     window.addEventListener('panelsCreated', (event) => {
+        console.log('📊 Panels created, ensuring all tools are available:', event.detail);
         
         // The drawing manager is shared across all panels
         // All new tools (emoji, gann-box, anchored-vwap, volume-profile) are already registered
@@ -19527,6 +15713,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Ensure emoji picker works with all panels
         const simplePicker = window.simplePicker;
         if (simplePicker && chartInstance.drawingManager) {
+            console.log('✅ Emoji picker and advanced tools available for all panels');
         }
     });
 });

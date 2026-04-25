@@ -15,7 +15,6 @@ class TextTool extends BaseDrawing {
         this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
         this.style.textColor = style.textColor || '#FFFFFF';
         this.style.fontWeight = style.fontWeight || 'normal';
-        this.style.fontStyle = style.fontStyle || 'normal';
         this.style.textAlign = style.textAlign || 'left';
         // Store base scale for chart zoom scaling
         this.baseScale = null;
@@ -53,33 +52,27 @@ class TextTool extends BaseDrawing {
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight)
-            .attr('font-style', this.style.fontStyle || 'normal')
-            .attr('text-anchor', 'start')
+            .attr('text-anchor', this.style.textAlign === 'center' ? 'middle' : 
+                               this.style.textAlign === 'right' ? 'end' : 'start')
             .attr('xml:space', 'preserve')
             .style('pointer-events', 'all')
-            .style('cursor', this.selected ? 'text' : 'move')
+            .style('cursor', 'move')
             .style('user-select', 'none');
 
         const lineHeight = scaledFontSize * 1.2;
         const lines = (this.text || '').split('\n');
         lines.forEach((line, index) => {
             const sanitizedLine = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
-            textElement.append('tspan')
+            const tspan = textElement.append('tspan')
                 .attr('x', x)
                 .attr('dy', index === 0 ? 0 : lineHeight)
                 .text(sanitizedLine);
+            if (this.style.textAlign === 'center') {
+                tspan.attr('text-anchor', 'middle');
+            } else if (this.style.textAlign === 'right') {
+                tspan.attr('text-anchor', 'end');
+            }
         });
-
-        // Keep the left edge of the text fixed at x regardless of alignment.
-        // Measure width first (with text-anchor:start), then shift the anchor.
-        if (this.style.textAlign === 'center' || this.style.textAlign === 'right') {
-            let textWidth = 0;
-            try { textWidth = textElement.node().getBBox().width; } catch (e) {}
-            const anchorX = this.style.textAlign === 'center' ? x + textWidth / 2 : x + textWidth;
-            const textAnchor = this.style.textAlign === 'center' ? 'middle' : 'end';
-            textElement.attr('x', anchorX).attr('text-anchor', textAnchor);
-            textElement.selectAll('tspan').attr('x', anchorX);
-        }
 
         // Add optional text shadow for better readability (disabled by default)
         if (this.style.textShadow === true) {
@@ -134,10 +127,6 @@ class TextTool extends BaseDrawing {
         // Store bbox for handle creation
         this.bbox = bbox;
 
-        // Store for live-update during inline editing
-        this._lastContainer = container;
-        this._lastScales = scales;
-
         const bodyHitArea = this.group.insert('rect', 'text')
             .attr('class', 'shape-border-hit text-body-hit')
             .attr('x', bbox.x)
@@ -145,13 +134,15 @@ class TextTool extends BaseDrawing {
             .attr('width', bbox.width)
             .attr('height', bbox.height)
             .attr('fill', 'transparent')
-            .attr('stroke', this.selected ? '#2962FF' : 'none')
-            .attr('stroke-width', this.selected ? 1 : 0)
-            .attr('stroke-dasharray', this.selected ? '4,3' : 'none')
+            .attr('stroke', 'none')
+            .attr('stroke-width', 0)
             .attr('rx', 4)
             .attr('ry', 4)
             .style('pointer-events', 'all')
-            .style('cursor', this.selected ? 'text' : 'move');
+            .style('cursor', 'move');
+
+        // Create resize handles like rectangles (4 corners + 4 sides)
+        this.createTextHandles(this.group, bbox);
 
         const self = this;
         const CLICK_DELAY = 250;
@@ -195,13 +186,7 @@ class TextTool extends BaseDrawing {
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
 
-            // Resolve live element — selectDrawing re-renders so captured node may be detached
-            const liveNode = (self.group && typeof self.group.select === 'function')
-                ? self.group.select('text.inline-editable-text').node()
-                : null;
-            const targetNode = (liveNode && document.contains(liveNode))
-                ? liveNode : textElement.node();
-            const rect = targetNode.getBoundingClientRect();
+            const rect = textElement.node().getBoundingClientRect();
             const editX = rect.left + window.scrollX;
             const editY = rect.top + window.scrollY;
 
@@ -226,24 +211,21 @@ class TextTool extends BaseDrawing {
                 },
                 'Enter text…',
                 {
-                    inline: true,
+                    width: rect.width,
+                    height: rect.height,
+                    padding: '0px',
                     fontSize: `${scaledFontSize}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight,
                     color: self.style.textColor,
                     textAlign: self.style.textAlign || 'left',
-                    hideSelector: `.drawing[data-id="${self.id}"] text`,
-                    onInput: (newText) => {
-                        self.setText((newText || '').replace(/\r\n/g, '\n'));
-                        if (self._lastContainer && self._lastScales) {
-                            self.render(self._lastContainer, self._lastScales);
-                        }
-                    }
+                    hideTargets: [textElement.node()],
+                    hideSelector: `.drawing[data-id="${self.id}"] text`
                 }
             );
         };
 
-        const handleSingleClick = function(event) {
+        const handleInlineEdit = (event) => {
             event.stopPropagation();
             event.preventDefault();
 
@@ -257,46 +239,21 @@ class TextTool extends BaseDrawing {
                 clickTimer = null;
             }
 
-            // Double-click detection via timestamps stored on instance (survives re-renders)
-            const now = Date.now();
-            const timeSinceLastClick = now - (self._lastClickTime || 0);
-            self._lastClickTime = now;
-
-            if (timeSinceLastClick < 400 && timeSinceLastClick > 30) {
-                // Double-click → open settings
-                const manager = self.chart && self.chart.drawingManager;
-                if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
-                    if (typeof manager.selectDrawing === 'function') {
-                        manager.selectDrawing(self);
-                    }
-                    manager.editDrawing(self, event.pageX, event.pageY);
-                }
-                return;
-            }
-
-            // 1st click on unselected → select only
-            if (!self.selected) {
-                const manager = self.chart && self.chart.drawingManager;
-                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
-                    manager.selectDrawing(self);
-                }
-                return;
-            }
-
-            // Already selected → open inline editor after delay
             clickTimer = setTimeout(() => {
                 clickTimer = null;
                 startInlineEdit();
             }, CLICK_DELAY);
         };
 
-        const handleDblClick = function(event) {
+        const handleOpenSettings = (event) => {
             event.stopPropagation();
             event.preventDefault();
+
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;
             }
+
             const manager = self.chart && self.chart.drawingManager;
             if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
                 if (typeof manager.selectDrawing === 'function') {
@@ -307,13 +264,13 @@ class TextTool extends BaseDrawing {
         };
 
         textElement.node().addEventListener('mousedown', handleMouseDown, true);
-        textElement.node().addEventListener('click', handleSingleClick, true);
-        textElement.node().addEventListener('dblclick', handleDblClick, true);
+        textElement.node().addEventListener('click', handleInlineEdit, true);
+        textElement.node().addEventListener('dblclick', handleOpenSettings, true);
 
         if (bodyHitArea && bodyHitArea.node()) {
             bodyHitArea.node().addEventListener('mousedown', handleMouseDown, true);
-            bodyHitArea.node().addEventListener('click', handleSingleClick, true);
-            bodyHitArea.node().addEventListener('dblclick', handleDblClick, true);
+            bodyHitArea.node().addEventListener('click', handleInlineEdit, true);
+            bodyHitArea.node().addEventListener('dblclick', handleOpenSettings, true);
         }
 
         return this.group;
@@ -489,11 +446,6 @@ class TextTool extends BaseDrawing {
         this.meta.updatedAt = Date.now();
     }
 
-    deselect() {
-        document.body.classList.remove('text-selected');
-        super.deselect();
-    }
-
     toJSON() {
         return {
             ...super.toJSON(),
@@ -528,8 +480,6 @@ class NoteBoxTool extends BaseDrawing {
         this.style.padding = style.padding || 8;
         this.style.borderRadius = style.borderRadius || 4;
         this.style.maxWidth = style.maxWidth || 200;
-        this.style.fontWeight = style.fontWeight || 'normal';
-        this.style.fontStyle = style.fontStyle || 'normal';
     }
 
     render(container, scales) {
@@ -555,8 +505,6 @@ class NoteBoxTool extends BaseDrawing {
         const tempText = container.append('text')
             .attr('font-size', `${this.style.fontSize}px`)
             .attr('font-family', this.style.fontFamily)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
             .text(this.text);
         
         const textBBox = tempText.node().getBBox();
@@ -599,8 +547,6 @@ class NoteBoxTool extends BaseDrawing {
             .attr('fill', this.style.textColor)
             .attr('font-size', `${this.style.fontSize}px`)
             .attr('font-family', this.style.fontFamily)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
             .attr('dominant-baseline', 'alphabetic')
             .style('pointer-events', 'none')
             .style('user-select', 'none');
@@ -616,8 +562,6 @@ class NoteBoxTool extends BaseDrawing {
             const testText = container.append('text')
                 .attr('font-size', `${this.style.fontSize}px`)
                 .attr('font-family', this.style.fontFamily)
-                .attr('font-weight', this.style.fontWeight || 'normal')
-                .attr('font-style', this.style.fontStyle || 'normal')
                 .text(testLine);
             const testWidth = testText.node().getBBox().width;
             testText.remove();
@@ -688,7 +632,7 @@ class NoteBoxTool extends BaseDrawing {
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
 
-            const rect = textElement.node().getBoundingClientRect();
+            const rect = box.node().getBoundingClientRect();
             const editX = rect.left + window.scrollX;
             const editY = rect.top + window.scrollY;
 
@@ -713,12 +657,15 @@ class NoteBoxTool extends BaseDrawing {
                 },
                 'Enter note text…',
                 {
-                    inline: true,
+                    width: rect.width,
+                    height: rect.height,
+                    padding: `${self.style.padding || 6}px`,
                     fontSize: `${self.style.fontSize || 14}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
                     color: self.style.textColor,
                     textAlign: 'left',
+                    hideTargets: [textElement.node()],
                     hideSelector: `.drawing[data-id="${self.id}"] text`
                 }
             );
@@ -764,7 +711,7 @@ class NoteBoxTool extends BaseDrawing {
 
         box.node().addEventListener('mousedown', handleMouseDown, true);
         box.node().addEventListener('click', handleInlineEdit, true);
-        box.node().addEventListener('dblclick', handleInlineEdit, true);
+        box.node().addEventListener('dblclick', handleOpenSettings, true);
 
         return this.group;
     }
@@ -916,8 +863,6 @@ class AnchoredTextTool extends BaseDrawing {
         this.style.backgroundColor = style.backgroundColor || 'rgba(41, 98, 255, 0.9)';
         this.style.borderColor = style.borderColor || '#B2B5BE';
         this.style.anchorLength = style.anchorLength || 30;
-        this.style.fontWeight = style.fontWeight || 'normal';
-        this.style.fontStyle = style.fontStyle || 'normal';
     }
 
     render(container, scales) {
@@ -950,9 +895,6 @@ class AnchoredTextTool extends BaseDrawing {
         const padding = 6;
         const tempText = container.append('text')
             .attr('font-size', `${this.style.fontSize}px`)
-            .attr('font-family', this.style.fontFamily)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
             .text(this.text);
         const bbox = tempText.node().getBBox();
         tempText.remove();
@@ -990,9 +932,6 @@ class AnchoredTextTool extends BaseDrawing {
             .attr('y', y - this.style.anchorLength - padding)
             .attr('fill', this.style.textColor)
             .attr('font-size', `${this.style.fontSize}px`)
-            .attr('font-family', this.style.fontFamily)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
             .attr('text-anchor', 'middle')
             .style('pointer-events', 'all')
             .style('cursor', 'move')
@@ -1040,7 +979,7 @@ class AnchoredTextTool extends BaseDrawing {
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
 
-            const rect = textElement.node().getBoundingClientRect();
+            const rect = background.node().getBoundingClientRect();
             const editX = rect.left + window.scrollX;
             const editY = rect.top + window.scrollY;
 
@@ -1065,13 +1004,15 @@ class AnchoredTextTool extends BaseDrawing {
                 },
                 'Enter text…',
                 {
-                    inline: true,
+                    width: rect.width,
+                    height: rect.height,
+                    padding: '0px',
                     fontSize: `${self.style.fontSize || 12}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
-                    fontStyle: self.style.fontStyle || 'normal',
                     color: self.style.textColor,
                     textAlign: 'center',
+                    hideTargets: [textElement.node()],
                     hideSelector: `.drawing[data-id="${self.id}"] text`
                 }
             );
@@ -1118,7 +1059,7 @@ class AnchoredTextTool extends BaseDrawing {
         [background.node(), textElement.node()].forEach((n) => {
             n.addEventListener('mousedown', handleMouseDown, true);
             n.addEventListener('click', handleInlineEdit, true);
-            n.addEventListener('dblclick', handleInlineEdit, true);
+            n.addEventListener('dblclick', handleOpenSettings, true);
         });
 
         return this.group;
@@ -1137,7 +1078,7 @@ class AnchoredTextTool extends BaseDrawing {
 // Note Tool - Line with text box at end point (like TradingView callout)
 // ============================================================================
 class NoteTool extends BaseDrawing {
-    constructor(points = [], style = {}, text = '') {
+    constructor(points = [], style = {}, text = 'Add text') {
         super('note', points, style);
         this.requiredPoints = 2;
         this.text = text;
@@ -1148,8 +1089,6 @@ class NoteTool extends BaseDrawing {
         this.style.textColor = style.textColor || '#FFFFFF';
         this.style.fontSize = style.fontSize || 12;
         this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
-        this.style.fontWeight = style.fontWeight || 'normal';
-        this.style.fontStyle = style.fontStyle || 'normal';
     }
 
     render(container, scales) {
@@ -1166,10 +1105,6 @@ class NoteTool extends BaseDrawing {
             .attr('data-id', this.id)
             .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
 
-        // Store for live-update during inline editing
-        this._lastContainer = container;
-        this._lastScales = scales;
-
         const p1 = this.points[0];
         const p2 = this.points[1];
         const x1 = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
@@ -1178,7 +1113,7 @@ class NoteTool extends BaseDrawing {
         const y2 = scales.yScale(p2.y);
 
         // Invisible hit area for easier selection (rendered first, behind visible line)
-        const noteLineHitEl = this.group.append('line')
+        this.group.append('line')
             .attr('class', 'note-line-hit shape-border-hit')
             .attr('x1', x1)
             .attr('y1', y1)
@@ -1190,7 +1125,7 @@ class NoteTool extends BaseDrawing {
             .style('cursor', 'move');
 
         // Draw the visible line
-        const noteLineEl = this.group.append('line')
+        this.group.append('line')
             .attr('class', 'note-line')
             .attr('x1', x1)
             .attr('y1', y1)
@@ -1203,49 +1138,24 @@ class NoteTool extends BaseDrawing {
 
         // Text box at end point (p2)
         const padding = 6;
-        const noteMaxWidth = this.style.maxWidth || 260;
+        const tempText = container.append('text')
+            .attr('font-size', `${scaledFontSize}px`)
+            .attr('font-family', this.style.fontFamily)
+            .text(this.text || 'Add text');
+        let textBbox;
+        try {
+            textBbox = tempText.node().getBBox();
+        } catch(e) {
+            textBbox = { width: 60, height: scaledFontSize * 1.2 };
+        }
+        tempText.remove();
 
-        // Helper: measure single-line text width via canvas (reliable, no DOM dependency)
-        const _nCanvas = document.createElement('canvas');
-        const _nCtx = _nCanvas.getContext('2d');
-        _nCtx.font = `${this.style.fontStyle || 'normal'} ${this.style.fontWeight || 'normal'} ${scaledFontSize}px ${this.style.fontFamily || 'Arial, sans-serif'}`;
-        const measureWidth = (str) => {
-            try { return _nCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
-            catch(e) { return (str || '').length * scaledFontSize * 0.6; }
-        };
+        const boxWidth = Math.max(textBbox.width + padding * 2, 60);
+        const boxHeight = textBbox.height + padding * 2;
 
-        // Split only on explicit newlines — no auto word-wrap
-        const wrappedLines = (this.text || '').split('\n');
-        const lineHeight = scaledFontSize * 1.3;
-        const totalTextHeight = wrappedLines.length * lineHeight;
-
-        // Measure actual max line width
-        let maxLineWidth = 60;
-        wrappedLines.forEach(line => {
-            const w = measureWidth(line || ' ');
-            if (w > maxLineWidth) maxLineWidth = w;
-        });
-
-        const boxWidth = Math.max(maxLineWidth + padding * 2, 60);
-        const boxHeight = totalTextHeight + padding * 2;
-
-        // Position box so its nearest edge always touches p2, regardless of line direction
-        const _dx = x2 - x1;
-        const _dy = y2 - y1;
-        const _len = Math.hypot(_dx, _dy);
-        const _ux = _len > 0 ? _dx / _len : 1;
-        const _uy = _len > 0 ? _dy / _len : 0;
-        const _tEdgeX = Math.abs(_ux) > 1e-9 ? (boxWidth  / 2) / Math.abs(_ux) : Infinity;
-        const _tEdgeY = Math.abs(_uy) > 1e-9 ? (boxHeight / 2) / Math.abs(_uy) : Infinity;
-        const _tEdge  = Math.min(_tEdgeX, _tEdgeY);
-        const _labelCX = x2 + _ux * _tEdge;
-        const _labelCY = y2 + _uy * _tEdge;
-        const boxX = _labelCX - boxWidth  / 2;
-        const boxY = _labelCY - boxHeight / 2;
-
-        // Line ends exactly at p2, which is now the near edge mid-point of the box
-        noteLineEl.attr('x2', x2).attr('y2', y2);
-        noteLineHitEl.attr('x2', x2).attr('y2', y2);
+        // Position box to the right of endpoint
+        const boxX = x2 + 5;
+        const boxY = y2 - boxHeight / 2;
 
         // Background rectangle - use fill for background color
         const textBox = this.group.append('rect')
@@ -1261,25 +1171,17 @@ class NoteTool extends BaseDrawing {
             .style('pointer-events', 'all')
             .style('cursor', 'move');
 
-        // Text with wrapped lines
+        // Text
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
             .attr('x', boxX + padding)
-            .attr('y', boxY + padding + scaledFontSize)
+            .attr('y', y2 + scaledFontSize / 3)
             .attr('fill', this.style.textColor)
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
             .style('pointer-events', 'all')
-            .style('cursor', 'move');
-
-        wrappedLines.forEach((line, i) => {
-            textElement.append('tspan')
-                .attr('x', boxX + padding)
-                .attr('dy', i === 0 ? 0 : lineHeight)
-                .text(line || '\u00A0');
-        });
+            .style('cursor', 'move')
+            .text(this.text || 'Add text');
 
         // Add double-click to edit text inline using native addEventListener (won't be overwritten)
         const self = this;
@@ -1287,14 +1189,7 @@ class NoteTool extends BaseDrawing {
             const manager = self.chart && self.chart.drawingManager;
             const editor = manager && manager.textEditor;
             if (editor && typeof editor.show === 'function') {
-                // Always resolve a live element — selectDrawing re-renders so the
-                // captured textElement may be detached (getBoundingClientRect → 0,0).
-                const liveNode = (self.group && typeof self.group.select === 'function')
-                    ? self.group.select('text.inline-editable-text').node()
-                    : null;
-                const targetNode = (liveNode && document.contains(liveNode))
-                    ? liveNode : textElement.node();
-                const bbox = targetNode.getBoundingClientRect();
+                const bbox = textBox.node().getBoundingClientRect();
                 const editX = bbox.left + window.scrollX;
                 const editY = bbox.top + window.scrollY;
 
@@ -1319,21 +1214,16 @@ class NoteTool extends BaseDrawing {
                     },
                     'Add text',
                     {
-                        inline: true,
+                        width: bbox.width,
+                        height: bbox.height,
+                        padding: `${padding}px`,
                         fontSize: `${scaledFontSize}px`,
                         fontFamily: self.style.fontFamily,
                         fontWeight: self.style.fontWeight || 'normal',
-                        fontStyle: self.style.fontStyle || 'normal',
                         color: self.style.textColor,
                         textAlign: 'left',
-                        noWrap: true,
-                        hideSelector: `.drawing[data-id="${self.id}"] text`,
-                        onInput: (newText) => {
-                            self.setText((newText || '').replace(/\r\n/g, '\n'));
-                            if (self._lastContainer && self._lastScales) {
-                                self.render(self._lastContainer, self._lastScales);
-                            }
-                        }
+                        hideTargets: [textElement.node()],
+                        hideSelector: `.drawing[data-id="${self.id}"] text`
                     }
                 );
 
@@ -1382,7 +1272,7 @@ class NoteTool extends BaseDrawing {
             
             // Save function
             const saveAndClose = () => {
-                const newText = inputNode.value.trim() || '';
+                const newText = inputNode.value.trim() || 'Add text';
                 self.setText(newText);
                 editorEl.remove();
                 if (self.chart) self.chart.render();
@@ -1441,7 +1331,7 @@ class NoteTool extends BaseDrawing {
             document.addEventListener('mouseup', handleMouseUp, true);
         };
 
-        const handleSingleClick = function(event) {
+        const handleInlineEdit = function(event) {
             event.stopPropagation();
             event.preventDefault();
 
@@ -1455,56 +1345,10 @@ class NoteTool extends BaseDrawing {
                 clickTimer = null;
             }
 
-            // Double-click detection via timestamps stored on the instance so it
-            // survives re-renders (selectDrawing replaces DOM nodes, breaking the
-            // native dblclick event which would fire on the common ancestor).
-            const now = Date.now();
-            const timeSinceLastClick = now - (self._lastClickTime || 0);
-            self._lastClickTime = now;
-
-            if (timeSinceLastClick < 400 && timeSinceLastClick > 30) {
-                // Double-click → open settings
-                const manager = self.chart && self.chart.drawingManager;
-                if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
-                    if (typeof manager.selectDrawing === 'function') {
-                        manager.selectDrawing(self);
-                    }
-                    manager.editDrawing(self, event.pageX, event.pageY);
-                }
-                return;
-            }
-
-            // 1st click on unselected → select only
-            if (!self.selected) {
-                const manager = self.chart && self.chart.drawingManager;
-                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
-                    manager.selectDrawing(self);
-                    document.body.classList.add('text-selected');
-                }
-                return;
-            }
-
-            // Already selected, single click → open inline editor after delay
             clickTimer = setTimeout(() => {
                 clickTimer = null;
                 startInlineEdit();
             }, CLICK_DELAY);
-        };
-
-        const handleDblClick = function(event) {
-            event.stopPropagation();
-            event.preventDefault();
-            if (clickTimer) {
-                clearTimeout(clickTimer);
-                clickTimer = null;
-            }
-            const manager = self.chart && self.chart.drawingManager;
-            if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
-                if (typeof manager.selectDrawing === 'function') {
-                    manager.selectDrawing(self);
-                }
-                manager.editDrawing(self, event.pageX, event.pageY);
-            }
         };
 
         const handleOpenSettings = function(event) {
@@ -1526,13 +1370,13 @@ class NoteTool extends BaseDrawing {
         };
         
         // Use native addEventListener with capture phase - won't be overwritten by d3
-        // 1st click = select, 2nd click = edit, dblclick = edit immediately, drag = move
+        // Single click to edit text, double-click on border opens settings
         textBox.node().addEventListener('mousedown', handleMouseDown, true);
         textElement.node().addEventListener('mousedown', handleMouseDown, true);
-        textBox.node().addEventListener('click', handleSingleClick, true);
-        textElement.node().addEventListener('click', handleSingleClick, true);
-        textBox.node().addEventListener('dblclick', handleDblClick, true);
-        textElement.node().addEventListener('dblclick', handleDblClick, true);
+        textBox.node().addEventListener('click', handleInlineEdit, true);
+        textElement.node().addEventListener('click', handleInlineEdit, true);
+        textBox.node().addEventListener('dblclick', handleOpenSettings, true);
+        textElement.node().addEventListener('dblclick', handleOpenSettings, true);
 
         // Create handles at both endpoints
         this.createHandles(this.group, scales);
@@ -1580,8 +1424,6 @@ class PriceNoteTool extends BaseDrawing {
         this.style.textColor = style.textColor || '#FFFFFF';
         this.style.fontSize = style.fontSize || 12;
         this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
-        this.style.fontWeight = style.fontWeight || 'normal';
-        this.style.fontStyle = style.fontStyle || 'normal';
     }
 
     render(container, scales) {
@@ -1605,8 +1447,8 @@ class PriceNoteTool extends BaseDrawing {
         const x2 = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
         const y2 = scales.yScale(p2.y);
 
-        // Draw the line (endpoint will be shortened to box edge after label position is known)
-        const lineEl = this.group.append('line')
+        // Draw the line
+        this.group.append('line')
             .attr('x1', x1)
             .attr('y1', y1)
             .attr('x2', x2)
@@ -1617,7 +1459,7 @@ class PriceNoteTool extends BaseDrawing {
             .style('cursor', 'move');
 
         // Invisible hit area
-        const lineHitEl = this.group.append('line')
+        this.group.append('line')
             .attr('class', 'shape-border-hit')
             .attr('x1', x1)
             .attr('y1', y1)
@@ -1642,8 +1484,6 @@ class PriceNoteTool extends BaseDrawing {
         const tempText = container.append('text')
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
             .text(priceText);
         let textBbox;
         try {
@@ -1687,17 +1527,6 @@ class PriceNoteTool extends BaseDrawing {
         labelX = Math.max(minX + boxWidth / 2 + edgePad, Math.min(maxX - boxWidth / 2 - edgePad, labelX));
         labelY = Math.max(clampMinY + boxHeight / 2 + edgePad, Math.min(maxY - boxHeight / 2 - edgePad, labelY));
 
-        // Shorten line so it stops at the near edge of the label box
-        const backUx = len > 0 ? -(dx / len) : 0;
-        const backUy = len > 0 ? -(dy / len) : -1;
-        const tEdgeX = Math.abs(backUx) > 1e-9 ? (boxWidth / 2) / Math.abs(backUx) : Infinity;
-        const tEdgeY = Math.abs(backUy) > 1e-9 ? (boxHeight / 2) / Math.abs(backUy) : Infinity;
-        const tEdge = Math.min(tEdgeX, tEdgeY);
-        const lineEndX = labelX + backUx * tEdge;
-        const lineEndY = labelY + backUy * tEdge;
-        lineEl.attr('x2', lineEndX).attr('y2', lineEndY);
-        lineHitEl.attr('x2', lineEndX).attr('y2', lineEndY);
-
         const labelGroup = this.group.append('g')
             .attr('class', 'price-note-label')
             .attr('transform', `translate(${labelX},${labelY})`);
@@ -1735,17 +1564,12 @@ class PriceNoteTool extends BaseDrawing {
             .attr('fill', this.style.textColor)
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
             .attr('text-anchor', 'middle')
             .style('pointer-events', 'none')
             .text(priceText);
 
-        // Create handles at both endpoints, then move p2 handle to label box center
+        // Create handles at both endpoints
         this.createHandles(this.group, scales);
-        this.group.selectAll('[data-point-index="1"]')
-            .attr('cx', lineEndX)
-            .attr('cy', lineEndY);
 
         return this.group;
     }
@@ -1791,8 +1615,6 @@ class PinTool extends BaseDrawing {
         this.style.textColor = style.textColor || '#d1d4dc';
         this.style.fontSize = style.fontSize || 14;
         this.style.fontFamily = style.fontFamily || '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-        this.style.fontWeight = style.fontWeight || 'normal';
-        this.style.fontStyle = style.fontStyle || 'normal';
     }
 
     render(container, scales) {
@@ -1821,9 +1643,9 @@ class PinTool extends BaseDrawing {
         const displayText = this.text || '';
         let textBoxGroup = null;
         
-        const boxGap = 8;
         if (displayText) {
             const padding = 14;
+            const boxGap = 8;
             
             // Measure text
             const tempText = container.append('text')
@@ -1840,22 +1662,9 @@ class PinTool extends BaseDrawing {
 
             const boxWidth = Math.max(textBbox.width + padding * 2, 80);
             const boxHeight = textBbox.height + padding;
+            const boxX = x - boxWidth / 2;
+            const boxY = y - pinHeight - boxGap - boxHeight - 8;
             const arrowSize = 8;
-            const edgeMargin = 4;
-
-            // Clamp horizontal so bubble stays within the SVG container
-            const svgEl = container.node().ownerSVGElement || container.node();
-            const svgWidth = svgEl ? (svgEl.clientWidth || 800) : 800;
-            const rawBoxX = x - boxWidth / 2;
-            const boxX = Math.max(edgeMargin, Math.min(rawBoxX, svgWidth - boxWidth - edgeMargin));
-
-            // Flip below pin when bubble would go above the container top
-            const boxY_above = y - pinHeight - boxGap - boxHeight - 8;
-            const renderBelow = boxY_above < edgeMargin;
-            const boxY = renderBelow ? (y + 8) : boxY_above;
-
-            // Clamp arrow tip X so it stays within the box
-            const tipX = Math.max(boxX + arrowSize + 8, Math.min(x, boxX + boxWidth - arrowSize - 8));
 
             // Create text box group - hidden by default, visible when selected
             const isSelected = this.selected || false;
@@ -1866,42 +1675,21 @@ class PinTool extends BaseDrawing {
                 .style('transition', 'opacity 0.15s ease');
 
             // Text box background with pointer arrow
-            let boxPath;
-            if (renderBelow) {
-                // Arrow points up from top of box
-                boxPath = `
-                    M ${boxX + 8} ${boxY + arrowSize}
-                    L ${tipX - arrowSize} ${boxY + arrowSize}
-                    L ${tipX} ${boxY}
-                    L ${tipX + arrowSize} ${boxY + arrowSize}
-                    L ${boxX + boxWidth - 8} ${boxY + arrowSize}
-                    Q ${boxX + boxWidth} ${boxY + arrowSize}, ${boxX + boxWidth} ${boxY + arrowSize + 8}
-                    L ${boxX + boxWidth} ${boxY + boxHeight + arrowSize - 8}
-                    Q ${boxX + boxWidth} ${boxY + boxHeight + arrowSize}, ${boxX + boxWidth - 8} ${boxY + boxHeight + arrowSize}
-                    L ${boxX + 8} ${boxY + boxHeight + arrowSize}
-                    Q ${boxX} ${boxY + boxHeight + arrowSize}, ${boxX} ${boxY + boxHeight + arrowSize - 8}
-                    L ${boxX} ${boxY + arrowSize + 8}
-                    Q ${boxX} ${boxY + arrowSize}, ${boxX + 8} ${boxY + arrowSize}
-                    Z
-                `;
-            } else {
-                // Arrow points down from bottom of box (default: above pin)
-                boxPath = `
-                    M ${boxX + 8} ${boxY}
-                    L ${boxX + boxWidth - 8} ${boxY}
-                    Q ${boxX + boxWidth} ${boxY}, ${boxX + boxWidth} ${boxY + 8}
-                    L ${boxX + boxWidth} ${boxY + boxHeight - 8}
-                    Q ${boxX + boxWidth} ${boxY + boxHeight}, ${boxX + boxWidth - 8} ${boxY + boxHeight}
-                    L ${tipX + arrowSize} ${boxY + boxHeight}
-                    L ${tipX} ${boxY + boxHeight + arrowSize}
-                    L ${tipX - arrowSize} ${boxY + boxHeight}
-                    L ${boxX + 8} ${boxY + boxHeight}
-                    Q ${boxX} ${boxY + boxHeight}, ${boxX} ${boxY + boxHeight - 8}
-                    L ${boxX} ${boxY + 8}
-                    Q ${boxX} ${boxY}, ${boxX + 8} ${boxY}
-                    Z
-                `;
-            }
+            const boxPath = `
+                M ${boxX + 8} ${boxY}
+                L ${boxX + boxWidth - 8} ${boxY}
+                Q ${boxX + boxWidth} ${boxY}, ${boxX + boxWidth} ${boxY + 8}
+                L ${boxX + boxWidth} ${boxY + boxHeight - 8}
+                Q ${boxX + boxWidth} ${boxY + boxHeight}, ${boxX + boxWidth - 8} ${boxY + boxHeight}
+                L ${x + arrowSize} ${boxY + boxHeight}
+                L ${x} ${boxY + boxHeight + arrowSize}
+                L ${x - arrowSize} ${boxY + boxHeight}
+                L ${boxX + 8} ${boxY + boxHeight}
+                Q ${boxX} ${boxY + boxHeight}, ${boxX} ${boxY + boxHeight - 8}
+                L ${boxX} ${boxY + 8}
+                Q ${boxX} ${boxY}, ${boxX + 8} ${boxY}
+                Z
+            `;
 
             const hasBorder = this.style.borderColor && this.style.borderColor !== 'transparent' && this.style.borderColor !== 'none';
             const boxPathEl = textBoxGroup.append('path')
@@ -1913,17 +1701,14 @@ class PinTool extends BaseDrawing {
                 .style('pointer-events', 'all')
                 .style('cursor', 'move');
 
-            // Text (center within body; for below-render the body starts at boxY + arrowSize)
-            const textBodyTop = renderBelow ? boxY + arrowSize : boxY;
+            // Text
             const boxTextEl = textBoxGroup.append('text')
                 .attr('class', 'inline-editable-text')
-                .attr('x', boxX + boxWidth / 2)
-                .attr('y', textBodyTop + boxHeight / 2 + scaledFontSize * 0.35)
+                .attr('x', x)
+                .attr('y', boxY + boxHeight / 2 + scaledFontSize * 0.35)
                 .attr('fill', this.style.textColor)
                 .attr('font-size', `${scaledFontSize}px`)
                 .attr('font-family', this.style.fontFamily)
-                .attr('font-weight', this.style.fontWeight || 'normal')
-                .attr('font-style', this.style.fontStyle || 'normal')
                 .attr('text-anchor', 'middle')
                 .style('pointer-events', 'all')
                 .style('cursor', 'move')
@@ -1971,7 +1756,7 @@ class PinTool extends BaseDrawing {
                 const editor = manager && manager.textEditor;
                 if (!editor || typeof editor.show !== 'function') return;
 
-                const rect = boxTextEl.node().getBoundingClientRect();
+                const rect = boxPathEl.node().getBoundingClientRect();
                 const editX = rect.left + window.scrollX;
                 const editY = rect.top + window.scrollY;
 
@@ -1996,12 +1781,15 @@ class PinTool extends BaseDrawing {
                     },
                     'Enter text…',
                     {
-                        inline: true,
+                        width: rect.width,
+                        height: rect.height,
+                        padding: '0px',
                         fontSize: `${self.style.fontSize || 12}px`,
                         fontFamily: self.style.fontFamily,
                         fontWeight: self.style.fontWeight || 'normal',
                         color: self.style.textColor,
                         textAlign: 'center',
+                        hideTargets: [boxTextEl.node()],
                         hideSelector: `.drawing[data-id="${self.id}"] text`
                     }
                 );
@@ -2048,25 +1836,8 @@ class PinTool extends BaseDrawing {
             [boxPathEl.node(), boxTextEl.node()].forEach((n) => {
                 n.addEventListener('mousedown', handleMouseDown, true);
                 n.addEventListener('click', handleInlineEdit, true);
-                n.addEventListener('dblclick', handleInlineEdit, true);
+                n.addEventListener('dblclick', handleOpenSettings, true);
             });
-        } else {
-            // No text yet — render an invisible anchor so _triggerAutoInlineEdit
-            // can find a real DOM element with the correct screen position.
-            const anchorW = 100;
-            const anchorH = 28;
-            const anchorX = x - anchorW / 2;
-            const anchorY = Math.max(4, y - pinHeight - boxGap - anchorH - 8);
-            this.group.append('rect')
-                .attr('class', 'pin-text-anchor inline-editable-text')
-                .attr('x', anchorX)
-                .attr('y', anchorY)
-                .attr('width', anchorW)
-                .attr('height', anchorH)
-                .attr('fill', 'none')
-                .attr('stroke', 'none')
-                .style('pointer-events', 'none')
-                .style('opacity', 0);
         }
 
         // Map pin marker - classic location pin with round bulb and sharp point
@@ -2312,9 +2083,6 @@ class CalloutTool extends BaseDrawing {
         this.style.borderColor = style.borderColor || '#B2B5BE';
         this.style.textColor = style.textColor || '#F23645';
         this.style.fontSize = style.fontSize || 14;
-        this.style.fontFamily = style.fontFamily || 'Arial, sans-serif';
-        this.style.fontWeight = style.fontWeight || 'normal';
-        this.style.fontStyle = style.fontStyle || 'normal';
     }
 
     render(container, scales) {
@@ -2325,10 +2093,6 @@ class CalloutTool extends BaseDrawing {
             .attr('class', 'drawing callout')
             .attr('data-id', this.id)
             .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
-
-        // Store for live-update during inline editing
-        this._lastContainer = container;
-        this._lastScales = scales;
 
         // Point 1: anchor/tip point, Point 2: bubble position
         const p1 = this.points[0];
@@ -2342,36 +2106,16 @@ class CalloutTool extends BaseDrawing {
         const minWidth = 80;
         const minHeight = 32;
         const cornerRadius = 8;
-        const maxBubbleWidth = this.style.maxWidth || 280;
+        
+        // Measure text
+        const tempText = container.append('text')
+            .attr('font-size', `${this.style.fontSize}px`)
+            .text(this.text);
+        const bbox = tempText.node().getBBox();
+        tempText.remove();
 
-        // Helper: measure single line width via canvas (reliable, no DOM dependency)
-        const _cFontSize = this.style.fontSize || 14;
-        const _cFontFamily = this.style.fontFamily || 'Arial, sans-serif';
-        const _cFontWeight = this.style.fontWeight || 'normal';
-        const _cFontStyle = this.style.fontStyle || 'normal';
-        const _measCanvas = document.createElement('canvas');
-        const _measCtx = _measCanvas.getContext('2d');
-        _measCtx.font = `${_cFontStyle} ${_cFontWeight} ${_cFontSize}px ${_cFontFamily}`;
-        const measureW = (str) => {
-            try { return _measCtx.measureText(str || '').width || (str.length * _cFontSize * 0.6); }
-            catch(e) { return (str || '').length * _cFontSize * 0.6; }
-        };
-
-        // Split only on explicit newlines — no auto word-wrap
-        const calloutWrapLines = (rawText) => {
-            const lines = (rawText || 'Add text').split('\n');
-            return lines.length ? lines : [''];
-        };
-
-        const wrappedLines = calloutWrapLines(this.text);
-        const lineHeight = this.style.fontSize * 1.3;
-
-        // Measure actual max line width (no cap — box grows with text)
-        let maxLineW = 40;
-        wrappedLines.forEach(l => { const w = measureW(l || ' '); if (w > maxLineW) maxLineW = w; });
-
-        const bubbleWidth = Math.max(maxLineW + padding * 2, minWidth);
-        const bubbleHeight = Math.max(wrappedLines.length * lineHeight + padding * 2, minHeight);
+        const bubbleWidth = Math.max(bbox.width + padding * 2, minWidth);
+        const bubbleHeight = Math.max(bbox.height + padding * 2, minHeight);
 
         // Bubble positioned at second point (left-aligned, vertically centered)
         const bubbleX = bubbleCenterX;
@@ -2449,27 +2193,17 @@ class CalloutTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        // Text with wrapped lines
-        const textStartY = bubbleY + padding + this.style.fontSize;
+        // Text (left-aligned with padding)
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
             .attr('x', bubbleX + padding)
-            .attr('y', textStartY)
+            .attr('y', bubbleCenterY + bbox.height / 4)
             .attr('text-anchor', 'start')
             .attr('fill', this.style.textColor)
             .attr('font-size', `${this.style.fontSize}px`)
-            .attr('font-family', _cFontFamily)
-            .attr('font-weight', _cFontWeight)
-            .attr('font-style', _cFontStyle)
             .style('pointer-events', 'all')
-            .style('cursor', 'move');
-
-        wrappedLines.forEach((line, i) => {
-            textElement.append('tspan')
-                .attr('x', bubbleX + padding)
-                .attr('dy', i === 0 ? 0 : lineHeight)
-                .text(line || '\u00A0');
-        });
+            .style('cursor', 'move')
+            .text(this.text);
 
         const self = this;
         const CLICK_DELAY = 250;
@@ -2538,22 +2272,16 @@ class CalloutTool extends BaseDrawing {
                 },
                 'Enter text…',
                 {
-                    inline: true,
+                    width: rect.width,
+                    height: rect.height,
+                    padding: '0px',
                     fontSize: `${self.style.fontSize || 14}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
-                    fontStyle: self.style.fontStyle || 'normal',
                     color: self.style.textColor,
                     textAlign: 'left',
-                    noWrap: true,
-                    maxWidth: self.style.maxWidth || 280,
-                    hideSelector: `.drawing[data-id="${self.id}"] text`,
-                    onInput: (newText) => {
-                        self.setText((newText || '').replace(/\r\n/g, '\n'));
-                        if (self._lastContainer && self._lastScales) {
-                            self.render(self._lastContainer, self._lastScales);
-                        }
-                    }
+                    hideTargets: [textElement.node()],
+                    hideSelector: `.drawing[data-id="${self.id}"] text`
                 }
             );
         };
@@ -2598,7 +2326,7 @@ class CalloutTool extends BaseDrawing {
 
         textElement.node().addEventListener('mousedown', handleMouseDown, true);
         textElement.node().addEventListener('click', handleInlineEdit, true);
-        textElement.node().addEventListener('dblclick', handleInlineEdit, true);
+        textElement.node().addEventListener('dblclick', handleOpenSettings, true);
 
         // Resize handles
         const handleRadius = 4;
@@ -2688,10 +2416,6 @@ class CommentTool extends BaseDrawing {
             .attr('data-id', this.id)
             .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
 
-        // Store for live-update during inline editing
-        this._lastContainer = container;
-        this._lastScales = scales;
-
         const p = this.points[0];
         const centerX = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
         const centerY = scales.yScale(p.y);
@@ -2701,27 +2425,16 @@ class CommentTool extends BaseDrawing {
         const minHeight = 30;
         const r = 16; // Larger radius for more rounded corners
         
-        // Canvas-based measurement (reliable, no DOM dependency)
-        const _cFontSize = this.style.fontSize || 14;
-        const _cFontFamily = this.style.fontFamily || 'Arial, sans-serif';
-        const _cFontWeight = this.style.fontWeight || 'normal';
-        const _cFontStyle = this.style.fontStyle || 'normal';
-        const _measCanvas = document.createElement('canvas');
-        const _measCtx = _measCanvas.getContext('2d');
-        _measCtx.font = `${_cFontStyle} ${_cFontWeight} ${_cFontSize}px ${_cFontFamily}`;
-        const measureW = (str) => {
-            try { return _measCtx.measureText(str || '').width || ((str || '').length * _cFontSize * 0.6); }
-            catch(e) { return (str || '').length * _cFontSize * 0.6; }
-        };
+        const tempText = container.append('text')
+            .attr('font-size', `${this.style.fontSize}px`)
+            .attr('font-weight', this.style.fontWeight || 'normal')
+            .attr('font-style', this.style.fontStyle || 'normal')
+            .text(this.text);
+        const bbox = tempText.node().getBBox();
+        tempText.remove();
 
-        // Split on explicit newlines only
-        const lines = (this.text || 'text').split('\n');
-        const lineHeight = _cFontSize * 1.3;
-        let maxLineW = minWidth - padding * 2;
-        lines.forEach(l => { const lw = measureW(l || ' '); if (lw > maxLineW) maxLineW = lw; });
-
-        const w = Math.max(maxLineW + padding * 2, minWidth);
-        const h = Math.max(lines.length * lineHeight + padding * 2, minHeight);
+        const w = Math.max(bbox.width + padding * 2, minWidth);
+        const h = Math.max(bbox.height + padding * 2, minHeight);
 
         // Center the bubble on the point
         const bubbleX = centerX - w / 2;
@@ -2772,58 +2485,20 @@ class CommentTool extends BaseDrawing {
             textAnchor = 'end';
         }
 
-        const textStartY = bubbleY + padding + _cFontSize;
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
             .attr('x', textX)
-            .attr('y', textStartY)
+            .attr('y', bubbleY + h / 2 + bbox.height / 4)
             .attr('text-anchor', textAnchor)
             .attr('fill', this.style.textColor)
-            .attr('font-size', `${_cFontSize}px`)
+            .attr('font-size', `${this.style.fontSize}px`)
             .attr('font-weight', this.style.fontWeight || 'normal')
             .attr('font-style', this.style.fontStyle || 'normal')
             .style('pointer-events', 'all')
-            .style('cursor', 'move');
-
-        lines.forEach((line, i) => {
-            textElement.append('tspan')
-                .attr('x', textX)
-                .attr('dy', i === 0 ? 0 : lineHeight)
-                .text(line || '\u00A0');
-        });
+            .style('cursor', 'move')
+            .text(this.text);
 
         const self = this;
-
-        // In-place live updater — avoids full re-render, updates paths + tspans directly
-        self._updateCommentBubble = () => {
-            const lNew = (self.text || 'text').split('\n');
-            let mLW = minWidth - padding * 2;
-            lNew.forEach(l => { const lw = measureW(l || ' '); if (lw > mLW) mLW = lw; });
-            const wN = Math.max(mLW + padding * 2, minWidth);
-            const hN = Math.max(lNew.length * lineHeight + padding * 2, minHeight);
-            const bX = centerX - wN / 2;
-            const bY = centerY - hN / 2;
-            const np = `M ${bX+r} ${bY} L ${bX+wN-r} ${bY} Q ${bX+wN} ${bY} ${bX+wN} ${bY+r} L ${bX+wN} ${bY+hN-r} Q ${bX+wN} ${bY+hN} ${bX+wN-r} ${bY+hN} L ${bX+r} ${bY+hN} L ${bX} ${bY+hN} L ${bX} ${bY+r} Q ${bX} ${bY} ${bX+r} ${bY} Z`;
-            self.group.selectAll('path').attr('d', np);
-            let tXN = bX + wN / 2, tAN = 'middle';
-            if (self.style.textAlign === 'left')  { tXN = bX + padding;       tAN = 'start'; }
-            if (self.style.textAlign === 'right') { tXN = bX + wN - padding;  tAN = 'end'; }
-            const tEl = self.group.select('text.inline-editable-text');
-            tEl.attr('x', tXN).attr('y', bY + padding + _cFontSize).attr('text-anchor', tAN);
-            tEl.selectAll('tspan').remove();
-            lNew.forEach((line, i) => {
-                tEl.append('tspan').attr('x', tXN).attr('dy', i === 0 ? 0 : lineHeight).text(line || '\u00A0');
-            });
-            // Sync inline editor position to new text element location
-            const edDiv = document.querySelector('.inline-text-editor--inline');
-            if (edDiv && tEl.node()) {
-                const nr = tEl.node().getBoundingClientRect();
-                if (nr.left || nr.top) {
-                    edDiv.style.left = (nr.left + window.scrollX) + 'px';
-                    edDiv.style.top  = (nr.top  + window.scrollY) + 'px';
-                }
-            }
-        };
         const CLICK_DELAY = 250;
         let clickTimer = null;
         let downPos = null;
@@ -2890,21 +2565,16 @@ class CommentTool extends BaseDrawing {
                 },
                 'Enter text…',
                 {
-                    inline: true,
+                    width: rect.width,
+                    height: rect.height,
+                    padding: '0px',
                     fontSize: `${self.style.fontSize || 14}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
                     color: self.style.textColor,
-                    textAlign: 'left',
-                    noWrap: true,
-                    maxWidth: self.style.maxWidth || 280,
-                    hideSelector: `.drawing[data-id="${self.id}"] text`,
-                    onInput: (newText) => {
-                        self.setText((newText || '').replace(/\r\n/g, '\n'));
-                        if (typeof self._updateCommentBubble === 'function') {
-                            self._updateCommentBubble();
-                        }
-                    }
+                    textAlign: self.style.textAlign || 'center',
+                    hideTargets: [textElement.node()],
+                    hideSelector: `.drawing[data-id="${self.id}"] text`
                 }
             );
         };
@@ -2949,7 +2619,7 @@ class CommentTool extends BaseDrawing {
 
         textElement.node().addEventListener('mousedown', handleMouseDown, true);
         textElement.node().addEventListener('click', handleInlineEdit, true);
-        textElement.node().addEventListener('dblclick', handleInlineEdit, true);
+        textElement.node().addEventListener('dblclick', handleOpenSettings, true);
 
         return this.group;
     }
@@ -2957,7 +2627,7 @@ class CommentTool extends BaseDrawing {
     setText(newText) { this.text = newText; }
     toJSON() { return { ...super.toJSON(), text: this.text }; }
     static fromJSON(data, chart) {
-        const tool = new CalloutTool(data.points, data.style, data.text);
+        const tool = new CommentTool(data.points, data.style, data.text);
         tool.id = data.id; tool.visible = data.visible; tool.meta = data.meta; tool.chart = chart;
         return tool;
     }
@@ -2977,8 +2647,6 @@ class PriceLabelTool extends BaseDrawing {
         this.style.textColor = style.textColor || '#FFFFFF';
         this.style.fontSize = style.fontSize || 12;
         this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
-        this.style.fontWeight = style.fontWeight || 'normal';
-        this.style.fontStyle = style.fontStyle || 'normal';
     }
 
     render(container, scales) {
@@ -3016,8 +2684,6 @@ class PriceLabelTool extends BaseDrawing {
         const tempText = container.append('text')
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
             .text(priceText);
         let textBbox;
         try {
@@ -3066,8 +2732,6 @@ class PriceLabelTool extends BaseDrawing {
             .attr('fill', this.style.textColor)
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
             .attr('text-anchor', 'middle')
             .style('pointer-events', 'none')
             .text(priceText);
@@ -3127,7 +2791,6 @@ class PriceLabel2Tool extends BaseDrawing {
         this.style.fontSize = style.fontSize || 14;
         this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
         this.style.fontWeight = style.fontWeight || 'bold';
-        this.style.fontStyle = style.fontStyle || 'normal';
     }
 
     render(container, scales) {
@@ -3162,7 +2825,6 @@ class PriceLabel2Tool extends BaseDrawing {
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight)
-            .attr('font-style', this.style.fontStyle || 'normal')
             .text(priceText);
         let textBbox;
         try {
@@ -3227,7 +2889,6 @@ class PriceLabel2Tool extends BaseDrawing {
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight)
-            .attr('font-style', this.style.fontStyle || 'normal')
             .attr('text-anchor', 'middle')
             .style('pointer-events', 'none')
             .text(priceText);
@@ -3289,8 +2950,6 @@ class Signpost2Tool extends BaseDrawing {
         this.style.textColor = style.textColor || '#d1d4dc';
         this.style.fontSize = style.fontSize || 13;
         this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
-        this.style.fontWeight = style.fontWeight || 'normal';
-        this.style.fontStyle = style.fontStyle || 'normal';
         this.style.lineLength = style.lineLength || 100;
     }
 
@@ -3312,7 +2971,7 @@ class Signpost2Tool extends BaseDrawing {
         const p1 = this.points[0];
         const x1 = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
         const y1 = scales.yScale(p1.y);
-        const lineColor = this.style.fill || this.style.stroke || '#787b86';
+        const lineColor = this.style.stroke || '#787b86';
         const rawTextBorderColor = this.style.borderColor;
         const textBorderColor = (rawTextBorderColor === undefined || rawTextBorderColor === null || rawTextBorderColor === '')
             ? lineColor
@@ -3376,7 +3035,7 @@ class Signpost2Tool extends BaseDrawing {
             .attr('stroke', hasTextBorder ? textBorderColor : 'none')
             .attr('stroke-width', hasTextBorder ? 1 : 0)
             .attr('rx', cornerRadius)
-            .attr('class', 'shape-fill inline-editable-text')
+            .attr('class', 'shape-fill')
             .style('pointer-events', 'none')
             .style('cursor', 'default');
 
@@ -3395,14 +3054,11 @@ class Signpost2Tool extends BaseDrawing {
 
         // Text
         const textElement = this.group.append('text')
-            .attr('class', 'inline-editable-text')
             .attr('x', x1)
             .attr('y', boxY + boxHeight / 2 + scaledFontSize / 3)
             .attr('fill', this.style.textColor)
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
             .attr('text-anchor', 'middle')
             .style('pointer-events', 'none')
             .text(displayText);
@@ -3450,7 +3106,7 @@ class Signpost2Tool extends BaseDrawing {
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
 
-            const bbox = textElement.node().getBoundingClientRect();
+            const bbox = textBox.node().getBoundingClientRect();
             const x = bbox.left + window.scrollX;
             const y = bbox.top + window.scrollY;
 
@@ -3461,7 +3117,7 @@ class Signpost2Tool extends BaseDrawing {
             editor.show(
                 x,
                 y,
-                (self.text && self.text !== 'add text') ? self.text : '',
+                self.text || 'add text',
                 (newText) => {
                     const normalized = (newText || '').replace(/\r\n/g, '\n');
                     if (!normalized.trim()) {
@@ -3475,13 +3131,15 @@ class Signpost2Tool extends BaseDrawing {
                 },
                 'Enter text…',
                 {
-                    inline: true,
+                    width: bbox.width,
+                    height: bbox.height,
+                    padding: '0px',
                     fontSize: `${self.style.fontSize || 12}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
-                    fontStyle: self.style.fontStyle || 'normal',
                     color: self.style.textColor,
                     textAlign: 'center',
+                    hideTargets: [textBox.node()],
                     hideSelector: `.drawing[data-id="${self.id}"] text`
                 }
             );
@@ -3523,14 +3181,14 @@ class Signpost2Tool extends BaseDrawing {
         // Use native listeners so D3 manager handlers don't override these
         textBox.node().addEventListener('mousedown', handleMouseDown, true);
         textBox.node().addEventListener('click', handleInlineEdit, true);
-        textBox.node().addEventListener('dblclick', handleInlineEdit, true);
+        textBox.node().addEventListener('dblclick', handleOpenSettings, true);
 
         // Small circle at the anchor point
         this.group.append('circle')
             .attr('cx', x1)
             .attr('cy', y1)
             .attr('r', 4 * scaleFactor)
-            .attr('fill', lineColor)
+            .attr('fill', this.style.stroke)
             .style('pointer-events', 'none');
 
         // Create handles
@@ -3643,13 +3301,12 @@ class FlagMarkTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('flag-mark', points, style);
         this.requiredPoints = 1;
-        const flagColor = style.fill || style.stroke || '#787b86';
-        this.style.stroke = flagColor;
-        this.style.fill = flagColor;
+        this.style.stroke = style.stroke || '#787b86';
         this.style.strokeWidth = style.strokeWidth || 2;
-        this.style.lineLength = 24;
-        this.style.flagWidth = 22;
-        this.style.flagHeight = 14;
+        this.style.fill = style.fill || '#787b86';
+        this.style.lineLength = style.lineLength || 40;
+        this.style.flagWidth = style.flagWidth || 16;
+        this.style.flagHeight = style.flagHeight || 12;
     }
 
     render(container, scales) {
@@ -3668,9 +3325,9 @@ class FlagMarkTool extends BaseDrawing {
         // Get zoom scale factor
         const scaleFactor = scales.chart?.getZoomScaleFactor ? scales.chart.getZoomScaleFactor() : 1;
         const scaledStrokeWidth = (this.style.strokeWidth || 2) * scaleFactor;
-        const lineLength = (this.style.lineLength || 24);
-        const flagWidth = (this.style.flagWidth || 22);
-        const flagHeight = (this.style.flagHeight || 14);
+        const lineLength = (this.style.lineLength || 100) * scaleFactor;
+        const flagWidth = (this.style.flagWidth || 40) * scaleFactor;
+        const flagHeight = (this.style.flagHeight || 30) * scaleFactor;
 
         // Vertical line (pole) extending upward
         const lineEndY = y1 - lineLength;
@@ -3704,8 +3361,8 @@ class FlagMarkTool extends BaseDrawing {
         this.group.append('path')
             .attr('d', flagPath)
             .attr('fill', this.style.fill)
-            .attr('stroke', 'none')
-            .attr('stroke-width', 0)
+            .attr('stroke', this.style.stroke)
+            .attr('stroke-width', scaledStrokeWidth * 0.5)
             .style('pointer-events', 'none')
             .style('cursor', 'default');
 

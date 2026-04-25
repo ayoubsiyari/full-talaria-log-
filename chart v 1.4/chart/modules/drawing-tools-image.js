@@ -3,11 +3,6 @@
  * Provides a single-point drawing that renders uploaded images.
  * Supports resizing via corner handles and scales with chart zoom.
  */
-
-/** Default on-screen size (px) used to seed data-unit sizing — matches placeholder box, larger than legacy 100×100. */
-const IMAGE_TOOL_DEFAULT_WIDTH = 200;
-const IMAGE_TOOL_DEFAULT_HEIGHT = 150;
-
 class ImageTool extends BaseDrawing {
     constructor(points = [], options = {}) {
         const resolved = ImageTool.resolveOptions(options);
@@ -20,8 +15,8 @@ class ImageTool extends BaseDrawing {
 
     static resolveOptions(options = {}) {
         const imageUrl = options.imageUrl || '';
-        const width = options.width || IMAGE_TOOL_DEFAULT_WIDTH;
-        const height = options.height || IMAGE_TOOL_DEFAULT_HEIGHT;
+        const width = options.width || 100;
+        const height = options.height || 100;
         const opacity = options.opacity != null ? options.opacity : 1;
         const widthInDataUnits = options.widthInDataUnits || null;
         const heightInDataUnits = options.heightInDataUnits || null;
@@ -45,8 +40,8 @@ class ImageTool extends BaseDrawing {
 
     ensureDefaults() {
         if (!this.style.imageUrl) this.style.imageUrl = '';
-        if (!this.style.width) this.style.width = IMAGE_TOOL_DEFAULT_WIDTH;
-        if (!this.style.height) this.style.height = IMAGE_TOOL_DEFAULT_HEIGHT;
+        if (!this.style.width) this.style.width = 100;
+        if (!this.style.height) this.style.height = 100;
         if (typeof this.style.opacity !== 'number') this.style.opacity = 1;
         if (typeof this.style.maintainAspectRatio !== 'boolean') {
             this.style.maintainAspectRatio = true;
@@ -64,52 +59,43 @@ class ImageTool extends BaseDrawing {
         }
 
         const point = this.points[0];
-        const isPlaceholder = !this.style.imageUrl;
-
-        let x, y;
-        let width = this.style.width || IMAGE_TOOL_DEFAULT_WIDTH;
-        let height = this.style.height || IMAGE_TOOL_DEFAULT_HEIGHT;
-
-        if (isPlaceholder) {
-            // Position from anchor — placed at click position
-            x = scales.chart && typeof scales.chart.dataIndexToPixel === 'function'
-                ? scales.chart.dataIndexToPixel(point.x)
-                : scales.xScale(point.x);
-            y = scales.yScale(point.y);
-            // Fixed pixel size — does not scale with zoom
-            width = IMAGE_TOOL_DEFAULT_WIDTH;
-            height = IMAGE_TOOL_DEFAULT_HEIGHT;
-            // Do NOT set widthInDataUnits — image render will initialise it after upload
-        } else {
-            x = scales.chart && typeof scales.chart.dataIndexToPixel === 'function'
-                ? scales.chart.dataIndexToPixel(point.x)
-                : scales.xScale(point.x);
-            y = scales.yScale(point.y);
-
-            // Initialize size in data units on first render
-            if (!this.style.widthInDataUnits && scales.xScale && scales.yScale) {
-                const xDataAtOffset = scales.chart && scales.chart.pixelToDataIndex ?
-                    scales.chart.pixelToDataIndex(x + width) : scales.xScale.invert(x + width);
-                const yDataAtOffset = scales.yScale.invert(y + height);
-                this.style.widthInDataUnits = Math.abs(point.x - xDataAtOffset);
-                this.style.heightInDataUnits = Math.abs(point.y - yDataAtOffset);
-            }
-
-            // Calculate size from data units (scales with chart zoom)
-            if (this.style.widthInDataUnits && this.style.heightInDataUnits && scales.xScale && scales.yScale) {
-                const x2 = point.x + this.style.widthInDataUnits;
-                const y2 = point.y - this.style.heightInDataUnits;
-                const x2Pixel = scales.chart && scales.chart.dataIndexToPixel ?
-                    scales.chart.dataIndexToPixel(x2) : scales.xScale(x2);
-                const y2Pixel = scales.yScale(y2);
-                width = Math.max(10, Math.min(1500, Math.abs(x2Pixel - x)));
-                height = Math.max(10, Math.min(1500, Math.abs(y2Pixel - y)));
-            }
-        }
+        const x = scales.chart && typeof scales.chart.dataIndexToPixel === 'function'
+            ? scales.chart.dataIndexToPixel(point.x)
+            : scales.xScale(point.x);
+        const y = scales.yScale(point.y);
 
         this._screenX = x;
         this._screenY = y;
         this._scales = scales;
+
+        let width = this.style.width || 100;
+        let height = this.style.height || 100;
+        
+        // Initialize size in data units on first render
+        if (!this.style.widthInDataUnits && scales.xScale && scales.yScale) {
+            const xPixel = x;
+            const yPixel = y;
+            const xDataAtOffset = scales.chart && scales.chart.pixelToDataIndex ? 
+                scales.chart.pixelToDataIndex(xPixel + width) : scales.xScale.invert(xPixel + width);
+            const yDataAtOffset = scales.yScale.invert(yPixel + height);
+            this.style.widthInDataUnits = Math.abs(point.x - xDataAtOffset);
+            this.style.heightInDataUnits = Math.abs(point.y - yDataAtOffset);
+        }
+        
+        // Calculate size from data units (scales with chart zoom)
+        if (this.style.widthInDataUnits && this.style.heightInDataUnits && scales.xScale && scales.yScale) {
+            const x1Pixel = x;
+            const y1Pixel = y;
+            const x2 = point.x + this.style.widthInDataUnits;
+            const y2 = point.y - this.style.heightInDataUnits;
+            const x2Pixel = scales.chart && scales.chart.dataIndexToPixel ? 
+                scales.chart.dataIndexToPixel(x2) : scales.xScale(x2);
+            const y2Pixel = scales.yScale(y2);
+            width = Math.abs(x2Pixel - x1Pixel);
+            height = Math.abs(y2Pixel - y1Pixel);
+            width = Math.max(10, Math.min(1500, width));
+            height = Math.max(10, Math.min(1500, height));
+        }
 
         this.group = container.append('g')
             .attr('class', 'drawing image-tool')
@@ -178,99 +164,28 @@ class ImageTool extends BaseDrawing {
                 .style('cursor', 'move');
         } else {
             // Placeholder when no image is set
-            const placeholderRect = this.group.append('rect')
+            this.group.append('rect')
                 .attr('class', 'image-placeholder')
                 .attr('x', -width / 2)
                 .attr('y', -height / 2)
                 .attr('width', width)
                 .attr('height', height)
-                .attr('fill', 'rgba(120, 123, 134, 0.05)')
+                .attr('fill', 'rgba(120, 123, 134, 0.1)')
                 .attr('stroke', '#787b86')
                 .attr('stroke-width', 1)
                 .attr('stroke-dasharray', '4,4')
                 .style('pointer-events', 'all')
-                .style('cursor', 'pointer');
+                .style('cursor', 'move');
 
-            // Double-click on placeholder opens settings
-            const self = this;
-            placeholderRect.node().addEventListener('dblclick', (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                const manager = self.chart && self.chart.drawingManager;
-                if (manager && typeof manager.editDrawing === 'function') {
-                    if (typeof manager.selectDrawing === 'function') manager.selectDrawing(self);
-                    manager.editDrawing(self, e.pageX, e.pageY);
-                }
-            });
-
-            // Upload button — adaptive to box dimensions
-            const btnW = Math.max(90, Math.min(width * 0.6, 150));
-            const btnH = Math.max(26, Math.min(height * 0.22, 38));
-            const btnFontSize = Math.max(10, Math.min(13, btnW * 0.09));
-            const iconSize = Math.max(10, Math.min(15, btnFontSize + 2));
-
-            const fo = this.group.append('foreignObject')
-                .attr('x', -btnW / 2)
-                .attr('y', -btnH / 2)
-                .attr('width', btnW)
-                .attr('height', btnH)
-                .style('pointer-events', 'all')
-                .style('overflow', 'visible');
-
-            const btnDiv = fo.append('xhtml:div')
-                .style('width', `${btnW}px`)
-                .style('height', `${btnH}px`)
-                .style('display', 'flex')
-                .style('align-items', 'center')
-                .style('justify-content', 'center')
-                .style('gap', '5px')
-                .style('background', 'rgba(41,98,255,0.15)')
-                .style('border', '1px solid rgba(41,98,255,0.5)')
-                .style('border-radius', '4px')
-                .style('color', '#6b8fff')
-                .style('font-size', `${btnFontSize}px`)
-                .style('font-family', 'Roboto, sans-serif')
-                .style('cursor', 'pointer')
-                .style('user-select', 'none')
-                .style('box-sizing', 'border-box')
-                .html(`<svg width="${iconSize}" height="${iconSize}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span>Upload Image</span>`);
-
-            const btnNode = btnDiv.node();
-            // Use mousedown to trigger upload — the SVG manager intercepts mousedown
-            // and calls preventDefault which kills the subsequent click event.
-            // Stopping propagation here prevents the manager from ever seeing it.
-            let btnDownTime = 0;
-            btnNode.addEventListener('mousedown', (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                btnDownTime = Date.now();
-            }, true);
-            btnNode.addEventListener('mouseup', (e) => {
-                e.stopPropagation();
-                const elapsed = Date.now() - btnDownTime;
-                if (elapsed < 300 && !self._uploadDialogOpen) {
-                    self.triggerImageUpload();
-                }
-            }, true);
-            btnNode.addEventListener('dblclick', (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                const manager = self.chart && self.chart.drawingManager;
-                if (manager && typeof manager.editDrawing === 'function') {
-                    if (typeof manager.selectDrawing === 'function') manager.selectDrawing(self);
-                    manager.editDrawing(self, e.pageX, e.pageY);
-                }
-            });
-            btnNode.addEventListener('mouseenter', function() {
-                this.style.background = 'rgba(41,98,255,0.3)';
-                this.style.borderColor = 'rgba(41,98,255,0.8)';
-                this.style.color = '#fff';
-            });
-            btnNode.addEventListener('mouseleave', function() {
-                this.style.background = 'rgba(41,98,255,0.15)';
-                this.style.borderColor = 'rgba(41,98,255,0.5)';
-                this.style.color = '#6b8fff';
-            });
+            this.group.append('text')
+                .attr('x', 0)
+                .attr('y', 0)
+                .attr('text-anchor', 'middle')
+                .attr('dominant-baseline', 'middle')
+                .attr('fill', '#787b86')
+                .attr('font-size', '14px')
+                .style('pointer-events', 'none')
+                .text('Upload image from settings');
         }
 
         this._currentWidth = width;
@@ -278,9 +193,7 @@ class ImageTool extends BaseDrawing {
         this._borderWidth = borderWidth;
         this._borderHeight = borderHeight;
 
-        if (!isPlaceholder) {
-            this.createBoxHandles(this.group, scales);
-        }
+        this.createBoxHandles(this.group, scales);
 
         return this.group;
     }
@@ -367,8 +280,8 @@ class ImageTool extends BaseDrawing {
         this._dragStartHeightInDataUnits = this.style.heightInDataUnits || 0;
         this._dragStartCenter = { x: this._screenX, y: this._screenY };
         this._dragStartCenterPx = { x: this._screenX || 0, y: this._screenY || 0 };
-        this._dragStartWidthPx = this._currentWidth || this.style.width || IMAGE_TOOL_DEFAULT_WIDTH;
-        this._dragStartHeightPx = this._currentHeight || this.style.height || IMAGE_TOOL_DEFAULT_HEIGHT;
+        this._dragStartWidthPx = this._currentWidth || this.style.width || 100;
+        this._dragStartHeightPx = this._currentHeight || this.style.height || 100;
         this._dragStartPoint = this.points && this.points[0] ? { x: this.points[0].x, y: this.points[0].y } : null;
         const screenX = context.screen?.x || 0;
         const screenY = context.screen?.y || 0;
@@ -392,8 +305,8 @@ class ImageTool extends BaseDrawing {
             const chart = this._scales.chart;
             const point = this.points[0];
 
-            const startWidthPx = this._dragStartWidthPx || IMAGE_TOOL_DEFAULT_WIDTH;
-            const startHeightPx = this._dragStartHeightPx || IMAGE_TOOL_DEFAULT_HEIGHT;
+            const startWidthPx = this._dragStartWidthPx || 100;
+            const startHeightPx = this._dragStartHeightPx || 100;
             let newWidthPx = startWidthPx;
             let newHeightPx = startHeightPx;
 
@@ -483,8 +396,8 @@ class ImageTool extends BaseDrawing {
             scales.chart.dataIndexToPixel(point.x) : scales.xScale(point.x);
         const cy = scales.yScale(point.y);
         
-        let width = this.style.width || IMAGE_TOOL_DEFAULT_WIDTH;
-        let height = this.style.height || IMAGE_TOOL_DEFAULT_HEIGHT;
+        let width = this.style.width || 100;
+        let height = this.style.height || 100;
         
         if (this.style.widthInDataUnits && this.style.heightInDataUnits && scales.xScale && scales.yScale) {
             const x1Pixel = cx;
@@ -590,10 +503,6 @@ class ImageTool extends BaseDrawing {
                         }
 
                         this.style.imageUrl = imageDataUrl;
-                        this.style.width = IMAGE_TOOL_DEFAULT_WIDTH;
-                        this.style.height = IMAGE_TOOL_DEFAULT_HEIGHT;
-                        this.style.widthInDataUnits = null;
-                        this.style.heightInDataUnits = null;
                         this.meta.updatedAt = Date.now();
 
                         if (this.chart && this.chart.drawingManager && typeof this.chart.drawingManager.saveDrawings === 'function') {
@@ -615,10 +524,6 @@ class ImageTool extends BaseDrawing {
                     try {
                         this.style.originalAspectRatio = null;
                         this.style.imageUrl = imageDataUrl;
-                        this.style.width = IMAGE_TOOL_DEFAULT_WIDTH;
-                        this.style.height = IMAGE_TOOL_DEFAULT_HEIGHT;
-                        this.style.widthInDataUnits = null;
-                        this.style.heightInDataUnits = null;
                         this.meta.updatedAt = Date.now();
 
                         if (this.chart && this.chart.drawingManager && typeof this.chart.drawingManager.saveDrawings === 'function') {
