@@ -7887,9 +7887,10 @@ class Chart {
         if (!this.data || this.data.length === 0) return;
         // Allow main chart (panel 0) to sync to other panels too
         if (!window.panelManager || window.panelManager.currentLayout === '1') return;
+        const pm = window.panelManager;
         if (this._suppressPanelScrollSync) return;
-        if (window.panelManager._isSyncing) return;
-        if (window.panelManager._syncingDateRange) return;
+        if (pm._isSyncing) return;
+        if (pm._syncingDateRange) return;
 
         // Visible range: use same helpers as UI so timestamps match actual viewport (multi-TF sync).
         const startIndex = typeof this.getVisibleStartIndex === 'function'
@@ -7907,8 +7908,18 @@ class Chart {
         // Right-edge bar index (same geometry as wheel zoom) — used for Time sync discrete steps (range-by-range).
         const m = this.margin || { l: 0, r: 60 };
         const spacing = this.getCandleSpacing ? this.getCandleSpacing() : (this.candleWidth + 2);
+        if (!Number.isFinite(spacing) || spacing <= 0) return;
         const rightEdgePx = this.w - m.r;
         const idxAtRight = (rightEdgePx - m.l - this.offsetX) / spacing;
+        if (typeof pm._scrollIdxFloatBounds === 'function') {
+            const b = pm._scrollIdxFloatBounds(this);
+            if (!Number.isFinite(idxAtRight) || idxAtRight < b.lo - 96 || idxAtRight > b.hi + 96) {
+                // Recover from stale geometry after symbol/TF switches instead of emitting bad sync events.
+                if (typeof this.constrainOffset === 'function') this.constrainOffset();
+                if (typeof this.scheduleRender === 'function') this.scheduleRender();
+                return;
+            }
+        }
         const rightEdgeBarIndex = Math.max(0, Math.min(this.data.length - 1, Math.floor(idxAtRight)));
         const timeSyncEndTimestamp = (this.data[rightEdgeBarIndex]?.t ?? 0) + barMs;
         
@@ -7929,6 +7940,9 @@ class Chart {
         }
         
         if (!sourcePanel) return;
+        if (typeof pm._hasAnyScrollSyncPeerFor === 'function' && !pm._hasAnyScrollSyncPeerFor(sourcePanel, this)) {
+            return;
+        }
         window.dispatchEvent(new CustomEvent('chartScrolled', {
             detail: {
                 chart: this,

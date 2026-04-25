@@ -677,6 +677,9 @@ class PanelManager {
         const hasA = fidA != null && String(fidA).trim() !== '';
         const hasB = fidB != null && String(fidB).trim() !== '';
         if (hasA && hasB) return String(fidA) === String(fidB);
+        // If only one side has a concrete file-id, treat them as different instruments
+        // and never sync scroll (prevents cross-pair drag coupling after symbol switches).
+        if (hasA !== hasB) return false;
         const symA = String(sourceChart.currentSymbol || '').trim().toUpperCase();
         const symB = String(targetChart.currentSymbol || '').trim().toUpperCase();
         if (symA && symB) return symA === symB;
@@ -939,7 +942,12 @@ class PanelManager {
         const idxRaw = (rightEdgePx - m.l - sourceChart.offsetX) / spacing;
         const bSrc = this._scrollIdxFloatBounds(sourceChart);
         // Stale offsetX after a large timeframe jump (old zoom vs new spacing) blows idxRaw up and breaks followers.
-        if (!Number.isFinite(idxRaw) || idxRaw < bSrc.lo - 64 || idxRaw > bSrc.hi + 64) return;
+        if (!Number.isFinite(idxRaw) || idxRaw < bSrc.lo - 64 || idxRaw > bSrc.hi + 64) {
+            // Defensive recovery: keep source chart in-bounds instead of forwarding bad geometry.
+            if (typeof sourceChart.constrainOffset === 'function') sourceChart.constrainOffset();
+            if (typeof sourceChart.scheduleRender === 'function') sourceChart.scheduleRender();
+            return;
+        }
         const idxFloat = Math.max(bSrc.lo, Math.min(idxRaw, bSrc.hi));
 
         const srcBarMs = typeof sourceChart.inferBarDurationMs === 'function'
@@ -991,6 +999,7 @@ class PanelManager {
                 const targetIdx = chart.findGoToTargetIndex
                     ? chart.findGoToTargetIndex(chart.data, ts)
                     : this._bsearchTimestamp(chart.data, ts);
+                if (!Number.isFinite(targetIdx) || targetIdx < 0) return;
                 const lastIdx = this._timeSyncLastTargetBar[panel.index];
                 if (lastIdx === targetIdx) return;
 
@@ -1001,9 +1010,12 @@ class PanelManager {
                 const spacing2 = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
                 const m2 = chart.margin || { l: 0, r: 60 };
                 const chartWidth2 = chart.w - m2.l - m2.r;
-                const visibleCandles = Math.max(1, Math.floor(chartWidth2 / spacing2));
+                if (!(chartWidth2 > 0) || !Number.isFinite(spacing2) || spacing2 <= 0) return;
+                const bTgt = this._scrollIdxFloatBounds(chart);
+                const targetIdxClamped = Math.max(bTgt.lo, Math.min(targetIdx, bTgt.hi));
 
-                chart.offsetX = -(targetIdx - visibleCandles + 1) * spacing2;
+                // Keep right-edge anchoring consistent with same-bar-step branch.
+                chart.offsetX = chart.w - m2.r - m2.l - targetIdxClamped * spacing2;
                 if (chart.constrainOffset) chart.constrainOffset();
                 if (chart.scheduleRender) chart.scheduleRender();
                 else if (chart.render) chart.render();
