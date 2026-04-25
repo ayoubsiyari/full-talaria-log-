@@ -724,26 +724,37 @@ class TimeframeFavorites {
             // Update panel1 (linked pane)
             const panel1 = window._linkedPaneData.panel1;
             if (panel1.chartInstance && panel1.chartInstance.rawData && panel1.chartInstance.rawData.length > 0) {
+                const pc = panel1.chartInstance;
+
+                // Capture center timestamp and zoom BEFORE resampling
+                const centerTimestamp = pc._getVisibleCenterTimestamp ? pc._getVisibleCenterTimestamp() : null;
+                const savedCandleWidth = pc.candleWidth;
+                const hadData = pc.data && pc.data.length > 0;
+
                 // Resample panel data to new timeframe
-                panel1.chartInstance.data = panel1.chartInstance.resampleData(
-                    panel1.chartInstance.rawData, 
-                    timeframe
-                );
-                panel1.chartInstance.currentTimeframe = timeframe;
+                pc.data = pc.resampleData(pc.rawData, timeframe);
+                pc.currentTimeframe = timeframe;
                 panel1.timeframe = timeframe;
-                
+
                 // Update timeframe label
                 const tfLabel = document.getElementById('chartTimeframe1');
                 if (tfLabel) tfLabel.textContent = timeframe;
-                
-                // Sync scroll position from main chart
-                if (window.chart) {
-                    panel1.chartInstance.offsetX = window.chart.offsetX || 0;
-                    panel1.chartInstance.candleWidth = window.chart.candleWidth || 8;
+
+                // Restore position to center timestamp if we had data before
+                if (hadData && centerTimestamp && pc.data && pc.data.length > 0 && pc._restorePositionToTimestamp) {
+                    pc._restorePositionToTimestamp(centerTimestamp, savedCandleWidth);
+                } else {
+                    // Fallback: sync from main chart if no previous data
+                    if (window.chart) {
+                        pc.offsetX = window.chart.offsetX || 0;
+                        pc.candleWidth = window.chart.candleWidth || 8;
+                    }
+                    pc._chartViewRestored = false;
+                    if (typeof pc.fitToView === 'function') pc.fitToView();
                 }
-                
+
                 // Re-render
-                panel1.chartInstance.render();
+                pc.render();
                 console.log(`⏱️ Synced linked pane timeframe to ${timeframe}`);
             }
         } else if (window.panelManager && window.panelManager.getCurrentLayout() !== '1') {
