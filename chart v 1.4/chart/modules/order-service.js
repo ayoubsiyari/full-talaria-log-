@@ -28,6 +28,29 @@ class OrderService {
         this.symbolPrecision = 5;
 
         this.listeners = [];
+        this.multiInstrumentSession = this.createDefaultMultiInstrumentSession();
+    }
+
+    createDefaultMultiInstrumentSession() {
+        const now = Date.now();
+        return {
+            session_id: null,
+            account_currency: 'USD',
+            leverage: 30,
+            margin_call_level: 100,
+            stop_out_level: 50,
+            max_risk_per_trade_pct: null,
+            instruments: {},
+            current_time: now,
+            session_time: now,
+            used_margin: 0,
+            free_margin: this.balance * 30,
+            total_buying_power: this.balance * 30,
+            per_instrument_stats: {},
+            post_exit_trades: [],
+            archived_trades: [],
+            equity_curve: []
+        };
     }
 
     getState() {
@@ -37,20 +60,114 @@ class OrderService {
             closedPositions: this.closedPositions,
             pendingOrders: this.pendingOrders,
             balance: this.balance,
-            equity: this.equity
+            equity: this.equity,
+            multiInstrumentSession: this.multiInstrumentSession
         };
     }
 
     loadSessionState(session) {
         if (!session) return;
-        if (session.startBalance) {
-            const startBalance = parseFloat(session.startBalance);
-            if (Number.isFinite(startBalance)) {
+        const raw = session.startBalance ?? session.balance;
+        if (raw !== undefined && raw !== null && raw !== '') {
+            const startBalance = parseFloat(raw);
+            if (Number.isFinite(startBalance) && startBalance > 0) {
                 this.balance = startBalance;
                 this.initialBalance = startBalance;
                 this.equity = startBalance;
             }
         }
+        const leverageFromSession = Number.parseFloat(session.leverageNumber || session.leverage || 30);
+        if (Number.isFinite(leverageFromSession) && leverageFromSession > 0) {
+            this.multiInstrumentSession.leverage = leverageFromSession;
+        }
+        if (session.session_id || session.sessionId) {
+            this.multiInstrumentSession.session_id = session.session_id || session.sessionId;
+        }
+        if (session.account_currency) {
+            this.multiInstrumentSession.account_currency = String(session.account_currency).toUpperCase();
+        }
+        if (Number.isFinite(Number.parseFloat(session.margin_call_level))) {
+            this.multiInstrumentSession.margin_call_level = Number.parseFloat(session.margin_call_level);
+        }
+        if (Number.isFinite(Number.parseFloat(session.stop_out_level))) {
+            this.multiInstrumentSession.stop_out_level = Number.parseFloat(session.stop_out_level);
+        }
+        if (session.max_risk_per_trade_pct !== undefined && session.max_risk_per_trade_pct !== null && session.max_risk_per_trade_pct !== '') {
+            const maxRisk = Number.parseFloat(session.max_risk_per_trade_pct);
+            this.multiInstrumentSession.max_risk_per_trade_pct = Number.isFinite(maxRisk) ? maxRisk : null;
+        }
+        this.setSessionInstruments(session.instruments || session.symbols || []);
+        this.recomputeSharedMarginState();
+    }
+
+    setSessionInstruments(instrumentsInput = []) {
+        const normalized = {};
+        if (Array.isArray(instrumentsInput)) {
+            instrumentsInput.forEach((row) => {
+                if (!row) return;
+                const ticker = String(row.ticker || row.symbol || row.symbolName || '').toUpperCase();
+                if (!ticker) return;
+                normalized[ticker] = { ...row, ticker };
+            });
+        } else if (instrumentsInput && typeof instrumentsInput === 'object') {
+            Object.keys(instrumentsInput).forEach((key) => {
+                const raw = instrumentsInput[key];
+                if (!raw) return;
+                const ticker = String(raw.ticker || key).toUpperCase();
+                normalized[ticker] = { ...raw, ticker };
+            });
+        }
+        this.multiInstrumentSession.instruments = normalized;
+    }
+
+    getInstrumentSettings(ticker, fallback = {}) {
+        const rawKey = String(ticker || '').toUpperCase();
+        const normKey = rawKey.replace(/\//g, '');
+        const map = this.multiInstrumentSession.instruments;
+        if (normKey && map[normKey]) {
+            return map[normKey];
+        }
+        if (rawKey && map[rawKey]) {
+            return map[rawKey];
+        }
+        return {
+            ticker: normKey || rawKey || 'UNKNOWN',
+            contract_size: fallback.contractSize || 100000,
+            pip_size: fallback.pipSize || 0.0001,
+            pip_value_per_lot: fallback.pipValuePerLot || 10,
+            commission_per_lot_per_side: fallback.commissionPerLotPerSide || 0,
+            spread_pips: fallback.spreadPips || 0
+        };
+    }
+
+    estimateTradeMargin(order) {
+        if (!order) return 0;
+        const leverage = Number.parseFloat(this.multiInstrumentSession.leverage) || 30;
+        const instrument = this.getInstrumentSettings(order.ticker || order.symbol, {
+            contractSize: this.contractSize
+        });
+        const qty = Math.abs(Number.parseFloat(order.quantity) || 0);
+        const contractSize = Number.parseFloat(instrument.contract_size || instrument.contractSize || this.contractSize || 100000);
+        const notional = qty * contractSize;
+        return leverage > 0 ? notional / leverage : notional;
+    }
+
+    recomputeSharedMarginState() {
+        // Milestone 8.5: do NOT reduce margin for hedged long/short pairs in v1.
+        // Every open position consumes full margin independently.
+        const usedMargin = this.openPositions.reduce((sum, position) => sum + this.estimateTradeMargin(position), 0);
+        this.multiInstrumentSession.used_margin = usedMargin;
+        this.multiInstrumentSession.current_time = Date.now();
+        this.multiInstrumentSession.total_buying_power = this.balance * (Number.parseFloat(this.multiInstrumentSession.leverage) || 30);
+        this.multiInstrumentSession.free_margin = this.equity - usedMargin;
+        if (!Array.isArray(this.multiInstrumentSession.equity_curve)) {
+            this.multiInstrumentSession.equity_curve = [];
+        }
+        this.emit('account:margin-updated', {
+            used_margin: this.multiInstrumentSession.used_margin,
+            free_margin: this.multiInstrumentSession.free_margin,
+            total_buying_power: this.multiInstrumentSession.total_buying_power
+        });
     }
 
     setSymbolPrecision(precision) {
@@ -129,6 +246,16 @@ class OrderService {
 
     registerPendingOrder(order) {
         if (!order) return order;
+        if (!order.symbol && this.chart && this.chart.currentSymbol) {
+            order.symbol = String(this.chart.currentSymbol).replace('/', '').toUpperCase();
+        }
+        if (!order.ticker && order.symbol) order.ticker = String(order.symbol).toUpperCase();
+        if (!order.sourceFileId && this.chart && this.chart.currentFileId != null && String(this.chart.currentFileId) !== '') {
+            order.sourceFileId = String(this.chart.currentFileId);
+        }
+        if (this.chart && this.chart.orderManager && typeof this.chart.orderManager.attachStrategyVariablesToOrder === 'function') {
+            this.chart.orderManager.attachStrategyVariablesToOrder(order);
+        }
         this.pendingOrders.push(order);
         this.orders.push(order);
         this.emit('order:pending', order);
@@ -137,15 +264,43 @@ class OrderService {
 
     registerOpenOrder(order) {
         if (!order) return order;
+        if (!order.symbol && this.chart && this.chart.currentSymbol) {
+            order.symbol = String(this.chart.currentSymbol).replace('/', '').toUpperCase();
+        }
+        if (!order.ticker && order.symbol) order.ticker = String(order.symbol).toUpperCase();
+        if (!order.sourceFileId && this.chart && this.chart.currentFileId != null && String(this.chart.currentFileId) !== '') {
+            order.sourceFileId = String(this.chart.currentFileId);
+        }
+        if (order.ticker && !order.instrument_settings) {
+            order.instrument_settings = this.getInstrumentSettings(order.ticker);
+        }
+        if (!Number.isFinite(Number.parseFloat(order.initialStopLoss)) && Number.isFinite(Number.parseFloat(order.stopLoss))) {
+            order.initialStopLoss = Number.parseFloat(order.stopLoss);
+        }
+        if (!Number.isFinite(Number.parseFloat(order.initialTakeProfit)) && Number.isFinite(Number.parseFloat(order.takeProfit))) {
+            order.initialTakeProfit = Number.parseFloat(order.takeProfit);
+        }
+        if (!Array.isArray(order.bar_close_r)) order.bar_close_r = [];
+        if (!Array.isArray(order.bar_high_r)) order.bar_high_r = [];
+        if (!Array.isArray(order.bar_low_r)) order.bar_low_r = [];
+        if (!Array.isArray(order.post_exit_bar_close_r)) order.post_exit_bar_close_r = [];
+        if (!Array.isArray(order.post_exit_bar_high_r)) order.post_exit_bar_high_r = [];
+        if (!Array.isArray(order.post_exit_bar_low_r)) order.post_exit_bar_low_r = [];
+        if (this.chart && this.chart.orderManager && typeof this.chart.orderManager.attachStrategyVariablesToOrder === 'function') {
+            this.chart.orderManager.attachStrategyVariablesToOrder(order);
+        }
         this.openPositions.push(order);
         this.orders.push(order);
+        this.recomputeSharedMarginState();
         this.emit('order:opened', order);
         return order;
     }
 
     registerClosedPosition(position) {
         if (!position) return position;
+        if (!position.ticker && position.symbol) position.ticker = String(position.symbol).toUpperCase();
         this.closedPositions.push(position);
+        this.recomputeSharedMarginState();
         this.emit('order:closed', position);
         return position;
     }
@@ -162,6 +317,7 @@ class OrderService {
         if (!Number.isFinite(pnlDelta)) return;
         this.balance += pnlDelta;
         this.equity = this.balance;
+        this.recomputeSharedMarginState();
         this.emit('account:updated', { balance: this.balance, equity: this.equity });
     }
 

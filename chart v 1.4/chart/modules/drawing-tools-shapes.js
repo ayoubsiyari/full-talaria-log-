@@ -815,6 +815,7 @@ class TriangleTool extends BaseDrawing {
                 .attr('y2', scales.yScale(p2.y))
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
+                .attr('stroke-dasharray', this.style.strokeDasharray || null)
                 .attr('opacity', this.style.opacity);
             
             // Show dots at endpoints
@@ -865,6 +866,7 @@ class TriangleTool extends BaseDrawing {
                 .attr('y2', edge.y2)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
+                .attr('stroke-dasharray', this.style.strokeDasharray || null)
                 .attr('opacity', this.style.opacity)
                 .attr('data-edge', edge.name)
                 .attr('data-original-width', this.style.strokeWidth)
@@ -981,8 +983,9 @@ class ArrowTool extends BaseDrawing {
         let y1 = scales.yScale(p1.y);
         let y2 = scales.yScale(p2.y);
         
-        // Store original coordinates for text positioning
+        // Store original coordinates for text positioning and arrowhead placement
         const origX1 = x1, origY1 = y1, origX2 = x2, origY2 = y2;
+        const arrowAngle = Math.atan2(y2 - y1, x2 - x1);
         
         // Extend line if needed
         if (this.style.extendLeft || this.style.extendRight) {
@@ -1149,7 +1152,7 @@ class ArrowTool extends BaseDrawing {
                 .style('pointer-events', 'none')
                 .style('cursor', 'move');
 
-            line2.attr('marker-end', `url(#${markerId})`);
+            // arrowhead rendered separately at origX2 — see below
         } else {
             this.group.append('line')
                 .attr('x1', x1)
@@ -1162,7 +1165,7 @@ class ArrowTool extends BaseDrawing {
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
 
-            const line = this.group.append('line')
+            this.group.append('line')
                 .attr('x1', x1)
                 .attr('y1', y1)
                 .attr('x2', x2)
@@ -1170,11 +1173,22 @@ class ArrowTool extends BaseDrawing {
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
                 .attr('opacity', this.style.opacity)
-                .attr('marker-end', `url(#${markerId})`)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
                 .style('cursor', 'move');
         }
+
+        // Arrowhead always anchored at origX2/origY2 regardless of extending
+        this.group.append('line')
+            .attr('x1', origX2 - 0.5 * Math.cos(arrowAngle))
+            .attr('y1', origY2 - 0.5 * Math.sin(arrowAngle))
+            .attr('x2', origX2)
+            .attr('y2', origY2)
+            .attr('stroke', this.style.stroke)
+            .attr('stroke-width', scaledStrokeWidth)
+            .attr('opacity', this.style.opacity)
+            .attr('marker-end', `url(#${markerId})`)
+            .style('pointer-events', 'none');
 
         this.renderTextLabel({ x1, y1, x2, y2, scales });
 
@@ -1190,101 +1204,160 @@ class ArrowTool extends BaseDrawing {
     renderInfoBox(x1, y1, x2, y2, scales) {
         const infoSettings = this.style.infoSettings || {};
         if (!infoSettings.showInfo) return;
-        
+
         const p1 = this.points[0];
         const p2 = this.points[1];
-        
-        // Calculate metrics
-        const priceChange = Math.abs(p2.y - p1.y);
-        const percentChange = ((p2.y - p1.y) / p1.y * 100).toFixed(2);
-        const pipsChange = (priceChange / 0.0001).toFixed(1);
-        const barsRange = Math.abs(p2.x - p1.x);
-        const distance = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)).toFixed(0);
-        const angle = (Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI).toFixed(1);
-        
-        // Build info text
-        const infoLines = [];
-        if (infoSettings.priceRange) infoLines.push(`Price: ${priceChange.toFixed(5)}`);
-        if (infoSettings.percentChange) infoLines.push(`${percentChange}%`);
-        if (infoSettings.changeInPips) infoLines.push(`${pipsChange} pips`);
-        if (infoSettings.barsRange) infoLines.push(`Bars: ${barsRange}`);
-        if (infoSettings.dateTimeRange) {
-            const timeDiff = Math.abs(p2.x - p1.x);
-            infoLines.push(`Time: ${timeDiff}`);
-        }
-        if (infoSettings.distance) infoLines.push(`Dist: ${distance}px`);
-        if (infoSettings.angle) infoLines.push(`Angle: ${angle}°`);
-        
-        if (infoLines.length === 0) return;
-        
-        // Calculate box dimensions first to know offset needed
-        const padding = 4;
-        const lineHeight = 11;
-        const fontSize = 9;
         const fontFamily = 'system-ui, -apple-system, sans-serif';
 
-        // Measure actual max text width using a temporary SVG text element
+        // Metrics
+        const rawPriceChange = p2.y - p1.y;
+        const absPrice = Math.abs(rawPriceChange);
+        const pct = p1.y !== 0 ? (rawPriceChange / p1.y * 100) : 0;
+        const tickSize = (scales && scales.chart && scales.chart.tickSize) ? scales.chart.tickSize : 0.0001;
+        const pips = tickSize ? Math.round(rawPriceChange / tickSize) : 0;
+        const decimals = absPrice < 0.001 ? 5 : absPrice < 0.1 ? 4 : absPrice < 10 ? 3 : 2;
+        const barsRange = Math.round(Math.abs(p2.x - p1.x));
+        const pixelDist = Math.round(Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)));
+        const angleDeg = (Math.atan2(-(y2 - y1), x2 - x1) * 180 / Math.PI).toFixed(2);
+
+        let timeStr = '';
+        const _chart = scales && scales.chart;
+        if (_chart && _chart.data && _chart.data.length > 0) {
+            const _data = _chart.data;
+            const _i1 = Math.max(0, Math.min(Math.round(p1.x), _data.length - 1));
+            const _i2 = Math.max(0, Math.min(Math.round(p2.x), _data.length - 1));
+            const _diffMs = Math.abs(_data[_i2].t - _data[_i1].t);
+            const _totalMins = Math.round(_diffMs / 60000);
+            const _days = Math.floor(_totalMins / 1440);
+            const _hours = Math.floor((_totalMins % 1440) / 60);
+            const _mins = _totalMins % 60;
+            if (_days > 0) timeStr = _hours > 0 ? `${_days}d ${_hours}h` : `${_days}d`;
+            else if (_hours > 0) timeStr = _mins > 0 ? `${_hours}h ${_mins}m` : `${_hours}h`;
+            else timeStr = `${_totalMins}m`;
+        }
+
+        // Build rows with SVG icons - each stat on separate line
+        const rows = [];
+        
+        // Price range row
+        if (infoSettings.priceRange) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M8 2v12M5 5l3-3 3 3M5 11l3 3 3-3" stroke="currentColor" fill="none" stroke-width="0.5"/>',
+                text: `${rawPriceChange.toFixed(decimals)}`
+            });
+        }
+
+        // Percent change row
+        if (infoSettings.percentChange) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M3 13L13 3M5 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0M13 12a1 1 0 1 1-2 0 1 1 0 0 1 2 0" stroke="currentColor" fill="none" stroke-width="0.5"/>',
+                text: `(${pct.toFixed(2)}%)`
+            });
+        }
+
+        // Change in pips row
+        if (infoSettings.changeInPips) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><circle cx="4" cy="8" r="1.5" fill="currentColor"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><circle cx="12" cy="8" r="1.5" fill="currentColor"/>',
+                text: `${Math.abs(pips).toLocaleString()}`
+            });
+        }
+
+        // Bars range row
+        if (infoSettings.barsRange) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M2 8h12M11 5l3 3-3 3" stroke="currentColor" fill="none" stroke-width="0.5"/>',
+                text: `${barsRange} bars`
+            });
+        }
+
+        // Date/time range row
+        if (infoSettings.dateTimeRange && timeStr) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><circle cx="8" cy="8" r="6" stroke="currentColor" fill="none" stroke-width="0.5"/><path d="M8 4v4l3 2" stroke="currentColor" fill="none" stroke-width="0.5"/>',
+                text: `(${timeStr})`
+            });
+        }
+
+        // Distance row
+        if (infoSettings.distance) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M2 8h12M4 6v4M8 6v4M12 6v4" stroke="currentColor" fill="none" stroke-width="0.5"/>',
+                text: `distance: ${pixelDist} px`
+            });
+        }
+
+        // Angle row
+        if (infoSettings.angle) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M12 4L4 12M12 4v5M12 4h-5" stroke="currentColor" fill="none" stroke-width="0.5"/><path d="M9 7a3 3 0 0 0 3-3" stroke="currentColor" fill="none" stroke-width="0.5"/>',
+                text: `${angleDeg}°`
+            });
+        }
+
+        if (rows.length === 0) return;
+
+        // Layout constants
+        const padX = 10, padY = 8, lineHeight = 19, fontSize = 11;
+        const iconColW = 14, iconTextGap = 6;
+
+        // Measure max text width
         const tempG = this.group.append('g').style('visibility', 'hidden');
-        let maxTextWidth = 0;
-        infoLines.forEach(line => {
-            const t = tempG.append('text')
-                .attr('font-size', fontSize)
-                .attr('font-family', fontFamily)
-                .text(line);
-            const w = t.node().getComputedTextLength ? t.node().getComputedTextLength() : (line.length * fontSize * 0.6);
-            if (w > maxTextWidth) maxTextWidth = w;
+        let maxTW = 0;
+        rows.forEach(row => {
+            const t = tempG.append('text').attr('font-size', fontSize).attr('font-family', fontFamily).text(row.text);
+            const w = t.node().getComputedTextLength ? t.node().getComputedTextLength() : row.text.length * fontSize * 0.6;
+            if (w > maxTW) maxTW = w;
         });
         tempG.remove();
 
-        const boxWidth = maxTextWidth + padding * 2;
-        const boxHeight = infoLines.length * lineHeight + padding * 2;
-        
-        // Position info box perpendicular to the line
-        const midX = (x1 + x2) / 2;
-        const midY = (y1 + y2) / 2;
-        
-        // Calculate perpendicular direction
+        const boxWidth = padX + iconColW + iconTextGap + maxTW + padX;
+        const boxHeight = rows.length * lineHeight + padY * 2;
+
+        // Responsive placement: offset away from the line direction to avoid overlap
+        const OFFSET_X = 8;
+        const OFFSET_Y = 4;
         const dx = x2 - x1;
         const dy = y2 - y1;
-        const lineLength = Math.sqrt(dx * dx + dy * dy);
-        
-        // Perpendicular unit vector
-        const perpX = -dy / lineLength;
-        const perpY = dx / lineLength;
-        
-        // Offset distance: half box height + margin to ensure clear separation from line
-        const offsetDistance = boxHeight / 2 + 12;
-        const sign = perpY <= 0 ? 1 : -1;
-        
-        const offsetX = midX + perpX * offsetDistance * sign;
-        const offsetY = midY + perpY * offsetDistance * sign - boxHeight / 2;
-        
-        // Create info box group
+        // Horizontal: place to the right of p2 if line comes from left, else to the left
+        let boxX = dx >= 0 ? x2 + OFFSET_X : x2 - boxWidth - OFFSET_X;
+        // Vertical: place above p2 if line goes down (dy>0), below if line goes up (dy<0)
+        let boxY = dy >= 0 ? y2 - boxHeight - OFFSET_Y : y2 + OFFSET_Y;
+
         const infoGroup = this.group.append('g')
             .attr('class', 'arrow-info')
-            .attr('transform', `translate(${offsetX}, ${offsetY})`);
-        
-        // Draw background rectangle sized to content
+            .attr('transform', `translate(${boxX}, ${boxY})`);
+
         infoGroup.append('rect')
-            .attr('x', -boxWidth / 2)
-            .attr('y', 0)
-            .attr('width', boxWidth)
-            .attr('height', boxHeight)
-            .attr('fill', 'rgba(42, 46, 57, 0.95)')
-            .attr('stroke', '#363a45')
+            .attr('x', 0).attr('y', 0)
+            .attr('width', boxWidth).attr('height', boxHeight)
+            .attr('fill', 'rgba(210, 215, 225, 0.97)')
+            .attr('stroke', 'rgba(160, 165, 185, 0.8)')
             .attr('stroke-width', 1)
             .attr('rx', 4);
-        
-        // Draw text lines
-        infoLines.forEach((line, i) => {
+
+        rows.forEach((row, i) => {
+            const rowY = padY + (i + 0.78) * lineHeight;
+            
+            // Render SVG icon if available
+            if (row.svgIcon) {
+                const iconG = infoGroup.append('g')
+                    .attr('transform', `translate(${padX}, ${rowY - 9})`);
+                iconG.html(row.svgIcon);
+                iconG.select('svg')
+                    .attr('stroke', '#4a5068')
+                    .style('color', '#4a5068')
+                    .style('overflow', 'visible');
+            }
+            
+            // Render text
             infoGroup.append('text')
-                .attr('x', 0)
-                .attr('y', padding + (i + 0.7) * lineHeight)
-                .attr('text-anchor', 'middle')
-                .attr('fill', '#d1d4dc')
+                .attr('x', padX + iconColW + iconTextGap)
+                .attr('y', rowY)
+                .attr('fill', '#1e2235')
                 .attr('font-size', `${fontSize}px`)
                 .attr('font-family', fontFamily)
-                .text(line);
+                .text(row.text);
         });
     }
 

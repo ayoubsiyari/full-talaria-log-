@@ -16,7 +16,9 @@ class PropFirmTracker {
             minTradingDays: 1,
             profitTarget: 10,
             maxDailyLoss: 5,
-            maxTotalLoss: 10
+            maxTotalLoss: 10,
+            maxDailyLossUsd: null,
+            maxTotalLossUsd: null
         };
         this.violations = {
             dailyLoss: false,
@@ -25,40 +27,77 @@ class PropFirmTracker {
         this.tradingDisabled = false;
         this.profitTargetReachedShown = false;
         this.failedModalShown = false;
-        
+        this._persistTimer = null;
+        this._lastPersistKey = '';
+
         this.loadSession();
+    }
+
+    /** Only prop-firm evaluation sessions should run challenge rules, modals, and toolbar updates. */
+    _isPropFirmChallenge() {
+        return !!(this.sessionData && this.sessionData.type === 'propfirm');
     }
 
     // Load prop firm session from localStorage
     loadSession() {
         try {
-            const session = localStorage.getItem('backtestingSession');
-            if (session) {
-                this.sessionData = JSON.parse(session);
-                
-                if (this.sessionData.type === 'propfirm') {
-                    this.startBalance = this.sessionData.balance || 10000;
-                    this.currentBalance = this.startBalance;
-                    this.peakBalance = this.startBalance;
-                    
-                    this.rules = {
-                        minTradingDays: this.sessionData.minTradingDays || 1,
-                        profitTarget: this.sessionData.profitTarget || 10,
-                        maxDailyLoss: this.sessionData.maxDailyLoss?.percent || 5,
-                        maxTotalLoss: this.sessionData.maxTotalLoss?.percent || 10
-                    };
-                    
-                    console.log('✅ Prop Firm Tracker initialized:', {
-                        startBalance: this.startBalance,
-                        rules: this.rules
-                    });
-                    return true;
-                }
+            let mode = null;
+            try {
+                mode = typeof window !== 'undefined' && window.location && window.location.search
+                    ? new URLSearchParams(window.location.search).get('mode')
+                    : null;
+            } catch (e) {}
+            if (mode === 'backtest') {
+                this.sessionData = null;
+                return false;
             }
+
+            const session = userStorage.getItem('backtestingSession');
+            if (!session) {
+                this.sessionData = null;
+                return false;
+            }
+
+            const parsed = JSON.parse(session);
+            if (parsed.type !== 'propfirm') {
+                // Personal / standard backtest sessions share the same key; do not treat them as challenges.
+                this.sessionData = null;
+                return false;
+            }
+
+            this.sessionData = parsed;
+            const sb = Number.parseFloat(this.sessionData.startBalance ?? this.sessionData.balance);
+            this.startBalance = Number.isFinite(sb) && sb > 0 ? sb : 10000;
+            this.currentBalance = this.startBalance;
+            this.peakBalance = this.startBalance;
+
+            const md = this.sessionData.maxDailyLoss || {};
+            const mt = this.sessionData.maxTotalLoss || {};
+            const mdp = Number(md.percent);
+            const mtp = Number(mt.percent);
+            const mdd = Number(md.dollar);
+            const mtd = Number(mt.dollar);
+            const dailyPct = Number.isFinite(mdp) ? mdp : 5;
+            const totalPct = Number.isFinite(mtp) ? mtp : 10;
+            this.rules = {
+                minTradingDays: this.sessionData.minTradingDays ?? 1,
+                profitTarget: this.sessionData.profitTarget || 10,
+                maxDailyLoss: dailyPct,
+                maxTotalLoss: totalPct,
+                maxDailyLossUsd: Number.isFinite(mdd) ? mdd : (this.startBalance * dailyPct / 100),
+                maxTotalLossUsd: Number.isFinite(mtd) ? mtd : (this.startBalance * totalPct / 100)
+            };
+
+            console.log('✅ Prop Firm Tracker initialized:', {
+                startBalance: this.startBalance,
+                rules: this.rules
+            });
+            return true;
         } catch (e) {
             console.error('Error loading prop firm session:', e);
+            this.sessionData = null;
+            return false;
         }
-        return false;
     }
 
     // Record a trade
@@ -201,7 +240,9 @@ class PropFirmTracker {
 
     // Check if trading days requirement is met
     isTradingDaysComplete() {
-        return this.getTradingDaysCount() >= this.rules.minTradingDays;
+        const req = this._getTradingDaysRequired();
+        if (req <= 0) return true;
+        return this.getTradingDaysCount() >= req;
     }
 
     // Check if profit target is met
@@ -211,50 +252,121 @@ class PropFirmTracker {
 
     // Check if daily loss limit is breached
     isDailyLossBreached() {
-        const todayLoss = Math.abs(Math.min(0, this.getTodayPnLPercent()));
-        return todayLoss >= this.rules.maxDailyLoss;
+        const tradingDaysArray = Array.from(this.tradingDays).sort();
+        const latest = tradingDaysArray[tradingDaysArray.length - 1];
+        if (!latest) return false;
+        const dailyPnL = this.getDailyPnL(latest);
+        const lossUsd = dailyPnL < 0 ? Math.abs(dailyPnL) : 0;
+        const lossPct = Math.abs(Math.min(0, this.getDailyPnLPercent(latest)));
+        const usdCap = this.rules.maxDailyLossUsd != null ? this.rules.maxDailyLossUsd : (this.startBalance * this.rules.maxDailyLoss / 100);
+        return lossPct >= this.rules.maxDailyLoss || lossUsd >= usdCap;
     }
 
     // Check if total loss limit is breached
     isTotalLossBreached() {
-        return this.getTotalLossPercent() >= this.rules.maxTotalLoss;
+        const lossPct = this.getTotalLossPercent();
+        const lossUsd = this.currentBalance < this.startBalance ? (this.startBalance - this.currentBalance) : 0;
+        const usdCap = this.rules.maxTotalLossUsd != null ? this.rules.maxTotalLossUsd : (this.startBalance * this.rules.maxTotalLoss / 100);
+        return lossPct >= this.rules.maxTotalLoss || lossUsd >= usdCap;
+    }
+
+    _getTradingDaysRequired() {
+        const n = this.rules.minTradingDays;
+        return typeof n === 'number' && n >= 0 ? n : 1;
     }
 
     // Check all rules and update violations
     checkRules(skipModalTrigger = false) {
-        const wasDailyLossBreached = this.violations.dailyLoss;
-        const wasTotalLossBreached = this.violations.totalLoss;
+        if (!this._isPropFirmChallenge()) {
+            return true;
+        }
+        const dailyBreached = this.isDailyLossBreached();
+        const totalBreached = this.isTotalLossBreached();
+        this.violations.dailyLoss = dailyBreached;
+        this.violations.totalLoss = totalBreached;
 
-        this.violations.dailyLoss = this.isDailyLossBreached();
-        this.violations.totalLoss = this.isTotalLossBreached();
-
-        console.log('🔍 Rule Check:', {
-            skipModalTrigger,
-            dailyLoss: {
-                was: wasDailyLossBreached,
-                now: this.violations.dailyLoss,
-                percent: Math.abs(Math.min(0, this.getTodayPnLPercent())).toFixed(2) + '%',
-                limit: this.rules.maxDailyLoss + '%'
-            },
-            totalLoss: {
-                was: wasTotalLossBreached,
-                now: this.violations.totalLoss,
-                percent: this.getTotalLossPercent().toFixed(2) + '%',
-                limit: this.rules.maxTotalLoss + '%'
-            }
-        });
-
-        // Only alert if a rule was just broken AND we're not in skip mode (e.g., during sync)
-        if (!skipModalTrigger) {
-            if (!wasDailyLossBreached && this.violations.dailyLoss) {
-                this.alertRuleBreached('Daily Loss Limit');
-            }
-            if (!wasTotalLossBreached && this.violations.totalLoss) {
-                this.alertRuleBreached('Total Loss Limit');
+        if (!skipModalTrigger && !this.failedModalShown) {
+            if (dailyBreached) {
+                this.showChallengeFailedModal('Daily Loss Limit');
+            } else if (totalBreached) {
+                this.showChallengeFailedModal('Maximum Total Loss');
             }
         }
 
-        return !this.violations.dailyLoss && !this.violations.totalLoss;
+        const req = this._getTradingDaysRequired();
+        const daysOk = req <= 0 || this.getTradingDaysCount() >= req;
+        if (!skipModalTrigger && !this.failedModalShown && !dailyBreached && !totalBreached
+            && !this.profitTargetReachedShown && this.isProfitTargetReached() && daysOk) {
+            this.showChallengePassedModal();
+            this.profitTargetReachedShown = true;
+        }
+
+        return !dailyBreached && !totalBreached;
+    }
+
+    _getActiveSessionIdForApi() {
+        try {
+            const u = new URLSearchParams(window.location.search);
+            const fromUrl = u.get('sessionId');
+            if (fromUrl) return String(fromUrl);
+        } catch (e) {}
+        try {
+            const sid = userStorage.getItem('active_trading_session_id');
+            if (sid) return String(sid);
+        } catch (e) {}
+        return null;
+    }
+
+    _queuePersistChallengeSnapshot() {
+        if (!this.sessionData || this.sessionData.type !== 'propfirm') return;
+        const sessionId = this._getActiveSessionIdForApi();
+        if (!sessionId) return;
+
+        if (this._persistTimer) {
+            clearTimeout(this._persistTimer);
+        }
+        const self = this;
+        this._persistTimer = setTimeout(function () {
+            self._persistTimer = null;
+            self._flushPersistChallengeSnapshot(sessionId);
+        }, 800);
+    }
+
+    _flushPersistChallengeSnapshot(sessionId) {
+        const summary = this.getProgressSummary();
+        const snapshot = {
+            updatedAt: new Date().toISOString(),
+            simulationPresetId: this.sessionData.simulationPresetId || null,
+            simulationPresetLabel: this.sessionData.simulationPresetLabel || null,
+            startBalance: this.startBalance,
+            currentBalance: this.currentBalance,
+            profitPercent: this.getProfitPercent(),
+            tradingDaysCount: this.getTradingDaysCount(),
+            violations: { ...this.violations },
+            summary: summary,
+            status: (this.violations.dailyLoss || this.violations.totalLoss)
+                ? 'breached'
+                : (this.isProfitTargetReached() && (this._getTradingDaysRequired() <= 0 || this.isTradingDaysComplete())
+                    ? 'passed'
+                    : 'active')
+        };
+        const key = JSON.stringify({
+            b: snapshot.currentBalance,
+            v: snapshot.violations,
+            s: snapshot.status,
+            t: snapshot.tradingDaysCount
+        });
+        if (key === this._lastPersistKey) return;
+        this._lastPersistKey = key;
+
+        fetch('/api/sessions/' + encodeURIComponent(sessionId) + '/state', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ propfirm_challenge: snapshot })
+        }).catch(function (err) {
+            console.warn('Prop firm challenge snapshot persist failed', err);
+        });
     }
 
     // Alert when a rule is breached
@@ -280,12 +392,16 @@ class PropFirmTracker {
 
     // Get progress summary
     getProgressSummary() {
+        const reqDays = this._getTradingDaysRequired();
+        const daysPct = reqDays <= 0
+            ? 100
+            : Math.min((this.getTradingDaysCount() / reqDays) * 100, 100);
         return {
             tradingDays: {
                 current: this.getTradingDaysCount(),
-                required: this.rules.minTradingDays,
+                required: reqDays,
                 completed: this.isTradingDaysComplete(),
-                percent: Math.min((this.getTradingDaysCount() / this.rules.minTradingDays) * 100, 100)
+                percent: daysPct
             },
             profit: {
                 current: this.getProfitPercent(),
@@ -299,13 +415,13 @@ class PropFirmTracker {
                 current: Math.abs(Math.min(0, this.getTodayPnLPercent())),
                 limit: this.rules.maxDailyLoss,
                 breached: this.violations.dailyLoss,
-                percent: Math.min((Math.abs(Math.min(0, this.getTodayPnLPercent())) / this.rules.maxDailyLoss) * 100, 100)
+                percent: Math.min((Math.abs(Math.min(0, this.getTodayPnLPercent())) / Math.max(0.0001, this.rules.maxDailyLoss)) * 100, 100)
             },
             totalLoss: {
                 current: this.getTotalLossPercent(),
                 limit: this.rules.maxTotalLoss,
                 breached: this.violations.totalLoss,
-                percent: Math.min((this.getTotalLossPercent() / this.rules.maxTotalLoss) * 100, 100)
+                percent: Math.min((this.getTotalLossPercent() / Math.max(0.0001, this.rules.maxTotalLoss)) * 100, 100)
             },
             balance: {
                 start: this.startBalance,
@@ -317,6 +433,9 @@ class PropFirmTracker {
 
     // Update UI with current progress
     updateUI() {
+        if (!this._isPropFirmChallenge()) {
+            return;
+        }
         const summary = this.getProgressSummary();
         
         console.log('📊 Updating Challenge Progress UI:', summary);
@@ -325,7 +444,10 @@ class PropFirmTracker {
         const tradingDaysEl = document.getElementById('challengeTradingDaysDropdown');
         const tradingDaysBar = document.getElementById('challengeTradingDaysBar');
         if (tradingDaysEl) {
-            tradingDaysEl.textContent = `${summary.tradingDays.current}/${summary.tradingDays.required}`;
+            const req = summary.tradingDays.required;
+            tradingDaysEl.textContent = req <= 0
+                ? `${summary.tradingDays.current} (no minimum)`
+                : `${summary.tradingDays.current}/${req}`;
         }
         if (tradingDaysBar) {
             tradingDaysBar.style.width = summary.tradingDays.percent + '%';
@@ -372,6 +494,8 @@ class PropFirmTracker {
 
         // Update badge
         this.updateBadge(summary);
+
+        this._queuePersistChallengeSnapshot();
     }
 
     // Update status icons based on completion
@@ -456,24 +580,21 @@ class PropFirmTracker {
 
     // Update balance (called externally when balance changes)
     updateBalance(newBalance) {
+        if (!this._isPropFirmChallenge()) {
+            return;
+        }
         console.log(`💰 Balance updated: $${this.currentBalance.toFixed(2)} → $${newBalance.toFixed(2)}`);
         this.currentBalance = newBalance;
         this.peakBalance = Math.max(this.peakBalance, this.currentBalance);
         this.checkRules();
-        
-        // Check if profit target is reached
-        if (this.isProfitTargetReached() && !this.profitTargetReachedShown) {
-            this.profitTargetReachedShown = true;
-            setTimeout(() => {
-                this.showChallengePassedModal();
-            }, 1000);
-        }
-        
         this.updateUI();
     }
 
     // Show challenge failed modal
     showChallengeFailedModal(ruleName) {
+        if (!this._isPropFirmChallenge()) {
+            return;
+        }
         // Don't show if already shown
         if (this.failedModalShown) {
             console.log('⚠️ Failed modal already shown, skipping');
@@ -518,6 +639,9 @@ class PropFirmTracker {
 
     // Show challenge passed modal
     showChallengePassedModal() {
+        if (!this._isPropFirmChallenge()) {
+            return;
+        }
         // Don't show if already shown (but this is already handled by profitTargetReachedShown flag)
         const modal = document.getElementById('challengePassedModal');
         if (!modal) return;
@@ -551,6 +675,9 @@ class PropFirmTracker {
 
     // Reset tracker (for new day, new challenge, etc.)
     reset() {
+        if (!this._isPropFirmChallenge()) {
+            return;
+        }
         this.currentBalance = this.startBalance;
         this.peakBalance = this.startBalance;
         this.tradingDays.clear();
@@ -631,9 +758,52 @@ function initPropFirmTracker() {
             console.log('⚠️ Not a prop firm session or session not found');
             return;
         }
-        
+
+        const om = window.chart && window.chart.orderManager;
+        const DEFAULT_OM_START = 10000;
+        let sessionStartFromStorage = NaN;
+        try {
+            const raw = userStorage.getItem('backtestingSession');
+            if (raw) {
+                const s = JSON.parse(raw);
+                sessionStartFromStorage = Number.parseFloat(s.startBalance ?? s.balance);
+            }
+        } catch (e) {}
+        const omInit = om ? om.initialBalance : NaN;
+        // Timed sync can run before checkBacktestingMode() finishes — OM may still be at default $10k while
+        // localStorage has the real challenge size. Do not copy that default onto the tracker.
+        const sessionNotAppliedToOmYet =
+            Number.isFinite(omInit) && omInit === DEFAULT_OM_START &&
+            Number.isFinite(sessionStartFromStorage) && sessionStartFromStorage > 0 &&
+            Math.abs(sessionStartFromStorage - omInit) > 0.01;
+
+        if (om && Number.isFinite(omInit) && omInit > 0 && !sessionNotAppliedToOmYet) {
+            window.propFirmTracker.startBalance = omInit;
+            const md = window.propFirmTracker.sessionData.maxDailyLoss || {};
+            const mt = window.propFirmTracker.sessionData.maxTotalLoss || {};
+            const mdd = Number(md.dollar);
+            const mtd = Number(mt.dollar);
+            window.propFirmTracker.rules.maxDailyLossUsd = Number.isFinite(mdd)
+                ? mdd
+                : (omInit * window.propFirmTracker.rules.maxDailyLoss / 100);
+            window.propFirmTracker.rules.maxTotalLossUsd = Number.isFinite(mtd)
+                ? mtd
+                : (omInit * window.propFirmTracker.rules.maxTotalLoss / 100);
+        }
+
+        if (!om) {
+            return;
+        }
+
+        if (sessionNotAppliedToOmYet) {
+            window.propFirmTracker.currentBalance = window.propFirmTracker.startBalance;
+            window.propFirmTracker.peakBalance = window.propFirmTracker.startBalance;
+            window.propFirmTracker.updateUI();
+            return;
+        }
+
         // Sync balance
-        if (window.chart && window.chart.orderManager) {
+        {
             const orderBalance = window.chart.orderManager.balance;
             
             // IMPORTANT: Don't override start balance - it should stay as configured
@@ -695,13 +865,13 @@ function initPropFirmTracker() {
 
 // Global functions for modal buttons
 window.exitToSessionDashboard = function() {
-    console.log('🚪 Exiting to session dashboard...');
+    console.log('🚪 Exiting to dashboard...');
     
     // Clear the session (optional - user may want to review it later)
     // localStorage.removeItem('backtestingSession');
     
-    // Redirect to sessions page
-    window.location.href = 'sessions.html';
+    // Redirect to homepage
+    window.location.href = '/';
 };
 
 window.continueTrading = function() {

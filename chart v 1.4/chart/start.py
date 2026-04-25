@@ -37,8 +37,8 @@ def start_server():
     print("🚀 Starting Trading Chart Server...")
     print("="*50)
     print()
-    print("📊 Sessions: http://localhost:8000/sessions.html")
     print("📈 Chart: http://localhost:8000/index.html")
+    print("🔧 Admin: http://localhost:8000/chart/admin-dashboard.html")
     print("📚 API Docs: http://localhost:8000/docs")
     print("🌐 API Base: http://localhost:8000/api")
     print()
@@ -49,7 +49,7 @@ def start_server():
     # Open browser after a short delay
     def open_browser():
         time.sleep(2)
-        webbrowser.open('http://localhost:8000/sessions.html')
+        webbrowser.open('http://localhost:8000/index.html')
     
     import threading
     threading.Thread(target=open_browser, daemon=True).start()

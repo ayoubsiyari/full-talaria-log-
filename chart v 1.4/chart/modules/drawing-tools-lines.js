@@ -182,6 +182,11 @@ class TrendlineTool extends BaseDrawing {
                 x2 = 0;
                 y2 = leftPoint.y + deltaY;
             }
+        } else if (this.style.extendLeft && dx === 0) {
+            // Vertical line: extend the topmost point to chart top
+            const yRange = scales.yScale.range();
+            const topY = Math.min(yRange[0], yRange[1]);
+            if (origY1 < origY2) { y1 = topY; } else { y2 = topY; }
         }
         
         // Extend right: extend from the rightmost point to x = chartWidth
@@ -197,25 +202,15 @@ class TrendlineTool extends BaseDrawing {
                 x1 = chartWidth;
                 y1 = rightPoint.y + deltaY;
             }
+        } else if (this.style.extendRight && dx === 0) {
+            // Vertical line: extend the bottommost point to chart bottom
+            const yRange = scales.yScale.range();
+            const bottomY = Math.max(yRange[0], yRange[1]);
+            if (origY1 > origY2) { y1 = bottomY; } else { y2 = bottomY; }
         }
 
-        // Create arrow markers if needed
         const startStyle = this.style.startStyle || 'normal';
         const endStyle = this.style.endStyle || 'normal';
-        
-        if (startStyle === 'arrow' || endStyle === 'arrow') {
-            const svg = d3.select(container.node().ownerSVGElement);
-            
-            if (startStyle === 'arrow') {
-                const startMarkerId = `arrow-start-${this.id}`;
-                SVGHelpers.createArrowMarker(svg, startMarkerId, this.style.stroke);
-            }
-            
-            if (endStyle === 'arrow') {
-                const endMarkerId = `arrow-end-${this.id}`;
-                SVGHelpers.createArrowMarker(svg, endMarkerId, this.style.stroke);
-            }
-        }
 
         // Check if we need to split the line for text
         const hasText = this.text && this.text.trim();
@@ -344,7 +339,7 @@ class TrendlineTool extends BaseDrawing {
                 .attr('y2', gapNearY1)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+                .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
@@ -369,19 +364,13 @@ class TrendlineTool extends BaseDrawing {
                 .attr('y2', y2)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+                .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
                 .style('cursor', 'move');
             
-            // Apply arrow markers
-            if (startStyle === 'arrow') {
-                line1.attr('marker-start', `url(#arrow-start-${this.id})`);
-            }
-            if (endStyle === 'arrow') {
-                line2.attr('marker-end', `url(#arrow-end-${this.id})`);
-            }
+            // Arrow polygons are drawn below at original anchor points
         } else {
             // Draw invisible wider stroke for easier clicking
             this.group.append('line')
@@ -402,18 +391,43 @@ class TrendlineTool extends BaseDrawing {
                 .attr('y2', y2)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+                .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
                 .style('cursor', 'move');
             
-            // Apply arrow markers
+            // Arrow polygons are drawn below at original anchor points
+        }
+
+        // Draw arrowheads fixed at the original anchor points (not at extended ends)
+        if (startStyle === 'arrow' || endStyle === 'arrow') {
+            const adx = origX2 - origX1;
+            const ady = origY2 - origY1;
+            const alen = Math.sqrt(adx * adx + ady * ady) || 1;
+            const ux = adx / alen;
+            const uy = ady / alen;
+            const aLen = Math.max(8, scaledStrokeWidth * 5);
+            const aHalf = Math.max(4, scaledStrokeWidth * 2.5);
+
             if (startStyle === 'arrow') {
-                line.attr('marker-start', `url(#arrow-start-${this.id})`);
+                // Tip at p1, base points towards p2
+                const bx = origX1 + ux * aLen;
+                const by = origY1 + uy * aLen;
+                this.group.append('polygon')
+                    .attr('points', `${origX1},${origY1} ${bx - uy * aHalf},${by + ux * aHalf} ${bx + uy * aHalf},${by - ux * aHalf}`)
+                    .attr('fill', this.style.stroke)
+                    .style('pointer-events', 'none');
             }
+
             if (endStyle === 'arrow') {
-                line.attr('marker-end', `url(#arrow-end-${this.id})`);
+                // Tip at p2, base points towards p1
+                const bx = origX2 - ux * aLen;
+                const by = origY2 - uy * aLen;
+                this.group.append('polygon')
+                    .attr('points', `${origX2},${origY2} ${bx - uy * aHalf},${by + ux * aHalf} ${bx + uy * aHalf},${by - ux * aHalf}`)
+                    .attr('fill', this.style.stroke)
+                    .style('pointer-events', 'none');
             }
         }
 
@@ -431,106 +445,169 @@ class TrendlineTool extends BaseDrawing {
     renderInfoBox(x1, y1, x2, y2, scales) {
         const infoSettings = this.style.infoSettings || {};
         if (!infoSettings.showInfo) return;
-        
+
         const p1 = this.points[0];
         const p2 = this.points[1];
-        
-        // Calculate metrics
-        const priceChange = Math.abs(p2.y - p1.y);
-        const percentChange = ((p2.y - p1.y) / p1.y * 100).toFixed(2);
-        const pipsChange = (priceChange / 0.0001).toFixed(1);
-        const barsRange = Math.abs(p2.x - p1.x);
-        const distance = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)).toFixed(0);
-        const angle = (Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI).toFixed(1);
-        
-        // Build info text
-        const infoLines = [];
-        if (infoSettings.priceRange) infoLines.push(`Price: ${priceChange.toFixed(5)}`);
-        if (infoSettings.percentChange) infoLines.push(`${percentChange}%`);
-        if (infoSettings.changeInPips) infoLines.push(`${pipsChange} pips`);
-        if (infoSettings.barsRange) infoLines.push(`Bars: ${barsRange}`);
-        if (infoSettings.dateTimeRange) {
-            const timeDiff = Math.abs(p2.x - p1.x);
-            infoLines.push(`Time: ${timeDiff}`);
-        }
-        if (infoSettings.distance) infoLines.push(`Dist: ${distance}px`);
-        if (infoSettings.angle) infoLines.push(`Angle: ${angle}°`);
-        
-        if (infoLines.length === 0) return;
-        
-        // Calculate box dimensions first to know offset needed
-        const padding = 4;
-        const lineHeight = 11;
-        const fontSize = 9;
         const fontFamily = 'system-ui, -apple-system, sans-serif';
 
-        // Measure actual max text width using a temporary SVG text element
+        // Metrics
+        const rawPriceChange = p2.y - p1.y;
+        const absPrice = Math.abs(rawPriceChange);
+        const pct = p1.y !== 0 ? (rawPriceChange / p1.y * 100) : 0;
+        const tickSize = (scales && scales.chart && scales.chart.tickSize) ? scales.chart.tickSize : 0.0001;
+        const pips = tickSize ? Math.round(rawPriceChange / tickSize) : 0;
+        const decimals = absPrice < 0.001 ? 5 : absPrice < 0.1 ? 4 : absPrice < 10 ? 3 : 2;
+        const barsRange = Math.round(Math.abs(p2.x - p1.x));
+        const pixelDist = Math.round(Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)));
+        const angleDeg = (Math.atan2(-(y2 - y1), x2 - x1) * 180 / Math.PI).toFixed(2);
+
+        let timeStr = '';
+        const _chart = scales && scales.chart;
+        if (_chart && _chart.data && _chart.data.length > 0) {
+            const _data = _chart.data;
+            const _i1 = Math.max(0, Math.min(Math.round(p1.x), _data.length - 1));
+            const _i2 = Math.max(0, Math.min(Math.round(p2.x), _data.length - 1));
+            const _diffMs = Math.abs(_data[_i2].t - _data[_i1].t);
+            const _totalMins = Math.round(_diffMs / 60000);
+            const _days = Math.floor(_totalMins / 1440);
+            const _hours = Math.floor((_totalMins % 1440) / 60);
+            const _mins = _totalMins % 60;
+            if (_days > 0) timeStr = _hours > 0 ? `${_days}d ${_hours}h` : `${_days}d`;
+            else if (_hours > 0) timeStr = _mins > 0 ? `${_hours}h ${_mins}m` : `${_hours}h`;
+            else timeStr = `${_totalMins}m`;
+        }
+
+        // Build rows with SVG icons - each stat on separate line
+        const rows = [];
+        
+        // Price range row
+        if (infoSettings.priceRange) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M8 2v12M5 5l3-3 3 3M5 11l3 3 3-3" stroke="currentColor" fill="none" stroke-width="0.5"/>',
+                text: `${rawPriceChange.toFixed(decimals)}`
+            });
+        }
+
+        // Percent change row
+        if (infoSettings.percentChange) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M3 13L13 3M5 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0M13 12a1 1 0 1 1-2 0 1 1 0 0 1 2 0" stroke="currentColor" fill="none" stroke-width="0.5"/>',
+                text: `(${pct.toFixed(2)}%)`
+            });
+        }
+
+        // Change in pips row
+        if (infoSettings.changeInPips) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><circle cx="4" cy="8" r="1.5" fill="currentColor"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><circle cx="12" cy="8" r="1.5" fill="currentColor"/>',
+                text: `${Math.abs(pips).toLocaleString()}`
+            });
+        }
+
+        // Bars range row
+        if (infoSettings.barsRange) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M2 8h12M11 5l3 3-3 3" stroke="currentColor" fill="none" stroke-width="0.5"/>',
+                text: `${barsRange} bars`
+            });
+        }
+
+        // Date/time range row
+        if (infoSettings.dateTimeRange && timeStr) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><circle cx="8" cy="8" r="6" stroke="currentColor" fill="none" stroke-width="0.5"/><path d="M8 4v4l3 2" stroke="currentColor" fill="none" stroke-width="0.5"/>',
+                text: `(${timeStr})`
+            });
+        }
+
+        // Distance row
+        if (infoSettings.distance) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M2 8h12M4 6v4M8 6v4M12 6v4" stroke="currentColor" fill="none" stroke-width="0.5"/>',
+                text: `distance: ${pixelDist} px`
+            });
+        }
+
+        // Angle row
+        if (infoSettings.angle) {
+            rows.push({ 
+                svgIcon: '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M12 4L4 12M12 4v5M12 4h-5" stroke="currentColor" fill="none" stroke-width="0.5"/><path d="M9 7a3 3 0 0 0 3-3" stroke="currentColor" fill="none" stroke-width="0.5"/>',
+                text: `${angleDeg}°`
+            });
+        }
+
+        if (rows.length === 0) return;
+
+        // Layout constants
+        const padX = 10, padY = 8, lineHeight = 19, fontSize = 11;
+        const iconColW = 14, iconTextGap = 6;
+
+        // Measure max text width
         const tempG = this.group.append('g').style('visibility', 'hidden');
-        let maxTextWidth = 0;
-        infoLines.forEach(line => {
-            const t = tempG.append('text')
-                .attr('font-size', fontSize)
-                .attr('font-family', fontFamily)
-                .text(line);
-            const w = t.node().getComputedTextLength ? t.node().getComputedTextLength() : (line.length * fontSize * 0.6);
-            if (w > maxTextWidth) maxTextWidth = w;
+        let maxTW = 0;
+        rows.forEach(row => {
+            const t = tempG.append('text').attr('font-size', fontSize).attr('font-family', fontFamily).text(row.text);
+            const w = t.node().getComputedTextLength ? t.node().getComputedTextLength() : row.text.length * fontSize * 0.6;
+            if (w > maxTW) maxTW = w;
         });
         tempG.remove();
 
-        const boxWidth = maxTextWidth + padding * 2;
-        const boxHeight = infoLines.length * lineHeight + padding * 2;
-        
-        // Position info box perpendicular to the line, never covering it
-        const midX = (x1 + x2) / 2;
-        const midY = (y1 + y2) / 2;
-        
-        // Calculate perpendicular direction (normal to the line)
+        const boxWidth = padX + iconColW + iconTextGap + maxTW + padX;
+        const boxHeight = rows.length * lineHeight + padY * 2;
+
+        // Place box at line midpoint, offset perpendicular to the line — closest possible without overlap
         const dx = x2 - x1;
         const dy = y2 - y1;
-        const lineLength = Math.sqrt(dx * dx + dy * dy);
-        
-        // Perpendicular unit vector (rotated 90 degrees)
-        // We want to go "above" the line visually, so use negative perpendicular
-        const perpX = -dy / lineLength;
-        const perpY = dx / lineLength;
-        
-        // Offset distance: half box height + margin to ensure clear separation from line
-        // Increased from 6 to 12 pixels to prevent box from touching the line
-        const offsetDistance = boxHeight / 2 + 12;
-        
-        // Choose which side to place the box (prefer above/left of line)
-        // If perpendicular points upward (perpY < 0), use it; otherwise flip
-        const sign = perpY <= 0 ? 1 : -1;
-        
-        const offsetX = midX + perpX * offsetDistance * sign;
-        const offsetY = midY + perpY * offsetDistance * sign - boxHeight / 2;
-        
-        // Create info box group
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        const ux = dx / len, uy = dy / len;
+        // Two perpendicular unit vectors (CCW and CW 90°)
+        const pAx = -uy, pAy = ux;
+        const pBx =  uy, pBy = -ux;
+        // Prefer the direction that points more upward (smaller y in screen space)
+        const perp = (pAy <= pBy) ? { x: pAx, y: pAy } : { x: pBx, y: pBy };
+        // Gap = rectangle support function in perp direction + clearance
+        // This ensures no corner of the axis-aligned box touches the line at any angle
+        const gap = Math.abs(uy) * boxWidth / 2 + Math.abs(ux) * boxHeight / 2 + 12;
+        // Position box center at p2 offset perpendicularly away from the line
+        const centerX = x2 + perp.x * gap;
+        const centerY = y2 + perp.y * gap;
+        const boxX = centerX - boxWidth / 2;
+        const boxY = centerY - boxHeight / 2;
+
         const infoGroup = this.group.append('g')
             .attr('class', 'trendline-info')
-            .attr('transform', `translate(${offsetX}, ${offsetY})`);
-        
-        // Draw background rectangle sized to content
+            .attr('transform', `translate(${boxX}, ${boxY})`);
+
         infoGroup.append('rect')
-            .attr('x', -boxWidth / 2)
-            .attr('y', 0)
-            .attr('width', boxWidth)
-            .attr('height', boxHeight)
-            .attr('fill', 'rgba(42, 46, 57, 0.95)')
-            .attr('stroke', '#363a45')
+            .attr('x', 0).attr('y', 0)
+            .attr('width', boxWidth).attr('height', boxHeight)
+            .attr('fill', 'rgba(210, 215, 225, 0.97)')
+            .attr('stroke', 'rgba(160, 165, 185, 0.8)')
             .attr('stroke-width', 1)
             .attr('rx', 4);
-        
-        // Draw text lines
-        infoLines.forEach((line, i) => {
+
+        rows.forEach((row, i) => {
+            const rowY = padY + (i + 0.78) * lineHeight;
+            
+            // Render SVG icon if available
+            if (row.svgIcon) {
+                const iconG = infoGroup.append('g')
+                    .attr('transform', `translate(${padX}, ${rowY - 9})`);
+                iconG.html(row.svgIcon);
+                iconG.select('svg')
+                    .attr('stroke', '#4a5068')
+                    .style('color', '#4a5068')
+                    .style('overflow', 'visible');
+            }
+            
+            // Render text
             infoGroup.append('text')
-                .attr('x', 0)
-                .attr('y', padding + (i + 0.7) * lineHeight)
-                .attr('text-anchor', 'middle')
-                .attr('fill', '#d1d4dc')
+                .attr('x', padX + iconColW + iconTextGap)
+                .attr('y', rowY)
+                .attr('fill', '#1e2235')
                 .attr('font-size', `${fontSize}px`)
                 .attr('font-family', fontFamily)
-                .text(line);
+                .text(row.text);
         });
     }
 
@@ -608,7 +685,8 @@ class TrendlineTool extends BaseDrawing {
             angle += 180;
         }
 
-        const verticalOffset = LINE_LABEL_OFFSET;
+        const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
+        const verticalOffset = LINE_LABEL_OFFSET + Math.max(0, fontSize / 2 - 6);
         const edgePadding = TEXT_EDGE_PADDING;
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
 
@@ -649,7 +727,6 @@ class TrendlineTool extends BaseDrawing {
         // Use raw (actual data-point) positions — no clamping to visible boundaries.
         // Text moves exactly with the line. When the endpoint is off-screen the text
         // is also off-screen (clipped by the SVG clip-path) — same as the line itself.
-        console.log('[TL-TEXT-V15] baseX from:', rawRX.toFixed(1), rawLX.toFixed(1));
         const EDGE = 5;
         let baseX, baseY;
         let labelAnchor;
@@ -700,6 +777,7 @@ class TrendlineTool extends BaseDrawing {
             x: baseX + offsetX,
             y: baseY + offsetY,
             anchor: labelAnchor,
+            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
@@ -867,7 +945,7 @@ class HorizontalLineTool extends BaseDrawing {
                 .attr('y2', y)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+                .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
@@ -892,7 +970,7 @@ class HorizontalLineTool extends BaseDrawing {
                 .attr('y2', y)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+                .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
@@ -917,7 +995,7 @@ class HorizontalLineTool extends BaseDrawing {
                 .attr('y2', scales.yScale(p.y))
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+                .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
@@ -971,10 +1049,20 @@ class HorizontalLineTool extends BaseDrawing {
     }
 
     renderPriceLabel(scales, xRange, point) {
-        // Format price value with appropriate decimal places
+        // Format price value using the chart's instrument-aware decimal count (NQ=2,
+        // GC=1, CL=2, FX=5, etc.). Falls back to 5 only for unknown symbols so we
+        // never show stale `1340.41268` style over-precision on futures/indices.
         const priceValue = point?.y;
         if (priceValue === undefined || priceValue === null) return;
-        const formattedPrice = priceValue.toFixed(5); // Default to 5 decimals, can be customized
+        const chart = scales?.chart || this.chart;
+        let decimals = 5;
+        if (chart && typeof chart.getPriceDecimals === 'function') {
+            const dom = chart.yScale && chart.yScale.domain ? chart.yScale.domain() : null;
+            const range = Array.isArray(dom) && dom.length === 2 ? Math.abs(dom[1] - dom[0]) : 0;
+            const d = chart.getPriceDecimals(range);
+            if (Number.isFinite(d) && d >= 0) decimals = d;
+        }
+        const formattedPrice = priceValue.toFixed(decimals);
         
         const y = scales.yScale(point.y);
         const labelX = xRange[1] - 5; // Position near right edge
@@ -1058,32 +1146,40 @@ class HorizontalLineTool extends BaseDrawing {
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
         
-        const edgePadding = TEXT_EDGE_PADDING; // Distance from edges
-        let baseX = (xRange[0] + xRange[1]) / 2;
+        const chartLeftX = (scales.chart && scales.chart.margin && typeof scales.chart.margin.l === 'number')
+            ? scales.chart.margin.l : xRange[0];
+        const chartRightX = (scales.chart && scales.chart.margin && typeof scales.chart.w === 'number')
+            ? (scales.chart.w - scales.chart.margin.r) : xRange[1];
 
-        const HL_EDGE = 20; // fixed px from endpoint
+        let baseX;
+        let hlAnchor;
         switch (textHAlign) {
             case 'left':
-                baseX = xRange[0] + HL_EDGE;
+                baseX = chartLeftX + TEXT_EDGE_PADDING;
+                hlAnchor = 'start';
                 break;
             case 'right':
-                baseX = xRange[1] - HL_EDGE;
+                baseX = chartRightX - TEXT_EDGE_PADDING;
+                hlAnchor = 'end';
                 break;
             default:
-                baseX = (xRange[0] + xRange[1]) / 2;
+                baseX = (chartLeftX + chartRightX) / 2;
+                hlAnchor = 'middle';
         }
         
-        let offsetY = 5;
+        const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
+        const HL_LABEL_OFFSET = 10 + Math.max(0, fontSize / 2 - 6);
+        let offsetY = 0;
         if (textVAlign === 'top') {
-            offsetY = -LINE_LABEL_OFFSET;
+            offsetY = -HL_LABEL_OFFSET;
         } else if (textVAlign === 'bottom') {
-            offsetY = LINE_LABEL_OFFSET;
+            offsetY = HL_LABEL_OFFSET;
         }
-
         appendTextLabel(this.group, label, {
             x: baseX + (this.style.textOffsetX || 0),
-            y: y + offsetY + (this.style.textOffsetY || 0),
-            anchor: 'middle',
+            y: y + offsetY,
+            anchor: hlAnchor,
+            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize, 
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
@@ -1192,7 +1288,7 @@ class VerticalLineTool extends BaseDrawing {
             const gapMeasure = textOrientation === 'vertical' ? textBBox.width : textBBox.height;
             tempText.remove();
             
-            const padding = 10;
+            const padding = 10 + Math.max(0, fontSize / 2 - 6);
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = gapMeasure + (padding * 2) + (capPad * 2);
 
@@ -1214,6 +1310,11 @@ class VerticalLineTool extends BaseDrawing {
                 : this.style.textOffsetY;
             const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
             labelY = labelY + offsetY;
+
+            // Clamp gap center to same bounds renderTextLabel uses, so gap & text always align
+            const halfGap = gapMeasure / 2;
+            const clampPad = 10;
+            labelY = Math.max(topY + halfGap + clampPad, Math.min(bottomY - halfGap - clampPad, labelY));
 
             const split1Y = labelY - (gapSize / 2);
             const split2Y = labelY + (gapSize / 2);
@@ -1237,7 +1338,7 @@ class VerticalLineTool extends BaseDrawing {
                 .attr('y2', split1Y)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+                .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
@@ -1262,7 +1363,7 @@ class VerticalLineTool extends BaseDrawing {
                 .attr('y2', bottomY)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+                .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
@@ -1287,7 +1388,7 @@ class VerticalLineTool extends BaseDrawing {
                 .attr('y2', yRange[1])
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+                .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
@@ -1353,8 +1454,14 @@ class VerticalLineTool extends BaseDrawing {
         const leftX = Math.min(xRange[0], xRange[1]);
         const rightX = Math.max(xRange[0], xRange[1]);
 
-        // Horizontal offset from line
-        const horizontalOffset = 8;
+        // Horizontal offset from line.
+        // When text is rotated 90° its rendered height (lineHeight) becomes its
+        // horizontal extent, so the offset must be at least lineHeight/2 + padding
+        // to keep the text clear of the vertical line for any font size.
+        const textLineHeight = fontSize * 1.2;
+        const horizontalOffset = rotation !== 0
+            ? Math.ceil(textLineHeight / 2) + 6
+            : 10;
         
         // Get Y range bounds
         const topY = Math.min(yRange[0], yRange[1]);
@@ -1364,10 +1471,10 @@ class VerticalLineTool extends BaseDrawing {
         let baseY;
         switch (textVAlign) {
             case 'top':
-                baseY = topY + TEXT_EDGE_PADDING;
+                baseY = topY + LINE_LABEL_OFFSET;
                 break;
             case 'bottom':
-                baseY = bottomY - TEXT_EDGE_PADDING;
+                baseY = bottomY - LINE_LABEL_OFFSET;
                 break;
             default: // middle
                 baseY = (topY + bottomY) / 2;
@@ -1379,7 +1486,7 @@ class VerticalLineTool extends BaseDrawing {
         let baseX;
         let anchor;
 
-        const clampPad = 2;
+        const clampPad = 10;
 
         if (textVAlign === 'middle') {
             if (textHAlign === 'left') {
@@ -1444,12 +1551,11 @@ class VerticalLineTool extends BaseDrawing {
         // Clamp only Y to avoid pushing the label out of the visible plot vertically.
         baseY = Math.max(topY + halfY + clampPad, Math.min(bottomY - halfY - clampPad, baseY));
 
-        const isCenteredOnLine = textVAlign === 'middle' && textHAlign === 'center' && rotation === 0;
         appendTextLabel(this.group, label, {
             x: baseX,
             y: baseY,
             anchor: anchor,
-            yAnchor: isCenteredOnLine ? 'middle' : undefined,
+            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: fontSize,
             fontFamily: fontFamily,
@@ -1495,20 +1601,11 @@ class RayTool extends BaseDrawing {
         if (this.group) {
             this.group.remove();
         }
-        // Remove any previously rendered unclipped text label
-        if (this._labelGroup) {
-            this._labelGroup.remove();
-            this._labelGroup = null;
-        }
-
         if (this.points.length < 2) return;
 
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
-
-        // Store labelsGroup reference for unclipped text rendering
-        this._labelsGroup = scales.labelsGroup || null;
 
         // Create group for this drawing
         this.group = container.append('g')
@@ -1613,7 +1710,12 @@ class RayTool extends BaseDrawing {
             const textWidth = textBBox.width;
             tempText.remove();
 
-            // Use left→right ordered coords for angle (same as ExtendedLineTool leftX/rightX)
+            // Use original data point screen coords for text anchor (same as ExtendedLineTool)
+            const origLX = x1Screen <= x2Screen ? x1Screen : x2Screen;
+            const origLY = x1Screen <= x2Screen ? y1Screen : y2Screen;
+            const origRX = x1Screen <= x2Screen ? x2Screen : x1Screen;
+            const origRY = x1Screen <= x2Screen ? y2Screen : y1Screen;
+            // Keep visible coords for angle computation (direction of rendered segment)
             const slvX = visX1 <= visX2 ? visX1 : visX2;
             const slvY = visX1 <= visX2 ? visY1 : visY2;
             const srvX = visX1 <= visX2 ? visX2 : visX1;
@@ -1636,16 +1738,16 @@ class RayTool extends BaseDrawing {
             let rawTextX, rawTextY;
             switch (textHAlign) {
                 case 'left':
-                    rawTextX = slvX + vis_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
-                    rawTextY = slvY + vis_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextX = origLX + vis_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextY = origLY + vis_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
                     break;
                 case 'right':
-                    rawTextX = srvX - vis_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
-                    rawTextY = srvY - vis_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextX = origRX - vis_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextY = origRY - vis_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
                     break;
                 default:
-                    rawTextX = (slvX + srvX) / 2;
-                    rawTextY = (slvY + srvY) / 2;
+                    rawTextX = (origLX + origRX) / 2;
+                    rawTextY = (origLY + origRY) / 2;
             }
             // Compute gap in the FULL line's parametric space (x1Screen→extendedX)
             // so the drawn segments align with the gap position
@@ -1681,7 +1783,7 @@ class RayTool extends BaseDrawing {
                 .attr('x2', split1X).attr('y2', split1Y)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+                .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none').style('cursor', 'move');
@@ -1696,7 +1798,7 @@ class RayTool extends BaseDrawing {
                 .attr('x2', extendedX).attr('y2', extendedY)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+                .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none').style('cursor', 'move');
@@ -1712,23 +1814,18 @@ class RayTool extends BaseDrawing {
                 .attr('x2', extendedX).attr('y2', extendedY)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+                .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none').style('cursor', 'move');
         }
 
-        // Pass in visual left→right order (same as ExtendedLineTool leftX/rightX)
-        // so the flip/perp logic in renderTextLabel works correctly
-        const rl_x1 = visX1 <= visX2 ? visX1 : visX2;
-        const rl_y1 = visX1 <= visX2 ? visY1 : visY2;
-        const rl_x2 = visX1 <= visX2 ? visX2 : visX1;
-        const rl_y2 = visX1 <= visX2 ? visY2 : visY1;
+        // Pass original data point screen coords (same as ExtendedLineTool)
         this.renderTextLabel({
-            x1: rl_x1,
-            y1: rl_y1,
-            x2: rl_x2,
-            y2: rl_y2,
+            x1: x1Screen,
+            y1: y1Screen,
+            x2: x2Screen,
+            y2: y2Screen,
             chartBottomY: yRange[0],
             chartTopY: yRange[1]
         });
@@ -1764,49 +1861,52 @@ class RayTool extends BaseDrawing {
             return;
         }
 
-        const { x1, y1, x2, y2 } = coords;
+        // p1 = anchor/start of ray, p2 = direction point (End)
+        const p1x = coords.x1, p1y = coords.y1;
+        const p2x = coords.x2, p2y = coords.y2;
 
-        // Calculate angle from original ray direction; flip detection keeps text readable
-        let angle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
-        const originalAngleRad = Math.atan2(y2 - y1, x2 - x1);
+        // Ray direction vector (p1 → p2) for angle and unit vector
+        const rdx = p2x - p1x, rdy = p2y - p1y;
+        const rlen = Math.sqrt(rdx * rdx + rdy * rdy) || 1;
+        const rux = rdx / rlen, ruy = rdy / rlen;
+
+        // Calculate angle for text rotation from ray direction
+        let angle = Math.atan2(rdy, rdx) * (180 / Math.PI);
+        const originalAngleRad = Math.atan2(rdy, rdx);
+
+        // Keep text readable by flipping it if upside down
         const isFlipped = angle > 90 || angle < -90;
         if (isFlipped) angle += 180;
 
+        // Settings
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const verticalOffset = LINE_LABEL_OFFSET;
+        const verticalOffset = LINE_LABEL_OFFSET + Math.max(0, fontSize / 2 - 6);
+
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
-        const el_len = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2) || 1;
-        const el_ux = (x2 - x1) / el_len;
-        const el_uy = (y2 - y1) / el_len;
-
-        // Visual left/right endpoints (for left/right text alignment)
-        const lvX = x1 <= x2 ? x1 : x2;
-        const lvY = x1 <= x2 ? y1 : y2;
-        const rvX = x1 <= x2 ? x2 : x1;
-        const rvY = x1 <= x2 ? y2 : y1;
-
+        // 'left' = Start (p1), 'right' = End (p2) — semantic, not geometric sort
         let baseX, baseY, elAnchor;
         switch (textHAlign) {
             case 'left':
-                baseX = lvX + TEXT_EDGE_PADDING;
-                baseY = lvY + Math.abs(el_uy) * TEXT_EDGE_PADDING * Math.sign(el_uy || 1);
-                elAnchor = 'start';
+                baseX = p1x + rux * TEXT_EDGE_PADDING;
+                baseY = p1y + ruy * TEXT_EDGE_PADDING;
+                elAnchor = rdx >= 0 ? 'start' : 'end';
                 break;
             case 'right':
-                baseX = rvX - TEXT_EDGE_PADDING;
-                baseY = rvY - Math.abs(el_uy) * TEXT_EDGE_PADDING * Math.sign(el_uy || 1);
-                elAnchor = 'end';
+                baseX = p2x - rux * TEXT_EDGE_PADDING;
+                baseY = p2y - ruy * TEXT_EDGE_PADDING;
+                elAnchor = rdx >= 0 ? 'end' : 'start';
                 break;
             default:
-                baseX = (x1 + x2) / 2;
-                baseY = (y1 + y2) / 2;
+                baseX = (p1x + p2x) / 2;
+                baseY = (p1y + p2y) / 2;
                 elAnchor = 'middle';
         }
 
         const perpX = -Math.sin(originalAngleRad);
         const perpY = Math.cos(originalAngleRad);
+
         const signUp = perpY <= 0 ? 1 : -1;
         if (textVAlign === 'top') {
             baseX += perpX * verticalOffset * signUp;
@@ -1818,7 +1918,8 @@ class RayTool extends BaseDrawing {
 
         const offsetX = this.style.textOffsetX || 0;
         const rawOffsetY = (this.style.textOffsetY === undefined || this.style.textOffsetY === null)
-            ? 0 : this.style.textOffsetY;
+            ? 0
+            : this.style.textOffsetY;
         const offsetY = rawOffsetY === DEFAULT_TEXT_STYLE.textOffsetY ? 0 : rawOffsetY;
 
         // Clamp label to stay within chart area (don't overlap time or price axes)
@@ -1827,18 +1928,11 @@ class RayTool extends BaseDrawing {
         if (chartBottomY !== undefined) baseY = Math.min(baseY, chartBottomY - 2);
         if (chartTopY !== undefined) baseY = Math.max(baseY, chartTopY + 2);
 
-        // Use unclipped labelsGroup so text is never cut off by chart clip-path
-        if (this._labelsGroup) {
-            this._labelGroup = this._labelsGroup.append('g')
-                .attr('class', 'drawing-label ray-label')
-                .attr('data-id', this.id)
-                .style('opacity', this.visible ? (this.style.opacity || 1) : 0)
-                .style('pointer-events', 'none');
-        }
-        appendTextLabel(this._labelGroup || this.group, label, {
+        appendTextLabel(this.group, label, {
             x: baseX + offsetX,
             y: baseY + offsetY,
             anchor: elAnchor,
+            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
@@ -1998,7 +2092,7 @@ class HorizontalRayTool extends BaseDrawing {
                 .attr('y2', y)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+                .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
@@ -2024,7 +2118,7 @@ class HorizontalRayTool extends BaseDrawing {
                 .attr('y2', y)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+                .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
@@ -2050,7 +2144,7 @@ class HorizontalRayTool extends BaseDrawing {
                 .attr('y2', scales.yScale(p.y))
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+                .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
@@ -2114,10 +2208,20 @@ class HorizontalRayTool extends BaseDrawing {
     }
 
     renderPriceLabel(scales, xRange, point) {
-        // Format price value with appropriate decimal places
+        // Format price value using the chart's instrument-aware decimal count (NQ=2,
+        // GC=1, CL=2, FX=5, etc.). Falls back to 5 only for unknown symbols so we
+        // never show stale `1340.41268` style over-precision on futures/indices.
         const priceValue = point?.y;
         if (priceValue === undefined || priceValue === null) return;
-        const formattedPrice = priceValue.toFixed(5); // Default to 5 decimals, can be customized
+        const chart = scales?.chart || this.chart;
+        let decimals = 5;
+        if (chart && typeof chart.getPriceDecimals === 'function') {
+            const dom = chart.yScale && chart.yScale.domain ? chart.yScale.domain() : null;
+            const range = Array.isArray(dom) && dom.length === 2 ? Math.abs(dom[1] - dom[0]) : 0;
+            const d = chart.getPriceDecimals(range);
+            if (Number.isFinite(d) && d >= 0) decimals = d;
+        }
+        const formattedPrice = priceValue.toFixed(decimals);
         
         const y = scales.yScale(point.y);
         const labelX = xRange[1] - 5; // Position near right edge
@@ -2227,17 +2331,20 @@ class HorizontalRayTool extends BaseDrawing {
                 hrAnchor = 'middle';
         }
         
+        const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
+        const HL_LABEL_OFFSET = 10 + Math.max(0, fontSize / 2 - 6);
         let offsetY = 0;
         if (textVAlign === 'top') {
-            offsetY = -LINE_LABEL_OFFSET;
+            offsetY = -HL_LABEL_OFFSET;
         } else if (textVAlign === 'bottom') {
-            offsetY = LINE_LABEL_OFFSET;
+            offsetY = HL_LABEL_OFFSET;
         }
 
         appendTextLabel(this.group, label, {
             x: baseX + (this.style.textOffsetX || 0),
-            y: y + offsetY + (this.style.textOffsetY || 0),
+            y: y + offsetY,
             anchor: hrAnchor,
+            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
@@ -2282,20 +2389,11 @@ class ExtendedLineTool extends BaseDrawing {
         if (this.group) {
             this.group.remove();
         }
-        // Remove any previously rendered unclipped text label
-        if (this._labelGroup) {
-            this._labelGroup.remove();
-            this._labelGroup = null;
-        }
-
         if (this.points.length < 2) return;
 
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
-
-        // Store labelsGroup reference for unclipped text rendering
-        this._labelsGroup = scales.labelsGroup || null;
 
         // Create group for this drawing
         this.group = container.append('g')
@@ -2408,8 +2506,13 @@ class ExtendedLineTool extends BaseDrawing {
             const capPad = Math.max(2, scaledStrokeWidth);
             const gapSize = textWidth + (padding * 2) + (capPad * 2);
 
-            // Fixed 30px along line direction from visual endpoint (leftX/rightX already visual L/R)
-            const EL_EDGE = 30;
+            // Use original data point screen coordinates for text/gap positioning
+            // so text stays anchored to the actual data points regardless of line angle
+            const origLX = x1Screen <= x2Screen ? x1Screen : x2Screen;
+            const origLY = x1Screen <= x2Screen ? y1Screen : y2Screen;
+            const origRX = x1Screen <= x2Screen ? x2Screen : x1Screen;
+            const origRY = x1Screen <= x2Screen ? y2Screen : y1Screen;
+
             const el_lineLength = Math.sqrt((rightX - leftX) ** 2 + (rightY - leftY) ** 2);
             const el_ux = el_lineLength > 0 ? (rightX - leftX) / el_lineLength : 1;
             const el_uy = el_lineLength > 0 ? (rightY - leftY) / el_lineLength : 0;
@@ -2417,16 +2520,16 @@ class ExtendedLineTool extends BaseDrawing {
             let rawTextX_el, rawTextY_el;
             switch (textHAlign) {
                 case 'left':
-                    rawTextX_el = leftX + el_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
-                    rawTextY_el = leftY + el_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextX_el = origLX + el_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextY_el = origLY + el_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
                     break;
                 case 'right':
-                    rawTextX_el = rightX - el_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
-                    rawTextY_el = rightY - el_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextX_el = origRX - el_ux * (gapSize / 2 + TEXT_EDGE_PADDING);
+                    rawTextY_el = origRY - el_uy * (gapSize / 2 + TEXT_EDGE_PADDING);
                     break;
                 default:
-                    rawTextX_el = (leftX + rightX) / 2;
-                    rawTextY_el = (leftY + rightY) / 2;
+                    rawTextX_el = (origLX + origRX) / 2;
+                    rawTextY_el = (origLY + origRY) / 2;
             }
             const t_el = el_lineLength > 0 ? Math.sqrt((rawTextX_el-leftX)**2+(rawTextY_el-leftY)**2) / el_lineLength : 0.5;
             const split1T_el = Math.max(0, t_el - halfGapT_el);
@@ -2464,7 +2567,7 @@ class ExtendedLineTool extends BaseDrawing {
                 .attr('y2', split1Y)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+                .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
@@ -2489,7 +2592,7 @@ class ExtendedLineTool extends BaseDrawing {
                 .attr('y2', rightY)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+                .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
@@ -2514,7 +2617,7 @@ class ExtendedLineTool extends BaseDrawing {
                 .attr('y2', rightY)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+                .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
@@ -2522,10 +2625,10 @@ class ExtendedLineTool extends BaseDrawing {
         }
 
         this.renderTextLabel({
-            x1: leftX,
-            y1: leftY,
-            x2: rightX,
-            y2: rightY,
+            x1: x1Screen,
+            y1: y1Screen,
+            x2: x2Screen,
+            y2: y2Screen,
             chartBottomY: yRange[0],
             chartTopY: yRange[1]
         });
@@ -2565,10 +2668,16 @@ class ExtendedLineTool extends BaseDrawing {
         }
 
         const { x1, y1, x2, y2 } = coords;
+
+        // Sort by x to get left/right data points
+        const lx = x1 <= x2 ? x1 : x2;
+        const ly = x1 <= x2 ? y1 : y2;
+        const rx = x1 <= x2 ? x2 : x1;
+        const ry = x1 <= x2 ? y2 : y1;
         
         // Calculate angle of the line for text rotation
-        let angle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
-        const originalAngleRad = Math.atan2(y2 - y1, x2 - x1);
+        let angle = Math.atan2(ry - ly, rx - lx) * (180 / Math.PI);
+        const originalAngleRad = Math.atan2(ry - ly, rx - lx);
         
         // Keep text readable by flipping it if upside down
         const isFlipped = angle > 90 || angle < -90;
@@ -2578,32 +2687,30 @@ class ExtendedLineTool extends BaseDrawing {
         
         // Settings
         const fontSize = this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize;
-        const verticalOffset = LINE_LABEL_OFFSET;
+        const verticalOffset = LINE_LABEL_OFFSET + Math.max(0, fontSize / 2 - 6);
         
         const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
-        // x1/y1 = leftX/leftY, x2/y2 = rightX/rightY (already visual L/R from render)
-        // Fixed 30px along line direction from visual endpoint
-        const EL_MAIN_EDGE = 30;
-        const el_main_len = Math.sqrt((x2-x1)**2 + (y2-y1)**2) || 1;
-        const el_main_ux = (x2 - x1) / el_main_len;
-        const el_main_uy = (y2 - y1) / el_main_len;
+        // Use original data point screen coords for text positioning
+        const origLen = Math.sqrt((rx - lx) ** 2 + (ry - ly) ** 2) || 1;
+        const ux = (rx - lx) / origLen;
+        const uy = (ry - ly) / origLen;
         let baseX, baseY, elAnchor;
         switch (textHAlign) {
             case 'left':
-                baseX = x1 + TEXT_EDGE_PADDING;
-                baseY = y1 + el_main_uy * TEXT_EDGE_PADDING;
+                baseX = lx + ux * TEXT_EDGE_PADDING;
+                baseY = ly + uy * TEXT_EDGE_PADDING;
                 elAnchor = 'start';
                 break;
             case 'right':
-                baseX = x2 - TEXT_EDGE_PADDING;
-                baseY = y2 - el_main_uy * TEXT_EDGE_PADDING;
+                baseX = rx - ux * TEXT_EDGE_PADDING;
+                baseY = ry - uy * TEXT_EDGE_PADDING;
                 elAnchor = 'end';
                 break;
             default:
-                baseX = (x1 + x2) / 2;
-                baseY = (y1 + y2) / 2;
+                baseX = (lx + rx) / 2;
+                baseY = (ly + ry) / 2;
                 elAnchor = 'middle';
         }
 
@@ -2631,18 +2738,11 @@ class ExtendedLineTool extends BaseDrawing {
         if (chartBottomY !== undefined) baseY = Math.min(baseY, chartBottomY - 2);
         if (chartTopY !== undefined) baseY = Math.max(baseY, chartTopY + 2);
 
-        // Use unclipped labelsGroup so text is never cut off by chart clip-path
-        if (this._labelsGroup) {
-            this._labelGroup = this._labelsGroup.append('g')
-                .attr('class', 'drawing-label extended-line-label')
-                .attr('data-id', this.id)
-                .style('opacity', this.visible ? (this.style.opacity || 1) : 0)
-                .style('pointer-events', 'none');
-        }
-        appendTextLabel(this._labelGroup || this.group, label, {
+        appendTextLabel(this.group, label, {
             x: baseX + offsetX,
             y: baseY + offsetY,
             anchor: elAnchor,
+            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: fontSize,
             fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
@@ -2755,7 +2855,7 @@ class CrossLineTool extends BaseDrawing {
             .attr('y2', yRange[0])
             .attr('stroke', this.style.stroke)
             .attr('stroke-width', scaledStrokeWidth)
-            .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+            .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
             .attr('opacity', this.style.opacity)
             .attr('data-original-width', this.style.strokeWidth)
             .style('pointer-events', 'none')
@@ -2769,37 +2869,39 @@ class CrossLineTool extends BaseDrawing {
             .attr('y2', yScreen)
             .attr('stroke', this.style.stroke)
             .attr('stroke-width', scaledStrokeWidth)
-            .attr('stroke-dasharray', this.style.strokeDasharray || this.style.dashArray || '')
+            .attr('stroke-dasharray', this.style.strokeDasharray ?? this.style.dashArray ?? '')
             .attr('opacity', this.style.opacity)
             .attr('data-original-width', this.style.strokeWidth)
             .style('pointer-events', 'none')
             .style('cursor', 'move');
 
-        // Add price label if enabled
-        if (typeof this.isAxisLabelEnabled === 'function' ? this.isAxisLabelEnabled('price') : this.style.showPriceLabel !== false) {
-            const priceText = p.y.toFixed(2);
-            this.group.append('text')
-                .attr('x', xRange[1] - 5)
-                .attr('y', yScreen - 5)
-                .attr('text-anchor', 'end')
-                .attr('fill', this.style.stroke)
-                .attr('font-size', '12px')
-                .attr('font-weight', 'bold')
-                .style('pointer-events', 'none')
-                .text(priceText);
-        }
-
         // Render text label if exists
         if (this.text && this.text.trim()) {
+            const cl_textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+            const cl_textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
+            const cl_xRange = scales.xScale.range();
+            const CLEDGE = 20;
+            let cl_baseX, cl_anchor;
+            switch (cl_textHAlign) {
+                case 'left':  cl_baseX = cl_xRange[0] + CLEDGE; cl_anchor = 'start'; break;
+                case 'right': cl_baseX = cl_xRange[1] - CLEDGE; cl_anchor = 'end';   break;
+                default:      cl_baseX = (cl_xRange[0] + cl_xRange[1]) / 2; cl_anchor = 'middle';
+            }
+            const CL_HL_OFFSET = 10;
+            let cl_offsetY = 0;
+            if (cl_textVAlign === 'top')    cl_offsetY = -CL_HL_OFFSET;
+            else if (cl_textVAlign === 'bottom') cl_offsetY =  CL_HL_OFFSET;
             appendTextLabel(this.group, this.text, {
-                x: xScreen,
-                y: yScreen,
-                fontSize: this.style.fontSize,
-                textColor: this.style.textColor,
-                textAlign: this.style.textAlign,
-                textPosition: this.style.textPosition,
-                offsetX: this.style.textOffsetX || 10,
-                offsetY: this.style.textOffsetY || -10
+                x: cl_baseX + (this.style.textOffsetX || 0),
+                y: yScreen + cl_offsetY,
+                anchor: cl_anchor,
+                yAnchor: 'middle',
+                fill: this.style.textColor || this.style.stroke,
+                fontSize: this.style.fontSize || DEFAULT_TEXT_STYLE.fontSize,
+                fontFamily: this.style.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
+                fontWeight: this.style.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
+                fontStyle: this.style.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
+                rotation: 0
             });
         }
 

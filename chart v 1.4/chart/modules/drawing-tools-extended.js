@@ -68,7 +68,7 @@ class HighlighterTool extends BaseDrawing {
         group.selectAll('.resize-handle').remove();
         group.selectAll('.resize-handle-group').remove();
         
-        // Only show handles for first and last points
+        // Only show handles for first and last points (grab to move whole stroke)
         const pointsToHandle = [0, this.points.length - 1];
         
         pointsToHandle.forEach(index => {
@@ -88,7 +88,7 @@ class HighlighterTool extends BaseDrawing {
                 .attr('fill', handleFill)
                 .attr('stroke', handleStroke)
                 .attr('stroke-width', handleStrokeWidth)
-                .style('cursor', 'nwse-resize')
+                .style('cursor', 'move')
                 .style('pointer-events', 'all')
                 .style('opacity', this.selected ? 1 : 0)
                 .attr('data-point-index', index);
@@ -246,17 +246,21 @@ class ArrowMarkerTool extends BaseDrawing {
             const fontWeight = this.style.fontWeight || 'normal';
             const fontStyle = this.style.fontStyle || 'normal';
 
-            // Perpendicular direction (90° counter-clockwise from arrow) keeps text
-            // clear of the body regardless of the arrow's rotation angle
-            const perpAngle = angle - Math.PI / 2;
-            const perpDist = Math.max(fontSize, 16) + 6; // scale slightly with font size
-            const textX = x1 + perpDist * Math.cos(perpAngle) + (this.style.textOffsetX || 0);
-            const textY = y1 + perpDist * Math.sin(perpAngle) + (this.style.textOffsetY || 0);
+            // Place text BEHIND the tail (opposite to arrow direction).
+            // Anchor the edge of the text that faces the arrow so all text
+            // extends away from the body — no overlap at any angle or width.
+            const backAngle = angle + Math.PI;
+            const backDist = startHalfWidth + 6;
+            const textX = x1 + backDist * Math.cos(backAngle) + (this.style.textOffsetX || 0);
+            const textY = y1 + backDist * Math.sin(backAngle) + (this.style.textOffsetY || 0);
+            // If the back-anchor is to the left of the tail, use 'end' so text
+            // extends left; if to the right, use 'start' so it extends right.
+            const textAnchor = Math.cos(backAngle) >= 0 ? 'start' : 'end';
 
             this.group.append('text')
                 .attr('x', textX)
                 .attr('y', textY)
-                .attr('text-anchor', 'middle')
+                .attr('text-anchor', textAnchor)
                 .attr('dominant-baseline', 'middle')
                 .attr('fill', textColor)
                 .attr('font-size', fontSize)
@@ -289,6 +293,47 @@ class ArrowMarkerTool extends BaseDrawing {
     }
 }
 
+/** Layout + paths for arrow mark up/down (same outer dimensions). */
+function arrowMarkUpLayout(size) {
+    const arrowWidth = size * 0.85;
+    const shaftWidth = size * 0.4;
+    const headHeight = size * 0.6;
+    const legHeight = size * 0.45;
+    const totalHeight = headHeight + legHeight;
+    const outerW = Math.max(arrowWidth, shaftWidth);
+    return { arrowWidth, shaftWidth, headHeight, legHeight, totalHeight, outerW };
+}
+
+function arrowMarkUpPathD(cx, cy, size) {
+    const { arrowWidth, shaftWidth, headHeight, totalHeight } = arrowMarkUpLayout(size);
+    const topY = cy - totalHeight / 2;
+    const bottomY = cy + totalHeight / 2;
+    const headBaseY = topY + headHeight;
+    return `M ${cx} ${topY} L ${cx + arrowWidth / 2} ${headBaseY} L ${cx + shaftWidth / 2} ${headBaseY} L ${cx + shaftWidth / 2} ${bottomY} L ${cx - shaftWidth / 2} ${bottomY} L ${cx - shaftWidth / 2} ${headBaseY} L ${cx - arrowWidth / 2} ${headBaseY} Z`;
+}
+
+/** Explicit down path (same width/height as up; no SVG mirror transform). */
+function arrowMarkDownPathD(cx, cy, size) {
+    const { arrowWidth, shaftWidth, headHeight, totalHeight } = arrowMarkUpLayout(size);
+    const topY = cy - totalHeight / 2;
+    const bottomY = cy + totalHeight / 2;
+    const headBaseY = bottomY - headHeight;
+    return `M ${cx} ${bottomY} L ${cx + arrowWidth / 2} ${headBaseY} L ${cx + shaftWidth / 2} ${headBaseY} L ${cx + shaftWidth / 2} ${topY} L ${cx - shaftWidth / 2} ${topY} L ${cx - shaftWidth / 2} ${headBaseY} L ${cx - arrowWidth / 2} ${headBaseY} Z`;
+}
+
+const ARROW_MARK_DEFAULT_PX = 24;
+
+function normalizeArrowMarkSize(drawing) {
+    let s = Number(drawing.markerSize);
+    if (!Number.isFinite(s) || s <= 0) s = Number(drawing.style && drawing.style.markerSize);
+    if (!Number.isFinite(s) || s <= 0) s = ARROW_MARK_DEFAULT_PX;
+    s = Math.max(12, Math.min(60, s));
+    drawing.markerSize = s;
+    if (!drawing.style) drawing.style = {};
+    drawing.style.markerSize = s;
+    return s;
+}
+
 // ============================================================================
 // Arrow Mark Up Tool (Upward pointing arrow)
 // ============================================================================
@@ -299,7 +344,9 @@ class ArrowMarkUpTool extends BaseDrawing {
         this.style.fill = style.fill || '#089981';
         this.style.stroke = style.stroke || '#089981';
         this.style.strokeWidth = style.strokeWidth || 0;
-        this.markerSize = style.markerSize || 24;
+        const ms = Number(style.markerSize);
+        this.markerSize = Number.isFinite(ms) && ms > 0 ? Math.max(12, Math.min(60, ms)) : ARROW_MARK_DEFAULT_PX;
+        this.style.markerSize = this.markerSize;
     }
 
     render(container, scales) {
@@ -318,34 +365,18 @@ class ArrowMarkUpTool extends BaseDrawing {
         const x = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
         const y = scales.yScale(p.y);
-        const size = this.markerSize || this.style.markerSize || 24;
-
-        // Draw upward arrow marker (chevron/arrow shape pointing up)
-        const arrowWidth = size * 0.85; // Wider head
-        const shaftWidth = size * 0.4;  // Wider shaft
-        const headHeight = size * 0.6;  // Bigger head
-        const legHeight = size * 0.45;  // Shorter leg
-        const totalHeight = headHeight + legHeight;
-        const topY = y - totalHeight / 2;
-        const bottomY = y + totalHeight / 2;
-        const headBaseY = topY + headHeight;
-        
-        const arrowPath = `M ${x} ${topY} 
-            L ${x + arrowWidth/2} ${headBaseY} 
-            L ${x + shaftWidth/2} ${headBaseY} 
-            L ${x + shaftWidth/2} ${bottomY} 
-            L ${x - shaftWidth/2} ${bottomY} 
-            L ${x - shaftWidth/2} ${headBaseY} 
-            L ${x - arrowWidth/2} ${headBaseY} Z`;
+        const size = normalizeArrowMarkSize(this);
+        const layout = arrowMarkUpLayout(size);
+        const arrowPath = arrowMarkUpPathD(x, y, size);
 
         // Add invisible larger hitbox for easier selection (render FIRST so it's behind the arrow)
         const hitboxPadding = size * 0.5;
         this.group.append('rect')
             .attr('class', 'arrow-marker-hitbox')
-            .attr('x', x - size/2 - hitboxPadding)
-            .attr('y', y - size/2 - hitboxPadding)
-            .attr('width', size + hitboxPadding * 2)
-            .attr('height', size + hitboxPadding * 2)
+            .attr('x', x - layout.outerW / 2 - hitboxPadding)
+            .attr('y', y - layout.totalHeight / 2 - hitboxPadding)
+            .attr('width', layout.outerW + hitboxPadding * 2)
+            .attr('height', layout.totalHeight + hitboxPadding * 2)
             .attr('fill', 'transparent')
             .style('pointer-events', 'none')
             .style('cursor', 'default');
@@ -395,7 +426,7 @@ class ArrowMarkUpTool extends BaseDrawing {
             const fontStyle = this.style.fontStyle || 'normal';
             
             // Position text below the arrow
-            const textOffsetY = size/2 + 8;
+            const textOffsetY = layout.totalHeight / 2 + 8;
             
             this.group.append('text')
                 .attr('x', x)
@@ -412,8 +443,9 @@ class ArrowMarkUpTool extends BaseDrawing {
                 .text(this.text);
         }
 
-        // Don't create resize handles for arrow markers - they should only be movable
+        // Single-point marker: create handles but force move cursor (not resize)
         this.createHandles(this.group, scales);
+        this.group.selectAll('.resize-handle, .resize-handle-hit').style('cursor', 'move');
         return this.group;
     }
 
@@ -423,7 +455,9 @@ class ArrowMarkUpTool extends BaseDrawing {
         tool.visible = data.visible !== undefined ? data.visible : true;
         tool.meta = data.meta || { createdAt: Date.now(), updatedAt: Date.now() };
         tool.chart = chart;
-        tool.markerSize = data.style?.markerSize || 24;
+        const jms = Number(data.style && data.style.markerSize);
+        tool.markerSize = Number.isFinite(jms) && jms > 0 ? Math.max(12, Math.min(60, jms)) : ARROW_MARK_DEFAULT_PX;
+        tool.style.markerSize = tool.markerSize;
         if (data.coordinateSystem === 'timestamp' && data.points) {
             tool.timestampPoints = data.points.map(p => ({
                 timestamp: p.timestamp,
@@ -444,7 +478,9 @@ class ArrowMarkDownTool extends BaseDrawing {
         this.style.fill = style.fill || '#F23645';
         this.style.stroke = style.stroke || '#F23645';
         this.style.strokeWidth = style.strokeWidth || 0;
-        this.markerSize = style.markerSize || 24;
+        const ms = Number(style.markerSize);
+        this.markerSize = Number.isFinite(ms) && ms > 0 ? Math.max(12, Math.min(60, ms)) : ARROW_MARK_DEFAULT_PX;
+        this.style.markerSize = this.markerSize;
     }
 
     render(container, scales) {
@@ -463,34 +499,18 @@ class ArrowMarkDownTool extends BaseDrawing {
         const x = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
         const y = scales.yScale(p.y);
-        const size = this.markerSize || this.style.markerSize || 24;
-
-        // Draw downward arrow marker (chevron/arrow shape pointing down)
-        const arrowWidth = size * 0.85; // Wider head
-        const shaftWidth = size * 0.4;  // Wider shaft
-        const headHeight = size * 0.6;  // Bigger head
-        const legHeight = size * 0.45;  // Shorter leg
-        const totalHeight = headHeight + legHeight;
-        const topY = y - totalHeight / 2;
-        const bottomY = y + totalHeight / 2;
-        const headBaseY = bottomY - headHeight;
-        
-        const arrowPath = `M ${x} ${bottomY} 
-            L ${x + arrowWidth/2} ${headBaseY} 
-            L ${x + shaftWidth/2} ${headBaseY} 
-            L ${x + shaftWidth/2} ${topY} 
-            L ${x - shaftWidth/2} ${topY} 
-            L ${x - shaftWidth/2} ${headBaseY} 
-            L ${x - arrowWidth/2} ${headBaseY} Z`;
+        const size = normalizeArrowMarkSize(this);
+        const layout = arrowMarkUpLayout(size);
+        const arrowPath = arrowMarkDownPathD(x, y, size);
 
         // Add invisible larger hitbox for easier selection (render FIRST so it's behind the arrow)
         const hitboxPadding = size * 0.5;
         this.group.append('rect')
             .attr('class', 'arrow-marker-hitbox')
-            .attr('x', x - size/2 - hitboxPadding)
-            .attr('y', y - size/2 - hitboxPadding)
-            .attr('width', size + hitboxPadding * 2)
-            .attr('height', size + hitboxPadding * 2)
+            .attr('x', x - layout.outerW / 2 - hitboxPadding)
+            .attr('y', y - layout.totalHeight / 2 - hitboxPadding)
+            .attr('width', layout.outerW + hitboxPadding * 2)
+            .attr('height', layout.totalHeight + hitboxPadding * 2)
             .attr('fill', 'transparent')
             .style('pointer-events', 'none')
             .style('cursor', 'default');
@@ -540,7 +560,7 @@ class ArrowMarkDownTool extends BaseDrawing {
             const fontStyle = this.style.fontStyle || 'normal';
             
             // Position text above the arrow
-            const textOffsetY = -size/2 - 8;
+            const textOffsetY = -layout.totalHeight / 2 - 8;
             
             this.group.append('text')
                 .attr('x', x)
@@ -557,8 +577,9 @@ class ArrowMarkDownTool extends BaseDrawing {
                 .text(this.text);
         }
 
-        // Don't create resize handles for arrow markers - they should only be movable
+        // Single-point marker: create handles but force move cursor (not resize)
         this.createHandles(this.group, scales);
+        this.group.selectAll('.resize-handle, .resize-handle-hit').style('cursor', 'move');
         return this.group;
     }
 
@@ -568,7 +589,9 @@ class ArrowMarkDownTool extends BaseDrawing {
         tool.visible = data.visible !== undefined ? data.visible : true;
         tool.meta = data.meta || { createdAt: Date.now(), updatedAt: Date.now() };
         tool.chart = chart;
-        tool.markerSize = data.style?.markerSize || 24;
+        const jms = Number(data.style && data.style.markerSize);
+        tool.markerSize = Number.isFinite(jms) && jms > 0 ? Math.max(12, Math.min(60, jms)) : ARROW_MARK_DEFAULT_PX;
+        tool.style.markerSize = tool.markerSize;
         if (data.coordinateSystem === 'timestamp' && data.points) {
             tool.timestampPoints = data.points.map(p => ({
                 timestamp: p.timestamp,
@@ -1183,6 +1206,7 @@ class ArcTool extends BaseDrawing {
                 .attr('y2', y2)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', this.style.strokeWidth)
+                .attr('stroke-dasharray', this.style.strokeDasharray || null)
                 .attr('opacity', this.style.opacity);
             return this.group;
         }
@@ -1225,15 +1249,28 @@ class ArcTool extends BaseDrawing {
         // Draw the arc using quadratic curve
         const pathData = `M ${x1} ${y1} Q ${ctrlX} ${ctrlY} ${x2} ${y2}`;
 
+        // Invisible wide hit path for easier clicking (same as CurveTool)
         this.group.append('path')
+            .attr('d', pathData)
+            .attr('stroke', 'transparent')
+            .attr('stroke-width', Math.max(16, (this.style.strokeWidth || 2) * 5))
+            .attr('fill', 'none')
+            .attr('opacity', 1)
+            .attr('stroke-linecap', 'round')
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
+        this.group.append('path')
+            .attr('class', 'line-visible-path')
             .attr('d', pathData)
             .attr('stroke', this.style.stroke)
             .attr('stroke-width', this.style.strokeWidth)
+            .attr('stroke-dasharray', this.style.strokeDasharray || null)
             .attr('fill', this.style.fill)
             .attr('opacity', this.style.opacity)
             .attr('stroke-linecap', 'round')
             .attr('data-original-width', this.style.strokeWidth)
-            .style('pointer-events', 'stroke')
+            .style('pointer-events', 'none')
             .style('cursor', 'move');
 
         this.renderTextLabel({ x1, y1, x2, y2, scales });
@@ -1344,6 +1381,7 @@ class ArcTool extends BaseDrawing {
                 x: baseX + (this.style.textOffsetX || 0),
                 y: baseY + (this.style.textOffsetY || 0),
                 anchor: TEXT_ALIGN_TO_ANCHOR[this.style.textAlign] || 'middle',
+                yAnchor: 'middle',
                 fontSize: this.style.fontSize || 14,
                 fontWeight: this.style.fontWeight || 'normal',
                 fontStyle: this.style.fontStyle || 'normal',
@@ -1608,9 +1646,11 @@ class CurveTool extends BaseDrawing {
             .style('cursor', 'move');
 
         const path = this.group.append('path')
+            .attr('class', 'line-visible-path')
             .attr('d', pathData)
             .attr('stroke', this.style.stroke)
             .attr('stroke-width', this.style.strokeWidth)
+            .attr('stroke-dasharray', this.style.strokeDasharray || null)
             .attr('fill', this.style.fill)
             .attr('opacity', this.style.opacity)
             .attr('stroke-linecap', 'round')
@@ -1749,6 +1789,7 @@ class CurveTool extends BaseDrawing {
             x: baseX + offsetX,
             y: baseY + offsetY,
             anchor: TEXT_ALIGN_TO_ANCHOR[this.style.textAlign] || 'middle',
+            yAnchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || 14,
             fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
@@ -2135,6 +2176,7 @@ class DoubleCurveTool extends BaseDrawing {
                 x: baseX + offsetX,
                 y: baseY + offsetY,
                 anchor: (typeof TEXT_ALIGN_TO_ANCHOR !== 'undefined' ? TEXT_ALIGN_TO_ANCHOR[this.style.textAlign] : null) || 'middle',
+                yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || 14,
                 fontFamily: this.style.fontFamily || 'Roboto, sans-serif',

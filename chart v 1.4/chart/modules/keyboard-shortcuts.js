@@ -35,7 +35,7 @@ class KeyboardShortcutsManager {
      */
     loadCustomShortcuts() {
         try {
-            const saved = localStorage.getItem('chart_custom_shortcuts');
+            const saved = userStorage.getItem('chart_custom_shortcuts');
             return saved ? JSON.parse(saved) : {};
         } catch (e) {
             console.warn('Failed to load custom shortcuts:', e);
@@ -48,7 +48,7 @@ class KeyboardShortcutsManager {
      */
     saveCustomShortcuts() {
         try {
-            localStorage.setItem('chart_custom_shortcuts', JSON.stringify(this.customShortcuts));
+            userStorage.setItem('chart_custom_shortcuts', JSON.stringify(this.customShortcuts));
         } catch (e) {
             console.warn('Failed to save custom shortcuts:', e);
         }
@@ -329,6 +329,15 @@ class KeyboardShortcutsManager {
         this.modifiers.alt = e.altKey;
         this.modifiers.shift = e.shiftKey;
         this.modifiers.meta = e.metaKey;
+
+        if ((e.key === 'Control' || e.key === 'Meta')
+            && this.chart
+            && typeof this.chart.refreshCrosshairFromLastPointer === 'function') {
+            this.chart.refreshCrosshairFromLastPointer({
+                ctrlKey: e.ctrlKey,
+                metaKey: e.metaKey
+            });
+        }
         
         // Skip if typing in input fields (except for specific shortcuts)
         if (this.isInputFocused) {
@@ -372,6 +381,15 @@ class KeyboardShortcutsManager {
         this.modifiers.alt = e.altKey;
         this.modifiers.shift = e.shiftKey;
         this.modifiers.meta = e.metaKey;
+
+        if ((e.key === 'Control' || e.key === 'Meta')
+            && this.chart
+            && typeof this.chart.refreshCrosshairFromLastPointer === 'function') {
+            this.chart.refreshCrosshairFromLastPointer({
+                ctrlKey: e.ctrlKey,
+                metaKey: e.metaKey
+            });
+        }
     }
     
     /**
@@ -839,8 +857,14 @@ class KeyboardShortcutsManager {
     // ===== HELPER METHODS =====
     
     saveDrawings() {
-        const storageKey = `chart_drawings_${this.chart.currentFileId || 'default'}`;
-        localStorage.setItem(storageKey, JSON.stringify(this.chart.drawings || []));
+        if (this.chart.drawingManager && typeof this.chart.drawingManager.saveDrawings === 'function') {
+            this.chart.drawingManager.saveDrawings();
+            return;
+        }
+        const storageKey = typeof this.chart.getDrawingsStorageKey === 'function'
+            ? this.chart.getDrawingsStorageKey()
+            : `chart_drawings_${this.chart.currentFileId || 'default'}`;
+        userStorage.setItem(storageKey, JSON.stringify(this.chart.drawings || []));
     }
     
     showSymbolSearchIndicator(text) {
@@ -854,7 +878,7 @@ class KeyboardShortcutsManager {
                 left: 50%;
                 transform: translate(-50%, -50%);
                 background: rgba(26, 29, 40, 0.95);
-                border: 1px solid #2962ff;
+                border: 1px solid var(--sp-accent);
                 border-radius: 8px;
                 padding: 16px 24px;
                 color: #fff;
@@ -1033,7 +1057,7 @@ class KeyboardShortcutsManager {
                 </h2>
                 <div style="display: flex; gap: 8px; align-items: center;">
                     <button id="editShortcutsBtn" style="
-                        background: #2962ff;
+                        background: var(--sp-accent);
                         border: none;
                         color: #fff;
                         font-size: 12px;
@@ -1224,7 +1248,7 @@ class KeyboardShortcutsManager {
         for (const [category, shortcuts] of Object.entries(grouped)) {
             html += `
                 <div style="margin-bottom: 20px;">
-                    <h3 style="color: #2962ff; font-size: 13px; margin: 0 0 12px 0; font-weight: 600;">${category}</h3>
+                    <h3 style="color: var(--sp-accent); font-size: 13px; margin: 0 0 12px 0; font-weight: 600;">${category}</h3>
                     ${shortcuts.map(s => {
                         const currentKey = this.customShortcuts[s.id] || s.defaultKey;
                         const isCustom = this.customShortcuts[s.id] ? true : false;
@@ -1245,8 +1269,8 @@ class KeyboardShortcutsManager {
                                 <div style="display: flex; align-items: center; gap: 8px;">
                                     <span class="shortcut-key-display" style="
                                         padding: 6px 12px;
-                                        background: ${isCustom ? 'rgba(41, 98, 255, 0.15)' : '#2a2e39'};
-                                        border: 1px solid ${isCustom ? '#2962ff' : '#3a3e49'};
+                                        background: ${isCustom ? 'rgba(var(--sp-accent-rgb), 0.15)' : '#2a2e39'};
+                                        border: 1px solid ${isCustom ? 'var(--sp-accent)' : '#3a3e49'};
                                         border-radius: 4px;
                                         color: #d1d4dc;
                                         font-size: 12px;
@@ -1308,10 +1332,10 @@ class KeyboardShortcutsManager {
         this.isEditingShortcut = true;
         
         // Highlight the row
-        row.style.border = '1px solid #2962ff';
-        row.style.background = 'rgba(41, 98, 255, 0.1)';
+        row.style.border = '1px solid var(--sp-accent)';
+        row.style.background = 'rgba(var(--sp-accent-rgb), 0.1)';
         keyDisplay.textContent = 'Press keys...';
-        keyDisplay.style.background = '#2962ff';
+        keyDisplay.style.background = 'var(--sp-accent)';
         keyDisplay.style.color = '#fff';
         
         let pressedKeys = [];
@@ -1432,7 +1456,7 @@ class KeyboardShortcutsManager {
         for (const [category, shortcuts] of Object.entries(categories)) {
             html += `
                 <div>
-                    <h3 style="color: #2962ff; font-size: 14px; margin: 0 0 12px 0; font-weight: 600;">
+                    <h3 style="color: var(--sp-accent); font-size: 14px; margin: 0 0 12px 0; font-weight: 600;">
                         ${category}
                     </h3>
                     <table style="width: 100%; border-collapse: collapse;">

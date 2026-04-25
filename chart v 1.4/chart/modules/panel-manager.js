@@ -3,6 +3,29 @@
  * Allows splitting the chart view into multiple panels with different timeframes
  */
 
+/** Chart look + settings UI colors: always follow `window.chart` for extra panels (index > 0). */
+const PANEL_CHART_APPEARANCE_KEYS = [
+    'backgroundColor', 'backgroundStyle',
+    'gridColor', 'gridStyle', 'showGrid', 'gridPattern',
+    'showSessionBreaks', 'sessionBreaksColor', 'sessionBreaksPattern',
+    'crosshairColor', 'crosshairPattern', 'crosshairWidth', 'showCrosshair', 'crosshairLocked',
+    'showWatermark', 'watermarkColor', 'watermarkPattern',
+    'scaleTextColor', 'scaleTextSize', 'scaleLinesColor', 'scaleLinePattern', 'scaleLineWidth',
+    'cursorLabelTextColor', 'cursorLabelBgColor',
+    'candleUpColor', 'candleDownColor', 'bodyUpColor', 'bodyDownColor',
+    'borderUpColor', 'borderDownColor', 'wickUpColor', 'wickDownColor',
+    'unifiedBarColorEnabled', 'unifiedBarColor',
+    'showCandleBody', 'showCandleBorders', 'showCandleWick', 'colorBasedOnPreviousClose',
+    'showPriceLine', 'priceLineColor',
+    'areaLineColor', 'areaFillColor', 'baselineColor',
+    'volumeUpColor', 'volumeDownColor',
+    'symbolTextColor',
+    'symbolColor', 'prevDayColor',
+    'settingsPanelAccentColor', 'settingsPanelSecondaryColor', 'settingsPanelTextColor',
+    'settingsPanelBgColor', 'settingsPanelSidebarBgColor',
+    'activeFullTemplate', 'activeChartOnlyTemplate', 'activePanelOnlyTemplate'
+];
+
 class PanelManager {
     constructor(container) {
         this.container = container;
@@ -11,26 +34,29 @@ class PanelManager {
         this.layoutSelector = null;
         this.selectedPanelIndex = 0; // Currently selected panel
         
-        // Maximize state
-        this.maximizedPanelIndex = null;
-        this.layoutBeforeMaximize = null;
-        this.panelSizesBeforeMaximize = null;
-        
         // Resize state
         this.resizeHandles = [];
         this.isResizing = false;
         this.resizeStartX = 0;
         this.resizeStartY = 0;
         this.resizeHandle = null;
+
+        /** True while applying date-range sync so charts don't re-dispatch scroll storms */
+        this._syncingDateRange = false;
+
+        /** Per-target-panel last bar index so each follower only jumps when ITS own right-edge bar changes. */
+        this._timeSyncLastTargetBar = {};
         
         // Sync settings - time enabled by default for smooth scroll sync
         this.syncSettings = {
-            symbol: false,      // Sync symbol/data across all panels
-            interval: false,    // Sync timeframe across all panels
-            crosshair: true,    // Sync crosshair position
-            time: true,         // Sync time/scroll position (enabled by default)
-            dateRange: false,   // Sync visible date range
-            drawings: true      // Sync drawings across all panels
+            symbol: false,
+            interval: false,
+            crosshair: true,
+            time: true,
+            dateRange: false,
+            drawings: true,
+            indicators: false,
+            chartType: false
         };
         
         // Load saved sync settings
@@ -44,7 +70,7 @@ class PanelManager {
      */
     loadSyncSettings() {
         try {
-            const saved = localStorage.getItem('chart_panel_sync_settings');
+            const saved = userStorage.getItem('chart_panel_sync_settings');
             if (saved) {
                 this.syncSettings = { ...this.syncSettings, ...JSON.parse(saved) };
             }
@@ -58,7 +84,7 @@ class PanelManager {
      */
     saveSyncSettings() {
         try {
-            localStorage.setItem('chart_panel_sync_settings', JSON.stringify(this.syncSettings));
+            userStorage.setItem('chart_panel_sync_settings', JSON.stringify(this.syncSettings));
         } catch (e) {
             console.warn('Failed to save sync settings:', e);
         }
@@ -83,11 +109,26 @@ class PanelManager {
      * Setup event listeners for panel synchronization
      */
     setupEventListeners() {
-        // Listen for scroll sync events from charts
         window.addEventListener('chartScrolled', (e) => {
-            const { panel, offsetX, candleWidth } = e.detail;
-            if (panel && this.syncSettings.time) {
-                this.syncScroll(panel, offsetX, candleWidth);
+            if (this._isSyncing) return;
+            const d = e.detail || {};
+            const { panel, startTimestamp, endTimestamp } = d;
+            if (!panel) return;
+
+            // Date Range: continuous full-window sync (scroll + zoom locked).
+            if (this.syncSettings.dateRange
+                && Number.isFinite(startTimestamp) && Number.isFinite(endTimestamp)
+                && startTimestamp > 0 && endTimestamp > startTimestamp) {
+                this.syncScrollByVisibleTimeRange(panel, startTimestamp, endTimestamp);
+            }
+            // Time: discrete range-by-range sync. Each TARGET panel jumps only when
+            // the bar IT would show at its right edge changes — so a 5m target jumps
+            // once every 5 min of scrolling, a 1m target jumps once per minute.
+            else if (this.syncSettings.time
+                && Number.isFinite(endTimestamp) && endTimestamp > 0) {
+                const ts = Number.isFinite(d.timeSyncEndTimestamp) && d.timeSyncEndTimestamp > 0
+                    ? d.timeSyncEndTimestamp : endTimestamp;
+                this._discreteTimeSyncToRightEdge(panel, ts);
             }
         });
     }
@@ -125,421 +166,204 @@ class PanelManager {
             top: 56px;
             right: auto;
             left: auto;
-            background: #131722;
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: 8px;
-            padding: 16px;
+            background: var(--tv-panel-bg, var(--sp-ui-surface-bg, #1e222d));
+            border: 1px solid var(--sp-ui-border, #2a2e39);
+            border-radius: 6px;
+            padding: 0;
             display: none;
             z-index: 10000;
-            min-width: 280px;
+            width: 330px;
             max-height: 80vh;
             overflow-y: auto;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-            color: #d1d4dc;
+            color: var(--sp-text, #d1d4dc);
         `;
-        
+
+        // SVG icon helper: w=28 h=20 viewBox, stroke-width 1.5, rx=1
+        const S = (inner) => `<svg width="28" height="20" viewBox="0 0 28 20">${inner}</svg>`;
+        const R = (x,y,w,h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>`;
+
         dropdown.innerHTML = `
-            <div class="layout-dropdown-title" style="font-weight: 500; margin-bottom: 16px; font-size: 13px; color: #787b86; text-transform: uppercase; letter-spacing: 0.5px;">Layout</div>
-            
-            <!-- Single Panel -->
-            <div class="layout-row" style="margin-bottom: 12px;">
-                <div class="layout-label layout-num" style="font-size: 12px; margin-bottom: 6px;">1</div>
-                <div style="display: flex; gap: 8px;">
-                    <button class="layout-option active" data-layout="1" title="Single panel">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="36" height="26" fill="none" stroke="currentColor" stroke-width="2" rx="2"/>
-                        </svg>
-                    </button>
+            <div class="pld-body">
+            <!-- Row 1 -->
+            <div class="pld-row">
+                <span class="pld-num">1</span>
+                <div class="pld-icons">
+                    <button class="layout-option active" data-layout="1" title="Single">${S(R(1,1,26,18))}</button>
                 </div>
             </div>
-            
-            <!-- 2 Panels -->
-            <div class="layout-row" style="margin-bottom: 12px;">
-                <div class="layout-label layout-num" style="font-size: 12px; margin-bottom: 6px;">2</div>
-                <div style="display: flex; gap: 8px;">
-                    <button class="layout-option" data-layout="2v" title="Vertical split">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="17" height="26" fill="none" stroke="currentColor" stroke-width="2" rx="2"/>
-                            <rect x="21" y="2" width="17" height="26" fill="none" stroke="currentColor" stroke-width="2" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="2h" title="Horizontal split">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="36" height="12" fill="none" stroke="currentColor" stroke-width="2" rx="2"/>
-                            <rect x="2" y="16" width="36" height="12" fill="none" stroke="currentColor" stroke-width="2" rx="2"/>
-                        </svg>
-                    </button>
+            <!-- Row 2 -->
+            <div class="pld-row">
+                <span class="pld-num">2</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="2v" title="2 vertical">${S(R(1,1,12,18)+R(15,1,12,18))}</button>
+                    <button class="layout-option" data-layout="2h" title="2 horizontal">${S(R(1,1,26,8)+R(1,11,26,8))}</button>
                 </div>
             </div>
-            
-            <!-- 3 Panels -->
-            <div class="layout-row" style="margin-bottom: 12px;">
-                <div class="layout-label layout-num" style="font-size: 12px; margin-bottom: 6px;">3</div>
-                <div style="display: flex; gap: 8px;">
-                    <button class="layout-option" data-layout="3v" title="3 vertical">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="11" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="14.5" y="2" width="11" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="27" y="2" width="11" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="3h" title="3 horizontal">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="36" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="11" width="36" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="20" width="36" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="3l" title="Left + 2 right">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="17" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="2" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="16" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
+            <!-- Row 3 -->
+            <div class="pld-row">
+                <span class="pld-num">3</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="3v" title="3 vertical">${S(R(1,1,8,18)+R(10,1,8,18)+R(19,1,8,18))}</button>
+                    <button class="layout-option" data-layout="3h" title="3 horizontal">${S(R(1,1,26,5)+R(1,7.5,26,5)+R(1,14,26,5))}</button>
+                    <button class="layout-option" data-layout="3l" title="1 left + 2 right">${S(R(1,1,12,18)+R(15,1,12,8)+R(15,11,12,8))}</button>
+                    <button class="layout-option" data-layout="3r" title="2 left + 1 right">${S(R(1,1,12,8)+R(1,11,12,8)+R(15,1,12,18))}</button>
+                    <button class="layout-option" data-layout="3t" title="1 top + 2 bottom">${S(R(1,1,26,8)+R(1,11,12,8)+R(15,11,12,8))}</button>
+                    <button class="layout-option" data-layout="3b" title="2 top + 1 bottom">${S(R(1,1,12,8)+R(15,1,12,8)+R(1,11,26,8))}</button>
                 </div>
             </div>
-            
-            <!-- 4 Panels -->
-            <div class="layout-row" style="margin-bottom: 12px;">
-                <div class="layout-label layout-num" style="font-size: 12px; margin-bottom: 6px;">4</div>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button class="layout-option" data-layout="4" title="2x2 grid">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="2" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="16" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="16" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="4v" title="4 vertical">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="8" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="11" y="2" width="8" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="20" y="2" width="8" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="29" y="2" width="8" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="4h" title="4 horizontal">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="36" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="9" width="36" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="16" width="36" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="23" width="36" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="4t" title="Top 1 + bottom 3">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="36" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="16" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="14.5" y="16" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="27" y="16" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="4b" title="Top 3 + bottom 1">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="14.5" y="2" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="27" y="2" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="16" width="36" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="4r" title="Left 3 + right 1">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="11" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="20" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="2" width="17" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
+            <!-- Row 4 -->
+            <div class="pld-row">
+                <span class="pld-num">4</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="4" title="2×2 grid">${S(R(1,1,12,8)+R(15,1,12,8)+R(1,11,12,8)+R(15,11,12,8))}</button>
+                    <button class="layout-option" data-layout="4h" title="4 horizontal">${S(R(1,1,26,3.5)+R(1,5.5,26,3.5)+R(1,10,26,3.5)+R(1,14.5,26,3.5))}</button>
+                    <button class="layout-option" data-layout="4v" title="4 vertical">${S(R(1,1,5.5,18)+R(8,1,5.5,18)+R(15,1,5.5,18)+R(22,1,5.5,18))}</button>
+                    <button class="layout-option" data-layout="4t" title="1 top + 3 bottom">${S(R(1,1,26,8)+R(1,11,8,8)+R(10,11,8,8)+R(19,11,8,8))}</button>
+                    <button class="layout-option" data-layout="4b" title="3 top + 1 bottom">${S(R(1,1,8,8)+R(10,1,8,8)+R(19,1,8,8)+R(1,11,26,8))}</button>
+                    <button class="layout-option" data-layout="4r" title="3 left + 1 right">${S(R(1,1,12,5)+R(1,7.5,12,5)+R(1,14,12,5)+R(15,1,12,18))}</button>
+                    <button class="layout-option" data-layout="4l" title="1 left + 3 right">${S(R(1,1,12,18)+R(15,1,12,5)+R(15,7.5,12,5)+R(15,14,12,5))}</button>
+                    <button class="layout-option" data-layout="4tl" title="1 big + 3 small">${S(R(1,1,18,12)+R(21,1,6,12)+R(1,15,8,4)+R(10.5,15,8,4)+R(20,15,7,4))}</button>
                 </div>
             </div>
-            
-            <!-- 5 Panels -->
-            <div class="layout-row" style="margin-bottom: 12px;">
-                <div class="layout-label layout-num" style="font-size: 12px; margin-bottom: 6px;">5</div>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button class="layout-option" data-layout="5a" title="Top 2 + bottom 3">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="2" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="16" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="14.5" y="16" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="27" y="16" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="5b" title="Top 3 + bottom 2">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="14.5" y="2" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="27" y="2" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="16" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="16" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="5c" title="Left 2 + right 3">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="16" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="2" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="11" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="20" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="5v" title="5 vertical">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="6" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="9.5" y="2" width="6" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="17" y="2" width="6" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="24.5" y="2" width="6" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="32" y="2" width="6" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="5h" title="5 horizontal">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="36" height="4.4" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="7.6" width="36" height="4.4" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="13.2" width="36" height="4.4" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="18.8" width="36" height="4.4" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="24.4" width="36" height="4.4" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
+            <!-- Row 5 -->
+            <div class="pld-row">
+                <span class="pld-num">5</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="5a" title="2 top + 3 bottom">${S(R(1,1,12,8)+R(15,1,12,8)+R(1,11,8,8)+R(10,11,8,8)+R(19,11,8,8))}</button>
+                    <button class="layout-option" data-layout="5b" title="3 top + 2 bottom">${S(R(1,1,8,8)+R(10,1,8,8)+R(19,1,8,8)+R(1,11,12,8)+R(15,11,12,8))}</button>
+                    <button class="layout-option" data-layout="5c" title="2 left + 3 right">${S(R(1,1,12,8)+R(1,11,12,8)+R(15,1,12,5)+R(15,7.5,12,5)+R(15,14,12,5))}</button>
+                    <button class="layout-option" data-layout="5v" title="5 vertical">${S(R(1,1,4.4,18)+R(6.6,1,4.4,18)+R(12.2,1,4.4,18)+R(17.8,1,4.4,18)+R(23.4,1,4.4,18))}</button>
+                    <button class="layout-option" data-layout="5h" title="5 horizontal">${S(R(1,1,26,2.8)+R(1,4.8,26,2.8)+R(1,8.6,26,2.8)+R(1,12.4,26,2.8)+R(1,16.2,26,2.8))}</button>
                 </div>
             </div>
-            
-            <!-- 6 Panels -->
-            <div class="layout-row" style="margin-bottom: 12px;">
-                <div class="layout-label layout-num" style="font-size: 12px; margin-bottom: 6px;">6</div>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button class="layout-option" data-layout="6" title="2x3 grid">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="14.5" y="2" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="27" y="2" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="16" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="14.5" y="16" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="27" y="16" width="11" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="6b" title="3x2 grid">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="2" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="11" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="11" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="2" y="20" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="21" y="20" width="17" height="7.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="6v" title="6 vertical">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="5" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="8.2" y="2" width="5" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="14.4" y="2" width="5" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="20.6" y="2" width="5" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="26.8" y="2" width="5" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                            <rect x="33" y="2" width="5" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="2"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="6h" title="6 horizontal">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="36" height="3.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="6.5" width="36" height="3.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="11" width="36" height="3.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="15.5" width="36" height="3.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="20" width="36" height="3.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="24.5" width="36" height="3.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                        </svg>
-                    </button>
+            <!-- Row 6 -->
+            <div class="pld-row">
+                <span class="pld-num">6</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="6" title="2×3 grid">${S(R(1,1,8,8)+R(10,1,8,8)+R(19,1,8,8)+R(1,11,8,8)+R(10,11,8,8)+R(19,11,8,8))}</button>
+                    <button class="layout-option" data-layout="6b" title="3×2 grid">${S(R(1,1,12,5)+R(15,1,12,5)+R(1,7.5,12,5)+R(15,7.5,12,5)+R(1,14,12,5)+R(15,14,12,5))}</button>
+                    <button class="layout-option" data-layout="6v" title="6 vertical">${S(R(1,1,3.5,18)+R(5.5,1,3.5,18)+R(10,1,3.5,18)+R(14.5,1,3.5,18)+R(19,1,3.5,18)+R(23.5,1,3.5,18))}</button>
+                    <button class="layout-option" data-layout="6h" title="6 horizontal">${S(R(1,1,26,2.2)+R(1,4.2,26,2.2)+R(1,7.4,26,2.2)+R(1,10.6,26,2.2)+R(1,13.8,26,2.2)+R(1,17,26,2.2))}</button>
                 </div>
             </div>
-            
-            <!-- 7 Panels -->
-            <div class="layout-row" style="margin-bottom: 12px;">
-                <div class="layout-label layout-num" style="font-size: 12px; margin-bottom: 6px;">7</div>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button class="layout-option" data-layout="7v" title="7 vertical">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="4.3" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="7.3" y="2" width="4.3" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="12.6" y="2" width="4.3" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="17.9" y="2" width="4.3" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="23.2" y="2" width="4.3" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="28.5" y="2" width="4.3" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="33.8" y="2" width="4.3" height="26" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="7a" title="Top 3 + middle 3 + bottom 1">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="11" height="8" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="14.5" y="2" width="11" height="8" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="27" y="2" width="11" height="8" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="11.5" width="11" height="8" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="14.5" y="11.5" width="11" height="8" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="27" y="11.5" width="11" height="8" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="21" width="36" height="7" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                        </svg>
-                    </button>
+            <!-- Row 7 -->
+            <div class="pld-row">
+                <span class="pld-num">7</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="7a" title="3+3+1">${S(R(1,1,8,5)+R(10,1,8,5)+R(19,1,8,5)+R(1,7.5,8,5)+R(10,7.5,8,5)+R(19,7.5,8,5)+R(1,14,26,5))}</button>
+                    <button class="layout-option" data-layout="7v" title="7 vertical">${S(R(1,1,3,18)+R(4.8,1,3,18)+R(8.6,1,3,18)+R(12.4,1,3,18)+R(16.2,1,3,18)+R(20,1,3,18)+R(23.8,1,3.2,18))}</button>
                 </div>
             </div>
-            
-            <!-- 8 Panels -->
-            <div class="layout-row">
-                <div class="layout-label layout-num" style="font-size: 12px; margin-bottom: 6px;">8</div>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button class="layout-option" data-layout="8" title="2x4 grid">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="8" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="11" y="2" width="8" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="20" y="2" width="8" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="29" y="2" width="9" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="16" width="8" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="11" y="16" width="8" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="20" y="16" width="8" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="29" y="16" width="9" height="12" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="8b" title="4x2 grid">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="17" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="21" y="2" width="17" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="9" width="17" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="21" y="9" width="17" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="16" width="17" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="21" y="16" width="17" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="2" y="23" width="17" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                            <rect x="21" y="23" width="17" height="5.5" fill="none" stroke="currentColor" stroke-width="1.5" rx="1"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="8v" title="8 vertical">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="3.5" height="26" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="6.5" y="2" width="3.5" height="26" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="11" y="2" width="3.5" height="26" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="15.5" y="2" width="3.5" height="26" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="20" y="2" width="3.5" height="26" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="24.5" y="2" width="3.5" height="26" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="29" y="2" width="3.5" height="26" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="33.5" y="2" width="4" height="26" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                        </svg>
-                    </button>
-                    <button class="layout-option" data-layout="8h" title="8 horizontal">
-                        <svg width="40" height="30" viewBox="0 0 40 30">
-                            <rect x="2" y="2" width="36" height="2.5" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="2" y="5.5" width="36" height="2.5" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="2" y="9" width="36" height="2.5" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="2" y="12.5" width="36" height="2.5" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="2" y="16" width="36" height="2.5" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="2" y="19.5" width="36" height="2.5" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="2" y="23" width="36" height="2.5" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                            <rect x="2" y="26.5" width="36" height="2.5" fill="none" stroke="currentColor" stroke-width="1" rx="1"/>
-                        </svg>
-                    </button>
+            <!-- Row 8 -->
+            <div class="pld-row">
+                <span class="pld-num">8</span>
+                <div class="pld-icons">
+                    <button class="layout-option" data-layout="8" title="2×4 grid">${S(R(1,1,5.5,8)+R(8,1,5.5,8)+R(15,1,5.5,8)+R(22,1,5.5,8)+R(1,11,5.5,8)+R(8,11,5.5,8)+R(15,11,5.5,8)+R(22,11,5.5,8))}</button>
+                    <button class="layout-option" data-layout="8b" title="4×2 grid">${S(R(1,1,12,3.5)+R(15,1,12,3.5)+R(1,5.5,12,3.5)+R(15,5.5,12,3.5)+R(1,10,12,3.5)+R(15,10,12,3.5)+R(1,14.5,12,3.5)+R(15,14.5,12,3.5))}</button>
+                    <button class="layout-option" data-layout="8v" title="8 vertical">${S(R(1,1,2.5,18)+R(4.3,1,2.5,18)+R(7.6,1,2.5,18)+R(10.9,1,2.5,18)+R(14.2,1,2.5,18)+R(17.5,1,2.5,18)+R(20.8,1,2.5,18)+R(24.1,1,2.9,18))}</button>
+                    <button class="layout-option" data-layout="8h" title="8 horizontal">${S(R(1,1,26,1.5)+R(1,3.3,26,1.5)+R(1,5.6,26,1.5)+R(1,7.9,26,1.5)+R(1,10.2,26,1.5)+R(1,12.5,26,1.5)+R(1,14.8,26,1.5)+R(1,17.1,26,1.5))}</button>
                 </div>
             </div>
-            
+            </div>
+
             <!-- Sync Settings -->
             <div class="sync-settings-section sync-section">
                 <div class="sync-title">SYNC IN LAYOUT</div>
-                
-                <!-- Symbol Toggle -->
                 <div class="sync-row">
-                    <div class="sync-label">
-                        <span>Symbol</span>
-                        <div class="sync-info" title="When enabled, changing symbol in one panel changes it in all panels">i</div>
-                    </div>
-                    <label class="sync-toggle">
-                        <input type="checkbox" class="tv-native-checkbox" id="symbol-sync-toggle">
-                    </label>
+                    <div class="sync-label"><span>Symbol</span></div>
+                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="symbol-sync-toggle"></label>
                 </div>
-                
-                <!-- Interval Toggle -->
                 <div class="sync-row">
-                    <div class="sync-label">
-                        <span>Interval</span>
-                        <div class="sync-info" title="When enabled, changing timeframe in one panel changes it in all panels">i</div>
-                    </div>
-                    <label class="sync-toggle">
-                        <input type="checkbox" class="tv-native-checkbox" id="interval-sync-toggle">
-                    </label>
+                    <div class="sync-label"><span>Interval</span></div>
+                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="interval-sync-toggle"></label>
                 </div>
-                
-                <!-- Crosshair Toggle -->
                 <div class="sync-row">
-                    <div class="sync-label">
-                        <span>Crosshair</span>
-                        <div class="sync-info" title="Synchronize crosshair position across all panels">i</div>
-                    </div>
-                    <label class="sync-toggle">
-                        <input type="checkbox" class="tv-native-checkbox" id="crosshair-sync-toggle" checked>
-                    </label>
+                    <div class="sync-label"><span>Crosshair</span></div>
+                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="crosshair-sync-toggle" checked></label>
                 </div>
-                
-                <!-- Time Toggle -->
                 <div class="sync-row">
-                    <div class="sync-label">
-                        <span>Time</span>
-                        <div class="sync-info" title="Synchronize scroll position (time) across all panels">i</div>
-                    </div>
-                    <label class="sync-toggle">
-                        <input type="checkbox" class="tv-native-checkbox" id="time-sync-toggle" checked>
-                    </label>
+                    <div class="sync-label"><span>Time</span></div>
+                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="time-sync-toggle" checked></label>
                 </div>
-                
-                <!-- Date Range Toggle -->
                 <div class="sync-row">
-                    <div class="sync-label">
-                        <span>Date range</span>
-                        <div class="sync-info" title="Synchronize visible date range across all panels">i</div>
-                    </div>
-                    <label class="sync-toggle">
-                        <input type="checkbox" class="tv-native-checkbox" id="daterange-sync-toggle">
-                    </label>
+                    <div class="sync-label"><span>Date range</span></div>
+                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="daterange-sync-toggle"></label>
                 </div>
-                
-                <!-- Drawings Toggle -->
                 <div class="sync-row sync-row-border">
-                    <div class="sync-label">
-                        <span>Drawings</span>
-                        <div class="sync-info" title="Synchronize drawings and shapes across all panels">i</div>
-                    </div>
-                    <label class="sync-toggle">
-                        <input type="checkbox" class="tv-native-checkbox" id="drawings-sync-toggle">
-                    </label>
+                    <div class="sync-label"><span>Drawings</span></div>
+                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="drawings-sync-toggle"></label>
                 </div>
             </div>
         `;
-        
+
         // Add styles
         const style = document.createElement('style');
         style.textContent = `
+            .layout-dropdown .pld-body {
+                padding: 8px 10px 4px;
+            }
+            .layout-dropdown .pld-row {
+                display: flex;
+                align-items: flex-start;
+                gap: 10px;
+                padding: 5px 0;
+                border-bottom: 1px solid rgba(255,255,255,0.04);
+            }
+            .layout-dropdown .pld-row:last-child { border-bottom: none; }
+            .layout-dropdown .pld-num {
+                flex-shrink: 0;
+                width: 16px;
+                font-size: 11px;
+                font-weight: 600;
+                color: #787b86;
+                line-height: 28px;
+                text-align: center;
+            }
+            .layout-dropdown .pld-icons {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px;
+            }
             .layout-option {
-                background: #0d0f14;
+                background: transparent;
                 border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 6px;
-                padding: 8px;
+                border-radius: 4px;
+                padding: 3px;
                 cursor: default;
-                transition: all 0.15s ease;
+                transition: all 0.12s ease;
+                line-height: 0;
             }
             .layout-option:hover {
                 border-color: rgba(41, 98, 255, 0.5);
-                background: rgba(41, 98, 255, 0.1);
+                background: rgba(41, 98, 255, 0.08);
             }
             .layout-option.active {
                 border-color: #2962ff;
-                background: rgba(41, 98, 255, 0.2);
+                background: rgba(41, 98, 255, 0.15);
             }
             .layout-option svg {
                 display: block;
-                stroke: #787b86;
+                color: #636978;
             }
-            .layout-option:hover svg,
+            .layout-option:hover svg {
+                color: #b2b5be;
+            }
             .layout-option.active svg {
-                stroke: #d1d4dc;
+                color: #d1d4dc;
             }
-            
-            /* Sync checkbox styling (match trendline settings) */
+            body.light-mode .layout-option {
+                border-color: rgba(0, 0, 0, 0.12);
+            }
+            body.light-mode .layout-option svg {
+                color: #444444;
+            }
+            body.light-mode .layout-option:hover svg {
+                color: #000000;
+            }
+            body.light-mode .layout-option.active svg {
+                color: var(--sp-accent, #2962ff);
+            }
             .sync-toggle {
                 display: inline-flex;
                 align-items: center;
@@ -547,7 +371,7 @@ class PanelManager {
                 min-width: 16px;
             }
             .sync-toggle input[type="checkbox"] {
-                cursor: default;
+                cursor: pointer;
             }
         `;
         document.head.appendChild(style);
@@ -680,32 +504,24 @@ class PanelManager {
             });
         }
         
-        // Time sync toggle
+        // Time sync toggle (one-shot on panel click — TradingView-style)
         const timeToggle = dropdown.querySelector('#time-sync-toggle');
         if (timeToggle) {
             timeToggle.checked = this.syncSettings.time;
             timeToggle.addEventListener('change', (e) => {
                 e.stopPropagation();
                 this.syncSettings.time = e.target.checked;
+                this._timeSyncLastTargetBar = {};
                 this.saveSyncSettings();
-                console.log(`🕐 Time sync ${e.target.checked ? 'enabled' : 'disabled'}`);
-                
-                // If enabled, immediately sync all panels to selected panel's scroll position
+
                 if (e.target.checked && this.panels.length > 1) {
                     const selectedPanel = this.panels[this.selectedPanelIndex];
-                    if (selectedPanel && selectedPanel.chartInstance) {
-                        const chart = selectedPanel.chartInstance;
-                        if (chart.data && chart.data.length > 0) {
-                            const startIndex = chart.getVisibleStartIndex ? chart.getVisibleStartIndex() : 0;
-                            const endIndex = chart.getVisibleEndIndex ? chart.getVisibleEndIndex() : chart.data.length - 1;
-                            this.syncTime(selectedPanel, startIndex, endIndex);
-                        }
-                    }
+                    if (selectedPanel) this.syncTimeToPanel(selectedPanel);
                 }
             });
         }
-        
-        // Date range sync toggle
+
+        // Date range sync toggle (continuous scroll + zoom sync)
         const dateRangeToggle = dropdown.querySelector('#daterange-sync-toggle');
         if (dateRangeToggle) {
             dateRangeToggle.checked = this.syncSettings.dateRange;
@@ -713,21 +529,17 @@ class PanelManager {
                 e.stopPropagation();
                 this.syncSettings.dateRange = e.target.checked;
                 this.saveSyncSettings();
-                console.log(`📅 Date range sync ${e.target.checked ? 'enabled' : 'disabled'}`);
-                
-                // If enabled, immediately sync all panels to selected panel's date range
+
                 if (e.target.checked && this.panels.length > 1) {
                     const selectedPanel = this.panels[this.selectedPanelIndex];
-                    if (selectedPanel && selectedPanel.chartInstance) {
+                    if (selectedPanel?.chartInstance?.data?.length) {
                         const chart = selectedPanel.chartInstance;
-                        if (chart.data && chart.data.length > 0) {
-                            const startIndex = chart.getVisibleStartIndex ? chart.getVisibleStartIndex() : 0;
-                            const endIndex = chart.getVisibleEndIndex ? chart.getVisibleEndIndex() : chart.data.length - 1;
-                            const startTimestamp = chart.data[Math.max(0, startIndex)]?.t;
-                            const endTimestamp = chart.data[Math.min(chart.data.length - 1, endIndex)]?.t;
-                            if (startTimestamp && endTimestamp) {
-                                this.syncDateRange(selectedPanel, startTimestamp, endTimestamp);
-                            }
+                        const startIndex = chart.getVisibleStartIndex ? chart.getVisibleStartIndex() : 0;
+                        const endIndex = chart.getVisibleEndIndex ? chart.getVisibleEndIndex() : chart.data.length - 1;
+                        const startTimestamp = chart.data[Math.max(0, startIndex)]?.t;
+                        const endTimestamp = chart.data[Math.min(chart.data.length - 1, endIndex)]?.t;
+                        if (startTimestamp && endTimestamp) {
+                            this.syncDateRange(selectedPanel, startTimestamp, endTimestamp);
                         }
                     }
                 }
@@ -742,15 +554,33 @@ class PanelManager {
                 e.stopPropagation();
                 this.syncSettings.drawings = e.target.checked;
                 this.saveSyncSettings();
-                
-                // Update syncDrawings on all panel charts
                 this.panels.forEach(panel => {
-                    if (panel.chartInstance) {
-                        panel.chartInstance.syncDrawings = e.target.checked;
-                    }
+                    if (panel.chartInstance) panel.chartInstance.syncDrawings = e.target.checked;
                 });
-                
-                console.log(`✏️ Drawings sync ${e.target.checked ? 'enabled' : 'disabled'}`);
+            });
+        }
+
+        // Indicators sync toggle
+        const indicatorsToggle = dropdown.querySelector('#indicators-sync-toggle');
+        if (indicatorsToggle) {
+            indicatorsToggle.checked = this.syncSettings.indicators !== false;
+            indicatorsToggle.addEventListener('change', (e) => {
+                e.stopPropagation();
+                this.syncSettings.indicators = e.target.checked;
+                this.saveSyncSettings();
+                if (e.target.checked) this.syncIndicatorsNow();
+            });
+        }
+
+        // Chart type sync toggle
+        const chartTypeToggle = dropdown.querySelector('#charttype-sync-toggle');
+        if (chartTypeToggle) {
+            chartTypeToggle.checked = !!this.syncSettings.chartType;
+            chartTypeToggle.addEventListener('change', (e) => {
+                e.stopPropagation();
+                this.syncSettings.chartType = e.target.checked;
+                this.saveSyncSettings();
+                if (e.target.checked) this.syncChartTypeNow();
             });
         }
     }
@@ -782,14 +612,16 @@ class PanelManager {
     syncSymbol(sourcePanel, symbol, fileId) {
         if (!this.syncSettings.symbol || this.currentLayout === '1') return;
         
-        console.log(`📊 Syncing symbol ${symbol} from panel ${sourcePanel.index} to all panels`);
-        
         this.panels.forEach(panel => {
-            if (panel.index !== sourcePanel.index && panel.chartInstance) {
-                // Load same data but keep panel's own timeframe
-                if (panel.chartInstance.loadFile) {
-                    panel.chartInstance.loadFile(fileId);
-                }
+            if (panel.index === sourcePanel.index) return;
+            const pc = panel.chartInstance;
+            if (!pc) return;
+            if (String(pc.currentFileId) === String(fileId)) return;
+
+            if (panel.isMainChart && window.chart && typeof window.chart.loadFileData === 'function') {
+                window.chart.loadFileData(fileId);
+            } else if (typeof pc.loadPanelFileData === 'function') {
+                pc.loadPanelFileData(fileId);
             }
         });
     }
@@ -800,153 +632,431 @@ class PanelManager {
     syncInterval(sourcePanel, timeframe) {
         if (!this.syncSettings.interval || this.currentLayout === '1') return;
         
-        console.log(`⏱️ Syncing timeframe ${timeframe} from panel ${sourcePanel.index} to all panels`);
-        
-        this.panels.forEach(panel => {
-            if (panel.index !== sourcePanel.index && panel.chartInstance) {
-                panel.timeframe = timeframe;
-                if (panel.header) {
-                    panel.header.innerHTML = `
-                        <div style="font-weight: 600; color: #d1d4dc;">Panel ${panel.index + 1}</div>
-                        <div style="font-size: 11px; margin-top: 2px;">${timeframe}</div>
-                    `;
-                }
-                if (panel.chartInstance.setTimeframe) {
-                    panel.chartInstance.setTimeframe(timeframe);
-                }
-            }
-        });
-    }
-    
-    /**
-     * Sync time/scroll position across all panels (timestamp-based)
-     * This syncs based on the center timestamp of the visible area
-     */
-    syncTime(sourcePanel, startIndex, endIndex) {
-        if (!this.syncSettings.time || this.currentLayout === '1') return;
-        
-        const sourceChart = sourcePanel.chartInstance;
-        if (!sourceChart || !sourceChart.data || sourceChart.data.length === 0) return;
-        
-        // Get the timestamp at the center of the source view
-        const centerIndex = Math.floor((startIndex + endIndex) / 2);
-        const centerTimestamp = sourceChart.data[Math.min(centerIndex, sourceChart.data.length - 1)]?.t;
-        if (!centerTimestamp) return;
-        
-        // Also get the right edge timestamp for better sync
-        const rightTimestamp = sourceChart.data[Math.min(endIndex, sourceChart.data.length - 1)]?.t;
-        
-        this.panels.forEach(panel => {
-            if (panel.index !== sourcePanel.index && panel.chartInstance) {
-                const chartInst = panel.chartInstance;
-                if (chartInst.data && chartInst.data.length > 0) {
-                    // Find the candle closest to the right edge timestamp
-                    let targetIndex = chartInst.data.length - 1;
-                    let minDiff = Infinity;
-                    
-                    for (let i = 0; i < chartInst.data.length; i++) {
-                        const diff = Math.abs(chartInst.data[i].t - rightTimestamp);
-                        if (diff < minDiff) {
-                            minDiff = diff;
-                            targetIndex = i;
-                        }
-                    }
-                    
-                    // Position so targetIndex is at the right edge of view
-                    const spacing = chartInst.getCandleSpacing ? chartInst.getCandleSpacing() : (chartInst.candleWidth + 2);
-                    const chartWidth = chartInst.w - chartInst.margin.l - chartInst.margin.r;
-                    const visibleCandles = Math.floor(chartWidth / spacing);
-                    
-                    // Position with right alignment (like TradingView)
-                    chartInst.offsetX = -(targetIndex - visibleCandles + 5) * spacing;
-                    chartInst.constrainOffset();
-                    chartInst.scheduleRender();
-                }
-            }
-        });
-    }
-    
-    /**
-     * Direct scroll sync - synchronize chart scroll positions smoothly
-     */
-    syncScroll(sourcePanel, offsetX, candleWidth) {
-        // Prevent infinite sync loops
-        if (this._isSyncing) return;
-        if (!this.syncSettings.time && !this.syncSettings.dateRange) return;
-        
-        const sourceChart = sourcePanel?.chartInstance;
-        if (!sourceChart?.data?.length) return;
-        
-        this._isSyncing = true;
-        
         this.panels.forEach(panel => {
             if (panel.index === sourcePanel.index) return;
-            
-            const chart = panel.chartInstance;
-            if (!chart?.data?.length) return;
-            
-            // Direct offsetX copy for smooth movement
-            // Scale based on candle width ratio if different
-            const sourceSpacing = sourceChart.getCandleSpacing ? sourceChart.getCandleSpacing() : (sourceChart.candleWidth + 2);
-            const targetSpacing = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
-            const ratio = targetSpacing / sourceSpacing;
-            
-            // Copy offsetX directly (scaled if candle widths differ)
-            chart.offsetX = sourceChart.offsetX * ratio;
-            
-            // Constrain to valid range and render
-            if (chart.constrainOffset) chart.constrainOffset();
-            if (chart.render) chart.render();
-        });
-        
-        setTimeout(() => { this._isSyncing = false; }, 16);
-    }
-    
-    /**
-     * Sync date range across all panels (scroll to same time window)
-     */
-    syncDateRange(sourcePanel, startTimestamp, endTimestamp) {
-        if (!this.syncSettings.dateRange || this.currentLayout === '1') return;
-        
-        const sourceChart = sourcePanel.chartInstance;
-        if (!sourceChart) return;
-        
-        // Use the end timestamp (right edge) for alignment
-        this.panels.forEach(panel => {
-            if (panel.index !== sourcePanel.index && panel.chartInstance) {
-                const chartInst = panel.chartInstance;
-                if (chartInst.data && chartInst.data.length > 0) {
-                    // Find the candle closest to the end timestamp
-                    let targetIndex = chartInst.data.length - 1;
-                    let minDiff = Infinity;
-                    
-                    for (let i = 0; i < chartInst.data.length; i++) {
-                        const diff = Math.abs(chartInst.data[i].t - endTimestamp);
-                        if (diff < minDiff) {
-                            minDiff = diff;
-                            targetIndex = i;
-                        }
-                    }
-                    
-                    // Position so targetIndex is at the right edge of view
-                    const spacing = chartInst.getCandleSpacing ? chartInst.getCandleSpacing() : (chartInst.candleWidth + 2);
-                    const chartWidth = chartInst.w - chartInst.margin.l - chartInst.margin.r;
-                    const visibleCandles = Math.floor(chartWidth / spacing);
-                    
-                    chartInst.offsetX = -(targetIndex - visibleCandles + 5) * spacing;
-                    chartInst.constrainOffset();
-                    chartInst.scheduleRender();
-                }
+            const pc = panel.chartInstance;
+            if (!pc) return;
+            panel.timeframe = timeframe;
+            pc.currentTimeframe = timeframe;
+            if (typeof pc.setTimeframe === 'function') {
+                pc.setTimeframe(timeframe);
+            }
+            if (typeof pc.updateChartOHLCSymbol === 'function') {
+                pc.updateChartOHLCSymbol(pc.currentSymbol);
             }
         });
     }
     
+    /**
+     * Binary search: find index of candle closest to target timestamp.
+     * Falls back to chart.findGoToTargetIndex if available.
+     */
+    _bsearchTimestamp(data, ts) {
+        if (!data || data.length === 0) return 0;
+        let lo = 0, hi = data.length - 1;
+        while (lo < hi) {
+            const mid = (lo + hi) >>> 1;
+            if ((data[mid].t || 0) < ts) lo = mid + 1;
+            else hi = mid;
+        }
+        if (lo > 0 && Math.abs((data[lo - 1].t || 0) - ts) < Math.abs((data[lo].t || 0) - ts)) {
+            return lo - 1;
+        }
+        return lo;
+    }
+
+    /**
+     * Position a timestamp on all follower panels at a given fraction across the chart width
+     * (0 = left edge, 0.5 = center, 1 = right edge). Each panel keeps its own zoom.
+     */
+    _positionOtherPanelsOnTimestamp(sourcePanel, timestamp, fraction) {
+        if (!this.syncSettings.time || this.currentLayout === '1') return;
+        if (!Number.isFinite(timestamp)) return;
+
+        this._isSyncing = true;
+        const toRelease = [];
+        try {
+            this.panels.forEach(panel => {
+                if (panel.index === sourcePanel.index) return;
+                const chart = panel.chartInstance;
+                if (!chart?.data?.length) return;
+
+                chart._suppressPanelScrollSync = true;
+                toRelease.push(chart);
+
+                const targetIdx = chart.findGoToTargetIndex
+                    ? chart.findGoToTargetIndex(chart.data, timestamp)
+                    : this._bsearchTimestamp(chart.data, timestamp);
+
+                const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
+                const m = chart.margin || { l: 0, r: 60 };
+                const chartWidth = chart.w - m.l - m.r;
+
+                chart.offsetX = (chartWidth * fraction) - (targetIdx * spacing);
+                if (chart.constrainOffset) chart.constrainOffset();
+                if (chart.scheduleRender) chart.scheduleRender();
+
+                this._timeSyncLastTargetBar[panel.index] = targetIdx;
+            });
+        } finally {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    toRelease.forEach(c => { c._suppressPanelScrollSync = false; });
+                    this._isSyncing = false;
+                });
+            });
+        }
+    }
+
+    /**
+     * TradingView-style: when a panel is selected, show its right-edge time on all others.
+     */
+    syncTimeToPanel(sourcePanel) {
+        const sourceChart = sourcePanel?.chartInstance;
+        if (!sourceChart?.data?.length) return;
+
+        const endIndex = typeof sourceChart.getVisibleEndIndex === 'function'
+            ? sourceChart.getVisibleEndIndex() : sourceChart.data.length - 1;
+        const rightTs = sourceChart.data[Math.min(endIndex, sourceChart.data.length - 1)]?.t;
+        if (!rightTs) return;
+        this._positionOtherPanelsOnTimestamp(sourcePanel, rightTs, 0.85);
+    }
+
+    /**
+     * Click on a bar → place that time at the same relative screen position on follower panels.
+     */
+    syncTimeToClickedTimestamp(sourcePanel, timestamp, screenFraction) {
+        const frac = Number.isFinite(screenFraction) ? screenFraction : 0.5;
+        this._positionOtherPanelsOnTimestamp(sourcePanel, timestamp, frac);
+    }
+    
+    /**
+     * Per-target discrete Time sync: for each follower panel, compute which bar index
+     * the source's right-edge timestamp maps to in THAT panel's data. Only update
+     * when that target bar index changes (so 5m targets jump every 5 minutes, 1m every minute).
+     */
+    _discreteTimeSyncToRightEdge(sourcePanel, rightEdgeTimestamp) {
+        if (this._isSyncing) return;
+        if (!this.syncSettings.time || this.currentLayout === '1') return;
+        if (!Number.isFinite(rightEdgeTimestamp)) return;
+
+        let anyChanged = false;
+        const toUpdate = [];
+
+        this.panels.forEach(panel => {
+            if (panel.index === sourcePanel.index) return;
+            const chart = panel.chartInstance;
+            if (!chart?.data?.length) return;
+
+            const targetIdx = chart.findGoToTargetIndex
+                ? chart.findGoToTargetIndex(chart.data, rightEdgeTimestamp)
+                : this._bsearchTimestamp(chart.data, rightEdgeTimestamp);
+
+            const lastIdx = this._timeSyncLastTargetBar[panel.index];
+            if (lastIdx === targetIdx) return;
+
+            this._timeSyncLastTargetBar[panel.index] = targetIdx;
+            anyChanged = true;
+            toUpdate.push({ chart, targetIdx });
+        });
+
+        if (!anyChanged) return;
+
+        this._isSyncing = true;
+        try {
+            toUpdate.forEach(({ chart, targetIdx }) => {
+                chart._suppressPanelScrollSync = true;
+
+                const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : (chart.candleWidth + 2);
+                const m = chart.margin || { l: 0, r: 60 };
+                const chartWidth = chart.w - m.l - m.r;
+                const visibleCandles = Math.max(1, Math.floor(chartWidth / spacing));
+
+                chart.offsetX = -(targetIdx - visibleCandles + 1) * spacing;
+                if (chart.constrainOffset) chart.constrainOffset();
+                if (chart.scheduleRender) chart.scheduleRender();
+            });
+        } finally {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    toUpdate.forEach(({ chart }) => { chart._suppressPanelScrollSync = false; });
+                    this._isSyncing = false;
+                });
+            });
+        }
+    }
+
+    /**
+     * Last data index with candle time <= ts (ascending by .t). Used for date-range scroll alignment.
+     */
+    _findLastIndexAtOrBefore(data, ts) {
+        if (!data || data.length === 0) return 0;
+        if (!Number.isFinite(ts)) return 0;
+        let lo = 0;
+        let hi = data.length - 1;
+        let ans = 0;
+        while (lo <= hi) {
+            const mid = (lo + hi) >>> 1;
+            const t = data[mid]?.t || 0;
+            if (t <= ts) {
+                ans = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return Math.max(0, Math.min(ans, data.length - 1));
+    }
+
+    /**
+     * Date-range sync: every panel shows the same wall-clock window [start, rangeEndExclusive).
+     * Fits candles into the plot width (resize) + scroll so the span matches (e.g. 7×30m = same 3.5h on 1m).
+     * @param {number} rangeEndExclusive - first instant after the last visible bar (source open + barMs).
+     */
+    syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, rangeEndExclusive) {
+        if (this._isSyncing) return;
+        if (!this.syncSettings.dateRange || this.currentLayout === '1') return;
+
+        const sourceChart = sourcePanel?.chartInstance;
+        if (!sourceChart?.data?.length) return;
+        if (!Number.isFinite(startTimestamp) || !Number.isFinite(rangeEndExclusive)) return;
+        if (rangeEndExclusive <= startTimestamp) return;
+
+        const toRelease = [];
+        this._isSyncing = true;
+        this._syncingDateRange = true;
+        try {
+            this.panels.forEach(panel => {
+                if (panel.index === sourcePanel.index) return;
+                const chart = panel.chartInstance;
+                if (!chart?.data?.length) return;
+
+                chart._suppressPanelScrollSync = true;
+                toRelease.push(chart);
+
+                const m = chart.margin || { l: 0, r: 60 };
+                const chartWidth = chart.w - m.l - m.r;
+                if (chartWidth <= 0) return;
+
+                const iL = this._findLastIndexAtOrBefore(chart.data, startTimestamp);
+                const iR = this._findLastIndexAtOrBefore(chart.data, rangeEndExclusive - 1);
+                const iL2 = Math.max(0, Math.min(iL, chart.data.length - 1));
+                const iR2 = Math.max(iL2, Math.min(iR, chart.data.length - 1));
+                const numBars = Math.max(1, iR2 - iL2 + 1);
+
+                // Desired spacing = chartWidth / numBars, but getCandleSpacing adds a gap.
+                // Solve for candleWidth so that getCandleSpacing(cw) ≈ desiredSpacing.
+                const desiredSpacing = chartWidth / numBars;
+                let cw = desiredSpacing;
+                if (typeof chart._getSpacingForCandleWidth === 'function') {
+                    const s1 = chart._getSpacingForCandleWidth(cw);
+                    if (s1 > 0) cw = cw * (desiredSpacing / s1);
+                    const s2 = chart._getSpacingForCandleWidth(cw);
+                    if (s2 > 0) cw = cw * (desiredSpacing / s2);
+                }
+
+                const allowedWidths = (chart.zoomLevel && Array.isArray(chart.zoomLevel.allowedWidths) && chart.zoomLevel.allowedWidths.length)
+                    ? chart.zoomLevel.allowedWidths
+                    : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+                const minW = allowedWidths[0];
+                const maxW = allowedWidths[allowedWidths.length - 1];
+                chart.candleWidth = Math.max(minW, Math.min(maxW, cw));
+
+                let nearestIdx = 0;
+                let minDiff = Math.abs(chart.candleWidth - allowedWidths[0]);
+                for (let i = 1; i < allowedWidths.length; i++) {
+                    const d = Math.abs(chart.candleWidth - allowedWidths[i]);
+                    if (d < minDiff) { minDiff = d; nearestIdx = i; }
+                }
+                if (chart.zoomLevel) chart.zoomLevel.candleWidthIndex = nearestIdx;
+                if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+
+                // Right-edge anchoring (TradingView-style): last visible bar stays at right margin
+                const spacing = chart.getCandleSpacing ? chart.getCandleSpacing() : chart.candleWidth;
+                chart.offsetX = chartWidth - (iR2 + 1) * spacing;
+                if (chart.constrainOffset) chart.constrainOffset();
+                if (chart.scheduleRender) chart.scheduleRender();
+                else if (chart.render) chart.render();
+            });
+        } finally {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    toRelease.forEach(c => { c._suppressPanelScrollSync = false; });
+                    this._isSyncing = false;
+                    this._syncingDateRange = false;
+                });
+            });
+        }
+    }
+
+    /** @deprecated kept for backward compatibility */
+    syncScroll(sourcePanel) {
+        this.syncTimeToPanel(sourcePanel);
+    }
+    
+    /**
+     * Sync date range across all panels (same visible wall-clock window + fit zoom)
+     */
+    syncDateRange(sourcePanel, startTimestamp, endTimestampLastOpen) {
+        if (!this.syncSettings.dateRange || this.currentLayout === '1') return;
+
+        const sourceChart = sourcePanel.chartInstance;
+        if (!sourceChart?.data?.length) return;
+        const barMs = typeof sourceChart.inferBarDurationMs === 'function'
+            ? sourceChart.inferBarDurationMs()
+            : 60000;
+        const rangeEndExclusive = (Number.isFinite(endTimestampLastOpen) ? endTimestampLastOpen : startTimestamp) + barMs;
+        this.syncScrollByVisibleTimeRange(sourcePanel, startTimestamp, rangeEndExclusive);
+    }
+    
+    /**
+     * Sync indicators from the selected panel to all others
+     */
+    syncIndicatorsNow() {
+        if (!this.syncSettings.indicators || this.currentLayout === '1') return;
+        const src = this.panels[this.selectedPanelIndex];
+        if (!src || !src.chartInstance) return;
+        const srcChart = src.chartInstance;
+        const srcIndicators = srcChart.indicators || [];
+
+        this.panels.forEach(panel => {
+            if (panel.index === src.index) return;
+            const pc = panel.chartInstance;
+            if (!pc) return;
+            pc.indicators = JSON.parse(JSON.stringify(srcIndicators));
+            if (typeof pc.recalculateIndicators === 'function') {
+                try { pc.recalculateIndicators(); } catch (e) {}
+            }
+            if (typeof pc.render === 'function') pc.render();
+        });
+    }
+
+    /**
+     * Sync chart type (candle style) from selected panel to all others
+     */
+    syncChartTypeNow() {
+        if (!this.syncSettings.chartType || this.currentLayout === '1') return;
+        const src = this.panels[this.selectedPanelIndex];
+        if (!src || !src.chartInstance) return;
+        const srcChart = src.chartInstance;
+        const chartType = srcChart.chartSettings && srcChart.chartSettings.chartType
+            ? srcChart.chartSettings.chartType : 'candlestick';
+
+        this.panels.forEach(panel => {
+            if (panel.index === src.index) return;
+            const pc = panel.chartInstance;
+            if (!pc || !pc.chartSettings) return;
+            pc.chartSettings.chartType = chartType;
+            if (typeof pc.render === 'function') pc.render();
+        });
+    }
+
+    /**
+     * Keep the Talaria logo at the bottom-left of the full chart area in multi-panel mode
+     * (not clipped to panel 0). Single-panel: logo stays inside #chartWrapper.
+     *
+     * Multi-panel: the logo must live under #chart-container, not #panels-container.
+     * #chartWrapper is a sibling of #panels-container with the same z-index but painted
+     * later, so it covers the whole panels layer — a logo inside panels-container would
+     * sit underneath the main chart (invisible in the bottom-left).
+     */
+    syncChartBrandPlacement(layout) {
+        const brand = document.querySelector('.chart-brand');
+        const wrapper = document.getElementById('chartWrapper');
+        const pc = this.container || document.getElementById('panels-container');
+        const chartCont = document.getElementById('chart-container');
+        if (!brand || !wrapper || !pc) return;
+
+        if (layout === '1') {
+            if (brand.parentElement !== wrapper) {
+                wrapper.appendChild(brand);
+            }
+            brand.classList.remove('chart-brand--multi');
+            brand.style.zIndex = '';
+        } else if (chartCont) {
+            if (brand.parentElement !== chartCont) {
+                chartCont.appendChild(brand);
+            }
+            brand.classList.add('chart-brand--multi');
+            brand.style.zIndex = '5000';
+        }
+    }
+
+    /** @returns {[number,number,number]|null} */
+    _parseCssColorToRgb(color) {
+        if (!color) return null;
+        const s = String(color).trim();
+        const rgba = s.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+        if (rgba) {
+            return [parseInt(rgba[1], 10), parseInt(rgba[2], 10), parseInt(rgba[3], 10)];
+        }
+        const hex = s.startsWith('#') ? s.slice(1) : s;
+        if (/^[0-9a-f]{3}$/i.test(hex)) {
+            return [
+                parseInt(hex[0] + hex[0], 16),
+                parseInt(hex[1] + hex[1], 16),
+                parseInt(hex[2] + hex[2], 16)
+            ];
+        }
+        if (/^[0-9a-f]{6}$/i.test(hex)) {
+            return [
+                parseInt(hex.slice(0, 2), 16),
+                parseInt(hex.slice(2, 4), 16),
+                parseInt(hex.slice(4, 6), 16)
+            ];
+        }
+        return null;
+    }
+
+    _dividerColorForChartBackground(bgColor) {
+        const rgb = this._parseCssColorToRgb(bgColor);
+        if (!rgb) return '#2a2e39';
+        const lum = rgb[0] * 0.299 + rgb[1] * 0.587 + rgb[2] * 0.114;
+        return lum > 195 ? '#d6dce6' : '#2a2e39';
+    }
+
+    getMultiPanelChromeFromMain() {
+        const mc = typeof window !== 'undefined' ? window.chart : null;
+        const bg = (mc && mc.chartSettings && mc.chartSettings.backgroundColor)
+            ? mc.chartSettings.backgroundColor
+            : (typeof document !== 'undefined' && document.body && document.body.classList.contains('light-mode')
+                ? '#ffffff'
+                : '#131722');
+        return {
+            bg,
+            border: this._dividerColorForChartBackground(bg)
+        };
+    }
+
+    /**
+     * Extra panel shells + main chart wrapper borders follow main chart colors (avoids forced dark “theme”).
+     */
+    refreshMultiPanelChrome() {
+        if (!this.container || this.currentLayout === '1') return;
+        const { bg } = this.getMultiPanelChromeFromMain();
+        this.container.querySelectorAll('.chart-panel').forEach((el) => {
+            el.style.background = bg;
+        });
+        const ow = document.getElementById('chartWrapper');
+        if (ow && this.container.contains(ow)) {
+            ow.style.background = bg;
+        }
+    }
+
     /**
      * Apply selected layout
      */
     applyLayout(layout) {
         console.log('Applying layout:', layout);
         this.currentLayout = layout;
+
+        // Keep dropdown active state in sync
+        const dropdown = document.getElementById('panel-layout-dropdown');
+        if (dropdown) {
+            dropdown.querySelectorAll('.layout-option').forEach(opt => {
+                opt.classList.toggle('active', opt.dataset.layout === layout);
+            });
+        }
         
         // Get original chart wrapper
         const originalChart = document.getElementById('chartWrapper');
@@ -954,6 +1064,9 @@ class PanelManager {
         // If single panel layout, restore original chart to normal position
         if (layout === '1') {
             console.log('🔄 Returning to single layout - cleaning up panels...');
+
+            // Logo must leave panels-container before innerHTML clears it
+            this.syncChartBrandPlacement('1');
             
             // FIRST: Remove ALL resize handles
             if (this.resizeHandles && this.resizeHandles.length > 0) {
@@ -968,6 +1081,10 @@ class PanelManager {
             
             // Also remove any orphaned resize handles by class name
             document.querySelectorAll('.panel-resize-handle').forEach(h => h.remove());
+
+            // Remove selection overlay and clear selected class from everything
+            document.querySelectorAll('.panel-selection-frame').forEach(f => f.remove());
+            document.querySelectorAll('.panel-selected').forEach(el => el.classList.remove('panel-selected'));
             
             // Hide panels container
             this.container.style.display = 'none';
@@ -1025,7 +1142,11 @@ class PanelManager {
             // Reset panel tracking
             this.panels = [];
             this.selectedPanelIndex = 0;
-            this.maximizedPanelIndex = null;
+            // Keep container fully turned off in single-layout mode
+            if (this.container) {
+                this.container.style.display = 'none';
+                this.container.innerHTML = '';
+            }
             
             // Reset resize state and remove any active resize listeners
             this.isResizing = false;
@@ -1042,77 +1163,103 @@ class PanelManager {
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
             
-            // Comprehensive restore of main chart functionality
-            setTimeout(() => {
-                if (window.chart) {
-                    const chart = window.chart;
-                    
-                    // Resize and render
-                    if (chart.resize) chart.resize();
-                    if (chart.render) chart.render();
-                    
-                    // Force cursor type to 'cross' if not set, and apply it
-                    if (!chart.cursorType) {
-                        chart.cursorType = 'cross';
-                    }
-                    
-                    // Force enable crosshair lines based on cursor type
-                    chart.showCrosshairLines = (chart.cursorType === 'cross' || chart.cursorType === 'eraser');
-                    
-                    // Re-apply cursor type (includes crosshair visibility)
-                    chart.setCursorType(chart.cursorType, true);
-                    
-                    // Restore cursor style on canvas and SVG
-                    const cursorStyle = chart.getCurrentCursorStyle ? chart.getCurrentCursorStyle() : 'crosshair';
-                    if (chart.canvas) chart.canvas.style.cursor = cursorStyle;
-                    if (chart.svg && chart.svg.node()) chart.svg.node().style.cursor = cursorStyle;
-                    
-                    // Restore chart wrapper cursor
-                    const chartWrapper = document.querySelector('.chart-wrapper');
-                    if (chartWrapper) chartWrapper.style.cursor = cursorStyle;
-                    
-                    // Re-enable SVG pointer events
-                    if (chart.updateSVGPointerEvents) {
-                        chart.updateSVGPointerEvents();
-                    }
-                    
-                    // Redraw drawings
-                    if (chart.redrawDrawings) {
-                        chart.redrawDrawings();
-                    }
-                    
-                    // Reset crosshair elements - they will appear on mouse hover
-                    // Don't hide them if cursor type is cross
-                    const crosshairV = document.querySelector('.crosshair-vertical');
-                    const crosshairH = document.querySelector('.crosshair-horizontal');
-                    const priceLabel = document.querySelector('.price-label');
-                    const timeLabel = document.querySelector('.time-label');
-                    
-                    // Just reset display to none - updateCrosshair will show them on mouse move
-                    if (crosshairV) crosshairV.style.display = 'none';
-                    if (crosshairH) crosshairH.style.display = 'none';
-                    if (priceLabel) priceLabel.style.display = 'none';
-                    if (timeLabel) timeLabel.style.display = 'none';
-                    
-                    // Ensure tooltip is hidden
-                    if (chart.hideTooltip) chart.hideTooltip();
-                    
-                    // Update OHLC display with last candle
-                    if (chart.data && chart.data.length > 0) {
-                        const lastCandle = chart.data[chart.data.length - 1];
-                        if (chart.updateOHLCFromCandle) {
-                            chart.updateOHLCFromCandle(lastCandle);
-                        }
-                    }
-                    
-                    console.log('✅ Main chart fully restored - cursorType:', chart.cursorType, 'showLines:', chart.showCrosshairLines);
+            // Comprehensive restore of main chart functionality (next frame, no artificial delay)
+            const _restoreMainChart = () => {
+                if (!window.chart) return;
+                const chart = window.chart;
+
+                // Invalidate cached DPR so resize() always recalculates
+                if (chart._lastResizeDpr !== undefined) chart._lastResizeDpr = 0;
+                
+                // Resize and render
+                if (chart.resize) chart.resize();
+                if (chart.render) chart.render();
+                
+                // Force cursor type to 'cross' if not set, and apply it
+                if (!chart.cursorType) {
+                    chart.cursorType = 'cross';
                 }
-            }, 100);
+                
+                // Force enable crosshair lines based on cursor type
+                chart.showCrosshairLines = (chart.cursorType === 'cross' || chart.cursorType === 'eraser');
+                
+                // Re-apply cursor type (includes crosshair visibility)
+                chart.setCursorType(chart.cursorType, true);
+                
+                // Restore cursor style on canvas and SVG
+                const cursorStyle = chart.getCurrentCursorStyle ? chart.getCurrentCursorStyle() : 'crosshair';
+                if (chart.canvas) chart.canvas.style.cursor = cursorStyle;
+                if (chart.svg && chart.svg.node()) chart.svg.node().style.cursor = cursorStyle;
+                
+                // Restore chart wrapper cursor
+                const chartWrapper = document.querySelector('.chart-wrapper');
+                if (chartWrapper) chartWrapper.style.cursor = cursorStyle;
+                
+                // Re-enable SVG pointer events
+                if (chart.updateSVGPointerEvents) {
+                    chart.updateSVGPointerEvents();
+                }
+                
+                // Redraw drawings
+                if (chart.redrawDrawings) {
+                    chart.redrawDrawings();
+                }
+                
+                // Reset crosshair elements - they will appear on mouse hover
+                const crosshairV = document.querySelector('.crosshair-vertical');
+                const crosshairH = document.querySelector('.crosshair-horizontal');
+                const priceLabel = document.querySelector('.price-label');
+                const timeLabel = document.querySelector('.time-label');
+                
+                if (crosshairV) crosshairV.style.display = 'none';
+                if (crosshairH) crosshairH.style.display = 'none';
+                if (priceLabel) priceLabel.style.display = 'none';
+                if (timeLabel) timeLabel.style.display = 'none';
+                
+                // Ensure tooltip is hidden
+                if (chart.hideTooltip) chart.hideTooltip();
+                
+                // Update OHLC display with last candle
+                if (chart.data && chart.data.length > 0) {
+                    const lastCandle = chart.data[chart.data.length - 1];
+                    if (chart.updateOHLCFromCandle) {
+                        chart.updateOHLCFromCandle(lastCandle);
+                    }
+                }
+                
+                console.log('✅ Main chart fully restored - cursorType:', chart.cursorType, 'showLines:', chart.showCrosshairLines);
+            };
+
+            // First pass: after DOM settles
+            requestAnimationFrame(() => {
+                _restoreMainChart();
+                // Second pass: catch late reflows where container size wasn't final yet
+                requestAnimationFrame(() => {
+                    if (window.chart) {
+                        if (window.chart._lastResizeDpr !== undefined) window.chart._lastResizeDpr = 0;
+                        if (window.chart.resize) window.chart.resize();
+                        if (window.chart.render) window.chart.render();
+                    }
+                });
+            });
             
             // Dispatch event when returning to single panel mode
             window.dispatchEvent(new CustomEvent('returnedToSinglePanel', {
                 detail: { layout: '1' }
             }));
+
+            // Ensure global "active panel" context points to main chart immediately.
+            window.dispatchEvent(new CustomEvent('panelSelected', {
+                detail: {
+                    panelIndex: 0,
+                    timeframe: window.chart && window.chart.currentTimeframe ? window.chart.currentTimeframe : '1m',
+                    panel: { index: 0, chartInstance: window.chart, isMainChart: true },
+                    isMainChart: true
+                }
+            }));
+
+            // Persist that user is now in single layout (panels stay off until explicitly re-selected).
+            this.savePanelState();
             
             return;
         }
@@ -1123,10 +1270,17 @@ class PanelManager {
         // Clear any active drawing tool when switching to multi-panel
         this.clearAllDrawingTools();
         
+        // If logo already lived in panels-container, park it on chart-container so innerHTML does not wipe it
+        const brandEl = document.querySelector('.chart-brand');
+        const chartCont = document.getElementById('chart-container');
+        if (brandEl && this.container.contains(brandEl) && chartCont) {
+            chartCont.appendChild(brandEl);
+        }
+
         // Clear existing additional panels (keep original chart separate)
         this.container.innerHTML = '';
         this.panels = [];
-        
+
         // Create panels based on layout
         const layouts = {
             '1': [{ width: '100%', height: '100%' }],
@@ -1152,6 +1306,21 @@ class PanelManager {
                 { width: '50%', height: '100%', left: '0' },
                 { width: '50%', height: '50%', left: '50%', top: '0' },
                 { width: '50%', height: '50%', left: '50%', top: '50%' }
+            ],
+            '3r': [
+                { width: '50%', height: '50%', left: '0', top: '0' },
+                { width: '50%', height: '50%', left: '0', top: '50%' },
+                { width: '50%', height: '100%', left: '50%', top: '0' }
+            ],
+            '3t': [
+                { width: '100%', height: '50%', left: '0', top: '0' },
+                { width: '50%', height: '50%', left: '0', top: '50%' },
+                { width: '50%', height: '50%', left: '50%', top: '50%' }
+            ],
+            '3b': [
+                { width: '50%', height: '50%', left: '0', top: '0' },
+                { width: '50%', height: '50%', left: '50%', top: '0' },
+                { width: '100%', height: '50%', left: '0', top: '50%' }
             ],
             '4': [
                 { width: '50%', height: '50%', left: '0', top: '0' },
@@ -1188,6 +1357,18 @@ class PanelManager {
                 { width: '50%', height: '33.33%', left: '0', top: '33.33%' },
                 { width: '50%', height: '33.33%', left: '0', top: '66.66%' },
                 { width: '50%', height: '100%', left: '50%', top: '0' }
+            ],
+            '4l': [ // 1 left + 3 right
+                { width: '50%', height: '100%', left: '0', top: '0' },
+                { width: '50%', height: '33.33%', left: '50%', top: '0' },
+                { width: '50%', height: '33.33%', left: '50%', top: '33.33%' },
+                { width: '50%', height: '33.33%', left: '50%', top: '66.66%' }
+            ],
+            '4tl': [ // 1 big top-left + 1 right + 2 bottom
+                { width: '66.66%', height: '60%', left: '0', top: '0' },
+                { width: '33.33%', height: '60%', left: '66.66%', top: '0' },
+                { width: '50%', height: '40%', left: '0', top: '60%' },
+                { width: '50%', height: '40%', left: '50%', top: '60%' }
             ],
             '5a': [ // Top 2 + bottom 3
                 { width: '50%', height: '50%', left: '0', top: '0' },
@@ -1324,7 +1505,8 @@ class PanelManager {
         // Position the original chart as the first panel
         if (originalChart) {
             const firstConfig = panelConfig[0];
-            
+            const mainChrome = this.getMultiPanelChromeFromMain();
+
             // Apply first panel's position to original chart
             originalChart.style.display = 'block';
             originalChart.style.position = 'absolute';
@@ -1332,11 +1514,14 @@ class PanelManager {
             originalChart.style.height = firstConfig.height;
             originalChart.style.left = firstConfig.left || '0';
             originalChart.style.top = firstConfig.top || '0';
+            originalChart.style.right = 'auto';
+            originalChart.style.bottom = 'auto';
             originalChart.style.border = 'none';
-            originalChart.style.borderRight = '1px solid #2a2e39';
-            originalChart.style.borderBottom = '1px solid #2a2e39';
+            originalChart.style.borderRight = `1px solid ${mainChrome.border}`;
+            originalChart.style.borderBottom = `1px solid ${mainChrome.border}`;
             originalChart.style.boxSizing = 'border-box';
-            originalChart.style.zIndex = '100'; // Higher than panels-container (z-index: 5)
+            originalChart.style.overflow = 'hidden';
+            originalChart.style.zIndex = '10';
             
             // Add panel 0 info to panels array (reference to main chart)
             const mainPanel = {
@@ -1351,6 +1536,13 @@ class PanelManager {
                 chartInstance: window.chart
             };
             this.panels.push(mainPanel);
+            
+            // Add selection bar to main chart wrapper
+            if (!originalChart.querySelector('.panel-select-bar')) {
+                const bar = document.createElement('div');
+                bar.className = 'panel-select-bar';
+                originalChart.appendChild(bar);
+            }
             
             // Mark main chart as a panel for drawing sync
             if (window.chart) {
@@ -1389,53 +1581,80 @@ class PanelManager {
                 chartWrapper.addEventListener('mousedown', chartWrapper._panelClickHandler, true);
             }
             
-            // Setup double-click to maximize for main chart
-            this.setupPanelMaximize(mainPanel, 0);
-            
             console.log(`📊 Panel 0: Main chart positioned at ${firstConfig.width} x ${firstConfig.height}`);
             
             // Trigger resize for main chart after positioning
-            setTimeout(() => {
+            requestAnimationFrame(() => {
                 if (window.chart && window.chart.resize) {
                     window.chart.resize();
                     window.chart.render();
                 }
-            }, 150);
+            });
         }
         
         // Create additional panels (starting from index 1)
         for (let i = 1; i < panelConfig.length; i++) {
             this.createPanel(panelConfig[i], i);
         }
+
+        // After panels exist: park logo on #chart-container (above #chartWrapper paint order)
+        this.syncChartBrandPlacement(layout);
+        const brandNode = document.querySelector('.chart-brand');
+        if (brandNode && chartCont) {
+            chartCont.appendChild(brandNode);
+        }
         
         console.log(`✅ ${this.panels.length} panels total (1 main + ${this.panels.length - 1} additional)`);
         
-        // Auto-select first panel (main chart)
+        // Auto-select first panel (main chart) immediately
         if (this.panels.length > 0) {
-            setTimeout(() => this.selectPanel(0), 100);
+            this.selectPanel(0);
         }
         
         // Sync cursor type from main chart to all panels
-        setTimeout(() => {
+        requestAnimationFrame(() => {
             if (window.chart && window.chart.cursorType) {
                 window.chart.syncCursorTypeToAllCharts(window.chart.cursorType);
                 console.log(`🖱️ Synced cursor type '${window.chart.cursorType}' to all panels`);
             }
-        }, 200);
+        });
         
-        // Trigger panel created event
         window.dispatchEvent(new CustomEvent('panelsCreated', {
             detail: { panels: this.panels, layout: layout }
         }));
-        
-        // Resize functionality disabled - panels are fixed size
-        // setTimeout(() => this.createResizeHandles(), 200);
+
+        this.refreshMultiPanelChrome();
+
+        this.savePanelState();
+
+        // Load any saved custom panel sizes, then create drag-to-resize handles
+        requestAnimationFrame(() => {
+            const restored = this._loadPanelSizes();
+            if (restored) {
+                this.panels.forEach(panel => {
+                    if (panel.chartInstance && panel.chartInstance.resize) {
+                        panel.chartInstance._lastResizeDpr = 0;
+                        panel.chartInstance.resize();
+                        if (panel.chartInstance.render) panel.chartInstance.render();
+                    }
+                });
+            }
+            this.createResizeHandles();
+            this._updateSelectionOverlay();
+        });
+
+        // Panel charts can be initialized while percentage layout still reports 0×0, so resize()
+        // bails out once and never revisits. One delayed pass catches real dimensions.
+        setTimeout(() => {
+            if (typeof this.resizePanels === 'function') this.resizePanels();
+        }, 350);
     }
     
     /**
      * Create individual panel
      */
     createPanel(config, index) {
+        const chrome = this.getMultiPanelChromeFromMain();
         const panel = document.createElement('div');
         panel.className = 'chart-panel';
         panel.dataset.panelId = index;
@@ -1445,12 +1664,7 @@ class PanelManager {
             height: ${config.height};
             left: ${config.left || '0'};
             top: ${config.top || '0'};
-            border: none;
-            border-right: 1px solid #2a2e39;
-            border-bottom: 1px solid #2a2e39;
-            background: #131722;
-            box-sizing: border-box;
-            overflow: hidden;
+            background: ${chrome.bg};
             z-index: 100;
         `;
         
@@ -1463,11 +1677,14 @@ class PanelManager {
         // Chart container within panel (same structure as main chart)
         const chartContainer = document.createElement('div');
         chartContainer.className = 'panel-chart-container';
+        const _panelBg = (typeof window !== 'undefined' && window.chart && window.chart.chartSettings && window.chart.chartSettings.backgroundColor)
+            ? window.chart.chartSettings.backgroundColor
+            : (typeof document !== 'undefined' && document.body && document.body.classList.contains('light-mode') ? '#ffffff' : '#131722');
         chartContainer.style.cssText = `
             width: 100%;
             height: 100%;
             position: relative;
-            background: #131722;
+            background: ${_panelBg};
         `;
         
         // Add placeholder text
@@ -1491,7 +1708,17 @@ class PanelManager {
         const canvas = document.createElement('canvas');
         canvas.className = 'panel-canvas';
         canvas.id = `panelCanvas${index}`;
-        canvas.style.display = 'block';
+        canvas.style.cssText = `
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+            user-select: none;
+            z-index: 1;
+        `;
         chartContainer.appendChild(canvas);
         
         // Create SVG for drawings
@@ -1504,7 +1731,7 @@ class PanelManager {
             left: 0;
             width: 100%;
             height: 100%;
-            pointer-events: none;
+            pointer-events: all;
             z-index: 10;
         `;
         chartContainer.appendChild(svg);
@@ -1534,42 +1761,25 @@ class PanelManager {
         const ohlcInfo = document.createElement('div');
         ohlcInfo.className = 'ohlc-info';
         ohlcInfo.id = `ohlcInfo${index}`;
-        ohlcInfo.style.cssText = 'left: 8px !important; top: 8px !important; flex-direction: column !important; gap: 2px !important;'; // Vertical layout for proper collapse button position
         ohlcInfo.innerHTML = `
-            <!-- Header row with symbol, OHLC -->
-            <div class="ohlc-header" style="display: flex; flex-direction: row; align-items: center; gap: 12px; flex-wrap: wrap;">
-                <!-- Symbol & Timeframe Line -->
-                <div class="ohlc-symbol-line" style="display: flex; align-items: center; gap: 6px;">
-                    <span id="chartSymbol${index}">CHART</span>
-                    <span style="color: #787b86;">—</span>
+            <div class="ohlc-header">
+                <div class="ohlc-symbol-block" style="position: relative;">
+                    <span class="ohlc-symbol-dot" id="ohlcSymbolDot${index}">●</span>
+                    <span class="ohlc-symbol-text" id="chartSymbol${index}">CHART</span>
+                    <span class="ohlc-separator">·</span>
                     <span id="chartTimeframe${index}">${panelTimeframe}</span>
                 </div>
-                
-                <!-- OHLC Data Line -->
-                <div class="ohlc-data-line" id="ohlcDataLine${index}" style="display: flex; align-items: center; gap: 8px;">
-                    <span><span class="ohlc-label">O</span><span class="ohlc-value" id="open${index}">—</span></span>
-                    <span><span class="ohlc-label">H</span><span class="ohlc-value" id="high${index}">—</span></span>
-                    <span><span class="ohlc-label">L</span><span class="ohlc-value" id="low${index}">—</span></span>
-                    <span><span class="ohlc-label">C</span><span class="ohlc-value" id="close${index}">—</span></span>
+                <div class="ohlc-stats">
+                    <div class="ohlc-item"><span class="ohlc-label">O</span><span class="ohlc-value" id="open${index}">—</span></div>
+                    <div class="ohlc-item"><span class="ohlc-label">H</span><span class="ohlc-value" id="high${index}">—</span></div>
+                    <div class="ohlc-item"><span class="ohlc-label">L</span><span class="ohlc-value" id="low${index}">—</span></div>
+                    <div class="ohlc-item"><span class="ohlc-label">C</span><span class="ohlc-value" id="close${index}">—</span></div>
                     <span class="ohlc-change" id="chartChange${index}">—</span>
                 </div>
             </div>
-            
-            <!-- Body section (hidden when collapsed) -->
             <div class="ohlc-body">
-                <!-- Volume Line -->
-                <div class="ohlc-volume-line" style="display: flex; align-items: center; gap: 6px;">
-                    <span class="volume-label">Volume</span>
-                    <span class="volume-value" id="volumeValue${index}">—</span>
-                </div>
-                
-                <!-- Indicators Section -->
-                <div class="ohlc-indicators" id="ohlcIndicators${index}">
-                    <!-- Indicators will be added here dynamically -->
-                </div>
+                <div class="ohlc-indicators" id="ohlcIndicators${index}"></div>
             </div>
-            
-            <!-- Collapse button at the bottom -->
             <button class="ohlc-collapse-btn" id="ohlcCollapseBtn${index}" style="margin-top: 4px; align-self: flex-start;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="6 9 12 15 18 9"/>
@@ -1579,22 +1789,40 @@ class PanelManager {
         chartContainer.appendChild(ohlcInfo);
         
         // Setup collapse button for this panel's OHLC
-        setTimeout(() => {
-            const collapseBtn = document.getElementById(`ohlcCollapseBtn${index}`);
-            if (collapseBtn) {
-                collapseBtn.addEventListener('click', () => {
-                    ohlcInfo.classList.toggle('collapsed');
-                    const svg = collapseBtn.querySelector('svg polyline');
-                    if (ohlcInfo.classList.contains('collapsed')) {
-                        svg.setAttribute('points', '18 15 12 9 6 15');
-                    } else {
-                        svg.setAttribute('points', '6 9 12 15 18 9');
-                    }
-                });
-            }
-        }, 100);
+        const collapseBtn = ohlcInfo.querySelector(`#ohlcCollapseBtn${index}`);
+        if (collapseBtn) {
+            collapseBtn.addEventListener('click', () => {
+                ohlcInfo.classList.toggle('collapsed');
+                const svg = collapseBtn.querySelector('svg polyline');
+                if (ohlcInfo.classList.contains('collapsed')) {
+                    svg.setAttribute('points', '18 15 12 9 6 15');
+                } else {
+                    svg.setAttribute('points', '6 9 12 15 18 9');
+                }
+            });
+        }
         
+        // Add follow button for this panel
+        const followBtn = document.createElement('button');
+        followBtn.className = 'panel-follow-btn';
+        followBtn.id = `panelFollow${index}`;
+        followBtn.title = 'Follow Latest Candle';
+        followBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4v16" fill="none" stroke-width="2"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg>`;
+        followBtn.style.display = 'none';
+        followBtn.addEventListener('click', () => {
+            const replay = window.chart && window.chart.replaySystem;
+            if (replay && typeof replay.enableAutoScroll === 'function') {
+                replay.enableAutoScroll();
+            }
+        });
+        chartContainer.appendChild(followBtn);
+
         panel.appendChild(chartContainer);
+        
+        // Add selection indicator bar
+        const selectBar = document.createElement('div');
+        selectBar.className = 'panel-select-bar';
+        panel.appendChild(selectBar);
         
         // Click anywhere on panel to select it (like TradingView)
         panel.addEventListener('mousedown', (e) => {
@@ -1638,22 +1866,31 @@ class PanelManager {
         
         console.log(`✅ Panel ${index} added to DOM`);
         
-        // Setup double-click to maximize
-        this.setupPanelMaximize(this.panels[this.panels.length - 1], index);
-        
-        // Trigger resize for canvas - use panel element rect, not chartContainer
-        setTimeout(() => {
+        // Trigger resize for canvas with proper DPR scaling
+        requestAnimationFrame(() => {
             const rect = panel.getBoundingClientRect();
             if (rect.width > 0 && rect.height > 0 && rect.height < 10000) {
-                canvas.width = rect.width;
-                canvas.height = rect.height;
-                svg.setAttribute('width', rect.width);
-                svg.setAttribute('height', rect.height);
-                console.log(`📐 Panel ${index} sized: ${rect.width}x${rect.height}`);
+                const dpr = window.devicePixelRatio || 1;
+                const w = Math.floor(rect.width);
+                const h = Math.floor(rect.height);
+                canvas.width = Math.max(1, w * dpr);
+                canvas.height = Math.max(1, h * dpr);
+                canvas.style.width = w + 'px';
+                canvas.style.height = h + 'px';
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    ctx.setTransform(1, 0, 0, 1, 0, 0);
+                    ctx.scale(dpr, dpr);
+                }
+                svg.setAttribute('width', w);
+                svg.setAttribute('height', h);
+                svg.style.width = w + 'px';
+                svg.style.height = h + 'px';
+                console.log(`📐 Panel ${index} sized: ${w}x${h} (DPR ${dpr}, physical ${w*dpr}x${h*dpr})`);
             } else {
                 console.error(`❌ Panel ${index} invalid size: ${rect.width}x${rect.height}`);
             }
-        }, 100);
+        });
     }
     
     /**
@@ -1674,54 +1911,130 @@ class PanelManager {
      * Select a panel to control with timeframe buttons
      */
     selectPanel(index) {
-        // Deactivate any active drawing tool when switching panels
-        if (this.selectedPanelIndex !== index) {
-            // Deactivate drawing tool on all charts
-            this.panels.forEach(panel => {
-                if (panel.chartInstance && panel.chartInstance.drawingManager) {
-                    panel.chartInstance.drawingManager.deactivateTool();
-                }
-            });
-            
-            // Also deactivate on main chart if it exists
-            if (window.chart && window.chart.drawingManager) {
-                window.chart.drawingManager.deactivateTool();
-            }
-        }
-        
-        // Deselect all panels - reset to no outline
+        this._timeSyncLastTargetBar = {};
+
+        // Deselect all panels
         this.panels.forEach((panel, i) => {
             if (panel.element) {
-                panel.element.style.outline = 'none';
-                panel.element.style.outlineOffset = '0';
+                panel.element.classList.remove('panel-selected');
             }
         });
         
-        // Select the clicked panel - show soft blue border on all 4 sides
+        // Select the clicked panel
         if (this.panels[index]) {
             this.selectedPanelIndex = index;
             const panel = this.panels[index];
             
-            // Highlight selected panel using outline (not clipped by overflow:hidden)
             if (panel.element) {
-                panel.element.style.outline = '3px solid #2962ff';
-                panel.element.style.outlineOffset = '-3px';
+                panel.element.classList.add('panel-selected');
+                // Ensure selection bar exists
+                if (!panel.element.querySelector('.panel-select-bar')) {
+                    const bar = document.createElement('div');
+                    bar.className = 'panel-select-bar';
+                    panel.element.appendChild(bar);
+                }
+            }
+
+            this._updateSelectionOverlay();
+            
+            // Resolve the LIVE timeframe from the chart instance (not the stale snapshot)
+            const liveTimeframe = (panel.chartInstance && panel.chartInstance.currentTimeframe)
+                ? panel.chartInstance.currentTimeframe
+                : panel.timeframe;
+
+            // Clear drawing tools and hide crosshairs on non-selected panels.
+            // Use _mirrored=true to avoid the mirror cascade clearing the
+            // selected panel's tool as well.
+            this.panels.forEach((p, i) => {
+                if (i === index) return;
+                const dm = p && p.chartInstance && p.chartInstance.drawingManager;
+                if (dm && dm.currentTool && typeof dm.clearTool === 'function') {
+                    dm.clearTool(true);
+                }
+                if (p && p.chartInstance && typeof p.chartInstance.hideCrosshair === 'function') {
+                    p.chartInstance.hideCrosshair();
+                }
+            });
+            if (window.chart && window.chart.drawingManager && window.chart.drawingManager.currentTool) {
+                const isMainSelected = panel.chartInstance === window.chart;
+                if (!isMainSelected) {
+                    window.chart.drawingManager.clearTool(true);
+                }
+            }
+
+            // Force resize + render on the selected panel so internal
+            // dimensions (this.w / this.h) are up-to-date for crosshair bounds.
+            if (panel.chartInstance) {
+                const ci = panel.chartInstance;
+                if (ci._lastResizeDpr !== undefined) ci._lastResizeDpr = 0;
+                if (typeof ci.resize === 'function') ci.resize();
+                if (typeof ci.render === 'function') ci.render();
             }
             
-            console.log(`📊 Panel ${index} selected (${panel.timeframe})`);
+            console.log(`📊 Panel ${index} selected (TF: ${liveTimeframe})`);
+
+            // Time sync: navigate all other panels to the same center point in time
+            if (this.syncSettings.time) {
+                this.syncTimeToPanel(panel);
+            }
             
-            // Dispatch event
+            // Dispatch event with live timeframe
             window.dispatchEvent(new CustomEvent('panelSelected', {
                 detail: { 
                     panelIndex: index,
-                    timeframe: panel.timeframe,
+                    timeframe: liveTimeframe,
                     panel: panel,
                     isMainChart: panel.isMainChart
                 }
             }));
+
+            // Order draft preview (TP/SL/entry) must move to the selected chart; otherwise lines stay on the previous panel's SVG.
+            try {
+                const om = (typeof window !== 'undefined' && window.chart && window.chart.orderManager)
+                    ? window.chart.orderManager
+                    : (typeof window !== 'undefined' ? window.orderManager : null);
+                if (om && typeof om.refreshDraftPreviewForActivePanel === 'function') {
+                    requestAnimationFrame(() => {
+                        try {
+                            om.refreshDraftPreviewForActivePanel();
+                        } catch (_e) { /* ignore */ }
+                    });
+                }
+            } catch (_e) { /* ignore */ }
         }
     }
     
+    _updateSelectionOverlay() {
+        const chartContainer = document.getElementById('chart-container');
+        if (!chartContainer) return;
+
+        let overlay = chartContainer.querySelector('.panel-selection-frame');
+
+        // In single-panel mode the ::after CSS handles the border; no overlay needed.
+        if (this.panels.length <= 1) {
+            if (overlay) overlay.remove();
+            return;
+        }
+
+        const panel = this.panels[this.selectedPanelIndex];
+        if (!panel || !panel.element) {
+            if (overlay) overlay.remove();
+            return;
+        }
+
+        const el = panel.element;
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'panel-selection-frame';
+            chartContainer.appendChild(overlay);
+        }
+
+        overlay.style.left   = el.style.left;
+        overlay.style.top    = el.style.top;
+        overlay.style.width  = el.style.width;
+        overlay.style.height = el.style.height;
+    }
+
     /**
      * Update timeframe of selected panel
      */
@@ -1820,476 +2133,469 @@ class PanelManager {
     }
     
     /**
-     * Toggle maximize/restore for a panel
-     */
-    toggleMaximize(index) {
-        if (this.maximizedPanelIndex === index) {
-            // Restore from maximized
-            this.restoreFromMaximize();
-        } else {
-            // Maximize this panel
-            this.maximizePanel(index);
-        }
-    }
-    
-    /**
-     * Maximize a single panel to full screen
-     */
-    maximizePanel(index) {
-        if (this.panels.length <= 1) return;
-        
-        // Save current state
-        this.layoutBeforeMaximize = this.currentLayout;
-        this.panelSizesBeforeMaximize = this.panels.map(p => ({
-            width: p.element?.style.width,
-            height: p.element?.style.height,
-            left: p.element?.style.left,
-            top: p.element?.style.top,
-            display: p.element?.style.display
-        }));
-        
-        this.maximizedPanelIndex = index;
-        
-        // Hide all panels except the maximized one
-        this.panels.forEach((panel, i) => {
-            if (panel.element) {
-                if (i === index) {
-                    // Maximize this panel
-                    panel.element.style.left = '0';
-                    panel.element.style.top = '0';
-                    panel.element.style.width = '100%';
-                    panel.element.style.height = '100%';
-                    panel.element.style.display = 'block';
-                    panel.element.style.zIndex = '200';
-                    panel.element.style.overflow = 'visible'; // Allow crosshair lines to render fully
-                } else {
-                    // Hide other panels
-                    panel.element.style.display = 'none';
-                }
-            }
-        });
-        
-        // Resize the maximized panel's chart
-        setTimeout(() => {
-            const panel = this.panels[index];
-            if (panel) {
-                // Resize canvas
-                if (panel.canvas) {
-                    const rect = panel.element.getBoundingClientRect();
-                    panel.canvas.width = rect.width;
-                    panel.canvas.height = rect.height;
-                }
-                // Resize SVG
-                if (panel.svg) {
-                    const rect = panel.element.getBoundingClientRect();
-                    panel.svg.setAttribute('width', rect.width);
-                    panel.svg.setAttribute('height', rect.height);
-                }
-                // Resize chart instance
-                if (panel.chartInstance && panel.chartInstance.resize) {
-                    panel.chartInstance.resize();
-                    panel.chartInstance.render();
-                }
-            }
-        }, 50);
-        
-        console.log(`🔲 Panel ${index} maximized`);
-        
-        // Show notification
-        if (window.chart && window.chart.showNotification) {
-            window.chart.showNotification('Double-click to restore');
-        }
-    }
-    
-    /**
-     * Restore from maximized state
-     */
-    restoreFromMaximize() {
-        if (this.maximizedPanelIndex === null) return;
-        
-        // Restore all panel sizes
-        this.panels.forEach((panel, i) => {
-            if (panel.element && this.panelSizesBeforeMaximize[i]) {
-                const saved = this.panelSizesBeforeMaximize[i];
-                panel.element.style.width = saved.width;
-                panel.element.style.height = saved.height;
-                panel.element.style.left = saved.left;
-                panel.element.style.top = saved.top;
-                panel.element.style.display = saved.display || 'block';
-                panel.element.style.zIndex = '100';
-                panel.element.style.overflow = 'hidden'; // Restore clipping
-            }
-        });
-        
-        const wasMaximized = this.maximizedPanelIndex;
-        this.maximizedPanelIndex = null;
-        this.layoutBeforeMaximize = null;
-        this.panelSizesBeforeMaximize = null;
-        
-        // Resize all charts
-        setTimeout(() => {
-            this.panels.forEach(panel => {
-                if (panel.element && panel.element.style.display !== 'none') {
-                    const rect = panel.element.getBoundingClientRect();
-                    if (panel.canvas) {
-                        panel.canvas.width = rect.width;
-                        panel.canvas.height = rect.height;
-                    }
-                    if (panel.svg) {
-                        panel.svg.setAttribute('width', rect.width);
-                        panel.svg.setAttribute('height', rect.height);
-                    }
-                    if (panel.chartInstance && panel.chartInstance.resize) {
-                        panel.chartInstance.resize();
-                        panel.chartInstance.render();
-                    }
-                }
-            });
-        }, 50);
-        
-        console.log(`🔲 Panel ${wasMaximized} restored`);
-    }
-    
-    /**
      * Save panel-specific settings to localStorage
      */
     savePanelSettings(panelIndex) {
         const panel = this.panels[panelIndex];
         if (!panel || !panel.chartInstance) return;
         
-        const settings = panel.chartInstance.chartSettings;
+        let settings = panel.chartInstance.chartSettings;
         const key = `chart_panel_${panelIndex}_settings`;
         
         try {
-            localStorage.setItem(key, JSON.stringify(settings));
-            console.log(`💾 Panel ${panelIndex} settings saved`);
-        } catch (e) {
-            console.warn(`Failed to save panel ${panelIndex} settings:`, e);
+            if (panelIndex > 0) {
+                settings = { ...settings };
+                for (const k of PANEL_CHART_APPEARANCE_KEYS) {
+                    delete settings[k];
+                }
+            }
+            userStorage.setItem(key, JSON.stringify(settings));
+        } catch (e) {}
+    }
+
+    applyMainAppearanceToPanelChart(panelChart) {
+        const main = typeof window !== 'undefined' ? window.chart : null;
+        if (!main || !main.chartSettings || !panelChart || !panelChart.chartSettings) return;
+        if (panelChart === main) return;
+        const cs = panelChart.chartSettings;
+        const m = main.chartSettings;
+        for (const k of PANEL_CHART_APPEARANCE_KEYS) {
+            if (m[k] !== undefined) cs[k] = m[k];
         }
     }
     
-    /**
-     * Load panel-specific settings from localStorage
-     */
     loadPanelSettings(panelIndex) {
         const key = `chart_panel_${panelIndex}_settings`;
         
         try {
-            const saved = localStorage.getItem(key);
+            const saved = userStorage.getItem(key);
             if (saved) {
                 const settings = JSON.parse(saved);
                 const panel = this.panels[panelIndex];
                 if (panel && panel.chartInstance) {
                     panel.chartInstance.chartSettings = { ...panel.chartInstance.chartSettings, ...settings };
+                    if (panelIndex > 0) {
+                        this.applyMainAppearanceToPanelChart(panel.chartInstance);
+                    }
                     panel.chartInstance.applyChartSettings();
-                    console.log(`📂 Panel ${panelIndex} settings loaded`);
                     return true;
                 }
             }
-        } catch (e) {
-            console.warn(`Failed to load panel ${panelIndex} settings:`, e);
-        }
+        } catch (e) {}
         return false;
     }
-    
-    /**
-     * Setup double-click to maximize for a panel
-     */
-    setupPanelMaximize(panel, index) {
-        if (!panel.element) return;
-        
-        panel.element.addEventListener('dblclick', (e) => {
-            // Don't maximize if clicking on controls or OHLC info
-            if (e.target.closest('.ohlc-info') || e.target.closest('button')) {
-                return;
+
+    savePanelState() {
+        if (!this._saveStateTimer) {
+            this._saveStateTimer = setTimeout(() => {
+                this._saveStateTimer = null;
+                this._doSavePanelState();
+            }, 300);
+        }
+    }
+
+    _doSavePanelState() {
+        try {
+            const state = {
+                layout: this.currentLayout,
+                selectedPanelIndex: this.selectedPanelIndex,
+                panels: this.panels.map((panel, idx) => {
+                    const pc = panel.chartInstance;
+                    if (!pc) return { index: idx, isMainChart: panel.isMainChart };
+                    const hasOwn = Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0;
+                    return {
+                        index: idx,
+                        isMainChart: panel.isMainChart,
+                        timeframe: pc.currentTimeframe || '1m',
+                        fileId: hasOwn ? pc.currentFileId : null,
+                        symbol: hasOwn ? pc.currentSymbol : null,
+                        offsetX: pc.offsetX,
+                        candleWidth: pc.candleWidth
+                    };
+                })
+            };
+            userStorage.setItem('chart_panel_state', JSON.stringify(state));
+        } catch (e) {}
+    }
+
+    loadPanelState() {
+        try {
+            const raw = userStorage.getItem('chart_panel_state');
+            if (!raw) return null;
+            return JSON.parse(raw);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    restorePanelChartState(panelIndex) {
+        const state = this.loadPanelState();
+        if (!state || !state.panels) {
+            // No saved state — just make sure chart shows last candle
+            const panel = this.panels[panelIndex];
+            if (panel && panel.chartInstance) {
+                this._schedulePostRestoreRender(panel.chartInstance);
             }
-            
-            // Don't maximize if clicking on price axis (right edge of chart)
-            // Price axis is typically the rightmost ~60 pixels
-            const rect = panel.element.getBoundingClientRect();
-            const clickX = e.clientX - rect.left;
-            const priceAxisWidth = 60; // Width of price axis area
-            
-            if (clickX > rect.width - priceAxisWidth) {
-                // Clicked on price axis - let the chart handle it for reset scale
-                return;
+            return;
+        }
+        const ps = state.panels.find(p => p.index === panelIndex);
+        if (!ps || ps.isMainChart) {
+            const panel = this.panels[panelIndex];
+            if (panel && panel.chartInstance) {
+                this._schedulePostRestoreRender(panel.chartInstance);
             }
-            
-            // Don't maximize if clicking on time axis (bottom edge of chart)
-            const clickY = e.clientY - rect.top;
-            const timeAxisHeight = 30; // Height of time axis area
-            
-            if (clickY > rect.height - timeAxisHeight) {
-                // Clicked on time axis - let the chart handle it
-                return;
+            return;
+        }
+
+        const panel = this.panels[panelIndex];
+        if (!panel || !panel.chartInstance) return;
+        const pc = panel.chartInstance;
+
+        if (ps.timeframe) pc.currentTimeframe = ps.timeframe;
+        if (Number.isFinite(ps.offsetX)) pc.offsetX = ps.offsetX;
+        if (Number.isFinite(ps.candleWidth) && ps.candleWidth > 0) pc.candleWidth = ps.candleWidth;
+
+        if (ps.fileId && ps.fileId !== (window.chart && window.chart.currentFileId)) {
+            if (typeof pc.loadPanelFileData === 'function') {
+                pc.loadPanelFileData(ps.fileId).then(() => {
+                    pc.updateChartOHLCSymbol(pc.currentSymbol);
+                    this._schedulePostRestoreRender(pc);
+                }).catch(() => {
+                    this._schedulePostRestoreRender(pc);
+                });
             }
-            
-            this.toggleMaximize(index);
+        } else {
+            this._schedulePostRestoreRender(pc);
+        }
+    }
+
+    _schedulePostRestoreRender(pc) {
+        requestAnimationFrame(() => {
+            if (pc._lastResizeDpr !== undefined) pc._lastResizeDpr = 0;
+            if (typeof pc.resize === 'function') pc.resize();
+            pc._chartViewRestored = false;
+            if (typeof pc.fitToView === 'function') pc.fitToView();
+            if (typeof pc.render === 'function') pc.render();
+            requestAnimationFrame(() => {
+                if (pc._lastResizeDpr !== undefined) pc._lastResizeDpr = 0;
+                if (typeof pc.resize === 'function') pc.resize();
+                // Ensure last candle is visible after final resize
+                if (pc.data && pc.data.length > 0) {
+                    const m = pc.margin || { l: 0, r: 0 };
+                    const cw = (pc.w || 0) - m.l - m.r;
+                    const spacing = typeof pc.getCandleSpacing === 'function' ? pc.getCandleSpacing() : (pc.candleWidth + 2);
+                    const lastCandleX = m.l + (pc.data.length - 1) * spacing + (pc.offsetX || 0);
+                    if (lastCandleX < 0 || lastCandleX > (pc.w || 0) + spacing * 5) {
+                        pc._chartViewRestored = false;
+                        if (typeof pc.fitToView === 'function') pc.fitToView();
+                    }
+                }
+                if (typeof pc.render === 'function') pc.render();
+            });
         });
     }
     
     /**
-     * Create resize handles between panels
+     * Create resize handles between panels (percentage-based)
      */
     createResizeHandles() {
-        // Remove existing handles
-        this.resizeHandles.forEach(h => h.remove());
+        this.resizeHandles.forEach(h => { if (h && h.parentNode) h.parentNode.removeChild(h); });
         this.resizeHandles = [];
-        
-        if (this.panels.length < 2 || this.maximizedPanelIndex !== null) return;
-        
-        // Use chart-container as the parent for handles (includes main chart)
+
+        if (this.panels.length < 2) return;
+
         const chartContainer = document.getElementById('chart-container');
         if (!chartContainer) return;
-        
-        const containerRect = chartContainer.getBoundingClientRect();
-        
-        // Find panel boundaries and create handles
-        this.panels.forEach((panel, i) => {
-            if (!panel.element) return;
-            const rect = panel.element.getBoundingClientRect();
-            
-            // Create vertical handle on right edge (if not last column)
-            const rightEdge = rect.right - containerRect.left;
-            if (rightEdge < containerRect.width - 10) {
-                const handle = this.createHandle('vertical', rightEdge, rect.top - containerRect.top, rect.height, i, 'right');
-                if (handle) this.resizeHandles.push(handle);
+
+        const SNAP = 1.5;
+        const panelRects = this.panels.map((panel, idx) => {
+            if (!panel.element) return null;
+            const s = panel.element.style;
+            return {
+                idx,
+                left:   parseFloat(s.left)   || 0,
+                top:    parseFloat(s.top)    || 0,
+                width:  parseFloat(s.width)  || 100,
+                height: parseFloat(s.height) || 100,
+            };
+        }).filter(Boolean);
+
+        const vBounds = new Map();
+        const hBounds = new Map();
+
+        panelRects.forEach(r => {
+            const rightEdge = Math.round((r.left + r.width) * 100) / 100;
+            if (rightEdge > SNAP && rightEdge < 100 - SNAP) {
+                if (!vBounds.has(rightEdge)) vBounds.set(rightEdge, { left: [], right: [] });
+                vBounds.get(rightEdge).left.push(r);
             }
-            
-            // Create horizontal handle on bottom edge (if not last row)
-            const bottomEdge = rect.bottom - containerRect.top;
-            if (bottomEdge < containerRect.height - 10) {
-                const handle = this.createHandle('horizontal', rect.left - containerRect.left, bottomEdge, rect.width, i, 'bottom');
-                if (handle) this.resizeHandles.push(handle);
+            const leftEdge = Math.round(r.left * 100) / 100;
+            if (leftEdge > SNAP && leftEdge < 100 - SNAP) {
+                if (!vBounds.has(leftEdge)) vBounds.set(leftEdge, { left: [], right: [] });
+                vBounds.get(leftEdge).right.push(r);
+            }
+            const bottomEdge = Math.round((r.top + r.height) * 100) / 100;
+            if (bottomEdge > SNAP && bottomEdge < 100 - SNAP) {
+                if (!hBounds.has(bottomEdge)) hBounds.set(bottomEdge, { top: [], bottom: [] });
+                hBounds.get(bottomEdge).top.push(r);
+            }
+            const topEdge = Math.round(r.top * 100) / 100;
+            if (topEdge > SNAP && topEdge < 100 - SNAP) {
+                if (!hBounds.has(topEdge)) hBounds.set(topEdge, { top: [], bottom: [] });
+                hBounds.get(topEdge).bottom.push(r);
             }
         });
+
+        vBounds.forEach((sides, pct) => {
+            if (sides.left.length === 0 || sides.right.length === 0) return;
+            const all = [...sides.left, ...sides.right];
+            const minTop = Math.min(...all.map(r => r.top));
+            const maxBot = Math.max(...all.map(r => r.top + r.height));
+            const handle = this._createPercentHandle('vertical', pct, minTop, maxBot - minTop, {
+                boundary: pct,
+                leftPanels: sides.left.map(r => r.idx),
+                rightPanels: sides.right.map(r => r.idx),
+            });
+            if (handle) this.resizeHandles.push(handle);
+        });
+
+        hBounds.forEach((sides, pct) => {
+            if (sides.top.length === 0 || sides.bottom.length === 0) return;
+            const all = [...sides.top, ...sides.bottom];
+            const minLeft = Math.min(...all.map(r => r.left));
+            const maxRight = Math.max(...all.map(r => r.left + r.width));
+            const handle = this._createPercentHandle('horizontal', minLeft, pct, maxRight - minLeft, {
+                boundary: pct,
+                topPanels: sides.top.map(r => r.idx),
+                bottomPanels: sides.bottom.map(r => r.idx),
+            });
+            if (handle) this.resizeHandles.push(handle);
+        });
     }
-    
-    /**
-     * Create a single resize handle
-     */
-    createHandle(type, x, y, size, panelIndex, edge) {
+
+    _createPercentHandle(type, xPct, yPct, sizePct, meta) {
         const handle = document.createElement('div');
         handle.className = `panel-resize-handle ${type}`;
-        handle.dataset.panelIndex = panelIndex;
-        handle.dataset.edge = edge;
-        
-        const thickness = 10; // Wider hit area for easier grabbing
-        
+
         if (type === 'vertical') {
-            handle.style.cssText = `
-                position: absolute;
-                left: ${x - thickness/2}px;
-                top: ${y}px;
-                width: ${thickness}px;
-                height: ${size}px;
-                cursor: col-resize;
-                background: transparent;
-                z-index: 150;
-                pointer-events: auto;
-                transition: background 0.15s ease;
-            `;
+            handle.style.cssText = `left:${xPct}%;top:${yPct}%;height:${sizePct}%;`;
         } else {
-            handle.style.cssText = `
-                position: absolute;
-                left: ${x}px;
-                top: ${y - thickness/2}px;
-                width: ${size}px;
-                height: ${thickness}px;
-                cursor: row-resize;
-                background: transparent;
-                z-index: 150;
-                pointer-events: auto;
-                transition: background 0.15s ease;
-            `;
+            handle.style.cssText = `left:${xPct}%;top:${yPct}%;width:${sizePct}%;`;
         }
-        
-        // Hover effect - subtle blue line
-        handle.addEventListener('mouseenter', () => {
-            handle.style.background = 'rgba(41, 98, 255, 0.6)';
-        });
-        handle.addEventListener('mouseleave', () => {
-            if (!this.isResizing) {
-                handle.style.background = 'transparent';
-            }
-        });
-        
-        // Drag start
+
+        handle._resizeMeta = meta;
+        handle._resizeType = type;
+
         handle.addEventListener('mousedown', (e) => {
             e.preventDefault();
-            this.startResize(e, handle, type, panelIndex);
+            e.stopPropagation();
+            this._startPercentResize(e, handle);
         });
-        
-        // Append to chart-container so handles work with main chart too
+
+        handle.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this._resetPanelSizes();
+            this.applyLayout(this.currentLayout);
+        });
+
         const chartContainer = document.getElementById('chart-container');
-        if (chartContainer) {
-            chartContainer.appendChild(handle);
-        } else {
-            this.container.appendChild(handle);
-        }
+        (chartContainer || this.container).appendChild(handle);
         return handle;
     }
-    
-    /**
-     * Start resize drag
-     */
-    startResize(e, handle, type, panelIndex) {
+
+    _startPercentResize(e, handle) {
         this.isResizing = true;
         this.resizeHandle = handle;
-        this.resizeStartX = e.clientX;
-        this.resizeStartY = e.clientY;
-        this.resizeType = type;
-        this.resizePanelIndex = panelIndex;
         this._resizeRAF = null;
-        
-        // Store initial sizes
-        this.initialPanelSizes = this.panels.map(p => {
-            if (p.element) {
-                const rect = p.element.getBoundingClientRect();
-                // Add GPU acceleration hint
-                p.element.style.willChange = 'width, height, left, top';
-                return { width: rect.width, height: rect.height, left: rect.left, top: rect.top };
-            }
-            return null;
-        });
-        
-        handle.style.background = 'rgba(41, 98, 255, 0.7)';
+
+        const chartContainer = document.getElementById('chart-container');
+        const containerRect = chartContainer.getBoundingClientRect();
+        const meta = handle._resizeMeta;
+        const type = handle._resizeType;
+
+        this._resizeState = {
+            type, meta, containerRect,
+            startX: e.clientX, startY: e.clientY,
+            startBoundary: meta.boundary,
+            panelSnapshots: this.panels.map((panel, idx) => {
+                if (!panel.element) return null;
+                const s = panel.element.style;
+                return {
+                    idx,
+                    left:   parseFloat(s.left)   || 0,
+                    top:    parseFloat(s.top)    || 0,
+                    width:  parseFloat(s.width)  || 100,
+                    height: parseFloat(s.height) || 100,
+                };
+            }),
+        };
+
+        handle.classList.add('dragging');
         document.body.style.cursor = type === 'vertical' ? 'col-resize' : 'row-resize';
         document.body.style.userSelect = 'none';
-        
-        // Add move and up handlers
-        this._resizeMove = (e) => this.handleResizeMove(e);
-        this._resizeEnd = (e) => this.endResize(e);
-        
-        document.addEventListener('mousemove', this._resizeMove);
-        document.addEventListener('mouseup', this._resizeEnd);
+
+        const overlay = document.createElement('div');
+        overlay.id = '_panelResizeOverlay';
+        overlay.style.cssText = `position:fixed;inset:0;z-index:9999;cursor:${document.body.style.cursor};`;
+        document.body.appendChild(overlay);
+        this._resizeOverlay = overlay;
+
+        this._resizeMove = (ev) => {
+            this._lastResizeX = ev.clientX;
+            this._lastResizeY = ev.clientY;
+            if (!this._resizeRAF) {
+                this._resizeRAF = requestAnimationFrame(() => {
+                    this._resizeRAF = null;
+                    this._applyPercentResize();
+                });
+            }
+        };
+        this._resizeEnd = () => this._endPercentResize();
+
+        document.addEventListener('mousemove', this._resizeMove, true);
+        document.addEventListener('mouseup', this._resizeEnd, true);
     }
-    
-    /**
-     * Handle resize drag move
-     */
-    handleResizeMove(e) {
-        if (!this.isResizing) return;
-        
-        // Store latest mouse position
-        this._lastResizeX = e.clientX;
-        this._lastResizeY = e.clientY;
-        
-        // Use requestAnimationFrame for smooth updates
-        if (!this._resizeRAF) {
-            this._resizeRAF = requestAnimationFrame(() => {
-                this._resizeRAF = null;
-                this.applyResize();
-            });
-        }
-    }
-    
-    /**
-     * Apply resize changes (called via RAF for smoothness)
-     */
-    applyResize() {
-        if (!this.isResizing) return;
-        
-        const deltaX = this._lastResizeX - this.resizeStartX;
-        const deltaY = this._lastResizeY - this.resizeStartY;
-        
-        const chartContainer = document.getElementById('chart-container');
-        const containerRect = chartContainer ? chartContainer.getBoundingClientRect() : this.container.getBoundingClientRect();
-        
-        if (this.resizeType === 'vertical') {
-            this.panels.forEach((panel, i) => {
-                if (!panel.element || !this.initialPanelSizes[i]) return;
-                const initial = this.initialPanelSizes[i];
-                
-                if (i === this.resizePanelIndex) {
-                    const newWidth = Math.max(100, initial.width + deltaX);
-                    panel.element.style.width = newWidth + 'px';
-                } else if (initial.left > this.initialPanelSizes[this.resizePanelIndex]?.left) {
-                    const leftPanel = this.initialPanelSizes[this.resizePanelIndex];
-                    if (leftPanel && Math.abs(initial.left - (leftPanel.left + leftPanel.width)) < 15) {
-                        const newLeft = initial.left - containerRect.left + deltaX;
-                        const newWidth = Math.max(100, initial.width - deltaX);
-                        panel.element.style.left = newLeft + 'px';
-                        panel.element.style.width = newWidth + 'px';
-                    }
-                }
-            });
+
+    _applyPercentResize() {
+        if (!this.isResizing || !this._resizeState) return;
+        const { type, meta, containerRect, startX, startY, startBoundary, panelSnapshots } = this._resizeState;
+        const MIN_PCT = 8;
+
+        let deltaPct;
+        if (type === 'vertical') {
+            deltaPct = ((this._lastResizeX - startX) / containerRect.width) * 100;
         } else {
-            this.panels.forEach((panel, i) => {
-                if (!panel.element || !this.initialPanelSizes[i]) return;
-                const initial = this.initialPanelSizes[i];
-                
-                if (i === this.resizePanelIndex) {
-                    const newHeight = Math.max(80, initial.height + deltaY);
-                    panel.element.style.height = newHeight + 'px';
-                } else if (initial.top > this.initialPanelSizes[this.resizePanelIndex]?.top) {
-                    const topPanel = this.initialPanelSizes[this.resizePanelIndex];
-                    if (topPanel && Math.abs(initial.top - (topPanel.top + topPanel.height)) < 15) {
-                        const newTop = initial.top - containerRect.top + deltaY;
-                        const newHeight = Math.max(80, initial.height - deltaY);
-                        panel.element.style.top = newTop + 'px';
-                        panel.element.style.height = newHeight + 'px';
-                    }
+            deltaPct = ((this._lastResizeY - startY) / containerRect.height) * 100;
+        }
+
+        let newBoundary = startBoundary + deltaPct;
+
+        if (type === 'vertical') {
+            const leftSnaps = panelSnapshots.filter(s => s && meta.leftPanels.includes(s.idx));
+            const rightSnaps = panelSnapshots.filter(s => s && meta.rightPanels.includes(s.idx));
+            const minAllowed = Math.max(...leftSnaps.map(r => r.left + MIN_PCT));
+            const maxAllowed = Math.min(...rightSnaps.map(r => r.left + r.width - MIN_PCT));
+            newBoundary = Math.max(minAllowed, Math.min(maxAllowed, newBoundary));
+        } else {
+            const topSnaps = panelSnapshots.filter(s => s && meta.topPanels.includes(s.idx));
+            const botSnaps = panelSnapshots.filter(s => s && meta.bottomPanels.includes(s.idx));
+            const minAllowed = Math.max(...topSnaps.map(r => r.top + MIN_PCT));
+            const maxAllowed = Math.min(...botSnaps.map(r => r.top + r.height - MIN_PCT));
+            newBoundary = Math.max(minAllowed, Math.min(maxAllowed, newBoundary));
+        }
+
+        panelSnapshots.forEach(snap => {
+            if (!snap) return;
+            const panel = this.panels[snap.idx];
+            if (!panel || !panel.element) return;
+
+            if (type === 'vertical') {
+                if (meta.leftPanels.includes(snap.idx)) {
+                    panel.element.style.width = (newBoundary - snap.left) + '%';
+                } else if (meta.rightPanels.includes(snap.idx)) {
+                    const originalRight = snap.left + snap.width;
+                    panel.element.style.left = newBoundary + '%';
+                    panel.element.style.width = (originalRight - newBoundary) + '%';
                 }
-            });
-        }
-    }
-    
-    /**
-     * End resize drag
-     */
-    endResize(e) {
-        if (!this.isResizing) return;
-        
-        this.isResizing = false;
-        
-        // Cancel any pending RAF
-        if (this._resizeRAF) {
-            cancelAnimationFrame(this._resizeRAF);
-            this._resizeRAF = null;
-        }
-        
-        // Clean up GPU hints
-        this.panels.forEach(p => {
-            if (p.element) {
-                p.element.style.willChange = 'auto';
+            } else {
+                if (meta.topPanels.includes(snap.idx)) {
+                    panel.element.style.height = (newBoundary - snap.top) + '%';
+                } else if (meta.bottomPanels.includes(snap.idx)) {
+                    const originalBottom = snap.top + snap.height;
+                    panel.element.style.top = newBoundary + '%';
+                    panel.element.style.height = (originalBottom - newBoundary) + '%';
+                }
             }
         });
-        
+
         if (this.resizeHandle) {
-            this.resizeHandle.style.background = 'transparent';
+            if (type === 'vertical') this.resizeHandle.style.left = newBoundary + '%';
+            else this.resizeHandle.style.top = newBoundary + '%';
         }
+
+        this._resizeState.currentBoundary = newBoundary;
+        this._updateSelectionOverlay();
+
+        // Throttled canvas resize (~20fps) — panels clip via CSS overflow:hidden
+        const now = performance.now();
+        if (!this._lastLiveResize || now - this._lastLiveResize > 50) {
+            this._lastLiveResize = now;
+            panelSnapshots.forEach(snap => {
+                if (!snap) return;
+                const panel = this.panels[snap.idx];
+                if (!panel || !panel.chartInstance) return;
+                const ci = panel.chartInstance;
+                if (ci._lastResizeDpr !== undefined) ci._lastResizeDpr = 0;
+                if (typeof ci.resize === 'function') ci.resize();
+                if (typeof ci.render === 'function') ci.render();
+            });
+        }
+    }
+
+    _endPercentResize() {
+        if (!this.isResizing) return;
+        this.isResizing = false;
+
+        if (this._resizeRAF) { cancelAnimationFrame(this._resizeRAF); this._resizeRAF = null; }
+        if (this._resizeOverlay) { this._resizeOverlay.remove(); this._resizeOverlay = null; }
+        if (this.resizeHandle) this.resizeHandle.classList.remove('dragging');
+
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
-        
-        document.removeEventListener('mousemove', this._resizeMove);
-        document.removeEventListener('mouseup', this._resizeEnd);
-        
-        // Resize all charts to fit new panel sizes
-        setTimeout(() => {
-            this.panels.forEach(panel => {
-                if (panel.element && panel.element.style.display !== 'none') {
-                    const rect = panel.element.getBoundingClientRect();
-                    if (panel.canvas) {
-                        panel.canvas.width = rect.width;
-                        panel.canvas.height = rect.height;
-                    }
-                    if (panel.svg) {
-                        panel.svg.setAttribute('width', rect.width);
-                        panel.svg.setAttribute('height', rect.height);
-                    }
-                    if (panel.chartInstance && panel.chartInstance.resize) {
-                        panel.chartInstance.resize();
-                        panel.chartInstance.render();
-                    }
+        document.removeEventListener('mousemove', this._resizeMove, true);
+        document.removeEventListener('mouseup', this._resizeEnd, true);
+
+        this.panels.forEach(panel => {
+            if (panel.element && panel.element.style.display !== 'none' && panel.chartInstance) {
+                if (panel.chartInstance.resize) {
+                    panel.chartInstance._lastResizeDpr = 0;
+                    panel.chartInstance.resize();
                 }
+                if (panel.chartInstance.render) panel.chartInstance.render();
+            }
+        });
+
+        setTimeout(() => { this.createResizeHandles(); this._updateSelectionOverlay(); }, 30);
+        this._savePanelSizes();
+    }
+
+    _savePanelSizes() {
+        try {
+            const sizes = this.panels.map(panel => {
+                if (!panel.element) return null;
+                return { left: panel.element.style.left, top: panel.element.style.top, width: panel.element.style.width, height: panel.element.style.height };
             });
-            
-            // Resize functionality disabled - panels are fixed size
-            // this.createResizeHandles();
-        }, 50);
-        
-        console.log('📐 Panel resize complete');
+            userStorage.setItem('chart_panel_sizes_' + this.currentLayout, JSON.stringify(sizes));
+        } catch (e) { /* ignore */ }
+    }
+
+    _loadPanelSizes() {
+        try {
+            const saved = userStorage.getItem('chart_panel_sizes_' + this.currentLayout);
+            if (!saved) return false;
+            const sizes = JSON.parse(saved);
+            if (!Array.isArray(sizes) || sizes.length !== this.panels.length) return false;
+            let valid = true;
+            sizes.forEach((size, i) => {
+                if (!size || !this.panels[i] || !this.panels[i].element) { valid = false; return; }
+                const w = parseFloat(size.width), h = parseFloat(size.height);
+                if (isNaN(w) || isNaN(h) || w < 5 || h < 5) { valid = false; return; }
+            });
+            if (!valid) return false;
+            sizes.forEach((size, i) => {
+                const el = this.panels[i].element;
+                el.style.left = size.left;
+                el.style.top = size.top;
+                el.style.width = size.width;
+                el.style.height = size.height;
+            });
+            return true;
+        } catch (e) { return false; }
+    }
+
+    _resetPanelSizes() {
+        try { userStorage.removeItem('chart_panel_sizes_' + this.currentLayout); } catch (e) { /* ignore */ }
     }
 }
 

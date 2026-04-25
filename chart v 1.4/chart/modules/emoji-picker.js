@@ -11,7 +11,7 @@ class EmojiPickerPanel {
 
     loadRecents() {
         try {
-            const raw = window.localStorage.getItem('talaria.drawing.emojiRecents');
+            const raw = userStorage.getItem('talaria.drawing.emojiRecents');
             if (!raw) return [];
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed)) {
@@ -26,7 +26,7 @@ class EmojiPickerPanel {
 
     saveRecents() {
         try {
-            window.localStorage.setItem('talaria.drawing.emojiRecents', JSON.stringify(this.recents.slice(0, 12)));
+            userStorage.setItem('talaria.drawing.emojiRecents', JSON.stringify(this.recents.slice(0, 12)));
         } catch (err) {
             console.warn('EmojiPickerPanel: failed to save recents', err);
         }
