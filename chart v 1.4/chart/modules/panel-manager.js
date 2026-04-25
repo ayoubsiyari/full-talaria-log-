@@ -129,6 +129,9 @@ class PanelManager {
         }
         this._scrollListenerRef = (e) => {
             if (this._isSyncing) return;
+            const ss = this.syncSettings || {};
+            if (!ss.time && !ss.dateRange) return;
+
             const d = e.detail || {};
             const { panel, startTimestamp, endTimestamp } = d;
             if (!panel) return;
@@ -149,10 +152,7 @@ class PanelManager {
                 const tgtSym = this._normalizeSymbolForScrollSync(pc.currentSymbol);
                 return srcSym && tgtSym && srcSym !== tgtSym;
             });
-            if (hasDifferentSymbolPeer) {
-                console.log(`[SCROLL SYNC BLOCKED] Source ${srcSym} has different symbol peers`);
-                return;
-            }
+            if (hasDifferentSymbolPeer) return;
 
             // Date Range: continuous full-window sync (scroll + zoom locked).
             if (this.syncSettings.dateRange
@@ -701,15 +701,7 @@ class PanelManager {
         const normB = this._normalizeSymbolForScrollSync(targetChart.currentSymbol);
         const fidA = sourceChart.currentFileId;
         const fidB = targetChart.currentFileId;
-        // DEBUG: Log sync check for troubleshooting different pair issues
-        if (normA && normB && normA !== normB) {
-            console.log(`[SYNC BLOCKED] Different symbols: ${normA} vs ${normB}`);
-            return false;
-        }
-        if (fidA != null && fidB != null && String(fidA) !== String(fidB)) {
-            console.log(`[SYNC BLOCKED] Different fileIds: ${fidA} vs ${fidB}`);
-            return false;
-        }
+        if (normA && normB && normA !== normB) return false;
 
         const hasA = fidA != null && String(fidA).trim() !== '';
         const hasB = fidB != null && String(fidB).trim() !== '';
@@ -731,14 +723,9 @@ class PanelManager {
         // Only sync when we can positively confirm they're the same instrument.
         const idA = normA || hasA;
         const idB = normB || hasB;
-        if (!idA || !idB) {
-            console.log(`[SYNC BLOCKED] Missing identification: normA=${normA}, hasA=${hasA}, normB=${normB}, hasB=${hasB}`);
-            return false;
-        }
+        if (!idA || !idB) return false;
 
-        const result = (normA && normB) ? normA === normB : false;
-        console.log(`[SYNC ${result ? 'ALLOWED' : 'BLOCKED'}] symbols: ${normA} vs ${normB}, fileIds: ${fidA} vs ${fidB}`);
-        return result;
+        return !!(normA && normB && normA === normB);
     }
 
     /** True if some other panel's chart should receive scroll sync from `sourceChart`. */
@@ -940,10 +927,7 @@ class PanelManager {
                     const mainFile = chart.currentFileId;
                     const diffSym = srcSym && mainSym && srcSym !== mainSym;
                     const diffFile = srcFile != null && mainFile != null && String(srcFile) !== String(mainFile);
-                    if (diffSym || diffFile) {
-                        console.log(`[TIME SYNC SKIP] Skipping main chart (different pair): src=${srcSym}/${srcFile}, main=${mainSym}/${mainFile}`);
-                        return;
-                    }
+                    if (diffSym || diffFile) return;
                 }
                 if (!this._shouldScrollSyncBetweenCharts(srcPc, chart)) return;
 
