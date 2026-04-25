@@ -14691,10 +14691,15 @@ class Chart {
         
         this.canvas.addEventListener('mouseleave', (e) => {
             const hasPressedButton = !!(e && typeof e.buttons === 'number' && e.buttons !== 0);
+            const _pmMl = typeof window !== 'undefined' ? window.panelManager : null;
+            const _multiLayout = _pmMl && _pmMl.currentLayout && String(_pmMl.currentLayout) !== '1';
 
-            // TradingView-like behavior: if user is still holding mouse button while
-            // leaving the chart, keep drag state alive so re-entering continues the drag.
-            if (this.drag.active && hasPressedButton) {
+            // Multi-panel (c799887-style): always end the gesture when the pointer leaves this
+            // surface so document mousemove cannot keep panning a sibling chart. Single-panel
+            // keeps TV-like continuation when the button is still down.
+            if (!_multiLayout
+                && this.drag.active
+                && hasPressedButton) {
                 this.hideTooltip();
                 if (typeof this.hideEconomicCalendarTooltip === 'function') this.hideEconomicCalendarTooltip();
                 return;
@@ -14704,6 +14709,9 @@ class Chart {
             this.drag.type = null;
             this.boxZoom.active = false;
             this.inertia.active = false;
+            if (Chart._activePointerChart === this) {
+                Chart._activePointerChart = null;
+            }
             const dm = this.drawingManager;
             if (dm && (dm.isResizing || dm.isCustomHandleDrag)) {
                 this.canvas.style.cursor = 'ew-resize';
@@ -14744,36 +14752,13 @@ class Chart {
                 }
             }
 
-            // Continue axis/pan drags even when mouse is outside the canvas
-            if (this.drag && this.drag.active && this.canvas) {
-                // Multi-panel: document-level continuation must not run on a chart that is not
-                // driving this pointer, or while the pointer is over a different panel (1h+ pan
-                // often leaves the main canvas first; otherwise the main chart keeps panning with ES).
-                const _pm = typeof window !== 'undefined' ? window.panelManager : null;
-                const _multi = _pm && _pm.currentLayout && String(_pm.currentLayout) !== '1';
-                if (_multi) {
-                    let _drop = false;
-                    if (Chart._activePointerChart && Chart._activePointerChart !== this) {
-                        _drop = true;
-                    } else if (typeof this._pointerEventOverAnotherPanelSurface === 'function'
-                        && this._pointerEventOverAnotherPanelSurface(e.clientX, e.clientY)) {
-                        _drop = true;
-                    }
-                    if (_drop) {
-                        if (Chart._activePointerChart === this) {
-                            Chart._activePointerChart = null;
-                        }
-                        this.drag.active = false;
-                        this.drag.type = null;
-                        this.drag.separatePanelSlot = null;
-                        this.movement.isDragging = false;
-                        this.inertia.active = false;
-                        this.boxZoom.active = false;
-                        this.isZooming = false;
-                    }
-                }
-
-                if (this.drag && this.drag.active) {
+            // Continue axis/pan drags when the pointer is outside the canvas (single-panel only).
+            // c799887 had no document-level outside continuation; with multiple Chart instances each
+            // listening on document, that path caused the wrong panel to pan on HTF. Multi-panel
+            // relies on canvas/bubble mousemove + mouseleave to end the gesture.
+            const _pmDoc = typeof window !== 'undefined' ? window.panelManager : null;
+            const _multiPanelDoc = _pmDoc && _pmDoc.currentLayout && String(_pmDoc.currentLayout) !== '1';
+            if (!_multiPanelDoc && this.drag && this.drag.active && this.canvas) {
                 const rect = this.canvas.getBoundingClientRect();
                 const mx = e.clientX - rect.left;
                 const my = e.clientY - rect.top;
@@ -14833,7 +14818,6 @@ class Chart {
 
                     this.drag.lastX = e.clientX;
                     this.drag.lastY = e.clientY;
-                }
                 }
             }
 
