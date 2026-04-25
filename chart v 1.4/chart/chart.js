@@ -8021,6 +8021,16 @@ class Chart {
             this.fitToView();
             return;
         }
+        
+        // CRITICAL FIX: Only sync viewport if symbols are compatible
+        // When panels have different pairs, viewport sync would break the chart
+        if (typeof pm._shouldScrollSyncBetweenCharts === 'function') {
+            if (!pm._shouldScrollSyncBetweenCharts(srcChart, this)) {
+                console.log(`[VIEWPORT SYNC SKIP] Different symbols: src=${srcChart.currentSymbol}, target=${this.currentSymbol}`);
+                this.fitToView();
+                return;
+            }
+        }
 
         if (pm.syncSettings.dateRange) {
             pm.syncScrollByVisibleTimeRange(srcPanel, hint.startTimestamp, hint.endTimestamp);
