@@ -712,18 +712,18 @@ class TimeframeFavorites {
     changeTimeframe(timeframe) {
         console.log('⌚ Changing timeframe to:', timeframe);
 
-        // Check if we're in LINKED pane mode (Add New Pane feature) - update BOTH charts
+        // Check if we're in LINKED pane mode (Add New Pane feature)
         if (window._linkedPaneData && window._linkedPaneData.panel1) {
-            console.log('🔗 Linked pane mode - syncing both charts');
-            
-            // Update main chart
-            if (this.chart && typeof this.chart.setTimeframe === 'function') {
-                this.chart.setTimeframe(timeframe);
-            }
-            
-            // Update panel1 (linked pane)
+            console.log('🔗 Linked pane mode detected');
+
+            // Determine which panel is currently selected
+            // If panel1 is selected, only update panel1; otherwise update main chart
             const panel1 = window._linkedPaneData.panel1;
-            if (panel1.chartInstance && panel1.chartInstance.rawData && panel1.chartInstance.rawData.length > 0) {
+            const isPanel1Selected = panel1 && panel1.isSelected;
+
+            if (isPanel1Selected && panel1.chartInstance && panel1.chartInstance.rawData && panel1.chartInstance.rawData.length > 0) {
+                // Panel1 is selected - only update panel1, leave main chart alone
+                console.log('🔗 Panel1 is selected - updating only panel1');
                 const pc = panel1.chartInstance;
 
                 // Capture center timestamp and zoom BEFORE resampling
@@ -744,18 +744,19 @@ class TimeframeFavorites {
                 if (hadData && centerTimestamp && pc.data && pc.data.length > 0 && pc._restorePositionToTimestamp) {
                     pc._restorePositionToTimestamp(centerTimestamp, savedCandleWidth);
                 } else {
-                    // Fallback: sync from main chart if no previous data
-                    if (window.chart) {
-                        pc.offsetX = window.chart.offsetX || 0;
-                        pc.candleWidth = window.chart.candleWidth || 8;
-                    }
                     pc._chartViewRestored = false;
                     if (typeof pc.fitToView === 'function') pc.fitToView();
                 }
 
                 // Re-render
                 pc.render();
-                console.log(`⏱️ Synced linked pane timeframe to ${timeframe}`);
+                console.log(`⏱️ Updated panel1 timeframe to ${timeframe}`);
+            } else {
+                // Main chart is selected - only update main chart, leave panel1 alone
+                console.log('🔗 Main chart is selected - updating only main chart');
+                if (this.chart && typeof this.chart.setTimeframe === 'function') {
+                    this.chart.setTimeframe(timeframe);
+                }
             }
         } else if (window.panelManager && window.panelManager.getCurrentLayout() !== '1') {
             // Regular multi-panel mode (not linked)
