@@ -16315,18 +16315,29 @@ class Chart {
     }
 
     updateCrosshair(e) {
-        // Auto-fix stale dimensions: compare canvas layout box to internal w/h (matches resize()).
-        // Throttle so incremental layout (e.g. #chart-container transition) does not drift offsetX.
-        if (this.canvas) {
-            const cw = Math.round(this.canvas.clientWidth || 0);
-            const ch = Math.round(this.canvas.clientHeight || 0);
-            if (cw > 2 && ch > 2 &&
-                (Math.abs(cw - this.w) > 4 || Math.abs(ch - this.h) > 4)) {
-                this.scheduleLayoutResizeFromCrosshair();
+        const rect = this.canvas.getBoundingClientRect();
+        // Stale layout fix: only while the pointer is over THIS chart's canvas. Every Chart
+        // listens on document capture mousemove; without this, moving over another panel still
+        // ran the check on panel0's #chartWrapper and could call resize()/offset nudges when
+        // the other pair reflowed — worse on 1h+ where layout/OHLC churn is larger.
+        if (this.canvas && e && Number.isFinite(e.clientX) && Number.isFinite(e.clientY)) {
+            const overCanvas =
+                e.clientX >= rect.left && e.clientX <= rect.right &&
+                e.clientY >= rect.top && e.clientY <= rect.bottom;
+            if (overCanvas) {
+                const ctr = this.canvas.parentElement;
+                if (ctr) {
+                    const pr = ctr.getBoundingClientRect();
+                    const pw = Math.floor(pr.width || 0);
+                    const ph = Math.floor(pr.height || 0);
+                    if (pw > 2 && ph > 2 &&
+                        (Math.abs(pw - this.w) > 4 || Math.abs(ph - this.h) > 4)) {
+                        this.scheduleLayoutResizeFromCrosshair();
+                    }
+                }
             }
         }
 
-        const rect = this.canvas.getBoundingClientRect();
         const x = e.clientX - rect.left, y = e.clientY - rect.top;
         const m = this.margin;
 
