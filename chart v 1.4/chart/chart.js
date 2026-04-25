@@ -10496,14 +10496,25 @@ class Chart {
         
         // Fallback for non-file data (small local datasets)
         if (!hasData) return;
+
+        // Capture center timestamp and zoom before resampling
+        const centerTimestamp = this._getVisibleCenterTimestamp();
+        const savedCandleWidth = this.candleWidth;
+
         this.data = this.resampleData(this.rawData, timeframe);
         if (typeof this.recalculateIndicators === 'function') this.recalculateIndicators();
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
             this.compareOverlay.refreshForTimeframe(timeframe);
         }
-        this._chartViewRestored = false;
-        this.resize();
-        this.fitToView();
+
+        // Restore position to center timestamp
+        if (centerTimestamp && this.data && this.data.length > 0) {
+            this._restorePositionToTimestamp(centerTimestamp, savedCandleWidth);
+        } else {
+            this._chartViewRestored = false;
+            this.resize();
+            this.fitToView();
+        }
         this.scheduleRender();
         this._fireChartDataLoaded();
     }
@@ -10516,6 +10527,11 @@ class Chart {
         const loadId = ++this._timeframeLoadSeq;
         try {
             if (this.showLoader) this.showLoader('Changing timeframe...');
+
+            // Capture center timestamp and zoom before switching
+            const centerTimestamp = this._getVisibleCenterTimestamp();
+            const savedCandleWidth = this.candleWidth;
+            const hadData = this.data && this.data.length > 0;
 
             const session = this.backtestingSession || {};
             const result = await this._fetchSmartWindow(this.currentFileId, timeframe, session);
@@ -10547,8 +10563,14 @@ class Chart {
             requestAnimationFrame(() => {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
-                this._chartViewRestored = false;
-                this.fitToView();
+
+                // Restore position to center timestamp if we had data before
+                if (hadData && centerTimestamp && this.data && this.data.length > 0) {
+                    this._restorePositionToTimestamp(centerTimestamp, savedCandleWidth);
+                } else {
+                    this._chartViewRestored = false;
+                    this.fitToView();
+                }
                 this.render();
             });
 
@@ -13345,6 +13367,76 @@ class Chart {
         // Use same calculation as pixelToDataIndex but inverted
         const candleSpacing = this.getCandleSpacing();
         return this.margin.l + (dataIdx * candleSpacing) + this.offsetX;
+    }
+
+    /**
+     * Get the timestamp at the center of the visible chart area
+     * @returns {number|null} Center timestamp in milliseconds, or null if no data
+     */
+    _getVisibleCenterTimestamp() {
+        if (!this.data || this.data.length === 0) return null;
+
+        const m = this.margin;
+        const cw = this.w - m.l - m.r;
+        const centerX = cw / 2;
+
+        // Get data index at center pixel
+        const centerIndex = Math.floor(this.pixelToDataIndex(m.l + centerX));
+
+        // Clamp to valid data range
+        const clampedIndex = Math.max(0, Math.min(this.data.length - 1, centerIndex));
+
+        // Return timestamp at that index
+        const candle = this.data[clampedIndex];
+        return candle && candle.t ? candle.t : null;
+    }
+
+    /**
+     * Restore view position to center on a specific timestamp
+     * @param {number} targetTimestamp - Timestamp to center on
+     * @param {number} targetCandleWidth - Optional candle width to restore (preserves zoom level)
+     */
+    _restorePositionToTimestamp(targetTimestamp, targetCandleWidth) {
+        if (!this.data || this.data.length === 0 || !targetTimestamp) return;
+
+        // Find closest candle to target timestamp
+        let closestIndex = 0;
+        let minDiff = Infinity;
+
+        for (let i = 0; i < this.data.length; i++) {
+            const candle = this.data[i];
+            if (!candle || !candle.t) continue;
+            const diff = Math.abs(candle.t - targetTimestamp);
+            if (diff < minDiff) {
+                minDiff = diff;
+                closestIndex = i;
+            }
+        }
+
+        // Calculate new offset to center the target candle
+        const m = this.margin;
+        const cw = this.w - m.l - m.r;
+        const candleSpacing = this.getCandleSpacing();
+        const centerX = cw / 2;
+        const candleX = closestIndex * candleSpacing;
+        this.offsetX = centerX - candleX;
+
+        // Restore candle width if provided (preserve zoom level)
+        if (targetCandleWidth && Number.isFinite(targetCandleWidth)) {
+            // Clamp to allowed widths
+            const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
+                ? this.zoomLevel.allowedWidths
+                : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+            const minWidth = widths[0];
+            const maxWidth = widths[widths.length - 1];
+            this.candleWidth = Math.max(minWidth, Math.min(maxWidth, targetCandleWidth));
+        }
+
+        // Set flag so fitToView() doesn't override our restored position
+        this._chartViewRestored = true;
+
+        // Apply constraints
+        this.constrainOffset();
     }
 
     /** Fallback ms between bars when data-derived step is unavailable (matches crosshair / x-axis tf map). */
