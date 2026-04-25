@@ -47,12 +47,13 @@ class PanelManager {
         /** Per-target-panel last bar index so each follower only jumps when ITS own right-edge bar changes. */
         this._timeSyncLastTargetBar = {};
         
-        // Sync settings - time enabled by default for smooth scroll sync
+        // Sync settings — time/date scroll link off by default so panel0 does not follow
+        // panel1 unless the user turns it on (chartScrolled + _discreteTimeSyncToRightEdge).
         this.syncSettings = {
             symbol: false,
             interval: false,
             crosshair: true,
-            time: true,
+            time: false,
             dateRange: false,
             drawings: true,
             indicators: false,
@@ -284,7 +285,7 @@ class PanelManager {
                 </div>
                 <div class="sync-row">
                     <div class="sync-label"><span>Time</span></div>
-                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="time-sync-toggle" checked></label>
+                    <label class="sync-toggle"><input type="checkbox" class="tv-native-checkbox" id="time-sync-toggle"></label>
                 </div>
                 <div class="sync-row">
                     <div class="sync-label"><span>Date range</span></div>

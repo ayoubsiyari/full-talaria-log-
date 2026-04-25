@@ -7830,9 +7830,14 @@ class Chart {
         if (!this.data || this.data.length === 0) return;
         // Allow main chart (panel 0) to sync to other panels too
         if (!window.panelManager || window.panelManager.currentLayout === '1') return;
+        const pm = window.panelManager;
+        const ss = pm.syncSettings;
+        // Avoid chartScrolled storms when scroll sync is off — otherwise panel1 pan still
+        // looked like it was "dragging" panel0 via the time-sync listener defaults.
+        if (ss && !ss.time && !ss.dateRange) return;
         if (this._suppressPanelScrollSync) return;
-        if (window.panelManager._isSyncing) return;
-        if (window.panelManager._syncingDateRange) return;
+        if (pm._isSyncing) return;
+        if (pm._syncingDateRange) return;
 
         // Visible range: use same helpers as UI so timestamps match actual viewport (multi-TF sync).
         const startIndex = typeof this.getVisibleStartIndex === 'function'
