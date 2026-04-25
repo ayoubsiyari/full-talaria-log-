@@ -11803,8 +11803,8 @@ class Chart {
         this.orderManager.updateMfeMaeMarkers(this);
     }
 }
-return;
-}
+
+    _getYAxisLabelX(axisLeft) {
         if (!this.xScale || !this.yScale) return;
         
         const axisLeft = !!this.priceAxisLeft;
