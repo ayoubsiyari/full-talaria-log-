@@ -682,11 +682,18 @@ class PanelManager {
         if (sourceChart === targetChart) return true;
         const normA = this._normalizeSymbolForScrollSync(sourceChart.currentSymbol);
         const normB = this._normalizeSymbolForScrollSync(targetChart.currentSymbol);
-        // If both have symbols and they're different, never sync
-        if (normA && normB && normA !== normB) return false;
-
         const fidA = sourceChart.currentFileId;
         const fidB = targetChart.currentFileId;
+        // DEBUG: Log sync check for troubleshooting different pair issues
+        if (normA && normB && normA !== normB) {
+            console.log(`[SYNC BLOCKED] Different symbols: ${normA} vs ${normB}`);
+            return false;
+        }
+        if (fidA != null && fidB != null && String(fidA) !== String(fidB)) {
+            console.log(`[SYNC BLOCKED] Different fileIds: ${fidA} vs ${fidB}`);
+            return false;
+        }
+
         const hasA = fidA != null && String(fidA).trim() !== '';
         const hasB = fidB != null && String(fidB).trim() !== '';
         if (hasA && hasB) {
@@ -707,10 +714,14 @@ class PanelManager {
         // Only sync when we can positively confirm they're the same instrument.
         const idA = normA || hasA;
         const idB = normB || hasB;
-        if (!idA || !idB) return false;
+        if (!idA || !idB) {
+            console.log(`[SYNC BLOCKED] Missing identification: normA=${normA}, hasA=${hasA}, normB=${normB}, hasB=${hasB}`);
+            return false;
+        }
 
-        if (normA && normB) return normA === normB;
-        return false;
+        const result = (normA && normB) ? normA === normB : false;
+        console.log(`[SYNC ${result ? 'ALLOWED' : 'BLOCKED'}] symbols: ${normA} vs ${normB}, fileIds: ${fidA} vs ${fidB}`);
+        return result;
     }
 
     /** True if some other panel's chart should receive scroll sync from `sourceChart`. */
@@ -832,6 +843,19 @@ class PanelManager {
                 const chart = panel.chartInstance;
                 if (!chart?.data?.length) return;
                 const srcPc = sourcePanel && sourcePanel.chartInstance;
+                // Extra safety: never sync to main chart if it's a different pair
+                if (panel.isMainChart && chart === window.chart) {
+                    const srcSym = this._normalizeSymbolForScrollSync(srcPc?.currentSymbol);
+                    const mainSym = this._normalizeSymbolForScrollSync(chart.currentSymbol);
+                    const srcFile = srcPc?.currentFileId;
+                    const mainFile = chart.currentFileId;
+                    const diffSym = srcSym && mainSym && srcSym !== mainSym;
+                    const diffFile = srcFile != null && mainFile != null && String(srcFile) !== String(mainFile);
+                    if (diffSym || diffFile) {
+                        console.log(`[TIME SYNC SKIP] Skipping main chart (different pair): src=${srcSym}/${srcFile}, main=${mainSym}/${mainFile}`);
+                        return;
+                    }
+                }
                 if (!this._shouldScrollSyncBetweenCharts(srcPc, chart)) return;
 
                 chart._suppressPanelScrollSync = true;
@@ -994,6 +1018,19 @@ class PanelManager {
                 if (panel.index === sourcePanel.index) return;
                 const chart = panel.chartInstance;
                 if (!chart?.data?.length) return;
+                // Extra safety: never sync to main chart if it's a different pair
+                if (panel.isMainChart && chart === window.chart) {
+                    const srcSym = this._normalizeSymbolForScrollSync(sourceChart.currentSymbol);
+                    const mainSym = this._normalizeSymbolForScrollSync(chart.currentSymbol);
+                    const srcFile = sourceChart.currentFileId;
+                    const mainFile = chart.currentFileId;
+                    const diffSym = srcSym && mainSym && srcSym !== mainSym;
+                    const diffFile = srcFile != null && mainFile != null && String(srcFile) !== String(mainFile);
+                    if (diffSym || diffFile) {
+                        console.log(`[SYNC SKIP] Skipping main chart (different pair): src=${srcSym}/${srcFile}, main=${mainSym}/${mainFile}`);
+                        return;
+                    }
+                }
                 if (!this._shouldScrollSyncBetweenCharts(sourceChart, chart)) return;
 
                 const tgtBarMs = typeof chart.inferBarDurationMs === 'function'
@@ -1101,6 +1138,19 @@ class PanelManager {
                 if (panel.index === sourcePanel.index) return;
                 const chart = panel.chartInstance;
                 if (!chart?.data?.length) return;
+                // Extra safety: never sync to main chart if it's a different pair
+                if (panel.isMainChart && chart === window.chart) {
+                    const srcSym = this._normalizeSymbolForScrollSync(sourceChart.currentSymbol);
+                    const mainSym = this._normalizeSymbolForScrollSync(chart.currentSymbol);
+                    const srcFile = sourceChart.currentFileId;
+                    const mainFile = chart.currentFileId;
+                    const diffSym = srcSym && mainSym && srcSym !== mainSym;
+                    const diffFile = srcFile != null && mainFile != null && String(srcFile) !== String(mainFile);
+                    if (diffSym || diffFile) {
+                        console.log(`[DATE RANGE SYNC SKIP] Skipping main chart (different pair): src=${srcSym}/${srcFile}, main=${mainSym}/${mainFile}`);
+                        return;
+                    }
+                }
                 if (!this._shouldScrollSyncBetweenCharts(sourceChart, chart)) return;
 
                 chart._suppressPanelScrollSync = true;
