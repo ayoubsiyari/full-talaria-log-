@@ -13399,6 +13399,18 @@ class Chart {
     _restorePositionToTimestamp(targetTimestamp, targetCandleWidth) {
         if (!this.data || this.data.length === 0 || !targetTimestamp) return;
 
+        // Restore candle width FIRST (before calculating offset)
+        // This ensures the offset calculation uses the correct spacing
+        if (targetCandleWidth && Number.isFinite(targetCandleWidth)) {
+            // Clamp to allowed widths
+            const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
+                ? this.zoomLevel.allowedWidths
+                : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+            const minWidth = widths[0];
+            const maxWidth = widths[widths.length - 1];
+            this.candleWidth = Math.max(minWidth, Math.min(maxWidth, targetCandleWidth));
+        }
+
         // Find closest candle to target timestamp
         let closestIndex = 0;
         let minDiff = Infinity;
@@ -13414,23 +13426,13 @@ class Chart {
         }
 
         // Calculate new offset to center the target candle
+        // Now uses the restored candle width for correct spacing
         const m = this.margin;
         const cw = this.w - m.l - m.r;
         const candleSpacing = this.getCandleSpacing();
         const centerX = cw / 2;
         const candleX = closestIndex * candleSpacing;
         this.offsetX = centerX - candleX;
-
-        // Restore candle width if provided (preserve zoom level)
-        if (targetCandleWidth && Number.isFinite(targetCandleWidth)) {
-            // Clamp to allowed widths
-            const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
-                ? this.zoomLevel.allowedWidths
-                : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
-            const minWidth = widths[0];
-            const maxWidth = widths[widths.length - 1];
-            this.candleWidth = Math.max(minWidth, Math.min(maxWidth, targetCandleWidth));
-        }
 
         // Set flag so fitToView() doesn't override our restored position
         this._chartViewRestored = true;
