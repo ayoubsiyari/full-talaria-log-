@@ -11984,6 +11984,7 @@ class OrderManager {
             if (backdrop) backdrop.classList.remove('visible');
             if (chartWrapper) { chartWrapper.classList.remove('order-panel-open'); chartWrapper.classList.remove('settings-open'); }
             document.body.classList.remove('settings-open');
+            if (typeof window._markLayoutInsetTransition === 'function') window._markLayoutInsetTransition();
             setTimeout(_resizeChartsAfterDrawer, 290);
 
             // Remove preview lines when panel closes
@@ -12014,6 +12015,7 @@ class OrderManager {
         if (backdrop) backdrop.classList.add('visible');
         if (chartWrapper) { chartWrapper.classList.add('order-panel-open'); chartWrapper.classList.add('settings-open'); }
         document.body.classList.add('settings-open');
+        if (typeof window._markLayoutInsetTransition === 'function') window._markLayoutInsetTransition();
         setTimeout(_resizeChartsAfterDrawer, 290);
 
         // New order draft: drop multi-entry rows from the last session (preview was cleared on close).

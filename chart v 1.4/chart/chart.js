@@ -7710,9 +7710,17 @@ class Chart {
 	        
 	        if (oldW && oldH) {
 	            const deltaW = this.w - oldW;
+	            // #chart-container uses transition:right when settings/order drawer opens; width
+	            // steps across many frames — do not recenter offsetX each step or the chart "drifts".
+	            const layoutInsetAnim =
+	                typeof window !== 'undefined' &&
+	                Number.isFinite(window.__layoutInsetTransitionUntil) &&
+	                typeof performance !== 'undefined' &&
+	                performance.now() < window.__layoutInsetTransitionUntil;
 	            // Skip 1px noise; skip small width steps during crosshair-throttled resizes to limit
 	            // time-axis creep when #chart-container width animates (settings/order drawer).
 	            const nudge =
+	                !layoutInsetAnim &&
 	                Math.abs(deltaW) >= 2 &&
 	                !(this._resizeFromCrosshairDedupe && Math.abs(deltaW) < 12);
 	            if (nudge) {
