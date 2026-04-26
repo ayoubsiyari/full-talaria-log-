@@ -7718,8 +7718,26 @@ class Chart {
 	        }
 	        
 	        if (oldW && oldH) {
-	            const deltaW = this.w - oldW;
-	            this.offsetX = Math.round(this.offsetX + deltaW * 0.5);
+	            // Anchor the right edge of the plot area through resize.
+	            //
+	            // The previous version shifted offsetX by `deltaW * 0.5` to keep
+	            // the visual center, but that was asymmetric under the
+	            // rubber-band clamp in constrainOffset(): when the chart was
+	            // right-aligned (latest bar at the right edge — TradingView-
+	            // style default), opening the settings panel shrank the
+	            // container, the clamp pinned offsetX back to the boundary,
+	            // then closing the panel grew the container and the +deltaW/2
+	            // shift sailed past the boundary because there was no clamp on
+	            // that side. Each open/close cycle leaked a few pixels and on
+	            // 1h that drift was very visible (lower TFs hid it because the
+	            // wider candleWidth + denser data kept the chart away from the
+	            // boundary). Anchoring the right edge keeps the same bar under
+	            // the right-axis through any resize and is symmetric.
+	            const m = this.margin || { l: 0, r: 60 };
+	            const oldRightEdgePx = (oldW || 0) - (m.r || 0);
+	            const newRightEdgePx = this.w - (m.r || 0);
+	            const deltaRightPx = newRightEdgePx - oldRightEdgePx;
+	            this.offsetX = Math.round((this.offsetX || 0) + deltaRightPx);
 	            this.constrainOffset();
 	        } else {
 	            this.fitToView();
