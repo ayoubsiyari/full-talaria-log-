@@ -47702,6 +47702,21 @@
 
                 if (sourceData && panel.chartInstance) {
 
+                    // Hard guard: if the panel chart already holds data of its own,
+                    // do NOT touch its settings, data, or view. Any of those mutate
+                    // panel0's offsetX / candleWidth / priceZoom and produce the
+                    // "panel0 drifts when panel1 changes timeframe" symptom even
+                    // when all multi-panel sync settings are off. Once a panel's
+                    // Chart instance has data it owns its own view.
+                    var pcSelf = panel.chartInstance;
+                    var alreadyHasData = (Array.isArray(pcSelf.data) && pcSelf.data.length > 0)
+                        || (Array.isArray(pcSelf.rawData) && pcSelf.rawData.length > 0)
+                        || (Array.isArray(pcSelf._panelFullRawData) && pcSelf._panelFullRawData.length > 0)
+                        || pcSelf._isLoadingOwnPairData;
+                    if (alreadyHasData) {
+                        return;
+                    }
+
                     // Copy latest settings from main chart
 
                     if (typeof chart !== 'undefined' && chart.chartSettings) {
@@ -47721,6 +47736,7 @@
                     }
 
                     // Skip data overwrite if panel has its own independent pair data or is currently loading it
+
                     var hasOwnPairData = panel.chartInstance._isLoadingOwnPairData || (Array.isArray(panel.chartInstance._panelFullRawData) && panel.chartInstance._panelFullRawData.length > 0);
 
                     if (!hasOwnPairData) {
