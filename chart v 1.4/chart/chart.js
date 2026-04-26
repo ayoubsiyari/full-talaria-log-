@@ -10580,8 +10580,37 @@ class Chart {
                 this.resize();
 
                 // Restore position to center timestamp if we had data before
+                let restored = false;
                 if (hadData && centerTimestamp && this.data && this.data.length > 0) {
                     this._restorePositionToTimestamp(centerTimestamp, savedCandleWidth);
+                    restored = true;
+                }
+
+                // Safety: validate that the restored viewport actually shows data.
+                // Switching timeframe (e.g. 1m -> 1h) can produce an offsetX where no candles
+                // are visible (especially on panel charts whose dimensions may shift), leaving
+                // the chart blank until the user double-clicks the time axis. Detect that
+                // case and fall back to fitToView().
+                if (restored) {
+                    const m = this.margin || { l: 0, r: 60 };
+                    const plotW = (this.w || 0) - (m.l || 0) - (m.r || 0);
+                    const spacing = this.getCandleSpacing
+                        ? this.getCandleSpacing()
+                        : (this.candleWidth + 2);
+                    if (plotW > 0 && spacing > 0) {
+                        const firstVis = Math.floor(-this.offsetX / spacing);
+                        const lastVis = Math.ceil((plotW - this.offsetX) / spacing);
+                        const visibleEnd = Math.min(this.data.length - 1, lastVis);
+                        const visibleStart = Math.max(0, firstVis);
+                        const offscreen = !Number.isFinite(this.offsetX)
+                            || lastVis < 0
+                            || firstVis >= this.data.length
+                            || visibleEnd < visibleStart;
+                        if (offscreen) {
+                            this._chartViewRestored = false;
+                            this.fitToView();
+                        }
+                    }
                 } else {
                     this._chartViewRestored = false;
                     this.fitToView();
