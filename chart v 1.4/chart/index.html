@@ -47886,13 +47886,24 @@
 
                                 initPanelChart(panel);
 
-                            } else {
-
-                                // Update existing chart with new data
-
-                                renderPanelChart(panel, event.detail.data);
+                                return;
 
                             }
+
+                            // Only re-seed a panel if it has NO data yet. Otherwise calling
+                            // renderPanelChart() runs fitToView()+render() and resets the
+                            // panel's offsetX / candleWidth / priceZoom — which makes panel0
+                            // visibly drift/rescale whenever ANY other chart fires
+                            // chartDataLoaded (e.g. panel1 changes timeframe), even with all
+                            // multi-panel sync settings turned off. Once a panel has data
+                            // it manages its own view via its own Chart instance.
+                            const pc = panel.chartInstance;
+                            const hasData = (Array.isArray(pc.data) && pc.data.length > 0)
+                                || (Array.isArray(pc.rawData) && pc.rawData.length > 0)
+                                || (Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0);
+                            if (hasData) return;
+
+                            renderPanelChart(panel, event.detail.data);
 
                         });
 
