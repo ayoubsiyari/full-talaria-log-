@@ -648,6 +648,27 @@ class PanelManager {
     }
     
     /**
+     * Time/Date-range sync should only happen between panels that show the
+     * SAME instrument. Otherwise different sessions / holidays / data ranges
+     * cause the follower to snap wildly, especially on higher timeframes
+     * where a single source pan can map to a far-away bar in the target.
+     * Returns true when the two charts represent the same pair.
+     */
+    _isSamePair(a, b) {
+        if (!a || !b) return false;
+        if (a === b) return true;
+        const fa = a.currentFileId != null ? String(a.currentFileId) : null;
+        const fb = b.currentFileId != null ? String(b.currentFileId) : null;
+        if (fa && fb) return fa === fb;
+        const sa = a.currentSymbol ? String(a.currentSymbol).toUpperCase() : null;
+        const sb = b.currentSymbol ? String(b.currentSymbol).toUpperCase() : null;
+        if (sa && sb) return sa === sb;
+        // If either side has no identity yet, fall back to NOT syncing
+        // — safer than dragging the wrong chart.
+        return false;
+    }
+
+    /**
      * Binary search: find index of candle closest to target timestamp.
      * Falls back to chart.findGoToTargetIndex if available.
      */
@@ -675,11 +696,14 @@ class PanelManager {
 
         this._isSyncing = true;
         const toRelease = [];
+        const sourceChart = sourcePanel?.chartInstance;
         try {
             this.panels.forEach(panel => {
                 if (panel.index === sourcePanel.index) return;
                 const chart = panel.chartInstance;
                 if (!chart?.data?.length) return;
+                // Skip cross-pair time sync — different instruments don't share a calendar.
+                if (!this._isSamePair(sourceChart, chart)) return;
 
                 chart._suppressPanelScrollSync = true;
                 toRelease.push(chart);
@@ -743,10 +767,13 @@ class PanelManager {
         let anyChanged = false;
         const toUpdate = [];
 
+        const sourceChart = sourcePanel?.chartInstance;
         this.panels.forEach(panel => {
             if (panel.index === sourcePanel.index) return;
             const chart = panel.chartInstance;
             if (!chart?.data?.length) return;
+            // Skip cross-pair time sync — different instruments don't share a calendar.
+            if (!this._isSamePair(sourceChart, chart)) return;
 
             const targetIdx = chart.findGoToTargetIndex
                 ? chart.findGoToTargetIndex(chart.data, rightEdgeTimestamp)
@@ -830,6 +857,8 @@ class PanelManager {
                 if (panel.index === sourcePanel.index) return;
                 const chart = panel.chartInstance;
                 if (!chart?.data?.length) return;
+                // Skip cross-pair date-range sync — different instruments would scroll wildly.
+                if (!this._isSamePair(sourceChart, chart)) return;
 
                 chart._suppressPanelScrollSync = true;
                 toRelease.push(chart);

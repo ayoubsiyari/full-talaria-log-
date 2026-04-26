@@ -1699,7 +1699,7 @@ class Chart {
                 && mainChart && mainChart !== this && mainChart.data && mainChart.data.length > 0
                 && this.data && this.data.length > 0);
 
-            if (alignScrollToMain) {
+            const computeAlignedOffset = () => {
                 const sourceSpacing = mainChart.getCandleSpacing
                     ? mainChart.getCandleSpacing()
                     : mainChart._getSpacingForCandleWidth(mainChart.candleWidth);
@@ -1707,8 +1707,15 @@ class Chart {
                     ? this.getCandleSpacing()
                     : this._getSpacingForCandleWidth(this.candleWidth);
                 const ratio = sourceSpacing > 0 ? (targetSpacing / sourceSpacing) : 1;
-                this.offsetX = mainChart.offsetX * ratio;
+                return mainChart.offsetX * ratio;
+            };
+
+            if (alignScrollToMain) {
+                this.offsetX = computeAlignedOffset();
                 if (this.constrainOffset) this.constrainOffset();
+                // Mark the view as restored so the post-resize pass below does not
+                // override our synced offset with fitToView().
+                this._chartViewRestored = true;
             } else {
                 this.fitToView();
             }
@@ -1718,8 +1725,16 @@ class Chart {
             requestAnimationFrame(() => {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
-                this._chartViewRestored = false;
-                this.fitToView();
+                if (alignScrollToMain) {
+                    // Re-apply aligned offset after resize (spacing may have changed)
+                    // and keep `_chartViewRestored` true so fitToView is skipped.
+                    this.offsetX = computeAlignedOffset();
+                    if (this.constrainOffset) this.constrainOffset();
+                    this._chartViewRestored = true;
+                } else {
+                    this._chartViewRestored = false;
+                    this.fitToView();
+                }
                 this.render();
             });
             this._hidePanelLoadingOverlay();

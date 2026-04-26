@@ -711,6 +711,12 @@ class TimeframeFavorites {
      */
     changeTimeframe(timeframe) {
         console.log('⌚ Changing timeframe to:', timeframe);
+        console.log('🔍 _linkedPaneData exists:', !!window._linkedPaneData);
+        console.log('🔍 panelManager exists:', !!window.panelManager);
+        if (window.panelManager) {
+            console.log('🔍 currentLayout:', window.panelManager.getCurrentLayout?.());
+            console.log('🔍 selectedPanelIndex:', window.panelManager.selectedPanelIndex);
+        }
 
         // Check if we're in LINKED pane mode (Add New Pane feature)
         if (window._linkedPaneData && window._linkedPaneData.panel1) {
@@ -720,6 +726,8 @@ class TimeframeFavorites {
             // If panel1 is selected, only update panel1; otherwise update main chart
             const panel1 = window._linkedPaneData.panel1;
             const isPanel1Selected = panel1 && panel1.isSelected;
+            console.log('🔍 panel1.isSelected:', isPanel1Selected);
+            console.log('🔍 panel1.chartInstance exists:', !!panel1.chartInstance);
 
             if (isPanel1Selected && panel1.chartInstance && panel1.chartInstance.rawData && panel1.chartInstance.rawData.length > 0) {
                 // Panel1 is selected - only update panel1, leave main chart alone
