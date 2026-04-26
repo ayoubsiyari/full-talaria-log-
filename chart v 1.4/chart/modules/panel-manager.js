@@ -657,15 +657,22 @@ class PanelManager {
     _isSamePair(a, b) {
         if (!a || !b) return false;
         if (a === b) return true;
+        // Strict pair identity: REQUIRE both fileIds to be set and equal.
+        // The previous version fell back to symbol comparison whenever either
+        // side lacked a fileId. On higher timeframes the active panel can
+        // briefly clear `currentFileId` while waiting for the aggregate to
+        // build/load; during that window the symbol fallback could match two
+        // different instruments (e.g., both panels reporting a stale symbol
+        // from `window.chart`) and the panel manager would push panel0's
+        // `offsetX` into the next pair's calendar — causing the chart to
+        // slide off-screen. Symbol-only fallback also misfires when two panels
+        // legitimately show the same symbol from different uploaded files
+        // (different brokers / sessions). Strict fileId match avoids both
+        // cases; cross-pair sync is correctly skipped.
         const fa = a.currentFileId != null ? String(a.currentFileId) : null;
         const fb = b.currentFileId != null ? String(b.currentFileId) : null;
-        if (fa && fb) return fa === fb;
-        const sa = a.currentSymbol ? String(a.currentSymbol).toUpperCase() : null;
-        const sb = b.currentSymbol ? String(b.currentSymbol).toUpperCase() : null;
-        if (sa && sb) return sa === sb;
-        // If either side has no identity yet, fall back to NOT syncing
-        // — safer than dragging the wrong chart.
-        return false;
+        if (!fa || !fb) return false;
+        return fa === fb;
     }
 
     /**
