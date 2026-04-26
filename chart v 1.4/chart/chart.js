@@ -7811,10 +7811,11 @@ class Chart {
      * Bar duration (ms) from series or current timeframe — used for visible time-range sync across panels.
      */
     inferBarDurationMs() {
-        if (this.data && this.data.length >= 2) {
-            const d = Math.abs(this.data[1].t - this.data[0].t);
-            if (Number.isFinite(d) && d > 0) return d;
-        }
+        // Prefer the timeframe map: it is the canonical bar size and is not
+        // skewed by session gaps (FX weekend, holidays, daylight-saving cuts).
+        // The previous version used `data[1].t - data[0].t`, which on 1h FX
+        // could pick up a multi-hour Sunday-night gap and cause multi-panel
+        // time sync to push followers far into the future on every pan tick.
         const tf = this.currentTimeframe || '1m';
         const tfMap = {
             '1m': 60000, '2m': 120000, '3m': 180000, '4m': 240000, '5m': 300000,
@@ -7822,7 +7823,22 @@ class Chart {
             '1h': 3600000, '2h': 7200000, '4h': 14400000, '6h': 21600000, '12h': 43200000,
             '1d': 86400000, '1w': 604800000, '1mo': 2592000000
         };
-        return tfMap[tf] || 60000;
+        const expected = tfMap[tf];
+        if (Number.isFinite(expected) && expected > 0) return expected;
+
+        // No mapping available (custom/exotic tf) — derive from data using the
+        // smallest positive delta over the first ~16 bars. This rejects gap-
+        // dominated first deltas without trusting a single sample.
+        if (this.data && this.data.length >= 2) {
+            const n = Math.min(this.data.length - 1, 16);
+            let best = Infinity;
+            for (let i = 0; i < n; i++) {
+                const d = Math.abs((this.data[i + 1]?.t || 0) - (this.data[i]?.t || 0));
+                if (Number.isFinite(d) && d > 0 && d < best) best = d;
+            }
+            if (Number.isFinite(best)) return best;
+        }
+        return 60000;
     }
 
     /**

@@ -4051,12 +4051,40 @@ def _sanitize_candle_record(c):
     }
 
 def _is_weekend_timestamp_ms(ts):
-    """Return True when timestamp (epoch ms) falls on Saturday or Sunday in UTC."""
+    """Return True when timestamp (epoch ms) falls inside the FX weekend close.
+
+    The 24x5 FX market closes Friday 17:00 America/New_York and reopens Sunday
+    17:00 America/New_York. Using a naive UTC weekday check (`day >= 5`) drops
+    legitimate Sunday-evening NY trading because Sunday in NY is still Sunday
+    in UTC for hours after the market opens — which leaves the first 1h candle
+    of the trading week with a multi-hour gap to the previous bar and breaks
+    `inferBarDurationMs` / multi-panel time sync.
+
+    We therefore convert the timestamp to America/New_York wall-clock and only
+    flag bars in the actual closed window (Friday after 17:00 → Sunday before
+    17:00). Falls back to UTC weekday if the timezone database is unavailable.
+    """
     try:
-        day = datetime.utcfromtimestamp(float(ts) / 1000.0).weekday()
-        return day >= 5
+        ts_s = float(ts) / 1000.0
     except Exception:
         return False
+    try:
+        from zoneinfo import ZoneInfo
+        local = datetime.fromtimestamp(ts_s, tz=ZoneInfo("America/New_York"))
+        wd = local.weekday()  # Mon=0 … Sun=6
+        if wd == 5:  # Saturday — fully closed
+            return True
+        if wd == 6 and local.hour < 17:  # Sunday before 17:00 NY open
+            return True
+        if wd == 4 and local.hour >= 17:  # Friday after 17:00 NY close
+            return True
+        return False
+    except Exception:
+        try:
+            day = datetime.utcfromtimestamp(ts_s).weekday()
+            return day >= 5
+        except Exception:
+            return False
 
 def _filter_weekend_candles(candles):
     if not EXCLUDE_WEEKEND_CANDLES or not candles:
