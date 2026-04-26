@@ -696,20 +696,6 @@ async function updateDateInputs() {
     }
 }
 
-function normalizeEpochMs(raw) {
-    const n = Number(raw);
-    if (!Number.isFinite(n) || n <= 0) return null;
-    if (n >= 1e14) return null;
-    let ms;
-    if (n >= 1e12) ms = n;
-    else if (n >= 1e9) ms = n * 1000;
-    else return null;
-    const MIN = 631152000000;
-    const MAX = 4102444800000;
-    if (ms < MIN || ms > MAX) return null;
-    return ms;
-}
-
 // Load date range from selected file (same logic as backtesting.html)
 async function loadDateRangeFromFile(fileId) {
     if (!fileId) return;
@@ -728,7 +714,7 @@ async function loadDateRangeFromFile(fileId) {
         const lines = responseData.data.trim().split('\n');
         if (lines.length < 2) return;
         
-        const header = lines[0].split(',').map((h) => h.replace(/^\uFEFF/g, '').trim());
+        const header = lines[0].split(',');
         const firstRowValues = lines[1].split(',');
         const firstRow = {};
         header.forEach((key, index) => {
@@ -742,8 +728,7 @@ async function loadDateRangeFromFile(fileId) {
             firstTimestamp = parseInt(firstTimestamp, 10);
         }
 
-        const nf = normalizeEpochMs(firstTimestamp);
-        const firstDate = new Date(nf != null ? nf : firstTimestamp);
+        const firstDate = new Date(firstTimestamp);
         if (isNaN(firstDate.getTime())) return;
         
         // Fetch last row
@@ -768,8 +753,7 @@ async function loadDateRangeFromFile(fileId) {
                     if (typeof lastTimestamp === 'string' && /^\d+$/.test(String(lastTimestamp).trim())) {
                         lastTimestamp = parseInt(lastTimestamp, 10);
                     }
-                    const nl = normalizeEpochMs(lastTimestamp);
-                    lastDate = new Date(nl != null ? nl : lastTimestamp);
+                    lastDate = new Date(lastTimestamp);
                 }
             }
         }
@@ -808,10 +792,7 @@ async function loadDateRangeFromFile(fileId) {
 
 // Extract timestamp from CSV row
 function extractTimestamp(row) {
-    // Strategy 1: Binance-style epoch ms in "timestamp"
-    if (row.timestamp !== undefined && row.timestamp !== '' && /^\d+$/.test(String(row.timestamp).trim())) {
-        return parseInt(String(row.timestamp).trim(), 10);
-    }
+    // Strategy 1: Standard timestamp fields
     if (row.t) return row.t;
     if (row.time) return row.time;
     if (row.timestamp) return row.timestamp;

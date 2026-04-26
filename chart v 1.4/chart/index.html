@@ -4008,24 +4008,6 @@
 
         }
 
-        /* Drawings cloud sync status (next to undo/redo) */
-        #drawingsSyncToolbarBtn.drawings-sync-pending {
-            color: #ffa726;
-        }
-        #drawingsSyncToolbarBtn.drawings-sync-pending .drawings-sync-icon {
-            animation: talariaDrawingsSyncPulse 1.1s ease-in-out infinite;
-        }
-        @keyframes talariaDrawingsSyncPulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.38; }
-        }
-        #drawingsSyncToolbarBtn .drawings-sync-check {
-            opacity: 0.55;
-        }
-        #drawingsSyncToolbarBtn.drawings-sync-pending .drawings-sync-check {
-            opacity: 0.25;
-        }
-
         /* Zoom-safe behavior: when viewport gets tighter (browser zoom),
            make bars slide horizontally instead of overlapping controls. */
         @media screen and (max-width: 1500px) {
@@ -40445,18 +40427,6 @@
 
                     </button>
 
-                    <button type="button" class="toolbar-icon-btn" id="drawingsSyncToolbarBtn" aria-busy="false" data-tooltip="Saved locally — click to sync to cloud & session now">
-
-                        <svg class="drawings-sync-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-
-                            <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path>
-
-                            <path class="drawings-sync-check" d="M16 14l2 2 4-4"></path>
-
-                        </svg>
-
-                    </button>
-
                 </div>
 
         </div>
@@ -43882,88 +43852,89 @@
     <!-- CHART_CLIENT_SCRIPTS_BEGIN -->
     <!-- Drawing Tools Modules (load in order) -->
 
-    <script defer src="modules/drawing-tools-base.js?v=20260464"></script>
+    <script defer src="modules/drawing-tools-base.js?v=20260456"></script>
 
-    <script defer src="modules/drawing-tools-lines.js?v=20260464"></script>
+    <script defer src="modules/drawing-tools-lines.js?v=20260456"></script>
 
-    <script defer src="modules/drawing-tools-shapes.js?v=20260464"></script>
+    <script defer src="modules/drawing-tools-shapes.js?v=20260456"></script>
 
-    <script defer src="modules/drawing-tools-fibonacci.js?v=20260464"></script>
+    <script defer src="modules/drawing-tools-fibonacci.js?v=20260456"></script>
 
-    <script defer src="modules/drawing-tools-text.js?v=20260464"></script>
+    <script defer src="modules/drawing-tools-text.js?v=20260456"></script>
 
-    <script defer src="modules/drawing-tools-emoji.js?v=20260464"></script>
+    <script defer src="modules/drawing-tools-emoji.js?v=20260456"></script>
 
-    <script defer src="modules/drawing-tools-image.js?v=20260464"></script>
+    <script defer src="modules/drawing-tools-image.js?v=20260456"></script>
 
-    <script defer src="modules/emoji-picker.js?v=20260464"></script>
+    <script defer src="modules/emoji-picker.js?v=20260456"></script>
 
-    <script defer src="modules/emoji-picker-simple.js?v=20260464"></script>
+    <script defer src="modules/emoji-picker-simple.js?v=20260456"></script>
 
-    <script defer src="modules/drawing-tools-advanced-volume.js?v=20260464"></script>
+    <script defer src="modules/drawing-tools-advanced-volume.js?v=20260456"></script>
 
-    <script defer src="modules/drawing-tools-advanced.js?v=20260464"></script>
+    <script defer src="modules/drawing-tools-advanced.js?v=20260456"></script>
 
-    <script defer src="modules/drawing-tools-extended.js?v=20260464"></script>
+    <script defer src="modules/drawing-tools-extended.js?v=20260456"></script>
 
-    <script defer src="modules/drawing-tools-patterns.js?v=20260464"></script>
+    <script defer src="modules/drawing-tools-patterns.js?v=20260456"></script>
 
-    <script defer src="modules/drawing-tools-fib-gann.js?v=20260464"></script>
+    <script defer src="modules/drawing-tools-fib-gann.js?v=20260456"></script>
 
-    <script defer src="modules/drawing-tools-channels.js?v=20260464"></script>
+    <script defer src="modules/drawing-tools-channels.js?v=20260456"></script>
 
-    <script defer src="modules/drawing-tools-ui.js?v=20260464"></script>
+    <script defer src="modules/drawing-tools-ui.js?v=20260456"></script>
 
-    <script defer src="modules/color-picker.js?v=20260464"></script>
+    <script defer src="modules/color-picker.js?v=20260456"></script>
 
-    <script defer src="modules/drawing-toolbar.js?v=20260464"></script>
+    <script defer src="modules/drawing-toolbar.js?v=20260456"></script>
 
-    <script defer src="modules/undo-redo-manager.js?v=20260464"></script>
+    <script defer src="modules/undo-redo-manager.js?v=20260456"></script>
 
-    <script defer src="modules/preferences-sync.js?v=20260464"></script>
+    <script defer src="modules/preferences-sync.js?v=20260456"></script>
 
-    <script defer src="modules/preferences-init.js?v=20260464"></script>
+    <script defer src="modules/preferences-init.js?v=20260456"></script>
 
-    <script defer src="modules/drawing-tools-manager.js?v=2026046479"></script>
+    <script defer src="modules/drawing-tools-manager.js?v=20260456"></script>
 
-    <script defer src="modules/favorites-manager.js?v=20260464"></script>
+    <script defer src="modules/favorites-manager.js?v=20260456"></script>
 
-    <script defer src="modules/keyboard-shortcuts.js?v=20260464"></script>
+    <script defer src="modules/keyboard-shortcuts.js?v=20260456"></script>
 
-    <script defer src="modules/panel-manager.js?v=20260426_PAIR_STRICT"></script>
+    <script defer src="modules/panel-manager.js?v=20260456"></script>
 
-    <script defer src="settings-panel.js?v=20260464"></script>
+    <script defer src="settings-panel.js?v=20260456"></script>
 
-    <script defer src="settings-panel-ext.js?v=20260464"></script>
+    <script defer src="settings-panel-ext.js?v=20260456"></script>
 
-    <script defer src="modules/timeframe-favorites.js?v=20260468907"></script>
+    <script defer src="modules/timeframe-favorites.js?v=20260456"></script>
 
-    <script defer src="modules/propfirm-tracker.js?v=20260464"></script>
+    <script defer src="modules/propfirm-tracker.js?v=20260456"></script>
 
-    <script defer src="modules/compare-overlay.js?v=20260464"></script>
+    <script defer src="modules/compare-overlay.js?v=20260456"></script>
 
-    <script defer src="modules/timezone-manager.js?v=20260464"></script>
+    <script defer src="modules/timezone-manager.js?v=20260456"></script>
 
     <!-- Optional: smaller first /smart batch for backtest (default 100000). See chart.js BACKTEST_SMART_INITIAL_LIMIT. -->
     <!-- <script>window.CHART_BACKTEST_SMART_INITIAL_LIMIT = 48000;</script> -->
-    <script defer src="chart.js?v=20260426_RESIZE_RIGHT_ANCHOR"></script>
+    <script defer src="chart.js?v=20260462"></script>
 
-    <script defer src="modules/replay-system.js?v=20260470diag"></script>
-    <script defer src="modules/chart-env.defaults.js?v=20260464"></script>
-    <script defer src="modules/chart-env.generated.js?v=20260464"></script>
-    <script defer src="modules/economic-news-sidebar.js?v=20260464"></script>
+    <script defer src="modules/replay-system.js?v=20260456"></script>
+    <script defer src="modules/chart-env.defaults.js?v=20260456"></script>
+    <script defer src="modules/chart-env.generated.js?v=20260456"></script>
+    <script defer src="modules/replay-news-panel.js?v=20260456"></script>
+    <script defer src="modules/economic-news-sidebar.js?v=20260456"></script>
 
-    <script defer src="modules/order-event-bus.js?v=20260464"></script>
+    <script defer src="modules/order-event-bus.js?v=20260456"></script>
 
-    <script defer src="modules/order-service.js?v=20260464"></script>
+    <script defer src="modules/order-service.js?v=20260456"></script>
 
-    <script defer src="modules/market-calculations.js?v=20260464"></script>
+    <script defer src="modules/market-calculations.js?v=20260456"></script>
 
-    <script defer src="modules/order-manager.js?v=2026046997"></script>
+    <script defer src="modules/order-manager.js?v=20260457"></script>
 
-    <script defer src="modules/screenshot-manager.js?v=20260464"></script>
+    <script defer src="modules/screenshot-manager.js?v=20260456"></script>
 
-    <script defer src="modules/alert-system.js?v=20260464"></script>
+    <script defer src="modules/alert-system.js?v=20260456"></script>
 
     <!-- CHART_CLIENT_SCRIPTS_END -->
 
@@ -44184,17 +44155,17 @@
     <!-- CHART_CLIENT_SCRIPTS_PART2_BEGIN -->
     <!-- Sandboxed custom indicator runtime (Web Worker); load before chart-indicators-full -->
 
-    <script defer src="modules/custom-indicators-runtime.js?v=20260464"></script>
+    <script defer src="modules/custom-indicators-runtime.js?v=20260456"></script>
 
     <!-- Chart Indicators Module (Full version with ADR, ATR, Sessions) -->
 
     <!-- MUST be loaded AFTER chart.js as it extends the Chart prototype -->
 
-    <script defer src="modules/chart-indicators-full.js?v=20260464"></script>
+    <script defer src="modules/chart-indicators-full.js?v=20260456"></script>
 
     <!-- Indicator UI must load AFTER indicators to override updateOHLCIndicators -->
 
-    <script defer src="modules/indicator-ui.js?v=20260464"></script>
+    <script defer src="modules/indicator-ui.js?v=20260456"></script>
 
     <!-- CHART_CLIENT_SCRIPTS_PART2_END -->
 
@@ -47702,21 +47673,6 @@
 
                 if (sourceData && panel.chartInstance) {
 
-                    // Hard guard: if the panel chart already holds data of its own,
-                    // do NOT touch its settings, data, or view. Any of those mutate
-                    // panel0's offsetX / candleWidth / priceZoom and produce the
-                    // "panel0 drifts when panel1 changes timeframe" symptom even
-                    // when all multi-panel sync settings are off. Once a panel's
-                    // Chart instance has data it owns its own view.
-                    var pcSelf = panel.chartInstance;
-                    var alreadyHasData = (Array.isArray(pcSelf.data) && pcSelf.data.length > 0)
-                        || (Array.isArray(pcSelf.rawData) && pcSelf.rawData.length > 0)
-                        || (Array.isArray(pcSelf._panelFullRawData) && pcSelf._panelFullRawData.length > 0)
-                        || pcSelf._isLoadingOwnPairData;
-                    if (alreadyHasData) {
-                        return;
-                    }
-
                     // Copy latest settings from main chart
 
                     if (typeof chart !== 'undefined' && chart.chartSettings) {
@@ -47736,7 +47692,6 @@
                     }
 
                     // Skip data overwrite if panel has its own independent pair data or is currently loading it
-
                     var hasOwnPairData = panel.chartInstance._isLoadingOwnPairData || (Array.isArray(panel.chartInstance._panelFullRawData) && panel.chartInstance._panelFullRawData.length > 0);
 
                     if (!hasOwnPairData) {
@@ -47902,24 +47857,13 @@
 
                                 initPanelChart(panel);
 
-                                return;
+                            } else {
+
+                                // Update existing chart with new data
+
+                                renderPanelChart(panel, event.detail.data);
 
                             }
-
-                            // Only re-seed a panel if it has NO data yet. Otherwise calling
-                            // renderPanelChart() runs fitToView()+render() and resets the
-                            // panel's offsetX / candleWidth / priceZoom — which makes panel0
-                            // visibly drift/rescale whenever ANY other chart fires
-                            // chartDataLoaded (e.g. panel1 changes timeframe), even with all
-                            // multi-panel sync settings turned off. Once a panel has data
-                            // it manages its own view via its own Chart instance.
-                            const pc = panel.chartInstance;
-                            const hasData = (Array.isArray(pc.data) && pc.data.length > 0)
-                                || (Array.isArray(pc.rawData) && pc.rawData.length > 0)
-                                || (Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0);
-                            if (hasData) return;
-
-                            renderPanelChart(panel, event.detail.data);
 
                         });
 

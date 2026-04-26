@@ -857,13 +857,7 @@ class KeyboardShortcutsManager {
     // ===== HELPER METHODS =====
     
     saveDrawings() {
-        if (this.chart.drawingManager && typeof this.chart.drawingManager.saveDrawings === 'function') {
-            this.chart.drawingManager.saveDrawings();
-            return;
-        }
-        const storageKey = typeof this.chart.getDrawingsStorageKey === 'function'
-            ? this.chart.getDrawingsStorageKey()
-            : `chart_drawings_${this.chart.currentFileId || 'default'}`;
+        const storageKey = `chart_drawings_${this.chart.currentFileId || 'default'}`;
         userStorage.setItem(storageKey, JSON.stringify(this.chart.drawings || []));
     }
     

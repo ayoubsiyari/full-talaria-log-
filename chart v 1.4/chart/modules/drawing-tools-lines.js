@@ -1049,20 +1049,10 @@ class HorizontalLineTool extends BaseDrawing {
     }
 
     renderPriceLabel(scales, xRange, point) {
-        // Format price value using the chart's instrument-aware decimal count (NQ=2,
-        // GC=1, CL=2, FX=5, etc.). Falls back to 5 only for unknown symbols so we
-        // never show stale `1340.41268` style over-precision on futures/indices.
+        // Format price value with appropriate decimal places
         const priceValue = point?.y;
         if (priceValue === undefined || priceValue === null) return;
-        const chart = scales?.chart || this.chart;
-        let decimals = 5;
-        if (chart && typeof chart.getPriceDecimals === 'function') {
-            const dom = chart.yScale && chart.yScale.domain ? chart.yScale.domain() : null;
-            const range = Array.isArray(dom) && dom.length === 2 ? Math.abs(dom[1] - dom[0]) : 0;
-            const d = chart.getPriceDecimals(range);
-            if (Number.isFinite(d) && d >= 0) decimals = d;
-        }
-        const formattedPrice = priceValue.toFixed(decimals);
+        const formattedPrice = priceValue.toFixed(5); // Default to 5 decimals, can be customized
         
         const y = scales.yScale(point.y);
         const labelX = xRange[1] - 5; // Position near right edge
@@ -2208,20 +2198,10 @@ class HorizontalRayTool extends BaseDrawing {
     }
 
     renderPriceLabel(scales, xRange, point) {
-        // Format price value using the chart's instrument-aware decimal count (NQ=2,
-        // GC=1, CL=2, FX=5, etc.). Falls back to 5 only for unknown symbols so we
-        // never show stale `1340.41268` style over-precision on futures/indices.
+        // Format price value with appropriate decimal places
         const priceValue = point?.y;
         if (priceValue === undefined || priceValue === null) return;
-        const chart = scales?.chart || this.chart;
-        let decimals = 5;
-        if (chart && typeof chart.getPriceDecimals === 'function') {
-            const dom = chart.yScale && chart.yScale.domain ? chart.yScale.domain() : null;
-            const range = Array.isArray(dom) && dom.length === 2 ? Math.abs(dom[1] - dom[0]) : 0;
-            const d = chart.getPriceDecimals(range);
-            if (Number.isFinite(d) && d >= 0) decimals = d;
-        }
-        const formattedPrice = priceValue.toFixed(decimals);
+        const formattedPrice = priceValue.toFixed(5); // Default to 5 decimals, can be customized
         
         const y = scales.yScale(point.y);
         const labelX = xRange[1] - 5; // Position near right edge

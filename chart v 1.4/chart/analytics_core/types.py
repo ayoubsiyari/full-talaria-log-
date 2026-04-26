@@ -10,7 +10,6 @@ class NormalizedTrade:
     side: str
     setup: str
     close_ts: float
-    open_ts: float
     pnl_net: float
     rr_actual: float
     mae_r: float

@@ -55,6 +55,7 @@ const CHART_CLIENT_PART1 = [
   'modules/replay-system.js',
   'modules/chart-env.defaults.js',
   'modules/chart-env.generated.js',
+  'modules/replay-news-panel.js',
   'modules/economic-news-sidebar.js',
   'modules/order-event-bus.js',
   'modules/order-service.js',

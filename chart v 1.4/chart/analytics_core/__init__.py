@@ -9,13 +9,6 @@ from .stats import (
     compute_recent_trades,
     compute_equity_summary,
 )
-from .session_series import (
-    compute_balance_equity_metrics,
-    compute_monthly_net_pnl,
-    compute_session_dashboard_extras,
-    compute_sharpe_sortino,
-    compute_weekday_win_rate,
-)
 
 __all__ = [
     "NormalizedTrade",
@@ -30,10 +23,5 @@ __all__ = [
     "compute_per_instrument_summary",
     "compute_recent_trades",
     "compute_equity_summary",
-    "compute_sharpe_sortino",
-    "compute_monthly_net_pnl",
-    "compute_weekday_win_rate",
-    "compute_balance_equity_metrics",
-    "compute_session_dashboard_extras",
 ]
 

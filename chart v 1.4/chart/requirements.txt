@@ -13,7 +13,3 @@ google-auth-httplib2==0.2.0
 msgpack==1.0.7
 stripe
 pytest
-binance-historical-data==0.1.14
-yfinance==0.2.55
-psutil==6.1.0
-numpy==1.26.4
