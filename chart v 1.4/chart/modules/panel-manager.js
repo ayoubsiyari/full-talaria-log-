@@ -648,6 +648,34 @@ class PanelManager {
     }
     
     /**
+     * Time/Date-range sync should only happen between panels that show the
+     * SAME instrument. Otherwise different sessions / holidays / data ranges
+     * cause the follower to snap wildly, especially on higher timeframes
+     * where a single source pan can map to a far-away bar in the target.
+     * Returns true when the two charts represent the same pair.
+     */
+    _isSamePair(a, b) {
+        if (!a || !b) return false;
+        if (a === b) return true;
+        // Strict pair identity: REQUIRE both fileIds to be set and equal.
+        // The previous version fell back to symbol comparison whenever either
+        // side lacked a fileId. On higher timeframes the active panel can
+        // briefly clear `currentFileId` while waiting for the aggregate to
+        // build/load; during that window the symbol fallback could match two
+        // different instruments (e.g., both panels reporting a stale symbol
+        // from `window.chart`) and the panel manager would push panel0's
+        // `offsetX` into the next pair's calendar — causing the chart to
+        // slide off-screen. Symbol-only fallback also misfires when two panels
+        // legitimately show the same symbol from different uploaded files
+        // (different brokers / sessions). Strict fileId match avoids both
+        // cases; cross-pair sync is correctly skipped.
+        const fa = a.currentFileId != null ? String(a.currentFileId) : null;
+        const fb = b.currentFileId != null ? String(b.currentFileId) : null;
+        if (!fa || !fb) return false;
+        return fa === fb;
+    }
+
+    /**
      * Binary search: find index of candle closest to target timestamp.
      * Falls back to chart.findGoToTargetIndex if available.
      */
@@ -675,11 +703,14 @@ class PanelManager {
 
         this._isSyncing = true;
         const toRelease = [];
+        const sourceChart = sourcePanel?.chartInstance;
         try {
             this.panels.forEach(panel => {
                 if (panel.index === sourcePanel.index) return;
                 const chart = panel.chartInstance;
                 if (!chart?.data?.length) return;
+                // Skip cross-pair time sync — different instruments don't share a calendar.
+                if (!this._isSamePair(sourceChart, chart)) return;
 
                 chart._suppressPanelScrollSync = true;
                 toRelease.push(chart);
@@ -743,10 +774,13 @@ class PanelManager {
         let anyChanged = false;
         const toUpdate = [];
 
+        const sourceChart = sourcePanel?.chartInstance;
         this.panels.forEach(panel => {
             if (panel.index === sourcePanel.index) return;
             const chart = panel.chartInstance;
             if (!chart?.data?.length) return;
+            // Skip cross-pair time sync — different instruments don't share a calendar.
+            if (!this._isSamePair(sourceChart, chart)) return;
 
             const targetIdx = chart.findGoToTargetIndex
                 ? chart.findGoToTargetIndex(chart.data, rightEdgeTimestamp)
@@ -830,6 +864,8 @@ class PanelManager {
                 if (panel.index === sourcePanel.index) return;
                 const chart = panel.chartInstance;
                 if (!chart?.data?.length) return;
+                // Skip cross-pair date-range sync — different instruments would scroll wildly.
+                if (!this._isSamePair(sourceChart, chart)) return;
 
                 chart._suppressPanelScrollSync = true;
                 toRelease.push(chart);

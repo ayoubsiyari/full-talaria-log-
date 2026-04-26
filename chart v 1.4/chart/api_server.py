@@ -1,7 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, Response
 from sqlalchemy import (
     create_engine,
     Column,
@@ -19,6 +19,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import sessionmaker, declarative_base
 from datetime import datetime, timedelta
+import csv
+import gzip
 import os
 import sqlite3
 import shutil
@@ -46,6 +48,13 @@ import urllib.error
 import urllib.request
 
 import math
+import random
+import platform as _py_platform
+
+try:
+    import psutil
+except ImportError:
+    psutil = None  # type: ignore
 
 # Chart directory — load .env next to api_server.py for local dev (Docker Compose also injects env).
 # Python does not read .env by itself; we merge KEY=value lines into os.environ if not already set.
@@ -102,6 +111,22 @@ from analytics_engine import (
     compute_playbook_breakdown,
     compute_recent_trades,
     compute_equity_summary,
+    compute_session_dashboard_extras,
+)
+from analytics_core.csv_journal import parse_trades_csv_bytes
+
+from firstrate_ingest import (
+    MAX_TICKER_LISTING_RETURN,
+    VALID_FUTURES_ADJUSTMENTS,
+    VALID_INSTRUMENT_TYPES,
+    VALID_STOCK_ADJUSTMENTS,
+    download_firstrate_bundle,
+    extract_zip,
+    fetch_firstrate_last_update,
+    fetch_firstrate_ticker_listing_rows,
+    get_firstrate_userid,
+    iter_csv_files,
+    normalize_firstrate_csv_to_standard,
 )
 
 # Initialize FastAPI
@@ -186,6 +211,82 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ───────────────────────────────────────────────────────────────────────
+# Admin audit middleware
+#
+# Auto-logs every mutating request whose path starts with `/api/admin/` so
+# we capture calls the structured `_record_admin_action` helper hasn't been
+# wired into yet (user ban/delete/extend, dataset upload, plan edits…).
+# Intentionally minimal to avoid coupling to individual handlers:
+#   * only POST/PUT/PATCH/DELETE (reads aren't destructive)
+#   * never consumes the body (would break downstream handlers)
+#   * writes AFTER the response so we know the final status code
+#   * attribution via `request.state.admin_user_id` set by `_require_admin`
+#     — if the handler short-circuited with 401/403 we still log it with
+#     status="denied" and no admin_user_id so you see break-in attempts.
+# Log writes are fire-and-forget: any DB failure here is swallowed so a
+# broken audit table never breaks a working admin flow.
+# ───────────────────────────────────────────────────────────────────────
+_AUDIT_MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+@app.middleware("http")
+async def _admin_audit_middleware(request: Request, call_next):
+    path = request.url.path or ""
+    should_audit = (
+        request.method in _AUDIT_MUTATING_METHODS
+        and path.startswith("/api/admin/")
+    )
+    response = await call_next(request)
+    if not should_audit:
+        return response
+    try:
+        admin_user_id = getattr(request.state, "admin_user_id", None)
+        admin_email = getattr(request.state, "admin_email", None)
+        sc = int(getattr(response, "status_code", 0) or 0)
+        if sc in (401, 403):
+            status_label = "denied"
+        elif sc >= 500:
+            status_label = "error"
+        elif sc >= 400:
+            status_label = "error"
+        else:
+            status_label = "ok"
+        # Infer a short `action` from the last non-empty path segment so the
+        # log is searchable (e.g. /api/admin/users/42/ban -> "ban").
+        segs = [s for s in path.split("/") if s]
+        action = "admin_call"
+        if len(segs) >= 3:
+            tail = segs[-1]
+            action = tail if not tail.isdigit() else (segs[-2] if len(segs) >= 2 else tail)
+        action = (action or "admin_call")[:64]
+
+        db = SessionLocal()
+        try:
+            db.add(AdminAuditLog(
+                admin_user_id=admin_user_id,
+                admin_email=(admin_email or None),
+                action=action,
+                method=request.method,
+                path=path[:500],
+                target_type=None,
+                target_id=None,
+                status=status_label,
+                status_code=sc,
+                params_json=None,      # middleware never inspects body
+                result_json=None,
+                error_message=None,
+                ip_address=_client_ip(request),
+                user_agent=(request.headers.get("user-agent") or "")[:500],
+            ))
+            db.commit()
+        finally:
+            db.close()
+    except Exception:
+        # Never let audit failure affect the real response.
+        pass
+    return response
 
 # Database Setup - Use environment variable or default to SQLite
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./db/chart_data.db")
@@ -276,6 +377,139 @@ DUKASCOPY_JOB_TTL_SECONDS = int(os.getenv("DUKASCOPY_JOB_TTL_SECONDS", "21600"))
 DUKASCOPY_JOBS_DIR = UPLOAD_DIR / "dukascopy_jobs"
 DUKASCOPY_JOBS_DIR.mkdir(exist_ok=True)
 
+# FirstRate Data bundle imports (ZIP → CSV → chart binaries). Jobs mirror Dukascopy JSON files.
+FIrstrate_JOB_TTL_SECONDS = int(os.getenv("FIrstrate_JOB_TTL_SECONDS", "86400"))
+FIrstrate_JOBS_DIR = UPLOAD_DIR / "firstrate_jobs"
+FIrstrate_JOBS_DIR.mkdir(exist_ok=True)
+# Required phrase (or env override) when wiping every dataset before a FirstRate re-import.
+DATASET_PURGE_CONFIRMATION = os.getenv("DATASET_PURGE_CONFIRMATION", "DELETE_ALL_CHART_DATASETS")
+
+# VPS auto-sync (editable from admin dashboard). Env FIrstrate_SCHEDULE_ENABLED bootstraps default when file missing.
+FIrstrate_SCHEDULE_PATH = UPLOAD_DIR / "firstrate_schedule.json"
+_firstrate_schedule_lock = threading.Lock()
+
+# Curated Dukascopy instrument ids for admin UI (indices / commodities / forex).
+# These are Dukascopy CFD / cash-index symbols — not exchange-listed futures like CME NQ or CL.
+DUKASCOPY_INSTRUMENT_GROUPS: dict[str, list[dict[str, str]]] = {
+    "us_indices": [
+        {
+            "id": "usa500idxusd",
+            "label": "USA 500 index (S&P 500–style cash index CFD)",
+        },
+        {
+            "id": "usatechidxusd",
+            "label": "USA 100 Tech index (Nasdaq-100–style cash index CFD)",
+        },
+        {"id": "usa30idxusd", "label": "USA 30 index (Dow-style cash index CFD)"},
+        {"id": "dollaridxusd", "label": "US Dollar index"},
+    ],
+    "energy": [
+        {"id": "lightcmdusd", "label": "US Light crude oil (WTI-style CFD)"},
+        {"id": "brentcmdusd", "label": "Brent crude oil (CFD)"},
+        {"id": "gascmdusd", "label": "Natural gas (CFD)"},
+        {"id": "dieselcmdusd", "label": "Gas oil (CFD)"},
+    ],
+    "world_indices": [
+        {"id": "fraidxeur", "label": "France 40 index"},
+        {"id": "deuidxeur", "label": "Germany 40 index"},
+        {"id": "gbridxgbp", "label": "UK 100 index"},
+        {"id": "eusidxeur", "label": "Europe 50 index"},
+        {"id": "jpnidxjpy", "label": "Japan 225 index"},
+        {"id": "hkgidxhkd", "label": "Hong Kong 40 index"},
+    ],
+    "forex": [
+        {"id": "eurusd", "label": "EUR/USD"},
+        {"id": "gbpusd", "label": "GBP/USD"},
+        {"id": "usdjpy", "label": "USD/JPY"},
+        {"id": "audusd", "label": "AUD/USD"},
+        {"id": "nzdusd", "label": "NZD/USD"},
+        {"id": "usdcad", "label": "USD/CAD"},
+        {"id": "usdchf", "label": "USD/CHF"},
+        {"id": "eurgbp", "label": "EUR/GBP"},
+        {"id": "eurjpy", "label": "EUR/JPY"},
+        {"id": "gbpjpy", "label": "GBP/JPY"},
+    ],
+}
+
+BINANCE_MAX_TICKERS = int(os.getenv("BINANCE_MAX_TICKERS", "5"))
+BINANCE_MAX_TOTAL_DAYS = int(os.getenv("BINANCE_MAX_TOTAL_DAYS", "7300"))
+BINANCE_JOB_TTL_SECONDS = int(os.getenv("BINANCE_JOB_TTL_SECONDS", "21600"))
+BINANCE_JOBS_DIR = UPLOAD_DIR / "binance_jobs"
+BINANCE_JOBS_DIR.mkdir(exist_ok=True)
+# Must match BinanceDataDumper._DATA_FREQUENCY_ENUM (binance-historical-data)
+BINANCE_ALLOWED_FREQUENCIES = frozenset({
+    "1s", "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h",
+    "1d", "3d", "1w", "1mo",
+})
+# Subset validated against BinanceDataDumper; only OHLC-like CSVs go through merge → datasets.
+BINANCE_FETCH_DATA_TYPES_SPOT = frozenset({"klines"})
+BINANCE_FETCH_DATA_TYPES_FUTURES = frozenset({
+    "klines", "indexPriceKlines", "markPriceKlines", "premiumIndexKlines",
+})
+BINANCE_SYMBOLS_CACHE_TTL = float(os.getenv("BINANCE_SYMBOLS_CACHE_TTL", "300"))
+_BINANCE_SYMBOLS_CACHE: dict[str, tuple[float, list[str]]] = {}
+
+# Yahoo Finance — CME-style continuous futures (root symbols ending in =F).
+# This is not CME DataMine or exchange-native contract rolls; data is aggregated by Yahoo.
+YAHOO_CME_JOB_TTL_SECONDS = int(os.getenv("YAHOO_CME_JOB_TTL_SECONDS", "21600"))
+YAHOO_CME_MAX_TOTAL_DAYS = int(os.getenv("YAHOO_CME_MAX_TOTAL_DAYS", "7300"))
+# Large ranges at 1m/d need many small Yahoo calls; keep high enough that daily-year chunks are not blocked.
+YAHOO_CME_MAX_CHUNKS = int(os.getenv("YAHOO_CME_MAX_CHUNKS", "2500"))
+YAHOO_CME_JOBS_DIR = UPLOAD_DIR / "yahoo_cme_jobs"
+YAHOO_CME_JOBS_DIR.mkdir(exist_ok=True)
+# Pause between Yahoo requests (same idea as Dukascopy time-chunking — avoids rate limits).
+YAHOO_CME_CHUNK_SLEEP_SECONDS = float(os.getenv("YAHOO_CME_CHUNK_SLEEP_SECONDS", "2.5"))
+YAHOO_CME_CHUNK_SLEEP_JITTER_SECONDS = float(os.getenv("YAHOO_CME_CHUNK_SLEEP_JITTER_SECONDS", "1.0"))
+
+YAHOO_CME_ALLOWED_INTERVALS = frozenset({"1m", "2m", "5m", "15m", "30m", "60m", "1d"})
+YAHOO_CME_INTERVAL_ALIASES = {"1h": "60m"}
+
+# Curated Yahoo tickers (continuous futures); users may also pass any valid =F symbol.
+YAHOO_CME_INSTRUMENT_GROUPS: dict[str, list[dict[str, str]]] = {
+    "equity_index": [
+        {"ticker": "ES=F", "label": "E-mini S&P 500"},
+        {"ticker": "MES=F", "label": "Micro E-mini S&P 500"},
+        {"ticker": "NQ=F", "label": "E-mini Nasdaq-100"},
+        {"ticker": "MNQ=F", "label": "Micro E-mini Nasdaq-100"},
+        {"ticker": "YM=F", "label": "E-mini Dow"},
+        {"ticker": "MYM=F", "label": "Micro E-mini Dow"},
+        {"ticker": "RTY=F", "label": "E-mini Russell 2000"},
+        {"ticker": "M2K=F", "label": "Micro E-mini Russell 2000"},
+    ],
+    "energy": [
+        {"ticker": "CL=F", "label": "Crude oil (WTI)"},
+        {"ticker": "MCL=F", "label": "Micro WTI crude oil"},
+        {"ticker": "NG=F", "label": "Natural gas"},
+        {"ticker": "RB=F", "label": "RBOB gasoline"},
+        {"ticker": "HO=F", "label": "Heating oil"},
+    ],
+    "metals": [
+        {"ticker": "GC=F", "label": "Gold"},
+        {"ticker": "MGC=F", "label": "Micro gold"},
+        {"ticker": "SI=F", "label": "Silver"},
+        {"ticker": "HG=F", "label": "Copper"},
+    ],
+    "rates": [
+        {"ticker": "ZB=F", "label": "30-Year T-Bond"},
+        {"ticker": "ZN=F", "label": "10-Year T-Note"},
+        {"ticker": "ZF=F", "label": "5-Year T-Note"},
+        {"ticker": "ZT=F", "label": "2-Year T-Note"},
+    ],
+    "fx": [
+        {"ticker": "6E=F", "label": "Euro FX"},
+        {"ticker": "6B=F", "label": "British pound FX"},
+        {"ticker": "6J=F", "label": "Japanese yen FX"},
+        {"ticker": "6A=F", "label": "Australian dollar FX"},
+        {"ticker": "6C=F", "label": "Canadian dollar FX"},
+        {"ticker": "6S=F", "label": "Swiss franc FX"},
+    ],
+    "ag": [
+        {"ticker": "ZC=F", "label": "Corn"},
+        {"ticker": "ZS=F", "label": "Soybeans"},
+        {"ticker": "ZW=F", "label": "Wheat"},
+    ],
+}
+
 # Conservative data-sanity smoothing for isolated bad ticks.
 # Enabled by default; tuned to only touch obvious one-bar anomalies where
 # surrounding candles are stable and the middle bar is far away.
@@ -294,6 +528,18 @@ APP_ROLE = (os.getenv("APP_ROLE", "api").strip().lower() or "api")
 # CSV archival support (cold storage on same filesystem/volume by default)
 CSV_ARCHIVE_DIR = UPLOAD_DIR / "archive"
 CSV_ARCHIVE_DIR.mkdir(exist_ok=True)
+
+# Trading-session state guardrails (protects the 200 GB VPS disk from runaway
+# drawings / journals stored in the single `TradingSessionState.state_json`
+# column). Enforced by PATCH /api/sessions/:id/state — SOFT returns a warning
+# in the response, HARD 413s the write (but only if the payload is also
+# larger than the previous version, so an oversize user can still shrink).
+SESSION_STATE_SOFT_LIMIT_BYTES = int(os.getenv("SESSION_STATE_SOFT_LIMIT_BYTES", str(4 * 1024 * 1024)))
+SESSION_STATE_HARD_LIMIT_BYTES = int(os.getenv("SESSION_STATE_HARD_LIMIT_BYTES", str(16 * 1024 * 1024)))
+# Directory for compressed, admin-triggered archives of stale trading-session
+# state (see /api/admin/system/archive-stale-sessions).
+SESSION_ARCHIVE_DIR = UPLOAD_DIR / "session_archive"
+SESSION_ARCHIVE_DIR.mkdir(exist_ok=True)
 
 # Optional tile CDN redirect mode
 TILE_CDN_BASE_URL = os.getenv("TILE_CDN_BASE_URL", "").strip().rstrip("/")
@@ -583,6 +829,45 @@ class AffiliateEvent(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+class AdminAuditLog(Base):
+    """
+    Forensic trail of every admin-origin mutation — writes are append-only and
+    survive independently of the resource they mutated. Powers the "who did
+    what and when" view on the admin dashboard + satisfies the user's
+    "never lose data" requirement by making every destructive call visible.
+
+    Populated from two places:
+      1. `_admin_audit_middleware` — auto-logs any mutating request to `/api/admin/*`
+         with method + path + status + ip + admin user id. Zero-config coverage
+         for every existing and future admin endpoint.
+      2. `_record_admin_action(...)` — called explicitly by high-risk handlers
+         (archive / prune / restore / user delete / etc.) with structured
+         `action` + `params` + `result` for richer queries.
+
+    `params_json` / `result_json` MUST NOT contain secrets. We never log
+    request body by default — only explicit param dicts passed by handlers.
+    """
+
+    __tablename__ = "admin_audit_log"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    admin_user_id = Column(Integer, index=True, nullable=True)
+    admin_email = Column(String(255), nullable=True)
+    action = Column(String(64), index=True, nullable=False)  # e.g. archive_stale_sessions
+    method = Column(String(8), nullable=True)                # GET/POST/...
+    path = Column(String(512), nullable=True)
+    target_type = Column(String(64), nullable=True)          # session, attachment, user, ...
+    target_id = Column(String(64), nullable=True)            # string so we can log "42", "uuid-…", or "-"
+    status = Column(String(16), index=True, nullable=False)  # ok | error | denied | dry_run
+    status_code = Column(Integer, nullable=True)
+    params_json = Column(Text, nullable=True)
+    result_json = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+    ip_address = Column(String(64), nullable=True)
+    user_agent = Column(String(512), nullable=True)
+
+
 # Create chart-specific tables only — exclude 'users' (managed by journal-backend).
 _CHART_TABLES = [
     CSVFile.__table__,
@@ -601,6 +886,7 @@ _CHART_TABLES = [
     Affiliate.__table__,
     AffiliateAttribution.__table__,
     AffiliateEvent.__table__,
+    AdminAuditLog.__table__,
 ]
 Base.metadata.create_all(bind=engine, tables=_CHART_TABLES)
 
@@ -1086,6 +1372,35 @@ def _trade_setup_label(trade: dict) -> str:
     return "General"
 
 
+def _filter_journal_raw_trades(
+    journal: list,
+    pair_filter: str,
+    playbook_filter: str,
+    outcome_filter: str,
+) -> list[dict]:
+    pair_f = str(pair_filter or "ALL").strip().upper().replace("/", "")
+    playbook_f = str(playbook_filter or "ALL").strip()
+    outcome_f = str(outcome_filter or "ALL").strip().upper()
+    out: list[dict] = []
+    for t in journal:
+        if not isinstance(t, dict):
+            continue
+        ticker = str(t.get("ticker") or t.get("symbol") or "UNKNOWN").strip().upper().replace("/", "")
+        pnl = float(t.get("netPnL", t.get("realizedPnL", t.get("pnl", 0.0))) or 0.0)
+        setup = _trade_setup_label(t)
+        pass_pair = pair_f == "ALL" or ticker == pair_f
+        pass_playbook = playbook_f == "ALL" or setup == playbook_f
+        pass_outcome = (
+            outcome_f == "ALL"
+            or (outcome_f == "WINNERS" and pnl > 0)
+            or (outcome_f == "LOSERS" and pnl < 0)
+            or (outcome_f == "BREAKEVEN" and pnl == 0)
+        )
+        if pass_pair and pass_playbook and pass_outcome:
+            out.append(t)
+    return out
+
+
 @app.post("/api/analytics/backtest/whatif")
 async def get_backtest_whatif(payload: BacktestWhatIfRequest, request: Request):
     user = _require_user(request)
@@ -1105,25 +1420,7 @@ async def get_backtest_whatif(payload: BacktestWhatIfRequest, request: Request):
         playbook_filter = str(payload.playbook_filter or "ALL").strip()
         outcome_filter = str(payload.outcome_filter or "ALL").strip().upper()
 
-        filtered_raw = []
-        for t in journal:
-            if not isinstance(t, dict):
-                continue
-
-            ticker = str(t.get("ticker") or t.get("symbol") or "UNKNOWN").strip().upper().replace("/", "")
-            pnl = float(t.get("netPnL", t.get("realizedPnL", t.get("pnl", 0.0))) or 0.0)
-            setup = _trade_setup_label(t)
-
-            pass_pair = pair_filter == "ALL" or ticker == pair_filter
-            pass_playbook = playbook_filter == "ALL" or setup == playbook_filter
-            pass_outcome = (
-                outcome_filter == "ALL"
-                or (outcome_filter == "WINNERS" and pnl > 0)
-                or (outcome_filter == "LOSERS" and pnl < 0)
-                or (outcome_filter == "BREAKEVEN" and pnl == 0)
-            )
-            if pass_pair and pass_playbook and pass_outcome:
-                filtered_raw.append(t)
+        filtered_raw = _filter_journal_raw_trades(journal, pair_filter, playbook_filter, outcome_filter)
 
         normalized = normalize_trades(filtered_raw)
         tp_r = max(0.1, float(payload.tp_r))
@@ -1140,6 +1437,10 @@ async def get_backtest_whatif(payload: BacktestWhatIfRequest, request: Request):
         playbook_breakdown = compute_playbook_breakdown(normalized)
         recent_trades = compute_recent_trades(normalized, limit=15)
         equity_summary = compute_equity_summary(equity_curve)
+
+        session_pub = _session_public_dict(s)
+        start_bal = _to_float(session_pub.get("start_balance"))
+        session_analytics = compute_session_dashboard_extras(normalized, start_bal)
 
         return {
             "meta": {
@@ -1162,6 +1463,7 @@ async def get_backtest_whatif(payload: BacktestWhatIfRequest, request: Request):
             "playbook_breakdown": playbook_breakdown,
             "recent_trades": recent_trades,
             "equity_summary": equity_summary,
+            "session_analytics": _sanitize_for_json(session_analytics),
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1467,6 +1769,196 @@ def _store_dataset_file(file_path: Path, original_name: str, description: str | 
     finally:
         db.close()
 
+
+def _merge_canonical_ohlcv_csvs(existing: Path, incoming: Path, dest: Path) -> tuple[int, int]:
+    """
+    Merge two canonical OHLCV CSVs (header `timestamp,open,high,low,close,volume`,
+    ascending epoch-ms timestamps) into `dest`. On timestamp collisions the
+    incoming row wins — the vendor's latest print for that minute replaces any
+    partial/preliminary bar we may have imported before.
+
+    Inputs are expected to be already sorted (they are when produced by
+    `normalize_firstrate_csv_to_standard`). If one of them turns out not to be,
+    we fall back to a dict-based merge that sorts in Python — slower but safe.
+
+    Returns `(rows_out, new_rows_added)` where `new_rows_added` is how many of
+    the incoming timestamps were not already present in `existing` (useful for
+    progress messages / deciding whether the merge was worthwhile).
+    """
+    import heapq
+
+    header = ["timestamp", "open", "high", "low", "close", "volume"]
+
+    def iter_rows(path: Path, priority: int):
+        # priority=0 → incoming (wins on tie), priority=1 → existing
+        with open(path, "r", newline="", encoding="utf-8") as f:
+            r = csv.reader(f)
+            next(r, None)  # discard header
+            for row in r:
+                if not row:
+                    continue
+                try:
+                    ts = int(float(row[0]))
+                except (ValueError, IndexError):
+                    continue
+                yield ts, priority, row
+
+    # Track which incoming timestamps were already present so we can report
+    # how many genuinely-new bars the merge added.
+    existing_ts: set[int] = set()
+    try:
+        # Fast path: sorted streaming merge. Raises if either input is not sorted.
+        tmp = dest.with_suffix(dest.suffix + ".merge.tmp")
+        rows_out = 0
+        last_ts: int | None = None
+        with open(tmp, "w", newline="", encoding="utf-8") as outf:
+            w = csv.writer(outf)
+            w.writerow(header)
+            merged = heapq.merge(
+                iter_rows(incoming, 0),
+                iter_rows(existing, 1),
+            )
+            for ts, prio, row in merged:
+                if prio == 1:
+                    existing_ts.add(ts)
+                if last_ts is not None and ts == last_ts:
+                    # Duplicate timestamp — heapq.merge already emitted the
+                    # winning (lower-priority-number) row.
+                    continue
+                if last_ts is not None and ts < last_ts:
+                    raise ValueError("csv-not-sorted")
+                w.writerow(row)
+                last_ts = ts
+                rows_out += 1
+        tmp.replace(dest)
+    except ValueError:
+        # Fallback: load both into a dict keyed by timestamp. Incoming wins on
+        # collision. Sort the union and re-emit.
+        merged_map: dict[int, list[str]] = {}
+        existing_ts.clear()
+        with open(existing, "r", newline="", encoding="utf-8") as f:
+            r = csv.reader(f)
+            next(r, None)
+            for row in r:
+                if not row:
+                    continue
+                try:
+                    ts = int(float(row[0]))
+                except (ValueError, IndexError):
+                    continue
+                merged_map[ts] = row
+                existing_ts.add(ts)
+        with open(incoming, "r", newline="", encoding="utf-8") as f:
+            r = csv.reader(f)
+            next(r, None)
+            for row in r:
+                if not row:
+                    continue
+                try:
+                    ts = int(float(row[0]))
+                except (ValueError, IndexError):
+                    continue
+                merged_map[ts] = row  # incoming wins
+        tmp = dest.with_suffix(dest.suffix + ".merge.tmp")
+        rows_out = 0
+        with open(tmp, "w", newline="", encoding="utf-8") as outf:
+            w = csv.writer(outf)
+            w.writerow(header)
+            for ts in sorted(merged_map):
+                w.writerow(merged_map[ts])
+                rows_out += 1
+        tmp.replace(dest)
+
+    # Count newly-added timestamps (present in incoming but not in existing).
+    new_rows_added = 0
+    with open(incoming, "r", newline="", encoding="utf-8") as f:
+        r = csv.reader(f)
+        next(r, None)
+        for row in r:
+            if not row:
+                continue
+            try:
+                ts = int(float(row[0]))
+            except (ValueError, IndexError):
+                continue
+            if ts not in existing_ts:
+                new_rows_added += 1
+    return rows_out, new_rows_added
+
+
+def _upsert_or_create_dataset_from_csv(file_path: Path, original_name: str, description: str | None, upsert: bool) -> dict:
+    """
+    Register a normalized CSV as a dataset, or **merge** the incoming CSV into
+    an existing dataset with the same original_name when `upsert=True`.
+
+    Merge semantics: the existing CSV is preserved, the incoming candles are
+    unioned in by epoch-ms timestamp, and any timestamp appearing in both is
+    replaced by the incoming row (vendor's freshest print wins). This lets
+    daily update bundles (`period=day`) progressively extend the historical
+    series instead of overwriting it — which was the previous behaviour and
+    would silently destroy old bars when a short-period bundle was imported
+    on top of a long one.
+
+    The dataset row keeps its `file.id`, so downstream references (binary
+    tiles, saved selections) remain stable.
+    """
+    if upsert:
+        db = SessionLocal()
+        try:
+            db_file = db.query(CSVFile).filter(CSVFile.original_name == original_name).first()
+            if db_file:
+                final_path = _resolve_dataset_csv_for_file(db_file)
+                new_rows_added = 0
+                if final_path.exists() and count_csv_rows(str(final_path)) > 0:
+                    try:
+                        rc, new_rows_added = _merge_canonical_ohlcv_csvs(
+                            existing=final_path,
+                            incoming=file_path,
+                            dest=final_path,
+                        )
+                    except Exception as merge_err:
+                        # On unexpected merge failure, do NOT fall back to
+                        # overwrite (that would destroy historical bars). Re-raise
+                        # so the import job is marked failed and the admin notices.
+                        raise RuntimeError(
+                            f"Failed to merge incoming CSV into existing dataset "
+                            f"{original_name!r}: {merge_err}"
+                        ) from merge_err
+                else:
+                    # No existing data (file missing or empty) → plain copy is fine.
+                    shutil.copyfile(file_path, final_path)
+                    rc = count_csv_rows(str(final_path))
+                    new_rows_added = rc
+                db_file.row_count = rc
+                if description:
+                    db_file.description = description
+                db.commit()
+                db.refresh(db_file)
+                build_binary_for_file(db_file.id, final_path, db_file.original_name)
+                try:
+                    if file_path.resolve() != final_path.resolve():
+                        file_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                out = {
+                    "success": True,
+                    "file": _dataset_file_public_dict(db_file),
+                    "upserted": True,
+                    "merged": True,
+                    "new_rows_added": int(new_rows_added),
+                    "total_rows": int(rc),
+                }
+                return out
+        finally:
+            db.close()
+
+    out = _store_dataset_file(file_path, original_name=original_name, description=description)
+    if isinstance(out, dict):
+        out["upserted"] = False
+        out["merged"] = False
+    return out
+
+
 def _parse_iso_date(value: str, field_name: str) -> datetime:
     raw = (value or "").strip()
     try:
@@ -1478,8 +1970,9 @@ def _normalize_dukascopy_instrument(value: str) -> str:
     instrument = (value or "").strip().lower()
     if not instrument:
         raise HTTPException(status_code=400, detail="instrument is required")
-    if not re.fullmatch(r"[a-z0-9]{3,20}", instrument):
-        raise HTTPException(status_code=400, detail="instrument must contain only letters/numbers (3-20 chars)")
+    # dukascopy-node instrument keys are lowercase alphanumerics (max observed length 14).
+    if not re.fullmatch(r"[a-z0-9]{3,24}", instrument):
+        raise HTTPException(status_code=400, detail="instrument must contain only letters/numbers (3-24 chars)")
     return instrument
 
 def _split_dukascopy_date_ranges(from_dt: datetime, to_dt: datetime, chunk_days: int) -> list[tuple[datetime, datetime]]:
@@ -1525,6 +2018,543 @@ def _dukascopy_read_job(job_id: str) -> dict | None:
             return json.load(f)
     except Exception:
         return None
+
+
+def _firstrate_job_path(job_id: str) -> Path:
+    safe_job_id = re.sub(r"[^a-zA-Z0-9_-]", "", (job_id or ""))
+    if not safe_job_id:
+        safe_job_id = "invalid"
+    return FIrstrate_JOBS_DIR / f"{safe_job_id}.json"
+
+
+def _firstrate_cleanup_jobs() -> None:
+    cutoff = time.time() - max(60, FIrstrate_JOB_TTL_SECONDS)
+    for p in FIrstrate_JOBS_DIR.glob("*.json"):
+        try:
+            if p.stat().st_mtime < cutoff:
+                p.unlink()
+        except Exception:
+            pass
+
+
+def _firstrate_write_job(job_id: str, state: dict) -> None:
+    p = _firstrate_job_path(job_id)
+    state["updated_at"] = datetime.utcnow().isoformat()
+    tmp = p.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(state, f)
+    tmp.replace(p)
+
+
+def _firstrate_read_job(job_id: str) -> dict | None:
+    p = _firstrate_job_path(job_id)
+    if not p.exists():
+        return None
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _normalize_ticker_filter_list(pairs: list[str] | None) -> list[str]:
+    """Normalize ticker / pair tokens (e.g. EURUSD, AAPL). Empty list = no filter."""
+    if not pairs:
+        return []
+    out: list[str] = []
+    for p in pairs:
+        if p is None:
+            continue
+        compact = re.sub(r"[^A-Za-z0-9]", "", str(p).strip()).upper()
+        if not compact:
+            continue
+        out.append(compact[:12])
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for x in out:
+        if x not in seen:
+            seen.add(x)
+            uniq.append(x)
+    return uniq
+
+
+_FIRSTRATE_META_SEGMENTS = {
+    "FULL", "DAY", "WEEK", "MONTH", "YEAR", "HOUR", "MIN",
+    "ADJ", "UNADJ", "CONTIN", "SPLIT", "DIV", "RATIO", "ABSOLUTE",
+}
+# Common quote currencies that appear trailing on user-typed crypto tickers.
+# Ordered longest-first so `USDT`/`USDC` are stripped before the shorter `USD`.
+_FIRSTRATE_CRYPTO_QUOTE_ALIASES = ("USDT", "USDC", "USD", "EUR", "GBP", "JPY", "BTC", "ETH")
+
+
+def _token_matches_firstrate_stem(tok: str, stem: str) -> bool:
+    """
+    Match a filter token against a FirstRate CSV filename stem.
+
+    FirstRate filenames carry several pieces separated by `_`, `-`, or `.`, e.g.:
+        EURUSD_full_1min.txt                     (FX)
+        AAPL_full_1min_adj_split.txt             (stock)
+        ES_full_1min_contin_UNadj.txt            (futures, continuous)
+        BTC_full_1min.txt                        (crypto, implicit USD quote)
+        BTC-EUR_full_1min.txt                    (crypto, explicit non-USD quote)
+    We split the stem on non-alphanumerics into segments and consider a token to match if:
+      * any segment equals the token exactly (`ES` matches `ES_continuous…`, not `ESM2024`), OR
+      * the first segment starts with the token and is only a little longer than it
+        (handles contract-coded futures like `ESM2024.txt` when the user typed `ES`), OR
+      * for longer tokens (>=6 chars) the alnum-compacted stem contains the token as prefix
+        or substring (handles `EURUSD`, `GBPJPY`, etc. against any FirstRate naming style), OR
+      * [crypto] the token ends with a known quote currency (USD/USDT/USDC/EUR/...) and its
+        base matches the first segment — FirstRate's crypto bundle names files by base asset
+        only for USD-quoted pairs (`BTC_full_1min` means BTC/USD), so users typing `BTCUSD` or
+        `BTCUSDT` still resolve to the right file.
+    """
+    if not tok or not stem:
+        return False
+    tok_up = tok.upper()
+    stem_up = stem.upper()
+    segments = [s for s in re.split(r"[^A-Za-z0-9]+", stem_up) if s]
+    if tok_up in segments:
+        return True
+    if len(tok_up) >= 6:
+        compact = "".join(segments)
+        if compact.startswith(tok_up) or (tok_up in compact):
+            return True
+    # Short root tokens (2–5 chars, e.g. futures roots "ES", "NQ", metal "GC") should also match
+    # continuous contract codes like `ESM2024` / `CLH25` where the root prefixes the first segment.
+    if segments and segments[0].startswith(tok_up):
+        rest = segments[0][len(tok_up):]
+        if not rest:
+            return True
+        # Accept extensions like ESM2024 (alphanumeric contract code) but avoid false positives
+        # (e.g. token "ES" against "ESTOX50" — length diff > 7 is unlikely to be a futures code).
+        if len(rest) <= 6:
+            return True
+    # Crypto pair fallback — FirstRate ships crypto as `<BASE>_full_1min.txt` (implicit USD) or
+    # `<BASE>-<QUOTE>_full_1min.txt` (explicit non-USD). Accept common user-typed suffixes.
+    for quote in _FIRSTRATE_CRYPTO_QUOTE_ALIASES:
+        if not tok_up.endswith(quote) or len(tok_up) <= len(quote):
+            continue
+        base = tok_up[: -len(quote)]
+        if not segments or segments[0] != base:
+            continue
+        # Look at the segment right after the base to see whether the stem carries an
+        # explicit quote (e.g. `BTC-EUR_…`) or is a pure base-only stem (`BTC_…`).
+        sibling = segments[1] if len(segments) >= 2 else None
+        sibling_is_quote = (
+            sibling is not None
+            and sibling.isalpha()
+            and 3 <= len(sibling) <= 5
+            and sibling not in _FIRSTRATE_META_SEGMENTS
+        )
+        if not sibling_is_quote:
+            # Base-only stem → default quote is USD. Accept USD and its stablecoin aliases,
+            # since FirstRate does not separately ship USDT/USDC-quoted bundles for these.
+            if quote in {"USD", "USDT", "USDC"}:
+                return True
+        elif sibling == quote:
+            return True
+    return False
+
+
+def _firstrate_filter_csv_paths_by_tickers(paths: list[Path], tokens: list[str]) -> tuple[list[Path], int]:
+    """Keep CSVs whose stem matches at least one token (FX pairs, stock tickers, futures roots, etc.)."""
+    if not tokens:
+        return paths, 0
+    kept: list[Path] = []
+    for path in paths:
+        stem = path.stem
+        if any(_token_matches_firstrate_stem(t, stem) for t in tokens):
+            kept.append(path)
+    return kept, len(paths) - len(kept)
+
+
+# Static symbol tables mirrored from backtesting.html's `classifyFile`. Kept
+# inline (rather than imported from a shared module) because the admin server
+# is otherwise self-contained and the lists rarely change.
+_FIRSTRATE_FUTURES_SYMS = frozenset({
+    "ES","NQ","YM","RTY","MES","MNQ","M2K","CL","GC","SI","NG","ZB","ZN",
+    "MCL","MGC","MSI","MNG","HG","PL","PA","ZC","ZS","ZW","ZL","ZM",
+    "6E","6B","6J","6A","6C","6S","6N",
+})
+_FIRSTRATE_CRYPTO_SYMS = frozenset({
+    "BTC","ETH","SOL","XRP","ADA","DOGE","BNB","LTC","AVAX","ATOM","DOT",
+    "LINK","MATIC","UNI","BCH","ETC","FIL","NEAR","ALGO","XLM","TRX",
+    "SHIB","APT","ARB","OP",
+})
+_FIRSTRATE_CURRENCY_SYMS = frozenset({
+    "USD","EUR","GBP","JPY","AUD","NZD","CAD","CHF","HKD","SGD","SEK",
+    "NOK","DKK","ZAR","TRY","MXN","CNY","XAU","XAG",
+})
+# FirstRate bucket name for each classified instrument. These are the `type`
+# values the vendor's data_file / last_update endpoints accept.
+_FIRSTRATE_INSTRUMENT_TYPE_CANON = {
+    "futures": "futures",
+    "crypto":  "crypto",
+    "fx":      "fx",
+    "stock":   "stock",
+}
+# "Meta" filename segments added by the FirstRate pipeline that should be
+# ignored when pulling the ticker out of `original_name`.
+_FIRSTRATE_FILENAME_META = frozenset({
+    "FULL","DAY","WEEK","MONTH","YEAR","HOUR","MIN",
+    "ADJ","UNADJ","CONTIN","CONTINUOUS","SPLIT","DIV","RATIO","ABSOLUTE",
+    "1MIN","5MIN","15MIN","30MIN","1HOUR","1DAY","1WEEK","1MONTH",
+    "1H","4H","1D","1W","1MO",
+})
+
+
+def _firstrate_extract_ticker_from_filename(raw_name: str) -> str:
+    """
+    Mirror of JS `cleanPairName` in backtesting.html. Pulls a canonical ticker
+    out of a dataset filename like `BTC_full_1min_1min.csv`,
+    `20260217_182920_GBPUSD.csv`, or `b01_0003_firstrate_EURUSD_full_1min_1min.csv`.
+    Returns empty string on anything we can't confidently classify.
+    """
+    if not raw_name:
+        return ""
+    # Strip any path + extension, then the common FirstRate-pipeline prefixes.
+    name = re.sub(r"^.*[\\/]", "", str(raw_name))
+    name = re.sub(r"\.csv$", "", name, flags=re.IGNORECASE)
+    name = re.sub(r"^\d{8}_\d{6}_", "", name)
+    name = re.sub(r"^b\d{2}_\d{4}_firstrate_", "", name)
+    name = re.sub(r"^firstrate_", "", name)
+    parts = [p for p in name.split("_") if p]
+    if not parts:
+        return ""
+    seg = next(
+        (p for p in parts
+         if p.upper() not in _FIRSTRATE_FILENAME_META and not p.isdigit()),
+        parts[0],
+    )
+    if re.fullmatch(r"[A-Za-z]{2,5}-[A-Za-z]{2,5}", seg):
+        a, b = seg.upper().split("-")
+        return a + b
+    return seg.upper()
+
+
+def _firstrate_classify_ticker(ticker: str) -> str | None:
+    """
+    Bucket a canonical ticker into one of `futures | crypto | fx | stock`,
+    matching the grouping used in the backtesting dropdown. Returns None for
+    tickers we don't recognize (so they can be safely skipped by the
+    auto-nightly loop rather than sent to the wrong FirstRate endpoint).
+    """
+    t = (ticker or "").upper().replace("/", "").replace("-", "")
+    if not t:
+        return None
+    if t in _FIRSTRATE_FUTURES_SYMS:
+        return "futures"
+    if len(t) >= 6:
+        base, quote = t[:3], t[3:6]
+        if base in _FIRSTRATE_CRYPTO_SYMS or quote in _FIRSTRATE_CRYPTO_SYMS:
+            return "crypto"
+        if base in _FIRSTRATE_CURRENCY_SYMS and quote in _FIRSTRATE_CURRENCY_SYMS:
+            return "fx"
+    if t in _FIRSTRATE_CRYPTO_SYMS:
+        return "crypto"
+    if t in _FIRSTRATE_CURRENCY_SYMS:
+        return "fx"
+    if t.isalpha() and 1 <= len(t) <= 5:
+        return "stock"
+    return None
+
+
+def _firstrate_classify_existing_datasets() -> dict[str, list[str]]:
+    """
+    Walk the dataset registry and bucket every CSV into the FirstRate instrument
+    type it came from. Used by the nightly auto-sync to decide which
+    `data_file?type=…` calls to make and with which pairs.
+
+    Returns `{"fx": ["EURUSD", …], "crypto": ["BTC", …], …}` with sorted,
+    deduplicated ticker lists. Instrument types with zero datasets are omitted.
+    """
+    buckets: dict[str, set[str]] = {}
+    db = SessionLocal()
+    try:
+        rows = db.query(CSVFile).all()
+    finally:
+        db.close()
+    for row in rows:
+        ticker = _firstrate_extract_ticker_from_filename(row.original_name or "")
+        if not ticker:
+            continue
+        cls = _firstrate_classify_ticker(ticker)
+        if not cls:
+            continue
+        canon = _FIRSTRATE_INSTRUMENT_TYPE_CANON.get(cls)
+        if not canon:
+            continue
+        buckets.setdefault(canon, set()).add(ticker)
+    return {k: sorted(v) for k, v in buckets.items() if v}
+
+
+def _default_firstrate_schedule() -> dict:
+    """
+    Defaults for automatic VPS sync; first load creates
+    `uploads/firstrate_schedule.json` (overridable via env).
+
+    Two modes:
+      * `nightly`  — fire once per day at `nightly_utc_hour`, iterating every
+                     asset class present in the dataset registry (or just
+                     `instrument_type` if `auto_all_types` is off).
+      * `interval` — legacy behaviour: fire every `interval_minutes`, single
+                     `instrument_type` only.
+
+    `nightly` is the default now because it matches what traders actually want
+    (one delta pull per asset class per night, merged into existing history).
+    """
+    return {
+        "enabled": os.getenv("FIrstrate_SCHEDULE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"},
+        "mode": (os.getenv("FIrstrate_SCHEDULE_MODE", "nightly").strip().lower() or "nightly"),
+        "nightly_utc_hour": int(os.getenv("FIrstrate_SCHEDULE_NIGHTLY_UTC_HOUR", "2")),
+        "auto_all_types": os.getenv("FIrstrate_SCHEDULE_AUTO_ALL_TYPES", "true").strip().lower() in {"1", "true", "yes", "on"},
+        "interval_minutes": int(os.getenv("FIrstrate_SCHEDULE_INTERVAL_MINUTES", "1440")),
+        "period": (os.getenv("FIrstrate_SCHEDULE_PERIOD", "day").strip() or "day"),
+        "timeframe": (os.getenv("FIrstrate_SCHEDULE_TIMEFRAME", "1min").strip() or "1min"),
+        "upsert_existing": os.getenv("FIrstrate_SCHEDULE_UPSERT", "true").strip().lower() in {"1", "true", "yes", "on"},
+        "delete_existing_first": False,
+        "purge_confirmation": None,
+        "ticker_range": None,
+        "download_timeout_sec": float(os.getenv("FIrstrate_SCHEDULE_DOWNLOAD_TIMEOUT", "7200")),
+        "instrument_type": (os.getenv("FIrstrate_SCHEDULE_TYPE", "fx").strip().lower() or "fx"),
+        "adjustment": os.getenv("FIrstrate_SCHEDULE_ADJUSTMENT", "").strip() or None,
+        "last_run_started_at": None,
+        "last_run_finished_at": None,
+        "last_job_id": None,
+        "last_status": None,
+        "last_error": None,
+        "last_run_date": None,            # YYYY-MM-DD UTC; resets per-day completion list
+        "last_run_types_today": [],       # list of instrument_types already queued tonight
+        "pairs": [],
+    }
+
+
+def _load_firstrate_schedule() -> dict:
+    with _firstrate_schedule_lock:
+        if not FIrstrate_SCHEDULE_PATH.exists():
+            cfg = _default_firstrate_schedule()
+            try:
+                with open(FIrstrate_SCHEDULE_PATH, "w", encoding="utf-8") as f:
+                    json.dump(cfg, f, indent=2)
+            except OSError:
+                pass
+            return dict(cfg)
+        try:
+            with open(FIrstrate_SCHEDULE_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            return _default_firstrate_schedule()
+        if not isinstance(data, dict):
+            return _default_firstrate_schedule()
+        base = _default_firstrate_schedule()
+        for k in list(base.keys()) + ["purge_confirmation", "pairs", "instrument_type", "adjustment"]:
+            if k in data:
+                base[k] = data[k]
+        return base
+
+
+def _save_firstrate_schedule(cfg: dict) -> None:
+    with _firstrate_schedule_lock:
+        tmp = FIrstrate_SCHEDULE_PATH.with_suffix(".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2)
+        tmp.replace(FIrstrate_SCHEDULE_PATH)
+
+
+def _firstrate_has_active_import_job() -> bool:
+    _firstrate_cleanup_jobs()
+    for p in FIrstrate_JOBS_DIR.glob("*.json"):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                st = json.load(f)
+            if st.get("status") in ("queued", "running"):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _firstrate_schedule_after_job(job_id: str, success: bool, error_message: str | None) -> None:
+    try:
+        st = _firstrate_read_job(job_id)
+        if not st or st.get("trigger") != "schedule":
+            return
+        cfg = _load_firstrate_schedule()
+        cfg["last_run_finished_at"] = datetime.utcnow().isoformat() + "Z"
+        cfg["last_job_id"] = job_id
+        cfg["last_status"] = "done" if success else "failed"
+        cfg["last_error"] = None if success else ((error_message or "")[:2000])
+        _save_firstrate_schedule(cfg)
+    except Exception:
+        pass
+
+
+def _firstrate_default_adjustment_for(instrument_type: str) -> str | None:
+    """Pick a safe default `adjustment` value for vendor types that require one."""
+    t = (instrument_type or "").strip().lower()
+    if t == "futures":
+        # FirstRate requires a continuous-contract adjustment on every futures
+        # data_file call; `contin_UNadj` is the raw unadjusted stitched series.
+        return DEFAULT_FUTURES_ADJUSTMENT
+    return None
+
+
+def _firstrate_pending_types_for_nightly(cfg: dict) -> tuple[dict[str, list[str]], list[str]]:
+    """
+    Compute `(buckets_to_run, already_done_today)` for the nightly auto-sync.
+
+    - If `auto_all_types` is on: walks the dataset registry and buckets every
+      registered CSV into fx/crypto/futures/stock so every asset class the user
+      has data for gets a delta pull.
+    - If off: honours the legacy single `instrument_type` + `pairs` config.
+
+    Only buckets with at least one ticker are returned.
+    """
+    if bool(cfg.get("auto_all_types", True)):
+        buckets = _firstrate_classify_existing_datasets()
+    else:
+        inst = str(cfg.get("instrument_type") or "fx").strip().lower()
+        pairs = cfg.get("pairs") if isinstance(cfg.get("pairs"), list) else []
+        buckets = {inst: list(pairs)} if inst else {}
+    # Strip empties so we don't queue a no-op job for a class with no tickers.
+    buckets = {k: v for k, v in buckets.items() if v}
+    done = list(cfg.get("last_run_types_today") or [])
+    return buckets, done
+
+
+def _firstrate_scheduler_tick() -> None:
+    try:
+        cfg = _load_firstrate_schedule()
+        if not cfg.get("enabled"):
+            return
+        if not get_firstrate_userid():
+            return
+        # Only one FirstRate import can run at a time; wait for the current one
+        # to finish before queueing the next asset class.
+        if _firstrate_has_active_import_job():
+            return
+
+        mode = str(cfg.get("mode") or "nightly").strip().lower()
+        now = datetime.utcnow()
+        today_str = now.strftime("%Y-%m-%d")
+
+        # --- Nightly mode: once per day, after the configured UTC hour, ------
+        # progressively queue one instrument type per tick until every asset
+        # class present in the registry has been pulled for the day.
+        if mode == "nightly":
+            target_hour = int(cfg.get("nightly_utc_hour", 2) or 0)
+            target_hour = max(0, min(23, target_hour))
+            if now.hour < target_hour:
+                return
+
+            # Reset the per-day done-list when a new UTC day starts.
+            if str(cfg.get("last_run_date") or "") != today_str:
+                cfg["last_run_date"] = today_str
+                cfg["last_run_types_today"] = []
+                _save_firstrate_schedule(cfg)
+
+            buckets, done_today = _firstrate_pending_types_for_nightly(cfg)
+            pending = [t for t in buckets if t not in done_today]
+            if not pending:
+                return
+
+            next_type = pending[0]
+            pair_list = list(buckets[next_type])
+            adjustment = _firstrate_default_adjustment_for(next_type)
+
+            _queue_firstrate_fx_import_job(
+                period=str(cfg.get("period") or "day"),
+                timeframe=str(cfg.get("timeframe") or "1min"),
+                instrument_type=next_type,
+                adjustment=adjustment,
+                delete_existing_first=False,
+                purge_confirmation=None,
+                ticker_range=None,
+                download_timeout_sec=float(cfg.get("download_timeout_sec") or 7200),
+                upsert_existing=True,  # always merge in nightly mode
+                trigger="schedule",
+                pairs=pair_list,
+            )
+
+            # Mark this type as attempted tonight — whether or not the job
+            # eventually succeeds, we don't retry it on the same UTC day so a
+            # vendor-side outage can't cause runaway retries.
+            cfg2 = _load_firstrate_schedule()
+            done = list(cfg2.get("last_run_types_today") or [])
+            if next_type not in done:
+                done.append(next_type)
+            cfg2["last_run_types_today"] = done
+            cfg2["last_run_date"] = today_str
+            cfg2["last_run_started_at"] = datetime.utcnow().isoformat() + "Z"
+            cfg2["last_error"] = None
+            _save_firstrate_schedule(cfg2)
+            return
+
+        # --- Legacy interval mode (kept for back-compat; single instrument) --
+        interval_min = max(15, int(cfg.get("interval_minutes") or 1440))
+        last_fin = cfg.get("last_run_finished_at")
+        should_run = False
+        if not last_fin:
+            should_run = True
+        else:
+            try:
+                raw = str(last_fin).replace("Z", "")
+                lf = datetime.fromisoformat(raw)
+                if lf.tzinfo is not None:
+                    lf = lf.replace(tzinfo=None)
+                if (now - lf).total_seconds() >= interval_min * 60:
+                    should_run = True
+            except Exception:
+                should_run = True
+        if not should_run:
+            return
+
+        sched_pairs = cfg.get("pairs")
+        pair_list = sched_pairs if isinstance(sched_pairs, list) else []
+        _queue_firstrate_fx_import_job(
+            period=str(cfg.get("period") or "day"),
+            timeframe=str(cfg.get("timeframe") or "1min"),
+            instrument_type=str(cfg.get("instrument_type") or "fx"),
+            adjustment=cfg.get("adjustment"),
+            delete_existing_first=bool(cfg.get("delete_existing_first", False)),
+            purge_confirmation=cfg.get("purge_confirmation"),
+            ticker_range=cfg.get("ticker_range"),
+            download_timeout_sec=float(cfg.get("download_timeout_sec") or 7200),
+            upsert_existing=bool(cfg.get("upsert_existing", True)),
+            trigger="schedule",
+            pairs=pair_list,
+        )
+        cfg2 = _load_firstrate_schedule()
+        cfg2["last_run_started_at"] = datetime.utcnow().isoformat() + "Z"
+        cfg2["last_error"] = None
+        _save_firstrate_schedule(cfg2)
+    except ValueError as e:
+        try:
+            cfg2 = _load_firstrate_schedule()
+            cfg2["last_error"] = str(e)[:2000]
+            _save_firstrate_schedule(cfg2)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def _firstrate_scheduler_loop() -> None:
+    while True:
+        try:
+            _firstrate_scheduler_tick()
+        except Exception:
+            pass
+        time.sleep(60)
+
+
+def _start_firstrate_scheduler_thread() -> None:
+    if os.getenv("FIrstrate_SCHEDULE_DISABLE", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return
+    if APP_ROLE == "worker":
+        return
+    threading.Thread(target=_firstrate_scheduler_loop, daemon=True, name="firstrate-scheduler").start()
+
 
 def _start_dukascopy_fetch_job(instrument: str, from_dt: datetime, to_dt: datetime, node_binary: str) -> dict:
     chunk_ranges = _split_dukascopy_date_ranges(from_dt, to_dt, DUKASCOPY_MAX_RANGE_DAYS)
@@ -1721,6 +2751,699 @@ def _start_dukascopy_fetch_job(instrument: str, from_dt: datetime, to_dt: dateti
             "chunk_count": total_chunks,
         }
     }
+
+# ── Binance historical (binance-historical-data) jobs ─────────────────────
+
+def _binance_job_path(job_id: str) -> Path:
+    safe_job_id = re.sub(r"[^a-zA-Z0-9_-]", "", (job_id or ""))
+    if not safe_job_id:
+        safe_job_id = "invalid"
+    return BINANCE_JOBS_DIR / f"{safe_job_id}.json"
+
+
+def _binance_cleanup_jobs() -> None:
+    cutoff = time.time() - max(60, BINANCE_JOB_TTL_SECONDS)
+    for p in BINANCE_JOBS_DIR.glob("*.json"):
+        try:
+            if p.stat().st_mtime < cutoff:
+                p.unlink()
+        except Exception:
+            pass
+
+
+def _binance_write_job(job_id: str, state: dict) -> None:
+    p = _binance_job_path(job_id)
+    state["updated_at"] = datetime.utcnow().isoformat()
+    tmp = p.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(state, f)
+    tmp.replace(p)
+
+
+def _binance_read_job(job_id: str) -> dict | None:
+    p = _binance_job_path(job_id)
+    if not p.exists():
+        return None
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _normalize_binance_tickers_required(raw: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for t in raw:
+        s = (t or "").strip().upper()
+        if not s:
+            continue
+        if not re.fullmatch(r"[A-Z0-9]{4,20}", s):
+            raise HTTPException(status_code=400, detail=f"Invalid ticker: {t!r} (e.g. BTCUSDT)")
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    if not out:
+        raise HTTPException(status_code=400, detail="At least one ticker is required")
+    if len(out) > BINANCE_MAX_TICKERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many tickers ({len(out)}). Max per request is {BINANCE_MAX_TICKERS}.",
+        )
+    return out
+
+
+def _normalize_binance_exclude_tickers(raw: list[str] | None) -> list[str] | None:
+    if not raw:
+        return None
+    out: list[str] = []
+    seen: set[str] = set()
+    for t in raw:
+        s = (t or "").strip().upper()
+        if not s:
+            continue
+        if not re.fullmatch(r"[A-Z0-9]{4,20}", s):
+            raise HTTPException(status_code=400, detail=f"Invalid tickers_to_exclude entry: {t!r}")
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out or None
+
+
+def _collect_binance_kline_csvs(
+    dump_root: Path,
+    asset_class: str,
+    ticker: str,
+    data_frequency: str,
+    data_type: str = "klines",
+) -> list[Path]:
+    if asset_class in ("um", "cm"):
+        base = dump_root / "futures" / asset_class
+    else:
+        base = dump_root / asset_class
+    dt_folder = (data_type or "klines").strip() or "klines"
+    found: list[Path] = []
+    for period in ("monthly", "daily"):
+        d = base / period / dt_folder / ticker / data_frequency
+        if d.is_dir():
+            found.extend(p for p in d.iterdir() if p.suffix.lower() == ".csv" and p.is_file())
+    return sorted(found, key=lambda p: p.name)
+
+
+def _merge_binance_kline_csvs_to_file(csv_paths: list[Path], out_path: Path) -> int:
+    import csv as csv_mod
+
+    def _parse_ts(cell: str) -> int | None:
+        raw = str(cell or "").strip()
+        if not raw:
+            return None
+        try:
+            return int(float(raw))
+        except (ValueError, TypeError):
+            return None
+
+    rows_by_ts: dict[int, tuple[float, float, float, float, float]] = {}
+    for p in csv_paths:
+        try:
+            with open(p, "r", encoding="utf-8-sig", errors="replace", newline="") as f:
+                reader = csv_mod.reader(f)
+                for row in reader:
+                    if len(row) < 6:
+                        continue
+                    ts = _parse_ts(row[0])
+                    if ts is None:
+                        continue
+                    try:
+                        o, h, l, c, v = float(row[1]), float(row[2]), float(row[3]), float(row[4]), float(row[5])
+                    except (ValueError, TypeError):
+                        continue
+                    rows_by_ts[ts] = (o, h, l, c, v)
+        except OSError:
+            continue
+
+    if not rows_by_ts:
+        return 0
+
+    sorted_ts = sorted(rows_by_ts.keys())
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8", newline="") as f:
+        w = csv_mod.writer(f)
+        w.writerow(["timestamp", "open", "high", "low", "close", "volume"])
+        for ts in sorted_ts:
+            o, h, l, c, v = rows_by_ts[ts]
+            w.writerow([ts, o, h, l, c, v])
+    return len(sorted_ts)
+
+
+def _start_binance_fetch_job(
+    tickers: list[str],
+    asset_class: str,
+    data_frequency: str,
+    data_type: str,
+    from_dt: datetime,
+    to_dt: datetime,
+    is_to_update_existing: bool,
+    tickers_to_exclude: list[str] | None,
+) -> dict:
+    from_str = from_dt.strftime("%Y-%m-%d")
+    to_str = to_dt.strftime("%Y-%m-%d")
+
+    job_id = f"bn_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(4)}"
+    now_iso = datetime.utcnow().isoformat()
+    state = {
+        "job_id": job_id,
+        "status": "queued",
+        "message": "Queued Binance historical download",
+        "tickers": tickers,
+        "asset_class": asset_class,
+        "data_frequency": data_frequency,
+        "data_type": data_type,
+        "from_date": from_str,
+        "to_date": to_str,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+        "result": None,
+        "results": None,
+        "error": None,
+    }
+    _binance_write_job(job_id, state)
+
+    def _worker():
+        try:
+            from binance_historical_data import BinanceDataDumper
+
+            state["status"] = "running"
+            state["message"] = "Downloading from Binance Vision (may take several minutes)…"
+            _binance_write_job(job_id, state)
+
+            with tempfile.TemporaryDirectory(prefix="bn_", dir=str(UPLOAD_DIR.resolve())) as tmp:
+                tmp_path = Path(tmp)
+                dumper = BinanceDataDumper(
+                    path_dir_where_to_dump=str(tmp_path),
+                    asset_class=asset_class,
+                    data_type=data_type,
+                    data_frequency=data_frequency,
+                )
+                dumper.dump_data(
+                    tickers=tickers,
+                    date_start=from_dt.date(),
+                    date_end=to_dt.date(),
+                    is_to_update_existing=is_to_update_existing,
+                    tickers_to_exclude=tickers_to_exclude,
+                )
+
+                aggregate_results = []
+                for idx, ticker in enumerate(tickers, start=1):
+                    state["message"] = f"Merging CSV for {ticker} ({idx}/{len(tickers)})…"
+                    _binance_write_job(job_id, state)
+
+                    csv_paths = _collect_binance_kline_csvs(
+                        tmp_path, asset_class, ticker, data_frequency, data_type=data_type
+                    )
+                    type_slug = data_type if data_type != "klines" else ""
+                    original_name = (
+                        f"{ticker}-{data_type}-{data_frequency}-{from_str}-{to_str}.csv"
+                        if type_slug
+                        else f"{ticker}-{data_frequency}-{from_str}-{to_str}.csv"
+                    )
+                    unique_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(3)}_{original_name}"
+                    output_path = (UPLOAD_DIR / unique_filename).resolve()
+
+                    row_n = _merge_binance_kline_csvs_to_file(csv_paths, output_path)
+                    if row_n <= 0:
+                        if output_path.exists():
+                            try:
+                                output_path.unlink()
+                            except OSError:
+                                pass
+                        raise RuntimeError(
+                            f"No kline rows parsed for {ticker}. "
+                            "Check symbol, interval, dates, and that files exist under Binance public data."
+                        )
+
+                    desc = (
+                        f"Binance {asset_class} {data_type} {ticker} {data_frequency} {from_str} → {to_str} "
+                        f"(binance-historical-data)"
+                    )
+                    one = _store_dataset_file(
+                        file_path=output_path,
+                        original_name=original_name,
+                        description=desc,
+                    )
+                    one["source"] = "binance-historical-data"
+                    one["ticker"] = ticker
+                    aggregate_results.append(one)
+
+                state["status"] = "done"
+                state["message"] = f"Completed Binance fetch for {len(tickers)} ticker(s)"
+                state["results"] = aggregate_results
+                state["result"] = aggregate_results[-1] if aggregate_results else None
+                state["finished_at"] = datetime.utcnow().isoformat()
+                _binance_write_job(job_id, state)
+        except Exception as exc:
+            err_text = str(exc) or "Unknown Binance job error"
+            state["status"] = "failed"
+            state["message"] = err_text
+            state["error"] = err_text
+            state["finished_at"] = datetime.utcnow().isoformat()
+            _binance_write_job(job_id, state)
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+
+    return {
+        "success": True,
+        "job_id": job_id,
+        "status": "queued",
+        "params": {
+            "tickers": tickers,
+            "asset_class": asset_class,
+            "data_frequency": data_frequency,
+            "data_type": data_type,
+            "from_date": from_str,
+            "to_date": to_str,
+            "is_to_update_existing": is_to_update_existing,
+        },
+    }
+
+
+# ── Yahoo Finance CME-style continuous futures (ES=F, NQ=F, …) ───────────────
+
+def _normalize_yahoo_cme_ticker(value: str) -> str:
+    t = (value or "").strip().upper()
+    if not t:
+        raise HTTPException(status_code=400, detail="ticker is required")
+    # Yahoo continuous futures use "ROOT=F" (may include digits, e.g. 6E=F).
+    if not re.fullmatch(r"[A-Z0-9]{1,6}=F", t):
+        raise HTTPException(
+            status_code=400,
+            detail='ticker must look like a Yahoo continuous future (e.g. ES=F, NQ=F, 6E=F).',
+        )
+    return t
+
+
+def _normalize_yahoo_cme_interval(value: str) -> str:
+    raw = (value or "1d").strip().lower()
+    iv = YAHOO_CME_INTERVAL_ALIASES.get(raw, raw)
+    if iv not in YAHOO_CME_ALLOWED_INTERVALS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"interval must be one of: {', '.join(sorted(YAHOO_CME_ALLOWED_INTERVALS))}",
+        )
+    return iv
+
+
+def _yahoo_cme_chunk_days(interval: str) -> int:
+    """
+    Calendar days per Yahoo request — small windows (like Dukascopy forex chunks) to avoid
+    truncation, empty responses, and rate limits on long ranges. Tunable via env.
+    """
+    i = interval.lower()
+    if i == "1m":
+        return max(1, int(os.getenv("YAHOO_CME_CHUNK_DAYS_1M", "5")))
+    if i in ("2m", "5m"):
+        return max(1, int(os.getenv("YAHOO_CME_CHUNK_DAYS_2M_5M", "14")))
+    if i in ("15m", "30m"):
+        return max(1, int(os.getenv("YAHOO_CME_CHUNK_DAYS_15M_30M", "45")))
+    if i in ("60m", "1h"):
+        return max(1, int(os.getenv("YAHOO_CME_CHUNK_DAYS_60M", "180")))
+    if i == "1d":
+        # Single multi-year daily calls often fail or return partial data on Yahoo.
+        return max(1, int(os.getenv("YAHOO_CME_CHUNK_DAYS_1D", "365")))
+    return max(1, int(os.getenv("YAHOO_CME_CHUNK_DAYS_DEFAULT", "14")))
+
+
+def _yahoo_cme_date_chunks(
+    from_dt: datetime,
+    to_dt: datetime,
+    chunk_days: int,
+) -> list[tuple[datetime.date, datetime.date]]:
+    ranges: list[tuple[datetime.date, datetime.date]] = []
+    step = max(1, int(chunk_days))
+    cursor = from_dt.date()
+    end_d = to_dt.date()
+    while cursor <= end_d:
+        chunk_end = min(cursor + timedelta(days=step - 1), end_d)
+        ranges.append((cursor, chunk_end))
+        cursor = chunk_end + timedelta(days=1)
+    return ranges
+
+
+def _yahoo_cme_flatten_columns(df):
+    import pandas as pd
+
+    if df is None or df.empty:
+        return df
+    if isinstance(df.columns, pd.MultiIndex):
+        df = df.copy()
+        df.columns = [str(c[0]) for c in df.columns]
+    return df
+
+
+def _yahoo_cme_index_to_epoch_ms(index) -> "object":
+    import numpy as np
+    import pandas as pd
+
+    idx = pd.DatetimeIndex(index)
+    if idx.tz is None:
+        idx = idx.tz_localize("America/New_York", ambiguous="infer", nonexistent="shift_forward")
+    utc = idx.tz_convert("UTC")
+    return (utc.astype(np.int64) // 1_000_000).astype(np.int64)
+
+
+def _yahoo_cme_df_to_csv_file(df, out_path: Path) -> int:
+    import csv as csv_mod
+
+    import pandas as pd
+
+    df = _yahoo_cme_flatten_columns(df)
+    if df is None or df.empty:
+        raise ValueError("No rows returned from Yahoo Finance")
+    rename = {}
+    for c in df.columns:
+        cl = str(c).lower()
+        if cl in ("open", "high", "low", "close", "volume"):
+            rename[c] = cl
+    df2 = df.rename(columns=rename)
+    for need in ("open", "high", "low", "close"):
+        if need not in df2.columns:
+            raise ValueError(f"Missing column {need} in Yahoo response")
+    vol_col = "volume" if "volume" in df2.columns else None
+    ts_ms = _yahoo_cme_index_to_epoch_ms(df2.index)
+    n = len(df2)
+    with open(out_path, "w", encoding="utf-8", newline="") as f:
+        w = csv_mod.writer(f)
+        w.writerow(["timestamp", "open", "high", "low", "close", "volume"])
+        for i in range(n):
+            if vol_col:
+                vraw = df2["volume"].iloc[i]
+                try:
+                    vrow = 0.0 if pd.isna(vraw) else float(vraw)
+                except Exception:
+                    vrow = 0.0
+            else:
+                vrow = 0.0
+            w.writerow(
+                [
+                    int(ts_ms[i]),
+                    float(df2["open"].iloc[i]),
+                    float(df2["high"].iloc[i]),
+                    float(df2["low"].iloc[i]),
+                    float(df2["close"].iloc[i]),
+                    vrow,
+                ]
+            )
+    return n
+
+
+def _yf_download_chunk(ticker: str, start_d: datetime.date, end_exclusive: datetime.date, interval: str):
+    """Single yfinance download; retries on Yahoo rate limits and transient empty frames."""
+    import time
+
+    import yfinance as yf
+
+    start_s = start_d.strftime("%Y-%m-%d")
+    end_s = end_exclusive.strftime("%Y-%m-%d")
+    last_exc: Exception | None = None
+    for attempt in range(10):
+        try:
+            df = yf.download(
+                ticker,
+                start=start_s,
+                end=end_s,
+                interval=interval,
+                auto_adjust=False,
+                progress=False,
+                threads=False,
+            )
+            if df is not None and not df.empty:
+                return df
+            # Yahoo sometimes returns an empty frame under load — treat like a soft failure.
+            if attempt < 7:
+                time.sleep(min(90.0, 6.0 + 5.0 * attempt + (attempt ** 1.5)))
+                continue
+            return df
+        except Exception as exc:
+            last_exc = exc
+            err = str(exc).lower()
+            if any(
+                x in err
+                for x in (
+                    "rate",
+                    "too many",
+                    "429",
+                    "limited",
+                    "limit",
+                    "timeout",
+                    "temporar",
+                    "yahoo",
+                    "blocked",
+                    "503",
+                    "502",
+                )
+            ):
+                time.sleep(min(120.0, 5.0 * (2 ** min(attempt, 7))))
+            else:
+                raise
+    raise last_exc if last_exc else RuntimeError("Yahoo Finance download failed")
+
+
+def _yahoo_cme_fetch_and_write(
+    ticker: str,
+    from_dt: datetime,
+    to_dt: datetime,
+    interval: str,
+    output_path: Path,
+    job_id: str | None = None,
+) -> int:
+    """Download all chunks (small date windows), merge, write CSV. Returns row count."""
+    import time
+
+    import pandas as pd
+
+    chunk_days = _yahoo_cme_chunk_days(interval)
+    ranges = _yahoo_cme_date_chunks(from_dt, to_dt, chunk_days)
+    total = len(ranges)
+    if total > YAHOO_CME_MAX_CHUNKS:
+        raise ValueError(
+            f"Download would require {total} Yahoo requests (max {YAHOO_CME_MAX_CHUNKS}). "
+            "Use a shorter date range or a coarser interval (for example 1d), "
+            "or raise YAHOO_CME_MAX_CHUNKS / widen YAHOO_CME_CHUNK_DAYS_* env vars."
+        )
+
+    def _progress(current: int, a: datetime.date, b: datetime.date) -> None:
+        if not job_id:
+            return
+        st = _yahoo_cme_read_job(job_id)
+        if not st:
+            return
+        st["status"] = "running"
+        st["phase"] = "download"
+        st["completed_chunks"] = current
+        st["chunk_count"] = total
+        st["current_chunk"] = current
+        st["message"] = f"Yahoo chunk {current}/{total} ({a.isoformat()} → {b.isoformat()})"
+        _yahoo_cme_write_job(job_id, st)
+
+    dfs: list = []
+    base_sleep = max(0.0, YAHOO_CME_CHUNK_SLEEP_SECONDS)
+    jitter_max = max(0.0, YAHOO_CME_CHUNK_SLEEP_JITTER_SECONDS)
+
+    for idx, (a, b) in enumerate(ranges, start=1):
+        end_excl = b + timedelta(days=1)
+        _progress(idx, a, b)
+        df = _yf_download_chunk(ticker, a, end_excl, interval)
+        df = _yahoo_cme_flatten_columns(df)
+        if df is not None and not df.empty:
+            dfs.append(df)
+        if idx < total:
+            delay = base_sleep + (random.uniform(0, jitter_max) if jitter_max > 0 else 0.0)
+            if delay > 0:
+                time.sleep(delay)
+    if not dfs:
+        raise ValueError("Yahoo Finance returned no rows (check ticker, dates, and rate limits)")
+    merged = pd.concat(dfs, axis=0)
+    merged = merged[~merged.index.duplicated(keep="last")]
+    merged = merged.sort_index()
+    if job_id:
+        st = _yahoo_cme_read_job(job_id)
+        if st:
+            st["phase"] = "merge"
+            st["message"] = "Merging Yahoo chunks and writing CSV…"
+            _yahoo_cme_write_job(job_id, st)
+    return _yahoo_cme_df_to_csv_file(merged, output_path)
+
+
+def _yahoo_cme_job_path(job_id: str) -> Path:
+    safe_job_id = re.sub(r"[^a-zA-Z0-9_-]", "", (job_id or ""))
+    if not safe_job_id:
+        safe_job_id = "invalid"
+    return YAHOO_CME_JOBS_DIR / f"{safe_job_id}.json"
+
+
+def _yahoo_cme_cleanup_jobs() -> None:
+    cutoff = time.time() - max(60, YAHOO_CME_JOB_TTL_SECONDS)
+    for p in YAHOO_CME_JOBS_DIR.glob("*.json"):
+        try:
+            if p.stat().st_mtime < cutoff:
+                p.unlink()
+        except Exception:
+            pass
+
+
+def _yahoo_cme_write_job(job_id: str, state: dict) -> None:
+    p = _yahoo_cme_job_path(job_id)
+    state["updated_at"] = datetime.utcnow().isoformat()
+    tmp = p.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(state, f)
+    tmp.replace(p)
+
+
+def _yahoo_cme_read_job(job_id: str) -> dict | None:
+    p = _yahoo_cme_job_path(job_id)
+    if not p.exists():
+        return None
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _yahoo_cme_find_latest_active_job() -> dict | None:
+    """
+    Newest queued/running Yahoo job on disk — used so the admin UI can reconnect after refresh.
+    The download worker runs in a server thread; losing the browser tab does not cancel it.
+    """
+    best: dict | None = None
+    best_updated = ""
+    _yahoo_cme_cleanup_jobs()
+    for p in YAHOO_CME_JOBS_DIR.glob("*.json"):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                st = json.load(f)
+        except Exception:
+            continue
+        if st.get("status") not in ("queued", "running"):
+            continue
+        u = str(st.get("updated_at") or st.get("created_at") or "")
+        if u >= best_updated:
+            best_updated = u
+            best = st
+    return best
+
+
+def _start_yahoo_cme_fetch_job(ticker: str, from_dt: datetime, to_dt: datetime, interval: str) -> dict:
+    from_str = from_dt.strftime("%Y-%m-%d")
+    to_str = to_dt.strftime("%Y-%m-%d")
+    original_name = f"{ticker}-{interval}-{from_str}-{to_str}.csv"
+    unique_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(3)}_{original_name}"
+    output_path = (UPLOAD_DIR / unique_filename).resolve()
+
+    job_id = f"ycm_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(4)}"
+    now_iso = datetime.utcnow().isoformat()
+    chunk_days = _yahoo_cme_chunk_days(interval)
+    ranges = _yahoo_cme_date_chunks(from_dt, to_dt, chunk_days)
+    chunk_n = len(ranges)
+    if chunk_n > YAHOO_CME_MAX_CHUNKS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"This range/interval needs {chunk_n} Yahoo requests (limit {YAHOO_CME_MAX_CHUNKS}). "
+                "Narrow the dates or use a larger interval."
+            ),
+        )
+
+    state = {
+        "job_id": job_id,
+        "status": "queued",
+        "phase": "queued",
+        "message": f"Queued Yahoo Finance download ({chunk_n} date chunk{'s' if chunk_n != 1 else ''})",
+        "ticker": ticker,
+        "interval": interval,
+        "from_date": from_str,
+        "to_date": to_str,
+        "chunk_count": chunk_n,
+        "completed_chunks": 0,
+        "current_chunk": 0,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+        "result": None,
+        "error": None,
+    }
+    _yahoo_cme_write_job(job_id, state)
+
+    def _worker():
+        try:
+            state["status"] = "running"
+            state["phase"] = "download"
+            state["completed_chunks"] = 0
+            state["message"] = "Downloading from Yahoo Finance (small date ranges)…"
+            _yahoo_cme_write_job(job_id, state)
+
+            rows = _yahoo_cme_fetch_and_write(
+                ticker, from_dt, to_dt, interval, output_path, job_id=job_id
+            )
+
+            latest = _yahoo_cme_read_job(job_id)
+            if latest:
+                state.update(latest)
+            state["phase"] = "store"
+            state["message"] = "Saving dataset and building binary timeframes…"
+            _yahoo_cme_write_job(job_id, state)
+
+            desc = (
+                f"Yahoo Finance CME continuous future {ticker} {interval} {from_str} → {to_str} "
+                f"({rows} rows)"
+            )
+            result = _store_dataset_file(
+                file_path=output_path,
+                original_name=original_name,
+                description=desc,
+            )
+            result["source"] = "yahoo-finance-cme"
+            result["params"] = {
+                "ticker": ticker,
+                "from_date": from_str,
+                "to_date": to_str,
+                "interval": interval,
+            }
+            state["status"] = "done"
+            state["phase"] = "done"
+            state["message"] = f"Completed Yahoo download ({rows} candles)"
+            state["result"] = result
+            state["finished_at"] = datetime.utcnow().isoformat()
+            _yahoo_cme_write_job(job_id, state)
+        except Exception as exc:
+            err_text = str(exc) or "Unknown Yahoo CME job error"
+            if output_path.exists():
+                try:
+                    output_path.unlink()
+                except OSError:
+                    pass
+            state["status"] = "failed"
+            state["phase"] = "failed"
+            state["message"] = err_text
+            state["error"] = err_text
+            state["finished_at"] = datetime.utcnow().isoformat()
+            _yahoo_cme_write_job(job_id, state)
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+
+    return {
+        "success": True,
+        "job_id": job_id,
+        "status": "queued",
+        "params": {
+            "ticker": ticker,
+            "from_date": from_str,
+            "to_date": to_str,
+            "interval": interval,
+        },
+    }
+
 
 def file_response_if_exists(path: str):
     p = Path(path)
@@ -2068,6 +3791,34 @@ def _read_bin_range(bin_path, start_idx, count):
             candles.append({'t': int(t), 'o': o, 'h': h, 'l': l, 'c': c, 'v': v})
     return candles
 
+
+def _normalize_epoch_ms(v) -> int | None:
+    """Normalize stored candle timestamps to UTC epoch ms; reject corrupt/out-of-range values."""
+    if v is None:
+        return None
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(x):
+        return None
+    xi = int(x)
+    if xi <= 0:
+        return None
+    # Reject garbage / double-scaled values (would show as year 50k+ in browsers)
+    if xi >= 10**14:
+        return None
+    if xi >= 10**12:
+        ms = xi
+    elif xi >= 10**9:
+        ms = xi * 1000
+    else:
+        return None
+    # Plausible historical market data window (~1990 .. 2100 UTC)
+    if ms < 631_152_000_000 or ms > 4_102_444_800_000:
+        return None
+    return ms
+
 def _bin_total_candles(bin_path):
     """Get total number of candles in a binary file."""
     return os.path.getsize(bin_path) // CANDLE_SIZE
@@ -2300,12 +4051,40 @@ def _sanitize_candle_record(c):
     }
 
 def _is_weekend_timestamp_ms(ts):
-    """Return True when timestamp (epoch ms) falls on Saturday or Sunday in UTC."""
+    """Return True when timestamp (epoch ms) falls inside the FX weekend close.
+
+    The 24x5 FX market closes Friday 17:00 America/New_York and reopens Sunday
+    17:00 America/New_York. Using a naive UTC weekday check (`day >= 5`) drops
+    legitimate Sunday-evening NY trading because Sunday in NY is still Sunday
+    in UTC for hours after the market opens — which leaves the first 1h candle
+    of the trading week with a multi-hour gap to the previous bar and breaks
+    `inferBarDurationMs` / multi-panel time sync.
+
+    We therefore convert the timestamp to America/New_York wall-clock and only
+    flag bars in the actual closed window (Friday after 17:00 → Sunday before
+    17:00). Falls back to UTC weekday if the timezone database is unavailable.
+    """
     try:
-        day = datetime.utcfromtimestamp(float(ts) / 1000.0).weekday()
-        return day >= 5
+        ts_s = float(ts) / 1000.0
     except Exception:
         return False
+    try:
+        from zoneinfo import ZoneInfo
+        local = datetime.fromtimestamp(ts_s, tz=ZoneInfo("America/New_York"))
+        wd = local.weekday()  # Mon=0 … Sun=6
+        if wd == 5:  # Saturday — fully closed
+            return True
+        if wd == 6 and local.hour < 17:  # Sunday before 17:00 NY open
+            return True
+        if wd == 4 and local.hour >= 17:  # Friday after 17:00 NY close
+            return True
+        return False
+    except Exception:
+        try:
+            day = datetime.utcfromtimestamp(ts_s).weekday()
+            return day >= 5
+        except Exception:
+            return False
 
 def _filter_weekend_candles(candles):
     if not EXCLUDE_WEEKEND_CANDLES or not candles:
@@ -2768,6 +4547,49 @@ def _resolve_dataset_csv_path(filename: str) -> Path:
 def _resolve_dataset_csv_for_file(db_file: CSVFile) -> Path:
     return _resolve_dataset_csv_path(db_file.filename)
 
+
+def _human_bytes(num: int) -> str:
+    n = max(0, int(num or 0))
+    if n < 1024:
+        return f"{n} B"
+    v = n / 1024.0
+    if v < 1024:
+        return f"{v:.1f} KiB"
+    v /= 1024.0
+    if v < 1024:
+        return f"{v:.2f} MiB"
+    v /= 1024.0
+    return f"{v:.2f} GiB"
+
+
+def _path_disk_bytes(path: Path) -> int:
+    try:
+        if path.is_file():
+            return int(path.stat().st_size)
+        if path.is_dir():
+            s = 0
+            for p in path.rglob("*"):
+                if p.is_file():
+                    try:
+                        s += int(p.stat().st_size)
+                    except OSError:
+                        pass
+            return s
+    except OSError:
+        pass
+    return 0
+
+
+def _epoch_ms_to_iso_utc(ms: float | None) -> str | None:
+    if ms is None:
+        return None
+    try:
+        v = float(ms) / 1000.0
+        return datetime.utcfromtimestamp(v).strftime("%Y-%m-%d %H:%M:%S") + " UTC"
+    except Exception:
+        return None
+
+
 def _delete_dataset_source_csv(filename: str):
     for candidate in (UPLOAD_DIR / filename, CSV_ARCHIVE_DIR / filename):
         if candidate.exists():
@@ -2775,6 +4597,54 @@ def _delete_dataset_source_csv(filename: str):
                 candidate.unlink()
             except Exception:
                 pass
+
+
+def _purge_dataset_rows(db, db_file: CSVFile) -> None:
+    """Remove on-disk dataset assets and DB rows for one csv_files record (caller commits)."""
+    file_id = int(db_file.id)
+    _delete_dataset_source_csv(db_file.filename)
+
+    aggs = db.query(CSVAggregate).filter(CSVAggregate.file_id == file_id).all()
+    for agg in aggs:
+        for d in (BIN_DIR, AGG_DIR):
+            p = d / agg.agg_filename
+            if p.exists():
+                p.unlink()
+        db.delete(agg)
+
+    for tf in DATASET_TIMEFRAMES:
+        p = BIN_DIR / f"bin_{file_id}_{tf}.bin"
+        if p.exists():
+            p.unlink()
+
+    tile_file_dir = TILES_DIR / str(file_id)
+    if tile_file_dir.exists():
+        for tp in tile_file_dir.rglob("tile_*.bin"):
+            _mmap_cache.invalidate(tp)
+        shutil.rmtree(tile_file_dir, ignore_errors=True)
+
+    db.query(DatasetSettings).filter(DatasetSettings.file_id == file_id).delete()
+    db.query(BinaryBuildJob).filter(BinaryBuildJob.file_id == file_id).delete()
+    db.delete(db_file)
+
+
+def _purge_all_chart_datasets() -> dict:
+    """Delete every registered dataset. Destructive — invalidates stored client fileId references."""
+    db = SessionLocal()
+    deleted_ids: list[int] = []
+    try:
+        rows = db.query(CSVFile).order_by(CSVFile.id.asc()).all()
+        for db_file in rows:
+            deleted_ids.append(int(db_file.id))
+            _purge_dataset_rows(db, db_file)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+    return {"deleted_count": len(deleted_ids), "deleted_ids": deleted_ids}
+
 
 def _dataset_binary_integrity(db, file_id: int) -> tuple[bool, list[str]]:
     """Validate that required TF binaries + tile metadata are all ready for a dataset."""
@@ -2796,6 +4666,117 @@ def _dataset_binary_integrity(db, file_id: int) -> tuple[bool, list[str]]:
             issues.append(f"missing tile meta ({tf})")
 
     return len(issues) == 0, issues
+
+
+def _dataset_overview_entry(
+    db,
+    db_file: CSVFile,
+    ds_settings: DatasetSettings | None,
+    latest_job: BinaryBuildJob | None,
+) -> dict:
+    """Disk sizes, readiness, integrity, and per-timeframe breakdown for admin overview."""
+    file_id = int(db_file.id)
+    csv_path = _resolve_dataset_csv_for_file(db_file)
+    csv_exists = csv_path.exists()
+    csv_bytes = _path_disk_bytes(csv_path) if csv_exists else 0
+
+    aggs_list = db.query(CSVAggregate).filter(CSVAggregate.file_id == file_id).all()
+    agg_by_tf = {str(a.timeframe): a for a in aggs_list}
+
+    tiles_root = TILES_DIR / str(file_id)
+    tiles_bytes = _path_disk_bytes(tiles_root) if tiles_root.exists() else 0
+
+    bin_total = 0
+    ready_tf = 0
+    timeframes_detail: list[dict] = []
+    for tf in DATASET_TIMEFRAMES:
+        agg = agg_by_tf.get(tf)
+        fname = agg.agg_filename if agg and agg.agg_filename else f"bin_{file_id}_{tf}.bin"
+        bp = BIN_DIR / fname
+        bsz = int(bp.stat().st_size) if bp.exists() else 0
+        bin_total += bsz
+        st = str(agg.status or "") if agg else ""
+        if not agg and bp.exists():
+            st = "ready"
+        elif not agg:
+            st = "missing"
+        if st == "ready":
+            ready_tf += 1
+        rc = int(agg.row_count or 0) if agg else 0
+        timeframes_detail.append(
+            {
+                "timeframe": tf,
+                "status": st,
+                "row_count": rc,
+                "binary_bytes": bsz,
+                "binary_human": _human_bytes(bsz),
+                "binary_exists": bp.exists(),
+            }
+        )
+
+    total_storage = csv_bytes + bin_total + tiles_bytes
+    ok, integrity_issues = _dataset_binary_integrity(db, file_id)
+
+    one_m = agg_by_tf.get("1m")
+    coverage = None
+    if one_m and one_m.start_ts is not None and one_m.end_ts is not None:
+        span_ms = float(one_m.end_ts) - float(one_m.start_ts)
+        coverage = {
+            "start_iso": _epoch_ms_to_iso_utc(float(one_m.start_ts)),
+            "end_iso": _epoch_ms_to_iso_utc(float(one_m.end_ts)),
+            "span_days": round(span_ms / 86400000.0, 2),
+            "candle_count_1m": int(one_m.row_count or 0),
+        }
+
+    job_status = str(latest_job.status or "").lower() if latest_job else ""
+    if job_status in {"queued", "processing"}:
+        health = "building"
+    elif latest_job and job_status == "failed":
+        health = "failed"
+    elif not ok:
+        health = "integrity_issues"
+    elif ready_tf >= len(DATASET_TIMEFRAMES):
+        health = "healthy"
+    elif ready_tf > 0:
+        health = "partial"
+    else:
+        health = "empty"
+
+    return {
+        "id": file_id,
+        "filename": db_file.filename,
+        "original_name": db_file.original_name,
+        "description": db_file.description or "",
+        "upload_date": db_file.upload_date.isoformat() if db_file.upload_date else None,
+        "settings": _dataset_settings_public_dict(ds_settings, db_file),
+        "csv_storage_rows_stored": int(db_file.row_count or 0),
+        "csv": {"exists": csv_exists, "bytes": csv_bytes, "human": _human_bytes(csv_bytes)},
+        "binaries_total_bytes": bin_total,
+        "binaries_total_human": _human_bytes(bin_total),
+        "tiles_total_bytes": tiles_bytes,
+        "tiles_total_human": _human_bytes(tiles_bytes),
+        "total_storage_bytes": total_storage,
+        "total_storage_human": _human_bytes(total_storage),
+        "ready_timeframes": ready_tf,
+        "total_timeframes": len(DATASET_TIMEFRAMES),
+        "coverage": coverage,
+        "integrity_ok": ok,
+        "integrity_issues": integrity_issues,
+        "integrity_issue_count": len(integrity_issues),
+        "health": health,
+        "timeframes": timeframes_detail,
+        "build_job": (
+            {
+                "id": int(latest_job.id),
+                "status": job_status,
+                "attempt_count": int(latest_job.attempt_count or 0),
+                "error": ((latest_job.error or "")[:400] if latest_job.error else None),
+            }
+            if latest_job
+            else None
+        ),
+    }
+
 
 def _archive_source_csv_if_ready(file_id: int, source_path: Path):
     """Move CSV from hot uploads to archive once binaries/tiles are fully ready."""
@@ -2976,6 +4957,485 @@ def build_binary_for_file(file_id: int, file_path, original_filename: str, run_a
         t.start()
         return True
     return _run()
+
+
+# Instrument types whose `period=full` archives are sharded by first letter (one ZIP per A–Z bucket).
+# Futures are NOT in this set — FirstRate ships futures as continuous-contract bundles selected via
+# the `adjustment` parameter (contin_UNadj / contin_adj_ratio / contin_adj_absolute), not by letter.
+_INSTRUMENT_TYPES_NEEDING_LETTER_FOR_FULL = {"stock", "etf", "options"}
+
+
+def _firstrate_plan_ticker_ranges(
+    *,
+    instrument_type: str,
+    period: str,
+    explicit_range: str | None,
+    pairs_norm: list[str],
+) -> list[str | None]:
+    """
+    Decide which `ticker_range` letters to request from FirstRate for this job.
+
+    FirstRate splits `period=full` bundles alphabetically for stock/etf/futures/options
+    (one ZIP per letter). For everything else (fx/crypto/index, or non-full periods),
+    a single request with `ticker_range=None` returns the whole dataset.
+
+    Rules:
+    - Explicit letter from the UI (A–Z) → always honored, single bundle.
+    - Non-letter-split type, or period != "full" → [None] (single bundle).
+    - Letter-split type + period == "full":
+        * if pairs provided → one letter per unique first-letter of the pairs.
+        * else → full A..Z sweep (expensive; only if user intentionally left pairs empty).
+    """
+    if explicit_range:
+        return [explicit_range]
+    if period != "full" or instrument_type not in _INSTRUMENT_TYPES_NEEDING_LETTER_FOR_FULL:
+        return [None]
+    if pairs_norm:
+        letters = sorted({p[0].upper() for p in pairs_norm if p and p[0].isalpha()})
+        return list(letters) if letters else [None]
+    return [chr(c) for c in range(ord("A"), ord("Z") + 1)]
+
+
+def _run_firstrate_import_job(job_id: str) -> None:
+    """Background: optional purge → download FirstRate ZIP(s) → normalize CSVs → register datasets → binary build.
+
+    When `period=full` and the instrument type is split alphabetically (stock/etf/futures/options),
+    the job automatically iterates over the letters derived from the selected pairs, so a single
+    click downloads *full* history for every requested symbol with no manual letter picking.
+    """
+    tmp_root: Path | None = None
+    try:
+        state = _firstrate_read_job(job_id)
+        if not state:
+            return
+
+        uid = get_firstrate_userid()
+        if not uid:
+            raise RuntimeError("Set FIrstrate_USERID in the server environment (FirstRate customer userid).")
+
+        instrument_type = (state.get("instrument_type") or "fx").strip().lower()
+        if instrument_type not in VALID_INSTRUMENT_TYPES:
+            raise ValueError(f"Invalid instrument_type {instrument_type!r}")
+        adj_raw = state.get("adjustment")
+        adj_in = str(adj_raw).strip() if adj_raw is not None and str(adj_raw).strip() else None
+        adjustment: str | None = None
+        if instrument_type in {"stock", "etf"}:
+            if adj_in is not None:
+                if adj_in not in VALID_STOCK_ADJUSTMENTS:
+                    raise ValueError(f"adjustment for stock/etf must be one of {sorted(VALID_STOCK_ADJUSTMENTS)}")
+                adjustment = adj_in
+        elif instrument_type == "futures":
+            # FirstRate rejects futures data_file calls without a continuous-contract adjustment.
+            # Default to contin_UNadj (raw unadjusted continuous series) when user leaves it blank.
+            if adj_in is None:
+                adjustment = "contin_UNadj"
+            else:
+                if adj_in not in VALID_FUTURES_ADJUSTMENTS:
+                    raise ValueError(
+                        f"adjustment for futures must be one of {sorted(VALID_FUTURES_ADJUSTMENTS)}"
+                    )
+                adjustment = adj_in
+        else:
+            if adj_in is not None:
+                raise ValueError(
+                    f"adjustment is only valid for stock/etf (split/div handling) or futures "
+                    f"(continuous-contract stitching) — not for {instrument_type}"
+                )
+
+        state["status"] = "running"
+        state["phase"] = "init"
+        state["message"] = "Starting FirstRate import"
+        _firstrate_write_job(job_id, state)
+
+        if state.get("delete_existing_first"):
+            purge = _purge_all_chart_datasets()
+            state["purge"] = purge
+            state["phase"] = "purge"
+            state["message"] = f"Removed {purge.get('deleted_count', 0)} dataset(s)"
+            _firstrate_write_job(job_id, state)
+
+        tmp_root = Path(tempfile.mkdtemp(prefix="firstrate_", dir=str(UPLOAD_DIR.resolve())))
+
+        period = (state.get("period") or "week").strip().lower()
+        timeframe = (state.get("timeframe") or "1min").strip().lower()
+        explicit_range = state.get("ticker_range")
+        if isinstance(explicit_range, str):
+            explicit_range = explicit_range.strip().upper()[:1] or None
+
+        pairs_norm = _normalize_ticker_filter_list(
+            state.get("pairs") if isinstance(state.get("pairs"), list) else None
+        )
+        ranges_to_fetch = _firstrate_plan_ticker_ranges(
+            instrument_type=instrument_type,
+            period=period,
+            explicit_range=explicit_range,
+            pairs_norm=pairs_norm,
+        )
+        state["planned_ticker_ranges"] = [r for r in ranges_to_fetch if r]
+        state["pairs_filter"] = pairs_norm
+        state["files_total"] = 0
+        state["files_done"] = 0
+        state["files_skipped_by_pair_filter"] = 0
+        state["datasets_created"] = []
+        state["skipped_files"] = []
+        _firstrate_write_job(job_id, state)
+
+        timeout_sec = float(state.get("download_timeout_sec") or 7200)
+        ts_prefix = datetime.now().strftime("%Y%m%d_%H%M%S")
+        created: list[dict] = []
+        skipped: list[dict] = []
+        total_skipped_by_filter = 0
+
+        for bundle_idx, current_range in enumerate(ranges_to_fetch, start=1):
+            bundle_label = (
+                f" [letter {current_range}, bundle {bundle_idx}/{len(ranges_to_fetch)}]"
+                if current_range
+                else ""
+            )
+            zip_path = tmp_root / f"firstrate_bundle_{bundle_idx:02d}.zip"
+
+            st = _firstrate_read_job(job_id) or state
+            st["phase"] = "download"
+            st["current_bundle"] = {"index": bundle_idx, "total": len(ranges_to_fetch), "letter": current_range}
+            st["message"] = f"Downloading ZIP from FirstRate{bundle_label} — starting…"
+            st["download_bytes_received"] = 0
+            st["download_bytes_total"] = None
+            st["download_percent"] = None
+            _firstrate_write_job(job_id, st)
+
+            _dl_prog = {"last_t": 0.0, "last_n": -1}
+
+            def _firstrate_download_progress(written: int, total: int | None, _label: str = bundle_label) -> None:
+                now = time.monotonic()
+                done = total is not None and total > 0 and written >= total
+                if written > 0 and not done:
+                    if (
+                        now - _dl_prog["last_t"] < 0.9
+                        and written - _dl_prog["last_n"] < 8 * 1024 * 1024
+                    ):
+                        return
+                _dl_prog["last_t"] = now
+                _dl_prog["last_n"] = written
+                sti = _firstrate_read_job(job_id)
+                if not sti:
+                    return
+                pct: int | None = None
+                if total is not None and total > 0:
+                    pct = min(100, int((100 * written) / total))
+                msg_parts = [
+                    f"Downloading ZIP from FirstRate{_label}",
+                    f"{written / (1024 * 1024):.1f} MiB received",
+                ]
+                if total:
+                    msg_parts.append(f"/ {total / (1024 * 1024):.1f} MiB total")
+                    if pct is not None:
+                        msg_parts.append(f"({pct}%)")
+                elif written == 0:
+                    msg_parts.append("(connected — streaming…)")
+                else:
+                    msg_parts.append("(total size not reported — bytes only)")
+                sti["phase"] = "download"
+                sti["download_bytes_received"] = written
+                sti["download_bytes_total"] = total
+                sti["download_percent"] = pct
+                sti["message"] = " — ".join(msg_parts)
+                _firstrate_write_job(job_id, sti)
+
+            try:
+                download_firstrate_bundle(
+                    userid=uid,
+                    period=period,
+                    timeframe=timeframe,
+                    instrument_type=instrument_type,
+                    ticker_range=current_range,
+                    adjustment=adjustment,
+                    dest_zip=zip_path,
+                    timeout_sec=timeout_sec,
+                    progress_callback=_firstrate_download_progress,
+                )
+            except Exception as exc:
+                # Missing-letter bundles are common when auto-sweeping A..Z: skip quietly.
+                msg = str(exc)
+                if len(ranges_to_fetch) > 1 and "no datafile" in msg.lower():
+                    skipped.append({"bundle_letter": current_range, "error": "vendor: no datafile (skipped)"})
+                    continue
+                raise
+
+            st = _firstrate_read_job(job_id) or state
+            st["phase"] = "extract"
+            st["message"] = f"Unpacking ZIP archive{bundle_label}…"
+            for _k in ("download_bytes_received", "download_bytes_total", "download_percent"):
+                st.pop(_k, None)
+            _firstrate_write_job(job_id, st)
+
+            extract_dir = tmp_root / f"extracted_{bundle_idx:02d}"
+            extract_zip(zip_path, extract_dir)
+            try:
+                zip_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+            csv_paths = iter_csv_files(extract_dir)
+
+            # Diagnostic: if the bundle produced no CSVs, capture what files DID land in the
+            # extract dir so the admin can see (in the live job status + server logs) whether
+            # the archive nested differently than expected. Without this hint, crypto / futures
+            # ZIP-of-ZIPs failures look like silent "0 datasets" completions.
+            if not csv_paths:
+                try:
+                    all_files = [p for p in extract_dir.rglob("*") if p.is_file()]
+                except Exception:
+                    all_files = []
+                exts: dict[str, int] = {}
+                for p in all_files:
+                    key = (p.suffix or "(no-ext)").lower()
+                    exts[key] = exts.get(key, 0) + 1
+                sample_names = [p.relative_to(extract_dir).as_posix() for p in all_files[:25]]
+                diag = {
+                    "bundle_letter": current_range,
+                    "bundle_index": bundle_idx,
+                    "total_files_extracted": len(all_files),
+                    "extensions": exts,
+                    "sample_paths": sample_names,
+                }
+                print(
+                    f"[firstrate][{job_id}] extract produced 0 CSV/TXT in {extract_dir} — "
+                    f"files={len(all_files)} exts={exts} sample={sample_names[:10]}"
+                )
+                skipped.append({
+                    "bundle_letter": current_range,
+                    "error": (
+                        "archive contained no CSV/TXT files after recursive extract — "
+                        f"saw {len(all_files)} file(s), extensions: {exts}"
+                    ),
+                    "diagnostic": diag,
+                })
+
+            if pairs_norm:
+                before_n = len(csv_paths)
+                csv_paths, skipped_pair_n = _firstrate_filter_csv_paths_by_tickers(csv_paths, pairs_norm)
+                total_skipped_by_filter += skipped_pair_n
+                filter_msg = (
+                    f"Ticker filter kept {len(csv_paths)}/{before_n} CSV(s){bundle_label}"
+                )
+                if before_n > 0 and not csv_paths:
+                    # All files present but the token filter dropped everything — useful to log.
+                    try:
+                        before_paths = iter_csv_files(extract_dir)
+                        sample_stems = [p.stem for p in before_paths[:25]]
+                    except Exception:
+                        sample_stems = []
+                    print(
+                        f"[firstrate][{job_id}] ticker filter dropped ALL {before_n} file(s); "
+                        f"tokens={pairs_norm} first-stems={sample_stems}"
+                    )
+                    skipped.append({
+                        "bundle_letter": current_range,
+                        "error": (
+                            f"ticker filter {pairs_norm} matched 0 of {before_n} CSVs — "
+                            f"check spelling. Sample filenames in bundle: {sample_stems[:8]}"
+                        ),
+                    })
+            else:
+                filter_msg = f"Normalizing {len(csv_paths)} CSV file(s){bundle_label}"
+
+            st = _firstrate_read_job(job_id) or state
+            st["phase"] = "normalize"
+            st["files_total"] = int(st.get("files_total") or 0) + len(csv_paths)
+            st["files_skipped_by_pair_filter"] = total_skipped_by_filter
+            st["message"] = filter_msg
+            _firstrate_write_job(job_id, st)
+
+            for src_idx, src in enumerate(csv_paths):
+                stem_raw = src.stem
+                stem_safe = re.sub(r"[^A-Za-z0-9_\-]+", "_", stem_raw).strip("_")[:96] or "instrument"
+                out_name = f"{ts_prefix}_b{bundle_idx:02d}_{src_idx:04d}_firstrate_{stem_safe}_{timeframe}.csv"
+                dest_csv = UPLOAD_DIR / out_name
+                try:
+                    n = normalize_firstrate_csv_to_standard(src, dest_csv, instrument_type)
+                except Exception as exc:
+                    skipped.append({"file": src.name, "error": str(exc)[:800]})
+                    st = _firstrate_read_job(job_id) or state
+                    st["files_done"] = int(st.get("files_done") or 0) + 1
+                    st["skipped_files"] = list(skipped)
+                    st["message"] = f"Normalize error on {src.name}"
+                    _firstrate_write_job(job_id, st)
+                    continue
+
+                if n < 1:
+                    try:
+                        dest_csv.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    skipped.append({"file": src.name, "error": "no rows parsed"})
+                    st = _firstrate_read_job(job_id) or state
+                    st["files_done"] = int(st.get("files_done") or 0) + 1
+                    st["skipped_files"] = list(skipped)
+                    _firstrate_write_job(job_id, st)
+                    continue
+
+                original_label = f"{stem_safe}_{timeframe}.csv"
+                upsert = bool(state.get("upsert_existing"))
+                info = _upsert_or_create_dataset_from_csv(
+                    dest_csv,
+                    original_name=original_label,
+                    description=f"FirstRate {instrument_type} ({period}, {timeframe})",
+                    upsert=upsert,
+                )
+                entry = info.get("file") if isinstance(info, dict) else None
+                if entry:
+                    created.append(entry)
+                st = _firstrate_read_job(job_id) or state
+                st["files_done"] = int(st.get("files_done") or 0) + 1
+                st["datasets_created"] = list(created)
+                st["skipped_files"] = list(skipped)
+                # Record per-ticker merge stats so the nightly-health UI can show
+                # how many bars each dataset picked up on this run. Keyed by
+                # original_label (e.g. `EURUSD_1min.csv`) so a ticker imported
+                # across multiple bundles aggregates correctly.
+                merge_map = st.get("merge_summary") or {}
+                if isinstance(info, dict):
+                    merge_map[original_label] = {
+                        "ticker": stem_safe,
+                        "merged": bool(info.get("merged")),
+                        "upserted": bool(info.get("upserted")),
+                        "new_rows_added": int(info.get("new_rows_added") or 0),
+                        "total_rows": int(info.get("total_rows") or 0),
+                    }
+                st["merge_summary"] = merge_map
+                st["message"] = (
+                    f"Imported {len(created)} dataset(s){bundle_label}"
+                )
+                _firstrate_write_job(job_id, st)
+
+            # Free extracted files between bundles.
+            try:
+                shutil.rmtree(extract_dir, ignore_errors=True)
+            except Exception:
+                pass
+
+        state = _firstrate_read_job(job_id) or state
+        state["status"] = "done"
+        state["phase"] = "done"
+        state["current_bundle"] = None
+        state["message"] = (
+            f"Complete — {len(created)} dataset(s), {len(skipped)} skipped across "
+            f"{len(ranges_to_fetch)} bundle(s)"
+        )
+        _firstrate_write_job(job_id, state)
+        _firstrate_schedule_after_job(job_id, success=True, error_message=None)
+
+    except Exception as exc:
+        err = _firstrate_read_job(job_id) or {}
+        err["status"] = "failed"
+        err["phase"] = "failed"
+        err["message"] = str(exc)[:2000]
+        err["error"] = str(exc)[:4000]
+        _firstrate_write_job(job_id, err)
+        _firstrate_schedule_after_job(job_id, success=False, error_message=str(exc))
+    finally:
+        if tmp_root is not None:
+            try:
+                shutil.rmtree(tmp_root, ignore_errors=True)
+            except Exception:
+                pass
+
+
+def _queue_firstrate_fx_import_job(
+    *,
+    period: str,
+    timeframe: str,
+    instrument_type: str = "fx",
+    adjustment: str | None = None,
+    delete_existing_first: bool,
+    purge_confirmation: str | None,
+    ticker_range: str | None,
+    download_timeout_sec: float | None,
+    upsert_existing: bool,
+    trigger: str,
+    pairs: list[str] | None = None,
+) -> dict:
+    uid = get_firstrate_userid()
+    if not uid:
+        raise ValueError("Set FIrstrate_USERID in the server environment (FirstRate customer userid).")
+
+    it = (instrument_type or "fx").strip().lower()
+    if it not in VALID_INSTRUMENT_TYPES:
+        raise ValueError(f"type must be one of {sorted(VALID_INSTRUMENT_TYPES)}")
+    adj_clean: str | None = None
+    if adjustment is not None and str(adjustment).strip():
+        adj_clean = str(adjustment).strip()
+        if it not in {"stock", "etf"}:
+            raise ValueError("adjustment is only valid for stock and etf bundles")
+        if adj_clean not in VALID_STOCK_ADJUSTMENTS:
+            raise ValueError(f"adjustment must be one of {sorted(VALID_STOCK_ADJUSTMENTS)}")
+
+    if delete_existing_first:
+        expected = (DATASET_PURGE_CONFIRMATION or "").strip()
+        if (purge_confirmation or "").strip() != expected:
+            raise ValueError(
+                f"When delete_existing_first is true, purge_confirmation must exactly equal {expected!r}"
+            )
+
+    _firstrate_cleanup_jobs()
+    job_id = f"fr_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(4)}"
+    state = {
+        "job_id": job_id,
+        "status": "queued",
+        "phase": "queued",
+        "message": "Queued FirstRate import",
+        "instrument_type": it,
+        "adjustment": adj_clean,
+        "period": period,
+        "timeframe": timeframe,
+        "delete_existing_first": bool(delete_existing_first),
+        "ticker_range": ticker_range,
+        "download_timeout_sec": float(download_timeout_sec or 7200),
+        "upsert_existing": bool(upsert_existing),
+        "trigger": trigger,
+        "created_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.utcnow().isoformat(),
+        "files_total": 0,
+        "files_done": 0,
+        "datasets_created": [],
+        "skipped_files": [],
+        "pairs": list(pairs) if pairs else [],
+    }
+    _firstrate_write_job(job_id, state)
+    threading.Thread(target=lambda: _run_firstrate_import_job(job_id), daemon=True).start()
+    return {"success": True, "job_id": job_id}
+
+
+def _start_firstrate_fx_import_job(
+    *,
+    period: str,
+    timeframe: str,
+    instrument_type: str = "fx",
+    adjustment: str | None = None,
+    delete_existing_first: bool,
+    purge_confirmation: str | None,
+    ticker_range: str | None,
+    download_timeout_sec: float | None,
+    upsert_existing: bool = False,
+    trigger: str = "manual",
+    pairs: list[str] | None = None,
+) -> dict:
+    try:
+        return _queue_firstrate_fx_import_job(
+            period=period,
+            timeframe=timeframe,
+            instrument_type=instrument_type,
+            adjustment=adjustment,
+            delete_existing_first=delete_existing_first,
+            purge_confirmation=purge_confirmation,
+            ticker_range=ticker_range,
+            download_timeout_sec=download_timeout_sec,
+            upsert_existing=upsert_existing,
+            trigger=trigger,
+            pairs=pairs,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 def _claim_next_binary_build_job() -> dict | None:
@@ -3334,6 +5794,66 @@ class AdminDukascopyFetchIn(BaseModel):
     from_date: str
     to_date: str
 
+
+class AdminFirstrateFxSyncIn(BaseModel):
+    """FirstRate `data_file` API — see https://firstratedata.com/about/api-docs"""
+    instrument_type: str = "fx"
+    adjustment: str | None = None
+    period: str = "week"  # full | month | week | day
+    timeframe: str = "1min"  # 1min | 5min | 30min | 1hour | 1day
+    delete_existing_first: bool = False
+    purge_confirmation: str | None = None
+    ticker_range: str | None = None
+    download_timeout_sec: float | None = 7200
+    upsert_existing: bool = False
+    pairs: list[str] | None = None
+
+
+class AdminFirstrateScheduleIn(BaseModel):
+    """Persisted VPS auto-sync settings (`uploads/firstrate_schedule.json`)."""
+    enabled: bool | None = None
+    # nightly | interval — nightly is the supported default; interval kept for back-compat.
+    mode: str | None = None
+    # Hour-of-day (UTC) at which nightly sync starts queuing jobs; 0–23.
+    nightly_utc_hour: int | None = Field(default=None, ge=0, le=23)
+    # When true, nightly mode pulls every asset class present in the registry
+    # (ignores `instrument_type` / `pairs`).
+    auto_all_types: bool | None = None
+    interval_minutes: int | None = Field(default=None, ge=15, le=10080)
+    instrument_type: str | None = None
+    adjustment: str | None = None
+    period: str | None = None
+    timeframe: str | None = None
+    upsert_existing: bool | None = None
+    delete_existing_first: bool | None = None
+    purge_confirmation: str | None = None
+    ticker_range: str | None = None
+    download_timeout_sec: float | None = Field(default=None, ge=60.0, le=86400.0)
+    pairs: list[str] | None = None
+
+
+class AdminPurgeDatasetsIn(BaseModel):
+    """Wipe all chart datasets (DB + binaries + tiles + source CSVs)."""
+    confirmation: str
+
+class AdminBinanceFetchIn(BaseModel):
+    tickers: list[str]
+    asset_class: str = "spot"
+    data_type: str = "klines"
+    data_frequency: str = "1m"
+    from_date: str
+    to_date: str
+    is_to_update_existing: bool = False
+    tickers_to_exclude: list[str] | None = None
+
+
+class AdminYahooCmeFetchIn(BaseModel):
+    ticker: str
+    from_date: str
+    to_date: str
+    interval: str = "1d"
+
+
 class _AnonymousUser:
     """Dummy user object used when AUTH_ENABLED is False."""
     id = 0
@@ -3358,11 +5878,106 @@ def _require_user(request: Request):
 
 def _require_admin(request: Request):
     if not AUTH_ENABLED:
+        # Stamp the synthetic anon-admin for the audit middleware anyway.
+        try:
+            request.state.admin_user_id = getattr(_ANON_USER, "id", None)
+            request.state.admin_email = getattr(_ANON_USER, "email", None)
+        except Exception:
+            pass
         return _ANON_USER
     user = _require_user(request)
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden")
+    # Stash on request.state so `_admin_audit_middleware` can attribute the
+    # call without re-doing the cookie lookup / DB query post-response.
+    try:
+        request.state.admin_user_id = int(user.id)
+        request.state.admin_email = user.email
+    except Exception:
+        pass
     return user
+
+
+def _client_ip(request: Request) -> str | None:
+    """Nginx sits in front so we trust `X-Forwarded-For` (first hop)."""
+    xff = request.headers.get("x-forwarded-for") or ""
+    if xff:
+        return xff.split(",", 1)[0].strip()[:63] or None
+    xr = request.headers.get("x-real-ip")
+    if xr:
+        return xr.strip()[:63] or None
+    try:
+        return (request.client.host or "")[:63] or None
+    except Exception:
+        return None
+
+
+def _audit_truncate(value, max_len: int = 4000) -> str | None:
+    """Safely coerce any JSON-ish value into a bounded text column."""
+    if value is None:
+        return None
+    try:
+        s = value if isinstance(value, str) else json.dumps(value, default=str, separators=(",", ":"))
+    except Exception:
+        s = str(value)
+    if len(s) > max_len:
+        s = s[: max_len - 20] + '…"[truncated]"'
+    return s
+
+
+def _record_admin_action(
+    request: Request,
+    *,
+    action: str,
+    status: str = "ok",
+    status_code: int | None = None,
+    target_type: str | None = None,
+    target_id: str | int | None = None,
+    params: dict | None = None,
+    result: dict | None = None,
+    error: str | None = None,
+) -> None:
+    """
+    Structured audit write from high-risk admin handlers. Never raises — a
+    failing audit MUST NOT break the actual endpoint (that would be worse
+    than no audit at all). Keep params/result small (both truncate to 4 KB)
+    and scrubbed of secrets (we never log request bodies here).
+    """
+    db = None
+    try:
+        admin_user_id = getattr(request.state, "admin_user_id", None) if request else None
+        admin_email = getattr(request.state, "admin_email", None) if request else None
+        entry = AdminAuditLog(
+            admin_user_id=admin_user_id,
+            admin_email=(admin_email or None),
+            action=(action or "unknown")[:64],
+            method=(request.method if request else None),
+            path=(str(request.url.path) if request else None),
+            target_type=(target_type or None),
+            target_id=(str(target_id) if target_id is not None else None),
+            status=(status or "ok")[:16],
+            status_code=status_code,
+            params_json=_audit_truncate(params),
+            result_json=_audit_truncate(result),
+            error_message=_audit_truncate(error, max_len=2000),
+            ip_address=_client_ip(request) if request else None,
+            user_agent=((request.headers.get("user-agent") or "")[:500] if request else None),
+        )
+        db = SessionLocal()
+        db.add(entry)
+        db.commit()
+    except Exception:
+        try:
+            if db is not None:
+                db.rollback()
+        except Exception:
+            pass
+    finally:
+        try:
+            if db is not None:
+                db.close()
+        except Exception:
+            pass
 
 def _can_access_trading_session(user: User, session: TradingSession) -> bool:
     return int(session.user_id) == int(user.id)
@@ -3456,8 +6071,27 @@ def _sanitize_for_json(v):
         return {k: _sanitize_for_json(val) for k, val in v.items()}
     return v
 
+def _trade_sort_ts(trade: dict) -> float:
+    """Chronological sort key for equity path (seconds)."""
+    dt = _parse_dt_any(
+        trade.get("exitTime")
+        or trade.get("closeTime")
+        or trade.get("exit_time")
+        or trade.get("close_time")
+        or trade.get("entryTime")
+        or trade.get("openTime")
+    )
+    if not dt:
+        return 0.0
+    try:
+        return float(dt.timestamp())
+    except Exception:
+        return 0.0
+
+
 def _compute_session_analytics(session_public: dict, journal: list):
     trades = [t for t in journal if isinstance(t, dict)]
+    trades.sort(key=_trade_sort_ts)
     pnls = [float(_trade_pnl(t)) for t in trades]
     wins = sum(1 for p in pnls if p > 0)
     losses = sum(1 for p in pnls if p < 0)
@@ -5167,10 +7801,208 @@ async def admin_list_datasets(request: Request):
     finally:
         db.close()
 
+
+@app.get("/api/admin/datasets/overview")
+async def admin_datasets_overview(request: Request):
+    """Full-disk and health snapshot for every dataset (admin registry view)."""
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        files = db.query(CSVFile).order_by(CSVFile.upload_date.desc()).all()
+        settings_rows = db.query(DatasetSettings).all()
+        settings_by_file = {int(s.file_id): s for s in settings_rows}
+        jobs = db.query(BinaryBuildJob).order_by(BinaryBuildJob.created_at.desc(), BinaryBuildJob.id.desc()).all()
+        latest_job_by_file: dict[int, BinaryBuildJob] = {}
+        for job in jobs:
+            fid = int(job.file_id)
+            if fid not in latest_job_by_file:
+                latest_job_by_file[fid] = job
+
+        entries = []
+        for f in files:
+            sid = int(f.id)
+            st = settings_by_file.get(sid)
+            j = latest_job_by_file.get(sid)
+            entries.append(_dataset_overview_entry(db, f, st, j))
+
+        total_disk = sum(int(x.get("total_storage_bytes") or 0) for x in entries)
+        healthy_n = sum(1 for x in entries if x.get("health") == "healthy")
+        return {
+            "success": True,
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "summary": {
+                "dataset_count": len(entries),
+                "total_storage_bytes": total_disk,
+                "total_storage_human": _human_bytes(total_disk),
+                "healthy_count": healthy_n,
+                "needs_attention_count": len(entries) - healthy_n,
+            },
+            "datasets": entries,
+            "timeframes": list(DATASET_TIMEFRAMES),
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/admin/datasets/{file_id}/analytics")
+async def admin_dataset_analytics(file_id: int, request: Request):
+    """
+    Disk usage, row counts per timeframe, coverage dates, and pipeline summary for one dataset.
+    """
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        db_file = db.query(CSVFile).filter(CSVFile.id == file_id).first()
+        if not db_file:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
+        csv_path = _resolve_dataset_csv_for_file(db_file)
+        csv_exists = csv_path.exists()
+        csv_bytes = _path_disk_bytes(csv_path) if csv_exists else 0
+
+        aggs_list = db.query(CSVAggregate).filter(CSVAggregate.file_id == file_id).all()
+        agg_by_tf = {str(a.timeframe): a for a in aggs_list}
+
+        tiles_root = TILES_DIR / str(file_id)
+        tiles_bytes = _path_disk_bytes(tiles_root) if tiles_root.exists() else 0
+
+        bin_total = 0
+        ready_tf = 0
+        timeframes_detail: list[dict] = []
+        for tf in DATASET_TIMEFRAMES:
+            agg = agg_by_tf.get(tf)
+            fname = agg.agg_filename if agg and agg.agg_filename else f"bin_{file_id}_{tf}.bin"
+            bp = BIN_DIR / fname
+            bsz = int(bp.stat().st_size) if bp.exists() else 0
+            bin_total += bsz
+            st = str(agg.status or "") if agg else ""
+            if not agg and bp.exists():
+                st = "ready"
+            elif not agg:
+                st = "missing"
+            if st == "ready":
+                ready_tf += 1
+
+            rc = int(agg.row_count or 0) if agg else 0
+            timeframes_detail.append(
+                {
+                    "timeframe": tf,
+                    "status": st,
+                    "row_count": rc,
+                    "binary_filename": fname,
+                    "binary_bytes": bsz,
+                    "binary_human": _human_bytes(bsz),
+                    "binary_exists": bp.exists(),
+                    "start_ts_ms": float(agg.start_ts) if agg and agg.start_ts is not None else None,
+                    "end_ts_ms": float(agg.end_ts) if agg and agg.end_ts is not None else None,
+                    "start_iso": _epoch_ms_to_iso_utc(float(agg.start_ts)) if agg and agg.start_ts is not None else None,
+                    "end_iso": _epoch_ms_to_iso_utc(float(agg.end_ts)) if agg and agg.end_ts is not None else None,
+                }
+            )
+
+        total_storage = csv_bytes + bin_total + tiles_bytes
+
+        one_m = agg_by_tf.get("1m")
+        coverage = None
+        if one_m and one_m.start_ts is not None and one_m.end_ts is not None:
+            span_ms = float(one_m.end_ts) - float(one_m.start_ts)
+            coverage = {
+                "start_iso": _epoch_ms_to_iso_utc(float(one_m.start_ts)),
+                "end_iso": _epoch_ms_to_iso_utc(float(one_m.end_ts)),
+                "span_days": round(span_ms / 86400000.0, 4),
+                "candle_count_1m": int(one_m.row_count or 0),
+            }
+
+        ok, integrity_issues = _dataset_binary_integrity(db, file_id)
+
+        jobs = (
+            db.query(BinaryBuildJob)
+            .filter(BinaryBuildJob.file_id == file_id)
+            .order_by(BinaryBuildJob.id.desc())
+            .limit(8)
+            .all()
+        )
+        recent_build_jobs = [
+            {
+                "id": int(j.id),
+                "status": str(j.status or ""),
+                "trigger": str(j.trigger or ""),
+                "attempt_count": int(j.attempt_count or 0),
+                "error": (j.error or "")[:500] if j.error else None,
+                "created_at": j.created_at.isoformat() if j.created_at else None,
+                "finished_at": j.finished_at.isoformat() if j.finished_at else None,
+            }
+            for j in jobs
+        ]
+
+        chart_storage = [{"timeframe": x["timeframe"], "bytes": x["binary_bytes"]} for x in timeframes_detail]
+        chart_rows = [{"timeframe": x["timeframe"], "rows": x["row_count"]} for x in timeframes_detail]
+
+        return {
+            "success": True,
+            "file_id": file_id,
+            "original_name": db_file.original_name,
+            "description": db_file.description,
+            "upload_date": db_file.upload_date.isoformat() if db_file.upload_date else None,
+            "csv_storage_rows_stored": int(db_file.row_count or 0),
+            "csv": {
+                "filename": db_file.filename,
+                "resolved_path_hint": csv_path.name,
+                "exists": csv_exists,
+                "bytes": csv_bytes,
+                "human": _human_bytes(csv_bytes),
+            },
+            "binaries_total_bytes": bin_total,
+            "binaries_total_human": _human_bytes(bin_total),
+            "tiles_total_bytes": tiles_bytes,
+            "tiles_total_human": _human_bytes(tiles_bytes),
+            "tiles_path_hint": f"tiles/{file_id}/",
+            "total_storage_bytes": total_storage,
+            "total_storage_human": _human_bytes(total_storage),
+            "ready_timeframes": ready_tf,
+            "total_timeframes": len(DATASET_TIMEFRAMES),
+            "coverage": coverage,
+            "integrity_ok": ok,
+            "integrity_issues": integrity_issues,
+            "timeframes": timeframes_detail,
+            "chart_storage_bytes": chart_storage,
+            "chart_rows": chart_rows,
+            "recent_build_jobs": recent_build_jobs,
+            "pipeline": {
+                "format": "Each candle is 6 × float64 (time, O, H, L, C, V) = 48 bytes in .bin files.",
+                "steps": [
+                    "CSV ingested under uploads/ (then optionally archived after all timeframes are ready).",
+                    "Rows parsed once; 1m series is the canonical bucket; higher TFs are aggregated.",
+                    "Per-timeframe binaries live under uploads/bin/; chart tiles under uploads/tiles/{id}/{tf}/.",
+                    "The chart reads binaries/tiles — not the CSV at runtime — for speed.",
+                ],
+            },
+        }
+    finally:
+        db.close()
+
+
 @app.post("/api/admin/datasets/upload")
 async def admin_upload_dataset(request: Request, csvFile: UploadFile = File(...)):
     _require_admin(request)
     return await upload_csv(request, csvFile)
+
+@app.get("/api/admin/datasets/dukascopy-instruments")
+async def admin_dukascopy_instruments(request: Request):
+    """
+    Curated instrument groups for the admin Dukascopy picker (indices, energy, forex).
+    These are Dukascopy symbols (CFD / cash index), not crypto or CME futures contracts.
+    """
+    _require_admin(request)
+    return {
+        "success": True,
+        "groups": {k: list(v) for k, v in DUKASCOPY_INSTRUMENT_GROUPS.items()},
+        "note": (
+            "Dukascopy lists cash index and commodity CFDs (e.g. usa500idxusd, lightcmdusd). "
+            "They track major benchmarks but are not the same instruments as CME ES/NQ/CL futures."
+        ),
+    }
+
 
 @app.post("/api/admin/datasets/fetch-dukascopy")
 async def admin_fetch_dataset_from_dukascopy(payload: AdminDukascopyFetchIn, request: Request):
@@ -5212,7 +8044,749 @@ async def admin_fetch_dataset_from_dukascopy_status(job_id: str, request: Reques
     state = _dukascopy_read_job(job_id)
     if not state:
         raise HTTPException(status_code=404, detail="Dukascopy job not found or expired")
-    return state
+    out = dict(state)
+    out["state"] = state.get("status")
+    return out
+
+
+@app.post("/api/admin/datasets/firstrate-fx/sync")
+async def admin_firstrate_fx_sync(payload: AdminFirstrateFxSyncIn, request: Request):
+    """
+    Download FirstRate FX bundle (ZIP of CSVs), normalize to canonical OHLCV, register each pair as a dataset,
+    and queue binary tile builds — same pipeline as CSV upload.
+
+    Requires env FIrstrate_USERID. Optionally wipes all existing datasets first (see purge_confirmation).
+    """
+    _require_admin(request)
+    period = (payload.period or "week").strip().lower()
+    timeframe = (payload.timeframe or "1min").strip().lower()
+    it = (payload.instrument_type or "fx").strip().lower()
+    valid_p = {"full", "month", "week", "day"}
+    valid_tf = {"1min", "5min", "30min", "1hour", "1day"}
+    if period not in valid_p:
+        raise HTTPException(status_code=400, detail=f"period must be one of {sorted(valid_p)}")
+    if timeframe not in valid_tf:
+        raise HTTPException(status_code=400, detail=f"timeframe must be one of {sorted(valid_tf)}")
+    if it not in VALID_INSTRUMENT_TYPES:
+        raise HTTPException(status_code=400, detail=f"instrument_type must be one of {sorted(VALID_INSTRUMENT_TYPES)}")
+    adj_in = payload.adjustment
+    adj_s: str | None = None
+    if adj_in is not None and str(adj_in).strip():
+        adj_s = str(adj_in).strip()
+        if it not in {"stock", "etf"}:
+            raise HTTPException(status_code=400, detail="adjustment is only valid for stock and etf")
+        if adj_s not in VALID_STOCK_ADJUSTMENTS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"adjustment must be one of {sorted(VALID_STOCK_ADJUSTMENTS)}",
+            )
+    pair_list = list(payload.pairs) if payload.pairs else []
+    return _start_firstrate_fx_import_job(
+        period=period,
+        timeframe=timeframe,
+        instrument_type=it,
+        adjustment=adj_s,
+        delete_existing_first=bool(payload.delete_existing_first),
+        purge_confirmation=payload.purge_confirmation,
+        ticker_range=payload.ticker_range,
+        download_timeout_sec=payload.download_timeout_sec,
+        upsert_existing=bool(payload.upsert_existing),
+        trigger="manual",
+        pairs=pair_list,
+    )
+
+
+@app.get("/api/admin/datasets/firstrate-fx/live-status")
+async def admin_firstrate_fx_live_status(request: Request):
+    """
+    Poll for active FirstRate import jobs + recent completions (for admin dashboard live progress).
+    """
+    _require_admin(request)
+    _firstrate_cleanup_jobs()
+    active: list[dict] = []
+    recent: list[dict] = []
+    paths = sorted(FIrstrate_JOBS_DIR.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True)
+    for p in paths[:80]:
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                st = json.load(f)
+            st["job_file"] = p.name
+            st["_mtime"] = p.stat().st_mtime
+            st_status = str(st.get("status") or "")
+            if st_status in ("queued", "running"):
+                active.append(st)
+            elif st_status in ("done", "failed"):
+                recent.append(st)
+        except Exception:
+            continue
+    active.sort(key=lambda x: str(x.get("updated_at") or ""), reverse=True)
+    recent = sorted(recent, key=lambda x: float(x.get("_mtime") or 0), reverse=True)[:8]
+    sch = _load_firstrate_schedule()
+    primary = active[0] if active else None
+    return {
+        "success": True,
+        "has_firstrate_userid": bool(get_firstrate_userid()),
+        "active_jobs": active,
+        "recent_jobs": recent,
+        "primary_job": primary,
+        "schedule": sch,
+    }
+
+
+def _tail_csv_last_timestamp_ms(path: Path) -> float | None:
+    """
+    Cheaply read the last non-empty data row from a CSV and parse its first
+    column as a UTC timestamp. Used by the nightly-health Refresh button when
+    `?rescan=1` is set, so an admin can force a live disk check instead of
+    trusting the cached CSVAggregate.end_ts.
+
+    Returns epoch ms or None. Reads at most the final 64 KB of the file, which
+    is always enough for 1m data (avg row ~40 bytes → ~1600 rows tail).
+    """
+    try:
+        sz = path.stat().st_size
+    except Exception:
+        return None
+    if sz <= 0:
+        return None
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(max(0, sz - 65536))
+            chunk = fh.read()
+    except Exception:
+        return None
+    try:
+        text = chunk.decode("utf-8", errors="replace")
+    except Exception:
+        return None
+    for ln in reversed(text.splitlines()):
+        s = ln.strip()
+        if not s:
+            continue
+        first = s.split(",", 1)[0].strip().strip('"').strip("'")
+        if not first or first.lower() in {"timestamp", "datetime", "date", "time"}:
+            continue
+        # Numeric epoch (seconds or ms)
+        try:
+            n = float(first)
+            if n > 1e12:          # already ms
+                return n
+            if n > 1e9:           # seconds → ms
+                return n * 1000.0
+        except ValueError:
+            pass
+        # ISO / "YYYY-MM-DD HH:MM[:SS]"
+        try:
+            iso = first.replace("Z", "+00:00").replace(" ", "T", 1)
+            dt = datetime.fromisoformat(iso)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(tz=None).replace(tzinfo=None)
+            return dt.timestamp() * 1000.0
+        except Exception:
+            return None
+    return None
+
+
+@app.get("/api/admin/datasets/firstrate-fx/nightly-health")
+async def admin_firstrate_fx_nightly_health(request: Request, rescan: int = 0):
+    """
+    Per-asset visualization of the nightly auto-sync outcome.
+
+    For every FirstRate-classified dataset in the registry, reports:
+      * canonical ticker + asset class
+      * latest 1m-bar timestamp (from the CSVAggregate row — no CSV scan)
+      * staleness in hours vs. now (UTC)
+      * most recent scheduled import job touching the dataset's asset class,
+        and the per-ticker merge stats recorded by that job
+
+    Also aggregates per-asset-class summary counts (fresh / stale / missing)
+    so the admin UI can render badge totals without re-bucketing client-side.
+
+    "fresh"   = staleness ≤ 48 h  (a nightly job ran recently and merged bars)
+    "stale"   = 48 h < staleness ≤ 7 d
+    "missing" = staleness > 7 d or no 1m coverage at all
+
+    When `rescan=1`, each dataset's raw 1m CSV is tail-read from disk and the
+    resulting last-bar timestamp is compared against (and overrides) the cached
+    aggregate. The aggregate row is also updated opportunistically so the next
+    non-rescan request sees the fresh value.
+    """
+    _require_admin(request)
+    now = datetime.utcnow()
+    now_ms = now.timestamp() * 1000.0
+    cfg = _load_firstrate_schedule()
+    force_rescan = bool(rescan)
+
+    # --- Index the most recent FirstRate jobs per instrument_type. ----------
+    # We only care about the job files that went through `_firstrate_write_job`
+    # so they all carry `instrument_type`, `trigger`, and (now) `merge_summary`.
+    latest_job_by_type: dict[str, dict] = {}
+    try:
+        job_paths = sorted(
+            FIrstrate_JOBS_DIR.glob("*.json"),
+            key=lambda x: x.stat().st_mtime,
+            reverse=True,
+        )
+    except Exception:
+        job_paths = []
+    for jp in job_paths[:200]:
+        try:
+            with open(jp, "r", encoding="utf-8") as f:
+                st = json.load(f)
+        except Exception:
+            continue
+        it = str(st.get("instrument_type") or "").strip().lower()
+        if not it:
+            continue
+        if it in latest_job_by_type:
+            continue  # paths are pre-sorted newest-first
+        latest_job_by_type[it] = st
+
+    # --- Walk the dataset registry and join against 1m aggregates. ----------
+    db = SessionLocal()
+    try:
+        files = db.query(CSVFile).all()
+        aggs = (
+            db.query(CSVAggregate)
+            .filter(CSVAggregate.timeframe == "1m")
+            .all()
+        )
+    finally:
+        db.close()
+    agg_by_file = {int(a.file_id): a for a in aggs}
+
+    datasets: list[dict] = []
+    rescan_updates = 0  # count of aggregates refreshed from disk this call
+    for f in files:
+        ticker = _firstrate_extract_ticker_from_filename(f.original_name or "")
+        asset_class = _firstrate_classify_ticker(ticker) if ticker else None
+        if not asset_class:
+            continue  # skip uploads we can't confidently place
+
+        agg = agg_by_file.get(int(f.id))
+        last_ts = None
+        row_count_1m = 0
+        last_ts_source = "aggregate"
+        if agg is not None and agg.end_ts is not None:
+            try:
+                last_ts = float(agg.end_ts)
+                row_count_1m = int(agg.row_count or 0)
+            except (TypeError, ValueError):
+                last_ts = None
+
+        # Rescan mode: tail the raw CSV to get the authoritative last bar and
+        # opportunistically heal the CSVAggregate if it has drifted.
+        if force_rescan and f.filename:
+            csv_path = UPLOAD_DIR / f.filename
+            disk_ts = _tail_csv_last_timestamp_ms(csv_path)
+            if disk_ts is not None:
+                last_ts_source = "disk"
+                prev_ts = last_ts
+                last_ts = disk_ts
+                # Only persist if we meaningfully drifted (> 30s) and the
+                # aggregate row exists. We don't create new aggregate rows from
+                # here — that's the import pipeline's job.
+                if agg is not None and (prev_ts is None or abs(disk_ts - (prev_ts or 0)) > 30_000):
+                    try:
+                        db2 = SessionLocal()
+                        try:
+                            live = db2.query(CSVAggregate).filter(CSVAggregate.id == agg.id).first()
+                            if live is not None:
+                                live.end_ts = disk_ts
+                                db2.commit()
+                                rescan_updates += 1
+                        finally:
+                            db2.close()
+                    except Exception:
+                        pass
+
+        staleness_hours: float | None = None
+        if last_ts is not None:
+            staleness_hours = max(0.0, (now_ms - last_ts) / 3_600_000.0)
+
+        # Freshness bucket (see docstring above).
+        if staleness_hours is None or staleness_hours > 24 * 7:
+            freshness = "missing"
+        elif staleness_hours > 48:
+            freshness = "stale"
+        else:
+            freshness = "fresh"
+
+        # Pull merge stats for this dataset out of the latest matching job.
+        job = latest_job_by_type.get(asset_class)
+        merge_info = None
+        if job and isinstance(job.get("merge_summary"), dict):
+            # Jobs key merge rows by `<ticker>_<timeframe>.csv`; scan for any
+            # entry that matches the dataset's original_name or ticker stem.
+            target_name = (f.original_name or "").lower()
+            for k, v in job["merge_summary"].items():
+                if not isinstance(v, dict):
+                    continue
+                if str(k).lower() == target_name or (
+                    v.get("ticker") and str(v["ticker"]).lower() == ticker.lower()
+                ):
+                    merge_info = v
+                    break
+
+        datasets.append({
+            "id": int(f.id),
+            "ticker": ticker,
+            "asset_class": asset_class,
+            "original_name": f.original_name,
+            "row_count": int(f.row_count or 0),
+            "row_count_1m": row_count_1m,
+            "last_bar_iso": _epoch_ms_to_iso_utc(last_ts) if last_ts is not None else None,
+            "last_bar_ms": last_ts,
+            "last_bar_source": last_ts_source,
+            "staleness_hours": round(staleness_hours, 2) if staleness_hours is not None else None,
+            "freshness": freshness,
+            "last_job": (
+                {
+                    "job_id": job.get("job_id"),
+                    "status": job.get("status"),
+                    "trigger": job.get("trigger"),
+                    "updated_at": job.get("updated_at"),
+                    "period": job.get("period"),
+                    "timeframe": job.get("timeframe"),
+                    "message": (job.get("message") or "")[:300],
+                    "error": (job.get("error") or "")[:300] or None,
+                }
+                if job else None
+            ),
+            "merge": merge_info,
+        })
+
+    # Sort so unhealthy rows float to the top of each class.
+    freshness_rank = {"missing": 0, "stale": 1, "fresh": 2}
+    datasets.sort(key=lambda d: (d["asset_class"], freshness_rank.get(d["freshness"], 3), d["ticker"]))
+
+    # --- Per-class summary. --------------------------------------------------
+    classes: dict[str, dict] = {}
+    for d in datasets:
+        c = d["asset_class"]
+        slot = classes.setdefault(c, {
+            "asset_class": c,
+            "ticker_count": 0,
+            "fresh_count": 0,
+            "stale_count": 0,
+            "missing_count": 0,
+            "total_new_rows_last_run": 0,
+            "last_job": None,
+        })
+        slot["ticker_count"] += 1
+        slot[f"{d['freshness']}_count"] += 1
+        if d.get("merge"):
+            slot["total_new_rows_last_run"] += int(d["merge"].get("new_rows_added") or 0)
+        if slot["last_job"] is None and d.get("last_job"):
+            slot["last_job"] = d["last_job"]
+
+    return {
+        "success": True,
+        "generated_at": now.isoformat() + "Z",
+        "rescanned": force_rescan,
+        "rescan_updates": rescan_updates,
+        "schedule": {
+            "enabled": bool(cfg.get("enabled")),
+            "mode": cfg.get("mode"),
+            "nightly_utc_hour": cfg.get("nightly_utc_hour"),
+            "auto_all_types": cfg.get("auto_all_types"),
+            "last_run_date": cfg.get("last_run_date"),
+            "last_run_types_today": cfg.get("last_run_types_today") or [],
+            "last_run_started_at": cfg.get("last_run_started_at"),
+            "last_run_finished_at": cfg.get("last_run_finished_at"),
+            "last_status": cfg.get("last_status"),
+            "last_error": cfg.get("last_error"),
+        },
+        "summary": {
+            # Rows in this panel (FirstRate-bucketable instruments only).
+            "dataset_count": len(datasets),
+            # Every CSV in `csv_files` — matches Dataset registry card "Datasets".
+            "registry_csv_total": len(files),
+            # Datasets omitted here: filename/ticker did not map to fx|crypto|futures|stock
+            # (manual uploads, Dukascopy-only names, exotic symbols, etc.).
+            "excluded_not_classified_count": max(0, len(files) - len(datasets)),
+            "fresh_count": sum(c["fresh_count"] for c in classes.values()),
+            "stale_count": sum(c["stale_count"] for c in classes.values()),
+            "missing_count": sum(c["missing_count"] for c in classes.values()),
+            "asset_class_count": len(classes),
+        },
+        "classes": sorted(classes.values(), key=lambda c: c["asset_class"]),
+        "datasets": datasets,
+    }
+
+
+@app.get("/api/admin/datasets/firstrate-fx/schedule")
+async def admin_firstrate_fx_schedule_get(request: Request):
+    """
+    Read auto-sync settings (VPS). File: uploads/firstrate_schedule.json
+
+    Also returns a `nightly_preview` summary so the admin UI can show what the
+    next nightly run will pull (bucketed tickers per asset class) without
+    having to call the vendor.
+    """
+    _require_admin(request)
+    cfg = _load_firstrate_schedule()
+    buckets = _firstrate_classify_existing_datasets()
+    total_tickers = sum(len(v) for v in buckets.values())
+    return {
+        "success": True,
+        "schedule": cfg,
+        "has_firstrate_userid": bool(get_firstrate_userid()),
+        "nightly_preview": {
+            "buckets": buckets,                 # {"fx": [...], "crypto": [...], ...}
+            "type_count": len(buckets),
+            "ticker_count": total_tickers,
+        },
+    }
+
+
+@app.put("/api/admin/datasets/firstrate-fx/schedule")
+async def admin_firstrate_fx_schedule_put(payload: AdminFirstrateScheduleIn, request: Request):
+    """Update auto-sync; changes apply on the next scheduler tick (within ~1 minute)."""
+    _require_admin(request)
+    valid_p = {"full", "month", "week", "day"}
+    valid_tf = {"1min", "5min", "30min", "1hour", "1day"}
+    cur = _load_firstrate_schedule()
+    p = payload
+    if p.enabled is not None:
+        cur["enabled"] = bool(p.enabled)
+    if p.mode is not None:
+        m = str(p.mode).strip().lower()
+        if m not in {"nightly", "interval"}:
+            raise HTTPException(status_code=400, detail="mode must be 'nightly' or 'interval'")
+        cur["mode"] = m
+    if p.nightly_utc_hour is not None:
+        cur["nightly_utc_hour"] = int(p.nightly_utc_hour)
+    if p.auto_all_types is not None:
+        cur["auto_all_types"] = bool(p.auto_all_types)
+    if p.interval_minutes is not None:
+        cur["interval_minutes"] = int(p.interval_minutes)
+    if p.period is not None:
+        pl = p.period.strip().lower()
+        if pl not in valid_p:
+            raise HTTPException(status_code=400, detail=f"period must be one of {sorted(valid_p)}")
+        cur["period"] = pl
+    if p.timeframe is not None:
+        tf = p.timeframe.strip().lower()
+        if tf not in valid_tf:
+            raise HTTPException(status_code=400, detail=f"timeframe must be one of {sorted(valid_tf)}")
+        cur["timeframe"] = tf
+    if p.instrument_type is not None:
+        il = p.instrument_type.strip().lower()
+        if il not in VALID_INSTRUMENT_TYPES:
+            raise HTTPException(status_code=400, detail=f"instrument_type must be one of {sorted(VALID_INSTRUMENT_TYPES)}")
+        cur["instrument_type"] = il
+    if p.adjustment is not None:
+        raw_adj = str(p.adjustment).strip()
+        if not raw_adj:
+            cur["adjustment"] = None
+        else:
+            il2 = str(cur.get("instrument_type") or "fx").strip().lower()
+            if il2 not in {"stock", "etf"}:
+                raise HTTPException(status_code=400, detail="adjustment is only stored for stock and etf schedules")
+            if raw_adj not in VALID_STOCK_ADJUSTMENTS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"adjustment must be one of {sorted(VALID_STOCK_ADJUSTMENTS)}",
+                )
+            cur["adjustment"] = raw_adj
+    if p.upsert_existing is not None:
+        cur["upsert_existing"] = bool(p.upsert_existing)
+    if p.delete_existing_first is not None:
+        cur["delete_existing_first"] = bool(p.delete_existing_first)
+    if p.purge_confirmation is not None:
+        cur["purge_confirmation"] = p.purge_confirmation.strip() or None
+    if p.ticker_range is not None:
+        tr = p.ticker_range.strip()
+        cur["ticker_range"] = tr[:1].upper() if tr else None
+    if p.download_timeout_sec is not None:
+        cur["download_timeout_sec"] = float(p.download_timeout_sec)
+    if p.pairs is not None:
+        cur["pairs"] = [str(x).strip() for x in p.pairs if str(x).strip()]
+    if cur.get("delete_existing_first") and not (cur.get("purge_confirmation") or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="delete_existing_first in the schedule requires a stored purge_confirmation; set it in this request.",
+        )
+    if str(cur.get("instrument_type") or "fx").strip().lower() not in {"stock", "etf"}:
+        cur["adjustment"] = None
+    _save_firstrate_schedule(cur)
+    return {"success": True, "schedule": cur}
+
+
+@app.get("/api/admin/datasets/firstrate-fx/ticker-listing")
+async def admin_firstrate_fx_ticker_listing(request: Request, instrument_type: str = "stock"):
+    """
+    Proxy FirstRate `ticker_listing` (CSV) → JSON for the admin UI.
+    Official docs list stock + etf; other types may error at the vendor.
+    """
+    _require_admin(request)
+    uid = get_firstrate_userid()
+    if not uid:
+        raise HTTPException(status_code=503, detail="FIrstrate_USERID is not configured on this server.")
+    it = (instrument_type or "stock").strip().lower()
+    if it not in VALID_INSTRUMENT_TYPES:
+        raise HTTPException(status_code=400, detail=f"instrument_type must be one of {sorted(VALID_INSTRUMENT_TYPES)}")
+    try:
+        rows = fetch_firstrate_ticker_listing_rows(userid=uid, instrument_type=it)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    total = len(rows)
+    capped = rows[:MAX_TICKER_LISTING_RETURN]
+    return {
+        "success": True,
+        "instrument_type": it,
+        "count": total,
+        "returned": len(capped),
+        "truncated": total > len(capped),
+        "rows": capped,
+    }
+
+
+@app.get("/api/admin/datasets/firstrate-fx/last-update")
+async def admin_firstrate_last_update(
+    request: Request,
+    instrument_type: str = Query("crypto", description="stock, etf, futures, crypto, index, or fx"),
+    is_full_update: bool = Query(False, description="True → date of last full-history rebuild; False → rolling update bundles"),
+):
+    """
+    Proxy FirstRate `last_update` so the admin UI can check whether a fresh
+    download is worth making before kicking off an import. Returns the vendor's
+    raw date plus an ISO-normalized version when parseable.
+
+    Docs: https://firstratedata.com/about/api-docs  (section "Last Update")
+    Example: /api/admin/datasets/firstrate-fx/last-update?instrument_type=crypto
+    """
+    _require_admin(request)
+    uid = get_firstrate_userid()
+    if not uid:
+        raise HTTPException(status_code=503, detail="FIrstrate_USERID is not configured on this server.")
+    try:
+        info = fetch_firstrate_last_update(
+            userid=uid,
+            instrument_type=instrument_type,
+            is_full_update=bool(is_full_update),
+        )
+    except ValueError as e:
+        # Bad `type` → client error; vendor errors → upstream bad-gateway.
+        msg = str(e)
+        if msg.startswith("type must be"):
+            raise HTTPException(status_code=400, detail=msg) from e
+        raise HTTPException(status_code=502, detail=msg) from e
+    return {"success": True, **info}
+
+
+@app.get("/api/admin/datasets/firstrate-fx/{job_id}/status")
+async def admin_firstrate_fx_job_status(job_id: str, request: Request):
+    _require_admin(request)
+    _firstrate_cleanup_jobs()
+    state = _firstrate_read_job(job_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="FirstRate job not found or expired")
+    out = dict(state)
+    out["state"] = state.get("status")
+    return out
+
+
+@app.post("/api/admin/datasets/purge-all")
+async def admin_purge_all_datasets(payload: AdminPurgeDatasetsIn, request: Request):
+    """
+    Delete every dataset from the registry (same as deleting each csv_files row). Useful before a full FirstRate re-import.
+    """
+    _require_admin(request)
+    expected = (DATASET_PURGE_CONFIRMATION or "").strip()
+    if (payload.confirmation or "").strip() != expected:
+        raise HTTPException(
+            status_code=400,
+            detail=f"confirmation must exactly equal {expected!r}",
+        )
+    summary = _purge_all_chart_datasets()
+    summary["success"] = True
+    return summary
+
+
+@app.get("/api/admin/datasets/binance-symbols")
+async def admin_binance_exchange_symbols(request: Request, asset_class: str = Query("spot")):
+    """
+    List tradable symbols for the given Binance asset class (spot / um / cm).
+    Uses the same source as binance-historical-data (Binance public exchangeInfo). Cached briefly.
+    """
+    _require_admin(request)
+    ac = (asset_class or "spot").strip().lower()
+    if ac not in ("spot", "um", "cm"):
+        raise HTTPException(status_code=400, detail="asset_class must be spot, um, or cm")
+    now = time.time()
+    cached = _BINANCE_SYMBOLS_CACHE.get(ac)
+    if cached and (now - cached[0]) < BINANCE_SYMBOLS_CACHE_TTL:
+        return {"success": True, "asset_class": ac, "symbols": cached[1], "cached": True}
+
+    try:
+        from binance_historical_data import BinanceDataDumper
+
+        dumper = BinanceDataDumper(
+            path_dir_where_to_dump=str(UPLOAD_DIR.resolve()),
+            asset_class=ac,
+            data_type="klines",
+            data_frequency="1m",
+        )
+        raw = dumper.get_list_all_trading_pairs()
+        symbols = sorted({str(s).strip().upper() for s in (raw or []) if s})
+        _BINANCE_SYMBOLS_CACHE[ac] = (now, symbols)
+        return {"success": True, "asset_class": ac, "symbols": symbols, "cached": False}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Could not load Binance symbols: {exc}") from exc
+
+
+@app.post("/api/admin/datasets/fetch-binance")
+async def admin_fetch_dataset_from_binance(payload: AdminBinanceFetchIn, request: Request):
+    _require_admin(request)
+
+    tickers = _normalize_binance_tickers_required(payload.tickers)
+    asset_class = (payload.asset_class or "spot").strip().lower()
+    if asset_class not in ("spot", "um", "cm"):
+        raise HTTPException(status_code=400, detail="asset_class must be spot, um, or cm")
+    data_frequency = (payload.data_frequency or "1m").strip()
+    if data_frequency not in BINANCE_ALLOWED_FREQUENCIES:
+        raise HTTPException(status_code=400, detail=f"Unsupported data_frequency: {data_frequency}")
+
+    data_type = (payload.data_type or "klines").strip() or "klines"
+    if asset_class == "spot":
+        if data_type not in BINANCE_FETCH_DATA_TYPES_SPOT:
+            raise HTTPException(
+                status_code=400,
+                detail="For spot, data_type must be klines (futures series are not available on spot).",
+            )
+    else:
+        if data_type not in BINANCE_FETCH_DATA_TYPES_FUTURES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid data_type for futures: {data_type}. "
+                f"Use one of: {', '.join(sorted(BINANCE_FETCH_DATA_TYPES_FUTURES))}.",
+            )
+
+    from_dt = _parse_iso_date(payload.from_date, "from_date")
+    to_dt = _parse_iso_date(payload.to_date, "to_date")
+    if from_dt > to_dt:
+        raise HTTPException(status_code=400, detail="from_date must be earlier than or equal to to_date")
+
+    range_days = (to_dt - from_dt).days + 1
+    if range_days > BINANCE_MAX_TOTAL_DAYS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Date range too large ({range_days} days). Max allowed per request is {BINANCE_MAX_TOTAL_DAYS} days.",
+        )
+
+    excl = _normalize_binance_exclude_tickers(payload.tickers_to_exclude)
+    _binance_cleanup_jobs()
+    return _start_binance_fetch_job(
+        tickers=tickers,
+        asset_class=asset_class,
+        data_frequency=data_frequency,
+        data_type=data_type,
+        from_dt=from_dt,
+        to_dt=to_dt,
+        is_to_update_existing=bool(payload.is_to_update_existing),
+        tickers_to_exclude=excl,
+    )
+
+
+@app.get("/api/admin/datasets/fetch-binance/{job_id}/status")
+async def admin_fetch_binance_status(job_id: str, request: Request):
+    _require_admin(request)
+    _binance_cleanup_jobs()
+    state = _binance_read_job(job_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Binance job not found or expired")
+    out = dict(state)
+    out["state"] = state.get("status")
+    return out
+
+
+@app.get("/api/admin/datasets/yahoo-cme-instruments")
+async def admin_yahoo_cme_instruments(request: Request):
+    """
+    Curated Yahoo Finance tickers for CME-style continuous futures (=F).
+    Data is from Yahoo/ICE/Barchart aggregation — not CME DataMine tape.
+    """
+    _require_admin(request)
+    return {
+        "success": True,
+        "groups": {k: list(v) for k, v in YAHOO_CME_INSTRUMENT_GROUPS.items()},
+        "allowed_intervals": sorted(YAHOO_CME_ALLOWED_INTERVALS),
+        "note": (
+            "Symbols ending in =F are Yahoo continuous futures (rolled). "
+            "Downloads are split into small date windows with pauses between requests (like Dukascopy forex chunking); "
+            "tune YAHOO_CME_CHUNK_DAYS_* / YAHOO_CME_CHUNK_SLEEP_SECONDS if Yahoo still rate-limits."
+        ),
+    }
+
+
+@app.get("/api/admin/datasets/yahoo-cme/active")
+async def admin_yahoo_cme_active_job(request: Request):
+    """
+    Latest in-progress Yahoo job so the dashboard can resume status polling after a page reload.
+    """
+    _require_admin(request)
+    job = _yahoo_cme_find_latest_active_job()
+    return {"success": True, "job": job}
+
+
+@app.post("/api/admin/datasets/fetch-yahoo-cme")
+async def admin_fetch_yahoo_cme(payload: AdminYahooCmeFetchIn, request: Request):
+    """
+    Download historical OHLC for a Yahoo CME continuous future into the normal dataset pipeline.
+    """
+    _require_admin(request)
+
+    ticker = _normalize_yahoo_cme_ticker(payload.ticker)
+    interval = _normalize_yahoo_cme_interval(payload.interval)
+    from_dt = _parse_iso_date(payload.from_date, "from_date")
+    to_dt = _parse_iso_date(payload.to_date, "to_date")
+
+    if from_dt > to_dt:
+        raise HTTPException(status_code=400, detail="from_date must be earlier than or equal to to_date")
+
+    range_days = (to_dt - from_dt).days + 1
+    if range_days > YAHOO_CME_MAX_TOTAL_DAYS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Date range too large ({range_days} days). Max allowed per request is {YAHOO_CME_MAX_TOTAL_DAYS} days.",
+        )
+
+    try:
+        import pandas  # noqa: F401 — ensure stack matches requirements before starting background job
+        import yfinance  # noqa: F401
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="yfinance/pandas are required for Yahoo futures download. Install chart requirements.txt.",
+        ) from exc
+
+    pending = _yahoo_cme_find_latest_active_job()
+    if pending and pending.get("status") in ("queued", "running"):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "A Yahoo futures download is already running on the server. "
+                "Reload this page to reconnect to live progress without starting a second job."
+            ),
+        )
+
+    _yahoo_cme_cleanup_jobs()
+    return _start_yahoo_cme_fetch_job(ticker=ticker, from_dt=from_dt, to_dt=to_dt, interval=interval)
+
+
+@app.get("/api/admin/datasets/fetch-yahoo-cme/{job_id}/status")
+async def admin_fetch_yahoo_cme_status(job_id: str, request: Request):
+    _require_admin(request)
+    _yahoo_cme_cleanup_jobs()
+    state = _yahoo_cme_read_job(job_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Yahoo futures job not found or expired")
+    out = dict(state)
+    out["state"] = state.get("status")
+    return out
+
 
 @app.patch("/api/admin/datasets/{file_id}/settings")
 async def admin_update_dataset_settings(file_id: int, payload: AdminDatasetSettingsIn, request: Request):
@@ -5301,33 +8875,7 @@ async def admin_delete_dataset(file_id: int, request: Request):
         if not db_file:
             raise HTTPException(status_code=404, detail="File not found")
 
-        _delete_dataset_source_csv(db_file.filename)
-
-        aggs = db.query(CSVAggregate).filter(CSVAggregate.file_id == file_id).all()
-        for agg in aggs:
-            for d in [BIN_DIR, AGG_DIR]:
-                p = d / agg.agg_filename
-                if p.exists():
-                    p.unlink()
-            db.delete(agg)
-
-        # Remove any known timeframe binaries even if aggregate rows are missing.
-        for tf in DATASET_TIMEFRAMES:
-            p = BIN_DIR / f"bin_{file_id}_{tf}.bin"
-            if p.exists():
-                p.unlink()
-
-        # Remove tile directory for this file (also invalidate mmap handles for those tiles)
-        tile_file_dir = TILES_DIR / str(file_id)
-        if tile_file_dir.exists():
-            for tp in tile_file_dir.rglob("tile_*.bin"):
-                _mmap_cache.invalidate(tp)
-            import shutil as _shutil
-            _shutil.rmtree(tile_file_dir, ignore_errors=True)
-
-        db.query(DatasetSettings).filter(DatasetSettings.file_id == file_id).delete()
-        db.query(BinaryBuildJob).filter(BinaryBuildJob.file_id == file_id).delete()
-        db.delete(db_file)
+        _purge_dataset_rows(db, db_file)
         db.commit()
 
         return {"success": True}
@@ -6386,6 +9934,900 @@ async def admin_subscription_stats(request: Request):
     finally:
         db.close()
 
+
+def _admin_system_metrics_payload() -> dict:
+    """CPU, memory, disks, and network totals for the VPS hosting this API (requires psutil)."""
+    if psutil is None:
+        return {
+            "success": True,
+            "agent_available": False,
+            "message": "Install psutil on the server to enable system metrics.",
+        }
+
+    cpu_pct = float(psutil.cpu_percent(interval=0.22))
+    cpu_logical = psutil.cpu_count(logical=True) or 1
+    cpu_physical = psutil.cpu_count(logical=False)
+
+    try:
+        la1, la5, la15 = os.getloadavg()
+        load_average = {"1m": round(la1, 3), "5m": round(la5, 3), "15m": round(la15, 3)}
+    except (OSError, AttributeError):
+        load_average = None
+
+    vm = psutil.virtual_memory()
+    sw = psutil.swap_memory()
+
+    disks_out: list[dict] = []
+    seen_resolve: set[str] = set()
+    disk_candidates = [
+        ("Root", "/"),
+        ("Data (uploads: CSV, bin, tiles)", UPLOAD_DIR.resolve()),
+        ("App (this install)", _CHART_DIR.resolve()),
+    ]
+    for label, raw in disk_candidates:
+        try:
+            path = Path(raw).resolve()
+        except Exception:
+            continue
+        key = str(path)
+        if key in seen_resolve:
+            continue
+        try:
+            usage = psutil.disk_usage(str(path))
+        except (PermissionError, OSError):
+            continue
+        seen_resolve.add(key)
+        disks_out.append(
+            {
+                "label": label,
+                "path": key,
+                "total": int(usage.total),
+                "used": int(usage.used),
+                "free": int(usage.free),
+                "percent": round(float(usage.percent), 2),
+                "total_human": _human_bytes(int(usage.total)),
+                "used_human": _human_bytes(int(usage.used)),
+                "free_human": _human_bytes(int(usage.free)),
+            }
+        )
+
+    proc = psutil.Process()
+    try:
+        proc_mem = proc.memory_info()
+        proc_cpu = float(proc.cpu_percent(interval=None))
+    except Exception:
+        proc_mem = None
+        proc_cpu = None
+
+    net_io = None
+    try:
+        n = psutil.net_io_counters()
+        if n:
+            net_io = {
+                "bytes_sent": int(n.bytes_sent),
+                "bytes_recv": int(n.bytes_recv),
+                "packets_sent": int(n.packets_sent),
+                "packets_recv": int(n.packets_recv),
+                "errin": int(n.errin),
+                "errout": int(n.errout),
+            }
+    except Exception:
+        pass
+
+    boot_t = psutil.boot_time()
+    try:
+        boot_iso = datetime.utcfromtimestamp(boot_t).strftime("%Y-%m-%d %H:%M:%S") + " UTC"
+    except Exception:
+        boot_iso = None
+    uptime_s = max(0.0, time.time() - float(boot_t))
+
+    return {
+        "success": True,
+        "agent_available": True,
+        "server_time_utc": datetime.utcnow().isoformat() + "Z",
+        "hostname": _py_platform.node() or None,
+        "platform": _py_platform.platform(),
+        "python_version": _py_platform.python_version(),
+        "boot_time_iso": boot_iso,
+        "uptime_seconds": round(uptime_s, 2),
+        "cpu": {
+            "percent": round(cpu_pct, 2),
+            "logical_cores": int(cpu_logical),
+            "physical_cores": int(cpu_physical) if cpu_physical else None,
+        },
+        "load_average": load_average,
+        "memory": {
+            "total": int(vm.total),
+            "available": int(vm.available),
+            "used": int(vm.used),
+            "percent": round(float(vm.percent), 2),
+            "total_human": _human_bytes(int(vm.total)),
+            "available_human": _human_bytes(int(vm.available)),
+            "used_human": _human_bytes(int(vm.used)),
+        },
+        "swap": {
+            "total": int(sw.total),
+            "used": int(sw.used),
+            "free": int(sw.free),
+            "percent": round(float(sw.percent), 2),
+            "total_human": _human_bytes(int(sw.total)),
+            "used_human": _human_bytes(int(sw.used)),
+        },
+        "disks": disks_out,
+        "process": {
+            "pid": proc.pid,
+            "cpu_percent": round(proc_cpu, 2) if proc_cpu is not None else None,
+            "rss": int(proc_mem.rss) if proc_mem else None,
+            "rss_human": _human_bytes(int(proc_mem.rss)) if proc_mem else None,
+            "threads": proc.num_threads() if hasattr(proc, "num_threads") else None,
+        },
+        "network_total": net_io,
+    }
+
+
+@app.get("/api/admin/system/metrics")
+async def admin_system_metrics(request: Request):
+    _require_admin(request)
+    return _admin_system_metrics_payload()
+
+
+def _dir_size_bytes(path: Path, *, max_depth: int = 6) -> int:
+    """
+    Sum file sizes under `path` without following symlinks. Cheap enough for
+    the 200 GB VPS (uploads/ is the biggest tree and walks in <1 s). Capped
+    depth so a symlinked /proc can't take us down.
+    """
+    total = 0
+    try:
+        root_depth = len(path.parts)
+        for root, _dirs, files in os.walk(path, followlinks=False):
+            rp = Path(root)
+            if len(rp.parts) - root_depth > max_depth:
+                _dirs[:] = []
+                continue
+            for fn in files:
+                try:
+                    total += (rp / fn).stat(follow_symlinks=False).st_size
+                except Exception:
+                    continue
+    except Exception:
+        return total
+    return total
+
+
+@app.get("/api/admin/system/disk-health")
+async def admin_system_disk_health(request: Request, sample_limit: int = 10):
+    """
+    Application-level disk health — complements `/metrics` which reports the
+    raw filesystem view. Lets an admin answer:
+      * What subdirs of `uploads/` are eating space? (FirstRate bundles, binary
+        tiles, session archives, support attachments, job JSONs.)
+      * Which trading-session states are close to the soft/hard caps?
+      * Are there large / ancient support attachments worth pruning?
+
+    READ-ONLY. Never deletes or mutates anything. Purely diagnostic so you can
+    decide whether to run the archive / retention endpoints manually.
+
+    `sample_limit` caps how many "largest N" rows are returned per category so
+    the response stays bounded for a very large registry.
+    """
+    _require_admin(request)
+    sample_limit = max(1, min(100, int(sample_limit or 10)))
+
+    # --- Filesystem rollup of the uploads tree, bucketed by subdir. -------
+    uploads_breakdown = []
+    if UPLOAD_DIR.exists():
+        for child in sorted(UPLOAD_DIR.iterdir(), key=lambda p: p.name):
+            try:
+                if child.is_symlink():
+                    continue
+                size = _dir_size_bytes(child) if child.is_dir() else child.stat().st_size
+            except Exception:
+                size = 0
+            uploads_breakdown.append({
+                "name": child.name,
+                "is_dir": child.is_dir(),
+                "bytes": size,
+                "human": _human_bytes(size),
+            })
+    uploads_total = sum(row["bytes"] for row in uploads_breakdown)
+    uploads_breakdown.sort(key=lambda r: r["bytes"], reverse=True)
+
+    # --- Filesystem usage for the volume that holds `uploads/`. -----------
+    try:
+        du = shutil.disk_usage(str(UPLOAD_DIR.resolve()))
+        disk = {
+            "total": int(du.total), "used": int(du.used), "free": int(du.free),
+            "percent": round(du.used / du.total * 100.0, 2) if du.total else 0.0,
+            "total_human": _human_bytes(int(du.total)),
+            "used_human": _human_bytes(int(du.used)),
+            "free_human": _human_bytes(int(du.free)),
+        }
+    except Exception:
+        disk = None
+
+    # --- Session-state hotspots + journal-trade row counts. ---------------
+    db = SessionLocal()
+    top_session_states: list[dict] = []
+    oversize_soft = 0
+    oversize_hard = 0
+    total_state_bytes = 0
+    state_count = 0
+    journal_trade_rows = 0
+    attachments_total_bytes = 0
+    attachments_count = 0
+    oldest_attachment_iso = None
+    top_attachments: list[dict] = []
+    try:
+        # state_json size distribution — use Postgres `octet_length` so we
+        # don't pull every row into Python. Falls back to SQLite LENGTH() if
+        # the app happens to run on SQLite (dev only).
+        try:
+            rows = db.execute(text(
+                "SELECT session_id, user_id, octet_length(state_json) AS sz, updated_at "
+                "FROM trading_session_states"
+            )).fetchall()
+        except Exception:
+            rows = db.execute(text(
+                "SELECT session_id, user_id, LENGTH(state_json) AS sz, updated_at "
+                "FROM trading_session_states"
+            )).fetchall()
+        state_count = len(rows)
+        for r in rows:
+            sz = int(r[2] or 0)
+            total_state_bytes += sz
+            if sz > SESSION_STATE_HARD_LIMIT_BYTES:
+                oversize_hard += 1
+            elif sz > SESSION_STATE_SOFT_LIMIT_BYTES:
+                oversize_soft += 1
+        # Top-N largest rows
+        rows_sorted = sorted(rows, key=lambda r: int(r[2] or 0), reverse=True)[:sample_limit]
+        for r in rows_sorted:
+            sz = int(r[2] or 0)
+            top_session_states.append({
+                "session_id": int(r[0]),
+                "user_id": int(r[1]),
+                "bytes": sz,
+                "human": _human_bytes(sz),
+                "updated_at": r[3].isoformat() + "Z" if r[3] else None,
+                "bucket": "hard" if sz > SESSION_STATE_HARD_LIMIT_BYTES
+                          else "soft" if sz > SESSION_STATE_SOFT_LIMIT_BYTES
+                          else "ok",
+            })
+
+        # Journal-trade mirror row count (informational; expected to scale
+        # linearly with users × trades-per-session).
+        try:
+            journal_trade_rows = int(db.execute(text(
+                "SELECT COUNT(*) FROM trading_session_journal_trades"
+            )).scalar() or 0)
+        except Exception:
+            journal_trade_rows = 0
+
+        # Support attachments — bytes + count + oldest + top-N.
+        try:
+            atts = db.query(SupportAttachment).all()
+            attachments_count = len(atts)
+            attachments_total_bytes = sum(int(a.size_bytes or 0) for a in atts)
+            if atts:
+                oldest = min((a.created_at for a in atts if a.created_at), default=None)
+                if oldest is not None:
+                    oldest_attachment_iso = oldest.isoformat() + "Z"
+            atts_sorted = sorted(atts, key=lambda a: int(a.size_bytes or 0), reverse=True)[:sample_limit]
+            for a in atts_sorted:
+                top_attachments.append({
+                    "id": int(a.id),
+                    "user_id": int(a.user_id),
+                    "bytes": int(a.size_bytes or 0),
+                    "human": _human_bytes(int(a.size_bytes or 0)),
+                    "mime_type": a.mime_type,
+                    "created_at": a.created_at.isoformat() + "Z" if a.created_at else None,
+                })
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+    # --- Alert flags — easy booleans for UI / monitoring cron. ------------
+    alerts = {
+        "disk_over_80pct": bool(disk and disk["percent"] >= 80.0),
+        "disk_over_90pct": bool(disk and disk["percent"] >= 90.0),
+        "session_state_hard_breaches": oversize_hard,
+        "session_state_soft_breaches": oversize_soft,
+    }
+
+    return {
+        "success": True,
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "limits": {
+            "session_state_soft_bytes": SESSION_STATE_SOFT_LIMIT_BYTES,
+            "session_state_hard_bytes": SESSION_STATE_HARD_LIMIT_BYTES,
+        },
+        "disk": disk,
+        "uploads": {
+            "path": str(UPLOAD_DIR.resolve()),
+            "total_bytes": uploads_total,
+            "total_human": _human_bytes(uploads_total),
+            "breakdown": uploads_breakdown,
+        },
+        "session_states": {
+            "row_count": state_count,
+            "total_bytes": total_state_bytes,
+            "total_human": _human_bytes(total_state_bytes),
+            "avg_bytes": int(total_state_bytes / state_count) if state_count else 0,
+            "soft_breach_count": oversize_soft,
+            "hard_breach_count": oversize_hard,
+            "top": top_session_states,
+        },
+        "journal_trade_rows": journal_trade_rows,
+        "support_attachments": {
+            "count": attachments_count,
+            "total_bytes": attachments_total_bytes,
+            "total_human": _human_bytes(attachments_total_bytes),
+            "oldest": oldest_attachment_iso,
+            "top": top_attachments,
+        },
+        "alerts": alerts,
+    }
+
+
+def _session_archive_path(session_id: int) -> Path:
+    return SESSION_ARCHIVE_DIR / f"session_{int(session_id)}_state.json.gz"
+
+
+class AdminArchiveStaleSessionsIn(BaseModel):
+    """
+    Controls for `/api/admin/system/archive-stale-sessions`.
+
+    `older_than_days` — only archive sessions whose `TradingSessionState.updated_at`
+    is older than this many days (default 90).
+    `min_state_bytes` — skip sessions whose state_json is smaller than this
+    (no point compressing 2 KB rows; default 256 KB).
+    `dry_run` — when true, computes what *would* be archived and returns the
+    plan without touching the DB or filesystem. Always the safe first call.
+    `limit` — bound the number of rows processed in one call so the worst-case
+    DB write storm is predictable (default 200).
+    """
+    older_than_days: int = Field(default=90, ge=1, le=3650)
+    min_state_bytes: int = Field(default=256 * 1024, ge=1024, le=64 * 1024 * 1024)
+    dry_run: bool = True
+    limit: int = Field(default=200, ge=1, le=5000)
+
+
+@app.post("/api/admin/system/archive-stale-sessions")
+async def admin_archive_stale_sessions(payload: AdminArchiveStaleSessionsIn, request: Request):
+    """
+    Move `TradingSessionState.state_json` for stale, large sessions into
+    gzip'd files on disk (`uploads/session_archive/`) and null out the DB
+    column. The `TradingSession` row itself is **not** deleted — the user
+    still sees the session in their list and can restore it on demand via
+    `/api/admin/system/restore-archived-session`.
+
+    Why this exists: a single backtest session accumulates drawings + journal
+    entries in the `state_json` column indefinitely. At 10 MB × 1000 stale
+    sessions that's 10 GB of Postgres bloat on a 200 GB VPS. Gzipped on disk
+    those same blobs shrink ~10× and leave the hot DB table small.
+
+    Always run `dry_run=true` first (default) — you'll get back the exact
+    list of sessions that would be touched and the reclaimed-bytes total.
+    """
+    _require_admin(request)
+    cutoff = datetime.utcnow() - timedelta(days=int(payload.older_than_days))
+
+    db = SessionLocal()
+    plan: list[dict] = []
+    archived_bytes = 0
+    errors: list[dict] = []
+    try:
+        # Join state ↔ session so we can include user/name in the report.
+        try:
+            rows = db.execute(text(
+                "SELECT st.session_id, st.user_id, st.updated_at, "
+                "       octet_length(st.state_json) AS sz, s.name "
+                "FROM trading_session_states st "
+                "JOIN trading_sessions s ON s.id = st.session_id "
+                "WHERE st.updated_at < :cutoff "
+                "  AND octet_length(st.state_json) >= :min_sz "
+                "ORDER BY octet_length(st.state_json) DESC "
+                "LIMIT :lim"
+            ), {
+                "cutoff": cutoff,
+                "min_sz": int(payload.min_state_bytes),
+                "lim": int(payload.limit),
+            }).fetchall()
+        except Exception:
+            # SQLite fallback for local dev
+            rows = db.execute(text(
+                "SELECT st.session_id, st.user_id, st.updated_at, "
+                "       LENGTH(st.state_json) AS sz, s.name "
+                "FROM trading_session_states st "
+                "JOIN trading_sessions s ON s.id = st.session_id "
+                "WHERE st.updated_at < :cutoff "
+                "  AND LENGTH(st.state_json) >= :min_sz "
+                "ORDER BY LENGTH(st.state_json) DESC "
+                "LIMIT :lim"
+            ), {
+                "cutoff": cutoff,
+                "min_sz": int(payload.min_state_bytes),
+                "lim": int(payload.limit),
+            }).fetchall()
+
+        for r in rows:
+            sid = int(r[0])
+            plan.append({
+                "session_id": sid,
+                "user_id": int(r[1]),
+                "updated_at": r[2].isoformat() + "Z" if r[2] else None,
+                "bytes": int(r[3] or 0),
+                "human": _human_bytes(int(r[3] or 0)),
+                "name": r[4],
+            })
+
+        if payload.dry_run:
+            resp = {
+                "success": True,
+                "dry_run": True,
+                "cutoff_utc": cutoff.isoformat() + "Z",
+                "would_archive_count": len(plan),
+                "would_reclaim_bytes": sum(p["bytes"] for p in plan),
+                "would_reclaim_human": _human_bytes(sum(p["bytes"] for p in plan)),
+                "sample": plan[:25],
+            }
+            _record_admin_action(
+                request,
+                action="archive_stale_sessions",
+                status="dry_run",
+                status_code=200,
+                target_type="trading_session_state",
+                params={
+                    "older_than_days": payload.older_than_days,
+                    "min_state_bytes": payload.min_state_bytes,
+                    "limit": payload.limit,
+                },
+                result={
+                    "would_archive_count": resp["would_archive_count"],
+                    "would_reclaim_bytes": resp["would_reclaim_bytes"],
+                },
+            )
+            return resp
+
+        # Not a dry run — actually archive. We do one session at a time with
+        # per-row commits so a later failure doesn't lose earlier progress.
+        #
+        # Concurrency guard: between listing the plan and processing each row
+        # the user may have re-opened the session and saved fresh drawings.
+        # If `updated_at` has moved past our cutoff we SKIP — the row is no
+        # longer stale and archiving it would clobber the user's latest work
+        # (the gzip would hold it, but the DB row would go back to "{}").
+        for p in plan:
+            sid = p["session_id"]
+            try:
+                st = db.query(TradingSessionState).filter(
+                    TradingSessionState.session_id == sid
+                ).first()
+                if not st or not st.state_json:
+                    continue
+                if st.updated_at is not None and st.updated_at >= cutoff:
+                    errors.append({
+                        "session_id": sid,
+                        "error": "skipped: session was updated after dry-run cutoff",
+                    })
+                    continue
+                archive_path = _session_archive_path(sid)
+                # Don't clobber an existing archive — suffix with timestamp so
+                # admin can re-run without losing earlier snapshots.
+                if archive_path.exists():
+                    archive_path = SESSION_ARCHIVE_DIR / (
+                        f"session_{sid}_state_{datetime.utcnow().strftime('%Y%m%dT%H%M%S')}.json.gz"
+                    )
+                with gzip.open(archive_path, "wb") as fh:
+                    fh.write(st.state_json.encode("utf-8"))
+                reclaimed = len(st.state_json.encode("utf-8"))
+                # Replace with empty object so the app still gets a valid row.
+                st.state_json = "{}"
+                st.updated_at = datetime.utcnow()
+                db.commit()
+                archived_bytes += reclaimed
+            except Exception as exc:
+                db.rollback()
+                errors.append({"session_id": sid, "error": str(exc)[:300]})
+    finally:
+        db.close()
+
+    resp = {
+        "success": True,
+        "dry_run": False,
+        "cutoff_utc": cutoff.isoformat() + "Z",
+        "archived_count": len(plan) - len(errors),
+        "reclaimed_bytes": archived_bytes,
+        "reclaimed_human": _human_bytes(archived_bytes),
+        "archive_dir": str(SESSION_ARCHIVE_DIR.resolve()),
+        "errors": errors,
+    }
+    _record_admin_action(
+        request,
+        action="archive_stale_sessions",
+        status="error" if errors and archived_bytes == 0 else "ok",
+        status_code=200,
+        target_type="trading_session_state",
+        params={
+            "older_than_days": payload.older_than_days,
+            "min_state_bytes": payload.min_state_bytes,
+            "limit": payload.limit,
+            "dry_run": False,
+        },
+        result={
+            "archived_count": resp["archived_count"],
+            "reclaimed_bytes": resp["reclaimed_bytes"],
+            "error_count": len(errors),
+            "archived_session_ids": [p["session_id"] for p in plan][:50],
+        },
+        error=("; ".join(e.get("error", "") for e in errors[:5]) if errors else None),
+    )
+    return resp
+
+
+class AdminPruneAttachmentsIn(BaseModel):
+    """
+    Controls for `/api/admin/system/prune-support-attachments`.
+
+    `older_than_days` — only target attachments attached to support messages
+    older than this (default 180). Joins `support_messages.created_at` so a
+    recently-uploaded image on an old thread is still protected.
+    `closed_threads_only` — when true (default), skip attachments whose thread
+    is still `open`. Prevents surprising an active user.
+    `dry_run` — when true (default), reports what would be deleted and stops.
+    `limit` — max attachments touched per call (default 500).
+    """
+    older_than_days: int = Field(default=180, ge=30, le=3650)
+    closed_threads_only: bool = True
+    dry_run: bool = True
+    limit: int = Field(default=500, ge=1, le=10000)
+
+
+@app.post("/api/admin/system/prune-support-attachments")
+async def admin_prune_support_attachments(payload: AdminPruneAttachmentsIn, request: Request):
+    """
+    Delete old support-thread image attachments from disk + DB to reclaim
+    space. Dry-run by default.
+
+    What gets targeted:
+      * Attachment rows where the parent `SupportMessage.created_at` is older
+        than `older_than_days`.
+      * If `closed_threads_only` is on, the parent `SupportThread.status`
+        must be 'closed' as well.
+
+    The parent `SupportMessage` / `SupportThread` are **not** deleted — the
+    text conversation stays intact for audit. Only the image payload + its
+    DB attachment row are removed.
+
+    Run dry-run first and eyeball the sample before setting `dry_run=false`.
+    """
+    _require_admin(request)
+    cutoff = datetime.utcnow() - timedelta(days=int(payload.older_than_days))
+
+    db = SessionLocal()
+    plan: list[dict] = []
+    deleted_count = 0
+    reclaimed_bytes = 0
+    errors: list[dict] = []
+    try:
+        # Join attachments ↔ messages ↔ threads so we can filter on message
+        # age + thread status in one query.
+        q = (
+            db.query(SupportAttachment, SupportMessage, SupportThread)
+            .join(SupportMessage, SupportAttachment.message_id == SupportMessage.id)
+            .join(SupportThread, SupportMessage.thread_id == SupportThread.id)
+            .filter(SupportMessage.created_at < cutoff)
+        )
+        if payload.closed_threads_only:
+            q = q.filter(SupportThread.status == "closed")
+        q = q.order_by(SupportMessage.created_at.asc()).limit(int(payload.limit))
+        rows = q.all()
+
+        for att, msg, thr in rows:
+            plan.append({
+                "attachment_id": int(att.id),
+                "message_id": int(msg.id),
+                "thread_id": int(thr.id),
+                "user_id": int(att.user_id),
+                "bytes": int(att.size_bytes or 0),
+                "human": _human_bytes(int(att.size_bytes or 0)),
+                "mime_type": att.mime_type,
+                "thread_status": thr.status,
+                "message_created_at": msg.created_at.isoformat() + "Z" if msg.created_at else None,
+            })
+
+        if payload.dry_run:
+            resp = {
+                "success": True,
+                "dry_run": True,
+                "cutoff_utc": cutoff.isoformat() + "Z",
+                "closed_threads_only": bool(payload.closed_threads_only),
+                "would_delete_count": len(plan),
+                "would_reclaim_bytes": sum(p["bytes"] for p in plan),
+                "would_reclaim_human": _human_bytes(sum(p["bytes"] for p in plan)),
+                "sample": plan[:25],
+            }
+            _record_admin_action(
+                request,
+                action="prune_support_attachments",
+                status="dry_run",
+                status_code=200,
+                target_type="support_attachment",
+                params={
+                    "older_than_days": payload.older_than_days,
+                    "closed_threads_only": bool(payload.closed_threads_only),
+                    "limit": payload.limit,
+                },
+                result={
+                    "would_delete_count": resp["would_delete_count"],
+                    "would_reclaim_bytes": resp["would_reclaim_bytes"],
+                },
+            )
+            return resp
+
+        # Live mode — walk the same list, unlink file + delete DB row.
+        # Defense-in-depth: even though `stored_name` is server-generated via
+        # `secrets.token_urlsafe` (see _support_write_image_file), we verify
+        # the resolved path is still inside SUPPORT_UPLOAD_DIR before unlink.
+        # Cheap, and survives future refactors that might accept user input.
+        support_root = SUPPORT_UPLOAD_DIR.resolve()
+        for att, _msg, _thr in rows:
+            try:
+                stored = (att.stored_name or "").strip()
+                if not stored or "/" in stored or "\\" in stored or stored.startswith("."):
+                    errors.append({"attachment_id": int(att.id), "error": "suspicious stored_name; skipped"})
+                    continue
+                fpath = (SUPPORT_UPLOAD_DIR / stored).resolve()
+                try:
+                    fpath.relative_to(support_root)
+                except ValueError:
+                    errors.append({"attachment_id": int(att.id), "error": "path escaped support dir; skipped"})
+                    continue
+                size = int(att.size_bytes or 0)
+                if fpath.is_file():
+                    fpath.unlink()
+                db.delete(att)
+                db.commit()
+                deleted_count += 1
+                reclaimed_bytes += size
+            except Exception as exc:
+                db.rollback()
+                errors.append({"attachment_id": int(att.id), "error": str(exc)[:300]})
+    finally:
+        db.close()
+
+    resp = {
+        "success": True,
+        "dry_run": False,
+        "cutoff_utc": cutoff.isoformat() + "Z",
+        "deleted_count": deleted_count,
+        "reclaimed_bytes": reclaimed_bytes,
+        "reclaimed_human": _human_bytes(reclaimed_bytes),
+        "errors": errors,
+    }
+    _record_admin_action(
+        request,
+        action="prune_support_attachments",
+        status="error" if errors and deleted_count == 0 else "ok",
+        status_code=200,
+        target_type="support_attachment",
+        params={
+            "older_than_days": payload.older_than_days,
+            "closed_threads_only": bool(payload.closed_threads_only),
+            "limit": payload.limit,
+            "dry_run": False,
+        },
+        result={
+            "deleted_count": deleted_count,
+            "reclaimed_bytes": reclaimed_bytes,
+            "error_count": len(errors),
+        },
+        error=("; ".join(e.get("error", "") for e in errors[:5]) if errors else None),
+    )
+    return resp
+
+
+@app.post("/api/admin/system/restore-archived-session/{session_id}")
+async def admin_restore_archived_session(session_id: int, request: Request):
+    """
+    Reverse of `/archive-stale-sessions`: pull the gzipped state back from
+    `uploads/session_archive/` into `TradingSessionState.state_json` so the
+    session is hot again. Skips if the session is already populated (> 2
+    bytes — beyond the default `{}`), so we never clobber fresh user edits.
+    """
+    _require_admin(request)
+    archive_path = _session_archive_path(session_id)
+    if not archive_path.exists():
+        # Fall back to timestamped snapshots if the canonical path was renamed.
+        candidates = sorted(SESSION_ARCHIVE_DIR.glob(f"session_{int(session_id)}_state*.json.gz"))
+        if not candidates:
+            raise HTTPException(status_code=404, detail="No archive for this session")
+        archive_path = candidates[-1]  # most recent timestamped one
+
+    try:
+        with gzip.open(archive_path, "rb") as fh:
+            raw = fh.read().decode("utf-8")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read archive: {exc}")
+
+    db = SessionLocal()
+    try:
+        st = db.query(TradingSessionState).filter(
+            TradingSessionState.session_id == int(session_id)
+        ).first()
+        if not st:
+            raise HTTPException(status_code=404, detail="Session state row missing")
+        # Guard: don't overwrite a state that has meaningful content (> 64 B
+        # leaves room for `{}` + whitespace but catches any real payload).
+        current = (st.state_json or "").strip()
+        if len(current.encode("utf-8")) > 64:
+            raise HTTPException(
+                status_code=409,
+                detail="Session already has live state; archive left on disk (not restored)",
+            )
+        st.state_json = raw
+        st.updated_at = datetime.utcnow()
+        db.commit()
+    finally:
+        db.close()
+
+    resp = {
+        "success": True,
+        "session_id": int(session_id),
+        "restored_bytes": len(raw.encode("utf-8")),
+        "restored_human": _human_bytes(len(raw.encode("utf-8"))),
+        "archive_path": str(archive_path.resolve()),
+    }
+    _record_admin_action(
+        request,
+        action="restore_archived_session",
+        status="ok",
+        status_code=200,
+        target_type="trading_session_state",
+        target_id=int(session_id),
+        params={"session_id": int(session_id)},
+        result={"restored_bytes": resp["restored_bytes"]},
+    )
+    return resp
+
+
+# ───────────────────────────────────────────────────────────────────────
+# Admin audit-log read API
+# ───────────────────────────────────────────────────────────────────────
+
+@app.get("/api/admin/audit-log")
+async def admin_audit_log_list(
+    request: Request,
+    limit: int = 200,
+    offset: int = 0,
+    action: str | None = None,
+    admin_user_id: int | None = None,
+    status: str | None = None,
+    since_days: int | None = None,
+    q: str | None = None,
+):
+    """
+    Paginated, filterable view of `admin_audit_log`. Admin-only.
+
+    Query params:
+      * `limit`         — rows per page, clamped to [1, 500]
+      * `offset`        — row offset for pagination
+      * `action`        — substring match on `action` column
+      * `admin_user_id` — exact match
+      * `status`        — ok | error | denied | dry_run
+      * `since_days`    — only rows created within the last N days
+      * `q`             — free-text substring across path + params + result
+
+    The list itself is read-only; the middleware will not log this call
+    because GET isn't in `_AUDIT_MUTATING_METHODS` (no self-referential noise).
+    """
+    _require_admin(request)
+    limit = max(1, min(500, int(limit or 200)))
+    offset = max(0, int(offset or 0))
+
+    db = SessionLocal()
+    try:
+        qry = db.query(AdminAuditLog)
+        if action:
+            qry = qry.filter(AdminAuditLog.action.ilike(f"%{action[:64]}%"))
+        if admin_user_id:
+            qry = qry.filter(AdminAuditLog.admin_user_id == int(admin_user_id))
+        if status:
+            qry = qry.filter(AdminAuditLog.status == status[:16])
+        if since_days:
+            cutoff = datetime.utcnow() - timedelta(days=max(1, int(since_days)))
+            qry = qry.filter(AdminAuditLog.created_at >= cutoff)
+        if q:
+            needle = f"%{q[:200]}%"
+            qry = qry.filter(
+                (AdminAuditLog.path.ilike(needle))
+                | (AdminAuditLog.params_json.ilike(needle))
+                | (AdminAuditLog.result_json.ilike(needle))
+                | (AdminAuditLog.error_message.ilike(needle))
+            )
+        total = qry.count()
+        rows = (
+            qry.order_by(AdminAuditLog.created_at.desc())
+               .offset(offset).limit(limit).all()
+        )
+        return {
+            "success": True,
+            "total": int(total),
+            "limit": limit,
+            "offset": offset,
+            "entries": [{
+                "id": int(r.id),
+                "created_at": r.created_at.isoformat() + "Z" if r.created_at else None,
+                "admin_user_id": r.admin_user_id,
+                "admin_email": r.admin_email,
+                "action": r.action,
+                "method": r.method,
+                "path": r.path,
+                "target_type": r.target_type,
+                "target_id": r.target_id,
+                "status": r.status,
+                "status_code": r.status_code,
+                "params": r.params_json,
+                "result": r.result_json,
+                "error": r.error_message,
+                "ip_address": r.ip_address,
+                "user_agent": r.user_agent,
+            } for r in rows],
+        }
+    finally:
+        db.close()
+
+
+class AdminAuditLogPruneIn(BaseModel):
+    """
+    Retention for `admin_audit_log`. Default keeps one year. Dry-run by
+    default — shows you how many rows would be dropped before you commit.
+    """
+    older_than_days: int = Field(default=365, ge=30, le=3650)
+    dry_run: bool = True
+
+
+@app.post("/api/admin/audit-log/prune")
+async def admin_audit_log_prune(payload: AdminAuditLogPruneIn, request: Request):
+    """
+    Delete audit-log entries older than N days. Recommended to run rarely
+    (once a quarter) so you retain a long forensic tail.
+    """
+    _require_admin(request)
+    cutoff = datetime.utcnow() - timedelta(days=int(payload.older_than_days))
+    db = SessionLocal()
+    try:
+        qry = db.query(AdminAuditLog).filter(AdminAuditLog.created_at < cutoff)
+        total = qry.count()
+        if payload.dry_run:
+            _record_admin_action(
+                request,
+                action="audit_log_prune",
+                status="dry_run",
+                status_code=200,
+                target_type="admin_audit_log",
+                params={"older_than_days": payload.older_than_days},
+                result={"would_delete": int(total)},
+            )
+            return {"success": True, "dry_run": True, "would_delete": int(total), "cutoff_utc": cutoff.isoformat() + "Z"}
+        deleted = qry.delete(synchronize_session=False)
+        db.commit()
+        _record_admin_action(
+            request,
+            action="audit_log_prune",
+            status="ok",
+            status_code=200,
+            target_type="admin_audit_log",
+            params={"older_than_days": payload.older_than_days, "dry_run": False},
+            result={"deleted": int(deleted or 0)},
+        )
+        return {"success": True, "dry_run": False, "deleted": int(deleted or 0), "cutoff_utc": cutoff.isoformat() + "Z"}
+    finally:
+        db.close()
+
+
 # ═══════════════════════════════════════════════════════════════════
 
 @app.get("/api/sessions")
@@ -6480,6 +10922,97 @@ async def get_trading_session_state(session_id: int, request: Request):
         db.close()
 
 
+@app.post("/api/sessions/{session_id}/journal/import-csv")
+async def import_trading_session_journal_csv(
+    session_id: int,
+    request: Request,
+    mode: str = Query("replace"),
+    start_balance: float | None = Query(None, description="When set, writes session.config startBalance for return % metrics."),
+    file: UploadFile = File(...),
+):
+    """Replace or append `state.journal` from a UTF-8 CSV (see `analytics_core.csv_journal`)."""
+    user = _require_user(request)
+    mode_clean = (mode or "replace").strip().lower()
+    if mode_clean not in {"replace", "append"}:
+        raise HTTPException(status_code=400, detail="mode must be replace or append")
+
+    raw = await file.read()
+    if len(raw) > 12 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="CSV file too large (max 12 MB)")
+
+    parsed = parse_trades_csv_bytes(raw)
+    errs = parsed.get("errors") or []
+    if errs:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "CSV parse errors", "errors": errs[:80]},
+        )
+    new_trades = parsed.get("trades") or []
+    if not new_trades:
+        raise HTTPException(status_code=400, detail="No trades parsed from CSV")
+
+    db = SessionLocal()
+    try:
+        s = db.query(TradingSession).filter(TradingSession.id == session_id).first()
+        if not s:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if not _can_access_trading_session(user, s):
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        if start_balance is not None and math.isfinite(float(start_balance)) and float(start_balance) > 0:
+            try:
+                cfg = json.loads(s.config_json or "{}")
+            except Exception:
+                cfg = {}
+            if not isinstance(cfg, dict):
+                cfg = {}
+            cfg["startBalance"] = float(start_balance)
+            s.config_json = json.dumps(cfg, separators=(",", ":"))
+
+        st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
+        state = _parse_json_dict(st.state_json)
+        existing = state.get("journal") if isinstance(state.get("journal"), list) else []
+        if mode_clean == "append":
+            state["journal"] = list(existing) + list(new_trades)
+        else:
+            state["journal"] = list(new_trades)
+
+        new_state_json = json.dumps(state, separators=(",", ":"))
+        new_size = len(new_state_json.encode("utf-8"))
+        prev_size = len((st.state_json or "").encode("utf-8"))
+        if new_size > SESSION_STATE_HARD_LIMIT_BYTES and new_size > prev_size:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"Session state too large after import "
+                    f"({new_size / 1_048_576:.1f} MB; hard limit "
+                    f"{SESSION_STATE_HARD_LIMIT_BYTES / 1_048_576:.0f} MB)."
+                ),
+            )
+
+        st.state_json = new_state_json
+        j = state["journal"]
+        if isinstance(j, list):
+            _sync_trading_session_journal_trades(db, session_id=s.id, user_id=s.user_id, journal=j)
+        db.commit()
+        db.refresh(st)
+        warning = None
+        if new_size > SESSION_STATE_SOFT_LIMIT_BYTES:
+            warning = (
+                f"Session state is {new_size / 1_048_576:.1f} MB (soft limit "
+                f"{SESSION_STATE_SOFT_LIMIT_BYTES / 1_048_576:.0f} MB)."
+            )
+        return {
+            "imported": len(new_trades),
+            "mode": mode_clean,
+            "journal_len": len(j) if isinstance(j, list) else 0,
+            "warnings": list(parsed.get("warnings") or []),
+            "warning": warning,
+        }
+    finally:
+        db.close()
+
+
 @app.get("/api/sessions/{session_id}/journal-trades")
 async def list_trading_session_journal_trades(session_id: int, request: Request):
     """Queryable copy of chart journal trades (one row per trade); same data as state.journal, scoped per user."""
@@ -6516,7 +11049,40 @@ async def list_trading_session_journal_trades(session_id: int, request: Request)
 
 
 @app.patch("/api/sessions/{session_id}/state")
-async def patch_trading_session_state(session_id: int, payload: TradingSessionStateUpdateIn, request: Request):
+async def patch_trading_session_state(session_id: int, request: Request):
+    # IMPORTANT: We deliberately DO NOT declare `payload: TradingSessionStateUpdateIn`
+    # in the signature — if we did, FastAPI would eagerly read + JSON-parse the
+    # body before entering this function, defeating the Content-Length guard.
+    # nginx allows up to 100 MB, so a malicious caller can POST a huge JSON
+    # that would otherwise burn RAM/CPU before our 16 MB limit rejects it.
+    try:
+        cl = int(request.headers.get("content-length", "0") or 0)
+    except Exception:
+        cl = 0
+    # Allow some headroom over the hard limit for JSON overhead / re-encoding.
+    _state_max_body = max(SESSION_STATE_HARD_LIMIT_BYTES * 2, 32 * 1024 * 1024)
+    if cl > _state_max_body:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Request body too large ({cl / 1_048_576:.1f} MB). "
+                f"Session state is capped at {SESSION_STATE_HARD_LIMIT_BYTES / 1_048_576:.0f} MB."
+            ),
+        )
+    # Read the body now that we know it's within a sane bound. If the client
+    # lied about Content-Length and streams more, we also truncate-check here.
+    raw = await request.body()
+    if len(raw) > _state_max_body:
+        raise HTTPException(status_code=413, detail="Request body too large")
+    try:
+        body_dict = json.loads(raw or b"{}")
+        if not isinstance(body_dict, dict):
+            raise ValueError("payload must be a JSON object")
+        payload = TradingSessionStateUpdateIn(**body_dict)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     user = _require_user(request)
     db = SessionLocal()
     try:
@@ -6558,14 +11124,49 @@ async def patch_trading_session_state(session_id: int, payload: TradingSessionSt
         if payload.propfirm_challenge is not None:
             state["propfirm_challenge"] = payload.propfirm_challenge
 
-        st.state_json = json.dumps(state, separators=(",", ":"))
+        # Size guard: `TradingSessionState.state_json` is the only per-user row
+        # that can grow unbounded (drawings + journal + per-instrument stats all
+        # live inside it). Without a cap a single user with thousands of
+        # drawings can balloon the row to tens of MB and eventually push
+        # Postgres / our 200 GB VPS disk over the edge. We enforce:
+        #   * HARD cap — reject any write that both exceeds the hard limit AND
+        #     grows the payload (shrinking saves always pass so a user who is
+        #     already over the line isn't locked out and can recover by
+        #     deleting drawings / trades).
+        #   * SOFT cap — pass-through, but surface `warning` in the response
+        #     so the UI can nudge the user before they hit the hard wall.
+        new_state_json = json.dumps(state, separators=(",", ":"))
+        new_size = len(new_state_json.encode("utf-8"))
+        prev_size = len((st.state_json or "").encode("utf-8"))
+        warning = None
+        if new_size > SESSION_STATE_HARD_LIMIT_BYTES and new_size > prev_size:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"Session state too large "
+                    f"({new_size / 1_048_576:.1f} MB; hard limit "
+                    f"{SESSION_STATE_HARD_LIMIT_BYTES / 1_048_576:.0f} MB). "
+                    "Remove some drawings or archive old trades, then try again."
+                ),
+            )
+        if new_size > SESSION_STATE_SOFT_LIMIT_BYTES:
+            warning = (
+                f"Session state is {new_size / 1_048_576:.1f} MB. "
+                f"Soft limit is {SESSION_STATE_SOFT_LIMIT_BYTES / 1_048_576:.0f} MB — "
+                "consider archiving old trades or pruning drawings to stay fast."
+            )
+
+        st.state_json = new_state_json
         if payload.journal is not None:
             j = state.get("journal")
             if isinstance(j, list):
                 _sync_trading_session_journal_trades(db, session_id=s.id, user_id=s.user_id, journal=j)
         db.commit()
         db.refresh(st)
-        return {"success": True}
+        resp = {"success": True, "size_bytes": new_size}
+        if warning:
+            resp["warning"] = warning
+        return resp
     finally:
         db.close()
 
@@ -7085,8 +11686,15 @@ async def get_file_meta(file_id: int):
             if total > 0:
                 first = _read_bin_range(bin_1m, 0, 1)
                 last = _read_bin_range(bin_1m, total - 1, 1)
-                raw_start_ts = first[0]['t'] if first else None
-                raw_end_ts = last[0]['t'] if last else None
+                raw_start_ts = _normalize_epoch_ms(first[0]["t"]) if first else None
+                raw_end_ts = _normalize_epoch_ms(last[0]["t"]) if last else None
+
+        agg_1m = next((a for a in aggs if getattr(a, "timeframe", None) == "1m"), None)
+        if agg_1m:
+            if raw_start_ts is None:
+                raw_start_ts = _normalize_epoch_ms(agg_1m.start_ts)
+            if raw_end_ts is None:
+                raw_end_ts = _normalize_epoch_ms(agg_1m.end_ts)
 
         for agg in aggs:
             timeframes[agg.timeframe] = {
@@ -7472,6 +12080,12 @@ if ninjatrader_assets_dir.exists():
 homepage_dir = Path("homepage/out")
 if homepage_dir.exists():
     app.mount("/", StaticFiles(directory=str(homepage_dir), html=True), name="homepage")
+
+@app.on_event("startup")
+async def _firstrate_scheduler_app_startup():
+    """Background thread: periodically queues FirstRate FX sync per uploads/firstrate_schedule.json."""
+    _start_firstrate_scheduler_thread()
+
 
 if __name__ == "__main__":
     import uvicorn

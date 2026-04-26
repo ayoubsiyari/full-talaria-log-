@@ -338,6 +338,10 @@ class Chart {
         /** Bumps on each server timeframe load so stale async responses are ignored. */
         this._timeframeLoadSeq = 0;
         this.currentSymbol = null; // Store detected symbol from CSV
+        // Tracks the last symbol we resolved precision for. When currentSymbol changes
+        // we drop the cached precision so the registry is re-queried for the new tick
+        // size (prevents NQ inheriting EURUSD's 5dp when switching symbols mid-session).
+        this._symbolPrecisionResolvedFor = null;
         this._RAW_DATA_CAP = 300_000; // ring buffer: max candles in memory
         /**
          * Backtest: first GET /smart batch size (capped 5k–100k server-side).
@@ -765,7 +769,7 @@ class Chart {
             }
         }
         if (Array.isArray(session.files)) {
-            const file = session.files.find(f => String(f.id) === fileKey);
+            const file = session.files.find((f) => f && (String(f.id) === fileKey || String(f.fileId) === fileKey));
             if (file && file.name) {
                 return this._formatPairTicker(file.name, null);
             }
@@ -1378,6 +1382,21 @@ class Chart {
 
             if (!this._smartResponseHasPayload(result)) throw new Error('No data in response');
 
+            // Persist drawings for the pair we are leaving *before* currentFileId changes.
+            // Otherwise saveDrawings()/storage keys target the new file and in-memory drawings are discarded.
+            if (
+                this.drawingManager &&
+                typeof this.drawingManager.saveDrawings === 'function' &&
+                this.currentFileId != null &&
+                String(this.currentFileId) !== String(targetFileId)
+            ) {
+                try {
+                    this.drawingManager.saveDrawings(String(this.currentFileId));
+                } catch (e) {
+                    console.warn('⚠️ Failed to save drawings before pair switch', e);
+                }
+            }
+
             this.rawData = [];
             this.data = [];
             this.totalCandles = result.total;
@@ -1399,12 +1418,14 @@ class Chart {
             this._chartViewRestored = false;
 
             this.currentFileId = targetFileId;
+            // Keep symbol in sync with file id before ingest / loadDrawings / order visuals — otherwise
+            // ticker-based checks briefly see the OLD pair name on the NEW dataset (wrong trade markers).
+            this.currentSymbol = targetTicker || (session.fileName ? session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase() : this.currentSymbol);
+
             this._ingestSmartWindowResult(result, { skipFitToView: true });
             this.loadedRanges.set(0, result.returned);
 
             this._scheduleSmartPrefetchOthers(targetFileId, requestTimeframe, session);
-
-            this.currentSymbol = targetTicker || (session.fileName ? session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase() : this.currentSymbol);
 
             this.updateChartTitle(this.currentSymbol);
 
@@ -1544,6 +1565,7 @@ class Chart {
         const mainChart = window.chart;
         this._showPanelLoadingOverlay();
         try {
+            const outgoingPanelFileId = this.currentFileId != null ? String(this.currentFileId) : null;
             const session = this.backtestingSession
                 || (mainChart && mainChart.backtestingSession)
                 || JSON.parse(userStorage.getItem('backtestingSession') || '{}');
@@ -1593,6 +1615,19 @@ class Chart {
 
             if (!this._smartResponseHasPayload(result)) throw new Error('No data in response');
 
+            if (
+                this.drawingManager &&
+                typeof this.drawingManager.saveDrawings === 'function' &&
+                outgoingPanelFileId != null &&
+                String(outgoingPanelFileId) !== String(targetFileId)
+            ) {
+                try {
+                    this.drawingManager.saveDrawings(String(outgoingPanelFileId));
+                } catch (e) {
+                    console.warn('⚠️ Failed to save drawings before panel pair switch', e);
+                }
+            }
+
             this.rawData = [];
             this.data = [];
             this.totalCandles = result.total;
@@ -1605,6 +1640,10 @@ class Chart {
             this._panLoading = false;
             this.loadedRanges.clear();
 
+            // Match main chart: file id + symbol before ingest so order/drawing logic never sees a mismatched pair.
+            this.currentFileId = targetFileId;
+            this.currentSymbol = targetTicker || this.currentSymbol;
+
             this._isLoadingOwnPairData = true;
             this._ingestSmartWindowResult(result, { skipFitToView: true });
             this.loadedRanges.set(0, result.returned);
@@ -1614,8 +1653,6 @@ class Chart {
                 mainChart._scheduleSmartPrefetchOthers(targetFileId, requestTimeframe, session);
             }
 
-            this.currentFileId = targetFileId;
-            this.currentSymbol = targetTicker || this.currentSymbol;
             this._panelFullRawData = [...this.rawData];
 
             if (replay && replay.isActive && Number.isFinite(replayTs) && this._panelFullRawData.length > 0) {
@@ -1662,7 +1699,7 @@ class Chart {
                 && mainChart && mainChart !== this && mainChart.data && mainChart.data.length > 0
                 && this.data && this.data.length > 0);
 
-            if (alignScrollToMain) {
+            const computeAlignedOffset = () => {
                 const sourceSpacing = mainChart.getCandleSpacing
                     ? mainChart.getCandleSpacing()
                     : mainChart._getSpacingForCandleWidth(mainChart.candleWidth);
@@ -1670,8 +1707,15 @@ class Chart {
                     ? this.getCandleSpacing()
                     : this._getSpacingForCandleWidth(this.candleWidth);
                 const ratio = sourceSpacing > 0 ? (targetSpacing / sourceSpacing) : 1;
-                this.offsetX = mainChart.offsetX * ratio;
+                return mainChart.offsetX * ratio;
+            };
+
+            if (alignScrollToMain) {
+                this.offsetX = computeAlignedOffset();
                 if (this.constrainOffset) this.constrainOffset();
+                // Mark the view as restored so the post-resize pass below does not
+                // override our synced offset with fitToView().
+                this._chartViewRestored = true;
             } else {
                 this.fitToView();
             }
@@ -1681,8 +1725,16 @@ class Chart {
             requestAnimationFrame(() => {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
-                this._chartViewRestored = false;
-                this.fitToView();
+                if (alignScrollToMain) {
+                    // Re-apply aligned offset after resize (spacing may have changed)
+                    // and keep `_chartViewRestored` true so fitToView is skipped.
+                    this.offsetX = computeAlignedOffset();
+                    if (this.constrainOffset) this.constrainOffset();
+                    this._chartViewRestored = true;
+                } else {
+                    this._chartViewRestored = false;
+                    this.fitToView();
+                }
                 this.render();
             });
             this._hidePanelLoadingOverlay();
@@ -1773,6 +1825,37 @@ class Chart {
             if (fromStorage) return String(fromStorage);
         } catch (e) {}
         return null;
+    }
+
+    /**
+     * localStorage key for drawings — must match DrawingToolsManager (session-scoped when a trading session is active).
+     * @param {string|null} fileIdOverride — persist under this dataset id (e.g. pair switch before currentFileId updates).
+     */
+    getDrawingsStorageKey(fileIdOverride = null) {
+        const fileId = fileIdOverride != null && String(fileIdOverride) !== ''
+            ? String(fileIdOverride)
+            : (this.currentFileId || 'default');
+        const sessionId = typeof this.getActiveTradingSessionId === 'function'
+            ? this.getActiveTradingSessionId()
+            : null;
+        if (sessionId) {
+            return `chart_drawings_s${sessionId}_${fileId}`;
+        }
+        return `chart_drawings_${fileId}`;
+    }
+
+    /** Session GET /state returned drawings before OHLC existed — applied after DrawingToolsManager finishes its first load. */
+    _applyPendingSessionDrawingsAfterManagerLoad() {
+        try {
+            const pending = this._pendingSessionDrawingsFromState;
+            if (!pending || !Array.isArray(pending) || pending.length === 0) return;
+            if (!this.drawingManager || typeof this.drawingManager.loadDrawingsFromData !== 'function') return;
+            if (!this.data || this.data.length === 0) return;
+            this._pendingSessionDrawingsFromState = null;
+            this.drawingManager.loadDrawingsFromData(pending);
+        } catch (e) {
+            console.warn('Failed to apply pending session drawings', e);
+        }
     }
 
     /**
@@ -2030,8 +2113,22 @@ class Chart {
 
             this._sessionStateLoadedFor = String(sessionId);
 
-            if (this.drawingManager && Array.isArray(state.drawings) && typeof this.drawingManager.loadDrawingsFromData === 'function') {
-                this.drawingManager.loadDrawingsFromData(state.drawings);
+            // Only merge server drawings when non-empty. Session payloads often include `drawings: []`
+            // when the server never stored shapes — applying that would wipe shapes just loaded from localStorage.
+            if (
+                this.drawingManager &&
+                Array.isArray(state.drawings) &&
+                state.drawings.length > 0 &&
+                typeof this.drawingManager.loadDrawingsFromData === 'function'
+            ) {
+                if (this.data && this.data.length > 0) {
+                    this._pendingSessionDrawingsFromState = null;
+                    this.drawingManager.loadDrawingsFromData(state.drawings);
+                } else {
+                    this._pendingSessionDrawingsFromState = state.drawings;
+                }
+            } else if (Array.isArray(state.drawings) && state.drawings.length === 0) {
+                this._pendingSessionDrawingsFromState = null;
             }
 
             // Always treat journal as an array (legacy/corrupt blobs may omit it or use a non-array).
@@ -2259,10 +2356,17 @@ class Chart {
         );
     }
 
+    /** Patches that may be queued before GET /state hydrates the client (journal, balance, drawings). */
+    _sessionStatePatchAllowedBeforeHydrate(patch) {
+        if (!patch || typeof patch !== 'object') return false;
+        if (this._sessionStatePatchIsJournalRelated(patch)) return true;
+        return Object.prototype.hasOwnProperty.call(patch, 'drawings');
+    }
+
     scheduleSessionStateSave(patch) {
         const sessionId = this.getActiveTradingSessionId();
         if (!sessionId) return;
-        if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchIsJournalRelated(patch)) return;
+        if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchAllowedBeforeHydrate(patch)) return;
         if (!patch || typeof patch !== 'object') return;
 
         this._pendingSessionStatePatch = Object.assign({}, this._pendingSessionStatePatch || {}, patch);
@@ -2351,7 +2455,9 @@ class Chart {
         if (!sessionId) return;
         const patch = this._pendingSessionStatePatch;
         if (!patch) return;
-        if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchIsJournalRelated(patch)) return;
+        if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchAllowedBeforeHydrate(patch)) return;
+
+        const hadDrawings = !!(patch && patch.drawings != null);
         this._pendingSessionStatePatch = null;
 
         try {
@@ -2382,6 +2488,12 @@ class Chart {
             } catch (_) {}
             console.warn('⚠️ Failed to save trading session state', e, patchUrl ? `(PATCH ${patchUrl})` : '');
             this._notifyJournalNetworkError();
+        } finally {
+            if (hadDrawings && this.drawingManager && typeof this.drawingManager._onSessionDrawingsSaveFinished === 'function') {
+                try {
+                    this.drawingManager._onSessionDrawingsSaveFinished();
+                } catch (_) { /* ignore */ }
+            }
         }
     }
     
@@ -2941,7 +3053,12 @@ class Chart {
     
     loadDrawingsFromStorage() {
         try {
-            const saved = userStorage.getItem(`chart_drawings_${this.currentFileId || 'default'}`);
+            const key = this.getDrawingsStorageKey();
+            let saved = userStorage.getItem(key);
+            if (!saved && key.includes('_s')) {
+                const legacyKey = `chart_drawings_${this.currentFileId || 'default'}`;
+                saved = userStorage.getItem(legacyKey);
+            }
             if (saved) {
                 this.drawings = JSON.parse(saved);
                 
@@ -3347,7 +3464,7 @@ class Chart {
         } else if (Array.isArray(this.drawings) && this.drawings.length > 0) {
             this.svg.selectAll('*').remove();
             this.drawings = [];
-            userStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify([]));
+            userStorage.setItem(this.getDrawingsStorageKey(), JSON.stringify([]));
             this.scheduleRender();
             cleared = true;
         }
@@ -6522,6 +6639,10 @@ class Chart {
                 closeDropdown();
                 return;
             }
+            // Opening fresh: drop stale search text so the full session instrument list
+            // shows (a partial query from last open made the other pair look "gone").
+            const staleSearch = dropdown.querySelector('.ssd-search-input');
+            if (staleSearch) staleSearch.value = '';
             this.renderSymbolSwitcherOptions(dropdown);
             positionDropdown();
             dropdown.classList.add('open');
@@ -6567,48 +6688,113 @@ class Chart {
     }
 
     getSymbolSwitcherEntries() {
-        const entries = [];
-        const session = this.backtestingSession || this.normalizeBacktestingSession(JSON.parse(userStorage.getItem('backtestingSession') || '{}'));
-
-        if (session && session.instruments && typeof session.instruments === 'object') {
-            Object.keys(session.instruments).forEach((tickerKey) => {
-                const row = session.instruments[tickerKey];
-                if (!row) return;
-                const fileId = row.fileId || row.datasetId || row.sourceFileId;
-                if (!fileId) return;
-                const rawTicker = String(row.ticker || tickerKey || '');
-                const rawName = row.fileName || row.name || '';
-                const displayTicker = this._formatPairTicker(rawTicker, rawName);
-                entries.push({
-                    fileId: String(fileId),
-                    ticker: displayTicker || rawTicker.toUpperCase() || String(fileId),
-                    subtitle: displayTicker !== rawName ? rawName : ''
-                });
+        const byFileId = new Map();
+        const addEntry = (fileId, ticker, subtitle = '') => {
+            if (fileId == null || fileId === '') return;
+            const fid = String(fileId);
+            if (byFileId.has(fid)) return;
+            byFileId.set(fid, {
+                fileId: fid,
+                ticker: String(ticker || fid).trim() || fid,
+                subtitle: String(subtitle || '')
             });
+        };
+
+        const collectFromSession = (sessionRaw) => {
+            if (!sessionRaw || typeof sessionRaw !== 'object') return;
+            let session = sessionRaw;
+            try {
+                session = this.normalizeBacktestingSession(sessionRaw);
+            } catch (e) {
+                return;
+            }
+
+            if (session.instruments && typeof session.instruments === 'object') {
+                Object.keys(session.instruments).forEach((tickerKey) => {
+                    const row = session.instruments[tickerKey];
+                    if (!row) return;
+                    const fileId = row.fileId || row.datasetId || row.sourceFileId;
+                    if (!fileId) return;
+                    const rawTicker = String(row.ticker || tickerKey || '');
+                    const rawName = row.fileName || row.name || '';
+                    const displayTicker = this._formatPairTicker(rawTicker, rawName);
+                    addEntry(
+                        fileId,
+                        displayTicker || rawTicker.toUpperCase() || String(fileId),
+                        displayTicker !== rawName ? rawName : ''
+                    );
+                });
+            }
+
+            // Multi-instrument wizard always saves `files` (+ `symbols`). Some paths shrink
+            // `instruments` to the active chart only — still list every fileId from `files` / `symbols`.
+            if (Array.isArray(session.files)) {
+                session.files.forEach((f) => {
+                    if (!f) return;
+                    const fileId = f.id != null ? f.id : f.fileId;
+                    if (fileId == null) return;
+                    const rawName = String(f.name || f.fileName || '');
+                    const resolved = this.resolveSessionTickerForFileId(session, fileId);
+                    const displayTicker = resolved
+                        || this._formatPairTicker(rawName, '')
+                        || rawName.replace(/\.(csv|CSV)$/i, '').toUpperCase();
+                    addEntry(fileId, displayTicker, displayTicker !== rawName ? rawName : '');
+                });
+            }
+
+            if (Array.isArray(session.symbols)) {
+                session.symbols.forEach((row) => {
+                    if (!row) return;
+                    const fileId = row.fileId;
+                    if (fileId == null) return;
+                    const sym = String(row.symbolName || row.ticker || row.symbol || '').trim();
+                    const rawName = row.fileName || row.name || '';
+                    const displayTicker = this._formatPairTicker(sym, rawName) || sym.toUpperCase() || String(fileId);
+                    addEntry(fileId, displayTicker, displayTicker !== rawName ? rawName : '');
+                });
+            }
+        };
+
+        collectFromSession(this.backtestingSession);
+
+        let entries = Array.from(byFileId.values());
+
+        // When the wizard saved an explicit `files` list, only those datasets belong to this
+        // backtest — drop stray tickers that may linger in `instruments` from older API merges.
+        const filesList = this.backtestingSession && Array.isArray(this.backtestingSession.files)
+            ? this.backtestingSession.files
+            : null;
+        if (filesList && filesList.length > 0) {
+            const allowed = new Set(
+                filesList.map((f) => {
+                    if (!f) return null;
+                    const fileId = f.id != null ? f.id : f.fileId;
+                    return fileId != null ? String(fileId) : null;
+                }).filter(Boolean)
+            );
+            entries = entries.filter((e) => allowed.has(e.fileId));
         }
 
         if (entries.length === 0) {
+            const session = this.backtestingSession || {};
             const fileSelect = document.getElementById('fileSelect');
             if (fileSelect) {
                 Array.from(fileSelect.options).forEach((option) => {
                     if (!option.value) return;
                     if (String(option.value).startsWith('local_')) return;
-                    entries.push({
-                        fileId: String(option.value),
-                        ticker: this.resolveSessionTickerForFileId(session, option.value) || option.textContent.split(' ')[0] || String(option.value),
-                        subtitle: option.textContent
-                    });
+                    addEntry(
+                        option.value,
+                        this.resolveSessionTickerForFileId(session, option.value)
+                            || option.textContent.split(' ')[0]
+                            || String(option.value),
+                        option.textContent
+                    );
                 });
+                entries = Array.from(byFileId.values());
             }
         }
 
-        const seen = new Set();
-        return entries.filter((entry) => {
-            if (!entry.fileId) return false;
-            if (seen.has(entry.fileId)) return false;
-            seen.add(entry.fileId);
-            return true;
-        });
+        return entries;
     }
 
     _ssdNormalize(s) {
@@ -6706,17 +6892,88 @@ class Chart {
         return null;
     }
 
+    /**
+     * Classify a ticker into one of fx | crypto | futures | stock. Uses the
+     * centrally-registered `MarketCalculationEngine.detectMarketType` when
+     * available so the same taxonomy drives P&L, icons, and health.
+     */
+    _detectTickerAssetClass(ticker) {
+        if (!ticker) return null;
+        try {
+            const MCE = (typeof window !== 'undefined') ? window.MarketCalculationEngine : null;
+            if (MCE && typeof MCE.detectMarketType === 'function') {
+                const t = MCE.detectMarketType(ticker);
+                if (t === 'forex')   return 'fx';
+                if (t === 'crypto')  return 'crypto';
+                if (t === 'futures') return 'futures';
+                if (t === 'stocks')  return 'stock';
+            }
+        } catch (_) { /* fallthrough to null */ }
+        return null;
+    }
+
+    /**
+     * Extract the crypto "base" symbol from a ticker (e.g. `BTCUSDT` → `BTC`,
+     * `ETH-USD` → `ETH`, `BTC` → `BTC`). Used to look up the icon in CoinCap.
+     */
+    _cryptoBase(ticker) {
+        const clean = String(ticker || '').replace(/[\s\-_\/\.]/g, '').toUpperCase();
+        const stripped = clean
+            .replace(/USDT$|USDC$|BUSD$|DAI$|TUSD$|USD$|EUR$|GBP$|PERP$/i, '')
+            .replace(/PERP$/i, '');
+        return stripped || clean;
+    }
+
+    /**
+     * Build a 30×30 asset-class-appropriate icon for the symbol-selector
+     * dropdown's `.ssd-item-icon` slot. Crypto pulls a real coin logo from
+     * CoinCap's CDN; futures/stock render a gradient badge with the ticker's
+     * leading letters. Falls back to plain initials if classification fails.
+     */
+    _buildAssetClassIconSSD(ticker) {
+        const raw = String(ticker || '');
+        const clean = raw.replace(/[\s\-_\/\.]/g, '').toUpperCase();
+        const cls = this._detectTickerAssetClass(raw);
+
+        if (cls === 'crypto') {
+            const base = this._cryptoBase(raw);
+            const iconUrl = `https://assets.coincap.io/assets/icons/${base.toLowerCase()}@2x.png`;
+            // Gradient badge sits underneath the <img>; if the CDN 404s we hide
+            // the image via onerror so the badge shows through.
+            return `<div class="ssd-item-icon ssd-crypto-icon" style="position:relative;padding:0;border:0;background:linear-gradient(135deg,#f7931a,#ffb347);color:#fff;font-weight:700;font-size:10px;overflow:hidden">
+                <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;letter-spacing:-0.3px">${base.slice(0,3)}</span>
+                <img src="${iconUrl}" alt="${base}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit" onerror="this.style.display='none'" />
+            </div>`;
+        }
+        if (cls === 'futures') {
+            const root = clean.slice(0, Math.min(3, clean.length)) || 'FX';
+            return `<div class="ssd-item-icon ssd-futures-icon" style="background:linear-gradient(135deg,#3b82f6,#6366f1);border-color:rgba(99,102,241,0.55);color:#fff;font-weight:700;font-size:11px">${root}</div>`;
+        }
+        if (cls === 'stock') {
+            const sym = clean.slice(0, Math.min(4, clean.length)) || 'ST';
+            const size = sym.length >= 4 ? '9px' : '11px';
+            return `<div class="ssd-item-icon ssd-stock-icon" style="background:linear-gradient(135deg,#10b981,#14b8a6);border-color:rgba(16,185,129,0.55);color:#fff;font-weight:700;font-size:${size};letter-spacing:-0.3px">${sym}</div>`;
+        }
+        const initials = clean.slice(0, 2).toUpperCase() || '•';
+        return `<div class="ssd-item-icon">${initials}</div>`;
+    }
+
     _buildPairFlagIcon(ticker) {
+        // Route non-FX tickers to asset-class-specific icons first so crypto
+        // pairs like BTCUSD don't accidentally render as broken country flags.
+        const cls = this._detectTickerAssetClass(ticker);
+        if (cls === 'crypto' || cls === 'futures' || cls === 'stock') {
+            return this._buildAssetClassIconSSD(ticker);
+        }
+
         const pair = this._parsePairCurrencies(ticker);
         if (!pair) {
-            const initials = String(ticker || '').replace(/[\s\-_\/\.]/g, '').slice(0, 2).toUpperCase() || '•';
-            return `<div class="ssd-item-icon">${initials}</div>`;
+            return this._buildAssetClassIconSSD(ticker);
         }
         const baseCC = this._currencyToCountry(pair.base);
         const quoteCC = this._currencyToCountry(pair.quote);
         if (!baseCC || !quoteCC) {
-            const initials = String(ticker || '').replace(/[\s\-_\/\.]/g, '').slice(0, 2).toUpperCase() || '•';
-            return `<div class="ssd-item-icon">${initials}</div>`;
+            return this._buildAssetClassIconSSD(ticker);
         }
         const flagUrl = (cc) => {
             if (cc === 'xau') return null;
@@ -7461,8 +7718,26 @@ class Chart {
 	        }
 	        
 	        if (oldW && oldH) {
-	            const deltaW = this.w - oldW;
-	            this.offsetX = Math.round(this.offsetX + deltaW * 0.5);
+	            // Anchor the right edge of the plot area through resize.
+	            //
+	            // The previous version shifted offsetX by `deltaW * 0.5` to keep
+	            // the visual center, but that was asymmetric under the
+	            // rubber-band clamp in constrainOffset(): when the chart was
+	            // right-aligned (latest bar at the right edge — TradingView-
+	            // style default), opening the settings panel shrank the
+	            // container, the clamp pinned offsetX back to the boundary,
+	            // then closing the panel grew the container and the +deltaW/2
+	            // shift sailed past the boundary because there was no clamp on
+	            // that side. Each open/close cycle leaked a few pixels and on
+	            // 1h that drift was very visible (lower TFs hid it because the
+	            // wider candleWidth + denser data kept the chart away from the
+	            // boundary). Anchoring the right edge keeps the same bar under
+	            // the right-axis through any resize and is symmetric.
+	            const m = this.margin || { l: 0, r: 60 };
+	            const oldRightEdgePx = (oldW || 0) - (m.r || 0);
+	            const newRightEdgePx = this.w - (m.r || 0);
+	            const deltaRightPx = newRightEdgePx - oldRightEdgePx;
+	            this.offsetX = Math.round((this.offsetX || 0) + deltaRightPx);
 	            this.constrainOffset();
 	        } else {
 	            this.fitToView();
@@ -7554,10 +7829,11 @@ class Chart {
      * Bar duration (ms) from series or current timeframe — used for visible time-range sync across panels.
      */
     inferBarDurationMs() {
-        if (this.data && this.data.length >= 2) {
-            const d = Math.abs(this.data[1].t - this.data[0].t);
-            if (Number.isFinite(d) && d > 0) return d;
-        }
+        // Prefer the timeframe map: it is the canonical bar size and is not
+        // skewed by session gaps (FX weekend, holidays, daylight-saving cuts).
+        // The previous version used `data[1].t - data[0].t`, which on 1h FX
+        // could pick up a multi-hour Sunday-night gap and cause multi-panel
+        // time sync to push followers far into the future on every pan tick.
         const tf = this.currentTimeframe || '1m';
         const tfMap = {
             '1m': 60000, '2m': 120000, '3m': 180000, '4m': 240000, '5m': 300000,
@@ -7565,7 +7841,22 @@ class Chart {
             '1h': 3600000, '2h': 7200000, '4h': 14400000, '6h': 21600000, '12h': 43200000,
             '1d': 86400000, '1w': 604800000, '1mo': 2592000000
         };
-        return tfMap[tf] || 60000;
+        const expected = tfMap[tf];
+        if (Number.isFinite(expected) && expected > 0) return expected;
+
+        // No mapping available (custom/exotic tf) — derive from data using the
+        // smallest positive delta over the first ~16 bars. This rejects gap-
+        // dominated first deltas without trusting a single sample.
+        if (this.data && this.data.length >= 2) {
+            const n = Math.min(this.data.length - 1, 16);
+            let best = Infinity;
+            for (let i = 0; i < n; i++) {
+                const d = Math.abs((this.data[i + 1]?.t || 0) - (this.data[i]?.t || 0));
+                if (Number.isFinite(d) && d > 0 && d < best) best = d;
+            }
+            if (Number.isFinite(best)) return best;
+        }
+        return 60000;
     }
 
     /**
@@ -7767,19 +8058,64 @@ class Chart {
 
         const dotEl = document.getElementById('ohlcSymbolDot' + idSuffix);
         if (dotEl && symbol) {
-            const pair = this._parsePairCurrencies(symbol);
-            if (pair) {
-                const baseCC = this._currencyToCountry(pair.base);
-                const quoteCC = this._currencyToCountry(pair.quote);
-                if (baseCC && quoteCC && baseCC !== 'xau' && baseCC !== 'xag' && quoteCC !== 'xau' && quoteCC !== 'xag') {
-                    const baseUrl = `https://flagcdn.com/w80/${baseCC}.png`;
-                    const quoteUrl = `https://flagcdn.com/w80/${quoteCC}.png`;
-                    dotEl.innerHTML = `<img class="ohlc-dot-flag ohlc-dot-flag-base" src="${baseUrl}" alt="${pair.base}" onerror="this.style.display='none'" /><img class="ohlc-dot-flag ohlc-dot-flag-quote" src="${quoteUrl}" alt="${pair.quote}" onerror="this.style.display='none'" />`;
-                    dotEl.classList.add('ohlc-dot-flags');
-                    return;
+            // Reset every asset-class modifier before re-applying so toggling
+            // between e.g. EURUSD → BTC → AAPL doesn't leave stale styling.
+            dotEl.classList.remove('ohlc-dot-flags', 'ohlc-dot-asset',
+                'ohlc-dot-crypto', 'ohlc-dot-futures', 'ohlc-dot-stock');
+            dotEl.style.cssText = '';
+            dotEl.innerHTML = '';
+
+            const cls = this._detectTickerAssetClass(symbol);
+
+            // FX dual-flag pair (existing path). Only tried if the ticker
+            // hasn't already classified as crypto/futures/stock so compact
+            // crypto pairs like BTCUSD don't render as broken country flags.
+            if (cls !== 'crypto' && cls !== 'futures' && cls !== 'stock') {
+                const pair = this._parsePairCurrencies(symbol);
+                if (pair) {
+                    const baseCC = this._currencyToCountry(pair.base);
+                    const quoteCC = this._currencyToCountry(pair.quote);
+                    if (baseCC && quoteCC && baseCC !== 'xau' && baseCC !== 'xag' && quoteCC !== 'xau' && quoteCC !== 'xag') {
+                        const baseUrl = `https://flagcdn.com/w80/${baseCC}.png`;
+                        const quoteUrl = `https://flagcdn.com/w80/${quoteCC}.png`;
+                        dotEl.innerHTML = `<img class="ohlc-dot-flag ohlc-dot-flag-base" src="${baseUrl}" alt="${pair.base}" onerror="this.style.display='none'" /><img class="ohlc-dot-flag ohlc-dot-flag-quote" src="${quoteUrl}" alt="${pair.quote}" onerror="this.style.display='none'" />`;
+                        dotEl.classList.add('ohlc-dot-flags');
+                        return;
+                    }
                 }
             }
-            dotEl.classList.remove('ohlc-dot-flags');
+
+            // Crypto: CoinCap coin logo + orange gradient fallback behind.
+            if (cls === 'crypto') {
+                const base = this._cryptoBase(symbol);
+                const iconUrl = `https://assets.coincap.io/assets/icons/${base.toLowerCase()}@2x.png`;
+                dotEl.classList.add('ohlc-dot-asset', 'ohlc-dot-crypto');
+                dotEl.style.cssText = 'background:linear-gradient(135deg,#f7931a,#ffb347);color:#fff;font-weight:700;font-size:9px;overflow:hidden;position:relative;letter-spacing:-0.3px';
+                dotEl.innerHTML = `<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">${base.slice(0,3)}</span><img src="${iconUrl}" alt="${base}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit" onerror="this.style.display='none'" />`;
+                return;
+            }
+
+            // Futures: blue gradient + 2-3 letter root (ES, NQ, CL, ZC…).
+            if (cls === 'futures') {
+                const clean = String(symbol).replace(/[\s\-_\/\.]/g, '').toUpperCase();
+                const root = clean.slice(0, Math.min(3, clean.length)) || 'FX';
+                dotEl.classList.add('ohlc-dot-asset', 'ohlc-dot-futures');
+                dotEl.style.cssText = 'background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;font-weight:700;font-size:10px';
+                dotEl.textContent = root;
+                return;
+            }
+
+            // Stock: green/teal gradient + 3-4 letter ticker (AAPL, MSFT…).
+            if (cls === 'stock') {
+                const clean = String(symbol).replace(/[\s\-_\/\.]/g, '').toUpperCase();
+                const sym = clean.slice(0, Math.min(4, clean.length)) || 'ST';
+                const fs = sym.length >= 4 ? '8px' : '10px';
+                dotEl.classList.add('ohlc-dot-asset', 'ohlc-dot-stock');
+                dotEl.style.cssText = `background:linear-gradient(135deg,#10b981,#14b8a6);color:#fff;font-weight:700;font-size:${fs};letter-spacing:-0.3px`;
+                dotEl.textContent = sym;
+                return;
+            }
+
             dotEl.textContent = '⚡';
         }
     }
@@ -8336,7 +8672,7 @@ class Chart {
                 // Sync deletion to other panels
                 this.syncDrawingToOtherPanels(deletedDrawing, 'delete');
                 // Save to localStorage
-                userStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
+                userStorage.setItem(this.getDrawingsStorageKey(), JSON.stringify(this.drawings));
                 this.needsRender = true;
             }
             // Ctrl/Cmd + Z - undo last drawing
@@ -8345,7 +8681,7 @@ class Chart {
                 if (this.drawings.length > 0) {
                     this.drawings.pop();
                     // Save to localStorage
-                    userStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
+                    userStorage.setItem(this.getDrawingsStorageKey(), JSON.stringify(this.drawings));
                     this.needsRender = true;
                 }
             }
@@ -10209,14 +10545,25 @@ class Chart {
         
         // Fallback for non-file data (small local datasets)
         if (!hasData) return;
+
+        // Capture center timestamp and zoom before resampling
+        const centerTimestamp = this._getVisibleCenterTimestamp();
+        const savedCandleWidth = this.candleWidth;
+
         this.data = this.resampleData(this.rawData, timeframe);
         if (typeof this.recalculateIndicators === 'function') this.recalculateIndicators();
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
             this.compareOverlay.refreshForTimeframe(timeframe);
         }
-        this._chartViewRestored = false;
-        this.resize();
-        this.fitToView();
+
+        // Restore position to center timestamp
+        if (centerTimestamp && this.data && this.data.length > 0) {
+            this._restorePositionToTimestamp(centerTimestamp, savedCandleWidth);
+        } else {
+            this._chartViewRestored = false;
+            this.resize();
+            this.fitToView();
+        }
         this.scheduleRender();
         this._fireChartDataLoaded();
     }
@@ -10229,6 +10576,11 @@ class Chart {
         const loadId = ++this._timeframeLoadSeq;
         try {
             if (this.showLoader) this.showLoader('Changing timeframe...');
+
+            // Capture center timestamp and zoom before switching
+            const centerTimestamp = this._getVisibleCenterTimestamp();
+            const savedCandleWidth = this.candleWidth;
+            const hadData = this.data && this.data.length > 0;
 
             const session = this.backtestingSession || {};
             const result = await this._fetchSmartWindow(this.currentFileId, timeframe, session);
@@ -10251,7 +10603,20 @@ class Chart {
             if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
             this.resize();
 
-            this._ingestSmartWindowResult(result, {});
+            this._ingestSmartWindowResult(result, { skipFitToView: true });
+
+            // Immediately put the chart into a renderable state.
+            // _commitLoadedBars (inside ingest) synchronously dispatches `chartDataLoaded`
+            // which some listeners react to with a render. Without a valid offsetX for
+            // the NEW dataset, those intermediate renders produce
+            // "No candles drawn! All N candles are outside viewport" warnings and a
+            // blank chart on smaller-data timeframes (e.g. 1h with only a few bars).
+            // The rAF below refines the view (restore center timestamp) once dimensions settle.
+            if (Array.isArray(this.data) && this.data.length > 0) {
+                this._chartViewRestored = false;
+                this.fitToView();
+            }
+
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(timeframe);
             }
@@ -10260,8 +10625,43 @@ class Chart {
             requestAnimationFrame(() => {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
-                this._chartViewRestored = false;
-                this.fitToView();
+
+                // Restore position to center timestamp if we had data before
+                let restored = false;
+                if (hadData && centerTimestamp && this.data && this.data.length > 0) {
+                    this._restorePositionToTimestamp(centerTimestamp, savedCandleWidth);
+                    restored = true;
+                }
+
+                // Safety: validate that the restored viewport actually shows data.
+                // Switching timeframe (e.g. 1m -> 1h) can produce an offsetX where no candles
+                // are visible (especially on panel charts whose dimensions may shift), leaving
+                // the chart blank until the user double-clicks the time axis. Detect that
+                // case and fall back to fitToView().
+                if (restored) {
+                    const m = this.margin || { l: 0, r: 60 };
+                    const plotW = (this.w || 0) - (m.l || 0) - (m.r || 0);
+                    const spacing = this.getCandleSpacing
+                        ? this.getCandleSpacing()
+                        : (this.candleWidth + 2);
+                    if (plotW > 0 && spacing > 0) {
+                        const firstVis = Math.floor(-this.offsetX / spacing);
+                        const lastVis = Math.ceil((plotW - this.offsetX) / spacing);
+                        const visibleEnd = Math.min(this.data.length - 1, lastVis);
+                        const visibleStart = Math.max(0, firstVis);
+                        const offscreen = !Number.isFinite(this.offsetX)
+                            || lastVis < 0
+                            || firstVis >= this.data.length
+                            || visibleEnd < visibleStart;
+                        if (offscreen) {
+                            this._chartViewRestored = false;
+                            this.fitToView();
+                        }
+                    }
+                } else {
+                    this._chartViewRestored = false;
+                    this.fitToView();
+                }
                 this.render();
             });
 
@@ -11634,8 +12034,19 @@ class Chart {
     }
 
     /**
-     * Get appropriate decimal places based on price range.
-     * Priority: manual override > per-symbol registry > price-range heuristic.
+     * Get appropriate decimal places for price display.
+     *
+     * Priority:
+     *   1. Manual user override in chart settings (explicit intent wins).
+     *   2. INSTRUMENT_REGISTRY via marketCalcEngine — always re-resolved against the
+     *      CURRENT symbol so switching from FX (5dp) → futures (2dp for NQ, 0dp for YM,
+     *      etc.) updates the axis immediately. Previously this was gated behind a
+     *      pre-synced `_symbolPrecision` cache that could be stuck at 5 (FX default) if
+     *      order-manager ran before the symbol had resolved, leaving NQ showing
+     *      `1340.80000` instead of `1340.75`.
+     *   3. The `_symbolPrecision` snapshot set by order-manager (e.g. for dataset-level
+     *      overrides pushed from `/api/admin/datasets/{id}/settings`).
+     *   4. Range-based heuristic for unregistered symbols.
      */
     getPriceDecimals(priceRange) {
         const override = this.chartSettings && this.chartSettings.pricePrecision;
@@ -11643,26 +12054,85 @@ class Chart {
             const n = parseInt(override, 10);
             if (!isNaN(n)) return n;
         }
-        // Per-symbol precision synced from INSTRUMENT_REGISTRY via order-manager
+        // If the active symbol changed since we last resolved, drop the cached value so
+        // the registry is consulted fresh (prevents FX-default 5dp leaking into NQ/ES/GC).
+        if (this._symbolPrecisionResolvedFor !== this.currentSymbol) {
+            this._symbolPrecision = undefined;
+            this._symbolPrecisionResolvedFor = this.currentSymbol;
+        }
+        // Always consult the registry first — for a known symbol its tick size IS the
+        // correct decimal count, and it beats any cached value or range guess.
+        if (this.currentSymbol && typeof window !== 'undefined' && window.marketCalcEngine) {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(this.currentSymbol);
+                const specs = calc && calc.specs;
+                if (specs) {
+                    // Prefer explicit `precision`; derive from `tickSize` if only that is set
+                    // (some futures specs use tickSize as the source of truth).
+                    if (Number.isFinite(specs.precision) && specs.precision >= 0) {
+                        this._symbolPrecision = specs.precision;
+                        return specs.precision;
+                    }
+                    if (Number.isFinite(specs.tickSize) && specs.tickSize > 0) {
+                        const s = String(specs.tickSize);
+                        let dec;
+                        if (s.includes('e-')) {
+                            dec = parseInt(s.split('e-')[1], 10) || 0;
+                        } else {
+                            const dot = s.indexOf('.');
+                            dec = dot === -1 ? 0 : s.length - dot - 1;
+                        }
+                        this._symbolPrecision = dec;
+                        return dec;
+                    }
+                }
+            } catch (_) { /* registry miss — fall through */ }
+        }
         if (Number.isFinite(this._symbolPrecision) && this._symbolPrecision >= 0) {
             return this._symbolPrecision;
         }
-        // Fallback: try marketCalcEngine directly
-        if (this.currentSymbol && window.marketCalcEngine) {
-            try {
-                const calc = window.marketCalcEngine.getCalculator(this.currentSymbol);
-                if (calc && calc.specs && Number.isFinite(calc.specs.precision)) {
-                    this._symbolPrecision = calc.specs.precision;
-                    return calc.specs.precision;
-                }
-            } catch (_) {}
-        }
         if (priceRange < 0.01) return 6;
-        if (priceRange < 0.1) return 4;
-        if (priceRange < 1) return 3;
-        if (priceRange < 10) return 2;
+        if (priceRange < 0.1)  return 4;
+        if (priceRange < 1)    return 3;
+        if (priceRange < 10)   return 2;
         if (priceRange < 1000) return 2;
         return 0;
+    }
+
+    /**
+     * Resolve the instrument's tick size (minimum price increment) from the registry.
+     * Used by the axis, crosshair, order drag-snap, and SL/TP input step. Falls back
+     * to `10^-precision` when the registry only carries precision.
+     *
+     * Examples: NQ/ES → 0.25, GC → 0.10, CL → 0.01, EURUSD → 0.00001, USDJPY → 0.001.
+     */
+    getTickSize() {
+        if (this.currentSymbol && typeof window !== 'undefined' && window.marketCalcEngine) {
+            try {
+                const calc = window.marketCalcEngine.getCalculator(this.currentSymbol);
+                const specs = calc && calc.specs;
+                if (specs) {
+                    if (Number.isFinite(specs.tickSize) && specs.tickSize > 0) return specs.tickSize;
+                    if (Number.isFinite(specs.pipSize)  && specs.pipSize  > 0) return specs.pipSize;
+                    if (Number.isFinite(specs.precision) && specs.precision >= 0) {
+                        return Math.pow(10, -specs.precision);
+                    }
+                }
+            } catch (_) { /* fall through */ }
+        }
+        const dec = (Number.isFinite(this._symbolPrecision) && this._symbolPrecision >= 0)
+            ? this._symbolPrecision
+            : 5;
+        return Math.pow(10, -dec);
+    }
+
+    /** Snap an arbitrary price to the instrument's tick grid (round-half-away-from-zero). */
+    snapPriceToTick(price) {
+        const p = Number(price);
+        if (!Number.isFinite(p)) return p;
+        const tick = this.getTickSize();
+        if (!Number.isFinite(tick) || tick <= 0) return p;
+        return Math.round(p / tick) * tick;
     }
 
     /**
@@ -12950,8 +13420,12 @@ class Chart {
                         
                         // Save to localStorage directly using index
                         try {
-                            const drawingsData = JSON.stringify(chart.drawings);
-                            userStorage.setItem(`chart_drawings_${chart.currentFileId || 'default'}`, drawingsData);
+                            if (chart.drawingManager && typeof chart.drawingManager.saveDrawings === 'function') {
+                                chart.drawingManager.saveDrawings();
+                            } else {
+                                const drawingsData = JSON.stringify(chart.drawings);
+                                userStorage.setItem(chart.getDrawingsStorageKey(), drawingsData);
+                            }
                         } catch (e) {
                             console.error('Failed to save after resize:', e);
                         }
@@ -12984,6 +13458,78 @@ class Chart {
         // Use same calculation as pixelToDataIndex but inverted
         const candleSpacing = this.getCandleSpacing();
         return this.margin.l + (dataIdx * candleSpacing) + this.offsetX;
+    }
+
+    /**
+     * Get the timestamp at the center of the visible chart area
+     * @returns {number|null} Center timestamp in milliseconds, or null if no data
+     */
+    _getVisibleCenterTimestamp() {
+        if (!this.data || this.data.length === 0) return null;
+
+        const m = this.margin;
+        const cw = this.w - m.l - m.r;
+        const centerX = cw / 2;
+
+        // Get data index at center pixel
+        const centerIndex = Math.floor(this.pixelToDataIndex(m.l + centerX));
+
+        // Clamp to valid data range
+        const clampedIndex = Math.max(0, Math.min(this.data.length - 1, centerIndex));
+
+        // Return timestamp at that index
+        const candle = this.data[clampedIndex];
+        return candle && candle.t ? candle.t : null;
+    }
+
+    /**
+     * Restore view position to center on a specific timestamp
+     * @param {number} targetTimestamp - Timestamp to center on
+     * @param {number} targetCandleWidth - Optional candle width to restore (preserves zoom level)
+     */
+    _restorePositionToTimestamp(targetTimestamp, targetCandleWidth) {
+        if (!this.data || this.data.length === 0 || !targetTimestamp) return;
+
+        // Restore candle width FIRST (before calculating offset)
+        // This ensures the offset calculation uses the correct spacing
+        if (targetCandleWidth && Number.isFinite(targetCandleWidth)) {
+            // Clamp to allowed widths
+            const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
+                ? this.zoomLevel.allowedWidths
+                : [0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+            const minWidth = widths[0];
+            const maxWidth = widths[widths.length - 1];
+            this.candleWidth = Math.max(minWidth, Math.min(maxWidth, targetCandleWidth));
+        }
+
+        // Find closest candle to target timestamp
+        let closestIndex = 0;
+        let minDiff = Infinity;
+
+        for (let i = 0; i < this.data.length; i++) {
+            const candle = this.data[i];
+            if (!candle || !candle.t) continue;
+            const diff = Math.abs(candle.t - targetTimestamp);
+            if (diff < minDiff) {
+                minDiff = diff;
+                closestIndex = i;
+            }
+        }
+
+        // Calculate new offset to center the target candle
+        // Now uses the restored candle width for correct spacing
+        const m = this.margin;
+        const cw = this.w - m.l - m.r;
+        const candleSpacing = this.getCandleSpacing();
+        const centerX = cw / 2;
+        const candleX = closestIndex * candleSpacing;
+        this.offsetX = centerX - candleX;
+
+        // Set flag so fitToView() doesn't override our restored position
+        this._chartViewRestored = true;
+
+        // Apply constraints
+        this.constrainOffset();
     }
 
     /** Fallback ms between bars when data-derived step is unavailable (matches crosshair / x-axis tf map). */
@@ -14965,7 +15511,7 @@ class Chart {
                         this.updateToolDefaultsFromDrawing(newDrawing);
                         
                         // Save to localStorage
-                        userStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
+                        userStorage.setItem(this.getDrawingsStorageKey(), JSON.stringify(this.drawings));
                         
                         // For text tool, enter inline edit mode immediately
                         if (this.pendingTextEdit) {
@@ -15975,6 +16521,41 @@ class Chart {
                 crosshairY = closestPx;
             }
         }
+
+        // Tick-grid snap for instruments with a known tick size (NQ/ES → 0.25, GC → 0.10,
+        // CL → 0.01, USDJPY → 0.001, etc.). Real futures/crypto only trade at discrete tick
+        // increments, so the crosshair readout should reflect that instead of showing a
+        // free-floating `20150.68342`-style interpolation from `yScale.invert(y)`. The
+        // horizontal line snaps to the tick's pixel position too so the visual matches.
+        //
+        // Suppressed when the user is actively drawing (tool/drag) — drawings need sub-tick
+        // precision for price alignment on zoomed-in charts. The OHLC magnet above already
+        // handles OHLC snapping; for registered instruments OHLC values are themselves on
+        // the tick grid, so this second pass is a no-op there.
+        if (this.yScale && Number.isFinite(crosshairPrice)
+            && typeof this.getTickSize === 'function'
+            && !(_dm && (_dm.currentTool || _dm.isDrawing || _dm.isDragging))) {
+            const tick = this.getTickSize();
+            // Only snap for registered instruments — unregistered symbols return a 10^-precision
+            // fallback tick that would force weird rounding on arbitrary price data.
+            const hasRegistrySpec = this.currentSymbol
+                && typeof window !== 'undefined'
+                && window.marketCalcEngine
+                && (() => {
+                    try {
+                        const calc = window.marketCalcEngine.getCalculator(this.currentSymbol);
+                        return !!(calc && calc.specs
+                            && (Number.isFinite(calc.specs.tickSize) || Number.isFinite(calc.specs.pipSize)));
+                    } catch (_) { return false; }
+                })();
+            if (hasRegistrySpec && Number.isFinite(tick) && tick > 0) {
+                const snappedPrice = Math.round(crosshairPrice / tick) * tick;
+                if (Number.isFinite(snappedPrice)) {
+                    crosshairPrice = snappedPrice;
+                    crosshairY = this.yScale(snappedPrice);
+                }
+            }
+        }
         
         // Show crosshair lines for 'cross' cursor type, eraser, drawing tool active, or drawing selected/moved
         // DON'T show lines for 'dot' or 'arrow' cursor types
@@ -16900,7 +17481,7 @@ class Chart {
         }
 
         try {
-            userStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, JSON.stringify(this.drawings));
+            userStorage.setItem(this.getDrawingsStorageKey(), JSON.stringify(this.drawings));
         } catch (error) {
         }
 
@@ -18183,25 +18764,29 @@ class Chart {
     
     // Helper method to save drawing changes
     saveDrawingChanges(drawing) {
+        if (this.drawingManager && typeof this.drawingManager.saveDrawings === 'function') {
+            try {
+                this.drawingManager.saveDrawings();
+            } catch (e) {
+                console.error('Failed to save drawings:', e);
+            }
+            this.scheduleRender();
+            return;
+        }
         // Try to find by reference first (most reliable)
         let index = this.drawings.findIndex(d => d === drawing);
-        
-        // If not found by reference, the drawing object might be a copy
-        // In this case, just save the entire array since the drawing is already in it
+
         if (index === -1) {
             console.warn('Drawing not found by reference, saving entire array');
-        } else {
-            // Drawing was found - it's already updated in the array
         }
-        
-        // Save all drawings to localStorage
+
         try {
             const drawingsData = JSON.stringify(this.drawings);
-            userStorage.setItem(`chart_drawings_${this.currentFileId || 'default'}`, drawingsData);
+            userStorage.setItem(this.getDrawingsStorageKey(), drawingsData);
         } catch (e) {
             console.error('Failed to save drawings to localStorage:', e);
         }
-        
+
         this.scheduleRender();
     }
     

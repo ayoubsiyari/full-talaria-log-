@@ -424,9 +424,7 @@ class OrderManager {
      * Only the instrument currently shown on that chart should be rendered (8.1).
      */
     _isPositionForActiveChart(position) {
-        const pt = this._positionTicker(position);
-        if (!pt) return true;
-        return pt === this._getActiveTicker();
+        return this._positionTickerMatchesChartSymbol(position, this.chart);
     }
 
     _isMultiPanelLayout() {
@@ -532,17 +530,22 @@ class OrderManager {
     }
 
     _positionTickerMatchesChartSymbol(position, chart) {
-        if (!chart) return false;
-        const posFile = position && position.sourceFileId != null ? String(position.sourceFileId) : '';
-        const chartFile = chart.currentFileId != null ? String(chart.currentFileId) : '';
+        if (!chart || !position) return false;
+        const posFileRaw = position.sourceFileId ?? position.source_file_id;
+        const posFile = posFileRaw != null && String(posFileRaw) !== '' ? String(posFileRaw) : '';
+        const chartFile = chart.currentFileId != null && String(chart.currentFileId) !== ''
+            ? String(chart.currentFileId)
+            : '';
         if (posFile && chartFile) {
             return posFile === chartFile;
         }
         const pt = this._positionTicker(position);
-        if (!pt) return chart === this.chart;
-        const cs = chart.currentSymbol ? this._normalizeTicker(chart.currentSymbol) : '';
-        if (!cs) return chart === this.chart;
-        return pt === cs;
+        if (pt) {
+            const cs = chart.currentSymbol ? this._normalizeTicker(chart.currentSymbol) : '';
+            return !!cs && pt === cs;
+        }
+        // No dataset id and no ticker — do not paint this trade on arbitrary charts (was: main chart only).
+        return false;
     }
 
     _stripOrderDrawingLayersFromChart(chart) {
@@ -709,39 +712,39 @@ class OrderManager {
             }
 
             this._dropOrderVisualsNotOnMainChart();
+            // Full strip + reset (same idea as multi-panel): removes orphan SVG and stale DOM refs in
+            // orderLines/slLines/... so a symbol switch cannot leave another pair's visuals on the canvas.
+            this._stripOrderDrawingLayersFromChart(this.chart);
+            this.orderLines = [];
+            this.splitGroupAvgLines = [];
+            this.multiTPAvgLines = [];
+            this.slLines = [];
+            this.tpLines = [];
+            this.beLines = [];
+            this.pendingTargetLines = [];
+            if (this.entryMarkers && this.entryMarkers.length) {
+                this.entryMarkers.forEach((m) => {
+                    try {
+                        if (m.marker) m.marker.remove();
+                    } catch (e) { /* ignore */ }
+                });
+                this.entryMarkers = [];
+            }
 
             (this.openPositions || []).forEach((pos) => {
-                if (this._isPositionForActiveChart(pos)) return;
-                this.removeOrderLine(pos.id);
-                this.removeSLTPLines(pos.id);
-                this.removeMultiTPAvgLine(pos.id);
-                this.removeEntryMarker(pos.id);
-            });
-            (this.pendingOrders || []).forEach((po) => {
-                if (this._normalizeTicker(po.ticker || po.symbol) === this._getActiveTicker()) return;
-                this.removePendingOrderLine(po.id);
-                this.removePendingSLTPLines(po.id);
-                this.removeMultiTPAvgLine(po.id);
-            });
-            (this.openPositions || []).forEach((pos) => {
                 if (!this._isPositionForActiveChart(pos)) return;
-                const has = (this.orderLines || []).some((ol) => ol.orderId === pos.id && !ol.isPending);
-                if (!has) {
-                    this.drawOrderLine(pos);
-                    this.drawSLTPLines(pos);
-                    try {
-                        this.drawEntryMarker(pos);
-                    } catch (e) { /* scales may not be ready yet */ }
-                }
+                this.drawOrderLine(pos);
+                this.drawSLTPLines(pos);
+                try {
+                    this.drawEntryMarker(pos);
+                } catch (e) { /* scales may not be ready yet */ }
             });
             (this.pendingOrders || []).forEach((po) => {
-                if (this._normalizeTicker(po.ticker || po.symbol) !== this._getActiveTicker()) return;
-                const has = (this.orderLines || []).some((ol) => ol.orderId === po.id && ol.isPending);
-                if (!has) {
-                    try {
-                        this.drawPendingOrderLine(po);
-                    } catch (e) {}
-                }
+                if (!this._positionTickerMatchesChartSymbol(po, this.chart)) return;
+                try {
+                    this.drawPendingOrderLine(po);
+                    this.drawPendingOrderTargets(po);
+                } catch (e) { /* ignore */ }
             });
             if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
             try {
@@ -2123,7 +2126,13 @@ class OrderManager {
         let inRegistry   = false;
 
         if (window.marketCalcEngine) {
-            const norm  = sym.replace(/[/\-_\s]/g, '').toUpperCase();
+            // Use the engine's resolver so FirstRate / suffixed dataset names like
+            // `ES_week_1min_1min` correctly resolve to the `ES` registry entry instead
+            // of failing the direct compact lookup and defaulting to forex.
+            const resolve = typeof window.marketCalcEngine._resolveRegistryKey === 'function'
+                ? window.marketCalcEngine._resolveRegistryKey.bind(window.marketCalcEngine)
+                : (s) => (s || '').replace(/[/\-_\s]/g, '').toUpperCase();
+            const norm = resolve(sym);
             const specs = window.marketCalcEngine._registry[norm];
             if (specs) {
                 detectedType = specs.type;
@@ -2195,6 +2204,16 @@ class OrderManager {
                         && Number.isFinite(s.tickValue) && s.tickValue > 0) {
                         pip = s.tickSize;
                         pvl = s.tickValue;
+                    } else if (s.type === 'crypto' || s.type === 'stocks') {
+                        // Crypto/stocks have no pip/tick in the registry. Derive a synthetic "pip"
+                        // from price precision so stale FX values from the previous symbol don't
+                        // leak into UI readouts or step controls. P&L still goes through the engine,
+                        // so these values are only used for cosmetic pip-distance displays.
+                        const precision = Number.isFinite(s.precision) ? s.precision : 2;
+                        pip = Math.pow(10, -precision);
+                        // For linear crypto / stocks, $1 move × contractSize == $1 per unit.
+                        const cs = Number.isFinite(s.contractSize) && s.contractSize > 0 ? s.contractSize : 1;
+                        pvl = pip * cs;
                     }
                 }
             } catch (e) { /* keep existing */ }
@@ -3619,7 +3638,82 @@ class OrderManager {
     getMarketConfig() {
         return this.marketConfigs[this.marketType] || this.marketConfigs.forex;
     }
-    
+
+    /**
+     * Resolve the effective quantity step for the current symbol/market.
+     * Prefers the per-symbol `sizeStep` from the market-calc registry (so
+     * BTC=0.001, ETH=0.01, XRP=1, ES=1, NQ=1, EURUSD=0.01 …) and falls back
+     * to the generic marketConfig default. Used to pick display precision
+     * and to snap user/risk-derived quantities to valid exchange increments.
+     */
+    _getQtyStep() {
+        const cfg = this.getMarketConfig();
+        let step = (cfg && Number.isFinite(cfg.sizeStep) && cfg.sizeStep > 0) ? cfg.sizeStep : 0.01;
+        try {
+            if (window.marketCalcEngine && typeof window.marketCalcEngine.getCalculator === 'function') {
+                const sym = (typeof this._getSymbol === 'function') ? this._getSymbol() : this.chart?.currentSymbol;
+                if (sym) {
+                    const calc = window.marketCalcEngine.getCalculator(sym, this.marketType);
+                    const s = calc && typeof calc.getSpecs === 'function' ? calc.getSpecs() : null;
+                    if (s && Number.isFinite(s.sizeStep) && s.sizeStep > 0) step = s.sizeStep;
+                }
+            }
+        } catch (_) { /* keep default */ }
+        return step;
+    }
+
+    /** Minimum quantity for the current instrument (per-symbol → marketConfig fallback). */
+    _getQtyMin() {
+        const cfg = this.getMarketConfig();
+        let min = (cfg && Number.isFinite(cfg.minSize) && cfg.minSize > 0) ? cfg.minSize : 0.01;
+        try {
+            if (window.marketCalcEngine && typeof window.marketCalcEngine.getCalculator === 'function') {
+                const sym = (typeof this._getSymbol === 'function') ? this._getSymbol() : this.chart?.currentSymbol;
+                if (sym) {
+                    const calc = window.marketCalcEngine.getCalculator(sym, this.marketType);
+                    const s = calc && typeof calc.getSpecs === 'function' ? calc.getSpecs() : null;
+                    if (s && Number.isFinite(s.minSize) && s.minSize > 0) min = s.minSize;
+                }
+            }
+        } catch (_) { /* keep default */ }
+        return min;
+    }
+
+    /** Decimals appropriate for displaying a quantity on this instrument (step=1 → 0 dp, 0.01 → 2 dp, 0.001 → 3 dp). */
+    _getQtyDecimals() {
+        const step = this._getQtyStep();
+        if (step >= 1) return 0;
+        const s = String(step);
+        const dot = s.indexOf('.');
+        return dot < 0 ? 0 : Math.min(8, s.length - dot - 1);
+    }
+
+    /** Format a quantity for display on the current instrument (integer for futures, 2dp for forex, …). */
+    _formatQty(qty) {
+        const n = Number(qty);
+        if (!Number.isFinite(n)) return '0';
+        return n.toFixed(this._getQtyDecimals());
+    }
+
+    /**
+     * Snap a raw quantity (e.g. risk-derived position size) DOWN to the
+     * instrument's lot step, with the per-symbol minimum as the floor.
+     * Using floor (not round) is deliberate: rounding up can exceed the
+     * user's risk budget on instruments with a coarse step (futures = 1
+     * contract). For futures this turns 1.37 contracts → 1 contract.
+     */
+    _roundQtyToStep(qty) {
+        const n = Number(qty);
+        if (!Number.isFinite(n) || n <= 0) return 0;
+        const step = this._getQtyStep();
+        const min = this._getQtyMin();
+        let out = Math.floor(n / step) * step;
+        if (out < min) out = 0;
+        // Guard against binary-float crud like 1.3000000000000003.
+        const dec = this._getQtyDecimals();
+        return parseFloat(out.toFixed(Math.max(dec, 6)));
+    }
+
     /**
      * Initialize order execution sounds
      */
@@ -10798,6 +10892,41 @@ class OrderManager {
     }
 
     /**
+     * Snap a price to the active instrument's tick grid.
+     *
+     * Real futures/crypto only trade at discrete tick increments (NQ = 0.25,
+     * ES = 0.25, GC = 0.10, CL = 0.01, BTCUSD = 0.1, USDJPY = 0.001, etc.). Any
+     * order-related price that comes from a mouse drag (entry/SL/TP line pulled
+     * with the cursor) or free-form user input must be aligned to the grid so we
+     * don't send / display / fill orders at impossible prices (`NQ @ 20150.37`).
+     *
+     * Only snaps when the active symbol resolves to a registered instrument with
+     * a real `tickSize` / `pipSize` — otherwise returns the price untouched, so
+     * arbitrary datasets without a registry entry keep their native precision
+     * instead of being quantised to the fallback `10^-5`.
+     *
+     * The chart-level `snapPriceToTick` is the source of truth; this wrapper is
+     * just a safe entry point that handles the missing-chart / missing-registry
+     * edge cases that order-manager code paths run into during init.
+     */
+    _snapOrderPriceToTick(price) {
+        if (!Number.isFinite(price)) return price;
+        const ctx = this.chart;
+        if (!ctx || typeof ctx.snapPriceToTick !== 'function' || !ctx.currentSymbol) return price;
+        if (typeof window === 'undefined' || !window.marketCalcEngine) return price;
+        try {
+            const calc = window.marketCalcEngine.getCalculator(ctx.currentSymbol);
+            const specs = calc && calc.specs;
+            const hasRegistryTick = !!(specs && (Number.isFinite(specs.tickSize) || Number.isFinite(specs.pipSize)));
+            if (!hasRegistryTick) return price;
+            const snapped = ctx.snapPriceToTick(price);
+            return Number.isFinite(snapped) ? snapped : price;
+        } catch (_) {
+            return price;
+        }
+    }
+
+    /**
      * Apply the current pair's price precision to every price input in the order panel.
      * Sets `step` and enforces the max decimal count live on every keystroke.
      */
@@ -12103,11 +12232,43 @@ class OrderManager {
             lotSizeSuffix.textContent = config.positionLabel;
         }
         
-        // Update step size for lot size input based on market type
+        // Update step size for lot size input based on market type. Prefer the per-symbol
+        // qtyStep / minQty from the registry (so XRP=1, DOGE=1, BTC=0.001, ETH=0.01 etc.),
+        // and only fall back to the generic marketConfig defaults when the registry has nothing.
         const lotSizeInput = document.getElementById('lotSizeAmount');
         if (lotSizeInput) {
-            lotSizeInput.step = config.sizeStep;
-            lotSizeInput.min = config.minSize;
+            let step = config.sizeStep;
+            let min  = config.minSize;
+            try {
+                if (window.marketCalcEngine && typeof window.marketCalcEngine.getCalculator === 'function') {
+                    const sym = this._getSymbol();
+                    if (sym) {
+                        const calc = window.marketCalcEngine.getCalculator(sym, this.marketType);
+                        const s = calc && typeof calc.getSpecs === 'function' ? calc.getSpecs() : null;
+                        if (s && Number.isFinite(s.sizeStep) && s.sizeStep > 0) step = s.sizeStep;
+                        if (s && Number.isFinite(s.minSize) && s.minSize > 0) min = s.minSize;
+                    }
+                }
+            } catch (_) { /* keep defaults */ }
+            lotSizeInput.step = step;
+            lotSizeInput.min  = min;
+
+            // Keep the ± stepper buttons in sync with the instrument's lot step so
+            // futures increment by 1 contract (not 0.1) and crypto/forex keep their
+            // native fine-grained steps. Applies to the main panel and RR mirror.
+            document.querySelectorAll('.input-stepper[data-target="lotSizeAmount"], .input-stepper[data-target="rrMirror_lotSizeAmount"]').forEach(btn => {
+                const sign = btn.dataset.step && parseFloat(btn.dataset.step) < 0 ? -1 : 1;
+                btn.dataset.step = (sign * step).toString();
+            });
+
+            // If the current value is below min or not on-step (e.g. 1.7 left over
+            // from a previous symbol), snap it so it is valid for the new instrument.
+            const cur = parseFloat(lotSizeInput.value);
+            if (Number.isFinite(cur) && cur > 0) {
+                const snapped = this._roundQtyToStep(cur);
+                const safe = snapped > 0 ? snapped : min;
+                lotSizeInput.value = this._formatQty(safe);
+            }
         }
         
         // Update instrument settings hint based on market type
@@ -12785,8 +12946,11 @@ class OrderManager {
                 newValue = Math.max(0.1, newValue);
                 newValue = parseFloat(newValue.toFixed(1));
             } else if (bareId === 'lotSizeAmount') {
-                newValue = Math.max(0.01, newValue);
-                newValue = parseFloat(newValue.toFixed(2));
+                // Clamp to instrument minimum and format to the instrument's lot
+                // decimals (0 for futures, 2 for forex, 3 for crypto, …) so the
+                // stepper never produces invalid values like 1.7 contracts.
+                newValue = Math.max(this._getQtyMin(), newValue);
+                newValue = parseFloat(this._formatQty(newValue));
             } else if (bareId === 'maxRiskPercent') {
                 newValue = Math.max(0, newValue);
                 newValue = parseFloat(newValue.toFixed(1));
@@ -13449,16 +13613,16 @@ class OrderManager {
                 placeBtn.disabled = true;
                 placeBtn.style.opacity = '0.5';
                 placeBtn.style.cursor = 'not-allowed';
-                placeBtn.textContent = `${action} 0.00 ${positionLabel} - ${reason}`;
+                placeBtn.textContent = `${action} ${this._formatQty(0)} ${positionLabel} - ${reason}`;
             } else {
                 placeBtn.disabled = false;
                 placeBtn.style.opacity = '1';
                 placeBtn.style.cursor = 'pointer';
                 
                 if (symbol) {
-                    placeBtn.textContent = `${action} ${quantity.toFixed(2)} ${symbol}`;
+                    placeBtn.textContent = `${action} ${this._formatQty(quantity)} ${symbol}`;
                 } else {
-                    placeBtn.textContent = `${action} ${quantity.toFixed(2)} ${positionLabel}`;
+                    placeBtn.textContent = `${action} ${this._formatQty(quantity)} ${positionLabel}`;
                 }
             }
         }
@@ -13614,11 +13778,11 @@ class OrderManager {
                 return;
             }
             
-            // Update orderQuantity
+            // Update orderQuantity (instrument-aware formatting: futures = integer contracts)
             const qtyInput = document.getElementById('orderQuantity');
             if (qtyInput) {
-                qtyInput.value = lotSize.toFixed(2);
-                console.log(`📊 Lot Size Mode: Setting orderQuantity to ${lotSize.toFixed(2)}`);
+                qtyInput.value = this._formatQty(lotSize);
+                console.log(`📊 Lot Size Mode: Setting orderQuantity to ${this._formatQty(lotSize)}`);
             }
             
             // Update preview lines to show new lot size on Entry label
@@ -13702,11 +13866,15 @@ class OrderManager {
         console.log(`   Position Size: ${positionSize.toFixed(2)} lots`);
         console.log(`   Verification: ${slDistanceInPips.toFixed(2)} pips × ${positionSize.toFixed(2)} lots × $${this.pipValuePerLot} = $${(slDistanceInPips * positionSize * this.pipValuePerLot).toFixed(2)} risk`);
         
+        // Snap risk-derived qty to the instrument's lot step (futures=1 contract, BTC=0.001, …).
+        // Floor-snap so we never exceed the user's risk budget on coarse-step instruments.
+        const snappedQty = this._roundQtyToStep(positionSize);
+
         // Update orderQuantity value for order placement
         const qtyInput = document.getElementById('orderQuantity');
         if (qtyInput) {
-            qtyInput.value = positionSize.toFixed(2);
-            console.log(`📊 Risk Mode: Setting orderQuantity to ${positionSize.toFixed(2)}`);
+            qtyInput.value = this._formatQty(snappedQty);
+            console.log(`📊 Risk Mode: Setting orderQuantity to ${this._formatQty(snappedQty)} (raw ${positionSize.toFixed(4)}, step ${this._getQtyStep()})`);
         }
         
         // Update preview lines to show new lot size on Entry label
@@ -13746,10 +13914,10 @@ class OrderManager {
         // Calculate position size
         const positionSize = riskAmount / priceDiff;
         
-        // Update quantity field
+        // Update quantity field (snap to instrument lot step so futures stay integer).
         const quantityInput = document.getElementById('orderQuantity');
         if (quantityInput) {
-            quantityInput.value = positionSize.toFixed(2);
+            quantityInput.value = this._formatQty(this._roundQtyToStep(positionSize));
         }
         
         // Update max risk fields
@@ -14121,7 +14289,7 @@ class OrderManager {
                     distText = `${dist.toFixed(cfg.symbolPrecision ?? 5)} pts`;
                 }
                 slPipsDisplay.textContent = distText;
-                slQuantityDisplay.textContent = `${qtyForReward.toFixed(2)} ${cfg.positionLabel}`;
+                slQuantityDisplay.textContent = `${this._formatQty(qtyForReward)} ${cfg.positionLabel}`;
                 if (modeSL === 'lot-size' && slRiskUsdDisplay && slRiskPctDisplay) {
                     const rOk = risk > 0 && Number.isFinite(risk);
                     slRiskUsdDisplay.textContent = rOk ? `$${risk.toFixed(2)}` : '$0.00';
@@ -16298,6 +16466,14 @@ class OrderManager {
                 let clampedY = Math.max(0, Math.min(chartHeight, event.y));
                 let newPrice = ch.scales.yScale.invert(clampedY);
 
+                // Tick-grid snap preview Entry / SL / TP lines while dragging so
+                // futures/crypto labels land on valid exchange increments
+                // (NQ 0.25, GC 0.10, CL 0.01, …). No-op on instruments with no
+                // tick registry. Happens before the SL/TP side clamps so all
+                // subsequent validation works on already-snapped prices.
+                const snappedDrag = self._snapOrderPriceToTick(newPrice);
+                if (snappedDrag !== newPrice) newPrice = snappedDrag;
+
                 // BUY: entries must stay above SL; SELL: entries must stay below SL
                 const enableSL = document.getElementById('enableSL')?.checked;
                 const pip = self.pipSize || 0.0001;
@@ -17082,7 +17258,10 @@ class OrderManager {
                     if (event.sourceEvent && ch.updateCrosshair) ch.updateCrosshair(event.sourceEvent);
                     const chartH = Number(ch.h ?? ch.svg?.attr('height') ?? 0) || 0;
                     const clampedY = Math.max(0, Math.min(chartH, event.y));
-                    const newPrice = ch.scales.yScale.invert(clampedY);
+                    let newPrice = ch.scales.yScale.invert(clampedY);
+                    // Snap multi-TP badge drag to instrument tick grid.
+                    const snappedDrag = self._snapOrderPriceToTick(newPrice);
+                    if (snappedDrag !== newPrice) newPrice = snappedDrag;
 
                     target.price = parseFloat(newPrice.toFixed(self.getPricePrecision()));
 
@@ -17155,6 +17334,13 @@ class OrderManager {
                 const chartHeight = Number(chartHeightRaw) || 0;
                 let clampedY = Math.max(0, Math.min(chartHeight, event.y));
                 let newPrice = ch.scales.yScale.invert(clampedY);
+                // Snap preview TP/SL badge drag to instrument tick grid BEFORE
+                // the SL-vs-TP clamp so the clamp operates on a valid price.
+                const snappedBadgeDrag = self._snapOrderPriceToTick(newPrice);
+                if (snappedBadgeDrag !== newPrice) {
+                    newPrice = snappedBadgeDrag;
+                    clampedY = Math.max(0, Math.min(chartHeight, ch.scales.yScale(newPrice)));
+                }
                 if (label === 'SL' && document.getElementById('enableSL')?.checked) {
                     const tpRef = self._getPreviewTpReferenceForSlClamp();
                     if (tpRef != null) {
@@ -20865,7 +21051,9 @@ class OrderManager {
         
         const currentPrice = currentCandle.c;
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
-        const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || currentPrice);
+        // `let` (not `const`) — tick-grid snap below re-assigns this value so all
+        // downstream order-creation paths use the snapped price.
+        let entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || currentPrice);
         const activeTicker = this._getActiveTicker();
         const activeInstrumentSettings = this._getActiveInstrumentSettings();
         
@@ -20893,7 +21081,36 @@ class OrderManager {
                 slPrice = slPriceInput;
             }
         }
-        
+
+        // Tick-grid snap the three order prices once, centrally, before any
+        // downstream code paths (single market, single pending, multi-entry,
+        // split-entry cloning, journal, SL/TP labels, etc.) read them.
+        //
+        // Why here and not per-path:
+        //   • `entryPrice` comes from either the panel input or the forming
+        //     candle's `c`. During replay tick animation on an instrument whose
+        //     tick registry spec is unresolved (unknown futures month code,
+        //     etc.), the forming `c` can be an interpolated off-grid float —
+        //     which then shows up on the SL/TP labels as e.g. NQ `2064.73`
+        //     instead of the valid `2064.75`.
+        //   • User-typed SL/TP values from the panel are free-form floats.
+        //   • `_snapOrderPriceToTick` is null-safe: it returns the original
+        //     price when there's no chart, no symbol, or no tick registry
+        //     (forex with unknown pair, etc.), so this is a no-op on
+        //     instruments that legitimately have no tick grid.
+        {
+            const snappedEntry = this._snapOrderPriceToTick(entryPrice);
+            if (Number.isFinite(snappedEntry)) entryPrice = snappedEntry;
+            if (tpPrice > 0) {
+                const snappedTp = this._snapOrderPriceToTick(tpPrice);
+                if (Number.isFinite(snappedTp)) tpPrice = snappedTp;
+            }
+            if (slPrice > 0) {
+                const snappedSl = this._snapOrderPriceToTick(slPrice);
+                if (Number.isFinite(snappedSl)) slPrice = snappedSl;
+            }
+        }
+
         // Get auto breakeven setting
         const autoBreakeven = document.getElementById('autoBreakevenToggle')?.checked || false;
         let breakevenSettings = null;
@@ -25705,11 +25922,22 @@ class OrderManager {
             
             // Get current line Y position
             const lineY = parseFloat(line.attr('y1'));
-            const newY = lineY + deltaY;
-            
+            // `newY` is reassigned below whenever a clamp or snap adjusts the price,
+            // so it must be `let`, not `const` (was silently failing on TP/SL clamp
+            // paths before tick-snapping made reassignment routine).
+            let newY = lineY + deltaY;
+
             // Convert Y position to price using inverse scale
             if (ctx.scales && ctx.scales.yScale) {
                 let newPrice = ctx.scales.yScale.invert(newY);
+                // Tick-grid snap FIRST so the OHLC/TP/SL clamps below operate on
+                // already-valid tick prices (NQ 0.25, GC 0.10, etc.). Keeps the SL/TP
+                // line visually locked to the grid while dragging.
+                const snappedDrag = self._snapOrderPriceToTick(newPrice);
+                if (snappedDrag !== newPrice) {
+                    newPrice = snappedDrag;
+                    newY = ctx.scales.yScale(newPrice);
+                }
                 if (lineType === 'tp') {
                     const c = self._clampTpDragPrice(order.type, newPrice, order.openPrice, order.stopLoss, self.pipSize);
                     if (c !== newPrice) {
@@ -26099,11 +26327,19 @@ class OrderManager {
             
             // Get current line Y position
             const lineY = parseFloat(line.attr('y1'));
-            const newY = lineY + deltaY;
-            
+            // `let` (not `const`) — both the tick snap below and the TP clamp reassign `newY`.
+            let newY = lineY + deltaY;
+
             // Convert Y position to price using inverse scale
             if (ctx.scales && ctx.scales.yScale) {
                 let newPrice = ctx.scales.yScale.invert(newY);
+                // Snap to the instrument's tick grid before clamping so multi-TP levels
+                // land on valid futures/crypto tick prices.
+                const snappedDrag = self._snapOrderPriceToTick(newPrice);
+                if (snappedDrag !== newPrice) {
+                    newPrice = snappedDrag;
+                    newY = ctx.scales.yScale(newPrice);
+                }
                 const cTp = self._clampTpDragPrice(order.type, newPrice, order.openPrice, order.stopLoss, self.pipSize);
                 if (cTp !== newPrice) {
                     newPrice = cTp;
@@ -28779,6 +29015,13 @@ class OrderManager {
                 const clampedY = Math.max(0, Math.min(chartHeight, event.y));
                 let newPrice = chart.scales.yScale.invert(clampedY);
 
+                // Tick-grid snap FIRST so the LIMIT/STOP entry label shows a valid
+                // exchange price while dragging (NQ/ES 0.25, GC 0.10, CL 0.01, …).
+                // Matches the SL/TP drag behaviour; null-safe for instruments with
+                // no tick registry.
+                const snappedDrag = self._snapOrderPriceToTick(newPrice);
+                if (snappedDrag !== newPrice) newPrice = snappedDrag;
+
                 // Keep placed lot size; move risk $ with entry.
                 pendingOrder.quantity = dragStartQty;
 
@@ -29595,6 +29838,13 @@ class OrderManager {
                 const chartHeight = ch.h || 500;
                 let clampedY = Math.max(0, Math.min(chartHeight, event.y));
                 let newPrice = ch.scales.yScale.invert(clampedY);
+                // Snap pending TP/SL to the instrument's tick grid before any side-clamp.
+                const snappedDrag = self._snapOrderPriceToTick(newPrice);
+                if (snappedDrag !== newPrice) {
+                    newPrice = snappedDrag;
+                    const ay = ch.scales.yScale(newPrice);
+                    clampedY = Math.max(0, Math.min(chartHeight, ay));
+                }
                 if (target.type === 'TP') {
                     const c = self._clampTpDragPrice(
                         pendingOrder.direction,

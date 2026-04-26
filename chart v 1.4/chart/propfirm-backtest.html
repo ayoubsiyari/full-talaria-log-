@@ -524,28 +524,66 @@
             
             return null;
         }
+
+        function normalizeEpochMs(raw) {
+            const n = Number(raw);
+            if (!Number.isFinite(n) || n <= 0) return null;
+            if (n >= 1e14) return null;
+            let ms;
+            if (n >= 1e12) ms = n;
+            else if (n >= 1e9) ms = n * 1000;
+            else return null;
+            const MIN = 631152000000;
+            const MAX = 4102444800000;
+            if (ms < MIN || ms > MAX) return null;
+            return ms;
+        }
         
         // Selected files array
         let selectedFilesArray = [];
         let availableFilesCache = [];
 
+        // Must match backtesting.html's cleanPairName — see that file for the full rationale.
+        // Short-base tickers (ES, NQ, CL, GC, T, F) used to collapse to "FULL" because the
+        // greedy /[a-zA-Z]{3,5}/ scan would skip past a 2-letter root and latch onto `full`.
         function cleanPairName(rawName) {
             if (!rawName) return 'Unknown';
             let name = String(rawName).replace(/^.*[\/\\]/, '').replace(/\.csv$/i, '');
             name = name.replace(/^\d{8}_\d{6}_/, '');
-            const currencies = ['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','HKD','SGD','SEK','NOK','DKK','ZAR','TRY','MXN','BTC','ETH','XAU','XAG'];
-            const pairMatch = name.match(/([a-zA-Z]{6})/);
-            if (pairMatch) {
-                const pair = pairMatch[1].toUpperCase();
-                const base = pair.substring(0, 3);
-                const quote = pair.substring(3, 6);
-                if (currencies.includes(base) || currencies.includes(quote)) {
+            name = name.replace(/^b\d{2}_\d{4}_firstrate_/, '');
+            name = name.replace(/^firstrate_/, '');
+
+            const CURRENCIES = ['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','HKD','SGD','SEK','NOK','DKK','ZAR','TRY','MXN','CNY','BTC','ETH','XAU','XAG'];
+            const META = new Set([
+                'FULL','DAY','WEEK','MONTH','YEAR','HOUR','MIN',
+                'ADJ','UNADJ','CONTIN','CONTINUOUS','SPLIT','DIV','RATIO','ABSOLUTE',
+                '1MIN','5MIN','15MIN','30MIN','1HOUR','1DAY','1WEEK','1MONTH','1H','4H','1D','1W','1MO'
+            ]);
+
+            const parts = name.split('_').filter(Boolean);
+            if (!parts.length) return (rawName || 'Unknown').toUpperCase();
+
+            let seg = parts.find(p => {
+                const u = p.toUpperCase();
+                return !META.has(u) && !/^\d+$/.test(p);
+            }) || parts[0];
+
+            if (/^[A-Za-z]{2,5}-[A-Za-z]{2,5}$/.test(seg)) {
+                const halves = seg.toUpperCase().split('-');
+                return halves[0] + '/' + halves[1];
+            }
+
+            const segU = seg.toUpperCase();
+
+            if (/^[A-Z]{6}$/.test(segU)) {
+                const base = segU.substring(0, 3);
+                const quote = segU.substring(3, 6);
+                if (CURRENCIES.includes(base) || CURRENCIES.includes(quote)) {
                     return base + '/' + quote;
                 }
             }
-            const indexMatch = name.match(/([a-zA-Z]{3,5})/);
-            if (indexMatch) return indexMatch[1].toUpperCase();
-            return name.replace(/[-_]/g, ' ').trim() || rawName;
+
+            return segU;
         }
 
         function formatRowCount(count) {
@@ -872,7 +910,7 @@
                     return;
                 }
                 
-                const header = lines[0].split(',');
+                const header = lines[0].split(',').map(function (h) { return h.replace(/^\uFEFF/g, '').trim(); });
                 const firstRowValues = lines[1].split(',');
                 
                 const firstRow = {};
@@ -882,8 +920,10 @@
                 
                 let firstTimestamp = null;
                 
-                // Try standard timestamp fields
-                if (firstRow.t) {
+                // Try standard timestamp fields (Binance CSV: numeric "timestamp" ms)
+                if (firstRow.timestamp !== undefined && firstRow.timestamp !== '' && /^\d+$/.test(String(firstRow.timestamp).trim())) {
+                    firstTimestamp = parseInt(String(firstRow.timestamp).trim(), 10);
+                } else if (firstRow.t) {
                     firstTimestamp = firstRow.t;
                 } else if (firstRow.time) {
                     firstTimestamp = firstRow.time;
@@ -923,7 +963,8 @@
                     firstTimestamp = parseInt(firstTimestamp, 10);
                 }
                 
-                const firstDate = new Date(firstTimestamp);
+                const normFirst = normalizeEpochMs(firstTimestamp);
+                const firstDate = new Date(normFirst != null ? normFirst : firstTimestamp);
                 if (isNaN(firstDate.getTime())) {
                     console.error('❌ Invalid first row timestamp');
                     return;
@@ -949,7 +990,9 @@
                         
                         let lastTimestamp = null;
                         
-                        if (lastRow.t) {
+                        if (lastRow.timestamp !== undefined && lastRow.timestamp !== '' && /^\d+$/.test(String(lastRow.timestamp).trim())) {
+                            lastTimestamp = parseInt(String(lastRow.timestamp).trim(), 10);
+                        } else if (lastRow.t) {
                             lastTimestamp = lastRow.t;
                         } else if (lastRow.time) {
                             lastTimestamp = lastRow.time;
@@ -983,7 +1026,8 @@
                             if (typeof lastTimestamp === 'string' && /^\d+$/.test(String(lastTimestamp).trim())) {
                                 lastTimestamp = parseInt(lastTimestamp, 10);
                             }
-                            lastDate = new Date(lastTimestamp);
+                            const normLast = normalizeEpochMs(lastTimestamp);
+                            lastDate = new Date(normLast != null ? normLast : lastTimestamp);
                             console.log('📅 Last date detected:', lastDate.toLocaleString());
                         }
                     }

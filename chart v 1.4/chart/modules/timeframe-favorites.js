@@ -711,40 +711,60 @@ class TimeframeFavorites {
      */
     changeTimeframe(timeframe) {
         console.log('⌚ Changing timeframe to:', timeframe);
+        console.log('🔍 _linkedPaneData exists:', !!window._linkedPaneData);
+        console.log('🔍 panelManager exists:', !!window.panelManager);
+        if (window.panelManager) {
+            console.log('🔍 currentLayout:', window.panelManager.getCurrentLayout?.());
+            console.log('🔍 selectedPanelIndex:', window.panelManager.selectedPanelIndex);
+        }
 
-        // Check if we're in LINKED pane mode (Add New Pane feature) - update BOTH charts
+        // Check if we're in LINKED pane mode (Add New Pane feature)
         if (window._linkedPaneData && window._linkedPaneData.panel1) {
-            console.log('🔗 Linked pane mode - syncing both charts');
-            
-            // Update main chart
-            if (this.chart && typeof this.chart.setTimeframe === 'function') {
-                this.chart.setTimeframe(timeframe);
-            }
-            
-            // Update panel1 (linked pane)
+            console.log('🔗 Linked pane mode detected');
+
+            // Determine which panel is currently selected
+            // If panel1 is selected, only update panel1; otherwise update main chart
             const panel1 = window._linkedPaneData.panel1;
-            if (panel1.chartInstance && panel1.chartInstance.rawData && panel1.chartInstance.rawData.length > 0) {
+            const isPanel1Selected = panel1 && panel1.isSelected;
+            console.log('🔍 panel1.isSelected:', isPanel1Selected);
+            console.log('🔍 panel1.chartInstance exists:', !!panel1.chartInstance);
+
+            if (isPanel1Selected && panel1.chartInstance && panel1.chartInstance.rawData && panel1.chartInstance.rawData.length > 0) {
+                // Panel1 is selected - only update panel1, leave main chart alone
+                console.log('🔗 Panel1 is selected - updating only panel1');
+                const pc = panel1.chartInstance;
+
+                // Capture center timestamp and zoom BEFORE resampling
+                const centerTimestamp = pc._getVisibleCenterTimestamp ? pc._getVisibleCenterTimestamp() : null;
+                const savedCandleWidth = pc.candleWidth;
+                const hadData = pc.data && pc.data.length > 0;
+
                 // Resample panel data to new timeframe
-                panel1.chartInstance.data = panel1.chartInstance.resampleData(
-                    panel1.chartInstance.rawData, 
-                    timeframe
-                );
-                panel1.chartInstance.currentTimeframe = timeframe;
+                pc.data = pc.resampleData(pc.rawData, timeframe);
+                pc.currentTimeframe = timeframe;
                 panel1.timeframe = timeframe;
-                
+
                 // Update timeframe label
                 const tfLabel = document.getElementById('chartTimeframe1');
                 if (tfLabel) tfLabel.textContent = timeframe;
-                
-                // Sync scroll position from main chart
-                if (window.chart) {
-                    panel1.chartInstance.offsetX = window.chart.offsetX || 0;
-                    panel1.chartInstance.candleWidth = window.chart.candleWidth || 8;
+
+                // Restore position to center timestamp if we had data before
+                if (hadData && centerTimestamp && pc.data && pc.data.length > 0 && pc._restorePositionToTimestamp) {
+                    pc._restorePositionToTimestamp(centerTimestamp, savedCandleWidth);
+                } else {
+                    pc._chartViewRestored = false;
+                    if (typeof pc.fitToView === 'function') pc.fitToView();
                 }
-                
+
                 // Re-render
-                panel1.chartInstance.render();
-                console.log(`⏱️ Synced linked pane timeframe to ${timeframe}`);
+                pc.render();
+                console.log(`⏱️ Updated panel1 timeframe to ${timeframe}`);
+            } else {
+                // Main chart is selected - only update main chart, leave panel1 alone
+                console.log('🔗 Main chart is selected - updating only main chart');
+                if (this.chart && typeof this.chart.setTimeframe === 'function') {
+                    this.chart.setTimeframe(timeframe);
+                }
             }
         } else if (window.panelManager && window.panelManager.getCurrentLayout() !== '1') {
             // Regular multi-panel mode (not linked)

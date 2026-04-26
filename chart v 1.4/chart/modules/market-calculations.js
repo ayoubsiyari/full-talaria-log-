@@ -407,14 +407,35 @@ class CryptoCalculator {
         const { contractType, contractSize } = this.specs;
         if (!sl || !riskUSD || Math.abs(entry - sl) < 1e-10) return 0;
 
+        let raw;
         if (contractType === 'inverse') {
             const riskPerContract = Math.abs(1 / sl - 1 / entry) * contractSize * entry;
-            return riskPerContract === 0 ? 0 : riskUSD / riskPerContract;
+            raw = riskPerContract === 0 ? 0 : riskUSD / riskPerContract;
+        } else {
+            // Linear / Spot
+            const priceDist = Math.abs(entry - sl);
+            raw = riskUSD / (priceDist * contractSize);
         }
+        // Snap DOWN to an exchange-legal qty so sizing never exceeds risk budget, and enforce minQty.
+        // Without this, BTC sizing returns e.g. 0.318472 which is illegal on exchanges with 0.001 step
+        // and confuses the UI input (`step=0.001` expects a snapped value).
+        return this.snapQty(raw);
+    }
 
-        // Linear / Spot
-        const priceDist = Math.abs(entry - sl);
-        return riskUSD / (priceDist * contractSize);
+    /**
+     * Snap a raw qty down to the exchange step (respecting minQty). Returns 0 when the input is
+     * below minQty — the caller decides whether to surface a "min size not met" message.
+     */
+    snapQty(rawQty) {
+        const step = Number(this.specs.qtyStep) > 0 ? Number(this.specs.qtyStep) : 1e-8;
+        const min  = Number(this.specs.minQty)  > 0 ? Number(this.specs.minQty)  : step;
+        const q = Number(rawQty);
+        if (!Number.isFinite(q) || q <= 0) return 0;
+        const snapped = Math.floor(q / step) * step;
+        if (snapped + 1e-12 < min) return 0;
+        // Fix float drift (e.g. 0.1 * 3 = 0.30000000000000004) using the step's decimal places.
+        const decimals = step >= 1 ? 0 : Math.min(10, Math.max(0, Math.ceil(-Math.log10(step))));
+        return Number(snapped.toFixed(decimals));
     }
 
     /**
@@ -552,10 +573,62 @@ class MarketCalculationEngine {
     }
 
     /**
+     * Resolve a symbol string to an actual registry key, handling suffixed dataset filenames.
+     *
+     * FirstRate / Dukascopy / user uploads store compound names as the chart `currentSymbol`, e.g.:
+     *     ES_week_1min_1min          (FirstRate futures)
+     *     AAPL_full_1min_adj_split   (FirstRate stock)
+     *     BTC_full_1min              (FirstRate crypto, base-only — implicit USD quote)
+     *     BTC-EUR_full_1min          (FirstRate crypto, explicit non-USD quote)
+     *     BTCUSD_full_1min           (legacy FirstRate crypto with quote suffix)
+     *     EURUSD_full_1min_1min      (FirstRate FX)
+     *     20251028_194229_GBPUSD     (Dukascopy upload)
+     *
+     * The naive `_normalize` collapses these to `ESWEEK1MIN1MIN`, which misses the registry and
+     * silently falls back to forex defaults — leading to wrong pip size, wrong P&L, wrong lot size.
+     *
+     * Strategy: split on common separators and try each segment against the registry, preferring
+     * the LONGEST match first (so `BTCUSD_full_1min` matches `BTCUSD`, not `BTC`), then try the
+     * crypto-base alias table (so `BTC_full_1min` still resolves to `BTCUSD` specs), with a final
+     * compact fallback for symbols that may have been written without separators.
+     *
+     * @returns {string} registry-normalized key (may not exist in the registry if nothing matched)
+     */
+    _resolveRegistryKey(symbol) {
+        if (!symbol) return '';
+        // 1. Direct compact match wins (covers most user-typed tickers and Dukascopy names).
+        const compact = this._normalize(symbol);
+        if (this._registry[compact]) return compact;
+        // 2. Try individual segments, longest first, for compound filenames.
+        const segments = String(symbol)
+            .split(/[/\-_.\s]+/)
+            .map(s => (s || '').toUpperCase())
+            .filter(s => /^[A-Z0-9]{2,}$/.test(s));
+        const sorted = [...segments].sort((a, b) => b.length - a.length);
+        for (const seg of sorted) {
+            if (this._registry[seg]) return seg;
+        }
+        // 3. Try pairs of adjacent segments concatenated (handles `BTC_USD` → `BTCUSD`).
+        for (let i = 0; i < segments.length - 1; i++) {
+            const joined = segments[i] + segments[i + 1];
+            if (this._registry[joined]) return joined;
+        }
+        // 4. Crypto base-symbol fallback: FirstRate's default crypto bundle names files by base
+        //    asset only (`BTC_full_1min` implies BTC/USD). Map common bases to their USD-pair
+        //    registry entry so precision, tick size, contract specs all come from a real row.
+        for (const seg of sorted) {
+            const aliased = MarketCalculationEngine.CRYPTO_BASE_ALIASES[seg];
+            if (aliased && this._registry[aliased]) return aliased;
+        }
+        // 5. Nothing matched — return the compact form so the fallback logic can still run.
+        return compact;
+    }
+
+    /**
      * Lookup specs in registry; build a reasonable fallback if unknown.
      */
     getSpecs(symbol, fallbackType) {
-        const key  = this._normalize(symbol);
+        const key = this._resolveRegistryKey(symbol);
         const spec = this._registry[key];
         if (spec) return spec;
         const ft = fallbackType || MarketCalculationEngine.detectMarketType(symbol);
@@ -718,28 +791,58 @@ class MarketCalculationEngine {
     /**
      * Heuristically detect market type from a symbol string.
      * Used as fallback when symbol is not in the registry.
+     *
+     * Handles every naming scheme the platform ingests:
+     *   `ES_week_1min_1min`            → futures (ES)
+     *   `NQ_continuous_UNadj_1min`     → futures (NQ)
+     *   `AAPL_full_1min_adj_split`     → stocks  (AAPL)
+     *   `BTC_full_1min`                → crypto  (base-only, implicit USD quote)
+     *   `BTC-EUR_full_1min`            → crypto  (hyphenated pair)
+     *   `BTCUSD_full_1min`             → crypto  (legacy compact quote)
+     *   `EURUSD_full_1min_1min`        → forex   (six-letter ISO pair)
+     *   `20251028_194229_GBPUSD`       → forex   (Dukascopy timestamp prefix)
+     *
+     * Misclassification is catastrophic for P&L (applying a 0.0001-pip × 100 k-lot
+     * forex model to an ES contract silently gives wrong risk/size/margin), so the
+     * detection uses registered aliases wherever possible and only falls back to the
+     * classic FX heuristic for unambiguous six-letter currency codes.
      */
     static detectMarketType(symbol) {
         if (!symbol) return 'forex';
         const s = symbol.replace(/[/\-_\s]/g, '').toUpperCase();
 
-        const futuresSymbols = [
-            'ES','MES','NQ','MNQ','YM','MYM','RTY','M2K',
-            'CL','MCL','GC','MGC','SI','HG','PL','RB','NG',
-            'ZB','ZN','ZF','ZT','ZC','ZW','ZS',
-            '6E','6B','6J','6A','6C','6S',
-        ];
-        if (futuresSymbols.includes(s)) return 'futures';
+        const futuresSymbols = MarketCalculationEngine.FUTURES_ROOTS;
+        const stockSymbols   = MarketCalculationEngine.STOCK_TICKERS;
+        const cryptoBases    = MarketCalculationEngine.CRYPTO_BASES;
+        const cryptoPairs    = MarketCalculationEngine.CRYPTO_PAIRS;
 
-        if (s.endsWith('USDT') || s.endsWith('PERP') ||
-            ['BTCUSD','ETHUSD','SOLUSD','XBTUSD'].includes(s)) return 'crypto';
+        // 1. Compact match (user-typed `EURUSD`, `ES`, `BTCUSDT`, `BTC`).
+        if (futuresSymbols.has(s)) return 'futures';
+        if (cryptoPairs.has(s) || cryptoBases.has(s)) return 'crypto';
+        if (s.endsWith('USDT') || s.endsWith('USDC') || s.endsWith('PERP') || s.endsWith('-PERP')) return 'crypto';
+        if (stockSymbols.has(s)) return 'stocks';
 
-        const stockSymbols = [
-            'AAPL','TSLA','NVDA','MSFT','AMZN','GOOGL','META',
-            'NFLX','AMD','INTC','SPY','QQQ','IWM','DIA',
-        ];
-        if (stockSymbols.includes(s)) return 'stocks';
-
+        // 2. Segment scan — handle FirstRate / compound filenames without stripping structure.
+        const segments = String(symbol)
+            .split(/[/\-_.\s]+/)
+            .map(seg => (seg || '').toUpperCase())
+            .filter(seg => /^[A-Z0-9]{1,8}$/.test(seg));
+        for (const seg of segments) {
+            if (futuresSymbols.has(seg)) return 'futures';
+            if (stockSymbols.has(seg)) return 'stocks';
+            if (cryptoPairs.has(seg) || cryptoBases.has(seg)) return 'crypto';
+            if (seg.endsWith('USDT') || seg.endsWith('USDC') || seg.endsWith('PERP')) return 'crypto';
+        }
+        // 3. Classic FX heuristic on the longest 6-char segment (EURUSD / GBPJPY / XAUUSD…).
+        const fxCcys = new Set([
+            'USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF','CNH','CNY','HKD',
+            'SEK','NOK','DKK','MXN','ZAR','TRY','SGD','XAU','XAG','XPT','XPD',
+        ]);
+        for (const seg of segments) {
+            if (seg.length === 6 && fxCcys.has(seg.slice(0,3)) && fxCcys.has(seg.slice(3))) {
+                return 'forex';
+            }
+        }
         return 'forex';
     }
 
@@ -762,6 +865,114 @@ class MarketCalculationEngine {
         return quantity;
     }
 }
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATIC LOOKUP TABLES
+//
+// Kept on the class (not in per-call locals) so they are constructed once and
+// shared between `detectMarketType`, `_resolveRegistryKey`, and any caller that
+// wants to query "is this ticker a futures root?" / "is this ticker a crypto?"
+// without pulling in the full registry.
+//
+// Coverage goals:
+//   * Futures: every FirstRate-supplied root that has a registry entry, plus common
+//     CME/CBOT/NYMEX/COMEX/ICE roots users may type manually. Missing roots still
+//     get detected as futures (heuristic is lenient — false positives cost less than
+//     classifying a futures contract as FX).
+//   * Crypto: every base the FirstRate default crypto bundle ships (and a few more
+//     from Binance/Kraken naming conventions). Base-only names like `BTC_full_1min`
+//     must classify as crypto or the forex default silently wrecks P&L.
+// ─────────────────────────────────────────────────────────────────────────────
+
+MarketCalculationEngine.FUTURES_ROOTS = new Set([
+    // CME Equity Index
+    'ES','MES','NQ','MNQ','YM','MYM','RTY','M2K','NKD','NIY',
+    // CME FX Futures
+    '6A','6B','6C','6E','6J','6M','6N','6S','6Z','DX',
+    // NYMEX / COMEX Energy & Metals
+    'CL','MCL','RB','NG','HO','BZ','QM','QG',
+    'GC','MGC','SI','SIL','HG','PL','PA',
+    // CBOT Fixed Income
+    'ZB','ZN','ZF','ZT','UB','TN',
+    // CBOT Grains & Oilseeds
+    'ZC','ZW','ZS','ZM','ZL','ZO','ZR','KE',
+    // ICE / CME Softs & Agriculture
+    'KC','CC','CT','SB','OJ','LB',
+    'LE','HE','GF','LH','LC','FC','DA',
+    // Crypto futures listed on CME — micro contracts only. `BTC` and `ETH` would
+    // collide with the far-more-common spot bundles FirstRate ships (`BTC_full_1min`
+    // for BTC/USD, etc.), so we classify those as crypto by default. Users charting
+    // actual CME BTC/ETH futures can set the market type manually from the panel.
+    'MBT','MET',
+]);
+
+/**
+ * Crypto base symbols seen in FirstRate / Kraken / Coinbase naming.
+ * Used to classify base-only filenames (`BTC_full_1min`) as crypto. Bases that
+ * have a matching `BTCUSD`/`BTCUSDT` entry in the registry additionally map
+ * through `CRYPTO_BASE_ALIASES` so `getSpecs` picks up real tick/precision data.
+ */
+MarketCalculationEngine.CRYPTO_BASES = new Set([
+    'BTC','XBT','ETH','SOL','BNB','XRP','ADA','DOGE','LTC','LINK','DOT','AVAX',
+    'MATIC','TRX','BCH','ATOM','ALGO','ARB','APT','AAVE','BAT','BNT','CRO','CVC',
+    'DAI','DASH','EOS','ETC','FIL','FUN','HBAR','ICP','INJ','KAVA','KNC','LDO',
+    'LRC','MANA','MKR','NEAR','OP','PEPE','QNT','RNDR','SAND','SHIB','SNX','STX',
+    'SUSHI','THETA','TON','UNI','USDC','USDT','VET','WBTC','WLD','XLM','XMR',
+    'XTZ','YFI','ZEC','ZRX',
+]);
+
+/**
+ * Canonical crypto pair tickers (compact, no separator). Used for direct match
+ * against segments like `BTCUSD` inside compound filenames.
+ */
+MarketCalculationEngine.CRYPTO_PAIRS = new Set([
+    'BTCUSD','BTCUSDT','BTCUSDC','BTCEUR','XBTUSD','BTCBUSD',
+    'ETHUSD','ETHUSDT','ETHUSDC','ETHEUR','ETHBTC',
+    'SOLUSD','SOLUSDT','SOLUSDC',
+    'BNBUSD','BNBUSDT',
+    'XRPUSD','XRPUSDT',
+    'ADAUSD','ADAUSDT',
+    'DOGEUSD','DOGEUSDT',
+    'LTCUSD','LTCUSDT',
+    'LINKUSD','LINKUSDT',
+    'DOTUSD','DOTUSDT',
+    'AVAXUSD','AVAXUSDT',
+    'MATICUSD','MATICUSDT',
+    'BCHUSD','BCHUSDT',
+    'TRXUSD','TRXUSDT',
+    'ATOMUSD','ATOMUSDT',
+]);
+
+MarketCalculationEngine.STOCK_TICKERS = new Set([
+    'AAPL','TSLA','NVDA','MSFT','AMZN','GOOGL','GOOG','META','NFLX','AMD','INTC',
+    'SPY','QQQ','IWM','DIA','VOO','VTI','ARKK','GLD','SLV','USO','UNG','TLT',
+    'XLF','XLE','XLK','XLV','XLY','XLP','XLI','XLU','XLRE','XLB','XLC',
+    'JPM','BAC','WFC','C','GS','MS','V','MA','PYPL','SQ','SHOP','PLTR','COIN',
+]);
+
+/**
+ * Map crypto base-only symbols to their canonical USD-quoted registry entry.
+ * Populated for every base where the registry has a matching row — other bases
+ * are left out deliberately so `_resolveRegistryKey` falls through to the
+ * generic crypto fallback (precision 2, contractSize 1) instead of adopting
+ * unrelated specs.
+ */
+MarketCalculationEngine.CRYPTO_BASE_ALIASES = {
+    'BTC':   'BTCUSD',
+    'XBT':   'XBTUSD',
+    'ETH':   'ETHUSD',
+    'SOL':   'SOLUSD',
+    'BNB':   'BNBUSDT',
+    'XRP':   'XRPUSDT',
+    'ADA':   'ADAUSDT',
+    'DOGE':  'DOGEUSDT',
+    'LTC':   'LTCUSDT',
+    'LINK':  'LINKUSDT',
+    'DOT':   'DOTUSDT',
+    'AVAX':  'AVAXUSDT',
+    'MATIC': 'MATICUSDT',
+};
 
 
 // ─────────────────────────────────────────────────────────────────────────────
