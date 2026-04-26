@@ -10570,6 +10570,19 @@ class Chart {
             this.resize();
 
             this._ingestSmartWindowResult(result, { skipFitToView: true });
+
+            // Immediately put the chart into a renderable state.
+            // _commitLoadedBars (inside ingest) synchronously dispatches `chartDataLoaded`
+            // which some listeners react to with a render. Without a valid offsetX for
+            // the NEW dataset, those intermediate renders produce
+            // "No candles drawn! All N candles are outside viewport" warnings and a
+            // blank chart on smaller-data timeframes (e.g. 1h with only a few bars).
+            // The rAF below refines the view (restore center timestamp) once dimensions settle.
+            if (Array.isArray(this.data) && this.data.length > 0) {
+                this._chartViewRestored = false;
+                this.fitToView();
+            }
+
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(timeframe);
             }
