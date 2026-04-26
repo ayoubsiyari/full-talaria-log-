@@ -4697,5 +4697,98 @@ if (typeof window !== 'undefined') {
 
 // Debug function for console
 window.debugReplay = function() {
-    
+
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Multi-panel replay diagnostics (opt-in)
+//   In console:
+//     __replayDiag()        → one-shot snapshot
+//     __replayDiagOn()      → log per tick (throttled to ~1/sec)
+//     __replayDiagOff()     → stop tick logging
+// ─────────────────────────────────────────────────────────────────────────────
+(function () {
+    if (typeof window === 'undefined') return;
+
+    function describeChart(c, label) {
+        if (!c) return { label, missing: true };
+        const data = Array.isArray(c.data) ? c.data : [];
+        const raw = Array.isArray(c.rawData) ? c.rawData : [];
+        const pfrd = Array.isArray(c._panelFullRawData) ? c._panelFullRawData : null;
+        return {
+            label,
+            symbol: c.currentSymbol || null,
+            fileId: c.currentFileId != null ? String(c.currentFileId) : null,
+            tf: c.currentTimeframe || null,
+            offsetX: Math.round(c.offsetX || 0),
+            candleWidth: c.candleWidth,
+            dataLen: data.length,
+            firstT: data[0]?.t || null,
+            lastT: data[data.length - 1]?.t || null,
+            rawLen: raw.length,
+            panelRawLen: pfrd ? pfrd.length : null,
+            isPanel: !!c.isPanel,
+            chartViewRestored: !!c._chartViewRestored,
+            autoScroll: c.replaySystem ? !!c.replaySystem.autoScrollEnabled : null,
+        };
+    }
+
+    window.__replayDiag = function () {
+        const replay = window.chart && window.chart.replaySystem;
+        const pm = window.panelManager;
+        const out = {
+            ts: new Date().toISOString(),
+            replay: replay ? {
+                isActive: !!replay.isActive,
+                isPlaying: !!replay.isPlaying,
+                currentIndex: replay.currentIndex,
+                replayTimestamp: replay.replayTimestamp,
+                replayTimestampISO: replay.replayTimestamp ? new Date(replay.replayTimestamp).toISOString() : null,
+                fullRawDataLen: Array.isArray(replay.fullRawData) ? replay.fullRawData.length : 0,
+                rawTimeframe: replay.rawTimeframe,
+                fullRawFirstT: replay.fullRawData?.[0]?.t || null,
+                fullRawLastT: replay.fullRawData?.[replay.fullRawData?.length - 1]?.t || null,
+                tickProgress: replay.tickProgress,
+                speed: replay.speed,
+                autoScrollEnabled: replay.autoScrollEnabled,
+                userHasPanned: replay.userHasPanned,
+            } : null,
+            main: describeChart(window.chart, 'main'),
+            panels: pm && pm.panels
+                ? pm.panels.map((p, i) => ({
+                    index: i,
+                    isMainChart: !!p.isMainChart,
+                    timeframeMeta: p.timeframe,
+                    ...describeChart(p.chartInstance, `panel${i}`),
+                }))
+                : null,
+            sync: pm ? pm.syncSettings : null,
+            layout: pm ? pm.currentLayout : null,
+        };
+        console.log('🩺 __replayDiag', out);
+        return out;
+    };
+
+    let _diagTickHandle = null;
+    let _diagLastLog = 0;
+    window.__replayDiagOn = function (intervalMs) {
+        const ms = Number.isFinite(intervalMs) ? intervalMs : 1000;
+        window.__REPLAY_DIAG__ = true;
+        if (_diagTickHandle) clearInterval(_diagTickHandle);
+        _diagTickHandle = setInterval(() => {
+            const now = Date.now();
+            if (now - _diagLastLog < ms - 50) return;
+            _diagLastLog = now;
+            const replay = window.chart && window.chart.replaySystem;
+            if (!replay || !replay.isActive) return;
+            window.__replayDiag();
+        }, Math.max(250, Math.floor(ms / 2)));
+        console.log('🩺 replay diagnostics ON @', ms, 'ms');
+    };
+    window.__replayDiagOff = function () {
+        window.__REPLAY_DIAG__ = false;
+        if (_diagTickHandle) clearInterval(_diagTickHandle);
+        _diagTickHandle = null;
+        console.log('🩺 replay diagnostics OFF');
+    };
+})();
