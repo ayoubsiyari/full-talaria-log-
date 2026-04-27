@@ -426,6 +426,9 @@ const TalariaV8bLive = () => {
   const [ddPos, setDdPos] = useState({ top: 60, left: 40 }); // position for dropdown
   const [symbolOpen, setSymbolOpen] = useState(false);
   const [symbol, setSymbol] = useState("EUR/JPY");
+  // Pairs available in the active backtest session (read from chart.js / userStorage).
+  // Each entry: { ticker: 'EUR/JPY', fileId: 12 }. Empty until session loads.
+  const [sessionPairs, setSessionPairs] = useState([]);
   const [symbolSearch, setSymbolSearch] = useState("");
   const [chartTypeOpen, setChartTypeOpen] = useState(false);
   const [chartType, setChartType] = useState("Candles");
@@ -541,6 +544,40 @@ const TalariaV8bLive = () => {
       setSymbol(sym);
     };
 
+    // Read all pairs from the active backtest session and populate the
+    // V9 dropdown list. Each entry: { ticker, fileId } so we can call
+    // chart.loadFileData(fileId) when the user picks one in V9.
+    const refreshSessionPairs = () => {
+      try {
+        let session = window.chart?.backtestingSession;
+        if (!session) {
+          const raw = window.userStorage?.getItem?.('backtestingSession')
+            ?? localStorage.getItem('backtestingSession');
+          session = raw ? JSON.parse(raw) : null;
+        }
+        if (!session) return;
+
+        const pairs = [];
+        if (session.instruments && typeof session.instruments === 'object') {
+          for (const [ticker, info] of Object.entries(session.instruments)) {
+            const fid = info?.fileId ?? info?.datasetId ?? null;
+            if (ticker) pairs.push({ ticker: normalizeSymbol(ticker), fileId: fid });
+          }
+        } else if (Array.isArray(session.symbols)) {
+          for (const s of session.symbols) {
+            if (s?.symbolName) pairs.push({ ticker: normalizeSymbol(s.symbolName), fileId: s.fileId ?? null });
+          }
+        } else if (Array.isArray(session.instrumentTickers)) {
+          for (const t of session.instrumentTickers) {
+            pairs.push({ ticker: normalizeSymbol(t), fileId: null });
+          }
+        }
+        if (pairs.length) setSessionPairs(pairs);
+      } catch (err) {
+        console.warn('[V9 sym] refreshSessionPairs failed', err);
+      }
+    };
+
     // Poll window.chart.currentSymbol until it stabilizes. Two reasons we can't
     // rely on chartDataLoaded alone:
     //   1. The event may have fired before V9 mounted.
@@ -552,12 +589,16 @@ const TalariaV8bLive = () => {
       if (cancelled) return;
       const s = window.chart?.currentSymbol;
       if (s) apply(s, "poll");
+      refreshSessionPairs();
       // Keep polling for ~30s in case the user navigates between sessions.
       if (attempts++ < 150) setTimeout(tick, 200);
     };
     tick();
 
-    const handleDataLoaded = (e) => apply(e?.detail?.symbol, "event");
+    const handleDataLoaded = (e) => {
+      apply(e?.detail?.symbol, "event");
+      refreshSessionPairs();
+    };
     window.addEventListener('chartDataLoaded', handleDataLoaded);
     return () => {
       cancelled = true;
@@ -9028,22 +9069,29 @@ const TalariaV8bLive = () => {
           </div>
           <div className="tlr-scroll" style={{maxHeight:320,overflowY:"auto",padding:"4px 0"}}>
             {(()=>{
-              // Backtest mode: dropdown is restricted to the single pair loaded
-              // from the active session (window.chart.currentSymbol → `symbol`).
-              // Build a single-category list with just that pair so the user can't
-              // navigate away to forex/futures/crypto that aren't in this session.
+              // Build the dropdown list from the active backtest session's pairs.
+              // sessionPairs is populated by the polling effect from
+              // window.chart.backtestingSession (or userStorage fallback).
+              // If the session isn't loaded yet, fall back to a single entry
+              // built from the current symbol so the dropdown is never empty.
               const known = SYMBOLS_DATA.flatMap(c=>c.items.map(it=>({...it,cat:c.cat})));
-              let entry = known.find(s=>s.id===symbol);
-              if(!entry){
-                // Symbol came from chart.js but isn't in SYMBOLS_DATA. Synthesize.
-                const parts = symbol.split("/");
+              const buildEntry = (ticker, fileId) => {
+                const found = known.find(s=>s.id===ticker);
+                if(found) return {...found, fileId};
+                const parts = (ticker||"").split("/");
                 if(parts.length===2 && parts[0].length===3 && parts[1].length===3){
-                  entry = {id:symbol,name:`${parts[0]} / ${parts[1]}`,type:"forex",base:parts[0],quote:parts[1],cat:"FOREX"};
-                } else {
-                  entry = {id:symbol,name:symbol,type:"forex",cat:"BACKTEST"};
+                  return {id:ticker,name:`${parts[0]} / ${parts[1]}`,type:"forex",base:parts[0],quote:parts[1],cat:"FOREX",fileId};
                 }
-              }
-              return [{cat:entry.cat||"BACKTEST",items:[entry]}];
+                return {id:ticker,name:ticker,type:"forex",cat:"BACKTEST",fileId};
+              };
+              const items = (sessionPairs.length
+                ? sessionPairs.map(p=>buildEntry(p.ticker, p.fileId))
+                : [buildEntry(symbol, null)]
+              );
+              // Group by cat (FOREX, FUTURES, etc.) so the visual grouping is preserved.
+              const byCat = {};
+              items.forEach(it=>{ const k=it.cat||"BACKTEST"; (byCat[k] ||= []).push(it); });
+              return Object.entries(byCat).map(([cat,items])=>({cat,items}));
             })().map(({cat,items})=>{
               const q=symbolSearch.toLowerCase();
               const filtered = items.filter(s=>!q||s.id.toLowerCase().startsWith(q)||s.name.toLowerCase().split(/[\s/\-]+/).some(w=>w.startsWith(q)));
@@ -9057,7 +9105,17 @@ const TalariaV8bLive = () => {
                     return (
                       <div key={s.id}
                         onMouseEnter={()=>setHov(`sym-${s.id}`)} onMouseLeave={()=>setHov(null)}
-                        onClick={()=>{setSymbol(s.id);setSymbolOpen(false);setSymbolSearch("");}}
+                        onClick={()=>{
+                          setSymbol(s.id);
+                          setSymbolOpen(false);
+                          setSymbolSearch("");
+                          // Tell chart.js to swap its loaded data to the picked
+                          // pair. fileId comes from session.instruments[ticker].fileId.
+                          if(s.fileId != null && window.chart?.loadFileData){
+                            try { window.chart.loadFileData(s.fileId); }
+                            catch(err){ console.warn('[V9 sym] loadFileData failed', err); }
+                          }
+                        }}
                         style={{display:"flex",alignItems:"center",gap:9,padding:"5px 14px",cursor:"default",position:"relative",
                           background:isAct?c.acD:isH?c.hv2:"transparent",
                           transition:"background 0.1s"}}>
