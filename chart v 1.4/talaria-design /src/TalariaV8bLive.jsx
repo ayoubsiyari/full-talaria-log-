@@ -676,6 +676,74 @@ const TalariaV8bLive = () => {
     return () => { cancelled = true; };
   }, [indActive]);
 
+  // ─── SYNC TIMEFRAME → chart.js ───────────────────────────────────────────
+  // V9 'tf' state ("1m", "5m", "15m", "30m", "1H", "4H", "1D", "1W", "1M")
+  // drives chart.js's setTimeframe().
+  //
+  // CRITICAL: chart.js's vocabulary uses lowercase AND uses "1mo" for month
+  // (because "1m" already means 1 minute). V9 uses capital "1M" for month,
+  // which would be misread as "1m" minute if naively lowercased. Map carefully.
+  useEffect(() => {
+    // Convert V9 tf → chart.js timeframe string.
+    const v9ToChartTf = (v9) => {
+      if (!v9 || typeof v9 !== "string") return "1m";
+      const trimmed = v9.trim();
+      // Month: V9 capital "1M" → chart.js "1mo".
+      if (/^\d+M$/.test(trimmed)) return trimmed.replace("M", "mo").toLowerCase();
+      // Everything else: simple lowercase. "1H" → "1h", "1D" → "1d", "1W" → "1w".
+      return trimmed.toLowerCase();
+    };
+
+    const target = v9ToChartTf(tf);
+    let cancelled = false;
+    let attempts = 0;
+
+    const apply = () => {
+      if (cancelled) return;
+      const c = window.chart;
+      if (!c || typeof c.setTimeframe !== "function") {
+        if (attempts++ < 60) setTimeout(apply, 200);
+        return;
+      }
+      // setTimeframe early-returns if rawData empty AND no currentFileId; that's fine.
+      if (c.currentTimeframe === target) return;
+      try {
+        c.setTimeframe(target);
+      } catch (err) {
+        console.warn("[V9] setTimeframe failed for", tf, "->", target, err);
+      }
+    };
+
+    apply();
+    return () => { cancelled = true; };
+  }, [tf]);
+
+  // Listen for chart.js timeframe changes (e.g. legacy hotkey, replay system,
+  // panel sync) and reflect them back into V9 state so the UI stays in sync.
+  useEffect(() => {
+    const chartTfToV9 = (cTf) => {
+      if (!cTf) return null;
+      const s = String(cTf).toLowerCase().trim();
+      if (s === "1mo") return "1M";
+      // Hours: "1h" → "1H", "4h" → "4H".
+      if (/^\d+h$/.test(s)) return s.toUpperCase();
+      // Days/weeks: "1d" → "1D", "1w" → "1W".
+      if (/^\d+d$/.test(s) || /^\d+w$/.test(s)) return s.toUpperCase();
+      // Minutes stay lowercase: "1m", "5m", "15m", "30m".
+      return s;
+    };
+
+    const handleTfChanged = (e) => {
+      const cTf = e?.detail?.timeframe || window.chart?.currentTimeframe;
+      const mapped = chartTfToV9(cTf);
+      if (mapped) setTf(mapped);
+    };
+
+    // chart.js dispatches both 'timeframeChanged' and 'dataLoaded' on tf changes.
+    window.addEventListener("timeframeChanged", handleTfChanged);
+    return () => window.removeEventListener("timeframeChanged", handleTfChanged);
+  }, []);
+
   // ────────────────────────────────────────────────────────────────────────
 
   const rollbackLineRef = useRef(null);
