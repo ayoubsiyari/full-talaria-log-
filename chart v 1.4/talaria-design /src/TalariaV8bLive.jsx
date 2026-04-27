@@ -2563,11 +2563,19 @@ const TalariaV8bLive = () => {
   // Maps V9 dash names to the dash-array strings the legacy code uses
   // (chart/modules/drawing-toolbar.js line 1521-1525).
   const V9_DASH_TO_LEGACY = { solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4' };
+  // Skip the first run so V9's default tlStyle doesn't overwrite the user's
+  // previously-saved per-tool styles every time the page loads.
+  const styleBridgeReady = useRef(false);
+  // Coalesce localStorage writes — saveToolStyle does a synchronous
+  // JSON.stringify + setItem of the entire savedToolStyles map, which can
+  // stall click handlers when the bridge fires on every dropdown change.
+  const saveToolStyleTimer = useRef(null);
   useEffect(() => {
     const dm = window.chart && window.chart.drawingManager;
     if (!dm) return;
     const legacyTool = resolveLegacyTool();
     if (!legacyTool) return;
+    if (!styleBridgeReady.current) { styleBridgeReady.current = true; return; }
 
     const dashArr = V9_DASH_TO_LEGACY[tlStyle.lineType] ?? '';
     const widthNum = parseInt(tlStyle.lineWidth, 10) || 2;
@@ -2605,10 +2613,14 @@ const TalariaV8bLive = () => {
     };
 
     // Persist as default for this tool — new drawings inherit via applySavedStyle.
-    try {
-      const merged = { ...(dm.getSavedToolStyle?.(legacyTool) || {}), ...stylePatch };
-      dm.saveToolStyle?.(legacyTool, merged);
-    } catch (err) { /* ignore */ }
+    // Debounced: avoid hammering localStorage on every dropdown click.
+    if (saveToolStyleTimer.current) clearTimeout(saveToolStyleTimer.current);
+    saveToolStyleTimer.current = setTimeout(() => {
+      try {
+        const merged = { ...(dm.getSavedToolStyle?.(legacyTool) || {}), ...stylePatch };
+        dm.saveToolStyle?.(legacyTool, merged);
+      } catch (err) { /* ignore */ }
+    }, 300);
 
     // Mutate currently-selected drawing(s) and repaint immediately.
     try {
