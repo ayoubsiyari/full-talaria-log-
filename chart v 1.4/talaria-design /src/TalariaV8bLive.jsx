@@ -587,6 +587,95 @@ const TalariaV8bLive = () => {
     return () => { cancelled = true; };
   }, [chartType]);
 
+  // ─── SYNC INDICATORS → chart.js ──────────────────────────────────────────
+  // V9's indActive (array of V9 indicator IDs like "SMA", "RSI") drives
+  // chart.js's chart.addIndicator(type) / chart.removeIndicator(id).
+  //
+  // Each chart.js indicator gets a unique runtime ID (e.g. "ind_1730000_x4f").
+  // We track V9-ID → chart.js-ID in a ref so we know what to remove later.
+  //
+  // V9 IDs that don't have a chart.js implementation (TSI, KST, ATRP, HV, AD,
+  // PVT, KLINGER, ICHIMOKU, ALMA, VWMA, VROC, NATR, VHF, ZZ, FVG*, PIVOT,
+  // ASIA/LON/NY individual sessions) are ignored with a console warn.
+  const indicatorIdMapRef = useRef({}); // { [v9Id]: chartJsId }
+  useEffect(() => {
+    // V9 ID → chart.js indicator type. Lowercase chart.js values are taken
+    // straight from chart-indicators-full.js's switch(indicator.type).
+    const ID_TO_TYPE = {
+      // Trend
+      SMA: "sma", EMA: "ema", WMA: "wma", DEMA: "dema", TEMA: "tema",
+      HMA: "hma", SUPERTREND: "supertrend",
+      // Momentum
+      RSI: "rsi", MACD: "macd", STOCH: "stoch", CCI: "cci", MOM: "mom",
+      ROC: "roc", WPR: "williams", DPO: "dpo", PPO: "ppo", AO: "ao",
+      STOCHRSI: "stochrsi",
+      // Volatility
+      BB: "bb", ATR: "atr", KC: "keltner", DC: "donchian",
+      // Volume
+      VWAP: "vwap", OBV: "obv", CMF: "cmf", MFI: "mfi",
+      // Sessions
+      SESS: "sessions",
+      // Others
+      PSAR: "psar", ADX: "adx", AROON: "aroon",
+    };
+
+    let cancelled = false;
+    let attempts = 0;
+
+    const apply = () => {
+      if (cancelled) return;
+      const c = window.chart;
+      // Wait for chart.js to be ready AND data to be loaded — addIndicator
+      // alerts and bails out early when this.data is empty.
+      if (!c || typeof c.addIndicator !== "function" || !c.data || c.data.length === 0) {
+        if (attempts++ < 60) setTimeout(apply, 200);
+        return;
+      }
+
+      const map = indicatorIdMapRef.current;
+      const nowSet = new Set(indActive);
+      const prevSet = new Set(Object.keys(map));
+
+      // Remove indicators that are no longer active.
+      for (const v9Id of prevSet) {
+        if (!nowSet.has(v9Id)) {
+          const chartId = map[v9Id];
+          try {
+            if (chartId && typeof c.removeIndicator === "function") {
+              c.removeIndicator(chartId);
+            }
+          } catch (err) {
+            console.warn("[V9] removeIndicator failed for", v9Id, err);
+          }
+          delete map[v9Id];
+        }
+      }
+
+      // Add indicators that are newly active.
+      for (const v9Id of nowSet) {
+        if (prevSet.has(v9Id)) continue; // already added
+        const type = ID_TO_TYPE[v9Id];
+        if (!type) {
+          console.warn("[V9] indicator", v9Id, "is not yet supported by chart.js");
+          continue;
+        }
+        try {
+          const ind = c.addIndicator(type);
+          if (ind && ind.id) {
+            map[v9Id] = ind.id;
+          }
+        } catch (err) {
+          console.warn("[V9] addIndicator failed for", v9Id, err);
+        }
+      }
+
+      try { if (typeof c.render === "function") c.render(); } catch (_) {}
+    };
+
+    apply();
+    return () => { cancelled = true; };
+  }, [indActive]);
+
   // ────────────────────────────────────────────────────────────────────────
 
   const rollbackLineRef = useRef(null);
