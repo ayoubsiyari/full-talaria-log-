@@ -532,17 +532,37 @@ const TalariaV8bLive = () => {
       return u;
     };
 
-    const apply = (raw) => {
+    let lastSeen = null;
+    const apply = (raw, source) => {
       const sym = normalizeSymbol(raw);
-      if (sym) setSymbol(sym);
+      if (!sym || sym === lastSeen) return;
+      lastSeen = sym;
+      console.log("[V9 sym] from", source, "->", sym);
+      setSymbol(sym);
     };
 
-    // Prime from current chart state in case event already fired before mount.
-    if (window.chart?.currentSymbol) apply(window.chart.currentSymbol);
+    // Poll window.chart.currentSymbol until it stabilizes. Two reasons we can't
+    // rely on chartDataLoaded alone:
+    //   1. The event may have fired before V9 mounted.
+    //   2. Some chart.js code paths set currentSymbol without firing the event
+    //      (e.g. session restore from replay/backtest).
+    let cancelled = false;
+    let attempts = 0;
+    const tick = () => {
+      if (cancelled) return;
+      const s = window.chart?.currentSymbol;
+      if (s) apply(s, "poll");
+      // Keep polling for ~30s in case the user navigates between sessions.
+      if (attempts++ < 150) setTimeout(tick, 200);
+    };
+    tick();
 
-    const handleDataLoaded = (e) => apply(e?.detail?.symbol);
+    const handleDataLoaded = (e) => apply(e?.detail?.symbol, "event");
     window.addEventListener('chartDataLoaded', handleDataLoaded);
-    return () => window.removeEventListener('chartDataLoaded', handleDataLoaded);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('chartDataLoaded', handleDataLoaded);
+    };
   }, []);
 
   // ─── SYNC CHART TYPE → chart.js ──────────────────────────────────────────
