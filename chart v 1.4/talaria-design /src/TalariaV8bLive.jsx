@@ -2715,12 +2715,27 @@ const TalariaV8bLive = () => {
     }
 
     // Mutate currently-selected drawing(s) and repaint immediately.
+    // We funnel through the legacy toolbar.onUpdate hook so renderDrawing,
+    // saveDrawings, history.recordModify and saveToolStyle all run exactly
+    // as they do when the user changes color via the legacy DOM toolbar.
+    // Without this the underlying drawing path was repainted but the
+    // selection layer (handles + cached stroke) kept showing the old color
+    // until the user deselected and reselected.
     try {
-      const selected = dm.selectedDrawings && dm.selectedDrawings.length
-        ? dm.selectedDrawings
-        : (dm.selectedDrawing ? [dm.selectedDrawing] : []);
-      selected.forEach((d) => {
+      const tb = dm.toolbar;
+      const selectionList = (() => {
+        const arr = [];
+        if (tb && tb.currentDrawing) arr.push(tb.currentDrawing);
+        if (Array.isArray(dm.selectedDrawings)) {
+          dm.selectedDrawings.forEach(d => { if (d && !arr.includes(d)) arr.push(d); });
+        }
+        if (dm.selectedDrawing && !arr.includes(dm.selectedDrawing)) arr.push(dm.selectedDrawing);
+        return arr;
+      })();
+      selectionList.forEach((d) => {
         if (!d || !d.style) return;
+        // Capture before state for undo (mirror legacy onBeforeUpdate).
+        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
         Object.assign(d.style, stylePatch);
         // Fib tools also store per-level color/width — mirror legacy toolbar.
         const isFib = d.type && (d.type.startsWith('fibonacci-') || d.type.startsWith('fib-') || d.type.startsWith('trend-fib-'));
@@ -2731,7 +2746,16 @@ const TalariaV8bLive = () => {
           d.style.trendLineWidth = widthNum;
           d.style.levelsLineWidth = widthNum;
         }
-        try { dm.renderDrawing?.(d); } catch (_) {}
+        // Prefer onUpdate (history + render + persist + saveDrawings).
+        if (tb && typeof tb.onUpdate === 'function') {
+          try { tb.onUpdate(d); } catch (_) { try { dm.renderDrawing?.(d); } catch (_) {} }
+        } else {
+          try { dm.renderDrawing?.(d); } catch (_) {}
+        }
+        // Refresh axis highlights so price/time guides match new style.
+        if (d.selected && typeof d.showAxisHighlights === 'function') {
+          try { d.showAxisHighlights(); } catch (_) {}
+        }
       });
       // Force a chart re-render so the change is visible even when no selection.
       window.chart && window.chart.scheduleRender && window.chart.scheduleRender();
