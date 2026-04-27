@@ -1076,6 +1076,7 @@ const TalariaV8bLive = () => {
       PSAR: "psar", ADX: "adx", AROON: "aroon",
     };
 
+    console.log("[V9 ind] useEffect fired, indActive =", indActive);
     let cancelled = false;
     let attempts = 0;
 
@@ -1085,9 +1086,15 @@ const TalariaV8bLive = () => {
       // Wait for chart.js to be ready AND data to be loaded — addIndicator
       // alerts and bails out early when this.data is empty.
       if (!chart || typeof chart.addIndicator !== "function" || !chart.data || chart.data.length === 0) {
+        if (attempts === 0) {
+          console.log("[V9 ind] waiting: chart=", !!chart,
+            "addIndicator=", typeof chart?.addIndicator,
+            "data.length=", chart?.data?.length);
+        }
         if (attempts++ < 60) setTimeout(apply, 200);
         return;
       }
+      console.log("[V9 ind] chart ready, applying. data.length=", chart.data.length);
 
       const map = indicatorIdMapRef.current;
       const nowSet = new Set(indActive);
@@ -1118,11 +1125,14 @@ const TalariaV8bLive = () => {
         }
         try {
           const ind = chart.addIndicator(type);
+          console.log("[V9 ind] addIndicator(", type, ") =>", ind);
           if (ind && ind.id) {
             map[v9Id] = ind.id;
+          } else {
+            console.warn("[V9 ind] addIndicator returned falsy for", v9Id, "->", type);
           }
         } catch (err) {
-          console.warn("[V9] addIndicator failed for", v9Id, err);
+          console.warn("[V9 ind] addIndicator failed for", v9Id, err);
         }
       }
 
