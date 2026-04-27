@@ -557,21 +557,21 @@ const TalariaV8bLive = () => {
 
     const apply = () => {
       if (cancelled) return;
-      const c = window.chart;
-      if (!c || !c.chartSettings || typeof c.render !== "function") {
+      const chart = window.chart;
+      if (!chart || !chart.chartSettings || typeof chart.render !== "function") {
         // chart.js not ready yet — retry briefly. Once ready it stays ready.
         if (attempts++ < 60) setTimeout(apply, 100);
         return;
       }
-      if (c.chartSettings.chartType === mapped) return;
-      c.chartSettings.chartType = mapped;
-      try { c.render(); } catch (err) { console.warn("[V9] chart.render failed after chartType change:", err); }
+      if (chart.chartSettings.chartType === mapped) return;
+      chart.chartSettings.chartType = mapped;
+      try { chart.render(); } catch (err) { console.warn("[V9] chart.render failed after chartType change:", err); }
       // Apply to other panels too (multi-panel sync, mirrors legacy behavior).
       try {
         const panels = window.panelManager?.getPanels?.() || [];
         for (const p of panels) {
           const pc = p?.chartInstance;
-          if (pc && pc !== c && pc.chartSettings) {
+          if (pc && pc !== chart && pc.chartSettings) {
             pc.chartSettings.chartType = mapped;
             if (typeof pc.render === "function") pc.render();
           }
@@ -624,10 +624,10 @@ const TalariaV8bLive = () => {
 
     const apply = () => {
       if (cancelled) return;
-      const c = window.chart;
+      const chart = window.chart;
       // Wait for chart.js to be ready AND data to be loaded — addIndicator
       // alerts and bails out early when this.data is empty.
-      if (!c || typeof c.addIndicator !== "function" || !c.data || c.data.length === 0) {
+      if (!chart || typeof chart.addIndicator !== "function" || !chart.data || chart.data.length === 0) {
         if (attempts++ < 60) setTimeout(apply, 200);
         return;
       }
@@ -641,8 +641,8 @@ const TalariaV8bLive = () => {
         if (!nowSet.has(v9Id)) {
           const chartId = map[v9Id];
           try {
-            if (chartId && typeof c.removeIndicator === "function") {
-              c.removeIndicator(chartId);
+            if (chartId && typeof chart.removeIndicator === "function") {
+              chart.removeIndicator(chartId);
             }
           } catch (err) {
             console.warn("[V9] removeIndicator failed for", v9Id, err);
@@ -660,7 +660,7 @@ const TalariaV8bLive = () => {
           continue;
         }
         try {
-          const ind = c.addIndicator(type);
+          const ind = chart.addIndicator(type);
           if (ind && ind.id) {
             map[v9Id] = ind.id;
           }
@@ -669,7 +669,7 @@ const TalariaV8bLive = () => {
         }
       }
 
-      try { if (typeof c.render === "function") c.render(); } catch (_) {}
+      try { if (typeof chart.render === "function") chart.render(); } catch (_) {}
     };
 
     apply();
@@ -700,15 +700,15 @@ const TalariaV8bLive = () => {
 
     const apply = () => {
       if (cancelled) return;
-      const c = window.chart;
-      if (!c || typeof c.setTimeframe !== "function") {
+      const chart = window.chart;
+      if (!chart || typeof chart.setTimeframe !== "function") {
         if (attempts++ < 60) setTimeout(apply, 200);
         return;
       }
       // setTimeframe early-returns if rawData empty AND no currentFileId; that's fine.
-      if (c.currentTimeframe === target) return;
+      if (chart.currentTimeframe === target) return;
       try {
-        c.setTimeframe(target);
+        chart.setTimeframe(target);
       } catch (err) {
         console.warn("[V9] setTimeframe failed for", tf, "->", target, err);
       }
