@@ -659,6 +659,82 @@ const TalariaV8bLive = () => {
     return () => { cancelled = true; };
   }, [chartType]);
 
+  // ─── SYNC V9 SETTINGS PANEL → chart.chartSettings ───────────────────────
+  // V9 has its own native Settings/Profile UI which we keep as-is. But the
+  // colour/grid/crosshair pickers must drive chart.js's chartSettings (same
+  // keys legacy index.html uses) so the chart actually changes.
+  //
+  // Mapping (V9 key → chart.js chartSettings key):
+  //   bullBody    → bodyUpColor + candleUpColor
+  //   bullBorder  → borderUpColor
+  //   bullWick    → wickUpColor
+  //   bearBody    → bodyDownColor + candleDownColor
+  //   bearBorder  → borderDownColor
+  //   bearWick    → wickDownColor
+  //   background  → backgroundColor
+  //   gridColor   → gridColor
+  //   crosshairColor → crosshairColor
+  //   priceLineColor → priceLineColor
+  //   priceLine   → showPriceLine
+  //   textColor   → scaleTextColor + symbolTextColor
+  //   unifiedBarColorVal → unifiedBarColor (kept enabled when non-empty)
+  useEffect(() => {
+    const apply = () => {
+      const chart = window.chart;
+      if (!chart || !chart.chartSettings) return false;
+      const cs = chart.chartSettings;
+      const map = {
+        bodyUpColor:      settings.bullBody,
+        candleUpColor:    settings.bullBody,
+        borderUpColor:    settings.bullBorder,
+        wickUpColor:      settings.bullWick,
+        bodyDownColor:    settings.bearBody,
+        candleDownColor:  settings.bearBody,
+        borderDownColor:  settings.bearBorder,
+        wickDownColor:    settings.bearWick,
+        backgroundColor:  settings.background,
+        gridColor:        settings.gridColor,
+        crosshairColor:   settings.crosshairColor,
+        priceLineColor:   settings.priceLineColor,
+        showPriceLine:    settings.priceLine,
+        scaleTextColor:   settings.textColor,
+        symbolTextColor:  settings.textColor,
+      };
+      let changed = false;
+      for (const [k, v] of Object.entries(map)) {
+        if (v == null) continue;
+        if (cs[k] !== v) { cs[k] = v; changed = true; }
+      }
+      // unifiedBarColor: only push when V9 actually has a value to apply.
+      if (settings.unifiedBarColorVal && cs.unifiedBarColor !== settings.unifiedBarColorVal) {
+        cs.unifiedBarColor = settings.unifiedBarColorVal;
+        changed = true;
+      }
+      if (!changed) return true;
+      try { chart.applyChartSettings?.(); } catch (_) {}
+      try { chart.render?.(); } catch (_) {}
+      // Mirror to other panels so multi-panel view stays consistent.
+      try {
+        const panels = window.panelManager?.getPanels?.() || [];
+        for (const p of panels) {
+          const pc = p?.chartInstance;
+          if (!pc || pc === chart || !pc.chartSettings) continue;
+          for (const [k, v] of Object.entries(map)) {
+            if (v != null) pc.chartSettings[k] = v;
+          }
+          try { pc.applyChartSettings?.(); } catch (_) {}
+          try { pc.render?.(); } catch (_) {}
+        }
+      } catch (_) {}
+      return true;
+    };
+    if (apply()) return;
+    // chart.js not ready yet — retry a few times.
+    let n = 0;
+    const id = setInterval(() => { if (apply() || ++n > 60) clearInterval(id); }, 100);
+    return () => clearInterval(id);
+  }, [settings]);
+
   // Indicator id-map ref used by the indicator-sync useEffect declared
   // further down (after indActive's useState() call to avoid a TDZ).
   const indicatorIdMapRef = useRef({}); // { [v9Id]: chartJsId }
@@ -9038,7 +9114,29 @@ const TalariaV8bLive = () => {
                 const isH = swHov==="lm-dash";
                 const isP = swHov==="lm-dash_dn";
                 return (
-                  <div onClick={()=>setLogoMenu(false)}
+                  <div onClick={()=>{
+                    setLogoMenu(false);
+                    // Mirrors legacy "Go to dashboard" button (index.html ~59239):
+                    // resolve active trading session id from chart, then storage,
+                    // then URL query — and navigate to /dashboard/sessions/...
+                    let sid = null;
+                    try {
+                      const c = (typeof window.getActiveChart === 'function' ? window.getActiveChart() : null) || window.chart || window.mainChart;
+                      if (c && typeof c.getActiveTradingSessionId === 'function') sid = c.getActiveTradingSessionId();
+                    } catch(_){}
+                    if (!sid) {
+                      try { sid = window.userStorage?.getItem?.('active_trading_session_id') || localStorage.getItem('active_trading_session_id'); } catch(_){}
+                    }
+                    if (!sid) {
+                      try {
+                        const p = new URLSearchParams(window.location.search);
+                        sid = p.get('sessionId') || p.get('session_id') || null;
+                      } catch(_){}
+                    }
+                    window.location.href = sid
+                      ? '/dashboard/sessions/analytics/?id=' + encodeURIComponent(String(sid))
+                      : '/dashboard/sessions/';
+                  }}
                     onMouseEnter={()=>setSwHov("lm-dash")} onMouseLeave={()=>setSwHov(null)}
                     onMouseDown={()=>setSwHov("lm-dash_dn")} onMouseUp={()=>setSwHov("lm-dash")}
                     style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 10px",cursor:"default",
