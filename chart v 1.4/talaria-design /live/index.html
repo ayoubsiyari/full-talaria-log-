@@ -29,8 +29,6 @@
             width: 100%; height: 100%;
             pointer-events: none;
         }
-        /* Axis cursor zones — invisible event-capture overlays.
-           chart.js forwards events from these to the canvas. */
         #priceAxisZone, #timeAxisZone {
             position: absolute;
             background: transparent;
@@ -41,18 +39,10 @@
     </style>
 
     <!--
-      Legacy chart engine.
-
-      D3 must load before chart.js. chart.js exposes `window.Chart` synchronously
-      and exposes `window.initializeChart()` that React calls in a useEffect
-      after it mounts the #chartCanvas element.
-
-      The /chart/* paths are proxied to the FastAPI backend in dev (see
-      vite.config.live.js). In prod they're served by the same backend that
-      hosts the V9 build at /chart/index.html.
+      D3 must load before chart.js. We use waitForD3 promise to coordinate;
+      chart.js awaits this in its init function.
     -->
     <script>
-        // Tell chart.js to wait for d3 before initializing.
         window.waitForD3 = new Promise((resolve, reject) => {
             window.__resolveD3 = resolve;
             window.__rejectD3  = reject;
@@ -63,29 +53,73 @@
             referrerpolicy="no-referrer"
             onload="window.__resolveD3 && window.__resolveD3();"
             onerror="window.__rejectD3 && window.__rejectD3(new Error('d3 cdn failed'));"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"
             crossorigin="anonymous"
             referrerpolicy="no-referrer"></script>
 
-    <!-- Tier A modules (no DOM coupling, just window globals). -->
-    <script src="/chart/modules/preferences-init.js"></script>
-    <script src="/chart/modules/preferences-sync.js"></script>
-    <script src="/chart/modules/market-calculations.js"></script>
-    <script src="/chart/modules/chart-env.defaults.js"></script>
-    <script src="/chart/modules/chart-env.generated.js"></script>
+    <!-- ──────────────────────────────────────────────────────────────────
+         All chart scripts are loaded with `defer` so they execute in
+         source order AFTER HTML parsing but BEFORE DOMContentLoaded.
+         This gives chart.js's init handler the right canvas DOM by the
+         time it runs (React's main.jsx is also deferred).
+         ────────────────────────────────────────────────────────────── -->
+
+    <!-- Tier A — pure helpers (no DOM dependencies). -->
+    <script defer src="/chart/modules/preferences-init.js"></script>
+    <script defer src="/chart/modules/preferences-sync.js"></script>
+    <script defer src="/chart/modules/market-calculations.js"></script>
+    <script defer src="/chart/modules/chart-env.defaults.js"></script>
+    <script defer src="/chart/modules/chart-env.generated.js"></script>
+
+    <!-- Drawing tool base classes + individual tool registrations.
+         Order matters within this block:
+         - drawing-tools-base.js defines the base Tool class.
+         - Each drawing-tools-*.js registers tools into the global registry.
+         - drawing-tools-ui.js provides shared UI helpers used by tools.
+         - drawing-tools-manager.js orchestrates everything (loaded later). -->
+    <script defer src="/chart/modules/drawing-tools-base.js"></script>
+    <script defer src="/chart/modules/drawing-tools-lines.js"></script>
+    <script defer src="/chart/modules/drawing-tools-shapes.js"></script>
+    <script defer src="/chart/modules/drawing-tools-fibonacci.js"></script>
+    <script defer src="/chart/modules/drawing-tools-text.js"></script>
+    <script defer src="/chart/modules/drawing-tools-emoji.js"></script>
+    <script defer src="/chart/modules/drawing-tools-image.js"></script>
+    <script defer src="/chart/modules/emoji-picker.js"></script>
+    <script defer src="/chart/modules/emoji-picker-simple.js"></script>
+    <script defer src="/chart/modules/drawing-tools-advanced-volume.js"></script>
+    <script defer src="/chart/modules/drawing-tools-advanced.js"></script>
+    <script defer src="/chart/modules/drawing-tools-extended.js"></script>
+    <script defer src="/chart/modules/drawing-tools-patterns.js"></script>
+    <script defer src="/chart/modules/drawing-tools-fib-gann.js"></script>
+    <script defer src="/chart/modules/drawing-tools-channels.js"></script>
+    <script defer src="/chart/modules/drawing-tools-ui.js"></script>
+
+    <!-- Drawing-tool support (color picker, toolbar UI, undo/redo). -->
+    <script defer src="/chart/modules/color-picker.js"></script>
+    <script defer src="/chart/modules/drawing-toolbar.js"></script>
+    <script defer src="/chart/modules/undo-redo-manager.js"></script>
+
+    <!-- Drawing-tools manager — orchestrator. Must load AFTER all individual
+         drawing-tools-*.js so the registry is populated before init. -->
+    <script defer src="/chart/modules/drawing-tools-manager.js"></script>
+    <script defer src="/chart/modules/favorites-manager.js"></script>
+    <script defer src="/chart/modules/keyboard-shortcuts.js"></script>
 
     <!-- Chart engine.
-         chart.js's DOMContentLoaded handler will fire once HTML is parsed,
-         but #chartCanvas isn't in the DOM yet (React hasn't mounted). The
-         handler bails safely when the canvas is missing; React then calls
-         window.initializeChart() in a useEffect after mount. -->
-    <script src="/chart/chart.js"></script>
+         chart.js exposes window.Chart synchronously and window.initializeChart
+         as a callable. Its DOMContentLoaded handler fires after main.jsx has
+         mounted React (deferred too), so the #chartCanvas element exists. -->
+    <script defer src="/chart/chart.js"></script>
 
-    <!-- Indicators: must load AFTER chart.js because they extend Chart.prototype. -->
-    <script src="/chart/modules/chart-indicators-full.js"></script>
+    <!-- Replay system — must load AFTER chart.js (depends on it). -->
+    <script defer src="/chart/modules/replay-system.js"></script>
+
+    <!-- Indicators: extend Chart.prototype, must load after chart.js. -->
+    <script defer src="/chart/modules/chart-indicators-full.js"></script>
 </head>
 <body>
     <div id="root"></div>
+    <!-- Module scripts are deferred too, so this runs AFTER all defers above. -->
     <script type="module" src="./main.jsx"></script>
 </body>
 </html>
