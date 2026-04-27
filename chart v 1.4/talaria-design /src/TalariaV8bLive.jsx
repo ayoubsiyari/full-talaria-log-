@@ -508,7 +508,31 @@ const TalariaV8bLive = () => {
         }
 
         // Force a layout pass so the canvas matches its container size.
-        window.dispatchEvent(new Event('resize'));
+        // Brave/Chromium can finish chart.js init BEFORE V9's flex layout has
+        // assigned a real size to #chart-container, which leaves the canvas
+        // at 0×0 and pushes axes off-screen. Safari happens to time this
+        // differently, so the same code looks fine there. Resetting
+        // _lastResizeDpr is the same escape-hatch panel-manager.js uses
+        // (line 1672) to bypass chart.resize()'s DPR-equal early-bail and
+        // make it ACTUALLY recalculate based on current clientWidth/Height.
+        const forceResize = () => {
+          try {
+            window.dispatchEvent(new Event('resize'));
+            if (window.chart && window.chart.resize) {
+              window.chart._lastResizeDpr = 0;
+              window.chart.resize();
+              window.chart._chartViewRestored = false;
+              window.chart.fitToView && window.chart.fitToView();
+              window.chart.render && window.chart.render();
+            }
+          } catch (_) {}
+        };
+        forceResize();
+        // Two extra passes catch the case where layout reports real dims a
+        // frame or two later.
+        requestAnimationFrame(forceResize);
+        setTimeout(forceResize, 200);
+        setTimeout(forceResize, 600);
         console.log('[TalariaV8bLive] chart.js initialized', instance);
       } catch (err) {
         console.error('[TalariaV8bLive] chart.js init failed:', err);
@@ -517,7 +541,25 @@ const TalariaV8bLive = () => {
 
     tryInit();
 
-    return () => { cancelled = true; };
+    // ResizeObserver on the chart container — any future size change
+    // (sidebar toggle, settings drawer, browser zoom, fullscreen, OS
+    // window resize) triggers a real chart.resize() that bypasses the
+    // DPR-equal early-bail in chart.js. Keeps axes glued to the right
+    // edge / bottom regardless of how the container is reflowed.
+    let ro = null;
+    if (typeof ResizeObserver !== 'undefined' && chartCanvasRef.current) {
+      ro = new ResizeObserver(() => {
+        if (!window.chart || !window.chart.resize) return;
+        try {
+          window.chart._lastResizeDpr = 0;
+          window.chart.resize();
+          window.chart.render && window.chart.render();
+        } catch (_) {}
+      });
+      ro.observe(chartCanvasRef.current);
+    }
+
+    return () => { cancelled = true; if (ro) ro.disconnect(); };
   }, []);
 
   // ─── SYNC SYMBOL FROM CHART.JS ───────────────────────────────────────────
