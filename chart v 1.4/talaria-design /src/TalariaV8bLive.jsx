@@ -899,6 +899,12 @@ const TalariaV8bLive = () => {
   const [pinnedBarPos, setPinnedBarPos] = useState({ x: 50, y: 80 });
   const [groupSelected, setGroupSelected] = useState({});
   const [tlBarPos, setTlBarPos] = useState({ x: 130, y: 200 });
+  // True only when a drawing is currently selected (set by hooking the
+  // legacy drawing-toolbar's show/hide via drawingManager.toolbar in the
+  // useEffect below). Drives the visibility of the V9 floating toolbar so
+  // it only appears when the user actually has a shape selected.
+  const [tlBarSelected, setTlBarSelected] = useState(false);
+  const [tlBarSelectedType, setTlBarSelectedType] = useState(null);
   const [tlSettOpen, setTlSettOpen] = useState(false);
   const [tlSettPos, setTlSettPos] = useState({ x: 200, y: 90 });
   const [tlName, setTlName] = useState("Trend Line");
@@ -2552,6 +2558,37 @@ const TalariaV8bLive = () => {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool, groupSelected]);
+
+  // ─── Drawing selection bridge ───────────────────────────────────────────
+  // Wrap drawingManager.toolbar.show / .hide once chart.js is ready so the
+  // V9 floating toolbar only appears when a drawing is actually selected.
+  // The legacy code calls these on every selection / deselection / delete
+  // (chart/modules/drawing-tools-manager.js — see toolbar.show/hide calls).
+  useEffect(() => {
+    let cancelled = false; let n = 0;
+    const hook = () => {
+      if (cancelled) return;
+      const dm = window.chart && window.chart.drawingManager;
+      const tb = dm && dm.toolbar;
+      if (!tb || tb.__v9Hooked) {
+        if (!tb && ++n < 60) setTimeout(hook, 100);
+        return;
+      }
+      const origShow = tb.show && tb.show.bind(tb);
+      const origHide = tb.hide && tb.hide.bind(tb);
+      tb.show = function (drawing, x, y) {
+        try { setTlBarSelected(true); setTlBarSelectedType(drawing && drawing.type); } catch (_) {}
+        return origShow ? origShow(drawing, x, y) : undefined;
+      };
+      tb.hide = function () {
+        try { setTlBarSelected(false); setTlBarSelectedType(null); } catch (_) {}
+        return origHide ? origHide() : undefined;
+      };
+      tb.__v9Hooked = true;
+    };
+    hook();
+    return () => { cancelled = true; };
+  }, []);
 
   // ─── V9 tlStyle → chart.js drawing style ─────────────────────────────────
   // Whenever the V9 floating toolbar changes line color / width / dash type,
@@ -7433,7 +7470,10 @@ const TalariaV8bLive = () => {
       })()}
 
       {/* ── Trend Line floating toolbar (fixed — can overlay any UI area except right panels) ── */}
-      {(tool === "trendline" || tool === "rect" || tool === "channel" || tool === "brush2" || tool === "fib" || isPatternTool || tool === "measure") && (()=>{
+      {/* Visibility now gated on tlBarSelected (chart drawing selection),
+          not on the active tool, so the toolbar only shows when the user
+          has a shape selected and disappears on deselect. */}
+      {tlBarSelected && (()=>{
         const TlBtn = ({id, isAct, children, onClick, w, tip}) => {
           const isH = hov === id;
           const isDel = id === "tl-del";
