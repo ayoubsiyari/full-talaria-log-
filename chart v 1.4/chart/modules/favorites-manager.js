@@ -700,6 +700,11 @@ class FavoritesManager {
     
     // Load saved position from localStorage
     loadPosition() {
+        // V9's live/index.html doesn't ship a #favoritesToolbar element. If it
+        // isn't in the DOM, bail rather than throwing — otherwise the failure
+        // bubbles up through Chart.initDrawingTools -> Chart.init and breaks
+        // every chart-side global (panelManager, drawingManager, etc.).
+        if (!this.toolbar) return;
         const defaultPosition = this.clampToolbarPosition(56, this.getMinToolbarTop());
         try {
             const stored = userStorage.getItem(this.positionKey);
@@ -721,6 +726,7 @@ class FavoritesManager {
     
     // Save position to localStorage
     savePosition() {
+        if (!this.toolbar) return;
         try {
             const clamped = this.clampToolbarPosition(
                 parseInt(this.toolbar.style.left, 10),
