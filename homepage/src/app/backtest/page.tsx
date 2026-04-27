@@ -294,6 +294,9 @@ export default function BacktestSessions() {
           </div>
         </div>
         <div className="sd-topbar-right">
+          <a href="/backtest/design/" className="sd-link-design-preview mr-1 shrink-0">
+            UI design preview
+          </a>
           <LanguageToggle />
           {isAdmin ? (
             <a href="/dashboard/admin/" className="sd-link-admin">

@@ -12023,6 +12023,7 @@ if next_static_dir.exists():
 # Chart UI (static HTML/JS/CSS) served under /chart
 CHART_ROOT_FILES = {
     "index.html",
+    "index.v9.html",
     "backtesting.html",
     "propfirm-backtest.html",
     "admin-dashboard.html",
