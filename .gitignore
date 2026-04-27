@@ -83,3 +83,6 @@ chart\ v\ 1.4/chart/homepage/
 chart\ v\ 1.4/chart/db/
 chart\ v\ 1.4/chart/venv/
 chart\ v\ 1.4/chart/__pycache__/
+
+# Chart legacy minified build (generated in Docker by `npm run build:chart-client`)
+chart\ v\ 1.4/chart/dist/
