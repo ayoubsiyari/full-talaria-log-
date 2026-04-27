@@ -288,7 +288,7 @@ const EMOJI_CATS = [
 ];
 
 const TalariaV8bLive = () => {
-  const [tool, setTool] = useState("trendline");
+  const [tool, setTool] = useState("crosshair");
   const [hov, setHov] = useState(null);
   const [btnPressed, setBtnPressed] = useState(null);
   const [dropdown, setDropdown] = useState(null);
