@@ -39,6 +39,77 @@
     </style>
 
     <!--
+      ─────────────────────────────────────────────────────────────────────
+      AUTH BOOTSTRAP + userStorage SHIM
+      ─────────────────────────────────────────────────────────────────────
+      These two inline scripts mirror chart/index.html exactly. They MUST
+      run synchronously before any deferred module so `window.userStorage`
+      is defined when chart.js, drawing-tools-manager, favorites-manager,
+      keyboard-shortcuts, etc. call `userStorage.getItem(...)` at load time.
+      Without them every module logs "ReferenceError: userStorage is not
+      defined" and fails to initialize.
+    -->
+    <script>
+    // 1. Auth check: confirm user is logged in; store user id in localStorage
+    //    so userStorage's per-user key prefix works. Redirects to /login on 401.
+    (function() {
+        function redirectToLogin() {
+            var next = window.location.pathname + window.location.search;
+            var loginUrl = '/login/?next=' + encodeURIComponent(next);
+            try {
+                if (window.top && window.top !== window.self) {
+                    window.top.location.href = loginUrl;
+                    return;
+                }
+            } catch (e) {}
+            window.location.href = loginUrl;
+        }
+        fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
+            .then(function(res) {
+                if (!res.ok) { redirectToLogin(); return null; }
+                return res.json();
+            })
+            .then(function(data) {
+                if (data && data.user && data.user.id) {
+                    window.__talariaUserId = data.user.id;
+                    try { localStorage.setItem('_uid', String(data.user.id)); } catch(e) {}
+                }
+            })
+            .catch(function() { redirectToLogin(); });
+    })();
+    </script>
+    <script>
+    // 2. Per-user localStorage isolation. All user-specific data is prefixed
+    //    with the user ID so different accounts on the same browser stay separate.
+    (function() {
+        var uid = null;
+        try { uid = localStorage.getItem('_uid'); } catch(e) {}
+
+        window.userKey = function(key) {
+            var id = uid || window.__talariaUserId;
+            if (!id) { try { id = localStorage.getItem('_uid'); } catch(e) {} }
+            if (id) { uid = id; return 'u' + id + '_' + key; }
+            return key;
+        };
+
+        window.userStorage = {
+            getItem: function(key) {
+                var scoped = localStorage.getItem(window.userKey(key));
+                if (scoped !== null) return scoped;
+                // Migrate: check legacy un-scoped key
+                var legacy = localStorage.getItem(key);
+                if (legacy !== null && uid) {
+                    try { localStorage.setItem(window.userKey(key), legacy); localStorage.removeItem(key); } catch(e) {}
+                }
+                return legacy;
+            },
+            setItem: function(key, val) { localStorage.setItem(window.userKey(key), val); },
+            removeItem: function(key) { localStorage.removeItem(window.userKey(key)); }
+        };
+    })();
+    </script>
+
+    <!--
       D3 must load before chart.js. We use waitForD3 promise to coordinate;
       chart.js awaits this in its init function.
     -->
