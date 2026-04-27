@@ -518,20 +518,31 @@ const TalariaV8bLive = () => {
   }, []);
 
   // ─── SYNC SYMBOL FROM CHART.JS ───────────────────────────────────────────
-  // Listen for chart.js dataLoaded event to get the real symbol from backtest.
-  // This updates the V9 UI to show the actual pair instead of the hardcoded default.
+  // chart.js fires 'chartDataLoaded' (with detail.symbol, detail.timeframe)
+  // whenever a new backtest session / pair is loaded. chart.js stores the
+  // symbol in compact form ('EURJPY'); V9's pair list uses 'EUR/JPY'.
+  // Normalize 6-char FX pairs to slash-separated form so V9 finds the entry.
   useEffect(() => {
-    const handleDataLoaded = (e) => {
-      const detail = e.detail || {};
-      if (detail.symbol) {
-        setSymbol(detail.symbol);
-      }
-      if (detail.timeframe) {
-        // Could also sync timeframe here if needed
-      }
+    const normalizeSymbol = (s) => {
+      if (!s || typeof s !== 'string') return s;
+      const u = s.toUpperCase().replace(/\s+/g, '');
+      if (u.includes('/')) return u;
+      // 6-letter FX (EURJPY → EUR/JPY)
+      if (/^[A-Z]{6}$/.test(u)) return u.slice(0, 3) + '/' + u.slice(3);
+      return u;
     };
-    window.addEventListener('dataLoaded', handleDataLoaded);
-    return () => window.removeEventListener('dataLoaded', handleDataLoaded);
+
+    const apply = (raw) => {
+      const sym = normalizeSymbol(raw);
+      if (sym) setSymbol(sym);
+    };
+
+    // Prime from current chart state in case event already fired before mount.
+    if (window.chart?.currentSymbol) apply(window.chart.currentSymbol);
+
+    const handleDataLoaded = (e) => apply(e?.detail?.symbol);
+    window.addEventListener('chartDataLoaded', handleDataLoaded);
+    return () => window.removeEventListener('chartDataLoaded', handleDataLoaded);
   }, []);
 
   // ─── SYNC CHART TYPE → chart.js ──────────────────────────────────────────
@@ -8996,7 +9007,24 @@ const TalariaV8bLive = () => {
             </div>
           </div>
           <div className="tlr-scroll" style={{maxHeight:320,overflowY:"auto",padding:"4px 0"}}>
-            {SYMBOLS_DATA.map(({cat,items})=>{
+            {(()=>{
+              // Backtest mode: dropdown is restricted to the single pair loaded
+              // from the active session (window.chart.currentSymbol → `symbol`).
+              // Build a single-category list with just that pair so the user can't
+              // navigate away to forex/futures/crypto that aren't in this session.
+              const known = SYMBOLS_DATA.flatMap(c=>c.items.map(it=>({...it,cat:c.cat})));
+              let entry = known.find(s=>s.id===symbol);
+              if(!entry){
+                // Symbol came from chart.js but isn't in SYMBOLS_DATA. Synthesize.
+                const parts = symbol.split("/");
+                if(parts.length===2 && parts[0].length===3 && parts[1].length===3){
+                  entry = {id:symbol,name:`${parts[0]} / ${parts[1]}`,type:"forex",base:parts[0],quote:parts[1],cat:"FOREX"};
+                } else {
+                  entry = {id:symbol,name:symbol,type:"forex",cat:"BACKTEST"};
+                }
+              }
+              return [{cat:entry.cat||"BACKTEST",items:[entry]}];
+            })().map(({cat,items})=>{
               const q=symbolSearch.toLowerCase();
               const filtered = items.filter(s=>!q||s.id.toLowerCase().startsWith(q)||s.name.toLowerCase().split(/[\s/\-]+/).some(w=>w.startsWith(q)));
               if(filtered.length===0) return null;
