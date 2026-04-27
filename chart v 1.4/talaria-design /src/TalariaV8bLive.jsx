@@ -534,6 +534,59 @@ const TalariaV8bLive = () => {
     return () => window.removeEventListener('dataLoaded', handleDataLoaded);
   }, []);
 
+  // ─── SYNC CHART TYPE → chart.js ──────────────────────────────────────────
+  // V9 React state (chartType) drives chart.js's chartSettings.chartType.
+  // chart.js value vocabulary is lowercase / no spaces; map V9 labels here.
+  // Mirrors what legacy index.html's chart-type dropdown handler does:
+  //     activeChart.chartSettings.chartType = chartType;
+  //     activeChart.render();
+  // Plus _syncChartTypeUI keeps the legacy toolbar icon in sync if it's around.
+  useEffect(() => {
+    const CHART_TYPE_MAP = {
+      "Candles": "candles",
+      "Hollow Candles": "hollow",
+      "Heikin Ashi": "heikinashi",
+      "Bars": "bars",
+      "Line": "line",
+      "Area": "area",
+    };
+    const mapped = CHART_TYPE_MAP[chartType] || "candles";
+
+    let cancelled = false;
+    let attempts = 0;
+
+    const apply = () => {
+      if (cancelled) return;
+      const c = window.chart;
+      if (!c || !c.chartSettings || typeof c.render !== "function") {
+        // chart.js not ready yet — retry briefly. Once ready it stays ready.
+        if (attempts++ < 60) setTimeout(apply, 100);
+        return;
+      }
+      if (c.chartSettings.chartType === mapped) return;
+      c.chartSettings.chartType = mapped;
+      try { c.render(); } catch (err) { console.warn("[V9] chart.render failed after chartType change:", err); }
+      // Apply to other panels too (multi-panel sync, mirrors legacy behavior).
+      try {
+        const panels = window.panelManager?.getPanels?.() || [];
+        for (const p of panels) {
+          const pc = p?.chartInstance;
+          if (pc && pc !== c && pc.chartSettings) {
+            pc.chartSettings.chartType = mapped;
+            if (typeof pc.render === "function") pc.render();
+          }
+        }
+      } catch (_) {}
+      // Sync legacy toolbar UI if it exists in the DOM.
+      if (typeof window._syncChartTypeUI === "function") {
+        try { window._syncChartTypeUI(mapped); } catch (_) {}
+      }
+    };
+
+    apply();
+    return () => { cancelled = true; };
+  }, [chartType]);
+
   // ────────────────────────────────────────────────────────────────────────
 
   const rollbackLineRef = useRef(null);
