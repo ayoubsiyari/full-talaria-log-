@@ -20,7 +20,7 @@ function readActiveTradingSessionIdFromBrowser(): string | null {
   }
 }
 
-export type BacktestSubnavActive = "sessions" | "analytics";
+export type BacktestSubnavActive = "sessions" | "analytics" | "design";
 
 export function BacktestSubnav({
   active,
@@ -67,6 +67,12 @@ export function BacktestSubnav({
         className={`sd-subnav-link ${active === "analytics" ? "sd-subnav-link--active" : ""}`}
       >
         Analytics
+      </a>
+      <a
+        href="/backtest/design/"
+        className={`sd-subnav-link ${active === "design" ? "sd-subnav-link--active" : ""}`}
+      >
+        UI design (V8b)
       </a>
     </nav>
   );

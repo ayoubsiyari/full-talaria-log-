@@ -811,6 +811,7 @@ const TalariaV8b = () => {
   const [layoutPanels, setLayoutPanels] = useState({n:1,li:0});
   const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: true, drawings: true, symbol: false, interval: false, dateRange: false, indicators: false, chartType: false });
   const [layoutTab, setLayoutTab] = useState("panels");
+  const [sessionDemoName, setSessionDemoName] = useState("Talaria V8b");
   const [settingsTab, setSettingsTab] = useState("chart");
   const [balVis, setBalVis] = useState(true);
   const [sDrop, setSDrop] = useState(null); // which settings dropdown is open
@@ -10511,7 +10512,14 @@ const TalariaV8b = () => {
               <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
                 {/* Tab bar */}
                 <div style={{position:"relative",display:"flex",flexShrink:0,borderBottom:`1px solid ${c.br}`}}>
-                  {[["panels","Panel Layouts"],["sync","Sync"]].map(([id,label],ti,arr)=>{
+                  {(()=>{
+                    const layoutTabs=[["panels","Panel Layouts"],["sync","Sync"],["sessionDemo","Session demo"]];
+                    const tabIdx=Math.max(0,layoutTabs.findIndex(([id])=>id===layoutTab));
+                    const tabCount=layoutTabs.length;
+                    const tabPct=100/tabCount;
+                    return(
+                      <>
+                  {layoutTabs.map(([id,label])=>{
                     const isAct=layoutTab===id; const isH=swHov===`ltab-${id}`;
                     return(
                       <div key={id} onClick={()=>setLayoutTab(id)}
@@ -10525,11 +10533,14 @@ const TalariaV8b = () => {
                       </div>
                     );
                   })}
-                  <div style={{position:"absolute",bottom:0,height:2,width:"50%",
-                    left:layoutTab==="panels"?"0%":"50%",
+                  <div style={{position:"absolute",bottom:0,height:2,width:`${tabPct}%`,
+                    left:`${tabIdx*tabPct}%`,
                     transition:"left 0.25s cubic-bezier(0.4,0,0.2,1)",
                     background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,
                     boxShadow:`0 0 8px ${c.acG}`}}/>
+                      </>
+                    );
+                  })()}
                 </div>
                 {/* Tab content */}
                 <div className="tlr-scroll" style={{flex:1,overflowY:"auto",minHeight:0}}>
@@ -10571,6 +10582,25 @@ const TalariaV8b = () => {
                           </div>
                         );
                       })}
+                    </div>
+                  )}
+                  {layoutTab==="sessionDemo" && (
+                    <div style={{padding:"14px 12px 16px"}}>
+                      <div style={{fontSize:9,color:c.tm,marginBottom:6,letterSpacing:"0.06em",fontWeight:700}}>SESSION NAME</div>
+                      <input
+                        type="text"
+                        value={sessionDemoName}
+                        onChange={(e)=>setSessionDemoName(e.target.value)}
+                        placeholder="Name this session…"
+                        style={{
+                          width:"100%",boxSizing:"border-box",padding:"8px 10px",marginBottom:12,
+                          background:c.well,border:`1px solid ${c.brH}`,borderRadius:2,
+                          color:c.tx,fontSize:13,fontFamily:F,outline:"none",colorScheme:c.inputScheme,
+                        }}
+                      />
+                      <div style={{fontSize:11,color:c.tm,lineHeight:1.45,opacity:0.9}}>
+                        This panel is the <span style={{color:c.acL,fontWeight:600}}>TalariaV8b.jsx</span> UI mock. Use Session demo to label the workspace session in previews and screenshots.
+                      </div>
                     </div>
                   )}
                   {layoutTab==="sync" && (
