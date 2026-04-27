@@ -49,7 +49,5 @@ export default function BacktestDesignDemoPage() {
     };
   }, []);
 
-  return (
-    
-  );
+  
 }
