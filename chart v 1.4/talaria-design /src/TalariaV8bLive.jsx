@@ -1167,6 +1167,124 @@ const TalariaV8bLive = () => {
   const [layoutPanels, setLayoutPanels] = useState({n:1,li:0});
   const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: true, drawings: true, symbol: false, interval: false, dateRange: false, indicators: false, chartType: false });
   const [layoutTab, setLayoutTab] = useState("panels");
+
+  // ─── MULTI-PANEL LAYOUTS + SYNC ↔ window.panelManager ───────────────────
+  // V9's layout picker uses (n=panel count 1..8, li=variant index). Legacy
+  // panelManager.applyLayout takes string IDs like '1','2v','2h','3l','4tl'.
+  // The 2D array below maps V9 (n,li) → legacy id, in the SAME visual order
+  // V9 renders the variants (see lyLines around line 10635). Variants whose
+  // visual layout doesn't exactly match a legacy id fall through to the
+  // closest legacy variant for that panel count.
+  const LAYOUT_ID_MAP = [
+    ["1"],
+    ["2v","2h"],
+    ["3v","3h","3l","3r","3t","3b"],
+    ["4","4h","4v","4b","4t","4l","4r","4tl"],
+    ["5a","5b","5c","5v","5h"],
+    ["6","6b","6v","6h"],
+    ["7a","7v"],
+    ["8","8b","8v","8h"],
+  ];
+  const layoutTupleFromId = (id) => {
+    for (let n = 0; n < LAYOUT_ID_MAP.length; n++) {
+      const li = LAYOUT_ID_MAP[n].indexOf(id);
+      if (li >= 0) return { n: n + 1, li };
+    }
+    return null;
+  };
+
+  // Mount: hydrate V9 state from whatever panelManager already has loaded
+  // from userStorage so the UI shows the correct active layout/sync toggles.
+  useEffect(() => {
+    let cancelled = false;
+    let attempts = 0;
+    const tryHydrate = () => {
+      if (cancelled) return;
+      const pm = window.panelManager;
+      if (!pm || !pm.syncSettings) {
+        if (attempts++ < 60) setTimeout(tryHydrate, 100);
+        return;
+      }
+      try {
+        const cur = pm.getCurrentLayout?.() || pm.currentLayout || "1";
+        const tuple = layoutTupleFromId(cur);
+        if (tuple) setLayoutPanels(tuple);
+      } catch (_) {}
+      try {
+        // Only copy keys V9 knows about so we don't spread legacy-only keys
+        // into V9's state object.
+        setLayoutSync((prev) => {
+          const next = { ...prev };
+          for (const k of Object.keys(prev)) {
+            if (k in pm.syncSettings) next[k] = !!pm.syncSettings[k];
+          }
+          return next;
+        });
+      } catch (_) {}
+    };
+    tryHydrate();
+    return () => { cancelled = true; };
+  }, []);
+
+  // V9 layout picker → panelManager.applyLayout(id).
+  // Skips the very first run (initial defaults) so we don't reset whatever
+  // layout panelManager restored from userStorage on boot.
+  const layoutFirstApplyRef = useRef(true);
+  useEffect(() => {
+    if (layoutFirstApplyRef.current) { layoutFirstApplyRef.current = false; return; }
+    const id = LAYOUT_ID_MAP[layoutPanels.n - 1]?.[layoutPanels.li];
+    if (!id) return;
+    const apply = () => {
+      const pm = window.panelManager;
+      if (!pm || typeof pm.applyLayout !== "function") return false;
+      try {
+        if (pm.getCurrentLayout?.() === id || pm.currentLayout === id) return true;
+        pm.applyLayout(id);
+      } catch (err) { console.warn("[V9 layout] applyLayout failed:", err); }
+      return true;
+    };
+    if (apply()) return;
+    let n = 0;
+    const t = setInterval(() => { if (apply() || ++n > 60) clearInterval(t); }, 100);
+    return () => clearInterval(t);
+  }, [layoutPanels]);
+
+  // V9 sync toggles → panelManager.syncSettings + saveSyncSettings + the
+  // same one-shot side-effects legacy fires when toggles flip on:
+  //   - crosshair: window.crosshairSyncEnabled mirror
+  //   - drawings:  every panel.chartInstance.syncDrawings = bool
+  //   - indicators: syncIndicatorsNow()
+  //   - chartType:  syncChartTypeNow()
+  const layoutSyncFirstRef = useRef(true);
+  useEffect(() => {
+    if (layoutSyncFirstRef.current) { layoutSyncFirstRef.current = false; return; }
+    const pm = window.panelManager;
+    if (!pm || !pm.syncSettings) return;
+    let changed = false;
+    const fired = {};
+    for (const [k, v] of Object.entries(layoutSync)) {
+      if (pm.syncSettings[k] !== v) {
+        pm.syncSettings[k] = v;
+        fired[k] = v;
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    try { pm.saveSyncSettings?.(); } catch (_) {}
+    if ("crosshair" in fired) {
+      try { window.crosshairSyncEnabled = layoutSync.crosshair; } catch (_) {}
+    }
+    if ("drawings" in fired) {
+      try {
+        (pm.panels || []).forEach((p) => {
+          if (p?.chartInstance) p.chartInstance.syncDrawings = layoutSync.drawings;
+        });
+      } catch (_) {}
+    }
+    if (fired.indicators) { try { pm.syncIndicatorsNow?.(); } catch (_) {} }
+    if (fired.chartType)  { try { pm.syncChartTypeNow?.();  } catch (_) {} }
+  }, [layoutSync]);
+
   const [sessionDemoName, setSessionDemoName] = useState("Talaria V8b");
   const [settingsTab, setSettingsTab] = useState("chart");
   const [balVis, setBalVis] = useState(true);
