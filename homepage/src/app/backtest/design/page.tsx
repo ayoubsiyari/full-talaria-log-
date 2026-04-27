@@ -49,5 +49,14 @@ export default function BacktestDesignDemoPage() {
     };
   }, []);
 
-  
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col bg-[#07080E] m-0 p-0" dir="ltr" lang="en">
+      
+      <iframe
+        title="Talaria V8b UI mock"
+        src="/talaria-v8b-design/"
+        className="h-[100dvh] w-full flex-1 shrink-0 border-0"
+      />
+    </div>
+  );
 }
