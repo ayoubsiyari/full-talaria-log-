@@ -754,6 +754,90 @@ const TalariaV8bLive = () => {
   const [profileCurPw, setProfileCurPw] = useState("");
   const [profileNewPw, setProfileNewPw] = useState("");
   const [profileConfirmPw, setProfileConfirmPw] = useState("");
+
+  // ─── PROFILE ↔ LEGACY USER STORAGE ──────────────────────────────────────
+  // Mirror V9's profile UI to the same sources legacy index.html uses:
+  //   - localStorage 'talaria_current_user' (cached user from /api/auth/me)
+  //   - userStorage 'chartLanguage'  ('en' | 'ar')
+  //   - userStorage 'talaria_avatar' (base64 dataURL, V9-specific persistence)
+  //
+  // V9's profileLang vocabulary is "english"/"arabic"; legacy uses "en"/"ar".
+  // Map both directions.
+  const v9LangToLegacy = (l) => (l === "arabic" ? "ar" : "en");
+  const legacyLangToV9 = (l) => (l === "ar" ? "arabic" : "english");
+
+  // Mount: hydrate name/avatar/language from the same sources legacy reads.
+  useEffect(() => {
+    // Cached user (synchronous).
+    try {
+      const cached = JSON.parse(localStorage.getItem("talaria_current_user") || "{}");
+      if (cached && cached.name) setProfileName(cached.name);
+    } catch (_) {}
+    // Language (userStorage shim with localStorage fallback).
+    try {
+      const lang =
+        (window.userStorage?.getItem?.("chartLanguage")) ||
+        localStorage.getItem("chartLanguage") ||
+        "en";
+      setProfileLang(legacyLangToV9(lang));
+    } catch (_) {}
+    // Avatar (V9-only key — legacy uses initial letter, no avatar storage).
+    try {
+      const av =
+        (window.userStorage?.getItem?.("talaria_avatar")) ||
+        localStorage.getItem("talaria_avatar");
+      if (av) setProfileAvatar(av);
+    } catch (_) {}
+    // Live fetch (same call legacy makes ~index.html:59205).
+    fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d || !d.user) return;
+        if (d.user.name) setProfileName(d.user.name);
+        try { localStorage.setItem("talaria_current_user", JSON.stringify(d.user)); } catch (_) {}
+      })
+      .catch(() => {});
+  }, []);
+
+  // Persist name edits back to the cached user blob so legacy & V9 stay in sync.
+  useEffect(() => {
+    if (!profileName) return;
+    try {
+      const cached = JSON.parse(localStorage.getItem("talaria_current_user") || "{}");
+      if (cached.name === profileName) return;
+      cached.name = profileName;
+      localStorage.setItem("talaria_current_user", JSON.stringify(cached));
+    } catch (_) {}
+  }, [profileName]);
+
+  // Persist avatar to both userStorage (per-user) and localStorage (fallback).
+  useEffect(() => {
+    try {
+      if (profileAvatar) {
+        window.userStorage?.setItem?.("talaria_avatar", profileAvatar);
+        localStorage.setItem("talaria_avatar", profileAvatar);
+      } else {
+        window.userStorage?.removeItem?.("talaria_avatar");
+        localStorage.removeItem("talaria_avatar");
+      }
+    } catch (_) {}
+  }, [profileAvatar]);
+
+  // Language: write to userStorage 'chartLanguage' and trigger legacy
+  // window._applyLanguage so any DOM the chart owns gets retranslated.
+  useEffect(() => {
+    const code = v9LangToLegacy(profileLang);
+    try {
+      const cur = window.userStorage?.getItem?.("chartLanguage") || localStorage.getItem("chartLanguage");
+      if (cur === code) return;
+      window.userStorage?.setItem?.("chartLanguage", code);
+      try { localStorage.setItem("chartLanguage", code); } catch (_) {}
+      if (typeof window._applyLanguage === "function") {
+        try { window._applyLanguage(code); } catch (_) {}
+      }
+    } catch (_) {}
+  }, [profileLang]);
+
   const [darkMode, setDarkMode] = useState(true);
   const [faqOpen, setFaqOpen] = useState(false);
   const [faqCat, setFaqCat] = useState("faq");
