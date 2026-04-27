@@ -2572,11 +2572,36 @@ const TalariaV8bLive = () => {
     const dashArr = V9_DASH_TO_LEGACY[tlStyle.lineType] ?? '';
     const widthNum = parseInt(tlStyle.lineWidth, 10) || 2;
     const stylePatch = {
+      // Stroke / line
       stroke: tlStyle.lineColor,
       color: tlStyle.lineColor,
       strokeWidth: widthNum,
       dashArray: dashArr,
       strokeDasharray: dashArr,
+      // Fill (shapes, channels, range tool background, etc.)
+      fill: tlStyle.bgColor,
+      backgroundColor: tlStyle.bgColor,
+      // Endpoints (V9 uses 'normal' / 'arrow' / 'arrowFilled' etc; chart.js
+      // drawing-tools-lines.js reads style.startStyle / style.endStyle).
+      startStyle: tlStyle.ep1,
+      endStyle: tlStyle.ep2,
+      // Extend left / right (trendline + ray)
+      extendLeft: !!tlStyle.extendLeft,
+      extendRight: !!tlStyle.extendRight,
+      // Price / time labels
+      showPriceLabel: !!tlStyle.priceLabels,
+      showTimeLabel: !!tlStyle.timeLabels,
+      // Range tool (Date & Price): which info rows to show + which mode
+      rangeMode: tlStyle.rangeType === 'Price' ? 'price'
+                : tlStyle.rangeType === 'Date and time' ? 'time'
+                : 'both',
+      showInfo: !!tlStyle.showInfo,
+      showInfoTypes: Array.isArray(tlStyle.showInfoTypes) ? [...tlStyle.showInfoTypes] : [],
+      // Label sub-styling (used by range tool / fib labels)
+      labelColor: tlStyle.labelColor,
+      labelFontSize: parseInt(tlStyle.labelFontSize, 10) || 12,
+      labelBackground: !!tlStyle.labelBg,
+      labelBackgroundColor: tlStyle.labelBgColor,
     };
 
     // Persist as default for this tool — new drawings inherit via applySavedStyle.
@@ -2607,7 +2632,14 @@ const TalariaV8bLive = () => {
       // Force a chart re-render so the change is visible even when no selection.
       window.chart && window.chart.scheduleRender && window.chart.scheduleRender();
     } catch (err) { console.warn('[V9 style bridge] failed:', err); }
-  }, [tlStyle.lineColor, tlStyle.lineWidth, tlStyle.lineType, tool, groupSelected]);
+  }, [
+    tlStyle.lineColor, tlStyle.lineWidth, tlStyle.lineType, tlStyle.bgColor,
+    tlStyle.ep1, tlStyle.ep2, tlStyle.extendLeft, tlStyle.extendRight,
+    tlStyle.priceLabels, tlStyle.timeLabels, tlStyle.rangeType,
+    tlStyle.showInfo, tlStyle.showInfoTypes,
+    tlStyle.labelColor, tlStyle.labelFontSize, tlStyle.labelBg, tlStyle.labelBgColor,
+    tool, groupSelected,
+  ]);
 
   const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelected(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
   // closeAll is triggered by backdrop/outside clicks — intentionally does NOT close the indicators window
