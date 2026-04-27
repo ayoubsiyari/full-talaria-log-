@@ -36,6 +36,62 @@
         }
         #priceAxisZone { right: 0; top: 0; bottom: 18px; width: 60px; cursor: ns-resize; }
         #timeAxisZone  { left: 0; right: 60px; bottom: 0; height: 18px; cursor: ew-resize; }
+
+        /* ──────────────────────────────────────────────────────────────
+           Crosshair + price/time labels.
+           chart.js looks up `.crosshair-vertical/.crosshair-horizontal/
+           .price-label/.time-label` in `document` for the main chart and
+           positions them based on mouse coords. The styling here mirrors
+           legacy chart/index.html so behaviour matches exactly.
+           ────────────────────────────────────────────────────────────── */
+        .crosshair-vertical,
+        .crosshair-horizontal {
+            position: absolute;
+            pointer-events: none;
+            z-index: 10;
+            display: none;
+        }
+        .crosshair-vertical {
+            width: 1px;
+            height: 100%;
+            background: repeating-linear-gradient(
+                to bottom,
+                rgba(150, 155, 165, 0.8) 0px,
+                rgba(150, 155, 165, 0.8) 6px,
+                transparent 6px,
+                transparent 10px
+            );
+        }
+        .crosshair-horizontal {
+            width: 100%;
+            height: 1px;
+            background: repeating-linear-gradient(
+                to right,
+                rgba(150, 155, 165, 0.8) 0px,
+                rgba(150, 155, 165, 0.8) 6px,
+                transparent 6px,
+                transparent 10px
+            );
+        }
+        .price-label,
+        .time-label {
+            position: absolute;
+            background: #434651;
+            color: #ffffff;
+            padding: 4px 6px;
+            font-size: 12px;
+            font-weight: 500;
+            border-radius: 2px;
+            pointer-events: none;
+            z-index: 20;
+            display: none;
+            font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+            letter-spacing: 0.2px;
+        }
+        .time-label {
+            bottom: 6px;
+            top: auto !important;
+        }
     </style>
 
     <!--
@@ -187,7 +243,7 @@
 
     <!-- Indicators: extend Chart.prototype, must load after chart.js. -->
     <script defer src="/chart/modules/chart-indicators-full.js"></script>
-  <script type="module" crossorigin src="/chart/dist-v9/assets/index-Dm6lh4X3.js"></script>
+  <script type="module" crossorigin src="/chart/dist-v9/assets/index-OKxQS6uO.js"></script>
 </head>
 <body>
     <div id="root"></div>

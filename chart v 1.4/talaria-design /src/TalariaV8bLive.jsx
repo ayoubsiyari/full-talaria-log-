@@ -516,6 +516,24 @@ const TalariaV8bLive = () => {
 
     return () => { cancelled = true; };
   }, []);
+
+  // ─── SYNC SYMBOL FROM CHART.JS ───────────────────────────────────────────
+  // Listen for chart.js dataLoaded event to get the real symbol from backtest.
+  // This updates the V9 UI to show the actual pair instead of the hardcoded default.
+  useEffect(() => {
+    const handleDataLoaded = (e) => {
+      const detail = e.detail || {};
+      if (detail.symbol) {
+        setSymbol(detail.symbol);
+      }
+      if (detail.timeframe) {
+        // Could also sync timeframe here if needed
+      }
+    };
+    window.addEventListener('dataLoaded', handleDataLoaded);
+    return () => window.removeEventListener('dataLoaded', handleDataLoaded);
+  }, []);
+
   // ────────────────────────────────────────────────────────────────────────
 
   const rollbackLineRef = useRef(null);
@@ -9138,19 +9156,28 @@ const TalariaV8bLive = () => {
               <svg id="drawingSvg" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
               <div id="priceAxisZone" style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 0, background: "transparent", zIndex: 5, cursor: "ns-resize" }} />
               <div id="timeAxisZone"  style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 0, background: "transparent", zIndex: 5, cursor: "ew-resize" }} />
-              <div style={{ position: "absolute", top: 8, left: 10, zIndex: 10 }}>
+
+              {/* Crosshair elements — chart.js positions these on mousemove */}
+              <div className="crosshair-vertical" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />
+              <div className="crosshair-horizontal" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />
+              <div className="price-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
+              <div className="time-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
+
+              {/* OHLC Info Panel — IDs match what chart.js expects so it updates these on hover */}
+              <div id="ohlcInfo" style={{ position: "absolute", top: 8, left: 10, zIndex: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700 }}>{symbol}</span>
-                  <span style={{ fontSize: 11, color: c.tm }}>? 1m</span>
+                  <span id="chartSymbol" style={{ fontSize: 13, fontWeight: 700 }}>{symbol}</span>
+                  <span id="chartTimeframe" style={{ fontSize: 11, color: c.tm }}>1m</span>
                   <div onClick={(e) => { e.stopPropagation(); setRollback(!rollback); }} style={{ cursor: "default", opacity: rollback ? 1 : 0.4, display: "flex", alignItems: "center", gap: 3 }}>
                     <I n="rollback" s={13} cl={rollback ? c.gn : c.rd}/>
                     <span style={{ fontSize: 12, color: rollback ? c.gn : c.rd, fontWeight: 700 }}>{rollback ? "RB" : "LOCKED"}</span>
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, fontSize: 13 }}>
-                  {[["O","126,680",c.gn],["H","126,745",c.gn],["L","126,675",c.rd],["C","126,730",c.gn]].map(([k,v,col]) => (
-                    <span key={k} style={{ color: c.tm, fontWeight: 600 }}>{k} <span style={{ color: col, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{v}</span></span>
-                  ))}
+                  <span style={{ color: c.tm, fontWeight: 600 }}>O <span id="open" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
+                  <span style={{ color: c.tm, fontWeight: 600 }}>H <span id="high" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
+                  <span style={{ color: c.tm, fontWeight: 600 }}>L <span id="low" style={{ color: c.rd, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
+                  <span style={{ color: c.tm, fontWeight: 600 }}>C <span id="close" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
                 </div>
               </div>
             </div>
