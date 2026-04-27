@@ -2559,13 +2559,52 @@ const TalariaV8bLive = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool, groupSelected]);
 
+  // Set true just before we update tlStyle from a selected drawing's style
+  // so the forward bridge below skips that pass and we don't loop.
+  const suppressForwardBridge = useRef(false);
+
   // ─── Drawing selection bridge ───────────────────────────────────────────
   // Wrap drawingManager.toolbar.show / .hide once chart.js is ready so the
   // V9 floating toolbar only appears when a drawing is actually selected.
   // The legacy code calls these on every selection / deselection / delete
   // (chart/modules/drawing-tools-manager.js — see toolbar.show/hide calls).
+  // We also read the selected drawing's style on show and push it into
+  // tlStyle so the V9 toolbar reflects the actual shape (not stale defaults).
   useEffect(() => {
     let cancelled = false; let n = 0;
+    // Map a chart.js drawing.style → partial V9 tlStyle.
+    const LEGACY_DASH_TO_V9 = (() => {
+      const map = {};
+      Object.entries({ solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4' }).forEach(([k, v]) => { map[v] = k; });
+      // Tolerate alternate dash strings the legacy toolbar may emit.
+      map['7,4'] = 'dashed'; map['4,4'] = 'dashed'; map['1,3'] = 'dotted';
+      return map;
+    })();
+    const readDrawingStyle = (d) => {
+      if (!d || !d.style) return null;
+      const s = d.style;
+      const stroke = s.stroke || s.color || s.lineColor;
+      const widthRaw = s.strokeWidth ?? s.lineWidth;
+      const widthStr = widthRaw != null ? String(parseInt(widthRaw, 10) || 2) : undefined;
+      const dashRaw = (s.dashArray ?? s.strokeDasharray ?? '').toString().replace(/\s+/g, '');
+      const lineType = LEGACY_DASH_TO_V9[dashRaw] ?? (dashRaw ? 'dashed' : 'solid');
+      return {
+        ...(stroke ? { lineColor: stroke } : {}),
+        ...(widthStr ? { lineWidth: widthStr } : {}),
+        lineType,
+        ...(s.fill ? { bgColor: s.fill } : (s.backgroundColor ? { bgColor: s.backgroundColor } : {})),
+        ...(s.startStyle ? { ep1: s.startStyle } : {}),
+        ...(s.endStyle ? { ep2: s.endStyle } : {}),
+        ...(typeof s.extendLeft === 'boolean' ? { extendLeft: s.extendLeft } : {}),
+        ...(typeof s.extendRight === 'boolean' ? { extendRight: s.extendRight } : {}),
+        ...(typeof s.showPriceLabel === 'boolean' ? { priceLabels: s.showPriceLabel } : {}),
+        ...(typeof s.showTimeLabel === 'boolean' ? { timeLabels: s.showTimeLabel } : {}),
+        ...(s.labelColor ? { labelColor: s.labelColor } : {}),
+        ...(s.labelFontSize != null ? { labelFontSize: String(s.labelFontSize) } : {}),
+        ...(typeof s.labelBackground === 'boolean' ? { labelBg: s.labelBackground } : {}),
+        ...(s.labelBackgroundColor ? { labelBgColor: s.labelBackgroundColor } : {}),
+      };
+    };
     const hook = () => {
       if (cancelled) return;
       const dm = window.chart && window.chart.drawingManager;
@@ -2577,7 +2616,17 @@ const TalariaV8bLive = () => {
       const origShow = tb.show && tb.show.bind(tb);
       const origHide = tb.hide && tb.hide.bind(tb);
       tb.show = function (drawing, x, y) {
-        try { setTlBarSelected(true); setTlBarSelectedType(drawing && drawing.type); } catch (_) {}
+        try {
+          setTlBarSelected(true);
+          setTlBarSelectedType(drawing && drawing.type);
+          const patch = readDrawingStyle(drawing);
+          if (patch) {
+            suppressForwardBridge.current = true;
+            setTlStyle(s => ({ ...s, ...patch }));
+            // Also reflect lock state in V9.
+            if (typeof drawing.locked === 'boolean') setTlLocked(!!drawing.locked);
+          }
+        } catch (_) {}
         return origShow ? origShow(drawing, x, y) : undefined;
       };
       tb.hide = function () {
@@ -2611,8 +2660,12 @@ const TalariaV8bLive = () => {
     const dm = window.chart && window.chart.drawingManager;
     if (!dm) return;
     const legacyTool = resolveLegacyTool();
-    if (!legacyTool) return;
     if (!styleBridgeReady.current) { styleBridgeReady.current = true; return; }
+    // Skip the pass triggered by reading a selected drawing's style into tlStyle.
+    if (suppressForwardBridge.current) { suppressForwardBridge.current = false; return; }
+    // We continue even when legacyTool is null so that edits made while a
+    // drawing is selected (with the cursor / crosshair active in the left
+    // rail) still propagate to the selected drawing.
 
     const dashArr = V9_DASH_TO_LEGACY[tlStyle.lineType] ?? '';
     const widthNum = parseInt(tlStyle.lineWidth, 10) || 2;
@@ -2651,13 +2704,15 @@ const TalariaV8bLive = () => {
 
     // Persist as default for this tool — new drawings inherit via applySavedStyle.
     // Debounced: avoid hammering localStorage on every dropdown click.
-    if (saveToolStyleTimer.current) clearTimeout(saveToolStyleTimer.current);
-    saveToolStyleTimer.current = setTimeout(() => {
-      try {
-        const merged = { ...(dm.getSavedToolStyle?.(legacyTool) || {}), ...stylePatch };
-        dm.saveToolStyle?.(legacyTool, merged);
-      } catch (err) { /* ignore */ }
-    }, 300);
+    if (legacyTool) {
+      if (saveToolStyleTimer.current) clearTimeout(saveToolStyleTimer.current);
+      saveToolStyleTimer.current = setTimeout(() => {
+        try {
+          const merged = { ...(dm.getSavedToolStyle?.(legacyTool) || {}), ...stylePatch };
+          dm.saveToolStyle?.(legacyTool, merged);
+        } catch (err) { /* ignore */ }
+      }, 300);
+    }
 
     // Mutate currently-selected drawing(s) and repaint immediately.
     try {
