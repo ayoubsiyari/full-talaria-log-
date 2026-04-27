@@ -50,18 +50,6 @@ export default function BacktestDesignDemoPage() {
   }, []);
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-[#07080E] m-0 p-0" dir="ltr" lang="en">
-      <a
-        href="/backtest/"
-        className="pointer-events-auto absolute left-3 top-3 z-[110] rounded-md border border-white/10 bg-black/55 px-3 py-2 text-xs font-semibold text-white/90 shadow-lg backdrop-blur-md transition-colors hover:bg-black/75 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/80"
-      >
-        ← Back to sessions
-      </a>
-      <iframe
-        title="Talaria V8b UI mock"
-        src="/talaria-v8b-design/"
-        className="h-[100dvh] w-full flex-1 shrink-0 border-0"
-      />
-    </div>
+    
   );
 }
