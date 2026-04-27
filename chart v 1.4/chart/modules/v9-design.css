@@ -1589,5 +1589,231 @@ button[disabled],
 }
 
 /* ============================================================================
+ * PHASE 11 — STRUCTURAL PLACEMENT (V9 layout)
+ * Move drawing tools from horizontal-inline-in-top-bar to a real vertical
+ * LEFT RAIL on the left edge. Reorder top-bar utility buttons to V9 order
+ * via CSS `order:` (no HTML/JS changes needed).
+ *
+ * The chart's existing CSS reserves 46px of left gutter via
+ * `#chart-container { left: 46px }`, so this is purely a CSS reflow —
+ * NO event-handler / module-binding impact. Every button keeps the same
+ * ID, class, and DOM position; only its rendered location changes.
+ * ============================================================================ */
+
+/* ---------- LEFT RAIL — convert from inline-row to fixed vertical column. */
+.left-sidebar {
+    position: fixed !important;
+    top: 54px !important;                /* sits below the existing 54px toolbar */
+    left: 0 !important;
+    width: 46px !important;              /* matches existing #chart-container left:46px gutter */
+    height: calc(100vh - 54px) !important;
+    background: var(--v9-sf) !important;
+    border-right: 1px solid var(--v9-br) !important;
+    box-shadow: 1px 0 0 rgba(0, 0, 0, 0.4);
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    padding: 6px 4px !important;
+    gap: 4px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    z-index: 140 !important;             /* below toolbar (150) but above chart */
+}
+
+/* Chart-area left inset matches new rail width (kept at existing 46px). */
+#chart-container {
+    left: 46px !important;
+}
+
+/* Replay toolbar should not extend under the left rail. */
+.replay-toolbar,
+#replayToolbar {
+    left: 46px !important;
+}
+@media screen and (max-width: 768px) {
+    .replay-toolbar,
+    #replayToolbar {
+        left: 50% !important;            /* keep mobile centering */
+    }
+}
+
+/* The drawing-tools-vertical container (inside .left-sidebar) was forced into
+   row layout; restore vertical column. */
+.left-sidebar .drawing-tools-vertical,
+.drawing-tools-vertical {
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 4px !important;
+    width: 100% !important;
+    height: auto !important;
+    flex: 0 0 auto !important;
+    padding: 0 !important;
+}
+
+/* Each tool button: square 36x36, fits in 46px rail with margins. */
+.left-sidebar .tool-group-btn,
+.left-sidebar .drawing-tools-vertical .tool-btn,
+.drawing-tools-vertical .tool-btn {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+    flex: 0 0 36px !important;
+}
+
+/* Each .tool-group is also a column item on the rail. */
+.left-sidebar .tool-group {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    position: relative !important;
+}
+
+/* Dropdown arrow chevron should sit BELOW the tool button, not next to it. */
+.left-sidebar .tool-group .dropdown-arrow,
+.left-sidebar .tool-group-btn + .dropdown-arrow {
+    width: 36px !important;
+    height: 12px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+    flex: 0 0 12px !important;
+    margin-top: -2px;
+}
+
+/* Group dividers in left rail: horizontal gradient line. */
+.left-sidebar .divider,
+.left-sidebar .tool-divider,
+.left-sidebar .drawing-tools-vertical .divider,
+.left-sidebar .drawing-tools-vertical .tool-divider {
+    width: 28px !important;
+    height: 1px !important;
+    margin: 4px auto !important;
+    background: linear-gradient(90deg, transparent, var(--v9-br), transparent) !important;
+    border: none !important;
+    flex: 0 0 1px !important;
+}
+
+/* Tool flyout dropdowns: emerge to the RIGHT of the rail, not below. */
+.left-sidebar .tool-dropdown {
+    position: absolute !important;
+    left: 100% !important;
+    top: 0 !important;
+    margin-left: 4px !important;
+    min-width: 200px !important;
+    z-index: 10001 !important;
+}
+
+/* Active tool gradient-fade underline: rotate to be a RIGHT edge accent
+   on the vertical rail (matches V9 vertical context better). */
+.left-sidebar .tool-group-btn.active::after,
+.left-sidebar .drawing-tools-vertical .tool-btn.active::after {
+    left: auto !important;
+    right: 0 !important;
+    top: 15% !important;
+    bottom: 15% !important;
+    width: 2px !important;
+    height: auto !important;
+    background: linear-gradient(180deg, transparent, var(--v9-acL), transparent) !important;
+    box-shadow: 0 0 6px var(--v9-acG);
+}
+
+/* Ensure the legacy "hide first divider" rule still applies. */
+.left-sidebar > .divider:first-child,
+.left-sidebar > .drawing-tools-vertical > .divider:first-child {
+    display: none !important;
+}
+
+/* ---------- TOP BAR — reorder utility buttons to match V9. ---------- */
+/* V9 right-side order: Layout | Screenshot | Fullscreen | Global Markets |
+   Objects Tree | Alerts | Settings | Help.
+   We use CSS `order:` to enforce this without touching HTML.
+   The legacy markup already uses these IDs; we simply set their flex order. */
+
+.toolbar-right { display: flex !important; }
+
+#layout-selector-btn         { order: 10 !important; }
+#screenshotDropdownContainer { order: 20 !important; }
+#screenshotBtn               { order: 20 !important; }
+#fullscreenBtn               { order: 30 !important; }
+#globalViewBtn               { order: 40 !important; }
+#objectTreeBtn               { order: 50 !important; }
+#toolbarAlertsBtn            { order: 60 !important; }
+#settingsBtn                 { order: 70 !important; }
+#helpBtn                     { order: 80 !important; }
+
+/* In V9 the Indicators button sits BEFORE the timeframes block (left side).
+   Existing markup places #indicatorsBtn after timeframes. Use `order:` on
+   .toolbar-left children to swap. The toolbar-left contains (in DOM order):
+   logo, support, divider, symbol-search-group, chart-type-selector,
+   timeframes-flyout, indicatorsBtn, compareBtn, toolbar-drawing-icons.
+
+   V9 order: logo, support, symbol, chart-type, indicators, timeframes,
+   compare, toolbar-drawing-icons (utility — keep at end of left section). */
+.toolbar-left { display: flex !important; }
+.toolbar-left .toolbar-logo,
+.toolbar-left .brand-lockup           { order: 1 !important; }
+.toolbar-left .toolbar-support-link   { order: 2 !important; }
+.toolbar-left #symbolSearchGroup,
+.toolbar-left .symbol-search-group    { order: 3 !important; }
+.toolbar-left #chartTypeSelector,
+.toolbar-left .chart-type-selector    { order: 4 !important; }
+.toolbar-left #indicatorsBtn          { order: 5 !important; }
+.toolbar-left .timeframes-flyout,
+.toolbar-left #timeframesFlyout,
+.toolbar-left .timeframe-flyout-group { order: 6 !important; }
+.toolbar-left #compareBtn             { order: 7 !important; }
+.toolbar-left .toolbar-drawing-icons  { order: 8 !important; }
+
+/* Dividers inside .toolbar-left should keep relative position based on
+   neighbors. Give them base order to flow with adjacent groups. */
+.toolbar-left > .divider              { order: 0 !important; }
+
+/* ---------- RIGHT SIDEBAR ICONS — keep tight against right edge in V9. */
+.right-sidebar-icons {
+    width: 36px !important;
+    padding: 6px 0 !important;
+    gap: 4px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+}
+
+/* ---------- HIDE legacy artifacts that V9 doesn't show. ---------- */
+/* The "Talaria-Log" wordmark next to the logo is replaced by the V9 logo
+   chamfer; keep image, hide wordmark only when V9 layout is in effect. */
+/* (Kept visible by default — uncomment to hide:
+   .toolbar-logo .logo-bottom { display: none !important; } ) */
+
+/* ---------- RESPONSIVE: collapse left rail on very small viewports. ---- */
+@media screen and (max-width: 768px) {
+    .left-sidebar {
+        width: 36px !important;
+    }
+    #chart-container,
+    .replay-toolbar,
+    #replayToolbar {
+        left: 36px !important;
+    }
+    .left-sidebar .tool-group-btn,
+    .left-sidebar .drawing-tools-vertical .tool-btn {
+        width: 30px !important;
+        height: 30px !important;
+        min-width: 30px !important;
+        max-width: 30px !important;
+    }
+}
+@media screen and (max-width: 480px) {
+    .left-sidebar {
+        display: none !important;        /* full-width chart on mobile */
+    }
+    #chart-container,
+    .replay-toolbar,
+    #replayToolbar {
+        left: 0 !important;
+    }
+}
+
+/* ============================================================================
  * V9 design system end.
  * ============================================================================ */

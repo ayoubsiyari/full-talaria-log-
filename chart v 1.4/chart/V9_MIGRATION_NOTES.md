@@ -106,6 +106,19 @@ Every existing element ID/class is preserved, so module JS that queries the DOM 
 - `[data-tooltip]::after` re-skinned: V9 elevated bg, thin border, blue accent left stripe, white 10px/600 text.
 - Existing tooltip system (legacy `data-tooltip` CSS) keeps showing/hiding per the original logic; only visual style updated.
 
+### Phase 11 — Structural Placement (V9 layout)
+- **Drawing tools moved to a real vertical LEFT RAIL** (was forced inline-horizontal in the top bar). `.left-sidebar` is now `position: fixed; top: 54px; left: 0; width: 46px; flex-direction: column;` over the existing 46px chart inset gutter.
+- `.drawing-tools-vertical` switched from `flex-direction: row` to `column`.
+- Tool group dropdowns (`.tool-dropdown`) now emerge to the **right** of the rail instead of below.
+- Active-tool gradient-fade indicator rotated to a vertical right-edge accent.
+- Group dividers (`.divider`, `.tool-divider`) inside the rail rendered as horizontal gradient lines.
+- Top bar utility buttons reordered to V9 spec via CSS `order:`:
+  - **Toolbar-left order**: Logo → Support → Symbol → ChartType → Indicators → Timeframes → Compare → Drawing utility (visibility/undo/redo/sync).
+  - **Toolbar-right order**: Layout → Screenshot → Fullscreen → Global Markets → Objects Tree → Alerts → Settings → Help.
+- `#chart-container { left: 46px }` confirmed; `.replay-toolbar { left: 46px }` set so the replay bar doesn't run under the rail.
+- Responsive breakpoints kept (rail shrinks to 36px on tablet, hides on mobile <480px).
+- **Zero HTML/JS changes** — all behavior preserved (drawing-tools-manager.js binds by ID, IDs unchanged; flex `order:` changes rendering only).
+
 ### Phase 10 — Polish
 - Custom scrollbars: thin, V9 border color, blue hover.
 - Universal `:focus-visible` ring → V9 accent border (keyboard a11y).
