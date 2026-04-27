@@ -2553,6 +2553,62 @@ const TalariaV8bLive = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool, groupSelected]);
 
+  // ─── V9 tlStyle → chart.js drawing style ─────────────────────────────────
+  // Whenever the V9 floating toolbar changes line color / width / dash type,
+  // push that into the legacy drawing system so:
+  //   - the currently-SELECTED drawing repaints with the new style, and
+  //   - subsequent NEW drawings of the active tool use it as the default
+  //     (drawingManager.saveToolStyle persists per-tool defaults the same
+  //      way the legacy toolbar does in chart/modules/drawing-toolbar.js).
+  // Maps V9 dash names to the dash-array strings the legacy code uses
+  // (chart/modules/drawing-toolbar.js line 1521-1525).
+  const V9_DASH_TO_LEGACY = { solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4' };
+  useEffect(() => {
+    const dm = window.chart && window.chart.drawingManager;
+    if (!dm) return;
+    const legacyTool = resolveLegacyTool();
+    if (!legacyTool) return;
+
+    const dashArr = V9_DASH_TO_LEGACY[tlStyle.lineType] ?? '';
+    const widthNum = parseInt(tlStyle.lineWidth, 10) || 2;
+    const stylePatch = {
+      stroke: tlStyle.lineColor,
+      color: tlStyle.lineColor,
+      strokeWidth: widthNum,
+      dashArray: dashArr,
+      strokeDasharray: dashArr,
+    };
+
+    // Persist as default for this tool — new drawings inherit via applySavedStyle.
+    try {
+      const merged = { ...(dm.getSavedToolStyle?.(legacyTool) || {}), ...stylePatch };
+      dm.saveToolStyle?.(legacyTool, merged);
+    } catch (err) { /* ignore */ }
+
+    // Mutate currently-selected drawing(s) and repaint immediately.
+    try {
+      const selected = dm.selectedDrawings && dm.selectedDrawings.length
+        ? dm.selectedDrawings
+        : (dm.selectedDrawing ? [dm.selectedDrawing] : []);
+      selected.forEach((d) => {
+        if (!d || !d.style) return;
+        Object.assign(d.style, stylePatch);
+        // Fib tools also store per-level color/width — mirror legacy toolbar.
+        const isFib = d.type && (d.type.startsWith('fibonacci-') || d.type.startsWith('fib-') || d.type.startsWith('trend-fib-'));
+        if (isFib) {
+          const lvls = d.levels || (d.style && d.style.levels);
+          if (Array.isArray(lvls)) lvls.forEach((lv) => { if (lv) { lv.color = tlStyle.lineColor; lv.lineWidth = widthNum; } });
+          d.style.trendLineColor = tlStyle.lineColor;
+          d.style.trendLineWidth = widthNum;
+          d.style.levelsLineWidth = widthNum;
+        }
+        try { dm.renderDrawing?.(d); } catch (_) {}
+      });
+      // Force a chart re-render so the change is visible even when no selection.
+      window.chart && window.chart.scheduleRender && window.chart.scheduleRender();
+    } catch (err) { console.warn('[V9 style bridge] failed:', err); }
+  }, [tlStyle.lineColor, tlStyle.lineWidth, tlStyle.lineType, tool, groupSelected]);
+
   const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelected(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
   // closeAll is triggered by backdrop/outside clicks — intentionally does NOT close the indicators window
   const closeAll = () => {
@@ -7619,12 +7675,34 @@ const TalariaV8bLive = () => {
             </TlBtn>}
           </>}
           <TlSep/>
-          {/* btn 5: lock */}
-          <TlBtn id="tl-lock" isAct={tlLocked} tip={tlLocked?"Unlock":"Lock"} onClick={()=>{setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();setTlLocked(v=>!v);}}>
+          {/* btn 5: lock — toggle locked state on the selected drawing(s) too,
+               so V9's lock matches what the legacy toolbar's lock button does. */}
+          <TlBtn id="tl-lock" isAct={tlLocked} tip={tlLocked?"Unlock":"Lock"} onClick={()=>{
+            setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();
+            const next = !tlLocked; setTlLocked(next);
+            const dm = window.chart && window.chart.drawingManager;
+            try {
+              const sel = dm && (dm.selectedDrawings && dm.selectedDrawings.length ? dm.selectedDrawings : (dm.selectedDrawing ? [dm.selectedDrawing] : []));
+              if (sel) { sel.forEach(d => { if (d) d.locked = next; }); window.chart && window.chart.scheduleRender && window.chart.scheduleRender(); }
+            } catch(_){}
+          }}>
             {(_,isAct,col)=><I n="lock" s={16} cl={col}/>}
           </TlBtn>
-          {/* btn 6: delete */}
-          <TlBtn id="tl-del" isAct={false} tip="Delete" onClick={()=>{setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();}}>
+          {/* btn 6: delete — call drawingManager.deleteDrawing on the selected
+               drawing(s) so the canvas matches what the legacy toolbar does. */}
+          <TlBtn id="tl-del" isAct={false} tip="Delete" onClick={()=>{
+            setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();
+            const dm = window.chart && window.chart.drawingManager;
+            try {
+              if (!dm) return;
+              if (dm.deleteSelected) { dm.deleteSelected(); }
+              else {
+                const sel = dm.selectedDrawings && dm.selectedDrawings.length ? [...dm.selectedDrawings] : (dm.selectedDrawing ? [dm.selectedDrawing] : []);
+                sel.forEach(d => { try { dm.deleteDrawing && dm.deleteDrawing(d); } catch(_){} });
+              }
+              window.chart && window.chart.scheduleRender && window.chart.scheduleRender();
+            } catch(err){ console.warn('[V9 delete] failed:', err); }
+          }}>
             {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
           </TlBtn>
           <TlSep/>
