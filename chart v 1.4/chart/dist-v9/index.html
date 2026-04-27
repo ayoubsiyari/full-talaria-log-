@@ -92,6 +92,12 @@
             bottom: 6px;
             top: auto !important;
         }
+
+        /* Hide legacy chart.js floating drawing toolbar — V9 renders its own
+           tlBar/txtBar floating toolbar (TalariaV8bLive.jsx) which is wired
+           via the V9 tool bridge. Keeping the legacy one visible would show
+           two duplicate toolbars on every drawing select. */
+        #drawing-toolbar { display: none !important; }
     </style>
 
     <!--
