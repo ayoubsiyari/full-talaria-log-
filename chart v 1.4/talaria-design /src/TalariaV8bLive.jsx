@@ -1781,9 +1781,11 @@ const TalariaV8bLive = () => {
     { id: "redo", icon: "redo", label: "Redo", action: true },
   ];
 
-  const priceLabels = ["127.100","127.000","126.900","126.800","126.700","126.600","126.500","126.400","126.300","126.200"];
-  const timeLabels = ["16:36","16:46","16:56","17:01","17:06","17:11","17:16","17:21","17:26","17:31","17:36","17:41","17:46","17:51"];
-  const priceAxisWidth = Math.max(50, Math.ceil(Math.max(...priceLabels.map(p=>p.length)) * 5.5 + 16));
+  // Mock price/time labels removed: chart.js renders the real axes directly
+  // on the canvas (right edge for price, bottom for time). V9 used to render
+  // these as separate sibling <div>s, which caused duplicate axes on screen.
+  // Kept priceAxisWidth = 0 so any remaining layout calculations don't break.
+  const priceAxisWidth = 0;
 
   const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelected(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
   // closeAll is triggered by backdrop/outside clicks — intentionally does NOT close the indicators window
@@ -9152,19 +9154,13 @@ const TalariaV8bLive = () => {
                 </div>
               </div>
             </div>
-            <div style={{ width: priceAxisWidth, flexShrink: 0, background: settings.background||c.bg, borderLeft: `1px solid ${c.br}`, position: "relative", overflow: "hidden" }}>
-              {priceLabels.map((p, i) => {
-                const pct = (i/(priceLabels.length-1))*100;
-                const shift = i===0 ? "0%" : i===priceLabels.length-1 ? "-100%" : "-50%";
-                return <span key={i} style={{ position:"absolute", right:8, top:`${pct}%`, transform:`translateY(${shift})`, fontSize:11, fontWeight:600, color:c.axTx, fontVariantNumeric:"tabular-nums", lineHeight:1, whiteSpace:"nowrap" }}>{p}</span>;
-              })}
-            </div>
+            {/* V9 mock price axis div removed — chart.js draws the real
+                price axis on the right edge of #chartCanvas. Adding back a
+                sibling div here would cause two axes to render side-by-side
+                (the legacy chart.js one + the V9 mock). */}
           </div>
-          <div style={{ height: 18, flexShrink: 0, background: settings.background||c.bg, borderTop: `1px solid ${c.br}`, display: "flex", alignItems: "center", paddingRight: priceAxisWidth }}>
-            <div style={{ flex: 1, display: "flex", justifyContent: "space-between", padding: "0 8px", marginLeft: 36 }}>
-              {timeLabels.map((t, i) => <span key={i} style={{ fontSize: 10, fontWeight: 600, color: c.axTx, fontVariantNumeric: "tabular-nums" }}>{t}</span>)}
-            </div>
-          </div>
+          {/* V9 mock time axis row removed — chart.js draws times at the
+              bottom of the canvas. */}
           {/* Status + Replay bar */}
           <div style={{height:36,flexShrink:0,background:c.sf,borderTop:`1px solid rgba(140,160,255,0.22)`,display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',padding:'0 10px',position:'relative'}}>
             {/* Resize handle — at upper edge of replay bar, only when panel is open */}
