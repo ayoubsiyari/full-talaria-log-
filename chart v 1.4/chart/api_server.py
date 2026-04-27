@@ -12040,21 +12040,34 @@ CHART_ROOT_FILES = {
 async def chart_root_redirect():
     return RedirectResponse(url="/chart/index.html")
 
-# Resolve `dist/` relative to this file (not CWD), so the V9 build is found
-# whether uvicorn is launched from chart/, from the repo root, or anywhere
-# else. The Vite build (npm run build:live) emits chart/dist/.
-_CHART_ROOT_PATH = Path(__file__).resolve().parent
-_DIST_INDEX_PATH = _CHART_ROOT_PATH / "dist" / "index.html"
-_DIST_DIR_PATH   = _CHART_ROOT_PATH / "dist"
+# Resolve build dirs relative to this file (not CWD).
+#
+# Two parallel builds write to different folders:
+#   - dist/      : legacy minified bundle (chart-app-part1.min.js + ...).
+#                  Built by `npm run build:chart-client` during docker build.
+#                  Used to be the only thing served at /chart/index.html.
+#   - dist-v9/   : NEW React/V9 build (TalariaV8bLive.jsx + chart.js wired).
+#                  Built by `npm run build:live` in talaria-design/.
+#                  When present, takes precedence over dist/ for /chart/index.html.
+_CHART_ROOT_PATH    = Path(__file__).resolve().parent
+_DIST_V9_INDEX_PATH = _CHART_ROOT_PATH / "dist-v9" / "index.html"
+_DIST_V9_DIR_PATH   = _CHART_ROOT_PATH / "dist-v9"
+_DIST_LEGACY_INDEX  = _CHART_ROOT_PATH / "dist" / "index.html"
+_DIST_LEGACY_DIR    = _CHART_ROOT_PATH / "dist"
 
 @app.get("/chart/{file_name}")
 async def chart_root_files(file_name: str):
     if file_name not in CHART_ROOT_FILES:
         raise HTTPException(status_code=404, detail="Not found")
-    # Prefer the V9 build at chart/dist/index.html when it exists.
-    # Delete chart/dist/ to fall back to the legacy index.html.
-    if file_name == "index.html" and _DIST_INDEX_PATH.is_file():
-        return FileResponse(str(_DIST_INDEX_PATH))
+    # Preference order for /chart/index.html:
+    #   1. dist-v9/index.html  (new V9 React build)
+    #   2. dist/index.html     (legacy minified bundle)
+    #   3. chart/index.html    (legacy source, individual <script> tags)
+    if file_name == "index.html":
+        if _DIST_V9_INDEX_PATH.is_file():
+            return FileResponse(str(_DIST_V9_INDEX_PATH))
+        if _DIST_LEGACY_INDEX.is_file():
+            return FileResponse(str(_DIST_LEGACY_INDEX))
     legacy_path = _CHART_ROOT_PATH / file_name
     return FileResponse(str(legacy_path))
 
@@ -12070,13 +12083,17 @@ async def order_manager_root_file():
 async def drawing_tools_manager_root_file():
     return FileResponse(str(_CHART_ROOT_PATH / "modules" / "drawing-tools-manager.js"))
 
-# Mount the V9 build's bundled assets at /chart/dist/ so the entry HTML's
-# <script src="/chart/dist/assets/index-XXX.js"> tag resolves correctly.
-if _DIST_DIR_PATH.is_dir():
-    app.mount("/chart/dist", StaticFiles(directory=str(_DIST_DIR_PATH)), name="chart_dist")
-    print(f"✅ V9 build detected at {_DIST_DIR_PATH}; /chart/index.html will serve V9.")
+# Mount V9 build assets at /chart/dist-v9/ so the entry HTML's
+# <script src="/chart/dist-v9/assets/index-XXX.js"> tag resolves.
+if _DIST_V9_DIR_PATH.is_dir():
+    app.mount("/chart/dist-v9", StaticFiles(directory=str(_DIST_V9_DIR_PATH)), name="chart_dist_v9")
+    print(f"✅ V9 build detected at {_DIST_V9_DIR_PATH}; /chart/index.html will serve V9.")
 else:
-    print(f"ℹ️ No V9 build at {_DIST_DIR_PATH}; /chart/index.html will serve legacy.")
+    print(f"ℹ️ No V9 build at {_DIST_V9_DIR_PATH}; falling back to legacy.")
+
+# Keep the legacy dist/ mount for the old minified bundle.
+if _DIST_LEGACY_DIR.is_dir():
+    app.mount("/chart/dist", StaticFiles(directory=str(_DIST_LEGACY_DIR)), name="chart_dist")
 
 app.mount("/chart/modules", StaticFiles(directory=str(_CHART_ROOT_PATH / "modules")), name="chart_modules")
 app.mount("/chart/indicators", StaticFiles(directory=str(_CHART_ROOT_PATH / "indicators")), name="chart_indicators")

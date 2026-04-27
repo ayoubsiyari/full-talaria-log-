@@ -36,11 +36,14 @@ export default defineConfig({
     root: path.resolve(__dirname, 'live'),
 
     // Asset base path. In dev we use '/' so the dev server serves at root.
-    // In prod the build emits /chart/dist/assets/... because the FastAPI
-    // server mounts chart/dist/ at /chart/dist/ (api_server.py:12063-12064)
-    // while the entry HTML is served via the /chart/index.html route which
-    // returns chart/dist/index.html when it exists (api_server.py:12046).
-    base: process.env.NODE_ENV === 'production' ? '/chart/dist/' : '/',
+    // In prod the build emits /chart/dist-v9/assets/... because:
+    //   - The legacy `npm run build:chart-client` (run in Dockerfile) writes
+    //     to chart/dist/, so the V9 build MUST go elsewhere to avoid being
+    //     overwritten during docker build.
+    //   - api_server.py serves /chart/dist-v9/* via a StaticFiles mount,
+    //     and the /chart/index.html route prefers chart/dist-v9/index.html
+    //     when it exists.
+    base: process.env.NODE_ENV === 'production' ? '/chart/dist-v9/' : '/',
 
     // Resolve sources outside live/ (so live/main.jsx can import ../src/*).
     resolve: {
@@ -79,9 +82,10 @@ export default defineConfig({
     },
 
     build: {
-        // Emit straight into chart/dist/ so api_server.py's existing
-        // dist/index.html preference picks up the V9 build automatically.
-        outDir: path.resolve(__dirname, '../chart/dist'),
+        // Emit into chart/dist-v9/ (NOT chart/dist/) because the legacy
+        // `npm run build:chart-client` script (run in Dockerfile) writes
+        // to chart/dist/ and would overwrite our index.html.
+        outDir: path.resolve(__dirname, '../chart/dist-v9'),
         emptyOutDir: true,
     },
 })
