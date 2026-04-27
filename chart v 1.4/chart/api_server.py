@@ -12040,33 +12040,47 @@ CHART_ROOT_FILES = {
 async def chart_root_redirect():
     return RedirectResponse(url="/chart/index.html")
 
+# Resolve `dist/` relative to this file (not CWD), so the V9 build is found
+# whether uvicorn is launched from chart/, from the repo root, or anywhere
+# else. The Vite build (npm run build:live) emits chart/dist/.
+_CHART_ROOT_PATH = Path(__file__).resolve().parent
+_DIST_INDEX_PATH = _CHART_ROOT_PATH / "dist" / "index.html"
+_DIST_DIR_PATH   = _CHART_ROOT_PATH / "dist"
+
 @app.get("/chart/{file_name}")
 async def chart_root_files(file_name: str):
     if file_name not in CHART_ROOT_FILES:
         raise HTTPException(status_code=404, detail="Not found")
-    if file_name == "index.html" and Path("dist/index.html").is_file():
-        return FileResponse("dist/index.html")
-    return FileResponse(file_name)
+    # Prefer the V9 build at chart/dist/index.html when it exists.
+    # Delete chart/dist/ to fall back to the legacy index.html.
+    if file_name == "index.html" and _DIST_INDEX_PATH.is_file():
+        return FileResponse(str(_DIST_INDEX_PATH))
+    legacy_path = _CHART_ROOT_PATH / file_name
+    return FileResponse(str(legacy_path))
 
 @app.get("/replay-system.js")
 async def replay_system_root_file():
-    return FileResponse("modules/replay-system.js")
+    return FileResponse(str(_CHART_ROOT_PATH / "modules" / "replay-system.js"))
 
 @app.get("/order-manager.js")
 async def order_manager_root_file():
-    return FileResponse("modules/order-manager.js")
+    return FileResponse(str(_CHART_ROOT_PATH / "modules" / "order-manager.js"))
 
 @app.get("/drawing-tools-manager.js")
 async def drawing_tools_manager_root_file():
-    return FileResponse("modules/drawing-tools-manager.js")
+    return FileResponse(str(_CHART_ROOT_PATH / "modules" / "drawing-tools-manager.js"))
 
-_dist_dir = Path("dist")
-if _dist_dir.is_dir():
-    app.mount("/chart/dist", StaticFiles(directory=str(_dist_dir)), name="chart_dist")
+# Mount the V9 build's bundled assets at /chart/dist/ so the entry HTML's
+# <script src="/chart/dist/assets/index-XXX.js"> tag resolves correctly.
+if _DIST_DIR_PATH.is_dir():
+    app.mount("/chart/dist", StaticFiles(directory=str(_DIST_DIR_PATH)), name="chart_dist")
+    print(f"✅ V9 build detected at {_DIST_DIR_PATH}; /chart/index.html will serve V9.")
+else:
+    print(f"ℹ️ No V9 build at {_DIST_DIR_PATH}; /chart/index.html will serve legacy.")
 
-app.mount("/chart/modules", StaticFiles(directory="modules"), name="chart_modules")
-app.mount("/chart/indicators", StaticFiles(directory="indicators"), name="chart_indicators")
-app.mount("/chart/image", StaticFiles(directory="image"), name="chart_image")
+app.mount("/chart/modules", StaticFiles(directory=str(_CHART_ROOT_PATH / "modules")), name="chart_modules")
+app.mount("/chart/indicators", StaticFiles(directory=str(_CHART_ROOT_PATH / "indicators")), name="chart_indicators")
+app.mount("/chart/image", StaticFiles(directory=str(_CHART_ROOT_PATH / "image")), name="chart_image")
 
 # NinjaTrader landing page assets (served from repo files)
 ninjatrader_assets_dir = Path("homepage/ninjatrader/Landing-Page-Text-Images")
