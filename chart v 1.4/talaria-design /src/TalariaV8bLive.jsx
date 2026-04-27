@@ -9763,12 +9763,24 @@ const TalariaV8bLive = () => {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative" }}>
           <div style={{ flex: 1, position: "relative", background: c.bg, display: "flex" }}>
             <div ref={chartCanvasRef} id="chart-container"
-              style={{ flex: 1, position: "relative", overflow: "hidden", userSelect:"none", cursor: rollback?"none":"default" }}>
+              style={{ flex: 1, position: "relative", overflow: "hidden", isolation: "isolate", userSelect:"none", cursor: rollback?"none":"default" }}>
               {/* ────────────────────────────────────────────────────────────────
-                   #chartWrapper holds the SINGLE-panel chart (default layout).
-                   panelManager.applyLayout() hides this when switching to a
-                   multi-panel layout and restores it when going back to '1'.
+                   #panels-container MUST come BEFORE #chartWrapper in DOM.
+                   In multi-panel mode panelManager sets both to z-index:10 and
+                   resizes #chartWrapper to panel-0's slot. With same z-index,
+                   paint order = DOM order — the later-painted #chartWrapper
+                   covers #panels-container in panel 0's region (so main chart
+                   shows), and the rest of #panels-container shows through with
+                   panel 1+ divs. Reversing this order hides the main chart.
+                   Mirrors legacy chart/index.html lines 42838 (panels) before
+                   42848 (chartWrapper).
                    ──────────────────────────────────────────────────────────── */}
+              <div id="panels-container" style={{ position: "absolute", inset: 0, display: "none", zIndex: 10, background: "#050028" }} />
+
+              {/* #chartWrapper holds the SINGLE-panel chart (default layout).
+                   panelManager.applyLayout() resizes / hides this when
+                   switching to a multi-panel layout and restores it when going
+                   back to '1'. */}
               <div id="chartWrapper" className="chart-wrapper" style={{ position: "absolute", inset: 0 }}>
                 <canvas id="chartCanvas" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", background: "transparent" }} />
                 <svg id="drawingSvg" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
@@ -9799,14 +9811,6 @@ const TalariaV8bLive = () => {
                   </div>
                 </div>
               </div>
-
-              {/* ────────────────────────────────────────────────────────────────
-                   #panels-container is where panelManager appends per-panel
-                   <div class="chart-panel"> elements when a multi-panel layout
-                   is selected. Hidden by default; panelManager flips display
-                   to 'block' inside applyLayout() for layouts != '1'.
-                   ──────────────────────────────────────────────────────────── */}
-              <div id="panels-container" style={{ position: "absolute", inset: 0, display: "none", zIndex: 10, background: "#050028" }} />
 
               {/* Overlays — stay on top of both #chartWrapper and #panels-container */}
               {screenshotFlash && <div onAnimationEnd={()=>setScreenshotFlash(false)} style={{position:"absolute",inset:0,background:"white",animation:"tlrFlash 0.35s ease-out forwards",zIndex:9998,pointerEvents:"none"}}/>}
