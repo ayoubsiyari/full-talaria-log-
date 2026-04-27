@@ -1249,6 +1249,40 @@ const TalariaV8bLive = () => {
     return () => clearInterval(t);
   }, [layoutPanels]);
 
+  // After a layout switch, force EVERY chart instance to fully recompute its
+  // dimensions and re-render axes. chart.resize() bails early when DPR hasn't
+  // changed, so the panel-0 main chart can keep its old axis positions even
+  // though #chartWrapper was resized to half width. Resetting _lastResizeDpr
+  // is the same trick panel-manager.js uses for non-main panels (line 1672).
+  // We also do TWO passes (RAF + ~250ms timeout) because percent-based widths
+  // sometimes report 0×0 on the first frame after a layout change.
+  useEffect(() => {
+    const id = LAYOUT_ID_MAP[layoutPanels.n - 1]?.[layoutPanels.li];
+    if (!id) return;
+    const forceResizeAll = () => {
+      try {
+        if (window.chart && window.chart.resize) {
+          window.chart._lastResizeDpr = 0;
+          window.chart.resize();
+          window.chart.render && window.chart.render();
+        }
+        const pm = window.panelManager;
+        if (pm && Array.isArray(pm.panels)) {
+          pm.panels.forEach((p) => {
+            const pc = p && p.chartInstance;
+            if (!pc || !pc.resize || pc === window.chart) return;
+            pc._lastResizeDpr = 0;
+            pc.resize();
+            pc.render && pc.render();
+          });
+        }
+      } catch (err) { console.warn("[V9 layout] resize-after-apply failed:", err); }
+    };
+    const r1 = requestAnimationFrame(forceResizeAll);
+    const r2 = setTimeout(forceResizeAll, 250);
+    return () => { cancelAnimationFrame(r1); clearTimeout(r2); };
+  }, [layoutPanels]);
+
   // V9 sync toggles → panelManager.syncSettings + saveSyncSettings + the
   // same one-shot side-effects legacy fires when toggles flip on:
   //   - crosshair: window.crosshairSyncEnabled mirror
