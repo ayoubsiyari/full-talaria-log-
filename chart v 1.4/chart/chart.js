@@ -19634,8 +19634,17 @@ class Chart {
     }
 }
 
-// Initialize chart when DOM is ready
-document.addEventListener('DOMContentLoaded', async function() {
+// Expose Chart class synchronously so React can call `new window.Chart()`
+// before our DOMContentLoaded auto-init runs (or instead of it).
+if (typeof window !== 'undefined') {
+    window.Chart = Chart;
+}
+
+// Initialize chart when DOM is ready (or immediately if DOM already loaded).
+// Wrapped as a named idempotent function so React can re-trigger it after
+// it mounts the #chartCanvas element.
+async function _talariaInitializeChart() {
+    if (typeof window !== 'undefined' && window.chart) return window.chart; // idempotent
 
     try {
         if (window.waitForD3 instanceof Promise) {
@@ -19646,6 +19655,12 @@ document.addEventListener('DOMContentLoaded', async function() {
     } catch (error) {
         console.error('❌ Unable to initialize chart because D3 failed to load:', error);
         return;
+    }
+
+    // Bail if the canvas isn't in the DOM yet (React hasn't mounted).
+    // Caller (e.g. React useEffect) will retry after mount.
+    if (!document.getElementById('chartCanvas')) {
+        return null;
     }
 
     // Expose Chart class globally for indicator modules
@@ -19714,4 +19729,21 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (simplePicker && chartInstance.drawingManager) {
         }
     });
-});
+
+    return chartInstance;
+}
+
+// Expose for manual re-trigger (e.g. by React after canvas mounts)
+if (typeof window !== 'undefined') {
+    window.initializeChart = _talariaInitializeChart;
+}
+
+// Auto-init: wait for DOM if still loading, otherwise run immediately.
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _talariaInitializeChart);
+} else {
+    // DOM already parsed (e.g. when chart.js is loaded dynamically by React);
+    // call init now. It will bail safely if #chartCanvas isn't mounted yet,
+    // and the caller can retry after mount.
+    _talariaInitializeChart();
+}
