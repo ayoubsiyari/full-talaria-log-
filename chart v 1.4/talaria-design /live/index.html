@@ -243,10 +243,192 @@
 
     <!-- Indicators: extend Chart.prototype, must load after chart.js. -->
     <script defer src="/chart/modules/chart-indicators-full.js"></script>
+
+    <!-- Panel manager — multi-panel layouts. Must load AFTER chart.js so
+         it can wire scroll-sync against window.chart. The legacy index.html
+         instantiates this inline; V9's bootstrap below does the same. -->
+    <script defer src="/chart/modules/panel-manager.js"></script>
 </head>
 <body>
     <div id="root"></div>
     <!-- Module scripts are deferred too, so this runs AFTER all defers above. -->
     <script type="module" src="./main.jsx"></script>
+
+    <!-- ──────────────────────────────────────────────────────────────────
+         PANEL MANAGER BOOTSTRAP
+         Mirrors legacy chart/index.html (~line 47029-47100 + ~47406):
+           1) Wait until #panels-container is in the DOM (React mounts it),
+              the PanelManager class exists, and window.chart is initialized.
+           2) Instantiate window.panelManager once.
+           3) Listen to 'panelsCreated' and create a Chart instance for each
+              non-main panel using the canvas/svg the panelManager built.
+         All V9-side useEffects in TalariaV8bLive.jsx then drive
+         panelManager.applyLayout() / panelManager.syncSettings normally.
+         ────────────────────────────────────────────────────────────────── -->
+    <script>
+    (function bootstrapPanelManager() {
+        var attempts = 0;
+        var MAX_ATTEMPTS = 200; // ~20s
+        function tryBoot() {
+            var pc = document.getElementById('panels-container');
+            var hasCls = typeof window.PanelManager === 'function';
+            var hasChart = !!window.chart;
+            if (!pc || !hasCls || !hasChart) {
+                if (++attempts < MAX_ATTEMPTS) return setTimeout(tryBoot, 100);
+                console.warn('[V9 panelManager] gave up after', attempts, 'attempts',
+                    { pc: !!pc, PanelManager: hasCls, chart: hasChart });
+                return;
+            }
+            if (window.panelManager) return; // idempotent
+            try {
+                window.panelManager = new window.PanelManager(pc);
+                console.log('[V9 panelManager] initialized');
+            } catch (err) {
+                console.error('[V9 panelManager] failed to construct:', err);
+                return;
+            }
+
+            // Per-panel Chart factory — mirrors legacy initPanelChart.
+            window.initPanelChart = function(panel) {
+                if (!panel) return null;
+                if (panel.isMainChart) return panel.chartInstance;
+                if (!panel.canvas || !panel.svg) return null;
+                if (panel.chartInstance) {
+                    try { panel.chartInstance.resize && panel.chartInstance.resize(); } catch(_){}
+                    try { panel.chartInstance.render && panel.chartInstance.render(); } catch(_){}
+                    return panel.chartInstance;
+                }
+                try {
+                    if (panel.placeholder) panel.placeholder.style.display = 'none';
+                    var pcChart = new window.Chart(panel.canvas, panel.svg, { panelIndex: panel.index });
+                    pcChart.panel = panel;
+                    pcChart.panelIndex = panel.index;
+                    pcChart.isPanel = true;
+                    pcChart.syncCrosshair = true;
+                    if (panel.timeframe) pcChart.currentTimeframe = panel.timeframe;
+
+                    var main = window.chart;
+                    if (main) {
+                        if (main.chartSettings) {
+                            pcChart.chartSettings = JSON.parse(JSON.stringify(main.chartSettings));
+                            if (pcChart.canvas) pcChart.canvas.style.backgroundColor = pcChart.chartSettings.backgroundColor;
+                        }
+                        if (main.cursorType && pcChart.setCursorType) {
+                            try { pcChart.setCursorType(main.cursorType, true); } catch(_){}
+                        }
+                        if (main.replaySystem) pcChart.replaySystem = main.replaySystem;
+                        if (main.orderManager) pcChart.orderManager = main.orderManager;
+                        if (main.rawData && main.rawData.length > 0) {
+                            pcChart.rawData = main.rawData;
+                            try { pcChart.data = pcChart.resampleData(main.rawData, panel.timeframe || '1m'); } catch(_){}
+                            pcChart.currentSymbol = main.currentSymbol;
+                            pcChart.totalCandles = main.totalCandles;
+                        }
+                        // Carry over drawings.
+                        try {
+                            var seed = Array.isArray(main.drawings) ? main.drawings : [];
+                            if ((!seed || !seed.length) && main.drawingManager && Array.isArray(main.drawingManager.drawings)) {
+                                seed = main.drawingManager.drawings.map(function(d){ return d && typeof d.toJSON === 'function' ? d.toJSON() : null; }).filter(Boolean);
+                            }
+                            pcChart.drawings = JSON.parse(JSON.stringify(seed || []));
+                            if (typeof pcChart.redrawDrawings === 'function') pcChart.redrawDrawings();
+                        } catch(_){}
+                    }
+
+                    pcChart._chartViewRestored = false;
+                    try { pcChart.fitToView(); } catch(_){}
+                    try { pcChart.render(); } catch(_){}
+                    if (pcChart.currentSymbol && pcChart.updateChartOHLCSymbol) {
+                        try { pcChart.updateChartOHLCSymbol(pcChart.currentSymbol); } catch(_){}
+                    }
+
+                    panel.chartInstance = pcChart;
+
+                    // Inherit interaction state from main chart.
+                    if (main) {
+                        pcChart.cursorType = main.cursorType || 'cross';
+                        pcChart.showCrosshairLines = main.showCrosshairLines !== false;
+                        pcChart.syncCrosshair = main.syncCrosshair !== false;
+                        pcChart.syncDrawings = main.syncDrawings !== false;
+                        var mMode = main.magnetMode || window.magnetMode || 'off';
+                        pcChart.magnetMode = mMode;
+                        if (pcChart.drawingManager) pcChart.drawingManager.magnetMode = mMode;
+                        if (pcChart.setCursorType) {
+                            try { pcChart.setCursorType(pcChart.cursorType, true); } catch(_){}
+                        }
+                    }
+
+                    if (window.panelManager && window.panelManager.loadPanelSettings) {
+                        try { window.panelManager.loadPanelSettings(panel.index); } catch(_){}
+                    }
+
+                    requestAnimationFrame(function() {
+                        if (pcChart && pcChart.resize) {
+                            pcChart._lastResizeDpr = 0;
+                            try { pcChart.resize(); } catch(_){}
+                            pcChart._chartViewRestored = false;
+                            try { pcChart.fitToView(); } catch(_){}
+                            try { pcChart.render(); } catch(_){}
+                        }
+                        if (window.panelManager && typeof window.panelManager.restorePanelChartState === 'function') {
+                            try { window.panelManager.restorePanelChartState(panel.index); } catch(_){}
+                        }
+                    });
+
+                    if (typeof ResizeObserver !== 'undefined' && panel.chartContainer) {
+                        var ro = new ResizeObserver(function() {
+                            if (pcChart && pcChart.resize) { try { pcChart.resize(); pcChart.render(); } catch(_){} }
+                        });
+                        ro.observe(panel.chartContainer);
+                        panel.resizeObserver = ro;
+                    }
+
+                    return pcChart;
+                } catch (err) {
+                    console.error('[V9 initPanelChart] failed:', err);
+                    return null;
+                }
+            };
+
+            // Compatibility shim used by panel-manager internals on layout switch.
+            window.renderPanelChart = function(panel /*, sourceData */) {
+                if (!panel) return;
+                if (!panel.chartInstance) window.initPanelChart(panel);
+            };
+
+            window.addEventListener('panelsCreated', function(event) {
+                var panels = (event && event.detail && event.detail.panels) || [];
+                setTimeout(function() {
+                    if (window.chart && window.chart.data && window.chart.data.length > 0) {
+                        panels.forEach(function(panel) { window.initPanelChart(panel); });
+                    }
+                    if (window.chart && window.chart.orderManager
+                        && typeof window.chart.orderManager.syncOrderVisualsToActiveChart === 'function') {
+                        try { window.chart.orderManager.syncOrderVisualsToActiveChart(); } catch(_){}
+                    }
+                }, 200);
+            });
+
+            // panelDrawingSync stub matching legacy (drawing sync is handled
+            // inside Chart.broadcastDrawingChange / Chart.receiveDrawingChange).
+            if (!window.panelDrawingSync) {
+                window.panelDrawingSync = {
+                    enabled: true,
+                    hasSameSymbol: function() { return true; },
+                    syncDrawing: function() {},
+                    syncAllDrawings: function() {},
+                    isSameDrawing: function() { return false; },
+                    normalizeDrawingForTarget: function(d) { return d; }
+                };
+            }
+        }
+        // Kick off after the deferred scripts have run.
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', tryBoot);
+        } else {
+            tryBoot();
+        }
+    })();
+    </script>
 </body>
 </html>

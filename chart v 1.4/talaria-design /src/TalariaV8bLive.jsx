@@ -9762,50 +9762,56 @@ const TalariaV8bLive = () => {
         </div>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative" }}>
           <div style={{ flex: 1, position: "relative", background: c.bg, display: "flex" }}>
-            <div ref={chartCanvasRef}
+            <div ref={chartCanvasRef} id="chart-container"
               style={{ flex: 1, position: "relative", overflow: "hidden", userSelect:"none", cursor: rollback?"none":"default" }}>
-              {/* Screenshot flash */}
-              {screenshotFlash && <div onAnimationEnd={()=>setScreenshotFlash(false)} style={{position:"absolute",inset:0,background:"white",animation:"tlrFlash 0.35s ease-out forwards",zIndex:9998,pointerEvents:"none"}}/>}
-              {/* Rollback line — IS the cursor when rollback active */}
-              {rollback&&<div ref={rollbackLineRef} style={{position:"absolute",top:0,bottom:0,left:0,width:1,opacity:0,willChange:"transform",background:c.acL,boxShadow:`0 0 6px ${c.acL}, 0 0 16px ${c.acG}`,zIndex:22,pointerEvents:"none"}}/>}
-              {/* Overlay — callback ref attaches native listener immediately on mount, no React event overhead */}
-              {rollback&&<div ref={(node)=>{ if(!node&&rollbackOverlayRef.current?._rbCleanup){rollbackOverlayRef.current._rbCleanup();}rollbackOverlayCallbackRef(node); }} style={{position:"absolute",inset:0,zIndex:21,cursor:"none"}}/>}
               {/* ────────────────────────────────────────────────────────────────
-                   LIVE CHART MOUNT POINT
-                   chart.js (loaded as <script> in live/index.html) finds these
-                   IDs and renders the real chart. The OHLC overlay above and
-                   the rollback overlays still sit on top via z-index.
-                   The mock grid lines + V9 price-line decorations were removed
-                   here because chart.js draws its own grid/crosshair/price line.
+                   #chartWrapper holds the SINGLE-panel chart (default layout).
+                   panelManager.applyLayout() hides this when switching to a
+                   multi-panel layout and restores it when going back to '1'.
                    ──────────────────────────────────────────────────────────── */}
-              <canvas id="chartCanvas" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", background: "transparent" }} />
-              <svg id="drawingSvg" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
-              <div id="priceAxisZone" style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 0, background: "transparent", zIndex: 5, cursor: "ns-resize" }} />
-              <div id="timeAxisZone"  style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 0, background: "transparent", zIndex: 5, cursor: "ew-resize" }} />
+              <div id="chartWrapper" className="chart-wrapper" style={{ position: "absolute", inset: 0 }}>
+                <canvas id="chartCanvas" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", background: "transparent" }} />
+                <svg id="drawingSvg" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
+                <div id="priceAxisZone" style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 0, background: "transparent", zIndex: 5, cursor: "ns-resize" }} />
+                <div id="timeAxisZone"  style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 0, background: "transparent", zIndex: 5, cursor: "ew-resize" }} />
 
-              {/* Crosshair elements — chart.js positions these on mousemove */}
-              <div className="crosshair-vertical" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />
-              <div className="crosshair-horizontal" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />
-              <div className="price-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
-              <div className="time-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
+                {/* Crosshair elements — chart.js positions these on mousemove */}
+                <div className="crosshair-vertical" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />
+                <div className="crosshair-horizontal" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />
+                <div className="price-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
+                <div className="time-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
 
-              {/* OHLC Info Panel — IDs match what chart.js expects so it updates these on hover */}
-              <div id="ohlcInfo" style={{ position: "absolute", top: 8, left: 10, zIndex: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                  <span id="chartSymbol" style={{ fontSize: 13, fontWeight: 700 }}>{symbol}</span>
-                  <span id="chartTimeframe" style={{ fontSize: 11, color: c.tm }}>1m</span>
-                  <div onClick={(e) => { e.stopPropagation(); setRollback(!rollback); }} style={{ cursor: "default", opacity: rollback ? 1 : 0.4, display: "flex", alignItems: "center", gap: 3 }}>
-                    <I n="rollback" s={13} cl={rollback ? c.gn : c.rd}/>
-                    <span style={{ fontSize: 12, color: rollback ? c.gn : c.rd, fontWeight: 700 }}>{rollback ? "RB" : "LOCKED"}</span>
+                {/* OHLC Info Panel — IDs match what chart.js expects so it updates these on hover */}
+                <div id="ohlcInfo" style={{ position: "absolute", top: 8, left: 10, zIndex: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                    <span id="chartSymbol" style={{ fontSize: 13, fontWeight: 700 }}>{symbol}</span>
+                    <span id="chartTimeframe" style={{ fontSize: 11, color: c.tm }}>1m</span>
+                    <div onClick={(e) => { e.stopPropagation(); setRollback(!rollback); }} style={{ cursor: "default", opacity: rollback ? 1 : 0.4, display: "flex", alignItems: "center", gap: 3 }}>
+                      <I n="rollback" s={13} cl={rollback ? c.gn : c.rd}/>
+                      <span style={{ fontSize: 12, color: rollback ? c.gn : c.rd, fontWeight: 700 }}>{rollback ? "RB" : "LOCKED"}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, fontSize: 13 }}>
+                    <span style={{ color: c.tm, fontWeight: 600 }}>O <span id="open" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
+                    <span style={{ color: c.tm, fontWeight: 600 }}>H <span id="high" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
+                    <span style={{ color: c.tm, fontWeight: 600 }}>L <span id="low" style={{ color: c.rd, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
+                    <span style={{ color: c.tm, fontWeight: 600 }}>C <span id="close" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 8, fontSize: 13 }}>
-                  <span style={{ color: c.tm, fontWeight: 600 }}>O <span id="open" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
-                  <span style={{ color: c.tm, fontWeight: 600 }}>H <span id="high" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
-                  <span style={{ color: c.tm, fontWeight: 600 }}>L <span id="low" style={{ color: c.rd, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
-                  <span style={{ color: c.tm, fontWeight: 600 }}>C <span id="close" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
-                </div>
               </div>
+
+              {/* ────────────────────────────────────────────────────────────────
+                   #panels-container is where panelManager appends per-panel
+                   <div class="chart-panel"> elements when a multi-panel layout
+                   is selected. Hidden by default; panelManager flips display
+                   to 'block' inside applyLayout() for layouts != '1'.
+                   ──────────────────────────────────────────────────────────── */}
+              <div id="panels-container" style={{ position: "absolute", inset: 0, display: "none", zIndex: 10, background: "#050028" }} />
+
+              {/* Overlays — stay on top of both #chartWrapper and #panels-container */}
+              {screenshotFlash && <div onAnimationEnd={()=>setScreenshotFlash(false)} style={{position:"absolute",inset:0,background:"white",animation:"tlrFlash 0.35s ease-out forwards",zIndex:9998,pointerEvents:"none"}}/>}
+              {rollback&&<div ref={rollbackLineRef} style={{position:"absolute",top:0,bottom:0,left:0,width:1,opacity:0,willChange:"transform",background:c.acL,boxShadow:`0 0 6px ${c.acL}, 0 0 16px ${c.acG}`,zIndex:22,pointerEvents:"none"}}/>}
+              {rollback&&<div ref={(node)=>{ if(!node&&rollbackOverlayRef.current?._rbCleanup){rollbackOverlayRef.current._rbCleanup();}rollbackOverlayCallbackRef(node); }} style={{position:"absolute",inset:0,zIndex:21,cursor:"none"}}/>}
             </div>
             {/* V9 mock price axis div removed — chart.js draws the real
                 price axis on the right edge of #chartCanvas. Adding back a
