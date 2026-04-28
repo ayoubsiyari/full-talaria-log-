@@ -8496,7 +8496,7 @@ class Chart {
 
             // Fallback: compute with event position when available.
             if (event && this.canvas) {
-                const rect = this.canvas.getBoundingClientRect();
+                const rect = this._pointerLayoutRect();
                 const mx = event.clientX - rect.left;
                 const my = event.clientY - rect.top;
                 const eventDistance = Math.hypot(mx - this.boxZoom.startX, my - this.boxZoom.startY);
@@ -11390,7 +11390,7 @@ class Chart {
     }
 
     zoomAtCenter(factor) {
-        const rect = this.canvas.getBoundingClientRect();
+        const rect = this._pointerLayoutRect();
         const centerX = rect.width / 2;
         const centerY = rect.height / 2;
         
@@ -13439,7 +13439,19 @@ class Chart {
     }
     
     /**
-     * Pointer in canvas CSS px (same as updateCrosshair). Prefer over d3.pointer(..., svg).
+     * Box for screen→chart local X/Y. Must be `canvas.parentElement` (chart wrapper): crosshair
+     * and other overlays are `position:absolute` in that node. Safari can shift the <canvas>
+     * box relative to the wrapper, so using canvas.getBoundingClientRect() misaligns the +
+     * from the crosshair; resize() also keys this.w/this.h off the same parent.
+     */
+    _pointerLayoutRect() {
+        const wrap = this.canvas && this.canvas.parentElement;
+        if (wrap) return wrap.getBoundingClientRect();
+        return this.canvas ? this.canvas.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+    }
+
+    /**
+     * Pointer in chart layout CSS px (same as updateCrosshair). Prefer over d3.pointer(..., svg).
      */
     _eventCanvasLocalXY(event) {
         if (!this.canvas || !event) return [0, 0];
@@ -13453,7 +13465,7 @@ class Chart {
             }
         }
         if (!Number.isFinite(cx) || !Number.isFinite(cy)) return [0, 0];
-        const r = this.canvas.getBoundingClientRect();
+        const r = this._pointerLayoutRect();
         return [cx - r.left, cy - r.top];
     }
     
@@ -14016,7 +14028,7 @@ class Chart {
             // No zoom if we have no data
             if (!this.data || this.data.length === 0) return;
 
-            const rect = this.canvas.getBoundingClientRect();
+            const rect = this._pointerLayoutRect();
             const mx = e.clientX - rect.left;
             const my = e.clientY - rect.top;
             const m = this.margin;
@@ -14153,7 +14165,7 @@ class Chart {
             if (this.tool) return;
             if (this.drawingManager && this.drawingManager.currentTool) return;
             
-            const rect = this.canvas.getBoundingClientRect();
+            const rect = this._pointerLayoutRect();
             const mx = e.clientX - rect.left;
             const my = e.clientY - rect.top;
             const mode = detectCursorMode(mx, my);
@@ -14264,7 +14276,7 @@ class Chart {
         // STEP 3 — Pan Logic (mousemove) + STEP 2 — Cursor Mode Update
         // ═══════════════════════════════════════════════════════════════════
         this.canvas.addEventListener('mousemove', e => {
-            const rect = this.canvas.getBoundingClientRect();
+            const rect = this._pointerLayoutRect();
             const mx = e.clientX - rect.left;
             const my = e.clientY - rect.top;
             
@@ -14492,7 +14504,7 @@ class Chart {
 
             // If mousemove events were missed, compute final right-drag distance from mouseup.
             if (dragType === 'boxZoom' && this.boxZoom.active && this.canvas) {
-                const rect = this.canvas.getBoundingClientRect();
+                const rect = this._pointerLayoutRect();
                 const mx = e.clientX - rect.left;
                 const my = e.clientY - rect.top;
                 this.boxZoom.endX = mx;
@@ -14582,7 +14594,7 @@ class Chart {
                         const pm = window.panelManager;
                         if (pm && pm.syncSettings && pm.syncSettings.time && pm.currentLayout !== '1'
                             && this.data && this.data.length) {
-                            const rect = this.canvas.getBoundingClientRect();
+                            const rect = this._pointerLayoutRect();
                             const mx = e.clientX - rect.left;
                             const my = e.clientY - rect.top;
                             const mode = detectCursorMode(mx, my);
@@ -14690,7 +14702,7 @@ class Chart {
             // Keep right-drag box-zoom tracking in capture phase so we don't miss
             // movement when another layer consumes bubble-phase mousemove events.
             if (this.drag && this.drag.active && this.drag.type === 'boxZoom' && this.boxZoom && this.boxZoom.active && this.canvas) {
-                const rect = this.canvas.getBoundingClientRect();
+                const rect = this._pointerLayoutRect();
                 this.boxZoom.endX = e.clientX - rect.left;
                 this.boxZoom.endY = e.clientY - rect.top;
                 const dragDistance = Math.hypot(
@@ -14704,7 +14716,7 @@ class Chart {
 
             // Continue axis/pan drags even when mouse is outside the canvas
             if (this.drag && this.drag.active && this.canvas) {
-                const rect = this.canvas.getBoundingClientRect();
+                const rect = this._pointerLayoutRect();
                 const mx = e.clientX - rect.left;
                 const my = e.clientY - rect.top;
                 const isOutside = e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom;
@@ -14769,7 +14781,7 @@ class Chart {
             if (typeof this.updateCrosshair === 'function') this.updateCrosshair(e);
 
             if (this.canvas && !this.isPanel) {
-                const rect = this.canvas.getBoundingClientRect();
+                const rect = this._pointerLayoutRect();
                 const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
                 if (!inside && typeof this.hideEconomicCalendarTooltip === 'function') {
                     this.hideEconomicCalendarTooltip();
@@ -14780,7 +14792,7 @@ class Chart {
         // Bubble phase: run after canvas mousemove so cursor can show pointer over calendar flags (SVG may sit above canvas).
         document.addEventListener('mousemove', (e) => {
             if (!this.canvas || this.isPanel) return;
-            const rect = this.canvas.getBoundingClientRect();
+            const rect = this._pointerLayoutRect();
             const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
             if (!inside) {
                 if (typeof this.hideEconomicCalendarTooltip === 'function') this.hideEconomicCalendarTooltip();
@@ -14807,7 +14819,7 @@ class Chart {
         // Double-click on Axis → Auto-scale and LOCK (TradingView style)
         // ═══════════════════════════════════════════════════════════════════
         this.canvas.addEventListener('dblclick', e => {
-            const rect = this.canvas.getBoundingClientRect();
+            const rect = this._pointerLayoutRect();
             const mx = e.clientX - rect.left;
             const my = e.clientY - rect.top;
             const mode = this.cursor.mode || detectCursorMode(mx, my);
@@ -16444,7 +16456,7 @@ class Chart {
             return;
         }
 
-        const rect = this.canvas.getBoundingClientRect();
+        const rect = this._pointerLayoutRect();
         const syntheticEvent = {
             clientX: rect.left + this.mouseX,
             clientY: rect.top + this.mouseY,
@@ -16474,7 +16486,7 @@ class Chart {
             }
         }
 
-        const rect = this.canvas.getBoundingClientRect();
+        const rect = this._pointerLayoutRect();
         const x = e.clientX - rect.left, y = e.clientY - rect.top;
         const m = this.margin;
 
@@ -16813,7 +16825,7 @@ class Chart {
             return;
         }
         
-        const rect = this.canvas.getBoundingClientRect();
+        const rect = this._pointerLayoutRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         const m = this.margin;
@@ -17732,7 +17744,7 @@ class Chart {
         if (textEditor && typeof textEditor.show === 'function') {
             const x = this.dataIndexToPixel(drawing.x);
             const y = this.yScale(drawing.y);
-            const rect = this.canvas.getBoundingClientRect();
+            const rect = this._pointerLayoutRect();
             const editX = rect.left + x + window.scrollX;
             const editY = rect.top + y - 20 + window.scrollY;
 
@@ -17776,7 +17788,7 @@ class Chart {
         // Calculate position on screen
         const x = this.dataIndexToPixel(drawing.x);
         const y = this.yScale(drawing.y);
-        const rect = this.canvas.getBoundingClientRect();
+        const rect = this._pointerLayoutRect();
         
         // Create inline text input
         const editor = d3.select('body').append('div')

@@ -2997,7 +2997,9 @@ class DrawingToolsManager {
         }
         if (!Number.isFinite(cx) || !Number.isFinite(cy)) return fallback();
 
-        const rect = canvas.getBoundingClientRect();
+        const rect = (this.chart && typeof this.chart._pointerLayoutRect === 'function')
+            ? this.chart._pointerLayoutRect()
+            : (canvas.parentElement || canvas).getBoundingClientRect();
         return [cx - rect.left, cy - rect.top];
     }
 
