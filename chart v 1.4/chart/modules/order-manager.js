@@ -16161,6 +16161,8 @@ class OrderManager {
         const multipleTPEnabled = document.getElementById('multipleTPToggle')?.checked || false;
         
         if (tpEnabled && multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
+            // Default 0-price targets to stacked levels beyond the current TP band (not entry badges)
+            this._ensureUnsetMultiTPPreviewPrices(tpPrice);
             // Draw full lines for targets that have a price set
             const tpColors = ['#089981', '#089981', '#089981', '#089981', '#089981'];
             const isBuyPv = (this.orderSide || 'BUY') === 'BUY';
@@ -17308,6 +17310,60 @@ class OrderManager {
         if (lineData.labelGroup) {
             lineData.labelGroup.call(drag);
         }
+    }
+
+    /**
+     * When multi-TP rows have price 0, default them to real levels beyond the furthest priced TP
+     * (BUY: above max TP; SELL: below min TP) so the chart draws normal TP lines — not entry-stacked
+     * badges, which look wrong with multi-entry (badges sit on primary entry, not Avg Entry / TP band).
+     * @param {number} fallbackSingleTpPrice — already-resolved #tpPrice from updatePreviewLines (or 0)
+     * @returns {boolean} true if any target was updated
+     */
+    _ensureUnsetMultiTPPreviewPrices(fallbackSingleTpPrice) {
+        if (!this.tpTargets || this.tpTargets.length === 0) return false;
+        const unsetIdxs = this.tpTargets
+            .map((t, i) => (t && !(parseFloat(t.price) > 0) ? i : -1))
+            .filter((i) => i >= 0);
+        if (unsetIdxs.length === 0) return false;
+
+        const isBuy = (this.orderSide || 'BUY') === 'BUY';
+        const pip = this.pipSize > 0 ? this.pipSize : 0.0001;
+        const refEntry = this._getReferenceEntryForOrderMath();
+        if (!(refEntry > 0)) return false;
+
+        const priced = this.tpTargets.filter((t) => t && parseFloat(t.price) > 0);
+        let anchor = 0;
+        if (priced.length > 0) {
+            const px = priced.map((t) => t.price);
+            anchor = isBuy ? Math.max(...px) : Math.min(...px);
+        } else {
+            const tpd = parseFloat(
+                (Number(fallbackSingleTpPrice) > 0
+                    ? fallbackSingleTpPrice
+                    : document.getElementById('tpPrice')?.value) || '0'
+            );
+            if (tpd > 0) anchor = tpd;
+        }
+        if (!(anchor > 0)) return false;
+
+        const dist = Math.abs(anchor - refEntry);
+        const step = Math.max(pip * 5, dist * 0.12, pip);
+        const pr = this.getPricePrecision();
+        let changed = false;
+        unsetIdxs.forEach((idx, j) => {
+            const k = j + 1;
+            const raw = isBuy ? anchor + step * k : anchor - step * k;
+            const p = parseFloat(raw.toFixed(pr));
+            if (!(p > 0)) return;
+            this.tpTargets[idx].price = p;
+            const priceInput = document.getElementById(`tpTarget${this.tpTargets[idx].id}Price`);
+            if (priceInput) priceInput.value = this.formatPrice(p);
+            changed = true;
+        });
+        if (changed) {
+            this.renderTPTargets();
+        }
+        return changed;
     }
 
     /**

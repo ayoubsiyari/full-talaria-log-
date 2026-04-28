@@ -13813,11 +13813,49 @@ const TalariaV8bLive = () => {
               }
               setTpRows((rows) => (rows.length > 1 ? rows.filter((r) => r.id !== id) : rows));
             };
+            /** Stack new TP above furthest priced TP (buy) / below (sell) — matches order-manager _ensureUnsetMultiTPPreviewPrices. */
+            const defaultPriceForNewTp = (prevTpRows) => {
+              const om = window.chart?.orderManager;
+              const isBuy = buySell === "buy";
+              const pip = om?.pipSize > 0 ? om.pipSize : 0.0001;
+              let refEntry = parseFloat(document.getElementById("orderEntryPrice")?.value || "0");
+              if (om?.isMultiEntryMode && typeof om._calcMultiEntryAvgPrice === "function") {
+                const avg = om._calcMultiEntryAvgPrice();
+                if (avg > 0) refEntry = avg;
+              }
+              const pricedPrev = prevTpRows.filter((r) => parseFloat(r.price) > 0);
+              const prec =
+                typeof om?.getPricePrecision === "function" ? om.getPricePrecision() : 5;
+              if (pricedPrev.length > 0) {
+                const px = pricedPrev.map((r) => parseFloat(r.price));
+                const band = isBuy ? Math.max(...px) : Math.min(...px);
+                const dist = Math.abs(band - refEntry);
+                const step = Math.max(pip * 5, dist * 0.12, pip);
+                const raw = isBuy ? band + step : band - step;
+                if (!Number.isFinite(raw) || !(raw > 0)) return "";
+                const rounded = parseFloat(raw.toFixed(prec));
+                return om?.formatPrice ? om.formatPrice(rounded) : String(rounded);
+              }
+              const tpd = parseFloat(document.getElementById("tpPrice")?.value || "0");
+              if (tpd > 0 && refEntry > 0) {
+                const dist = Math.abs(tpd - refEntry);
+                const step = Math.max(pip * 5, dist * 0.12, pip);
+                const raw = isBuy ? tpd + step : tpd - step;
+                const rounded = parseFloat(raw.toFixed(prec));
+                if (!(rounded > 0)) return "";
+                return om?.formatPrice ? om.formatPrice(rounded) : String(rounded);
+              }
+              return "";
+            };
             const addTp = () => {
               omPanelBridgeRef.current.tpAdd = Date.now();
               setTpRows((rows) => {
+                const initPx = defaultPriceForNewTp(rows);
                 const n = rows.length + 1;
-                const next = [...rows, { id: Date.now(), price: "0", qty: "0", enabled: true }];
+                const next = [
+                  ...rows,
+                  { id: Date.now(), price: initPx || "0", qty: "0", enabled: true },
+                ];
                 const prevSum = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
                 if (sizeMode === "%") {
                   const base = Math.floor(100 / n);
