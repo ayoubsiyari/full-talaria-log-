@@ -7299,6 +7299,30 @@ class OrderManager {
                 }
                 .order-panel.visible { right: 0; pointer-events: auto; }
 
+                /* V9 live shell: dock #orderPanel inside React rail (#v9OrderPanelMount) */
+                .order-panel.order-panel--v9-docked {
+                    position: absolute !important;
+                    left: 0 !important;
+                    top: 0 !important;
+                    right: auto !important;
+                    bottom: 0 !important;
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    height: 100% !important;
+                    transition: none !important;
+                    transform: none !important;
+                    box-shadow: none !important;
+                    border-left: none !important;
+                    z-index: 1 !important;
+                    pointer-events: auto !important;
+                }
+                .order-panel.order-panel--v9-docked.visible {
+                    right: auto !important;
+                }
+                .order-panel.order-panel--v9-docked .order-panel__edge-handle {
+                    display: none !important;
+                }
+
                 /* ── EDGE HANDLE ─────────────────────────────────────────────────── */
                 .order-panel__edge-handle {
                     position: absolute;
@@ -11954,6 +11978,23 @@ class OrderManager {
     }
     
     /**
+     * Move #orderPanel between document.body and #v9OrderPanelMount when the V9 live
+     * shell has the order rail open (window.__talariaV9OrderRailOpen).
+     */
+    syncOrderPanelMountTarget() {
+        const panel = document.getElementById('orderPanel');
+        if (!panel) return;
+        const mount = document.getElementById('v9OrderPanelMount');
+        const useMount = typeof window !== 'undefined' && window.__talariaV9OrderRailOpen
+            && mount && mount.isConnected;
+        const target = useMount ? mount : document.body;
+        panel.classList.toggle('order-panel--v9-docked', !!useMount);
+        if (panel.parentElement !== target) {
+            target.appendChild(panel);
+        }
+    }
+
+    /**
      * Toggle order panel visibility
      */
     toggleOrderPanel() {
@@ -11963,6 +12004,9 @@ class OrderManager {
         if (!panel) return;
 
         const isVisible = panel.classList.contains('visible');
+        const v9OrderRail = typeof document !== 'undefined'
+            && document.getElementById('v9OrderPanelMount')?.isConnected
+            && typeof window !== 'undefined' && window.__talariaV9OrderRailOpen;
 
         const chartWrapper = document.getElementById('chartWrapper');
         const _resizeChartsAfterDrawer = () => {
@@ -11982,8 +12026,10 @@ class OrderManager {
             // Close panel
             panel.classList.remove('visible');
             if (backdrop) backdrop.classList.remove('visible');
-            if (chartWrapper) { chartWrapper.classList.remove('order-panel-open'); chartWrapper.classList.remove('settings-open'); }
-            document.body.classList.remove('settings-open');
+            if (!v9OrderRail) {
+                if (chartWrapper) { chartWrapper.classList.remove('order-panel-open'); chartWrapper.classList.remove('settings-open'); }
+                document.body.classList.remove('settings-open');
+            }
             setTimeout(_resizeChartsAfterDrawer, 290);
 
             // Remove preview lines when panel closes
@@ -12003,6 +12049,9 @@ class OrderManager {
             if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
                 try { this.chart.updateSVGPointerEvents(); } catch (_e) { /* ignore */ }
             }
+            try {
+                window.dispatchEvent(new CustomEvent('talaria:order-panel-visibility', { detail: { open: false } }));
+            } catch (_e) { /* ignore */ }
             return;
         }
 
@@ -12012,8 +12061,10 @@ class OrderManager {
         // Open panel
         panel.classList.add('visible');
         if (backdrop) backdrop.classList.add('visible');
-        if (chartWrapper) { chartWrapper.classList.add('order-panel-open'); chartWrapper.classList.add('settings-open'); }
-        document.body.classList.add('settings-open');
+        if (!v9OrderRail) {
+            if (chartWrapper) { chartWrapper.classList.add('order-panel-open'); chartWrapper.classList.add('settings-open'); }
+            document.body.classList.add('settings-open');
+        }
         setTimeout(_resizeChartsAfterDrawer, 290);
 
         // New order draft: drop multi-entry rows from the last session (preview was cleared on close).
@@ -12079,6 +12130,10 @@ class OrderManager {
                 }
             });
         }, 100);
+
+        try {
+            window.dispatchEvent(new CustomEvent('talaria:order-panel-visibility', { detail: { open: true } }));
+        } catch (_e) { /* ignore */ }
     }
 
     /**
