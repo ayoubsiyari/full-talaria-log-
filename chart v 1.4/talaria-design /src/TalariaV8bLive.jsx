@@ -1795,7 +1795,8 @@ const TalariaV8bLive = () => {
       ch.data?.[0]?.t;
     if (!Number.isFinite(t)) return null;
     const d = new Date(t);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    // Use UTC calendar parts so presets/session times align with chart bar timestamps (ms since epoch).
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
   };
 
   const executeGotoItem = (item) => {

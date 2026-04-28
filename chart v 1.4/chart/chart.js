@@ -10190,23 +10190,35 @@ class Chart {
             };
             this._panLoading = false;
 
-            this._ingestSmartWindowResult(result, {});
+            // Replay Go-To: same as backtest ingest — skip fitToView + full-dataset indicators.
+            // Otherwise fitToView runs on the entire /smart batch (often 100k+ bars), price axis + offset
+            // align to that full range, then seek slices to a short prefix → gaps, wrong price labels,
+            // and status/crosshair time desync until the next full rerender.
+            const ingestOpts = usingReplay
+                ? { skipIndicators: true, skipFitToView: true }
+                : {};
+            this._ingestSmartWindowResult(result, ingestOpts);
 
             if (usingReplay && this.replaySystem && this.replaySystem.isActive) {
-                this.replaySystem.fullRawData = Array.isArray(this.rawData) ? [...this.rawData] : [];
-                this.replaySystem.rawTimeframe = requestTimeframe;
-                this.replaySystem._fullRawDataMatchesTF = false;
+                const rs = this.replaySystem;
+                rs.fullRawData = Array.isArray(this.rawData) ? [...this.rawData] : [];
+                rs.rawTimeframe = requestTimeframe;
+                rs._fullRawDataMatchesTF = false;
 
-                if (this.replaySystem.fullRawData.length > 0) {
-                    this.replaySystem.currentIndex = 0;
-                    this.replaySystem.replayStartTimestamp = this.replaySystem.fullRawData[0].t;
-                    this.replaySystem.replayEndTimestamp = this.replaySystem.fullRawData[this.replaySystem.fullRawData.length - 1].t;
-                    this.replaySystem.replayTimestamp = this.replaySystem.fullRawData[0].t;
-                    this.replaySystem.tickElapsedMs = 0;
+                if (rs.fullRawData.length > 0) {
+                    rs.replayStartTimestamp = rs.fullRawData[0].t;
+                    rs.replayEndTimestamp = rs.fullRawData[rs.fullRawData.length - 1].t;
+                    // Do not reset currentIndex / replayTimestamp to the start of the new window — that
+                    // leaves the chart in an inconsistent state until jumpToTimestamp runs; seek will set them.
+                    const n = rs.fullRawData.length;
+                    if (rs.currentIndex >= n) rs.currentIndex = Math.max(0, n - 1);
+                    rs.tickElapsedMs = 0;
+                    rs.animatingCandle = null;
+                    rs.tickProgress = 0;
                 }
 
-                if (typeof this.replaySystem.updateSliderRange === 'function') {
-                    this.replaySystem.updateSliderRange();
+                if (typeof rs.updateSliderRange === 'function') {
+                    rs.updateSliderRange();
                 }
             }
 
@@ -10392,11 +10404,12 @@ class Chart {
             if (!skipWindowFetch && this.currentFileId && (forceWindowReload || targetOutsideLoadedRange)) {
                 const loaded = await this.ensureGoToWindowContainsTimestamp(normalizedTarget, { usingReplay });
                 if (loaded) {
-                    return this.jumpToTimestamp(normalizedTarget, {
+                    await this.jumpToTimestamp(normalizedTarget, {
                         skipWindowFetch: true,
                         forceWindowReload: false,
                         showLoadingOverlay: false
                     });
+                    return;
                 }
             }
 
