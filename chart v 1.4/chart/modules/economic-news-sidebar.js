@@ -36,7 +36,37 @@
         return window.chart || window.mainChart || null;
     }
 
-    /** Wall clock or replay virtual instant (ms) — used as "now" for calendar UI. */
+    /**
+     * Time at the right edge of the chart viewport, clamped to loaded bars only (no extrapolation),
+     * so "now" matches what the user sees as the latest candle.
+     */
+    function chartViewportEndTimeMs(ch) {
+        if (!ch || !Array.isArray(ch.data) || ch.data.length === 0) return NaN;
+        var data = ch.data;
+        var maxIdx = data.length - 1;
+        var m = ch.margin || { l: 0, r: 0 };
+        var w = ch.w;
+        var idx = maxIdx;
+        if (typeof ch.pixelToDataIndex === 'function' && Number.isFinite(w) && w > 0) {
+            var plotRight = w - m.r;
+            var raw = ch.pixelToDataIndex(plotRight);
+            if (Number.isFinite(raw)) {
+                idx = raw;
+            }
+        }
+        idx = Math.max(0, Math.min(maxIdx, idx));
+        if (typeof ch.estimateTimestampForDataIndex === 'function') {
+            var t = ch.estimateTimestampForDataIndex(idx);
+            if (Number.isFinite(t)) return t;
+        }
+        var bar = data[idx];
+        return (bar && Number.isFinite(bar.t)) ? bar.t : NaN;
+    }
+
+    /**
+     * "Now" for calendar UI: replay virtual time when replay is active; otherwise the chart viewport's
+     * latest visible bar time (not wall clock). Keeps Previous / Upcoming / countdowns aligned with candles.
+     */
     function referenceNowMs() {
         var ch = mainChart();
         var rs = ch && ch.replaySystem;
@@ -53,6 +83,10 @@
             if (Array.isArray(cd) && cd.length && Number.isFinite(idx) && cd[idx] && Number.isFinite(cd[idx].t)) {
                 return cd[idx].t;
             }
+        }
+        if (ch && Array.isArray(ch.data) && ch.data.length > 0) {
+            var tView = chartViewportEndTimeMs(ch);
+            if (Number.isFinite(tView)) return tView;
         }
         return Date.now();
     }
