@@ -41,6 +41,56 @@ function isWebKitSafariUA() {
     && !/\b(FxiOS|CriOS|EdgiOS)\b/i.test(ua);
 }
 
+/** PRE variables from `chart.backtestingSession` — same filter as order-manager.js `_getPreTradeVariableDefs`. */
+function getPreTradeVariablesFromSession(chart) {
+  try {
+    const sess = chart?.backtestingSession || {};
+    const raw = sess.strategy_variables;
+    const list = Array.isArray(raw) ? raw : (sess.strategy_definition?.variables || []);
+    return list.filter((v) => v && v.type === 'variable' && v.timing === 'pre');
+  } catch (_) {
+    return [];
+  }
+}
+
+function snapshotPreTradeStrategySig(chart) {
+  try {
+    const pre = getPreTradeVariablesFromSession(chart);
+    return JSON.stringify(
+      pre.map((v) => ({
+        id: v.id,
+        name: v.name,
+        vtype: v.vtype,
+        timing: v.timing,
+        options: v.options,
+      }))
+    );
+  } catch (_) {
+    return '';
+  }
+}
+
+/** Maps Strategies Lab PRE vars to the rail tag shape (labels / bool vs multi — UI unchanged). */
+function sessionPreTradeVarsToTagDefs(chart) {
+  const pre = getPreTradeVariablesFromSession(chart);
+  return pre.map((v, idx) => {
+    const id = String(v.id || v.name || '').trim() || `pre_var_${idx}`;
+    const isMulti = v.vtype === 'multi';
+    const options =
+      isMulti && Array.isArray(v.options) && v.options.length
+        ? v.options.map(String)
+        : isMulti
+          ? ['—']
+          : [];
+    return {
+      id,
+      label: v.name || 'Variable',
+      type: isMulti ? 'multi' : 'bool',
+      options,
+    };
+  });
+}
+
 // ── Color Picker Popup ───────────────────────────────────────────────────────
 const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange, onAChange, onHexChange, onClose, onDragStart, dragging, animation, hideAlpha }) => {
   const rgb = hsvToRgb(h, s, v);
@@ -362,14 +412,14 @@ const TalariaV8bLive = () => {
   /** Multi-TP footer: total size (#orderQuantity) + WAP — matches chart "Avg TP … lots" + weighted price. */
   const [omTpAvgLotsTxt, setOmTpAvgLotsTxt] = useState("");
   const [omTpWapPriceTxt, setOmTpWapPriceTxt] = useState("");
-  const [tagDefs] = useState([
-    { id:"setup",     label:"Setup OK",    type:"bool" },
-    { id:"htf",       label:"HTF Bias",    type:"bool" },
-    { id:"direction", label:"Direction",   type:"multi", options:["With Trend","Counter","Range"] },
-    { id:"session",   label:"Session",     type:"multi", options:["London","NY","Overlap","Asian"] },
-    { id:"risk",      label:"Risk Size",   type:"multi", options:["Normal","Half","Double"] },
-    { id:"news",      label:"News Risk",   type:"bool" },
-  ]);
+  /** Strategies Lab PRE playbook → same defs as `#orderStrategyVariablesMount` (order-manager). */
+  const [preTradeDefRevision, setPreTradeDefRevision] = useState(0);
+  const preTradeStrategySigRef = useRef("");
+  const preTradeDomHydratedRef = useRef(false);
+  const tagDefs = useMemo(
+    () => sessionPreTradeVarsToTagDefs(typeof window !== "undefined" ? window.chart : null),
+    [preTradeDefRevision]
+  );
   const [postTagDefs] = useState([
     { id:"execution", label:"Execution",     type:"multi", options:["Perfect","Good","OK","Poor"] },
     { id:"followed",  label:"Followed Plan", type:"bool" },
@@ -2588,12 +2638,91 @@ const TalariaV8bLive = () => {
       setOmTpRowStatLines((prev) =>
         prev.length === tpStats.length && prev.every((v, i) => v === tpStats[i]) ? prev : tpStats
       );
+
+      const sigPt = snapshotPreTradeStrategySig(window.chart);
+      if (sigPt !== preTradeStrategySigRef.current) {
+        preTradeStrategySigRef.current = sigPt;
+        setPreTradeDefRevision((n) => n + 1);
+      }
     };
 
     tick();
     const id = window.setInterval(tick, 24);
     return () => clearInterval(id);
   }, [orderPanelOpen, riskBasis]);
+
+  // PRE tags ↔ Strategies Lab: hydrate from hidden #orderStrategyVariablesMount, mirror writes back so place-order picks up strategyVariables.
+  useEffect(() => {
+    if (!orderPanelOpen) {
+      preTradeDomHydratedRef.current = false;
+      return;
+    }
+    const defs = sessionPreTradeVarsToTagDefs(window.chart);
+    if (!defs.length) {
+      preTradeDomHydratedRef.current = false;
+      return;
+    }
+    const om = window.chart?.orderManager;
+    if (typeof om?._renderStrategyVariablesPanel === "function") {
+      om._renderStrategyVariablesPanel();
+    }
+    let cancelled = false;
+    const raf1 = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        const mount = document.getElementById("orderStrategyVariablesMount");
+        if (!mount) {
+          preTradeDomHydratedRef.current = false;
+          return;
+        }
+        const next = {};
+        defs.forEach((def) => {
+          const sel = Array.from(mount.querySelectorAll("select.order-strategy-var-input")).find(
+            (el) => el.getAttribute("data-var-id") === def.id
+          );
+          if (!sel) return;
+          const raw = sel.value;
+          if (def.type === "bool") {
+            if (raw === "yes") next[def.id] = true;
+            else if (raw === "no") next[def.id] = false;
+          } else if (raw && raw !== "" && raw !== "—") {
+            next[def.id] = raw;
+          }
+        });
+        setTagSels(next);
+        preTradeDomHydratedRef.current = true;
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf1);
+    };
+  }, [orderPanelOpen, preTradeDefRevision]);
+
+  useEffect(() => {
+    if (!orderPanelOpen || !preTradeDomHydratedRef.current) return;
+    const defs = sessionPreTradeVarsToTagDefs(window.chart);
+    if (!defs.length) return;
+    const mount = document.getElementById("orderStrategyVariablesMount");
+    if (!mount) return;
+    defs.forEach((def) => {
+      const sel = Array.from(mount.querySelectorAll("select.order-strategy-var-input")).find(
+        (el) => el.getAttribute("data-var-id") === def.id
+      );
+      if (!sel) return;
+      if (def.type === "bool") {
+        const v = tagSels[def.id];
+        const domVal = v === true ? "yes" : v === false ? "no" : "";
+        if (sel.value !== domVal) sel.value = domVal;
+      } else {
+        const v = tagSels[def.id];
+        const want = v != null && v !== "" ? String(v) : "—";
+        if (sel.value !== want && [...sel.options].some((o) => o.value === want)) {
+          sel.value = want;
+        }
+      }
+    });
+  }, [tagSels, orderPanelOpen, preTradeDefRevision]);
 
   // Rollback overlay — callback ref attaches native mousemove the instant the node mounts
   // (avoids useEffect timing gap when rollback first becomes true)
@@ -14113,7 +14242,8 @@ const TalariaV8bLive = () => {
               e.target.value = "";
             }}/>
 
-          {/* Pre-Trade Tags */}
+          {/* Pre-Trade Tags — labels/options from Strategies Lab (same as order-manager pre-trade variables) */}
+          {tagDefs.length > 0 && (
           <div style={{ flexShrink:0, padding:"4px 8px 6px" }}>
             <div style={{ border:"1px solid rgba(255,140,66,0.22)", background:"rgba(255,140,66,0.02)" }}>
               {/* Header */}
@@ -14123,8 +14253,15 @@ const TalariaV8bLive = () => {
                          background:swHov==="tags-hdr"?"rgba(255,140,66,0.03)":"transparent", transition:"background 0.12s" }}>
                 <div style={{ width:5, height:5, background:"#FF8C42", transform:"rotate(45deg)", flexShrink:0 }}/>
                 <span style={{ fontSize:10, fontWeight:800, color:"#FF8C42", letterSpacing:"0.06em" }}>PRE-TRADE TAGS</span>
-                {(() => { const done = Object.keys(tagSels).filter(k=>tagSels[k]!==undefined&&tagSels[k]!=="").length;
-                  return done > 0 && <span style={{ padding:"0 4px", fontSize:9, fontWeight:800, color:"#FF8C42", background:"rgba(255,140,66,0.15)" }}>{done}</span>; })()}
+                {(() => {
+                  const done = Object.keys(tagSels).filter((k) => {
+                    const v = tagSels[k];
+                    if (v === undefined || v === "") return false;
+                    if (v === "—") return false;
+                    return true;
+                  }).length;
+                  return done > 0 && <span style={{ padding:"0 4px", fontSize:9, fontWeight:800, color:"#FF8C42", background:"rgba(255,140,66,0.15)" }}>{done}</span>;
+                })()}
                 <div style={{ flex:1 }}/>
                 <svg width={7} height={4} viewBox="0 0 8 5" fill="none" style={{ color:"#FF8C42", opacity:0.6, transition:"transform 0.15s", transform:tagsOpen?"rotate(180deg)":"rotate(0deg)" }}>
                   <polyline points="0.5,0.5 4,4.5 7.5,0.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
@@ -14205,6 +14342,7 @@ const TalariaV8bLive = () => {
               )}
             </div>
           </div>
+          )}
 
           {/* Screenshots */}
           <div style={{ flexShrink:0, padding:"4px 8px 5px", gridColumn:isWide?"1 / -1":undefined }}>
