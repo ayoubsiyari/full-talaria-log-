@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 // ── Color utilities ──────────────────────────────────────────────────────────
 function parseColor(str) {
@@ -1189,16 +1189,9 @@ const TalariaV8bLive = () => {
   const [layersOpen, setLayersOpen] = useState(false);
   const [layersPos, setLayersPos] = useState({ x: 0, y: 0 });
   const [layersCat, setLayersCat] = useState("drawings");
-  const [layersItems, setLayersItems] = useState(Array.from({length:100},(_,i)=>{
-    const types=[
-      {icon:"trendline",name:"Trend Line"},{icon:"hline",name:"Horizontal Line"},
-      {icon:"fib",name:"Fib Retracement"},{icon:"rect",name:"Rectangle"},
-      {icon:"channel",name:"Channel"},{icon:"vline",name:"Vertical Line"},
-      {icon:"hray",name:"Horizontal Ray"},{icon:"polyline",name:"Polyline"},
-    ];
-    const t=types[i%types.length];
-    return {id:`l${i+1}`,icon:t.icon,name:`${t.name} ${i+1}`,color:"#4A6AFF"};
-  }));
+  // Populated from chart.js drawingManager.drawings — see the
+  // "Objects Tree sync" effect below. Initially empty until chart.js loads.
+  const [layersItems, setLayersItems] = useState([]);
   const [layersVis, setLayersVis] = useState({});
   const [layersSearch, setLayersSearch] = useState("");
   const [newsOpen, setNewsOpen] = useState(false);
@@ -2507,6 +2500,73 @@ const TalariaV8bLive = () => {
     vwap: 'anchored-vwap', volProfile: 'fixed-range-volume-profile',
     anchoredVol: 'anchored-volume-profile',
   };
+
+  // ─── Objects Tree sync ──────────────────────────────────────────────────
+  // Build inverse map (legacy chart.js drawing.type → V9 icon id) from
+  // V9_ICON_TO_LEGACY so the Objects Tree row icon matches the left-rail
+  // icon used to draw the shape.
+  const LEGACY_TYPE_TO_V9_ICON = useMemo(() => {
+    const m = {};
+    Object.entries(V9_ICON_TO_LEGACY).forEach(([v9, legacy]) => {
+      if (legacy && !m[legacy]) m[legacy] = v9;
+    });
+    return m;
+  }, []);
+
+  // Listen for chart.js drawing changes and rebuild layersItems from
+  // dm.drawings. Legacy code dispatches `drawingsChanged` on window after
+  // every add / delete / load / undo / redo (see drawing-tools-manager.js
+  // line ~6410). We also poll once on mount to catch already-loaded
+  // drawings (e.g. session restore that fires before V9 mounts).
+  useEffect(() => {
+    const rebuild = () => {
+      try {
+        const dm = window.chart && window.chart.drawingManager;
+        if (!dm || !Array.isArray(dm.drawings)) {
+          setLayersItems([]);
+          return;
+        }
+        const items = dm.drawings.map((d) => {
+          const icon = LEGACY_TYPE_TO_V9_ICON[d.type] || 'trendline';
+          const name = (typeof dm.getDrawingDisplayTitle === 'function')
+            ? dm.getDrawingDisplayTitle(d)
+            : (d.type || 'Drawing');
+          return {
+            id: d.id || `d-${Math.random().toString(36).slice(2, 9)}`,
+            icon,
+            name,
+            _visible: d.visible !== false,
+            _locked: !!d.locked,
+            _drawing: d,
+          };
+        });
+        setLayersItems(items);
+      } catch (err) {
+        console.warn('[V9 Objects Tree] rebuild failed:', err);
+      }
+    };
+
+    let cancelled = false;
+    let attempts = 0;
+    const waitForChart = () => {
+      if (cancelled) return;
+      const dm = window.chart && window.chart.drawingManager;
+      if (dm && Array.isArray(dm.drawings)) { rebuild(); return; }
+      if (++attempts < 80) setTimeout(waitForChart, 100);
+    };
+    waitForChart();
+
+    window.addEventListener('drawingsChanged', rebuild);
+    // Style edits don't fire drawingsChanged — but we want the row name to
+    // refresh if the user renames a drawing via the legacy toolbar.
+    window.addEventListener('drawingStyleChanged', rebuild);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('drawingsChanged', rebuild);
+      window.removeEventListener('drawingStyleChanged', rebuild);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // V9 group id → default legacy tool (used when no sub-tool was picked yet).
   const V9_GROUP_DEFAULT = {
@@ -11606,9 +11666,26 @@ const TalariaV8bLive = () => {
                   const isDelH = swHov===`lyrD-${item.id}`;
                   const isDelDn = swHov===`lyrD-${item.id}_dn`;
                   const anyHov = isH||isJumpH||isVisH||isDelH||isDelDn;
-                  const isVis = layersVis[item.id] !== false;
+                  // _visible reflects the actual chart.js drawing.visible flag
+                  // (rebuilt on every drawingsChanged event).
+                  const isVis = item._visible !== false;
+                  // Helper: get the chart.js drawingManager + the live drawing
+                  // (item._drawing reference can become stale after undo/redo;
+                  // fall back to id lookup).
+                  const findDm = () => (window.chart && window.chart.drawingManager) || null;
+                  const findDrawing = (dm) => {
+                    if (!dm || !Array.isArray(dm.drawings)) return null;
+                    if (item._drawing && dm.drawings.includes(item._drawing)) return item._drawing;
+                    return dm.drawings.find(x => x && x.id === item.id) || null;
+                  };
                   return (
                     <div key={item.id}
+                      onClick={()=>{
+                        const dm = findDm(); const d = findDrawing(dm);
+                        if (dm && d && typeof dm.selectDrawing === 'function') {
+                          try { dm.selectDrawing(d); } catch(_) {}
+                        }
+                      }}
                       onMouseEnter={()=>setSwHov(`lyr-${item.id}`)}
                       onMouseLeave={()=>setSwHov(null)}
                       style={{display:"flex",alignItems:"center",gap:7,padding:"6px 10px",
@@ -11624,9 +11701,20 @@ const TalariaV8bLive = () => {
                         userSelect:"none",cursor:"default",
                         transition:"color 0.04s"}}>{item.name}</span>
                       {/* action buttons — appear on row hover */}
-                      {/* jump to */}
+                      {/* jump to: center chart viewport on the drawing + select it */}
                       <div data-layeraction="1"
-                        onClick={(e)=>{e.stopPropagation();}}
+                        onClick={(e)=>{
+                          e.stopPropagation();
+                          const dm = findDm(); const d = findDrawing(dm);
+                          if (!dm || !d) return;
+                          try {
+                            if (dm.objectTreeManager && typeof dm.objectTreeManager.jumpToDrawing === 'function') {
+                              dm.objectTreeManager.jumpToDrawing(d);
+                            } else if (typeof dm.selectDrawing === 'function') {
+                              dm.selectDrawing(d);
+                            }
+                          } catch(_) {}
+                        }}
                         onMouseEnter={()=>setSwHov(`lyrJ-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
                         style={{width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",
@@ -11634,9 +11722,24 @@ const TalariaV8bLive = () => {
                           transition:"opacity 0.04s"}}>
                         <I n="locate" s={15} cl={isJumpH?c.acL:c.ts}/>
                       </div>
-                      {/* visibility */}
+                      {/* visibility: flips drawing.visible and re-renders */}
                       <div data-layeraction="1"
-                        onClick={(e)=>{e.stopPropagation();setLayersVis(prev=>({...prev,[item.id]:!isVis}));}}
+                        onClick={(e)=>{
+                          e.stopPropagation();
+                          const dm = findDm(); const d = findDrawing(dm);
+                          if (!dm || !d) return;
+                          try {
+                            if (dm.objectTreeManager && typeof dm.objectTreeManager.toggleDrawingVisibility === 'function') {
+                              dm.objectTreeManager.toggleDrawingVisibility(d);
+                            } else {
+                              d.visible = d.visible === false ? true : false;
+                              if (typeof dm.renderDrawing === 'function') dm.renderDrawing(d);
+                            }
+                            // Optimistic local update so UI flips instantly
+                            // even if chart.js doesn't dispatch drawingsChanged.
+                            setLayersItems(prev => prev.map(x => x.id === item.id ? { ...x, _visible: d.visible !== false } : x));
+                          } catch(_) {}
+                        }}
                         onMouseEnter={()=>setSwHov(`lyrV-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
                         style={{width:16,height:16,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",
@@ -11649,9 +11752,21 @@ const TalariaV8bLive = () => {
                           </svg>
                         )}
                       </div>
-                      {/* delete */}
+                      {/* delete: removes the drawing from chart.js */}
                       <div data-layeraction="1"
-                        onClick={(e)=>{e.stopPropagation();setLayersItems(prev=>prev.filter(x=>x.id!==item.id));}}
+                        onClick={(e)=>{
+                          e.stopPropagation();
+                          const dm = findDm(); const d = findDrawing(dm);
+                          if (!dm || !d) return;
+                          try {
+                            if (typeof dm.deleteDrawing === 'function') {
+                              dm.deleteDrawing(d);
+                            }
+                          } catch(_) {}
+                          // Optimistic UI update; the drawingsChanged listener
+                          // will reconcile with the canonical list.
+                          setLayersItems(prev => prev.filter(x => x.id !== item.id));
+                        }}
                         onMouseEnter={()=>setSwHov(`lyrD-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
                         onMouseDown={(e)=>{e.stopPropagation();setSwHov(`lyrD-${item.id}_dn`);}}
