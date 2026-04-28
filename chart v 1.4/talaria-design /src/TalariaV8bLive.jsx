@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { V9ReactPlaceOrder } from "./V9ReactPlaceOrder.jsx";
 
 // ── Color utilities ──────────────────────────────────────────────────────────
 function parseColor(str) {
@@ -2087,6 +2086,66 @@ const TalariaV8bLive = () => {
       clearTimeout(t2);
     };
   }, [orderPanelOpen]);
+
+  // Native #orderPanel stays in DOM but off-screen; V8b rail is the visible UI (same flags as V9ReactPlaceOrder).
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+    window.__talariaV9ReactOrderUi = !!orderPanelOpen;
+    window.__talariaV9OrderRailOpen = !!orderPanelOpen;
+    try {
+      window.chart?.orderManager?.syncOrderPanelMountTarget?.();
+    } catch (_) {}
+  }, [orderPanelOpen]);
+
+  // Push V8b controls into order-manager's hidden inputs so calculations + Place Order match chart.js.
+  useEffect(() => {
+    if (!orderPanelOpen) return;
+    const panel = document.getElementById("orderPanel");
+    if (!panel || !panel.classList.contains("visible")) return;
+
+    const tid = window.setTimeout(() => {
+      try {
+        const wantBuy = buySell === "buy";
+        const buyActive = document.getElementById("buyTab")?.classList.contains("active");
+        if (wantBuy !== !!buyActive) {
+          document.getElementById(wantBuy ? "buyTab" : "sellTab")?.click();
+        }
+
+        const otBtn = document.querySelector(`#orderPanel .order-type-btn[data-type="${orderType}"]`);
+        if (otBtn && !otBtn.classList.contains("active")) otBtn.click();
+
+        const modeMap = { $: "risk-usd", "%": "risk-percent", "#": "lot-size" };
+        const dm = modeMap[sizeMode];
+        const ptab = dm && document.querySelector(`#orderPanel .position-mode-tab[data-mode="${dm}"]`);
+        if (ptab && !ptab.classList.contains("active")) ptab.click();
+
+        const setIn = (id, val) => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          const s = String(val ?? "");
+          if (el.value === s) return;
+          el.value = s;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        };
+
+        if (sizeMode === "$") setIn("riskAmountUSD", riskVal);
+        else if (sizeMode === "%") setIn("riskAmountPercent", riskVal);
+        else setIn("lotSizeAmount", riskVal);
+
+        setIn("orderEntryPrice", entryRows[0]?.price ?? "0");
+        setIn("slPrice", slPrice);
+        setIn("tpPrice", tpRows[0]?.price ?? "0");
+
+        const om = window.chart?.orderManager;
+        om?.calculatePositionFromRisk?.();
+        om?.calculateAdvancedRiskReward?.();
+        om?.updatePlaceButtonText?.();
+      } catch (_) {}
+    }, 80);
+
+    return () => clearTimeout(tid);
+  }, [orderPanelOpen, buySell, orderType, sizeMode, riskVal, slPrice, entryRows, tpRows]);
 
   // Rollback overlay — callback ref attaches native mousemove the instant the node mounts
   // (avoids useEffect timing gap when rollback first becomes true)
@@ -12408,7 +12467,1169 @@ const TalariaV8bLive = () => {
           : { width:"100%", background:c.sf, borderLeft:`2px solid rgba(140,160,255,0.3)`, display:"flex", flexDirection:"column", height:"100%", animation:"tlrPanelIn 0.18s ease forwards", overflow:"hidden", fontFamily:F }
         }>
 
-          <V9ReactPlaceOrder c={c} F={F} symbol={symbol} currentSymbol={currentSymbol} setOrderPanelOpen={setOrderPanelOpen} />
+          {/* 1 — Header */}
+          <div
+            onMouseDown={panelDetached ? (e) => {
+              if(e.target.closest("[data-nodrag]")) return;
+              e.preventDefault();
+              const ox = e.clientX - detachPos.x, oy = e.clientY - detachPos.y;
+              const sw = detachSize.w, sh = detachSize.h;
+              const baseX = detachPos.x, baseY = detachPos.y;
+              let lastX = baseX, lastY = baseY;
+              const onMove = (me) => {
+                lastX = Math.max(0, Math.min(me.clientX - ox, window.innerWidth - sw));
+                lastY = Math.max(0, Math.min(me.clientY - oy, window.innerHeight - sh));
+                if (panelRef.current) panelRef.current.style.transform = `translate(${lastX - baseX}px,${lastY - baseY}px)`;
+              };
+              const onUp = () => {
+                if (panelRef.current) panelRef.current.style.transform = "";
+                setDetachPos({ x: lastX, y: lastY });
+                window.removeEventListener("mousemove", onMove);
+                window.removeEventListener("mouseup", onUp);
+              };
+              window.addEventListener("mousemove", onMove);
+              window.addEventListener("mouseup", onUp);
+            } : undefined}
+            style={{ padding:"0 8px", borderBottom:"1px solid rgba(140,160,255,0.12)", display:"flex", alignItems:"center", gap:6, height:34, flexShrink:0, cursor:panelDetached?"move":"default" }}>
+            <span style={{ fontSize:11, fontWeight:700, color:c.tx, letterSpacing:"-0.01em" }}>Place Order</span>
+            <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", letterSpacing:"0.04em" }}>#<span style={{ color:c.ts, fontWeight:700 }}>1004</span></span>
+            {/* Size mode dropdown trigger — shows current mode symbol, opens list */}
+            <div data-nodrag="1" onClick={e => { e.stopPropagation(); if(opSizeOpen){setOpSizeOpen(false);return;} const r=e.currentTarget.getBoundingClientRect(); setOpSizePos({top:r.bottom+4, left:r.left}); setOpSizeOpen(true); }}
+              onMouseEnter={() => setSwHov("op-size")} onMouseLeave={() => setSwHov(null)}
+              style={{ display:"flex", alignItems:"center", gap:3, padding:"0 6px", height:20, cursor:"default", position:"relative", flexShrink:0,
+                       background:c.acD, border:`1px solid ${opSizeOpen||swHov==="op-size"?c.acB:"rgba(74,106,255,0.35)"}`, transition:"border-color 0.12s" }}>
+              <span style={{ fontSize:11, fontWeight:800, color:c.acL }}>{sizeMode}</span>
+              <I n="chevDown" s={7} cl={c.acL}/>
+              {opSizeOpen && <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"80%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
+            </div>
+            <div style={{ flex:1 }}/>
+            {/* Dots (panel options) button */}
+            {(()=>{ const isH=swHov==="op-dots"; const isAct=opDotsOpen; return (
+              <div data-nodrag="1" onClick={e=>{ e.stopPropagation(); const r=e.currentTarget.getBoundingClientRect(); const mw=152; setOpDotsPos({top:r.bottom+4,left:Math.max(4,Math.min(r.right-mw,window.innerWidth-mw-4))}); setOpDotsOpen(v=>!v); setOpTplOpen(false); }}
+                onMouseEnter={()=>setSwHov("op-dots")} onMouseLeave={()=>setSwHov(null)}
+                style={{ width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", position:"relative",
+                         color:isAct?c.acL:isH?c.tx:c.ts, background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent", transition:"color 0.12s, background 0.12s" }}>
+                <svg width={12} height={3} viewBox="0 0 12 3" fill="currentColor"><circle cx="1.5" cy="1.5" r="1.5"/><circle cx="6" cy="1.5" r="1.5"/><circle cx="10.5" cy="1.5" r="1.5"/></svg>
+                {(isH||isAct) && <div style={{ position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", width:"50%", height:1, background:`linear-gradient(90deg,transparent,${isAct?c.acL:"`+c.hvLn+`"},transparent)`, pointerEvents:"none" }}/>}
+              </div>
+            ); })()}
+            {/* Template button */}
+            {(()=>{ const isH=swHov==="op-tpl-hdr"; const isAct=opTplOpen||activeTemplate!==null; return (
+              <div data-nodrag="1" onClick={e=>{ e.stopPropagation(); const r=e.currentTarget.getBoundingClientRect(); setOpTplPos({top:r.bottom+4,left:r.right-160}); setOpTplOpen(v=>!v); setOpDotsOpen(false); }}
+                onMouseEnter={()=>setSwHov("op-tpl-hdr")} onMouseLeave={()=>setSwHov(null)}
+                style={{ width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", position:"relative",
+                         color:isAct?c.acL:isH?c.tx:c.ts, background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent", transition:"color 0.12s, background 0.12s" }}>
+                <svg width={12} height={12} viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor"/><rect x="9" y="1" width="6" height="6" rx="1" fill="currentColor"/><rect x="1" y="9" width="6" height="6" rx="1" fill="currentColor"/><line x1="12" y1="9" x2="12" y2="15" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>
+                {(isH||isAct) && <div style={{ position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", width:"50%", height:1, background:`linear-gradient(90deg,transparent,${isAct?c.acL:"`+c.hvLn+`"},transparent)`, pointerEvents:"none" }}/>}
+              </div>
+            ); })()}
+            {/* Close */}
+            <div onClick={()=>setOrderPanelOpen(false)}
+              onMouseEnter={()=>setSwHov("op-close")} onMouseLeave={()=>setSwHov(null)}
+              style={{ width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0, position:"relative",
+                       color:swHov==="op-close"?c.rd:c.ts, background:swHov==="op-close"?"rgba(255,80,104,0.06)":"transparent",
+                       fontSize:17, lineHeight:1, transition:"color 0.12s, background 0.12s" }}>×
+              {swHov==="op-close" && <div style={{ position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", width:"50%", height:1, background:"linear-gradient(90deg,transparent,rgba(255,80,104,0.4),transparent)", pointerEvents:"none" }}/>}
+            </div>
+          </div>
+
+          {/* 2 — Ticker + asset class + spread */}
+          <div style={{ padding:"0 8px", borderBottom:"1px solid rgba(140,160,255,0.12)", display:"flex", alignItems:"center", gap:6, height:26, flexShrink:0 }}>
+            <div onClick={e => { e.stopPropagation(); if(opSymOpen){setOpSymOpen(false);return;} const r=e.currentTarget.getBoundingClientRect(); setOpSymPos({top:r.bottom/Z+2, left:r.left/Z}); setOpSymSearch(""); setOpSymOpen(true); }}
+              onMouseEnter={()=>setSwHov("op-sym")} onMouseLeave={()=>setSwHov(null)}
+              style={{ display:"flex", alignItems:"center", gap:3, padding:"0 7px", height:20, cursor:"default", position:"relative",
+                       background:c.acD, border:`1px solid ${opSymOpen||swHov==="op-sym"?c.acB:"rgba(74,106,255,0.35)"}`, transition:"border-color 0.12s" }}>
+              <span style={{ fontSize:10, fontWeight:800, color:c.acL }}>{symbol}</span>
+              <I n="chevDown" s={8} cl={c.acL}/>
+              {opSymOpen && <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"80%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
+            </div>
+            <span style={{ fontSize:9, fontWeight:600, color:c.tm }}>
+              {({forex:"Forex",futures:"Futures",commodity:"Commodities",stock:"Stocks",crypto:"Crypto"})[currentSymbol.type]||currentSymbol.type}
+            </span>
+            <div style={{ flex:1 }}/>
+            <span style={{ fontSize:9, color:c.tm }}>Spread <span style={{ color:c.ts, fontVariantNumeric:"tabular-nums" }}>0.00</span></span>
+            <span style={{ fontSize:9, color:c.tm }}>Comm <span style={{ color:c.ts, fontVariantNumeric:"tabular-nums" }}>$0.00</span></span>
+            <span style={{ fontSize:9, color:c.tm }}>Margin <span style={{ color:c.ts, fontVariantNumeric:"tabular-nums" }}>—</span></span>
+          </div>
+
+          {/* 3 — BUY / SELL */}
+          <div style={{ display:"flex", flexShrink:0, position:"relative" }}>
+            {["BUY","SELL"].map((s,i) => { const a=buySell===s.toLowerCase(); const col=s==="BUY"?c.gn:c.rd; const isH=swHov===`bs-${s}`; return (
+              <button key={s} onClick={()=>setBuySell(s.toLowerCase())}
+                onMouseEnter={()=>setSwHov(`bs-${s}`)} onMouseLeave={()=>setSwHov(null)}
+                style={{ flex:1, height:34, border:"none", borderRight:i===0?"1px solid rgba(140,160,255,0.08)":"none", position:"relative",
+                         background:a?(s==="BUY"?c.gnD:c.rdD):isH?(s==="BUY"?"rgba(0,212,161,0.06)":"rgba(255,80,104,0.06)"):"transparent",
+                         color:a?col:isH?col:c.ts,
+                         fontSize:12, fontWeight:800, fontFamily:F, cursor:"default", transition:"background 0.15s, color 0.15s" }}>
+                {s}
+              </button>);
+            })}
+            {/* Sliding glow indicator */}
+            <div style={{ position:"absolute", bottom:0, width:"30%", height:2,
+                          left: buySell==="buy" ? "10%" : "60%",
+                          transition:"left 0.28s cubic-bezier(0.4,0,0.2,1)", pointerEvents:"none" }}>
+              <div style={{ position:"absolute", inset:0, background:`linear-gradient(90deg,transparent,${c.gn},transparent)`, boxShadow:`0 0 8px ${c.gn}55`, opacity:buySell==="buy"?1:0, transition:"opacity 0.22s" }}/>
+              <div style={{ position:"absolute", inset:0, background:`linear-gradient(90deg,transparent,${c.rd},transparent)`, boxShadow:`0 0 8px ${c.rd}55`, opacity:buySell==="sell"?1:0, transition:"opacity 0.22s" }}/>
+            </div>
+          </div>
+
+          {/* 4 — Order type */}
+          <div style={{ borderBottom:"1px solid rgba(140,160,255,0.12)", display:"flex", position:"relative", flexShrink:0 }}>
+            {["Market","Limit","Stop"].map((t) => { const a=orderType===t.toLowerCase(); const isH=swHov===`ot-${t}`; return (
+              <button key={t} onClick={()=>setOrderType(t.toLowerCase())}
+                onMouseEnter={()=>setSwHov(`ot-${t}`)} onMouseLeave={()=>setSwHov(null)}
+                style={{ flex:1, height:26, background:isH&&!a?c.hv2:"transparent", border:"none", color:a?c.acL:isH?c.tx:c.ts, fontSize:10, fontWeight:a?700:600, fontFamily:F, cursor:"default", transition:"color 0.12s, background 0.12s", letterSpacing:"0.01em" }}>
+                {t}
+              </button>);
+            })}
+            <div style={{ position:"absolute", bottom:0, height:2, width:"33.33%", left:`${["market","limit","stop"].indexOf(orderType)*33.33}%`, transition:"left 0.25s cubic-bezier(0.4,0,0.2,1)", background:`linear-gradient(90deg,transparent,${c.acL},transparent)`, boxShadow:`0 0 8px ${c.acG}` }}/>
+          </div>
+
+          {/* 5 — Risk input */}
+          {(() => {
+            const sizeUnit = currentSymbol.type==="futures" ? "contracts" : "lots";
+            const basisAmt = riskBasis==="balance" ? accountBalance : accountEquity;
+            return (
+            <div style={{ padding:"6px 8px", borderBottom:"1px solid rgba(140,160,255,0.12)", display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
+              {/* Left: SIZE label */}
+              <span style={{ flex:1, fontSize:9, fontWeight:700, color:c.tm, letterSpacing:"0.06em" }}>SIZE</span>
+              {/* Center: unit (# mode) + well + secondary */}
+              <div style={{ display:"flex", alignItems:"center", gap:5, flexShrink:0 }}>
+                {sizeMode==="#" && <span style={{ fontSize:9, color:c.ts, flexShrink:0 }}>{sizeUnit}</span>}
+                {/* Input well */}
+                <div style={{ flexShrink:0, display:"flex", alignItems:"center", background:c.hv, border:"1px solid rgba(140,160,255,0.22)", height:26, boxSizing:"border-box", padding:"0 5px 0 7px", gap:4, boxShadow:"inset 0 1px 2px rgba(0,0,0,0.25)" }}>
+                  {sizeMode==="$" && <span style={{ fontSize:12, fontWeight:800, color:c.ts, flexShrink:0, lineHeight:1 }}>$</span>}
+                  {sizeMode==="%" && <span style={{ fontSize:9, fontWeight:700, color:c.ts, flexShrink:0 }}>%</span>}
+                  <input
+                    type="text"
+                    value={riskVal}
+                    onChange={e => {
+                      const v=e.target.value;
+                      if((sizeMode==="#"||sizeMode==="$") && v.length>18) return;
+                      if(/^-?\d*\.?\d*$/.test(v)) {
+                        if(sizeMode==="%") { const n=parseFloat(v); if(!isNaN(n)&&n>100) return; }
+                        setRiskVal(v);
+                      }
+                    }}
+                    onBlur={e => {
+                      const n=parseFloat(e.target.value);
+                      if(!isNaN(n)) setRiskVal(String(Math.max(0, sizeMode==="%"?Math.min(100,n):sizeMode==="$"?Math.min(accountEquity,n):n)));
+                      else setRiskVal("0");
+                    }}
+                    style={{ width:`${Math.max(2, riskVal.length+0.5)}ch`, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:12, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", textAlign:"left", padding:0 }}
+                  />
+                  {/* Step buttons — SVG chevrons */}
+                  <div style={{ display:"flex", flexDirection:"column", gap:1, flexShrink:0 }}>
+                    {[[1,"up"],[-1,"dn"]].map(([dir,key]) => {
+                      const step = sizeMode==="%"?0.5:sizeMode==="#"?1:10;
+                      const isH = swHov===`rv-${key}`;
+                      return (
+                        <div key={key} onClick={()=>setRiskVal(v => {
+                          const next = Math.max(0, parseFloat(v||"0")+dir*step);
+                          const capped = sizeMode==="%"?Math.min(100,next):sizeMode==="$"?Math.min(accountEquity,next):next;
+                          return String(capped);
+                        })}
+                          onMouseEnter={()=>setSwHov(`rv-${key}`)} onMouseLeave={()=>setSwHov(null)}
+                          style={{ width:12, height:11, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", color:isH?c.tx:c.ts, transition:"color 0.1s" }}>
+                          <svg width={8} height={5} viewBox="0 0 8 5" fill="none">
+                            {dir===1
+                              ? <polyline points="1,4 4,1 7,4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              : <polyline points="1,1 4,4 7,1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            }
+                          </svg>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                {/* Secondary info */}
+                <div style={{ display:"flex", flexDirection:"column", gap:2, flexShrink:0 }}>
+                  <span style={{ fontSize:9, color:c.ts, fontVariantNumeric:"tabular-nums", lineHeight:1 }}>
+                    {sizeMode==="$"
+                      ? `${(parseFloat(riskVal||"0")/basisAmt*100).toFixed(2)}%`
+                      : sizeMode==="%"
+                        ? `0.00 ${sizeUnit}`
+                        : `0.00%`
+                    }
+                  </span>
+                  <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", lineHeight:1 }}>
+                    {sizeMode==="$" ? `0.00 ${sizeUnit}` : `$0.00`}
+                  </span>
+                </div>
+              </div>
+              {/* Right: BAL/EQ toggle + value (% mode only) */}
+              <div style={{ flex:1, display:"flex", justifyContent:"flex-end", alignItems:"center" }}>
+                {sizeMode==="%" && (
+                  <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:3 }}>
+                    <div style={{ display:"flex", gap:2 }}>
+                      {[["balance","BAL"],["equity","EQ"]].map(([val,label]) => {
+                        const a=riskBasis===val; const isH=swHov===`rb-${val}`;
+                        return (
+                          <div key={val} onClick={()=>setRiskBasis(val)}
+                            onMouseEnter={()=>setSwHov(`rb-${val}`)} onMouseLeave={()=>setSwHov(null)}
+                            style={{ padding:"1px 6px", fontSize:8, fontWeight:800, cursor:"default",
+                                     color:a?c.acL:isH?c.ts:c.tm, background:a?c.acD:"transparent",
+                                     border:`1px solid ${a?c.acB:isH?"rgba(140,160,255,0.18)":"rgba(140,160,255,0.10)"}`,
+                                     transition:"all 0.12s" }}>
+                            {label}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <span style={{ fontSize:9, color:c.ts, fontVariantNumeric:"tabular-nums", lineHeight:1 }}>
+                      ${basisAmt.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+            );
+          })()}
+
+          {/* Scrollable middle — flex:1 so it fills available height and scrolls before pushing execute off screen */}
+          <div className="tlr-scroll" style={{ flex:1, overflowY:"auto", minHeight:0 }}>
+          <div style={{ display:isWide?"grid":"block", gridTemplateColumns:isWide?"1fr 1fr":undefined, alignItems:"start" }}>
+
+          {/* 6 — ENTRY */}
+          {(() => {
+            const sizeUnit = currentSymbol.type==="futures" ? "Contracts" : "Lots";
+            const totalRisk = entryRows.reduce((s,r) => s + (parseFloat(r.risk)||0), 0);
+            const avgPrice = entryRows.length ? (entryRows.reduce((s,r) => s + (parseFloat(r.price)||0), 0) / entryRows.length).toFixed(2) : "0.00";
+            const updRow = (id, field, val) => setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r));
+            const stepRow = (id, field, dir, step=1) => setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
+            const delRow = (id) => setEntryRows(rows => rows.length > 1 ? rows.filter(r => r.id!==id) : rows);
+            const addRow = () => { setEntryRows(rows => [...rows, {id:Date.now(), price:"0", risk:"0"}]); setTimeout(()=>{ if(entryScrollRef.current) entryScrollRef.current.scrollTop = entryScrollRef.current.scrollHeight; }, 0); };
+            const clearRows = () => { setEntryRows([{id:Date.now(), price:"0", risk:"0"}]); };
+            const equalizeRisk = () => { const each = (100/entryRows.length).toFixed(0); setEntryRows(rows => rows.map(r => ({...r, risk:each}))); };
+            const arw = (onClick, up, hk) => {
+              const isH = swHov === hk;
+              return (
+                <div onClick={onClick} onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
+                  style={{ width:10, height:8, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", color:isH?c.tx:c.ts, transition:"color 0.1s" }}>
+                  <svg width={7} height={4} viewBox="0 0 8 5" fill="none">
+                    {up
+                      ? <polyline points="1,4 4,1 7,4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      : <polyline points="1,1 4,4 7,1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    }
+                  </svg>
+                </div>
+              );
+            };
+            return (
+              <div style={{ flexShrink:0, padding:"4px 8px 6px" }}>
+                {/* Blue box */}
+                <div style={{ border:"1px solid rgba(74,106,255,0.18)", background:"rgba(74,106,255,0.02)" }}>
+                  {/* Header */}
+                  <div style={{ padding:"3px 6px", display:"flex", alignItems:"center", gap:4, borderBottom:"1px solid rgba(74,106,255,0.1)" }}>
+                    <div style={{ width:5, height:5, background:c.acL, transform:"rotate(45deg)", flexShrink:0 }}/>
+                    <span style={{ fontSize:10, fontWeight:800, color:c.acL, letterSpacing:"0.06em" }}>ENTRY</span>
+                    {panelMode==="advanced" && entryRows.length > 1 && (
+                      <span style={{ padding:"0 4px", fontSize:10, fontWeight:800, color:c.acL, background:c.acD }}>
+                        {entryRows.length}×
+                      </span>
+                    )}
+                    <div style={{ flex:1 }}/>
+                    {panelMode==="advanced" && entryRows.length > 1 && (<>
+                      <div onClick={equalizeRisk}
+                        onMouseEnter={()=>setSwHov("ep-eq")} onMouseLeave={()=>setSwHov(null)}
+                        title="Equalize risk across levels"
+                        style={{ width:20, height:20, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0,
+                                 color:swHov==="ep-eq"?c.acL:c.ts,
+                                 background:swHov==="ep-eq"?c.acD:"transparent",
+                                 border:`1px solid ${swHov==="ep-eq"?"rgba(74,106,255,0.4)":"rgba(140,160,255,0.15)"}`,
+                                 transition:"all 0.12s" }}>
+                        <svg width={11} height={8} viewBox="0 0 11 8" fill="none">
+                          <line x1="0" y1="2" x2="11" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                          <line x1="0" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        </svg>
+                      </div>
+                      <div onClick={clearRows}
+                        onMouseEnter={()=>setSwHov("ep-clear")} onMouseLeave={()=>setSwHov(null)}
+                        title="Remove all levels"
+                        style={{ width:20, height:20, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0,
+                                 color:swHov==="ep-clear"?c.rd:c.ts,
+                                 background:swHov==="ep-clear"?"rgba(255,80,104,0.08)":"transparent",
+                                 border:`1px solid ${swHov==="ep-clear"?"rgba(255,80,104,0.35)":"rgba(140,160,255,0.15)"}`,
+                                 transition:"all 0.12s" }}>
+                        <svg width={10} height={11} viewBox="0 0 10 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="1" y1="3" x2="9" y2="3"/>
+                          <path d="M3.5 3V2a.5.5 0 01.5-.5h2a.5.5 0 01.5.5v1"/>
+                          <path d="M2 3l.6 6.5h4.8L8 3"/>
+                          <line x1="3.8" y1="5.5" x2="3.8" y2="7.5"/>
+                          <line x1="6.2" y1="5.5" x2="6.2" y2="7.5"/>
+                        </svg>
+                      </div>
+                    </>)}
+                    {panelMode==="advanced" && (
+                    <div onClick={addRow}
+                      onMouseEnter={()=>setSwHov("ep-add")} onMouseLeave={()=>setSwHov(null)}
+                      title="Add entry level"
+                      style={{ width:20, height:20, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0,
+                               color:swHov==="ep-add"?c.acL:c.ts,
+                               background:swHov==="ep-add"?c.acD:"transparent",
+                               border:`1px solid ${swHov==="ep-add"?"rgba(74,106,255,0.4)":"rgba(140,160,255,0.15)"}`,
+                               transition:"all 0.12s" }}>
+                      <svg width={9} height={9} viewBox="0 0 9 9" fill="none">
+                        <line x1="4.5" y1="1" x2="4.5" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        <line x1="1" y1="4.5" x2="8" y2="4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                    </div>
+                    )}
+                  </div>
+                  {/* Rows — scrollable after 5 */}
+                  <div ref={entryScrollRef} className="tlr-scroll" style={{ padding:"3px 6px", maxHeight:52, overflowY:"auto" }}>
+                    {entryRows.map((row, i) => {
+                      const pct = totalRisk > 0 ? ((parseFloat(row.risk)||0)/totalRisk*100).toFixed(0) : "0";
+                      return (
+                        <div key={row.id} style={{ display:"flex", alignItems:"center", gap:3, height:22, marginBottom:1 }}>
+                          {/* Level number — only when 2+ rows */}
+                          {entryRows.length > 1 && <span style={{ fontSize:10, fontWeight:700, color:c.ts, width:13, textAlign:"center", flexShrink:0, lineHeight:1 }}>{i+1}</span>}
+                          {/* Price well */}
+                          <div style={{ display:"flex", alignItems:"center", background:c.well, border:"1px solid rgba(140,160,255,0.22)", height:20, padding:"0 3px 0 4px", gap:2, flexShrink:0, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)" }}>
+                            <input type="text" value={row.price}
+                              onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updRow(row.id,"price",e.target.value); }}
+                              onBlur={e => { const n=parseFloat(e.target.value); updRow(row.id,"price",isNaN(n)?"0":String(n)); }}
+                              style={{ width:46, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
+                            <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
+                              {arw(()=>stepRow(row.id,"price", 1), true,  `ep-${row.id}-up`)}
+                              {arw(()=>stepRow(row.id,"price",-1), false, `ep-${row.id}-dn`)}
+                            </div>
+                          </div>
+                          {/* Risk well */}
+                          <div style={{ display:"flex", alignItems:"center", background:c.well, border:"1px solid rgba(140,160,255,0.22)", height:20, padding:"0 3px 0 4px", gap:2, flexShrink:0, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)" }}>
+                            {sizeMode==="$" && <span style={{ fontSize:10, fontWeight:600, color:c.ts, lineHeight:1, flexShrink:0 }}>$</span>}
+                            {sizeMode==="%" && <span style={{ fontSize:9, fontWeight:700, color:c.ts, lineHeight:1, flexShrink:0 }}>%</span>}
+                            <input type="text" value={row.risk}
+                              onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updRow(row.id,"risk",e.target.value); }}
+                              onBlur={e => { const n=parseFloat(e.target.value); updRow(row.id,"risk",isNaN(n)?"0":String(n)); }}
+                              style={{ width:26, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
+                            {sizeMode==="#" && <span style={{ fontSize:9, color:c.ts, flexShrink:0, lineHeight:1, whiteSpace:"nowrap" }}>{sizeUnit}</span>}
+                            <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
+                              {arw(()=>stepRow(row.id,"risk", 1), true,  `er-${row.id}-up`)}
+                              {arw(()=>stepRow(row.id,"risk",-1), false, `er-${row.id}-dn`)}
+                            </div>
+                          </div>
+                          {/* Pct · lots inline */}
+                          <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", whiteSpace:"nowrap", flexShrink:0 }}>
+                            {sizeMode==="$"
+                              ? <><span style={{ color:c.ts }}>{pct}%</span>{" · "}0.00 {sizeUnit}</>
+                              : sizeMode==="%"
+                              ? <><span style={{ color:c.ts }}>${(parseFloat(row.risk||"0")/100*(riskBasis==="balance"?accountBalance:accountEquity)).toFixed(0)}</span>{" · "}0.00 {sizeUnit}</>
+                              : <>0.00 {sizeUnit}</>
+                            }
+                          </span>
+                          <div style={{ flex:1 }}/>
+                          {/* Delete — far right, hidden when only 1 row */}
+                          {entryRows.length > 1 ? (
+                            <div onClick={()=>delRow(row.id)}
+                              onMouseEnter={()=>setSwHov(`ed-${row.id}`)} onMouseLeave={()=>setSwHov(null)}
+                              style={{ width:16, height:20, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0, color:swHov===`ed-${row.id}`?c.rd:c.ts, transition:"color 0.1s" }}>
+                              <I n="x" s={9} cl={swHov===`ed-${row.id}`?c.rd:c.ts}/>
+                            </div>
+                          ) : <div style={{ width:16, flexShrink:0 }}/>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Footer — only when 2+ levels */}
+                  {entryRows.length > 1 && (
+                    <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", gap:6, borderTop:"1px solid rgba(74,106,255,0.1)" }}>
+                      <div style={{ flex:1 }}/>
+                      <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
+                        Avg <span style={{ color:c.ts, fontWeight:700 }}>{avgPrice}</span>
+                      </span>
+                      <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
+                        Qty <span style={{ color:c.ts, fontWeight:700 }}>0.00 {sizeUnit}</span>
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* 7 — STOP LOSS + Advanced order */}
+          {(() => {
+            const sizeUnit = currentSymbol.type==="futures" ? "Contracts" : "Lots";
+            const slRow = slRows[0];
+            const updSl  = (val) => setSlRows([{...slRow, price:val}]);
+            const stepSl = (dir) => setSlRows([{...slRow, price:String(Math.max(0, parseFloat(slRow.price||"0")+dir))}]);
+            const arw = (onClick, up, hk) => {
+              const isH = swHov === hk;
+              return (
+                <div onClick={slEnabled ? onClick : undefined}
+                  onMouseEnter={()=>slEnabled&&setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
+                  style={{ width:10, height:8, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", color:isH?c.rd:c.ts, transition:"color 0.1s" }}>
+                  <svg width={7} height={4} viewBox="0 0 8 5" fill="none">
+                    {up
+                      ? <polyline points="1,4 4,1 7,4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      : <polyline points="1,1 4,4 7,1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    }
+                  </svg>
+                </div>
+              );
+            };
+            /* red diamond checkbox */
+            const SlChk = () => {
+              const isH = swHov==="sl-chk";
+              const col = slEnabled ? c.rd : isH ? c.rd : c.ts;
+              return (
+                <div onClick={()=>setSlEnabled(v=>!v)}
+                  onMouseEnter={()=>setSwHov("sl-chk")} onMouseLeave={()=>setSwHov(null)}
+                  style={{ width:12, height:12, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, cursor:"default" }}>
+                  <svg width={10} height={10} style={{overflow:"visible"}}>
+                    <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={col} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+                    <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={col} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+                    {slEnabled ? <>
+                      <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.rd} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+                      <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.rd} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+                      <circle cx={5} cy={5} r={2.8} fill={c.rd} opacity={0.15}/>
+                      <circle cx={5} cy={5} r={1.6} fill={c.rd}/>
+                    </> : isH && <>
+                      <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.rd} strokeWidth={1} fill="none" strokeLinecap="square"/>
+                      <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.rd} strokeWidth={1} fill="none" strokeLinecap="square"/>
+                    </>}
+                  </svg>
+                </div>
+              );
+            };
+            return (
+              <div style={{ flexShrink:0, padding:"4px 8px 6px" }}>
+                {/* Red box */}
+                <div style={{ border:"1px solid rgba(255,80,104,0.18)", background:"rgba(255,80,104,0.02)" }}>
+                  {/* Header */}
+                  <div style={{ padding:"3px 6px", display:"flex", alignItems:"center", gap:5, borderBottom:"1px solid rgba(255,80,104,0.1)", position:"relative" }}>
+                    <div style={{ width:5, height:5, background:c.rd, transform:"rotate(45deg)", flexShrink:0 }}/>
+                    <span style={{ fontSize:10, fontWeight:800, color:c.rd, letterSpacing:"0.06em" }}>STOP LOSS</span>
+                    <div style={{ flex:1 }}/>
+                    {/* Advanced mode button */}
+                    {panelMode==="advanced" && (() => {
+                      const isH      = swHov==="sl-adv-btn";
+                      const isActive = slAdvMode !== "none";
+                      const isOpen   = slAdvDrop;
+                      const label    = slAdvMode==="breakeven" ? "BE" : slAdvMode==="trailing" ? "TSL" : null;
+                      const btnColor  = isActive ? c.gold : (isOpen||isH) ? c.acL : c.ts;
+                      const btnBg     = isOpen ? c.acD : isActive ? "rgba(255,200,60,0.1)" : isH ? "rgba(74,106,255,0.08)" : "transparent";
+                      const btnBorder = isOpen ? "rgba(74,106,255,0.5)" : isActive ? "rgba(255,200,60,0.45)" : isH ? "rgba(140,160,255,0.35)" : "rgba(140,160,255,0.15)";
+                      return (
+                        <div style={{ position:"relative" }}>
+                          <div onClick={()=>setSlAdvDrop(v=>!v)}
+                            onMouseEnter={()=>setSwHov("sl-adv-btn")} onMouseLeave={()=>setSwHov(null)}
+                            style={{ width:20, height:20, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0,
+                                     color:btnColor, background:btnBg, border:`1px solid ${btnBorder}`, transition:"all 0.12s" }}>
+                            {label
+                              ? <span style={{ fontSize:9, fontWeight:800, letterSpacing:"0.03em" }}>{label}</span>
+                              : <svg width={10} height={8} viewBox="0 0 10 8" fill="none">
+                                  <line x1="1" y1="1.5" x2="9" y2="1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                                  <line x1="2.5" y1="4" x2="7.5" y2="4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                                  <line x1="4" y1="6.5" x2="6" y2="6.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                                </svg>
+                            }
+                          </div>
+                          {/* Dropdown */}
+                          {slAdvDrop && (<>
+                            <div onClick={()=>setSlAdvDrop(false)} style={{ position:"fixed", inset:0, zIndex:9998 }}/>
+                            <div style={{ position:"absolute", right:0, top:"calc(100% + 4px)", zIndex:9999, minWidth:110,
+                                         background:c.sf, border:"1px solid rgba(140,160,255,0.22)", boxShadow:"0 4px 16px rgba(0,0,0,0.5)" }}>
+                              <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }}/>
+                              {[["none","None"],["breakeven","Move to BE"],["trailing","Trailing SL"]].map(([val,lbl]) => {
+                                const isAct = slAdvMode===val;
+                                const isHi  = swHov===`sl-adv-${val}`;
+                                return (
+                                  <div key={val}
+                                    onClick={()=>{ setSlAdvMode(val); setSlAdvDrop(false); }}
+                                    onMouseEnter={()=>setSwHov(`sl-adv-${val}`)} onMouseLeave={()=>setSwHov(null)}
+                                    style={{ display:"flex", alignItems:"center", padding:"5px 12px", cursor:"default", position:"relative",
+                                             background:isAct?c.acD:isHi?"rgba(255,255,255,0.06)":"transparent", transition:"background 0.1s" }}>
+                                    {isAct && <div style={{ position:"absolute", left:0, top:"15%", bottom:"15%", width:2,
+                                                            background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,
+                                                            boxShadow:`0 0 6px ${c.acG}` }}/>}
+                                    <span style={{ fontSize:11, fontWeight:isAct?700:500, color:isAct?c.acL:isHi?c.tx:c.ts }}>{lbl}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </>)}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  {/* Single price row */}
+                  <div style={{ padding:"4px 6px" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:4, height:22 }}>
+                      <SlChk/>
+                      <div style={{ flex:1, display:"flex", alignItems:"center", background:c.well, border:`1px solid ${slEnabled?"rgba(255,80,104,0.35)":"rgba(140,160,255,0.22)"}`, height:20, padding:"0 3px 0 5px", gap:2, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)", opacity:slEnabled?1:0.38, transition:"border-color 0.15s, opacity 0.15s" }}>
+                        <input type="text" value={slRow.price} disabled={!slEnabled}
+                          onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updSl(e.target.value); }}
+                          onBlur={e => { const n=parseFloat(e.target.value); updSl(isNaN(n)?"0":String(n)); }}
+                          style={{ flex:1, minWidth:0, background:"transparent", border:"none", outline:"none", color:slEnabled?c.rd:c.ts, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
+                        <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
+                          {arw(()=>stepSl(1),  true,  "sl-up")}
+                          {arw(()=>stepSl(-1), false, "sl-dn")}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Footer: Loss · Dist */}
+                  <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", borderTop:"1px solid rgba(255,80,104,0.1)" }}>
+                    <span style={{ fontSize:9, fontWeight:700, color:c.rd, fontVariantNumeric:"tabular-nums" }}>
+                      Loss <span style={{ fontWeight:800 }}>-$0.00</span>
+                    </span>
+                    <div style={{ flex:1 }}/>
+                    <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
+                      Dist <span style={{ color:c.ts, fontWeight:700 }}>0.00</span>{" "}{currentSymbol.type==="futures"?"ticks":"pips"}
+                    </span>
+                  </div>
+                  {/* Advanced order content */}
+                  {slAdvMode !== "none" && (
+                    <div style={{ borderTop:"1px solid rgba(255,80,104,0.1)", padding:"4px 6px 6px" }}>
+                      {slAdvMode==="breakeven" ? (() => {
+                        const distUnit = currentSymbol.type==="futures" ? "ticks" : "pips";
+                        const unitLabels = { rr:"R", pips:distUnit, dollar:"$" };
+                        const trigStep = slBeUnit==="rr" ? 0.5 : slBeUnit==="dollar" ? 5 : 1;
+                        const stepTrig = (dir) => setSlBeTrigger(v => String(Math.max(0, parseFloat(v||"0") + dir*trigStep)));
+                        const stepOff  = (dir) => setSlBeOffset(v  => String(Math.max(0, parseFloat(v||"0")  + dir)));
+                        const beArw = (onClick, up, hk) => {
+                          const isH = swHov===hk;
+                          return (
+                            <div onClick={onClick} onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
+                              style={{ width:10, height:8, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", color:isH?c.tx:c.ts, transition:"color 0.1s" }}>
+                              <svg width={7} height={4} viewBox="0 0 8 5" fill="none">
+                                {up ? <polyline points="1,4 4,1 7,4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                    : <polyline points="1,1 4,4 7,1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>}
+                              </svg>
+                            </div>
+                          );
+                        };
+                        const isUnitH = swHov==="be-unit-btn";
+                        return (
+                          <div style={{ display:"flex", gap:5, alignItems:"center", flexWrap:"wrap" }}>
+                            <span style={{ fontSize:11, color:c.tm }}>Move SL to entry after</span>
+                            {/* Trigger value input */}
+                            <div style={{ display:"flex", alignItems:"center", background:c.well, border:"1px solid rgba(140,160,255,0.22)", height:20, padding:"0 3px 0 4px", gap:2, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)" }}>
+                              <input type="text" value={slBeTrigger}
+                                onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) setSlBeTrigger(e.target.value); }}
+                                onBlur={e => { const n=parseFloat(e.target.value); setSlBeTrigger(isNaN(n)?"0":String(n)); }}
+                                style={{ width:28, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
+                              <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
+                                {beArw(()=>stepTrig(1),  true,  "be-trig-up")}
+                                {beArw(()=>stepTrig(-1), false, "be-trig-dn")}
+                              </div>
+                            </div>
+                            {/* Unit dropdown */}
+                            <div style={{ position:"relative" }}>
+                              <div onClick={()=>setSlBeUnitDrop(v=>!v)}
+                                onMouseEnter={()=>setSwHov("be-unit-btn")} onMouseLeave={()=>setSwHov(null)}
+                                style={{ width:44, height:20, display:"flex", alignItems:"center", justifyContent:"space-between",
+                                         padding:"0 5px", cursor:"default", flexShrink:0, boxSizing:"border-box",
+                                         background:slBeUnitDrop?c.acD:isUnitH?"rgba(74,106,255,0.08)":"transparent",
+                                         border:`1px solid ${slBeUnitDrop?"rgba(74,106,255,0.5)":isUnitH?"rgba(140,160,255,0.35)":"rgba(140,160,255,0.18)"}`,
+                                         color:slBeUnitDrop?c.acL:isUnitH?c.tx:c.ts,
+                                         transition:"all 0.12s" }}>
+                                <span style={{ fontSize:11, fontWeight:700 }}>{unitLabels[slBeUnit]}</span>
+                                <svg width={6} height={4} viewBox="0 0 6 4" fill="none" style={{ flexShrink:0, opacity:0.6 }}>
+                                  <polyline points="0.5,0.5 3,3.5 5.5,0.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </div>
+                              {slBeUnitDrop && (<>
+                                <div onClick={()=>setSlBeUnitDrop(false)} style={{ position:"fixed", inset:0, zIndex:9998 }}/>
+                                <div style={{ position:"absolute", left:0, top:"calc(100% + 3px)", zIndex:9999, width:64,
+                                             background:c.sf, border:"1px solid rgba(140,160,255,0.22)", boxShadow:"0 4px 16px rgba(0,0,0,0.5)" }}>
+                                  <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }}/>
+                                  {[["rr","R:R"],["pips",distUnit==="ticks"?"Ticks":"Pips"],["dollar","Dollar"]].map(([val,lbl]) => {
+                                    const isAct = slBeUnit===val;
+                                    const isHi  = swHov===`be-unit-${val}`;
+                                    return (
+                                      <div key={val}
+                                        onClick={()=>{ setSlBeUnit(val); setSlBeUnitDrop(false); }}
+                                        onMouseEnter={()=>setSwHov(`be-unit-${val}`)} onMouseLeave={()=>setSwHov(null)}
+                                        style={{ display:"flex", alignItems:"center", padding:"5px 8px", cursor:"default", position:"relative",
+                                                 background:isAct?c.acD:isHi?"rgba(255,255,255,0.06)":"transparent", transition:"background 0.1s" }}>
+                                        {isAct && <div style={{ position:"absolute", left:0, top:"15%", bottom:"15%", width:2,
+                                                                background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,
+                                                                boxShadow:`0 0 6px ${c.acG}` }}/>}
+                                        <span style={{ fontSize:11, fontWeight:isAct?700:500, color:isAct?c.acL:isHi?c.tx:c.ts }}>{lbl}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </>)}
+                            </div>
+                            <span style={{ fontSize:11, color:c.tm }}>+</span>
+                            {/* Offset input */}
+                            <div style={{ display:"flex", alignItems:"center", background:c.well, border:"1px solid rgba(140,160,255,0.22)", height:20, padding:"0 3px 0 4px", gap:2, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)" }}>
+                              <input type="text" value={slBeOffset}
+                                onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) setSlBeOffset(e.target.value); }}
+                                onBlur={e => { const n=parseFloat(e.target.value); setSlBeOffset(isNaN(n)?"0":String(n)); }}
+                                style={{ width:24, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
+                              <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
+                                {beArw(()=>stepOff(1),  true,  "be-off-up")}
+                                {beArw(()=>stepOff(-1), false, "be-off-dn")}
+                              </div>
+                            </div>
+                            <span style={{ fontSize:11, color:c.ts }}>{distUnit}</span>
+                          </div>
+                        );
+                      })() : (() => {
+                        const distUnit = currentSymbol.type==="futures" ? "ticks" : "pips";
+                        const unitLabels = { rr:"R", pips:distUnit, dollar:"$" };
+                        const tslStep = slTslUnit==="rr" ? 0.25 : slTslUnit==="dollar" ? 5 : 1;
+                        const stepAct  = (dir) => setSlTslActivation(v => String(Math.max(0, parseFloat(v||"0") + dir*tslStep)));
+                        const stepTrl  = (dir) => setSlTslTrail(v      => String(Math.max(0, parseFloat(v||"0") + dir*tslStep)));
+                        const stepStp  = (dir) => setSlTslStep(v       => String(Math.max(0, parseFloat(v||"0") + dir*tslStep)));
+                        const tslArw = (onClick, up, hk) => {
+                          const isH = swHov===hk;
+                          return (
+                            <div onClick={onClick} onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
+                              style={{ width:10, height:8, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", color:isH?c.tx:c.ts, transition:"color 0.1s" }}>
+                              <svg width={7} height={4} viewBox="0 0 8 5" fill="none">
+                                {up ? <polyline points="1,4 4,1 7,4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                    : <polyline points="1,1 4,4 7,1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>}
+                              </svg>
+                            </div>
+                          );
+                        };
+                        const WellIn = ({val, set, hkUp, hkDn, stepFn, w=28}) => (
+                          <div style={{ display:"flex", alignItems:"center", background:c.well, border:"1px solid rgba(140,160,255,0.22)", height:20, padding:"0 3px 0 4px", gap:2, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)" }}>
+                            <input type="text" value={val}
+                              onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) set(e.target.value); }}
+                              onBlur={e => { const n=parseFloat(e.target.value); set(isNaN(n)?"0":String(n)); }}
+                              style={{ width:w, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
+                            <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
+                              {tslArw(()=>stepFn(1),  true,  hkUp)}
+                              {tslArw(()=>stepFn(-1), false, hkDn)}
+                            </div>
+                          </div>
+                        );
+                        const isUnitH = swHov==="tsl-unit-btn";
+                        return (
+                          <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                            {/* Formula row */}
+                            <div style={{ display:"flex", gap:5, alignItems:"center", flexWrap:"wrap" }}>
+                              <span style={{ fontSize:11, color:c.tm }}>After</span>
+                              <WellIn val={slTslActivation} set={setSlTslActivation} hkUp="tsl-act-up" hkDn="tsl-act-dn" stepFn={stepAct}/>
+                              {/* Unit dropdown */}
+                              <div style={{ position:"relative" }}>
+                                <div onClick={()=>setSlTslUnitDrop(v=>!v)}
+                                  onMouseEnter={()=>setSwHov("tsl-unit-btn")} onMouseLeave={()=>setSwHov(null)}
+                                  style={{ width:44, height:20, display:"flex", alignItems:"center", justifyContent:"space-between",
+                                           padding:"0 5px", cursor:"default", flexShrink:0, boxSizing:"border-box",
+                                           background:slTslUnitDrop?c.acD:isUnitH?"rgba(74,106,255,0.08)":"transparent",
+                                           border:`1px solid ${slTslUnitDrop?"rgba(74,106,255,0.5)":isUnitH?"rgba(140,160,255,0.35)":"rgba(140,160,255,0.18)"}`,
+                                           color:slTslUnitDrop?c.acL:isUnitH?c.tx:c.ts, transition:"all 0.12s" }}>
+                                  <span style={{ fontSize:11, fontWeight:700 }}>{unitLabels[slTslUnit]}</span>
+                                  <svg width={6} height={4} viewBox="0 0 6 4" fill="none" style={{ flexShrink:0, opacity:0.6 }}>
+                                    <polyline points="0.5,0.5 3,3.5 5.5,0.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                </div>
+                                {slTslUnitDrop && (<>
+                                  <div onClick={()=>setSlTslUnitDrop(false)} style={{ position:"fixed", inset:0, zIndex:9998 }}/>
+                                  <div style={{ position:"absolute", left:0, top:"calc(100% + 3px)", zIndex:9999, width:64,
+                                               background:c.sf, border:"1px solid rgba(140,160,255,0.22)", boxShadow:"0 4px 16px rgba(0,0,0,0.5)" }}>
+                                    <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }}/>
+                                    {[["rr","R:R"],["pips",distUnit==="ticks"?"Ticks":"Pips"],["dollar","Dollar"]].map(([val,lbl]) => {
+                                      const isAct = slTslUnit===val;
+                                      const isHi  = swHov===`tsl-unit-${val}`;
+                                      return (
+                                        <div key={val}
+                                          onClick={()=>{ setSlTslUnit(val); setSlTslUnitDrop(false); }}
+                                          onMouseEnter={()=>setSwHov(`tsl-unit-${val}`)} onMouseLeave={()=>setSwHov(null)}
+                                          style={{ display:"flex", alignItems:"center", padding:"5px 8px", cursor:"default", position:"relative",
+                                                   background:isAct?c.acD:isHi?"rgba(255,255,255,0.06)":"transparent", transition:"background 0.1s" }}>
+                                          {isAct && <div style={{ position:"absolute", left:0, top:"15%", bottom:"15%", width:2,
+                                                                  background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,
+                                                                  boxShadow:`0 0 6px ${c.acG}` }}/>}
+                                          <span style={{ fontSize:11, fontWeight:isAct?700:500, color:isAct?c.acL:isHi?c.tx:c.ts }}>{lbl}</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </>)}
+                              </div>
+                              <span style={{ fontSize:11, color:c.tm }}>trail</span>
+                              <WellIn val={slTslTrail} set={setSlTslTrail} hkUp="tsl-trl-up" hkDn="tsl-trl-dn" stepFn={stepTrl}/>
+                              <span style={{ fontSize:11, color:c.tm }}>·</span>
+                              <span style={{ fontSize:11, color:c.tm }}>step</span>
+                              <WellIn val={slTslStep} set={setSlTslStep} hkUp="tsl-stp-up" hkDn="tsl-stp-dn" stepFn={stepStp}/>
+                            </div>
+                            {/* TSL explanation row */}
+                            <div style={{ borderTop:"1px solid rgba(255,80,104,0.08)", paddingTop:4 }}>
+                              <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", lineHeight:1.4 }}>
+                                {"Activates after "}
+                                <span style={{ color:c.gn, fontWeight:700 }}>{slTslActivation} {unitLabels[slTslUnit]}</span>
+                                {" profit · SL trails "}
+                                <span style={{ color:c.ts, fontWeight:700 }}>{slTslTrail} {unitLabels[slTslUnit]}</span>
+                                {" behind price · steps every "}
+                                <span style={{ color:c.ts, fontWeight:700 }}>{slTslStep} {unitLabels[slTslUnit]}</span>
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                  {/* BE explanation row */}
+                  {slAdvMode==="breakeven" && (
+                    <div style={{ borderTop:"1px solid rgba(255,80,104,0.08)", padding:"3px 6px 4px" }}>
+                      <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", lineHeight:1.4 }}>
+                        {"SL moves from "}
+                        <span style={{ color:c.rd, fontWeight:700 }}>{slRows[0].price}</span>
+                        {" to "}
+                        <span style={{ color:c.ts, fontWeight:700 }}>{entryRows[0].price}</span>
+                        {" when price reaches "}
+                        <span style={{ color:c.gn, fontWeight:700 }}>—</span>
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* 8 — TAKE PROFIT */}
+          {(() => {
+            const sizeUnit = currentSymbol.type==="futures" ? "Contracts" : "Lots";
+            const totalQty = tpRows.reduce((s,r) => s + (parseFloat(r.qty)||0), 0);
+            const avgTpPrice = tpRows.length ? (tpRows.reduce((s,r) => s + (parseFloat(r.price)||0), 0) / tpRows.length).toFixed(2) : "0.00";
+            const updTp  = (id, field, val) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r));
+            const stepTp = (id, field, dir, step=1) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
+            const delTp  = (id) => setTpRows(rows => rows.length > 1 ? rows.filter(r => r.id!==id) : rows);
+            const addTp  = () => { setTpRows(rows => [...rows, {id:Date.now(), price:"0", qty:"0", enabled:true}]); setTimeout(()=>{ if(tpScrollRef.current) tpScrollRef.current.scrollTop = tpScrollRef.current.scrollHeight; }, 0); };
+            const clearTp = () => setTpRows([{id:Date.now(), price:"0", qty:"100", enabled:true}]);
+            const equalizeTp = () => { const each = (100/tpRows.length).toFixed(0); setTpRows(rows => rows.map(r => ({...r, qty:each}))); };
+            const arw = (onClick, up, hk) => {
+              const isH = swHov===hk;
+              return (
+                <div onClick={onClick} onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
+                  style={{ width:10, height:8, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", color:isH?c.tx:c.ts, transition:"color 0.1s" }}>
+                  <svg width={7} height={4} viewBox="0 0 8 5" fill="none">
+                    {up ? <polyline points="1,4 4,1 7,4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        : <polyline points="1,1 4,4 7,1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>}
+                  </svg>
+                </div>
+              );
+            };
+            return (
+              <div style={{ flexShrink:0, padding:"4px 8px 6px" }}>
+                <div style={{ border:"1px solid rgba(0,212,161,0.18)", background:"rgba(0,212,161,0.02)" }}>
+                  {/* Header */}
+                  <div style={{ padding:"3px 6px", display:"flex", alignItems:"center", gap:4, borderBottom:"1px solid rgba(0,212,161,0.1)" }}>
+                    <div style={{ width:5, height:5, background:c.gn, transform:"rotate(45deg)", flexShrink:0 }}/>
+                    <span style={{ fontSize:10, fontWeight:800, color:c.gn, letterSpacing:"0.06em" }}>TAKE PROFIT</span>
+                    {panelMode==="advanced" && tpRows.length > 1 && (
+                      <span style={{ padding:"0 4px", fontSize:10, fontWeight:800, color:c.gn, background:"rgba(0,212,161,0.15)" }}>
+                        {tpRows.length}×
+                      </span>
+                    )}
+                    <div style={{ flex:1 }}/>
+                    {panelMode==="advanced" && tpRows.length > 1 && (<>
+                      <div onClick={equalizeTp}
+                        onMouseEnter={()=>setSwHov("tp-eq")} onMouseLeave={()=>setSwHov(null)}
+                        title="Equalize qty across levels"
+                        style={{ width:20, height:20, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0,
+                                 color:swHov==="tp-eq"?c.gn:c.ts,
+                                 background:swHov==="tp-eq"?"rgba(0,212,161,0.08)":"transparent",
+                                 border:`1px solid ${swHov==="tp-eq"?"rgba(0,212,161,0.4)":"rgba(0,212,161,0.2)"}`,
+                                 transition:"all 0.12s" }}>
+                        <svg width={11} height={8} viewBox="0 0 11 8" fill="none">
+                          <line x1="0" y1="2" x2="11" y2="2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                          <line x1="0" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        </svg>
+                      </div>
+                      <div onClick={clearTp}
+                        onMouseEnter={()=>setSwHov("tp-clear")} onMouseLeave={()=>setSwHov(null)}
+                        title="Remove all levels"
+                        style={{ width:20, height:20, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0,
+                                 color:swHov==="tp-clear"?c.rd:c.ts,
+                                 background:swHov==="tp-clear"?"rgba(255,80,104,0.08)":"transparent",
+                                 border:`1px solid ${swHov==="tp-clear"?"rgba(255,80,104,0.4)":"rgba(0,212,161,0.2)"}`,
+                                 transition:"all 0.12s" }}>
+                        <svg width={10} height={11} viewBox="0 0 10 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="1" y1="3" x2="9" y2="3"/>
+                          <path d="M3.5 3V2a.5.5 0 01.5-.5h2a.5.5 0 01.5.5v1"/>
+                          <path d="M2 3l.6 6.5h4.8L8 3"/>
+                          <line x1="3.8" y1="5.5" x2="3.8" y2="7.5"/>
+                          <line x1="6.2" y1="5.5" x2="6.2" y2="7.5"/>
+                        </svg>
+                      </div>
+                    </>)}
+                    {panelMode==="advanced" && (
+                    <div onClick={addTp}
+                      onMouseEnter={()=>setSwHov("tp-add")} onMouseLeave={()=>setSwHov(null)}
+                      title="Add target level"
+                      style={{ width:20, height:20, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0,
+                               color:swHov==="tp-add"?c.gn:c.ts,
+                               background:swHov==="tp-add"?"rgba(0,212,161,0.08)":"transparent",
+                               border:`1px solid ${swHov==="tp-add"?"rgba(0,212,161,0.4)":"rgba(0,212,161,0.2)"}`,
+                               transition:"all 0.12s" }}>
+                      <svg width={9} height={9} viewBox="0 0 9 9" fill="none">
+                        <line x1="4.5" y1="1" x2="4.5" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        <line x1="1" y1="4.5" x2="8" y2="4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                    </div>
+                    )}
+                  </div>
+                  {/* Rows — scrollable after 5 */}
+                  <div ref={tpScrollRef} className="tlr-scroll" style={{ padding:"3px 6px", maxHeight:52, overflowY:"auto" }}>
+                    {tpRows.map((row, i) => {
+                      const pct = totalQty > 0 ? ((parseFloat(row.qty)||0)/totalQty*100).toFixed(0) : "0";
+                      return (
+                        <div key={row.id} style={{ display:"flex", alignItems:"center", gap:3, height:22, marginBottom:1, opacity:row.enabled?1:0.38, transition:"opacity 0.15s" }}>
+                          {/* Per-row TP checkbox */}
+                          {(()=>{
+                            const isH = swHov===`tp-chk-${row.id}`;
+                            const col = row.enabled ? c.gn : isH ? c.gn : c.ts;
+                            return (
+                              <div onClick={()=>updTp(row.id,"enabled",!row.enabled)}
+                                onMouseEnter={()=>setSwHov(`tp-chk-${row.id}`)} onMouseLeave={()=>setSwHov(null)}
+                                style={{ width:12, height:12, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, cursor:"default" }}>
+                                <svg width={10} height={10} style={{overflow:"visible"}}>
+                                  <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={col} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+                                  <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={col} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+                                  {row.enabled ? <>
+                                    <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.gn} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+                                    <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.gn} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+                                    <circle cx={5} cy={5} r={2.8} fill={c.gn} opacity={0.15}/>
+                                    <circle cx={5} cy={5} r={1.6} fill={c.gn}/>
+                                  </> : isH && <>
+                                    <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.gn} strokeWidth={1} fill="none" strokeLinecap="square"/>
+                                    <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.gn} strokeWidth={1} fill="none" strokeLinecap="square"/>
+                                  </>}
+                                </svg>
+                              </div>
+                            );
+                          })()}
+                          {/* Level number — only when 2+ rows */}
+                          {tpRows.length > 1 && <span style={{ fontSize:10, fontWeight:700, color:c.ts, width:13, textAlign:"center", flexShrink:0, lineHeight:1 }}>{i+1}</span>}
+                          {/* Price well */}
+                          <div style={{ display:"flex", alignItems:"center", background:c.well, border:`1px solid ${row.enabled?"rgba(0,212,161,0.35)":"rgba(140,160,255,0.22)"}`, height:20, padding:"0 3px 0 4px", gap:2, flexShrink:0, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)", transition:"border-color 0.15s" }}>
+                            <input type="text" value={row.price} disabled={!row.enabled}
+                              onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updTp(row.id,"price",e.target.value); }}
+                              onBlur={e => { const n=parseFloat(e.target.value); updTp(row.id,"price",isNaN(n)?"0":String(n)); }}
+                              style={{ width:58, background:"transparent", border:"none", outline:"none", color:row.enabled?c.gn:c.ts, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
+                            <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
+                              {arw(()=>stepTp(row.id,"price", 1), true,  `tp-${row.id}-up`)}
+                              {arw(()=>stepTp(row.id,"price",-1), false, `tp-${row.id}-dn`)}
+                            </div>
+                          </div>
+                          {/* Qty well */}
+                          <div style={{ display:"flex", alignItems:"center", background:c.well, border:"1px solid rgba(140,160,255,0.22)", height:20, padding:"0 3px 0 4px", gap:2, flexShrink:0, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)" }}>
+                            {sizeMode==="$" && <span style={{ fontSize:10, fontWeight:600, color:c.ts, lineHeight:1, flexShrink:0 }}>$</span>}
+                            {sizeMode==="%" && <span style={{ fontSize:9, fontWeight:700, color:c.ts, lineHeight:1, flexShrink:0 }}>%</span>}
+                            <input type="text" value={row.qty}
+                              onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updTp(row.id,"qty",e.target.value); }}
+                              onBlur={e => { const n=parseFloat(e.target.value); updTp(row.id,"qty",isNaN(n)?"0":String(n)); }}
+                              style={{ width:32, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
+                            {sizeMode==="#" && <span style={{ fontSize:9, color:c.ts, flexShrink:0, lineHeight:1, whiteSpace:"nowrap" }}>{sizeUnit}</span>}
+                            <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
+                              {arw(()=>stepTp(row.id,"qty", 1), true,  `tq-${row.id}-up`)}
+                              {arw(()=>stepTp(row.id,"qty",-1), false, `tq-${row.id}-dn`)}
+                            </div>
+                          </div>
+                          {/* Pct · lots inline */}
+                          <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", whiteSpace:"nowrap", flexShrink:0 }}>
+                            {sizeMode==="#"
+                              ? <>0.00 {sizeUnit}</>
+                              : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}0.00 {sizeUnit}</>
+                            }
+                          </span>
+                          <div style={{ flex:1 }}/>
+                          {tpRows.length > 1 ? (
+                            <div onClick={()=>delTp(row.id)}
+                              onMouseEnter={()=>setSwHov(`tpd-${row.id}`)} onMouseLeave={()=>setSwHov(null)}
+                              style={{ width:16, height:20, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0, color:swHov===`tpd-${row.id}`?c.rd:c.ts, transition:"color 0.1s" }}>
+                              <I n="x" s={9} cl={swHov===`tpd-${row.id}`?c.rd:c.ts}/>
+                            </div>
+                          ) : <div style={{ width:16, flexShrink:0 }}/>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Footer — always visible */}
+                  <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", gap:6, borderTop:"1px solid rgba(0,212,161,0.1)" }}>
+                    <span style={{ fontSize:9, fontWeight:700, color:c.gn, fontVariantNumeric:"tabular-nums" }}>
+                      Profit <span style={{ fontWeight:800 }}>+$0.00</span>
+                    </span>
+                    <div style={{ flex:1 }}/>
+                    {tpRows.length > 1 && (
+                      <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
+                        Avg <span style={{ color:c.ts, fontWeight:700 }}>{avgTpPrice}</span>
+                      </span>
+                    )}
+                    <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
+                      Dist <span style={{ color:c.ts, fontWeight:700 }}>0.00</span>
+                      {" "}{currentSymbol.type==="futures" ? "ticks" : "pips"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+
+          {/* Hidden file inputs for screenshots — display:none so no grid cell consumed */}
+          <input ref={fileInputRef} type="file" accept="image/*" style={{ display:"none" }}
+            onChange={e => {
+              const file = e.target.files[0]; if(!file) return;
+              const reader = new FileReader();
+              reader.onload = ev => setScreenshots(ss => [...ss, {id:Date.now(), dataUrl:ev.target.result, name:file.name}]);
+              reader.readAsDataURL(file);
+              e.target.value = "";
+            }}/>
+          <input ref={replaceInputRef} type="file" accept="image/*" style={{ display:"none" }}
+            onChange={e => {
+              const file = e.target.files[0]; if(!file) return;
+              const reader = new FileReader();
+              reader.onload = ev => setScreenshots(ss => ss.map(s => s.id===replaceTargetId ? {...s, dataUrl:ev.target.result, name:file.name} : s));
+              reader.readAsDataURL(file);
+              e.target.value = "";
+            }}/>
+
+          {/* Pre-Trade Tags */}
+          <div style={{ flexShrink:0, padding:"4px 8px 6px" }}>
+            <div style={{ border:"1px solid rgba(255,140,66,0.22)", background:"rgba(255,140,66,0.02)" }}>
+              {/* Header */}
+              <div onClick={()=>setTagsOpen(v=>!v)} onMouseEnter={()=>setSwHov("tags-hdr")} onMouseLeave={()=>setSwHov(null)}
+                style={{ padding:"3px 6px", display:"flex", alignItems:"center", gap:4, cursor:"default",
+                         borderBottom:tagsOpen?"1px solid rgba(255,140,66,0.12)":"none",
+                         background:swHov==="tags-hdr"?"rgba(255,140,66,0.03)":"transparent", transition:"background 0.12s" }}>
+                <div style={{ width:5, height:5, background:"#FF8C42", transform:"rotate(45deg)", flexShrink:0 }}/>
+                <span style={{ fontSize:10, fontWeight:800, color:"#FF8C42", letterSpacing:"0.06em" }}>PRE-TRADE TAGS</span>
+                {(() => { const done = Object.keys(tagSels).filter(k=>tagSels[k]!==undefined&&tagSels[k]!=="").length;
+                  return done > 0 && <span style={{ padding:"0 4px", fontSize:9, fontWeight:800, color:"#FF8C42", background:"rgba(255,140,66,0.15)" }}>{done}</span>; })()}
+                <div style={{ flex:1 }}/>
+                <svg width={7} height={4} viewBox="0 0 8 5" fill="none" style={{ color:"#FF8C42", opacity:0.6, transition:"transform 0.15s", transform:tagsOpen?"rotate(180deg)":"rotate(0deg)" }}>
+                  <polyline points="0.5,0.5 4,4.5 7.5,0.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              {tagsOpen && (
+                <div style={{ padding:"3px 6px 4px", display:"grid", gridTemplateColumns:"1fr 1fr", gap:"2px 6px" }}>
+                  {tagDefs.map(tag => {
+                    const val = tagSels[tag.id];
+                    const isDropOpen = tagDropOpen===tag.id;
+                    if(tag.type==="bool") {
+                      const isSet = val !== undefined;
+                      const isYes = val === true;
+                      const isNo  = val === false;
+                      const btnH  = swHov===`tag-chk-${tag.id}`;
+                      return (
+                        <div key={tag.id} style={{ display:"flex", alignItems:"center", height:18, gap:3, overflow:"hidden" }}>
+                          <span style={{ fontSize:9, color:isSet?c.tx:c.ts, fontWeight:isSet?600:400, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{tag.label}</span>
+                          <div onClick={()=>setTagSels(s=>{ const cur=s[tag.id]; return {...s,[tag.id]: cur===undefined?true : cur===true?false : true}; })}
+                            onMouseEnter={()=>setSwHov(`tag-chk-${tag.id}`)} onMouseLeave={()=>setSwHov(null)}
+                            style={{ width:30, height:16, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0, boxSizing:"border-box",
+                                     background: isYes ? "rgba(0,212,161,0.10)" : isNo ? "rgba(255,80,104,0.08)" : btnH ? "rgba(255,255,255,0.04)" : "transparent",
+                                     border:`1px solid ${isYes ? "rgba(0,212,161,0.38)" : isNo ? "rgba(255,80,104,0.4)" : btnH ? "rgba(140,160,255,0.28)" : "rgba(140,160,255,0.15)"}`,
+                                     transition:"all 0.12s" }}>
+                            <span style={{ fontSize:9, fontWeight:700, letterSpacing:"0.04em",
+                                           color: isYes ? c.gn : isNo ? c.rd : btnH ? c.ts : c.tm }}>
+                              {isYes ? "YES" : isNo ? "NO" : "—"}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    }
+                    /* multi-option tag */
+                    const btnH = swHov===`tag-btn-${tag.id}`;
+                    return (
+                      <div key={tag.id} style={{ display:"flex", alignItems:"center", height:18, gap:3, position:"relative" }}>
+                        <span style={{ fontSize:9, color:val?c.tx:c.ts, fontWeight:val?600:400, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{tag.label}</span>
+                        <div onClick={()=>setTagDropOpen(v=>v===tag.id?null:tag.id)}
+                          onMouseEnter={()=>setSwHov(`tag-btn-${tag.id}`)} onMouseLeave={()=>setSwHov(null)}
+                          style={{ height:16, width:64, padding:"0 5px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:2,
+                                   cursor:"default", flexShrink:0, boxSizing:"border-box",
+                                   background:isDropOpen?c.acD:btnH?"rgba(74,106,255,0.08)":"transparent",
+                                   border:`1px solid ${isDropOpen?"rgba(74,106,255,0.5)":btnH?"rgba(140,160,255,0.35)":"rgba(140,160,255,0.18)"}`,
+                                   color:isDropOpen?c.acL:val?c.tx:btnH?c.tx:c.ts,
+                                   transition:"all 0.12s" }}>
+                          <span style={{ fontSize:9, fontWeight:val?700:400, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{val || "—"}</span>
+                          <svg width={5} height={3} viewBox="0 0 6 4" fill="none" style={{ flexShrink:0, opacity:0.6 }}>
+                            <polyline points="0.5,0.5 3,3.5 5.5,0.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </div>
+                        {isDropOpen && (<>
+                          <div onClick={()=>setTagDropOpen(null)} style={{ position:"fixed", inset:0, zIndex:9998 }}/>
+                          <div style={{ position:"absolute", right:0, bottom:"calc(100% + 3px)", zIndex:9999,
+                                        background:c.sf, border:"1px solid rgba(140,160,255,0.22)", boxShadow:"0 4px 16px rgba(0,0,0,0.5)", minWidth:88 }}>
+                            <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }}/>
+                            {tag.options.map(opt => {
+                              const isAct = val===opt;
+                              const isHi  = swHov===`tag-opt-${tag.id}-${opt}`;
+                              return (
+                                <div key={opt}
+                                  onClick={()=>{ setTagSels(s=>({...s,[tag.id]:opt})); setTagDropOpen(null); }}
+                                  onMouseEnter={()=>setSwHov(`tag-opt-${tag.id}-${opt}`)} onMouseLeave={()=>setSwHov(null)}
+                                  style={{ display:"flex", alignItems:"center", padding:"4px 10px", cursor:"default", position:"relative",
+                                           background:isAct?c.acD:isHi?"rgba(255,255,255,0.06)":"transparent", transition:"background 0.1s" }}>
+                                  {isAct && <div style={{ position:"absolute", left:0, top:"15%", bottom:"15%", width:2,
+                                                          background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,
+                                                          boxShadow:`0 0 6px ${c.acG}` }}/>}
+                                  <span style={{ fontSize:10, fontWeight:isAct?700:500, color:isAct?c.acL:isHi?c.tx:c.ts }}>{opt}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>)}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Screenshots */}
+          <div style={{ flexShrink:0, padding:"4px 8px 5px", gridColumn:isWide?"1 / -1":undefined }}>
+            <div style={{ border:`1px solid ${c.brL}`, background:"rgba(255,255,255,0.02)", display:"flex", alignItems:"center", padding:"3px 6px", gap:5, minHeight:36 }}>
+              {/* Label */}
+              <div style={{ width:5, height:5, background:c.ts, transform:"rotate(45deg)", flexShrink:0 }}/>
+              <span style={{ fontSize:10, fontWeight:800, color:c.ts, letterSpacing:"0.06em", flexShrink:0 }}>SCREENSHOTS</span>
+              {screenshots.length > 0 && <span style={{ padding:"0 3px", fontSize:9, fontWeight:800, color:c.acL, background:c.acD, flexShrink:0 }}>{screenshots.length}</span>}
+              {/* Scrollable thumbnail strip */}
+              <div className="tlr-scroll" style={{ flex:1, display:"flex", gap:3, overflowX:"auto", alignItems:"center", minWidth:0 }}>
+                {screenshots.map(ss => {
+                  const isHovSs = swHov===`ss-${ss.id}` || swHov===`ss-rep-${ss.id}` || swHov===`ss-del-${ss.id}`;
+                  return (
+                    <div key={ss.id} onMouseEnter={()=>setSwHov(`ss-${ss.id}`)} onMouseLeave={()=>setSwHov(null)}
+                      style={{ position:"relative", width:34, height:28, flexShrink:0, border:`1px solid ${isHovSs?"rgba(140,160,255,0.5)":"rgba(140,160,255,0.18)"}`, overflow:"hidden", transition:"border-color 0.12s" }}>
+                      <img src={ss.dataUrl} alt={ss.name} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }}/>
+                      {isHovSs && (
+                        <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.72)", display:"flex", alignItems:"stretch", justifyContent:"center" }}>
+                          {/* Replace — left half */}
+                          <div onClick={()=>{ setReplaceTargetId(ss.id); replaceInputRef.current?.click(); }}
+                            onMouseEnter={()=>setSwHov(`ss-rep-${ss.id}`)} onMouseLeave={()=>setSwHov(`ss-${ss.id}`)}
+                            title="Replace"
+                            style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
+                                     background:swHov===`ss-rep-${ss.id}`?"rgba(255,255,255,0.22)":"transparent",
+                                     color:swHov===`ss-rep-${ss.id}`?c.tx:c.ts, transition:"background 0.1s", borderRight:"1px solid rgba(255,255,255,0.1)" }}>
+                            <svg width={11} height={11} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                              <path d="M1 6a5 5 0 1 0 1.5-3.5"/><polyline points="1,1 1,4 4,4"/>
+                            </svg>
+                          </div>
+                          {/* Delete — right half */}
+                          <div onClick={()=>setScreenshots(ss2=>ss2.filter(s=>s.id!==ss.id))}
+                            onMouseEnter={()=>setSwHov(`ss-del-${ss.id}`)} onMouseLeave={()=>setSwHov(`ss-${ss.id}`)}
+                            title="Delete"
+                            style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
+                                     background:swHov===`ss-del-${ss.id}`?"rgba(255,80,104,0.35)":"transparent",
+                                     color:swHov===`ss-del-${ss.id}`?c.rd:"rgba(255,100,120,0.85)", transition:"background 0.1s" }}>
+                            <svg width={9} height={10} viewBox="0 0 10 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="1" y1="3" x2="9" y2="3"/><path d="M3.5 3V2a.5.5 0 01.5-.5h2a.5.5 0 01.5.5v1"/>
+                              <path d="M2 3l.6 6.5h4.8L8 3"/>
+                            </svg>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Add button */}
+              {(()=>{ const isH=swHov==="ss-add"; return (
+                <div onClick={()=>fileInputRef.current?.click()}
+                  onMouseEnter={()=>setSwHov("ss-add")} onMouseLeave={()=>setSwHov(null)}
+                  style={{ width:24, height:24, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
+                           background:isH?"rgba(74,106,255,0.08)":"transparent",
+                           border:`1px solid ${isH?"rgba(140,160,255,0.38)":"rgba(140,160,255,0.2)"}`,
+                           color:isH?c.acL:c.ts, cursor:"default", transition:"all 0.12s", position:"relative" }}>
+                  <svg width={11} height={11} viewBox="0 0 14 14" fill="none">
+                    <line x1="7" y1="2" x2="7" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    <line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
+                  {isH && <div style={{ position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", width:"70%", height:1, background:`linear-gradient(90deg,transparent,${c.acL},transparent)`, pointerEvents:"none" }}/>}
+                </div>
+              ); })()}
+            </div>
+          </div>
+
+          {/* Notes section */}
+          {(()=>{
+            const isH = swHov==="notes-hdr";
+            return (
+              <div style={{ flexShrink:0, margin:"4px 8px 2px", background:c.hv2, border:`1px solid ${c.br}` }}>
+                <div onMouseEnter={()=>setSwHov("notes-hdr")} onMouseLeave={()=>setSwHov(null)}
+                  onClick={()=>setNotesOpen(v=>!v)}
+                  style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 6px", cursor:"default", userSelect:"none", borderBottom:notesOpen?`1px solid ${c.br}`:"none" }}>
+                  <div style={{ width:5, height:5, transform:"rotate(45deg)", background:c.tm, flexShrink:0 }}/>
+                  <span style={{ fontSize:8, fontWeight:800, color:isH?c.ts:c.tm, letterSpacing:"0.07em", flex:1, transition:"color 0.12s" }}>NOTES</span>
+                  <svg width={8} height={5} viewBox="0 0 8 5" style={{ transition:"transform 0.15s", transform:notesOpen?"rotate(180deg)":"rotate(0deg)", flexShrink:0 }}>
+                    <path d="M0.5,0.5 L4,4 L7.5,0.5" stroke={c.tm} strokeWidth={1.3} fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+                {notesOpen && (
+                  <div style={{ padding:"4px 6px 6px" }}>
+                    <textarea value={notesText} onChange={e=>setNotesText(e.target.value)}
+                      placeholder="Trade notes…"
+                      style={{ width:"100%", boxSizing:"border-box", height:52, background:c.well, border:`1px solid ${c.br}`, outline:"none", resize:"none",
+                               color:c.tx, fontSize:10, fontFamily:F, padding:"4px 6px", lineHeight:1.5,
+                               boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)", transition:"border-color 0.15s" }}
+                      onFocus={e=>e.target.style.borderColor=c.acB} onBlur={e=>e.target.style.borderColor=c.br}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          </div>{/* end grid */}
+          </div>{/* end scrollable middle */}
+
+          {/* 9 — R:R Bar */}
+          {(() => {
+            const risk   = parseFloat(riskVal||"0");
+            const rr     = 2.0;
+            const reward = risk * rr;
+            return (
+              <div style={{ flexShrink:0, padding:"5px 8px 4px", borderTop:"1px solid rgba(140,160,255,0.12)" }}>
+                <div style={{ display:"flex", height:5, overflow:"hidden", gap:1 }}>
+                  <div style={{ flex:1,   background:c.rd, opacity:0.55, boxShadow:`0 0 6px ${c.rd}` }}/>
+                  <div style={{ flex:Math.max(0.1,rr), background:c.gn, opacity:0.55, boxShadow:`0 0 6px ${c.gn}` }}/>
+                </div>
+                <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", paddingTop:4 }}>
+                  <span style={{ fontSize:9, fontWeight:700, color:c.rd, fontVariantNumeric:"tabular-nums" }}>-${risk.toFixed(2)}</span>
+                  <div style={{ display:"flex", alignItems:"baseline", gap:1 }}>
+                    <span style={{ fontSize:11, fontWeight:800, color:c.rd, fontVariantNumeric:"tabular-nums" }}>1</span>
+                    <span style={{ fontSize:10, fontWeight:600, color:c.ts }}>:</span>
+                    <span style={{ fontSize:11, fontWeight:800, color:c.gn, fontVariantNumeric:"tabular-nums" }}>{rr.toFixed(1)}</span>
+                  </div>
+                  <span style={{ fontSize:9, fontWeight:700, color:c.gn, fontVariantNumeric:"tabular-nums" }}>+${reward.toFixed(2)}</span>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* 10 — Execute button */}
+          {(()=>{
+            const isBuy  = buySell==="buy";
+            const gradA  = isBuy ? "rgba(0,160,120,1)"    : "rgba(190,40,60,1)";
+            const gradB  = isBuy ? "#00D4A1"               : "#FF5068";
+            const gradBH = isBuy ? "#22FFCA"               : "#FF7088";
+            const bordN  = isBuy ? "rgba(0,212,161,0.55)"  : "rgba(255,80,104,0.55)";
+            const bordH  = isBuy ? "rgba(0,212,161,0.85)"  : "rgba(255,80,104,0.85)";
+            const glow   = isBuy ? "rgba(0,212,161,0.35)"  : "rgba(255,80,104,0.35)";
+            const glowH  = isBuy ? "rgba(0,212,161,0.55)"  : "rgba(255,80,104,0.55)";
+            const isH    = swHov==="exec-btn";
+            const isPr   = swHov==="exec-btn_dn";
+            return (
+              <div style={{ padding:"0 8px 6px", flexShrink:0 }}>
+                <div onClick={() => { document.getElementById("placeOrderButton")?.click(); }} data-nodrag="1"
+                  onMouseEnter={()=>setSwHov("exec-btn")} onMouseLeave={()=>setSwHov(null)}
+                  onMouseDown={()=>setSwHov("exec-btn_dn")} onMouseUp={()=>setSwHov("exec-btn")}
+                  style={{ width:"100%", height:36, cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
+                           background:isPr ? gradB : isH ? `linear-gradient(135deg,${gradA},${gradBH})` : `linear-gradient(135deg,${gradA},${gradB})`,
+                           border:`1px solid ${isH||isPr ? bordH : bordN}`,
+                           boxShadow:`0 2px ${isH?16:8}px ${isH?glowH:glow}`,
+                           transform:isPr?"scale(0.98)":"scale(1)",
+                           transition:"background 0.12s, border-color 0.12s, box-shadow 0.12s, transform 0.08s",
+                           WebkitFontSmoothing:"antialiased" }}>
+                  <span style={{ fontSize:12, fontWeight:800, color:"#fff", letterSpacing:"0.05em", fontFamily:F }}>
+                    {isBuy ? "BUY" : "SELL"} 0 Contracts · Set Position Size
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+
 
           {/* Resize handles — only when detached */}
           {panelDetached && <>
