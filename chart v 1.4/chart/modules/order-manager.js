@@ -15980,7 +15980,13 @@ class OrderManager {
         // Draft order preview (LIMIT/STOP BUY, AVG, SL/TP badges) only exists while the drawer is open.
         // Scheduled rAF/setTimeout callbacks may still call this after close — scrub SVG + state so nothing sticks.
         const orderPanelEl = document.getElementById('orderPanel');
-        if (!orderPanelEl || !orderPanelEl.classList.contains('visible')) {
+        // V9 live: React owns the visible rail; #orderPanel stays off-DOM with order-panel--v9-react-hidden.
+        // Bridge may call updatePreviewLines before toggleOrderPanel adds .visible — still treat as "open"
+        // when the rail flags are set so TP/SL/entry edits from React actually redraw on the chart.
+        const v9ReactRailOpen = typeof window !== 'undefined'
+            && !!window.__talariaV9ReactOrderUi
+            && !!window.__talariaV9OrderRailOpen;
+        if (!orderPanelEl || (!orderPanelEl.classList.contains('visible') && !v9ReactRailOpen)) {
             this.removePreviewLines();
             return;
         }
