@@ -2971,9 +2971,8 @@ class DrawingToolsManager {
     }
 
     /**
-     * Canvas-local CSS pixels — same space as Chart.updateCrosshair (clientX/Y − canvas rect).
-     * Avoid d3.pointer(..., svg): Safari can diverge from Chromium when SVG vs canvas
-     * getBoundingClientRect differ (subpixels / compositing), so drawings no longer match the pointer or crosshair.
+     * Chart layout CSS pixels — same as Chart.updateCrosshair / resize() (canvas *parent* rect),
+     * not the <canvas> node alone: Safari can disagree between those two boxes.
      */
     _eventCanvasLocalXY(event) {
         const unwrap = (ev) => (ev && ev.sourceEvent) ? ev.sourceEvent : ev;
@@ -2999,8 +2998,10 @@ class DrawingToolsManager {
         }
         if (!Number.isFinite(cx) || !Number.isFinite(cy)) return fallback();
 
-        const rect = canvas.getBoundingClientRect();
-        return [cx - rect.left, cy - rect.top];
+        const layoutRect = (this.chart && typeof this.chart._chartLayoutBoundingRect === 'function')
+            ? this.chart._chartLayoutBoundingRect()
+            : (canvas.parentElement || canvas).getBoundingClientRect();
+        return [cx - layoutRect.left, cy - layoutRect.top];
     }
 
     /**
