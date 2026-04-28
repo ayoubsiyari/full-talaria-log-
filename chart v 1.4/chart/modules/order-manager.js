@@ -11640,9 +11640,17 @@ class OrderManager {
         const isBeLine = lineData.isBELine || (lineData.label && lineData.label.startsWith('BE'));
         const isBadge = lineData.isBadge;
         
-        // Add split handle for Entry when multi-entry mode is active
+        // Add split handle for Entry when multi-entry mode is active (hidden when V9 React rail owns add/remove)
         const isSplitEntryLine = lineData.label && lineData.label.startsWith('Entry#');
-        const showMultiEntryHandle = !isBadge && (isEntryLine || isSplitEntryLine) && !isSlLine && !isBeLine && this.isMultiEntryMode;
+        const v9ReactOrderRail =
+            typeof window !== 'undefined' && !!window.__talariaV9ReactOrderUi && !!window.__talariaV9OrderRailOpen;
+        const showMultiEntryHandle =
+            !isBadge &&
+            (isEntryLine || isSplitEntryLine) &&
+            !isSlLine &&
+            !isBeLine &&
+            this.isMultiEntryMode &&
+            !v9ReactOrderRail;
         if (showMultiEntryHandle) {
             this.drawSplitHandle(lineData, lineData.labelGroup);
         }

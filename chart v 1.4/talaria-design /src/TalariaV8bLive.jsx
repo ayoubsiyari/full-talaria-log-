@@ -2156,6 +2156,7 @@ const TalariaV8bLive = () => {
         };
 
         const om = window.chart?.orderManager;
+        const skipPosSync = !!om?.isDraggingPreviewLine;
 
         if (sizeMode === "$") setIn("riskAmountUSD", riskVal);
         else if (sizeMode === "%") {
@@ -2178,7 +2179,7 @@ const TalariaV8bLive = () => {
         const mtpOn = !!document.getElementById("multipleTPToggle")?.checked;
         const omHasMultiTp = mtpOn && Array.isArray(om?.tpTargets) && om.tpTargets.length > 1;
 
-        if (entryRows.length > 1 && om) {
+        if (!skipPosSync && entryRows.length > 1 && om) {
           const want = entryRows.map((r, i) => {
             let pid = r.id;
             if (typeof pid === "number" && Number.isFinite(pid)) {
@@ -2195,6 +2196,8 @@ const TalariaV8bLive = () => {
             };
           });
           const levels = want.map((w) => ({ id: w.id, price: w.price, amount: w.amount }));
+          const wantBuyEntry = document.getElementById("buyTab")?.classList.contains("active");
+          levels.sort((a, b) => (wantBuyEntry ? a.price - b.price : b.price - a.price));
 
           if (!om.isMultiEntryMode) {
             // Pre-fill levels before setEntryMode(true). Otherwise order-manager seeds two default
@@ -2222,7 +2225,7 @@ const TalariaV8bLive = () => {
             // Keep #orderEntryPrice + splitEntries aligned when already in multi mode.
             om.syncMultiEntryToSplitEntries?.();
           }
-        } else if (entryRows.length === 1 && om?.isMultiEntryMode) {
+        } else if (!skipPosSync && entryRows.length === 1 && om?.isMultiEntryMode) {
           try {
             om.setEntryMode(false);
           } catch (_) {}
@@ -2232,7 +2235,7 @@ const TalariaV8bLive = () => {
           } else {
             om?.updateOrderPanelPrice?.();
           }
-        } else if (!omHasMultiEntry) {
+        } else if (!skipPosSync && !omHasMultiEntry) {
           // Preview lines require #orderEntryPrice > 0 (order-manager.js updatePreviewLines). The V8b
           // mock defaults entry to "0"; writing that wipes the live price updateOrderPanelPrice() set.
           const entryPx = parseFloat(entryRows[0]?.price ?? "0");
@@ -2245,7 +2248,7 @@ const TalariaV8bLive = () => {
 
         // Multi-TP: mirror React rows into om.tpTargets + list DOM (avoid toggling checkbox every tick — it re-inits).
         const tpActive = tpRows.filter((r) => r.enabled !== false);
-        if (tpActive.length > 1 && om) {
+        if (!skipPosSync && tpActive.length > 1 && om) {
           const mtpEl = document.getElementById("multipleTPToggle");
           if (mtpEl && !mtpEl.checked) {
             mtpEl.checked = true;
@@ -2290,7 +2293,7 @@ const TalariaV8bLive = () => {
           if (numEl && String(numEl.value || "") !== String(nextTgts.length)) {
             numEl.value = String(nextTgts.length);
           }
-        } else if (om && omHasMultiTp && tpRows.length === 1) {
+        } else if (!skipPosSync && om && omHasMultiTp && tpRows.length === 1) {
           // React has one TP row but OM still lists multiple (bridge missed remove). Drop extras so preview math matches.
           while (Array.isArray(om.tpTargets) && om.tpTargets.length > 1) {
             const last = om.tpTargets[om.tpTargets.length - 1];
@@ -2300,7 +2303,7 @@ const TalariaV8bLive = () => {
               break;
             }
           }
-        } else if (!omHasMultiTp) {
+        } else if (!skipPosSync && !omHasMultiTp) {
           const mtpEl = document.getElementById("multipleTPToggle");
           if (mtpEl?.checked && tpActive.length <= 1) {
             mtpEl.checked = false;
@@ -2323,26 +2326,28 @@ const TalariaV8bLive = () => {
 
         const slRowPx = String(slRows[0]?.price ?? "0");
         const slPx = parseFloat(slRowPx);
-        if (slEnabled && slPx > 0) setIn("slPrice", slRowPx);
+        if (!skipPosSync) {
+          if (slEnabled && slPx > 0) setIn("slPrice", slRowPx);
 
-        const tpMultiActive = !!document.getElementById("multipleTPToggle")?.checked;
-        const tpPx = parseFloat(tp0?.price ?? "0");
-        if (!tpMultiActive && tpActive.length <= 1 && tp0?.enabled !== false && tpPx > 0) {
-          setIn("tpPrice", String(tp0.price));
-        }
+          const tpMultiActive = !!document.getElementById("multipleTPToggle")?.checked;
+          const tpPx = parseFloat(tp0?.price ?? "0");
+          if (!tpMultiActive && tpActive.length <= 1 && tp0?.enabled !== false && tpPx > 0) {
+            setIn("tpPrice", String(tp0.price));
+          }
 
-        om?.calculatePositionFromRisk?.();
-        om?.calculateAdvancedRiskReward?.();
-        om?.updatePlaceButtonText?.();
+          om?.calculatePositionFromRisk?.();
+          om?.calculateAdvancedRiskReward?.();
+          om?.updatePlaceButtonText?.();
 
-        try {
-          om?.updatePreviewLines?.();
-        } catch (_) {}
-        requestAnimationFrame(() => {
           try {
             om?.updatePreviewLines?.();
           } catch (_) {}
-        });
+          requestAnimationFrame(() => {
+            try {
+              om?.updatePreviewLines?.();
+            } catch (_) {}
+          });
+        }
       } catch (_) {}
     }, 80);
 
@@ -2568,7 +2573,7 @@ const TalariaV8bLive = () => {
     };
 
     tick();
-    const id = window.setInterval(tick, 50);
+    const id = window.setInterval(tick, 24);
     return () => clearInterval(id);
   }, [orderPanelOpen, riskBasis]);
 
@@ -13119,6 +13124,15 @@ const TalariaV8bLive = () => {
           {(() => {
             const sizeUnit = currentSymbol.type==="futures" ? "Contracts" : "Lots";
             const totalRisk = entryRows.reduce((s,r) => s + (parseFloat(r.risk)||0), 0);
+            const sortEntryRowsBySide = (rows, side) => {
+              if (!rows || rows.length < 2) return rows;
+              return [...rows].sort((a, b) => {
+                const pa = parseFloat(a.price) || 0;
+                const pb = parseFloat(b.price) || 0;
+                return side === "sell" ? pb - pa : pa - pb;
+              });
+            };
+            const sortedEntryRows = sortEntryRowsBySide(entryRows, buySell);
             const pricedEntryRows = entryRows.filter((r) => parseFloat(r.price) > 0);
             const avgPrice = pricedEntryRows.length
               ? (pricedEntryRows.reduce((s, r) => s + (parseFloat(r.price) || 0), 0) / pricedEntryRows.length).toFixed(2)
@@ -13150,13 +13164,90 @@ const TalariaV8bLive = () => {
             };
             const addRow = () => {
               omPanelBridgeRef.current.entryAdd = Date.now();
-              setEntryRows((rows) => [...rows, { id: Date.now(), price: "0", risk: "0" }]);
+              const om = window.chart?.orderManager;
+              setEntryRows((rows) => {
+                if (!om || typeof om.addMultiEntryLevel !== "function") {
+                  const n = rows.length + 1;
+                  const next = [...rows, { id: Date.now(), price: "0", risk: "0" }];
+                  const prevSum = rows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0);
+                  if (sizeMode === "%") {
+                    const base = Math.floor(100 / n);
+                    const last = 100 - base * (n - 1);
+                    return next.map((r, i) => ({ ...r, risk: String(i < n - 1 ? base : last) }));
+                  }
+                  if (sizeMode === "$") {
+                    let total = prevSum;
+                    if (total <= 0) total = Math.max(1, parseFloat(riskVal) || 100);
+                    const share = Math.max(1, Math.round(total / n));
+                    const lastAmt = Math.max(0, total - share * (n - 1));
+                    return next.map((r, i) => ({ ...r, risk: String(i < n - 1 ? share : lastAmt) }));
+                  }
+                  let total = prevSum;
+                  if (total <= 0) total = Math.max(0.01, parseFloat(riskVal) || 1);
+                  const each = (total / n).toFixed(2);
+                  return next.map((r) => ({ ...r, risk: each }));
+                }
+
+                const want = rows.map((r, i) => {
+                  let pid = r.id;
+                  if (typeof pid !== "number" || !Number.isFinite(pid)) {
+                    pid = om.multiEntryLevels?.[i]?.id ?? i + 1;
+                  }
+                  return {
+                    id: pid,
+                    price: parseFloat(r.price) || 0,
+                    amount: parseFloat(r.risk) || 0,
+                  };
+                });
+
+                if (!om.isMultiEntryMode) {
+                  om.multiEntryLevels = want.map((w) => ({ id: w.id, price: w.price, amount: w.amount }));
+                  om.setEntryMode(true);
+                } else {
+                  om.multiEntryLevels = want.map((w) => ({ ...w }));
+                  om.renderMultiEntryRows?.();
+                }
+
+                om.addMultiEntryLevel();
+
+                return (om.multiEntryLevels || []).map((l) => ({
+                  id: l.id,
+                  price: String(l.price ?? "0"),
+                  risk: String(l.amount ?? "0"),
+                }));
+              });
               setTimeout(() => {
                 if (entryScrollRef.current) entryScrollRef.current.scrollTop = entryScrollRef.current.scrollHeight;
               }, 0);
+              requestAnimationFrame(() => {
+                try {
+                  window.chart?.orderManager?.updatePreviewLines?.();
+                } catch (_) {}
+              });
             };
             const clearRows = () => { setEntryRows([{id:Date.now(), price:"0", risk:"0"}]); };
-            const equalizeRisk = () => { const each = (100/entryRows.length).toFixed(0); setEntryRows(rows => rows.map(r => ({...r, risk:each}))); };
+            const equalizeRisk = () => {
+              setEntryRows((rows) => {
+                const n = rows.length;
+                if (n === 0) return rows;
+                if (sizeMode === "%") {
+                  const base = Math.floor(100 / n);
+                  const last = 100 - base * (n - 1);
+                  return rows.map((r, i) => ({ ...r, risk: String(i < n - 1 ? base : last) }));
+                }
+                if (sizeMode === "$") {
+                  const total = rows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0);
+                  const t = total > 0 ? total : Math.max(1, parseFloat(riskVal) || 100);
+                  const share = Math.max(1, Math.round(t / n));
+                  const lastAmt = Math.max(0, t - share * (n - 1));
+                  return rows.map((r, i) => ({ ...r, risk: String(i < n - 1 ? share : lastAmt) }));
+                }
+                const total = rows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0);
+                const t = total > 0 ? total : Math.max(0.01, parseFloat(riskVal) || 1);
+                const each = (t / n).toFixed(2);
+                return rows.map((r) => ({ ...r, risk: each }));
+              });
+            };
             const arw = (onClick, up, hk) => {
               const isH = swHov === hk;
               return (
@@ -13234,7 +13325,7 @@ const TalariaV8bLive = () => {
                   </div>
                   {/* Rows — scrollable after 5 */}
                   <div ref={entryScrollRef} className="tlr-scroll" style={{ padding:"3px 6px", maxHeight:52, overflowY:"auto" }}>
-                    {entryRows.map((row, i) => {
+                    {sortedEntryRows.map((row, i) => {
                       const pct = totalRisk > 0 ? ((parseFloat(row.risk)||0)/totalRisk*100).toFixed(0) : "0";
                       return (
                         <div key={row.id} style={{ display:"flex", alignItems:"center", gap:3, height:22, marginBottom:1 }}>
