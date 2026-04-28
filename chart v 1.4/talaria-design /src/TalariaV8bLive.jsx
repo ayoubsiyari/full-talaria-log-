@@ -2749,6 +2749,17 @@ const TalariaV8bLive = () => {
     return null;
   };
 
+  // Set true while the user is editing an EXISTING drawing through the V9
+  // settings panel (opened via dblclick). We need to:
+  //   1. Force `tool` to the matching panel-group key so the JSX panel
+  //      conditional renders (`tool === "trendline" || tool === "rect" ...`).
+  //   2. Prevent the tool bridge below from arming chart.js's draw tool —
+  //      otherwise clicking the chart while the panel is open would start
+  //      drawing a new trendline. We zero out the legacy tool while editing.
+  // The ref also stores the drawing reference + the tool/groupSelected we
+  // had before the panel opened, so closing the panel restores them.
+  const editingDrawingRef = useRef(null);
+
   // Push the current tool selection into the legacy chart.js drawing system.
   // Runs whenever V9's tool / groupSelected changes. Polls briefly because
   // chart.js / drawingManager may not be initialized yet on first mount.
@@ -2759,6 +2770,16 @@ const TalariaV8bLive = () => {
       const dm = window.chart && window.chart.drawingManager;
       if (!dm || typeof dm.setTool !== 'function') {
         if (++n < 50) setTimeout(apply, 100);
+        return;
+      }
+      // While editing an existing drawing through the V9 settings panel,
+      // keep chart.js in cursor mode regardless of `tool` (which we forced
+      // to the panel-group key purely so the JSX conditional renders).
+      if (editingDrawingRef.current) {
+        try {
+          if (typeof dm.clearTool === 'function') dm.clearTool();
+          else dm.currentTool = null;
+        } catch (_) {}
         return;
       }
       const legacy = resolveLegacyTool();
@@ -2783,6 +2804,121 @@ const TalariaV8bLive = () => {
   // Set true just before we update tlStyle from a selected drawing's style
   // so the forward bridge below skips that pass and we don't loop.
   const suppressForwardBridge = useRef(false);
+
+  // ─── V9 dblclick → V9 settings panel ─────────────────────────────────────
+  // Register a hook that chart.js's drawing-tools-manager.editDrawing() calls
+  // when the user double-clicks an existing drawing. Replaces the legacy
+  // tv-settings-modal with the V9 floating panel (tlSettOpen) pre-filled
+  // from the drawing's current style. Edits propagate back to the drawing
+  // through the existing forward bridge above (line 2880+) because the
+  // drawing is already selected by drawing-tools-manager before editDrawing.
+  useEffect(() => {
+    // Map from drawing.style.dashArray back to V9 lineType.
+    const LEGACY_DASH_TO_V9 = { '': 'solid', '5,5': 'dashed', '2,4': 'dotted', '7,4,2,4': 'dashdot' };
+    // Map drawing.type → V9 panel-group key. The panel JSX renders only
+    // when `tool` is one of these values — keep this aligned with the
+    // conditional at the panel render site (look for "Trend Line Settings
+    // Window" comment in this file).
+    const drawingTypeToPanelGroup = (type) => {
+      if (!type) return null;
+      if (type.startsWith('fibonacci-') || type.startsWith('fib-') || type.startsWith('trend-fib-')) return 'fib';
+      if (type.startsWith('gann-') || type.startsWith('elliott-')
+          || type === 'xabcd-pattern' || type === 'head-shoulders'
+          || type === 'abcd-pattern' || type === 'triangle-pattern'
+          || type === 'three-drives' || type === 'cypher-pattern') return 'pattern';
+      if (['rectangle','triangle','arc','ellipse','circle'].includes(type)) return 'rect';
+      if (['parallel-channel','regression-trend','flat-top-bottom',
+           'disjoint-channel','pitchfork'].includes(type)) return 'channel';
+      if (['brush','highlighter'].includes(type)) return 'brush2';
+      if (['ruler','short-position','long-position','price-range',
+           'date-range','date-and-price-range'].includes(type)) return 'measure';
+      // Lines (default fallback).
+      if (['trendline','horizontal','vertical','horizontal-ray','ray',
+           'extended-line','cross-line','polyline','path','curve','double-curve',
+           'arrow','arrow-marker','arrow-mark-up','arrow-mark-down'].includes(type)) {
+        return 'trendline';
+      }
+      return null;
+    };
+
+    const hook = (drawing, x, y) => {
+      try {
+        if (!drawing || !drawing.type) return false;
+        const group = drawingTypeToPanelGroup(drawing.type);
+        if (!group) return false; // Let legacy panel handle text / volume / etc.
+
+        const s = drawing.style || {};
+        // Stash the drawing so the tool bridge keeps chart.js in cursor mode
+        // and so closeTlSett (Esc / outside-click) can clear this on close.
+        editingDrawingRef.current = { drawing, prevTool: tool, prevGroupSelected: groupSelected };
+
+        // Suppress the forward bridge once: this read-back into tlStyle
+        // would otherwise re-emit the same values back to the drawing.
+        suppressForwardBridge.current = true;
+        setTlStyle(prev => ({
+          ...prev,
+          lineColor: s.stroke || s.color || prev.lineColor,
+          lineWidth: String(s.strokeWidth ?? prev.lineWidth),
+          lineType: LEGACY_DASH_TO_V9[(s.dashArray ?? s.strokeDasharray ?? '')] || prev.lineType,
+          bgColor: s.fill || s.backgroundColor || prev.bgColor,
+          ep1: s.startStyle || prev.ep1,
+          ep2: s.endStyle || prev.ep2,
+          extendLeft: !!s.extendLeft,
+          extendRight: !!s.extendRight,
+          priceLabels: s.showPriceLabel !== false,
+          timeLabels: s.showTimeLabel !== false,
+          rangeType: s.rangeMode === 'price' ? 'Price'
+                   : s.rangeMode === 'time' ? 'Date and time'
+                   : (prev.rangeType || 'Date & Price'),
+          showInfo: !!s.showInfo,
+          showInfoTypes: Array.isArray(s.showInfoTypes) ? [...s.showInfoTypes] : prev.showInfoTypes,
+          labelColor: s.labelColor || prev.labelColor,
+          labelFontSize: String(s.labelFontSize ?? prev.labelFontSize),
+          labelBg: !!s.labelBackground,
+          labelBgColor: s.labelBackgroundColor || prev.labelBgColor,
+        }));
+
+        // Position panel near dblclick (clientX/Y are post-zoom; tlSettPos
+        // is consumed inside the zoomed root, so divide by Z to get
+        // pre-zoom CSS pixels).
+        const zForPos = (typeof window !== 'undefined' && Number(window.__v9Zoom)) || 1;
+        const px = Math.max(20, Number(x) / zForPos - 220);
+        const py = Math.max(60, Number(y) / zForPos - 40);
+        setTlSettPos({ x: px, y: py });
+
+        // Force tool group → JSX conditional renders the panel.
+        setTool(group);
+        setTlSettOpen(true);
+        return true;
+      } catch (err) {
+        console.warn('[V9 dblclick hook] failed:', err);
+        return false;
+      }
+    };
+
+    if (typeof window !== 'undefined') window.__v9OpenDrawingSettings = hook;
+    return () => {
+      if (typeof window !== 'undefined' && window.__v9OpenDrawingSettings === hook) {
+        window.__v9OpenDrawingSettings = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tool, groupSelected]);
+
+  // When the panel closes (tlSettOpen → false), restore the previous tool
+  // and clear editingDrawingRef so the chart re-arms the user's prior tool.
+  useEffect(() => {
+    if (tlSettOpen) return;
+    const editing = editingDrawingRef.current;
+    if (!editing) return;
+    editingDrawingRef.current = null;
+    // Restore prior tool / sub-tool. Schedule a microtask so the JSX
+    // panel's exit animation (closing.has('tlsett')) finishes first.
+    Promise.resolve().then(() => {
+      if (editing.prevTool !== undefined) setTool(editing.prevTool);
+      if (editing.prevGroupSelected !== undefined) setGroupSelected(editing.prevGroupSelected);
+    });
+  }, [tlSettOpen]);
 
   // ─── Drawing selection bridge ───────────────────────────────────────────
   // Wrap drawingManager.toolbar.show / .hide once chart.js is ready so the

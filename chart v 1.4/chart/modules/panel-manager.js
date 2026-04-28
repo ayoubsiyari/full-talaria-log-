@@ -589,9 +589,10 @@ class PanelManager {
      * Hide all synced crosshairs when sync is disabled
      */
     hideAllSyncedCrosshairs() {
-        // Hide main chart crosshair
-        const mainCrosshairV = document.querySelector('.crosshair-vertical');
-        const mainCrosshairH = document.querySelector('.crosshair-horizontal');
+        // Main chart: scope to canvas parent (V9 DOM has panel crosshairs before #chartWrapper)
+        const mainRoot = window.chart && window.chart.canvas && window.chart.canvas.parentElement;
+        const mainCrosshairV = mainRoot ? mainRoot.querySelector('.crosshair-vertical') : null;
+        const mainCrosshairH = mainRoot ? mainRoot.querySelector('.crosshair-horizontal') : null;
         if (mainCrosshairV) mainCrosshairV.style.display = 'none';
         if (mainCrosshairH) mainCrosshairH.style.display = 'none';
         
@@ -1241,11 +1242,12 @@ class PanelManager {
                     chart.redrawDrawings();
                 }
                 
-                // Reset crosshair elements - they will appear on mouse hover
-                const crosshairV = document.querySelector('.crosshair-vertical');
-                const crosshairH = document.querySelector('.crosshair-horizontal');
-                const priceLabel = document.querySelector('.price-label');
-                const timeLabel = document.querySelector('.time-label');
+                // Reset crosshair elements (must not use document — panel slots come first in DOM)
+                const mainRoot = chart.canvas && chart.canvas.parentElement;
+                const crosshairV = mainRoot ? mainRoot.querySelector('.crosshair-vertical') : null;
+                const crosshairH = mainRoot ? mainRoot.querySelector('.crosshair-horizontal') : null;
+                const priceLabel = mainRoot ? mainRoot.querySelector('.price-label') : null;
+                const timeLabel = mainRoot ? mainRoot.querySelector('.time-label') : null;
                 
                 if (crosshairV) crosshairV.style.display = 'none';
                 if (crosshairH) crosshairH.style.display = 'none';

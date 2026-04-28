@@ -5648,6 +5648,25 @@ class DrawingToolsManager {
      * Edit drawing settings
      */
     editDrawing(drawing, x, y) {
+        // V9 hook: if TalariaV8bLive has registered an opener, use the V9
+        // floating panel instead of the legacy tv-settings-modal. The hook
+        // returns true if it handled the drawing, false to fall through.
+        if (typeof window !== 'undefined' && typeof window.__v9OpenDrawingSettings === 'function') {
+            try {
+                const handled = window.__v9OpenDrawingSettings(drawing, x, y);
+                if (handled) {
+                    // V9 panel renders its own toolbar; legacy floating
+                    // toolbar would overlap, so hide it the same way we do
+                    // before opening the legacy panel below.
+                    if (this.toolbar && typeof this.toolbar.hide === 'function') this.toolbar.hide();
+                    if (drawing && drawing.type === 'image') drawing._keepEmpty = true;
+                    return;
+                }
+            } catch (err) {
+                console.warn('[V9 dblclick] hook threw, falling back to legacy panel:', err);
+            }
+        }
+
         // Hide toolbar when opening settings panel
         this.toolbar.hide();
 

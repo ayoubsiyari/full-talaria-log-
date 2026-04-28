@@ -5741,8 +5741,9 @@ class Chart {
             }
         }
         
-        // Apply crosshair colors (lines)
-        const container = targetChart.isPanel ? targetChart.canvas.parentElement : document;
+        // Apply crosshair colors (lines). Always scope to the chart wrapper — `document`
+        // would match a panel's crosshair first (DOM order) and break the main chart.
+        const container = targetChart.canvas?.parentElement || document;
         const vLine = container.querySelector('.crosshair-vertical');
         const hLine = container.querySelector('.crosshair-horizontal');
         const crosshairWidth = Math.max(1, parseInt(targetChart.chartSettings.crosshairWidth, 10) || 2);
@@ -7538,8 +7539,9 @@ class Chart {
         // Dot shows custom dot indicator, arrow and eraser show no crosshair
         const showLines = type === 'cross';
         
-        // Get container for this chart - use same logic as updateCrosshair
-        const container = this.isPanel ? this.canvas?.parentElement : document;
+        // Same wrapper as the canvas (main #chartWrapper or panel container). Never `document`
+        // — the first .crosshair-vertical in the page can be a hidden multi-panel slot.
+        const container = this.canvas?.parentElement;
         if (!container) return;
         
         const vLine = container.querySelector('.crosshair-vertical');
@@ -16475,8 +16477,12 @@ class Chart {
             return;
         }
         
-        // Get crosshair elements - for panels, find within the panel container
-        const container = this.isPanel ? this.canvas.parentElement : document;
+        // Crosshair divs are siblings of the canvas inside the same wrapper. Scoping to
+        // `this.canvas.parentElement` is required for V9 live: `#panels-container` comes
+        // before `#chartWrapper` in the DOM, so `document.querySelector` would update a
+        // panel's crosshair with coordinates computed for the main canvas.
+        const container = this.canvas.parentElement;
+        if (!container) return;
         const vLine = container.querySelector('.crosshair-vertical');
         const hLine = container.querySelector('.crosshair-horizontal');
         const priceLabel = container.querySelector('.price-label');
@@ -16588,16 +16594,14 @@ class Chart {
             dotIndicator = document.createElement('div');
             dotIndicator.className = 'cursor-dot-indicator';
             dotIndicator.style.cssText = 'position:absolute;width:10px;height:10px;border-radius:50%;background:#2962ff;border:2px solid #fff;pointer-events:none;z-index:10000;transform:translate(-50%,-50%);box-shadow:0 0 4px rgba(0,0,0,0.3);';
-            // Append to proper container - use chart wrapper for main chart, panel container for panels
-            const appendTarget = this.isPanel ? container : (document.querySelector('.chart-wrapper') || document.body);
+            const appendTarget = container || document.body;
             appendTarget.appendChild(dotIndicator);
         }
         if (dotIndicator) {
             if (this.cursorType === 'dot' && !this.tool) {
                 // Position relative to canvas
                 const rect = this.canvas.getBoundingClientRect();
-                const chartWrapper = document.querySelector('.chart-wrapper');
-                const wrapperRect = chartWrapper ? chartWrapper.getBoundingClientRect() : {left: 0, top: 0};
+                const wrapperRect = container.getBoundingClientRect();
                 dotIndicator.style.left = (rect.left - wrapperRect.left + lineX) + 'px';
                 dotIndicator.style.top = (rect.top - wrapperRect.top + lineY) + 'px';
                 dotIndicator.style.display = 'block';
@@ -16769,8 +16773,8 @@ class Chart {
     }
     
     hideCrosshair() {
-        // Get crosshair elements - for panels, find within the panel container
-        const container = this.isPanel ? this.canvas.parentElement : document;
+        const container = this.canvas?.parentElement;
+        if (!container) return;
         const vLine = container.querySelector('.crosshair-vertical');
         const hLine = container.querySelector('.crosshair-horizontal');
         const priceLabel = container.querySelector('.price-label');
@@ -18925,7 +18929,8 @@ class Chart {
     receiveCrosshairSync(timestamp, price = null, sourceCandle = null) {
         if (!this._crosshairPanelSyncAllowed()) return;
         
-        const container = this.isPanel ? this.canvas.parentElement : document;
+        const container = this.canvas.parentElement;
+        if (!container) return;
         const vLine = container.querySelector('.crosshair-vertical');
         const hLine = container.querySelector('.crosshair-horizontal');
         const priceLabel = container.querySelector('.price-label');
