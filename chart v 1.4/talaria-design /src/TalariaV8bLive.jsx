@@ -2168,7 +2168,6 @@ const TalariaV8bLive = () => {
         const omHasMultiTp = mtpOn && Array.isArray(om?.tpTargets) && om.tpTargets.length > 1;
 
         if (entryRows.length > 1 && om) {
-          if (!om.isMultiEntryMode) om.setEntryMode(true);
           const want = entryRows.map((r, i) => {
             let pid = r.id;
             if (typeof pid === "number" && Number.isFinite(pid)) {
@@ -2184,26 +2183,34 @@ const TalariaV8bLive = () => {
               amount: parseFloat(r.risk) || 0,
             };
           });
-          let dirty =
-            !Array.isArray(om.multiEntryLevels) || om.multiEntryLevels.length !== want.length;
-          if (!dirty) {
-            for (let i = 0; i < want.length; i++) {
-              const a = om.multiEntryLevels[i];
-              const w = want[i];
-              if (!a || a.price !== w.price || a.amount !== w.amount) {
-                dirty = true;
-                break;
+          const levels = want.map((w) => ({ id: w.id, price: w.price, amount: w.amount }));
+
+          if (!om.isMultiEntryMode) {
+            // Pre-fill levels before setEntryMode(true). Otherwise order-manager seeds two default
+            // legs from #orderEntryPrice and ignores the React "+" rows until the next tick.
+            om.multiEntryLevels = levels;
+            om.setEntryMode(true);
+          } else {
+            let dirty =
+              !Array.isArray(om.multiEntryLevels) || om.multiEntryLevels.length !== levels.length;
+            if (!dirty) {
+              for (let i = 0; i < levels.length; i++) {
+                const a = om.multiEntryLevels[i];
+                const w = levels[i];
+                if (!a || a.price !== w.price || a.amount !== w.amount) {
+                  dirty = true;
+                  break;
+                }
               }
             }
+            if (dirty) {
+              om.multiEntryLevels = levels.map((x) => ({ ...x }));
+              om.renderMultiEntryRows?.();
+              om.updateMultiEntrySummary?.();
+            }
+            // Keep #orderEntryPrice + splitEntries aligned when already in multi mode.
+            om.syncMultiEntryToSplitEntries?.();
           }
-          if (dirty) {
-            om.multiEntryLevels = want.map((w) => ({ id: w.id, price: w.price, amount: w.amount }));
-            om.renderMultiEntryRows?.();
-            om.updateMultiEntrySummary?.();
-          }
-          // Always run: writes #orderEntryPrice, splitEntries, and enables splitEntriesEnabled so
-          // updatePreviewLines() can draw Entry#2 / Avg (order-manager.js syncMultiEntryToSplitEntries).
-          om.syncMultiEntryToSplitEntries?.();
         } else if (entryRows.length === 1 && om?.isMultiEntryMode) {
           try {
             om.setEntryMode(false);
@@ -2263,10 +2270,10 @@ const TalariaV8bLive = () => {
             om.renderTPTargets?.();
           }
           const numEl = document.getElementById("numTPTargets");
+          // Update display only — dispatching input/change runs calculateTPTargetsFromNumber() and
+          // rebuilds ladder TPs, wiping manually added rows / prices from the React rail.
           if (numEl && String(numEl.value || "") !== String(nextTgts.length)) {
             numEl.value = String(nextTgts.length);
-            numEl.dispatchEvent(new Event("input", { bubbles: true }));
-            numEl.dispatchEvent(new Event("change", { bubbles: true }));
           }
         } else if (!omHasMultiTp) {
           const mtpEl = document.getElementById("multipleTPToggle");
@@ -2344,6 +2351,8 @@ const TalariaV8bLive = () => {
           risk: String(l.amount ?? "0"),
         }));
         setEntryRows((prev) => {
+          // React rail added levels before the forward bridge wrote to OM — don't shrink row count.
+          if (prev.length > next.length) return prev;
           if (
             prev.length === next.length &&
             prev.every(
@@ -2384,6 +2393,7 @@ const TalariaV8bLive = () => {
           enabled: true,
         }));
         setTpRows((prev) => {
+          if (prev.length > nextTp.length) return prev;
           if (
             prev.length === nextTp.length &&
             prev.every(
