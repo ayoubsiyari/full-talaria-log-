@@ -12023,6 +12023,8 @@ if next_static_dir.exists():
 # Chart UI (static HTML/JS/CSS) served under /chart
 CHART_ROOT_FILES = {
     "index.html",
+    # Full legacy monolithic chart (60k+ lines). Prefer editing V9 + dist-v9; see /chart/index.html stub.
+    "legacy-index.html",
     "index.v9.html",
     "backtesting.html",
     "propfirm-backtest.html",
@@ -12060,9 +12062,9 @@ async def chart_root_files(file_name: str):
     if file_name not in CHART_ROOT_FILES:
         raise HTTPException(status_code=404, detail="Not found")
     # Preference order for /chart/index.html:
-    #   1. dist-v9/index.html  (new V9 React build)
+    #   1. dist-v9/index.html  (new V9 React build — canonical live UI)
     #   2. dist/index.html     (legacy minified bundle)
-    #   3. chart/index.html    (legacy source, individual <script> tags)
+    #   3. chart/index.html    (stub pointer doc only — legacy source is legacy-index.html)
     if file_name == "index.html":
         if _DIST_V9_INDEX_PATH.is_file():
             return FileResponse(str(_DIST_V9_INDEX_PATH))
