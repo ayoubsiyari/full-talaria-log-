@@ -344,7 +344,6 @@ const TalariaV8bLive = () => {
   const [slEnabled, setSlEnabled] = useState(false);
   const [entryRows, setEntryRows] = useState([{ id:0, price:"0", risk:"100" }]);
   const entryScrollRef = useRef(null);
-  const [slPrice, setSlPrice] = useState("0");
   const [slRows, setSlRows] = useState([{ id:0, price:"0" }]);
   const slScrollRef = useRef(null);
   const [tpRows, setTpRows] = useState([{ id:0, price:"0", qty:"100", enabled:true }]);
@@ -2134,11 +2133,32 @@ const TalariaV8bLive = () => {
           el.dispatchEvent(new Event("change", { bubbles: true }));
         };
 
-        if (sizeMode === "$") setIn("riskAmountUSD", riskVal);
-        else if (sizeMode === "%") setIn("riskAmountPercent", riskVal);
-        else setIn("lotSizeAmount", riskVal);
+        const setChk = (id, checked) => {
+          const el = document.getElementById(id);
+          if (!el || el.checked === !!checked) return;
+          el.checked = !!checked;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        };
 
         const om = window.chart?.orderManager;
+
+        if (sizeMode === "$") setIn("riskAmountUSD", riskVal);
+        else if (sizeMode === "%") {
+          let pct = riskVal;
+          // order-manager.js applies % to balance (current/initial), not equity; scale so $ risk matches V8b EQ mode.
+          if (riskBasis === "equity" && om) {
+            const b = Number(om.balance);
+            const eq = Number(om.equity);
+            if (b > 0 && Number.isFinite(eq)) {
+              pct = String((parseFloat(riskVal || "0") * eq) / b);
+            }
+          }
+          setIn("riskAmountPercent", pct);
+          const wantBal = "current";
+          const br = document.querySelector(`input[name="balanceType"][value="${wantBal}"]`);
+          if (br && !br.checked) br.click();
+        } else setIn("lotSizeAmount", riskVal);
         // Preview lines require #orderEntryPrice > 0 (order-manager.js updatePreviewLines). The V8b
         // mock defaults entry to "0"; writing that wipes the live price updateOrderPanelPrice() set.
         const entryPx = parseFloat(entryRows[0]?.price ?? "0");
@@ -2148,11 +2168,16 @@ const TalariaV8bLive = () => {
           om?.updateOrderPanelPrice?.();
         }
 
-        const slPx = parseFloat(String(slPrice ?? "0"));
-        if (slPx > 0) setIn("slPrice", String(slPrice));
+        const tp0 = tpRows[0];
+        setChk("enableSL", slEnabled);
+        setChk("enableTP", !!tp0?.enabled);
 
-        const tpPx = parseFloat(tpRows[0]?.price ?? "0");
-        if (tpPx > 0) setIn("tpPrice", String(tpRows[0].price));
+        const slRowPx = String(slRows[0]?.price ?? "0");
+        const slPx = parseFloat(slRowPx);
+        if (slEnabled && slPx > 0) setIn("slPrice", slRowPx);
+
+        const tpPx = parseFloat(tp0?.price ?? "0");
+        if (tp0?.enabled !== false && tpPx > 0) setIn("tpPrice", String(tp0.price));
 
         om?.calculatePositionFromRisk?.();
         om?.calculateAdvancedRiskReward?.();
@@ -2167,7 +2192,7 @@ const TalariaV8bLive = () => {
     }, 80);
 
     return () => clearTimeout(tid);
-  }, [orderPanelOpen, buySell, orderType, sizeMode, riskVal, slPrice, entryRows, tpRows]);
+  }, [orderPanelOpen, buySell, orderType, sizeMode, riskVal, riskBasis, slEnabled, slRows, entryRows, tpRows]);
 
   // Mirror hidden #orderPanel → V8b React state. Chart drags / OM logic update the native inputs only;
   // without this, the rail still shows 0 / Market while preview lines show Limit + real prices.
@@ -2189,13 +2214,26 @@ const TalariaV8bLive = () => {
         return next;
       });
 
-      setSlPrice((prev) => (prev === slp ? prev : slp));
+      setSlRows((rows) => {
+        if (!rows.length) return rows;
+        if (rows[0].price === slp) return rows;
+        const next = [...rows];
+        next[0] = { ...next[0], price: slp };
+        return next;
+      });
+
+      const slOn = !!document.getElementById("enableSL")?.checked;
+      setSlEnabled((prev) => (prev === slOn ? prev : slOn));
 
       setTpRows((rows) => {
         if (!rows.length) return rows;
-        if (rows[0].price === tpp) return rows;
+        const r0 = rows[0];
+        const tpOn = !!document.getElementById("enableTP")?.checked;
+        const priceChg = r0.price !== tpp;
+        const enChg = !!r0.enabled !== tpOn;
+        if (!priceChg && !enChg) return rows;
         const next = [...rows];
-        next[0] = { ...next[0], price: tpp };
+        next[0] = { ...r0, price: tpp, enabled: tpOn };
         return next;
       });
 
@@ -2215,7 +2253,15 @@ const TalariaV8bLive = () => {
 
       const rid =
         pm === "risk-percent" ? "riskAmountPercent" : pm === "lot-size" ? "lotSizeAmount" : "riskAmountUSD";
-      const rv = document.getElementById(rid)?.value;
+      let rv = document.getElementById(rid)?.value;
+      if (rv != null && rv !== "" && pm === "risk-percent" && riskBasis === "equity") {
+        const omm = window.chart?.orderManager;
+        const b = Number(omm?.balance);
+        const eq = Number(omm?.equity);
+        if (b > 0 && Number.isFinite(eq)) {
+          rv = String((parseFloat(rv) * b) / eq);
+        }
+      }
       if (rv != null && rv !== "") {
         setRiskVal((prev) => (prev === rv ? prev : rv));
       }
@@ -2234,7 +2280,7 @@ const TalariaV8bLive = () => {
     tick();
     const id = window.setInterval(tick, 120);
     return () => clearInterval(id);
-  }, [orderPanelOpen]);
+  }, [orderPanelOpen, riskBasis]);
 
   // Rollback overlay — callback ref attaches native mousemove the instant the node mounts
   // (avoids useEffect timing gap when rollback first becomes true)
