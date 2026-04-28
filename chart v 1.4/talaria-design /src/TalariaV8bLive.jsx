@@ -2105,7 +2105,10 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     if (!orderPanelOpen) return;
     const panel = document.getElementById("orderPanel");
-    if (!panel || !panel.classList.contains("visible")) return;
+    // Always push into #orderPanel when the rail is open. updatePreviewLines() still requires
+    // .visible on #orderPanel to draw — toggleOrderPanel normally sets that; do not skip sync here
+    // if the class lags one frame (otherwise multi-entry / TP never reaches order-manager.js).
+    if (!panel) return;
 
     const tid = window.setTimeout(() => {
       try {
@@ -2197,7 +2200,19 @@ const TalariaV8bLive = () => {
             om.multiEntryLevels = want.map((w) => ({ id: w.id, price: w.price, amount: w.amount }));
             om.renderMultiEntryRows?.();
             om.updateMultiEntrySummary?.();
-            om.syncMultiEntryToSplitEntries?.();
+          }
+          // Always run: writes #orderEntryPrice, splitEntries, and enables splitEntriesEnabled so
+          // updatePreviewLines() can draw Entry#2 / Avg (order-manager.js syncMultiEntryToSplitEntries).
+          om.syncMultiEntryToSplitEntries?.();
+        } else if (entryRows.length === 1 && om?.isMultiEntryMode) {
+          try {
+            om.setEntryMode(false);
+          } catch (_) {}
+          const entryPx = parseFloat(entryRows[0]?.price ?? "0");
+          if (entryPx > 0) {
+            setIn("orderEntryPrice", String(entryPx));
+          } else {
+            om?.updateOrderPanelPrice?.();
           }
         } else if (!omHasMultiEntry) {
           // Preview lines require #orderEntryPrice > 0 (order-manager.js updatePreviewLines). The V8b
@@ -2247,6 +2262,12 @@ const TalariaV8bLive = () => {
             om.tpTargets = nextTgts.map((t) => ({ ...t }));
             om.renderTPTargets?.();
           }
+          const numEl = document.getElementById("numTPTargets");
+          if (numEl && String(numEl.value || "") !== String(nextTgts.length)) {
+            numEl.value = String(nextTgts.length);
+            numEl.dispatchEvent(new Event("input", { bubbles: true }));
+            numEl.dispatchEvent(new Event("change", { bubbles: true }));
+          }
         } else if (!omHasMultiTp) {
           const mtpEl = document.getElementById("multipleTPToggle");
           if (mtpEl?.checked && tpActive.length <= 1) {
@@ -2282,6 +2303,9 @@ const TalariaV8bLive = () => {
         om?.calculateAdvancedRiskReward?.();
         om?.updatePlaceButtonText?.();
 
+        try {
+          om?.updatePreviewLines?.();
+        } catch (_) {}
         requestAnimationFrame(() => {
           try {
             om?.updatePreviewLines?.();
@@ -2299,7 +2323,8 @@ const TalariaV8bLive = () => {
     if (!orderPanelOpen) return;
     const tick = () => {
       const panel = document.getElementById("orderPanel");
-      if (!panel?.classList.contains("visible")) return;
+      // Mirror from OM + hidden inputs whenever the rail is open (class "visible" can lag toggleOrderPanel).
+      if (!panel) return;
 
       const ep = document.getElementById("orderEntryPrice")?.value ?? "";
       const slp = document.getElementById("slPrice")?.value ?? "";
@@ -12977,7 +13002,10 @@ const TalariaV8bLive = () => {
           {(() => {
             const sizeUnit = currentSymbol.type==="futures" ? "Contracts" : "Lots";
             const totalRisk = entryRows.reduce((s,r) => s + (parseFloat(r.risk)||0), 0);
-            const avgPrice = entryRows.length ? (entryRows.reduce((s,r) => s + (parseFloat(r.price)||0), 0) / entryRows.length).toFixed(2) : "0.00";
+            const pricedEntryRows = entryRows.filter((r) => parseFloat(r.price) > 0);
+            const avgPrice = pricedEntryRows.length
+              ? (pricedEntryRows.reduce((s, r) => s + (parseFloat(r.price) || 0), 0) / pricedEntryRows.length).toFixed(2)
+              : "0.00";
             const updRow = (id, field, val) => setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r));
             const stepRow = (id, field, dir, step=1) => setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
             const delRow = (id) => setEntryRows(rows => rows.length > 1 ? rows.filter(r => r.id!==id) : rows);
@@ -13473,7 +13501,10 @@ const TalariaV8bLive = () => {
           {(() => {
             const sizeUnit = currentSymbol.type==="futures" ? "Contracts" : "Lots";
             const totalQty = tpRows.reduce((s,r) => s + (parseFloat(r.qty)||0), 0);
-            const avgTpPrice = tpRows.length ? (tpRows.reduce((s,r) => s + (parseFloat(r.price)||0), 0) / tpRows.length).toFixed(2) : "0.00";
+            const pricedTpRows = tpRows.filter((r) => parseFloat(r.price) > 0);
+            const avgTpPrice = pricedTpRows.length
+              ? (pricedTpRows.reduce((s, r) => s + (parseFloat(r.price) || 0), 0) / pricedTpRows.length).toFixed(2)
+              : "0.00";
             const updTp  = (id, field, val) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r));
             const stepTp = (id, field, dir, step=1) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
             const delTp  = (id) => setTpRows(rows => rows.length > 1 ? rows.filter(r => r.id!==id) : rows);
