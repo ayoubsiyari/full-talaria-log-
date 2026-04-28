@@ -1396,20 +1396,36 @@ const TalariaV8bLive = () => {
 
   const pushEconNewsFiltersToModule = (impactArr, symOnly, cntSel) => {
     const api = window.__economicCalendarUi;
-    if (!api) return;
+    const impact =
+      Array.isArray(impactArr) && impactArr.length > 0 ? impactArr : ["high", "med", "low"];
     const allOff = ECON_CAL_COUNTRIES.every((co) => !cntSel[co]);
     const allOn = ECON_CAL_COUNTRIES.every((co) => cntSel[co]);
     let countryCodes;
     if (allOff) countryCodes = ["__"];
     else if (allOn) countryCodes = [];
     else countryCodes = ECON_CAL_COUNTRIES.filter((co) => cntSel[co]);
+    if (!api) {
+      try {
+        window.chart?.scheduleRender?.();
+      } catch (_) {}
+      try {
+        window.dispatchEvent(new CustomEvent("economicCalendarUpdated"));
+      } catch (_) {}
+      return;
+    }
     api.setFilters({
-      impactHigh: impactArr.includes("high"),
-      impactMedium: impactArr.includes("med"),
-      impactLow: impactArr.includes("low"),
+      impactHigh: impact.includes("high"),
+      impactMedium: impact.includes("med"),
+      impactLow: impact.includes("low"),
       pairOnly: !!symOnly,
       countryCodes,
     });
+    try {
+      window.chart?.scheduleRender?.();
+    } catch (_) {}
+    try {
+      window.dispatchEvent(new CustomEvent("economicCalendarUpdated"));
+    } catch (_) {}
   };
 
   useEffect(() => {
@@ -12617,10 +12633,62 @@ const TalariaV8bLive = () => {
                         }, 200);
                       }}
                         style={{flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:0}}/>
-                      {newsSearch && <div onClick={()=>setNewsSearch("")} style={{cursor:"default"}}><I n="x" s={12} cl={c.ts}/></div>}
+                      {newsSearch && (
+                        <div
+                          onClick={() => {
+                            setNewsSearch("");
+                            window.__economicCalendarUi?.setQuery("");
+                          }}
+                          style={{ cursor: "default" }}
+                        >
+                          <I n="x" s={12} cl={c.ts} />
+                        </div>
+                      )}
                     </div>
                   </div>
-                  {/* Filters */}
+                  {/* Always visible: pair filter (was inside collapsed panel — 0fr height hid controls). */}
+                  <div
+                    onClick={() => {
+                      setNewsSymbolOnly((p) => {
+                        const next = !p;
+                        queueMicrotask(() => pushEconNewsFiltersToModule(newsImpact, next, newsCntSel));
+                        return next;
+                      });
+                    }}
+                    onMouseEnter={() => setSwHov("news-pair-row")}
+                    onMouseLeave={() => setSwHov(null)}
+                    style={{
+                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "6px 10px",
+                      cursor: "default",
+                      background: swHov === "news-pair-row" ? "rgba(255,255,255,0.03)" : "transparent",
+                      transition: "background 0.12s",
+                      borderBottom: `1px solid ${c.br}`,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: newsSymbolOnly ? c.acL : c.ts,
+                        fontWeight: newsSymbolOnly ? 600 : 400,
+                        transition: "color 0.15s",
+                      }}
+                    >
+                      Chart symbol only
+                    </span>
+                    <Toggle
+                      on={newsSymbolOnly}
+                      color={c.acL}
+                      c={c}
+                      hk="news-pair"
+                      swHov={swHov}
+                      setSwHov={setSwHov}
+                    />
+                  </div>
+                  {/* Filters: impact + countries (collapsible) */}
                   <div style={{flexShrink:0,display:"grid",gridTemplateRows:newsFilterOpen?"1fr":"0fr",transition:"grid-template-rows 0.28s cubic-bezier(0.4,0,0.2,1)",overflow:"hidden"}}>
                     <div style={{overflow:"hidden",opacity:newsFilterOpen?1:0,transition:"opacity 0.22s ease"}}>
                       <div style={{padding:"0 10px 10px",display:"flex",flexDirection:"column",gap:8}}>
@@ -12637,8 +12705,11 @@ const TalariaV8bLive = () => {
                                   onClick={()=>{
                                     setNewsImpact((prev) => {
                                       const next = on ? prev.filter((x) => x !== lv) : [...prev, lv];
-                                      queueMicrotask(() => pushEconNewsFiltersToModule(next, newsSymbolOnly, newsCntSel));
-                                      return next;
+                                      const effective = next.length === 0 ? ["high", "med", "low"] : next;
+                                      queueMicrotask(() =>
+                                        pushEconNewsFiltersToModule(effective, newsSymbolOnly, newsCntSel)
+                                      );
+                                      return effective;
                                     });
                                   }}
                                   onMouseEnter={()=>setSwHov(`ni-${lv}`)} onMouseLeave={()=>setSwHov(null)}
@@ -12657,17 +12728,6 @@ const TalariaV8bLive = () => {
                               );
                             })}
                           </div>
-                        </div>
-                        {/* Symbol only */}
-                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                          <span style={{fontSize:12,color:newsSymbolOnly?c.acL:c.ts,fontWeight:newsSymbolOnly?600:400,transition:"color 0.15s"}}>Chart symbol only</span>
-                          <Toggle on={newsSymbolOnly} onClick={()=>{
-                            setNewsSymbolOnly((p) => {
-                              const next = !p;
-                              queueMicrotask(() => pushEconNewsFiltersToModule(newsImpact, next, newsCntSel));
-                              return next;
-                            });
-                          }} color={c.acL} c={c} swHov={swHov} setSwHov={setSwHov}/>
                         </div>
                         {/* Countries */}
                         <div>

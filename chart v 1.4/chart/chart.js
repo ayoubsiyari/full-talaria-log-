@@ -13760,9 +13760,11 @@ class Chart {
             // Finnhub times often fall before the first loaded bar or after the last — clamp to the
             // plot edges so flags still appear (tooltip shows the real timestamp).
             x = Math.max(plotLeft, Math.min(plotRight, x));
+            if (!Number.isFinite(x) || !Number.isFinite(cy)) continue;
 
             const jitter = (i % 7) * (radius * 0.22) - (3 * (radius * 0.22));
             const xi = x + jitter;
+            if (!Number.isFinite(xi)) continue;
             const flagStr = getFlag(e);
 
             this.ctx.beginPath();
