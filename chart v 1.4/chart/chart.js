@@ -13466,11 +13466,26 @@ class Chart {
     /**
      * V9 live shell applies CSS `zoom` on the React root; pointer / rect from the browser are
      * post-zoom while chart layout (`this.w`, resize) uses pre-zoom CSS px. React sets `window.__v9Zoom`.
+     *
+     * WebKit Safari: zoom + getBoundingClientRect interact so an extra divide undersizes `resize()`
+     * vs the visible #chartWrapper — letterboxing gaps on the right/bottom inside the chart area.
+     * Chromium/Blink behave consistently with the divide path.
      */
     _v9LayoutZoom() {
         if (typeof window === 'undefined') return 1;
-        const z = window.__v9Zoom;
-        return (typeof z === 'number' && Number.isFinite(z) && z > 0) ? z : 1;
+        const raw = window.__v9Zoom;
+        let z = (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) ? raw : 1;
+        if (z === 1) return 1;
+        if (typeof navigator !== 'undefined') {
+            const ua = navigator.userAgent || '';
+            const isSafariWK = /\bSafari\b/i.test(ua)
+                && !/\bChrome\b/i.test(ua)
+                && !/\bChromium\b/i.test(ua)
+                && !/\bEdg\//i.test(ua)
+                && !/\b(FxiOS|CriOS|EdgiOS)\b/i.test(ua);
+            if (isSafariWK) return 1;
+        }
+        return z;
     }
 
     /** Chart wrapper size in layout px (matches `this.w` / `this.h` after resize). */
