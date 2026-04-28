@@ -787,10 +787,18 @@ const TalariaV8bLive = () => {
   };
 
   // Helper: ensure replay is active before play/step. Returns the rs or null.
+  // Mirrors the legacy UX: when replay isn't yet active we trigger
+  // handleReplayButtonClick(), which enters pick-point mode — the user then
+  // clicks the chart to set the replay start. Auto-entering at 10% (the
+  // default of enterReplayMode) is unintuitive because it jumps the chart
+  // away from where the user was looking.
   const ensureReplayActive = () => {
     const rs = getReplaySystem();
     if (!rs) return null;
-    if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
+    if (rs.isActive) return rs;
+    if (typeof rs.handleReplayButtonClick === 'function') {
+      try { rs.handleReplayButtonClick(); } catch(e) { console.warn('[V9 Replay] enter failed', e); }
+    } else if (typeof rs.enterReplayMode === 'function') {
       try { rs.enterReplayMode(); } catch(e) { console.warn('[V9 Replay] enter failed', e); }
     }
     return rs;
@@ -10580,8 +10588,23 @@ const TalariaV8bLive = () => {
               {hov==="rp-next-dn"&&<div style={{position:"absolute",bottom:0,left:"15%",right:"15%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
               {hov==="rp-next"&&<div style={{position:"absolute",bottom:0,left:"25%",right:"25%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
             </button>
-            {/* Rollback */}
-            <button onClick={(e)=>{e.stopPropagation();const opening=!rollback;if(opening)closeAll();setRollback(opening);}}
+            {/* Rollback (cut) — wired to replaySystem.goBackToPickPoint when
+                active, otherwise enters the regular pick-point mode (legacy parity). */}
+            <button onClick={(e)=>{
+                e.stopPropagation();
+                const rs = getReplaySystem();
+                if (rs && rs.isActive && typeof rs.goBackToPickPoint === 'function') {
+                  try { rs.goBackToPickPoint(); } catch(err) { console.warn('[V9 Replay] goBack failed', err); }
+                  return;
+                }
+                if (rs && typeof rs.handleReplayButtonClick === 'function') {
+                  try { rs.handleReplayButtonClick(); } catch(err) { console.warn('[V9 Replay] enter failed', err); }
+                  return;
+                }
+                // Fallback to original V9 mock-only behavior if the chart
+                // module isn't available yet.
+                const opening=!rollback;if(opening)closeAll();setRollback(opening);
+              }}
               onMouseEnter={e=>{setHov("rp-rb");showTip("Rollback",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
               style={{padding:"4px 5px",position:"relative",background:rollback?"rgba(74,106,255,0.08)":hov==="rp-rb"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"transform 0.15s ease, color 0.15s ease, background 0.12s",transform:rollback?"scale(1.18)":"scale(1)",color:rollback?c.acL:hov==="rp-rb"?c.tx:c.ts}}>
               <svg width={19} height={19} viewBox="0 0 24 24" fill="none"><line x1="15" y1="4" x2="15" y2="7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><rect x="12" y="7" width="6" height="10" rx="0.5" fill="currentColor"/><line x1="15" y1="17" x2="15" y2="20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><line x1="12" y1="12" x2="4" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><polyline points="7,9 4,12 7,15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><line x1="3" y1="4" x2="3" y2="20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
