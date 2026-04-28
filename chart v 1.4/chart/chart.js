@@ -13751,11 +13751,15 @@ class Chart {
             const idx = this._timestampToFractionalDataIndex(ts);
             if (idx == null || !Number.isFinite(idx)) continue;
             const pad = radius + 8;
+            const plotLeft = m.l + pad;
+            const plotRight = this.w - m.r - pad;
             let x = this.dataIndexToPixel(idx);
             if (idx < 0) {
-                x = m.l + pad;
+                x = plotLeft;
             }
-            if (x < m.l - pad || x > this.w - m.r + pad) continue;
+            // Finnhub times often fall before the first loaded bar or after the last — clamp to the
+            // plot edges so flags still appear (tooltip shows the real timestamp).
+            x = Math.max(plotLeft, Math.min(plotRight, x));
 
             const jitter = (i % 7) * (radius * 0.22) - (3 * (radius * 0.22));
             const xi = x + jitter;

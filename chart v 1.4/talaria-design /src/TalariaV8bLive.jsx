@@ -736,6 +736,26 @@ const TalariaV8bLive = () => {
     };
   }, []);
 
+  // Finnhub economic calendar pair-filter reads window.chart.currentSymbol; V9 can show
+  // the correct pair before chart.js finishes resolving tickers. Mirror compact ticker here.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const compact = String(symbol || "")
+      .toUpperCase()
+      .replace(/[^A-Z]/g, "");
+    try {
+      window.__v9ChartSymbol = compact || undefined;
+    } catch (_) {}
+    try {
+      if (window.chart && typeof window.chart.scheduleRender === "function") {
+        window.chart.scheduleRender();
+      }
+    } catch (_) {}
+    try {
+      window.dispatchEvent(new CustomEvent("economicCalendarUpdated"));
+    } catch (_) {}
+  }, [symbol]);
+
   // ─── SYNC CHART TYPE → chart.js ──────────────────────────────────────────
   // V9 React state (chartType) drives chart.js's chartSettings.chartType.
   // chart.js value vocabulary is lowercase / no spaces; map V9 labels here.

@@ -152,6 +152,13 @@
     function getCurrentChartSymbol() {
         var ch = mainChart();
         var s = ch && ch.currentSymbol ? String(ch.currentSymbol) : '';
+        if (!s || /^FILE_/i.test(s)) {
+            try {
+                if (typeof window !== 'undefined' && window.__v9ChartSymbol) {
+                    s = String(window.__v9ChartSymbol);
+                }
+            } catch (err) {}
+        }
         if (!s || /^FILE_/i.test(s)) return '';
         return s;
     }
@@ -210,6 +217,7 @@
         if (c.indexOf('UNITED STATES') !== -1) return 'US';
         if (c.indexOf('UNITED KINGDOM') !== -1) return 'GB';
         if (c.indexOf('EMU') !== -1 || c.indexOf('EURO AREA') !== -1) return 'EU';
+        if (c.indexOf('CHINA') !== -1 || c === 'CN' || c.indexOf('PRC') !== -1) return 'CN';
         return c;
     }
 
@@ -342,6 +350,7 @@
         var c = String(raw || '').trim().toUpperCase();
         if (c === 'USA' || c === 'UNITED STATES') return 'US';
         if (c === 'UK' || c === 'UNITED KINGDOM') return 'GB';
+        if (c.indexOf('CHINA') !== -1 || c === 'CN' || c.indexOf('PRC') !== -1) return 'CN';
         if (c.length === 2) return c;
         if (c.length > 2) return c.slice(0, 2);
         return '';
