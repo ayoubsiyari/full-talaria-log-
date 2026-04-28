@@ -1690,10 +1690,8 @@ class DrawingToolsManager {
         // [debug removed]
         
         if (!this.currentTool) {
-            // Get mouse position in SVG coordinates
-            const svgRect = this.svg.node().getBoundingClientRect();
-            const mouseX = event.clientX - svgRect.left;
-            const mouseY = event.clientY - svgRect.top;
+            // Same layout space as Chart (wrapper + __v9Zoom); raw SVG rect alone can mismatch selection vs hit-test.
+            const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
             
             // Check for stacked lines (more than 3 lines at this point)
             const stackedLinesInfo = this.findStackedLines(mouseX, mouseY, 3);
@@ -7406,7 +7404,8 @@ class DrawingToolsManager {
      * @param {number} mouseY - Y coordinate in SVG space
      * @param {Object} options
      * @param {boolean} [options.includeVolumeProfileBodyHit] - legacy option (ignored); VP body/bar hits are always evaluated
-     * @returns {Array} - Array of drawings at this point, sorted by z-order (topmost first)
+     * @returns {Array} - Drawings at this point: closest stroke first; on ties, higher z (later in
+     *     `this.drawings` / visually on top) wins so selection matches what you see.
      */
     findDrawingsAtPoint(mouseX, mouseY, options = {}) {
         const baseHitTolerance = 10; // pixels - how close to a line to consider it a hit
@@ -7972,38 +7971,19 @@ class DrawingToolsManager {
             lineTypeSet.has(type) || isFibLikeDrawingType(type) || isPatternLikeDrawingType(type)
         );
 
+        // One ordering for hit list + click selection: nearest stroke, then line tools over fills/blobs on ties,
+        // then higher z (top of stack). Older logic inverted z for shape-vs-shape so [0] was the *back* shape —
+        // that disagreed with "select topmost" and with Alt+click cycling.
         hits.sort((a, b) => {
             const aType = a.drawing && a.drawing.type;
             const bType = b.drawing && b.drawing.type;
             const aIsLine = isLineLikeDrawingType(aType);
             const bIsLine = isLineLikeDrawingType(bType);
 
-            const aIsCircleLike = a.drawing && (a.drawing.type === 'circle' || a.drawing.type === 'ellipse');
-            const bIsCircleLike = b.drawing && (b.drawing.type === 'circle' || b.drawing.type === 'ellipse');
-
-            const aIsShapeLike = a.drawing && (a.drawing.type === 'rectangle' || a.drawing.type === 'triangle' || a.drawing.type === 'circle' || a.drawing.type === 'ellipse');
-            const bIsShapeLike = b.drawing && (b.drawing.type === 'rectangle' || b.drawing.type === 'triangle' || b.drawing.type === 'circle' || b.drawing.type === 'ellipse');
-
-            // For overlapping shapes, prefer the one that is BEHIND (lower z) so it can be dragged without selecting.
-            if (aIsShapeLike && bIsShapeLike) {
-                if (a.z !== b.z) return a.z - b.z;
-            }
-
-            if (aIsCircleLike && bIsCircleLike) {
-                if (a.z !== b.z) return a.z - b.z;
-            }
-
-            // If a line and a circle/ellipse overlap, prefer the one that is BEHIND (lower z).
-            // This allows dragging either object on first drag, even when overlapped.
-            if ((aIsLine && bIsCircleLike) || (bIsLine && aIsCircleLike)) {
-                if (a.z !== b.z) return a.z - b.z;
-            }
-
             if (a.distance !== b.distance) return a.distance - b.distance;
 
             if (aIsLine !== bIsLine) return aIsLine ? -1 : 1;
 
-            // If tied, prefer topmost (higher z)
             return b.z - a.z;
         });
 
@@ -8372,11 +8352,19 @@ class DrawingToolsManager {
             // [debug removed]
         }
         
+        const uniqDrawings = [...new Set(lines.map(l => l.drawing).filter(Boolean))];
+        uniqDrawings.sort((a, b) => {
+            const ia = this.drawings.indexOf(a);
+            const ib = this.drawings.indexOf(b);
+            if (ia === -1 || ib === -1) return 0;
+            return ib - ia;
+        });
+
         return {
             isStacked: isStacked,
             lines: lines,
             count: lines.length,
-            drawings: [...new Set(lines.map(l => l.drawing))] // Unique drawings
+            drawings: uniqDrawings
         };
     }
     
