@@ -650,6 +650,23 @@ const TalariaV8bLive = () => {
     return () => { cancelled = true; if (ro) ro.disconnect(); };
   }, []);
 
+  // Ctrl+S / chart keyboard — open V9 screenshot panel (not the legacy DOM modal)
+  useEffect(() => {
+    const onOpen = () => {
+      try {
+        const el = chartCanvasRef.current;
+        if (el) {
+          const r = el.getBoundingClientRect();
+          setCanvasDims({ w: Math.round(r.width), h: Math.round(r.height) });
+        }
+      } catch (_) {}
+      setScreenshotFlash(true);
+      setTimeout(() => setScreenshotOpen(true), 260);
+    };
+    window.addEventListener("talaria-v9-open-screenshot", onOpen);
+    return () => window.removeEventListener("talaria-v9-open-screenshot", onOpen);
+  }, []);
+
   // ─── SYNC SYMBOL FROM CHART.JS ───────────────────────────────────────────
   // chart.js fires 'chartDataLoaded' (with detail.symbol, detail.timeframe)
   // whenever a new backtest session / pair is loaded. chart.js stores the
@@ -1064,6 +1081,13 @@ const TalariaV8bLive = () => {
   const [emojiCat, setEmojiCat] = useState("smileys");
   const [emojiSearch, setEmojiSearch] = useState("");
   const [faqExpand, setFaqExpand] = useState(null);
+  const [screenshotOpen, setScreenshotOpen] = useState(false);
+  const [canvasDims, setCanvasDims] = useState({ w: 888, h: 360 });
+  const [screenshotPos, setScreenshotPos] = useState({ x: 0, y: 0 });
+  const [ssIncToolbar, setSsIncToolbar] = useState(true);
+  const [ssIncSidebar, setSsIncSidebar] = useState(false);
+  const [ssIncWatermark, setSsIncWatermark] = useState(true);
+  const [ssFormat, setSsFormat] = useState("png");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [pinnedBarOpen, setPinnedBarOpen] = useState(true);
   const [pinnedBarPos, setPinnedBarPos] = useState({ x: 50, y: 80 });
@@ -3993,12 +4017,12 @@ const TalariaV8bLive = () => {
     tool, groupSelected,
   ]);
 
-  const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelected(null); setSDrop(null); setColorPicker(null); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
+  const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelected(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
   // closeAll is triggered by backdrop/outside clicks — intentionally does NOT close the indicators window
   const closeAll = () => {
     setDropdown(null); setSymbolSearch(""); setTfCat(null); setTfUnitOpen(false);
     setSDrop(null); setColorPicker(null); setSettDrop(null);
-    setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setLayersOpen(false); setProfileOpen(false);
+    setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setScreenshotOpen(false); setLayersOpen(false); setProfileOpen(false);
     if(logoMenu) closePopup(setLogoMenu, "logoMenu");
     if(replayOpts) closePopup(setReplayOpts, "replayOpts");
     if(gotoOpen) closePopup(setGotoOpen, "goto");
@@ -4009,28 +4033,21 @@ const TalariaV8bLive = () => {
     setOpSymOpen(false); setOpSymSearch(""); setOpSizeOpen(false);
   };
 
-  /** Opens `modules/screenshot-manager.js` UI (real chart capture). Retries if bootstrap is still waiting on `window.chart`. */
-  const openV9ScreenshotMenu = () => {
-    const attempt = (remaining) => {
-      try {
-        const sm = window.screenshotManager;
-        if (sm && typeof sm.showScreenshotOptions === "function") {
-          sm.showScreenshotOptions();
-          return;
-        }
-      } catch (err) {
-        console.error("[V9] screenshot:", err);
-        return;
-      }
-      if (remaining > 0) {
-        setTimeout(() => attempt(remaining - 1), 100);
-        return;
-      }
-      console.warn(
-        "[V9] screenshotManager not available — ensure /chart/modules/screenshot-manager.js is loaded and chart/bootstrap ran."
-      );
-    };
-    attempt(45);
+  /** Real capture via `screenshot-manager.js` (same pipeline as legacy), without the legacy DOM modal. */
+  const runV9Screenshot = (action) => {
+    const sm = window.screenshotManager;
+    if (!sm || typeof sm.takeScreenshotFromOptions !== "function") {
+      console.warn("[V9] screenshotManager not ready — check chart scripts.");
+      return;
+    }
+    void sm.takeScreenshotFromOptions(action, {
+      flash: false,
+      includeToolbar: ssIncToolbar,
+      includeSidebar: ssIncSidebar,
+      includeWatermark: ssIncWatermark,
+      format: ssFormat,
+      quality: 0.9,
+    });
   };
 
   const showTip = (label, el, side="top") => {
@@ -10748,6 +10765,134 @@ const TalariaV8bLive = () => {
         );
       })()}
 
+      {(screenshotOpen || closing.has("screenshot")) && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: "fixed",
+            top: `calc(50% + ${screenshotPos.y}px)`,
+            left: `calc(50% + ${screenshotPos.x}px)`,
+            transform: "translate(-50%, -50%)",
+            width: 440,
+            zIndex: 9002,
+            background: c.sf,
+            border: `1px solid ${c.brH}`,
+            boxShadow: `0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,
+            fontFamily: F,
+            display: "flex",
+            flexDirection: "column",
+            animation: closing.has("screenshot") ? "tlrWinOut 0.15s ease forwards" : "tlrWinIn 0.18s ease",
+          }}
+        >
+          <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`, flexShrink: 0 }} />
+          <div
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setDragging({ target: "screenshot", startX: e.clientX, startY: e.clientY, ox: screenshotPos.x, oy: screenshotPos.y });
+            }}
+            style={{ display: "flex", alignItems: "center", padding: "10px 14px", cursor: "move", userSelect: "none", flexShrink: 0 }}
+          >
+            <I n="screenshot" s={17} cl={c.acL} />
+            <span style={{ fontSize: 14, fontWeight: 700, marginLeft: 8, color: c.tx }}>Screenshot</span>
+            <span style={{ fontSize: 12, color: c.tm, fontVariantNumeric: "tabular-nums", marginLeft: 8, flex: 1 }}>
+              {canvasDims.w} × {canvasDims.h} px
+            </span>
+            <div
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={() => animClose(setScreenshotOpen, "screenshot")}
+              onMouseEnter={() => setSwHov("xScreenshot")}
+              onMouseLeave={() => setSwHov(null)}
+              style={{
+                width: 30,
+                height: 30,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "default",
+                background: swHov === "xScreenshot" ? "rgba(255,80,80,0.07)" : "transparent",
+                transition: "background 0.12s",
+                flexShrink: 0,
+              }}
+            >
+              <I n="x" s={18} cl={swHov === "xScreenshot" ? c.rd : c.ts} />
+            </div>
+          </div>
+          <div style={{ height: 1, background: c.br, flexShrink: 0 }} />
+          <div style={{ padding: "14px 16px", flexShrink: 0 }}>
+            <div style={{ fontSize: 11, color: c.tm, lineHeight: 1.5, marginBottom: 12 }}>
+              Copy or Download captures the live chart (chart engine + modules). No decorative preview — the file matches what you see after export.
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "default" }}>
+                <input type="checkbox" checked={ssIncToolbar} onChange={(e) => setSsIncToolbar(e.target.checked)} />
+                <span style={{ fontSize: 13, color: c.tx }}>Include toolbar strip</span>
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "default" }}>
+                <input type="checkbox" checked={ssIncSidebar} onChange={(e) => setSsIncSidebar(e.target.checked)} />
+                <span style={{ fontSize: 13, color: c.tx }}>Include sidebars</span>
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "default" }}>
+                <input type="checkbox" checked={ssIncWatermark} onChange={(e) => setSsIncWatermark(e.target.checked)} />
+                <span style={{ fontSize: 13, color: c.tx }}>Watermark</span>
+              </label>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11, color: c.tm }}>Format</span>
+                <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "default" }}>
+                  <input type="radio" name="ssFmtV9" checked={ssFormat === "png"} onChange={() => setSsFormat("png")} />
+                  <span style={{ fontSize: 12, color: c.tx }}>PNG</span>
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "default" }}>
+                  <input type="radio" name="ssFmtV9" checked={ssFormat === "jpg"} onChange={() => setSsFormat("jpg")} />
+                  <span style={{ fontSize: 12, color: c.tx }}>JPG</span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div style={{ padding: "12px 16px", borderTop: `1px solid ${c.br}`, display: "flex", justifyContent: "flex-end", gap: 8, flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={() => runV9Screenshot("copy")}
+              onMouseEnter={() => setSwHov("ssV9Copy")}
+              onMouseLeave={() => setSwHov(null)}
+              style={{
+                height: 30,
+                padding: "0 16px",
+                cursor: "default",
+                fontFamily: F,
+                fontSize: 13,
+                fontWeight: 600,
+                color: c.tx,
+                background: swHov === "ssV9Copy" ? "rgba(140,160,255,0.08)" : c.hv2,
+                border: `1px solid ${swHov === "ssV9Copy" ? "rgba(140,160,255,0.35)" : "rgba(140,160,255,0.18)"}`,
+                borderRadius: 6,
+              }}
+            >
+              Copy
+            </button>
+            <button
+              type="button"
+              onClick={() => runV9Screenshot("download")}
+              onMouseEnter={() => setSwHov("ssV9Dl")}
+              onMouseLeave={() => setSwHov(null)}
+              style={{
+                height: 30,
+                padding: "0 18px",
+                cursor: "default",
+                fontFamily: F,
+                fontSize: 13,
+                fontWeight: 700,
+                color: "#fff",
+                background: swHov === "ssV9Dl" ? `linear-gradient(135deg,${c.acL},#6A8AFF)` : `linear-gradient(135deg,${c.ac},${c.acL})`,
+                border: "1px solid rgba(74,106,255,0.5)",
+                borderRadius: 6,
+              }}
+            >
+              Download
+            </button>
+          </div>
+        </div>
+      )}
+
       {(logoMenu||closing.has("logoMenu")) && (
         <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:10,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:168,fontFamily:F,animation:closing.has("logoMenu")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
@@ -11168,7 +11313,7 @@ const TalariaV8bLive = () => {
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: c.br }}/>
         {[{id:"layout",icon:"layout",label:"Layout"},{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
-          <button key={id} onClick={(e) => { if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} } if(id==="layout"){ e.stopPropagation(); if(rightPanel==="layout"){setRightPanel(null);}else{setRightPanel("layout");setOrderPanelOpen(false);} } if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setScreenshotFlash(true); setTimeout(()=>openV9ScreenshotMenu(), 260); } if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} } if(id==="expand"){ e.stopPropagation(); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }}} onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
+          <button key={id} onClick={(e) => { if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} } if(id==="layout"){ e.stopPropagation(); if(rightPanel==="layout"){setRightPanel(null);}else{setRightPanel("layout");setOrderPanelOpen(false);} } if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true), 260); } if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} } if(id==="expand"){ e.stopPropagation(); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }}} onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
             style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "default", position: "relative",
               background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&rightPanel==="layout") || (id==="expand"&&isFullscreen); return isActive ? "rgba(74,106,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),
               transition: "background 0.12s" }}>
@@ -14992,6 +15137,7 @@ const TalariaV8bLive = () => {
             else if (dragging.target === "profile") setProfilePos(cc(dragging.ox+dx, dragging.oy+dy, 400, 540));
             else if (dragging.target === "faq") setFaqPos(cc(dragging.ox+dx, dragging.oy+dy, 440, 540));
             else if (dragging.target === "news") setNewsPos({ x: dragging.ox + dx, y: dragging.oy + dy });
+            else if (dragging.target === "screenshot") setScreenshotPos(cc(dragging.ox+dx, dragging.oy+dy, 440, 420));
             else if (dragging.target === "layers") setLayersPos({ x: dragging.ox + dx, y: dragging.oy + dy });
             else if (dragging.target === "layout") setLayoutPos({ x: dragging.ox + dx, y: dragging.oy + dy });
           }}

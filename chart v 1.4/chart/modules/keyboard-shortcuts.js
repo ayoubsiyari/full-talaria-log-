@@ -619,15 +619,15 @@ class KeyboardShortcutsManager {
     }
     
     takeSnapshot() {
-        // Trigger screenshot
+        // Trigger screenshot — V9 React panel listens for this (avoid legacy DOM modal)
         const screenshotBtn = document.getElementById('screenshotBtn');
         if (screenshotBtn) {
             screenshotBtn.click();
-        } else if (this.chart.screenshotManager) {
-            this.chart.screenshotManager.showScreenshotOptions();
-        } else if (window.screenshotManager && typeof window.screenshotManager.showScreenshotOptions === 'function') {
-            window.screenshotManager.showScreenshotOptions();
+            return;
         }
+        try {
+            window.dispatchEvent(new CustomEvent('talaria-v9-open-screenshot', { bubbles: false }));
+        } catch (_) {}
     }
     
     resetChart() {
