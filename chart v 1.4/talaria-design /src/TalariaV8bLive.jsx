@@ -405,7 +405,7 @@ const TalariaV8bLive = () => {
   const rbPressTimer = useRef(null);
   const [gotoOpen, setGotoOpen] = useState(false);
   const [gotoItems, setGotoItems] = useState([
-    {id:1,type:"datetime",label:"09 Jan 2009",time:"07:00",repeat:"none",pinned:true},
+    {id:1,type:"datetime",label:"09 Jan 2009",time:"07:00",repeat:"none",pinned:true,dateIso:"2009-01-09"},
     {id:2,type:"session",label:"NY Open",time:"13:30",pinned:true},
     {id:4,type:"price",label:"126.500",pinned:true},
   ]);
@@ -1767,6 +1767,55 @@ const TalariaV8bLive = () => {
   };
   const currentChartType = chartTypeMap[chartType] || { icon: "candle", label: chartType };
   const gotoNextId = () => Date.now() + Math.random();
+
+  const parseGotoTimeParts = (timeStr) => {
+    if (!timeStr) return [0, 0];
+    const s = String(timeStr).replace(/\s*UTC\s*/gi, "").trim();
+    const segs = s.split(":");
+    return [parseInt(segs[0], 10) || 0, parseInt(segs[1], 10) || 0];
+  };
+
+  const buildGotoTimestampMs = (dateIso, timeStr) => {
+    if (!dateIso || typeof dateIso !== "string") return null;
+    const p = dateIso.split("-").map((x) => parseInt(x, 10));
+    if (p.length < 3 || !p.every((n) => Number.isFinite(n))) return null;
+    const [y, mo, d] = p;
+    const [hh, mm] = parseGotoTimeParts(timeStr);
+    const tm = typeof window !== "undefined" ? window.timezoneManager : null;
+    const utc = Date.UTC(y, mo - 1, d, hh, mm, 0, 0);
+    return tm ? utc - tm.getOffsetMs() : new Date(y, mo - 1, d, hh, mm, 0, 0).getTime();
+  };
+
+  const defaultGotoDateIsoFromChart = () => {
+    const ch = typeof window !== "undefined" ? window.chart : null;
+    if (!ch) return null;
+    const t =
+      ch.replaySystem?.fullRawData?.[0]?.t ??
+      ch.rawData?.[0]?.t ??
+      ch.data?.[0]?.t;
+    if (!Number.isFinite(t)) return null;
+    const d = new Date(t);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+
+  const executeGotoItem = (item) => {
+    if (!item) return;
+    const ch = typeof window !== "undefined" ? window.chart : null;
+    if (!ch) return;
+    if (item.type === "price") {
+      const raw = String(item.label ?? "").replace(/[^0-9.-]/g, "");
+      const p = parseFloat(raw);
+      if (Number.isFinite(p) && typeof ch.jumpToPrice === "function") ch.jumpToPrice(p);
+      return;
+    }
+    const timeStr = item.time || "00:00";
+    const dateIso = item.dateIso || defaultGotoDateIsoFromChart() || gotoNewDate;
+    const ms = buildGotoTimestampMs(dateIso, timeStr);
+    if (ms == null || !Number.isFinite(ms)) return;
+    if (typeof ch.jumpToTimestamp === "function") {
+      void ch.jumpToTimestamp(ms, { showLoadingOverlay: true });
+    }
+  };
 
   const Z = (typeof window !== 'undefined' && isWebKitSafariUA()) ? 1 : 1.05;
   if (typeof window !== 'undefined' && window.__v9Zoom !== Z) {
@@ -10893,7 +10942,7 @@ const TalariaV8bLive = () => {
                           const isPinH=hov===`gip-${item.id}`;
                           return(
                             <div key={item.id}
-                              onClick={e=>{if(e.target.closest("[data-gotoact]"))return;e.stopPropagation();closePopup(setGotoOpen,"goto");}}
+                              onClick={e=>{if(e.target.closest("[data-gotoact]"))return;e.stopPropagation();executeGotoItem(item);closePopup(setGotoOpen,"goto");}}
                               onMouseEnter={()=>setHov(`gi-${item.id}`)} onMouseLeave={()=>setHov(null)}
                               style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",cursor:"default",position:"relative",
                                 background:isH?`${item.color||c.gold}11`:"transparent",
@@ -10942,7 +10991,7 @@ const TalariaV8bLive = () => {
                           const isPinned=gotoItems.some(x=>x.label===s.label&&x.pinned);
                           return(
                             <div key={s.id}
-                              onClick={e=>{if(e.target.closest("[data-gotoact]"))return;e.stopPropagation();closePopup(setGotoOpen,"goto");}}
+                              onClick={e=>{if(e.target.closest("[data-gotoact]"))return;e.stopPropagation();executeGotoItem({type:"datetime",label:s.label,time:s.time,color:s.color});closePopup(setGotoOpen,"goto");}}
                               onMouseEnter={()=>setHov(`gs-${s.id}`)} onMouseLeave={()=>setHov(null)}
                               style={{display:"flex",alignItems:"center",gap:8,padding:"7px 14px",cursor:"default",position:"relative",
                                 background:isH?"rgba(0,212,161,0.06)":"transparent",
@@ -10984,8 +11033,21 @@ const TalariaV8bLive = () => {
                     {gotoTab==="create"&&(()=>{
                       const crTabs=[{t:"datetime",l:"Date & Time"},{t:"price",l:"Price"}];
                       const crIdx=crTabs.findIndex(x=>x.t===gotoAddType);
-                      const doAdd=(extra)=>{addItem({...extra,color:gotoNewColor});setGotoNewName("");setGotoNewColor("#4A6AFF");};
-                      const doAddAndGo=(extra)=>{addItem({...extra,color:gotoNewColor});setGotoNewName("");setGotoNewColor("#4A6AFF");closePopup(setGotoOpen,"goto");};
+                      const doAdd=(extra)=>{
+                        const payload=extra.type==="datetime"?{...extra,dateIso:gotoNewDate}:extra;
+                        addItem({...payload,color:gotoNewColor});setGotoNewName("");setGotoNewColor("#4A6AFF");
+                      };
+                      const doAddAndGo=(extra)=>{
+                        const payload=extra.type==="datetime"?{...extra,dateIso:gotoNewDate}:extra;
+                        addItem({...payload,color:gotoNewColor});setGotoNewName("");setGotoNewColor("#4A6AFF");closePopup(setGotoOpen,"goto");
+                        if(extra.type==="datetime"){
+                          const ms=buildGotoTimestampMs(gotoNewDate,gotoNewTime);
+                          if(ms!=null&&typeof window.chart?.jumpToTimestamp==="function")void window.chart.jumpToTimestamp(ms,{showLoadingOverlay:true});
+                        }else if(extra.type==="price"){
+                          const p=parseFloat(gotoNewPrice);
+                          if(Number.isFinite(p)&&typeof window.chart?.jumpToPrice==="function")window.chart.jumpToPrice(p);
+                        }
+                      };
                       const Chevron=({open})=>(
                         <svg width={8} height={8} viewBox="0 0 8 8" fill="none">
                           <path d={open?"M1,5 L4,2 L7,5":"M1,3 L4,6 L7,3"} stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round"/>

@@ -1789,25 +1789,45 @@ class ReplaySystem {
 
         const candle = sourceChart.data[candleIndex];
         if (!candle) return;
-        
-        const targetTime = candle.t;
 
-        // Cut so the clicked candle is EXCLUDED (hidden). The replay resumes
-        // from the raw bar just before the clicked display candle's start.
+        const tStart = candle.t;
+        const nextDisp = sourceChart.data[candleIndex + 1];
+        const tEndExclusive = (nextDisp && Number.isFinite(nextDisp.t)) ? nextDisp.t : Infinity;
+
+        // Cut ON the clicked candle: include all raw bars that belong to that display
+        // bucket (from its open through the next bar’s open, exclusive). Previously we
+        // stepped back one raw bar so the click excluded the bar — that felt wrong vs
+        // “cut where I clicked”.
         let newRawIndex = 0;
         if (Array.isArray(this.fullRawData) && this.fullRawData.length > 0) {
-            let idx = (typeof this._bsearchTimestamp === 'function')
-                ? this._bsearchTimestamp(this.fullRawData, targetTime)
-                : this.fullRawData.findIndex(c => (c && c.t) >= targetTime);
-            if (idx < 0) idx = this.fullRawData.length - 1;
-            idx = Math.max(0, Math.min(idx, this.fullRawData.length - 1));
-            while (idx > 0 && (this.fullRawData[idx]?.t || 0) > targetTime) idx--;
-            // Step back so the clicked candle itself is the next to be revealed
-            if (idx > 0) idx--;
-            newRawIndex = idx;
+            let lastInBucket = -1;
+            for (let i = 0; i < this.fullRawData.length; i++) {
+                const rt = this.fullRawData[i]?.t;
+                if (!Number.isFinite(rt)) continue;
+                if (rt >= tEndExclusive) break;
+                if (rt >= tStart) lastInBucket = i;
+            }
+            if (lastInBucket >= 0) {
+                newRawIndex = lastInBucket;
+            } else {
+                let idx = (typeof this._bsearchTimestamp === 'function')
+                    ? this._bsearchTimestamp(this.fullRawData, tStart)
+                    : this.fullRawData.findIndex(c => (c && c.t) >= tStart);
+                if (idx < 0) idx = 0;
+                newRawIndex = Math.max(0, Math.min(idx, this.fullRawData.length - 1));
+            }
         }
-        
-        
+
+        // Order/journal cutoff: first moment *after* the included window (next display
+        // open), or just after the last raw bar if this is the final candle.
+        let orderCutoff;
+        if (Number.isFinite(tEndExclusive)) {
+            orderCutoff = tEndExclusive;
+        } else {
+            const rb = this.fullRawData[newRawIndex];
+            orderCutoff = (rb && Number.isFinite(rb.t)) ? rb.t + 1 : tStart + 1;
+        }
+
         const flashCutLines = () => {
             if (this._goBackMultiPanel && this._goBackEntries) {
                 this._goBackEntries.forEach((ent) => {
@@ -1824,7 +1844,7 @@ class ReplaySystem {
         // Selectively close only orders/trades that occurred AFTER the cut point;
         // trades completed before targetTime keep their markers.
         if (this.chart.orderManager && typeof this.chart.orderManager.forceCloseAllOrders === 'function') {
-            this.chart.orderManager.forceCloseAllOrders(targetTime);
+            this.chart.orderManager.forceCloseAllOrders(orderCutoff);
         }
 
         // Kill all animation state and update currentIndex NOW so any
