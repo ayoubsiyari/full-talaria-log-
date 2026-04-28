@@ -11719,6 +11719,18 @@ const TalariaV8bLive = () => {
                     if (item._drawing && dm.drawings.includes(item._drawing)) return item._drawing;
                     return dm.drawings.find(x => x && x.id === item.id) || null;
                   };
+                  const _logAct = (kind) => {
+                    const dm = findDm();
+                    const d = findDrawing(dm);
+                    console.log('[V9 ObjectsTree]', kind, {
+                      itemId: item.id,
+                      itemName: item.name,
+                      hasDm: !!dm,
+                      hasDrawing: !!d,
+                      dmDrawingsCount: dm && dm.drawings ? dm.drawings.length : 'N/A',
+                      hasObjectTreeManager: !!(dm && dm.objectTreeManager),
+                    });
+                  };
                   return (
                     <div key={item.id}
                       onClick={()=>{
@@ -11746,6 +11758,7 @@ const TalariaV8bLive = () => {
                       <div data-layeraction="1"
                         onClick={(e)=>{
                           e.stopPropagation();
+                          _logAct('jump');
                           const dm = findDm(); const d = findDrawing(dm);
                           if (!dm || !d) return;
                           try {
@@ -11767,6 +11780,7 @@ const TalariaV8bLive = () => {
                       <div data-layeraction="1"
                         onClick={(e)=>{
                           e.stopPropagation();
+                          _logAct('toggleVisibility');
                           const dm = findDm(); const d = findDrawing(dm);
                           if (!dm || !d) return;
                           try {
@@ -11797,6 +11811,7 @@ const TalariaV8bLive = () => {
                       <div data-layeraction="1"
                         onClick={(e)=>{
                           e.stopPropagation();
+                          _logAct('delete');
                           const dm = findDm(); const d = findDrawing(dm);
                           if (!dm || !d) return;
                           try {
