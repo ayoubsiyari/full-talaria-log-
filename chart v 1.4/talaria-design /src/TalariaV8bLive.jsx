@@ -976,6 +976,8 @@ const TalariaV8bLive = () => {
   const cpBarAnchorRef = useRef(null); // set when color picker is opened from the tl bar
   const closingDropdownKey = useRef(null);
   const [canvasDims, setCanvasDims] = useState({w:888,h:360});
+  /** Data URL from real #chart-container capture — matches Copy/Download output (not SVG mock). */
+  const [screenshotPreviewUrl, setScreenshotPreviewUrl] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileTab, setProfileTab] = useState("account");
@@ -1087,6 +1089,37 @@ const TalariaV8bLive = () => {
   const [scLinkSearch, setScLinkSearch] = useState("");
   const [scLinkedTrade, setScLinkedTrade] = useState(null);
   const [scLinkPhase, setScLinkPhase] = useState(null);
+
+  useEffect(() => {
+    if (!screenshotOpen) {
+      setScreenshotPreviewUrl(null);
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      for (let i = 0; i < 35 && !cancelled; i++) {
+        const sm = window.screenshotManager;
+        const el = document.getElementById("chart-container");
+        if (sm && typeof sm.captureCanvasDirect === "function" && el) {
+          try {
+            const canvas = await sm.captureCanvasDirect(el, 0.34);
+            if (cancelled || !canvas) return;
+            setScreenshotPreviewUrl(canvas.toDataURL("image/jpeg", 0.78));
+            return;
+          } catch (_) {
+            /* wait for manager / next frame */
+          }
+        }
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      if (!cancelled) setScreenshotPreviewUrl(null);
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [screenshotOpen, symbol, tf, chartType]);
+
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [pinnedBarOpen, setPinnedBarOpen] = useState(true);
   const [pinnedBarPos, setPinnedBarPos] = useState({ x: 50, y: 80 });
@@ -10798,58 +10831,26 @@ const TalariaV8bLive = () => {
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
 
-          {/* chart preview */}
+          {/* chart preview — real bitmap from screenshot-manager (same pipeline as Copy/Download) */}
           <div style={{padding:"14px 16px 0",flexShrink:0}}>
-            {(()=>{
-              const candles=[[48,56,44,54,0],[54,61,52,58,0],[58,60,53,55,1],[55,59,51,57,0],[57,65,55,63,0],[63,67,58,60,1],[60,64,57,62,0],[62,69,61,68,0],[68,72,65,70,0],[70,68,63,65,1],[65,70,63,68,0],[68,74,67,72,0],[72,76,70,74,0],[74,72,68,69,1],[69,73,67,71,0],[71,76,70,75,0],[75,79,73,77,0],[77,75,71,72,1],[72,77,71,76,0],[76,82,75,80,0],[80,84,78,82,0],[82,86,80,84,0],[84,82,79,80,1],[80,83,78,82,0],[82,87,81,86,0],[86,90,84,88,0],[88,86,83,84,1],[84,88,83,87,0],[87,92,86,91,0],[91,94,89,92,0],[92,90,87,88,1],[88,92,87,91,0],[91,95,90,94,0],[94,97,92,95,0],[95,93,90,91,1],[91,95,90,94,0],[94,98,93,97,0],[97,100,95,98,0],[98,96,93,94,1],[94,98,93,97,0],[97,102,96,100,0],[100,103,98,101,0]];
-              const allClose=candles.map(d=>d[3]);
-              const allH=candles.map(d=>d[1]), allL=candles.map(d=>d[2]);
-              const minP=Math.min(...allL)-3, maxP=Math.max(...allH)+3, range=maxP-minP;
-              const W=888, H=Math.round(888*(canvasDims.h/canvasDims.w)), padR=44, padB=22, padT=10;
-              const chartW=W-padR, chartH=H-padB-padT;
-              const py=(p)=>padT+chartH*(1-(p-minP)/range);
-              const step=chartW/candles.length;
-              const candleW=Math.max(Math.floor(step)-3,4);
-              const ma=allClose.map((_,i)=>i<8?null:allClose.slice(i-8,i+1).reduce((a,b)=>a+b,0)/9);
-              const gridCount=6;
-              const gridPrices=Array.from({length:gridCount},(_,i)=>Math.round(minP+(range/(gridCount-1))*i));
-              const times=["15:30","16:00","16:30","17:00","17:30","18:00","18:30"];
-              const lastClose=allClose[allClose.length-1];
+            {(() => {
+              const W = 888;
+              const aspect = canvasDims.w > 0 ? canvasDims.h / canvasDims.w : 0.42;
+              const boxH = Math.min(420, Math.max(220, Math.round(W * aspect)));
               return (
-                <div style={{background:c.bg,border:`1px solid ${c.brH}`,position:"relative",overflow:"hidden",height:H}}>
-                  <svg width={W} height={H} style={{display:"block",position:"absolute",inset:0}}>
-                    {gridPrices.map(p=>(
-                      <g key={p}>
-                        <line x1={0} y1={py(p)} x2={chartW} y2={py(p)} stroke="rgba(140,160,255,0.06)" strokeWidth={1}/>
-                        <text x={chartW+5} y={py(p)+3.5} fontSize={8} fill={c.tm} fontFamily={F} fontVariantNumeric="tabular-nums">{p.toFixed(0)}</text>
-                      </g>
-                    ))}
-                    {times.map((t,i)=>(
-                      <text key={t} x={Math.round(i*(chartW/6))+2} y={H-6} fontSize={8} fill={c.tm} fontFamily={F} fontVariantNumeric="tabular-nums">{t}</text>
-                    ))}
-                    <polyline
-                      points={ma.map((v,i)=>v==null?null:`${Math.round(step*i+step/2)},${py(v)}`).filter(Boolean).join(" ")}
-                      fill="none" stroke={c.acL} strokeWidth={1.5} opacity={0.55}/>
-                    {candles.map(([o,h,l,cl,bear],i)=>{
-                      const x=Math.round(step*i+(step-candleW)/2);
-                      const col=bear?c.rd:c.gn;
-                      const bodyY=py(Math.max(o,cl)), bodyH=Math.max(Math.abs(py(o)-py(cl)),2);
-                      return (
-                        <g key={i}>
-                          <line x1={x+candleW/2} y1={py(h)} x2={x+candleW/2} y2={py(l)} stroke={col} strokeWidth={1} opacity={0.7}/>
-                          <rect x={x} y={bodyY} width={candleW} height={bodyH} fill={col} opacity={0.9}/>
-                        </g>
-                      );
-                    })}
-                    <line x1={0} y1={py(lastClose)} x2={chartW} y2={py(lastClose)} stroke={c.acL} strokeWidth={1} strokeDasharray="5,3" opacity={0.55}/>
-                    <rect x={chartW} y={py(lastClose)-9} width={padR} height={18} fill={c.ac} opacity={0.9}/>
-                    <text x={chartW+5} y={py(lastClose)+4} fontSize={8.5} fill="#fff" fontFamily={F} fontWeight="700" fontVariantNumeric="tabular-nums">{lastClose}.00</text>
-                  </svg>
-                  <div style={{position:"absolute",top:8,left:10,display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:15,fontWeight:800,color:c.tx,letterSpacing:"-0.02em"}}>{symbol}</span>
-                    <span style={{fontSize:10,color:c.tm,background:"rgba(140,160,255,0.08)",padding:"2px 6px",border:`1px solid ${c.br}`}}>1m · Candles</span>
-                    <span style={{fontSize:10,color:c.gn,fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{lastClose}.00</span>
-                    <span style={{fontSize:12,color:c.gn,fontWeight:600}}>+2.15%</span>
+                <div style={{ background: c.bg, border: `1px solid ${c.brH}`, position: "relative", overflow: "hidden", borderRadius: 4, minHeight: boxH }}>
+                  {!screenshotPreviewUrl ? (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: boxH, color: c.tm, fontSize: 13, fontFamily: F }}>
+                      Loading preview…
+                    </div>
+                  ) : (
+                    <img src={screenshotPreviewUrl} alt="" draggable={false} style={{ display: "block", width: W, height: "auto", maxHeight: 420, objectFit: "contain", verticalAlign: "top" }} />
+                  )}
+                  <div style={{ position: "absolute", top: 8, left: 10, display: "flex", alignItems: "center", gap: 8, pointerEvents: "none", textShadow: "0 1px 4px rgba(0,0,0,0.85)" }}>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", fontFamily: F }}>{symbol}</span>
+                    <span style={{ fontSize: 10, color: "#e8eaed", background: "rgba(0,0,0,0.5)", padding: "2px 7px", borderRadius: 4, border: "1px solid rgba(255,255,255,0.14)", fontFamily: F }}>
+                      {tf} · {chartType}
+                    </span>
                   </div>
                 </div>
               );
