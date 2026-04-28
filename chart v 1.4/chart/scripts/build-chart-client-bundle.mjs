@@ -6,7 +6,10 @@
  * - Minify with Terser, no source maps.
  * - Writes dist/chart-app-part1.min.js, dist/chart-app-part2.min.js, dist/index.html
  *
- * Dev: no dist/ → api_server serves root index.html with separate <script> tags.
+ * Source HTML for markers: legacy-index.html (monolith with CHART_CLIENT_* markers). Root
+ * index.html is a small stub for humans only — it is not used for this bundle.
+ *
+ * Dev: no dist/ → api_server may serve dist-v9 or legacy-index.html with separate <script> tags.
  * Prod: run `npm run build:chart-client` (Docker/CI) so dist/ exists.
  */
 import fs from 'fs';
@@ -127,11 +130,11 @@ async function main() {
   console.log(`Wrote ${out1} (${(code1.length / 1024).toFixed(1)} KB, v=${h1})`);
   console.log(`Wrote ${out2} (${(code2.length / 1024).toFixed(1)} KB, v=${h2})`);
 
-  const indexPath = path.join(ROOT, 'index.html');
+  const indexPath = path.join(ROOT, 'legacy-index.html');
   let html = fs.readFileSync(indexPath, 'utf8');
   for (const [k, v] of Object.entries(MARK)) {
     if (!html.includes(v)) {
-      console.error(`index.html missing marker: ${v}`);
+      console.error(`legacy-index.html missing marker: ${v}`);
       process.exit(1);
     }
   }
