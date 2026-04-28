@@ -357,6 +357,9 @@ const TalariaV8bLive = () => {
   const [omEntryRowStatLines, setOmEntryRowStatLines] = useState([]);
   const [omTpRowStatLines, setOmTpRowStatLines] = useState([]);
   const [omMultiEntryTotalQtyTxt, setOmMultiEntryTotalQtyTxt] = useState("");
+  /** Multi-TP footer: total size (#orderQuantity) + WAP — matches chart "Avg TP … lots" + weighted price. */
+  const [omTpAvgLotsTxt, setOmTpAvgLotsTxt] = useState("");
+  const [omTpWapPriceTxt, setOmTpWapPriceTxt] = useState("");
   const [tagDefs] = useState([
     { id:"setup",     label:"Setup OK",    type:"bool" },
     { id:"htf",       label:"HTF Bias",    type:"bool" },
@@ -2262,6 +2265,10 @@ const TalariaV8bLive = () => {
             price: parseFloat(r.price) || 0,
             percentage: parseFloat(r.qty) || 0,
           }));
+          const wantBuyTp = document.getElementById("buyTab")?.classList.contains("active");
+          nextTgts.sort((a, b) =>
+            wantBuyTp ? a.price - b.price : b.price - a.price
+          );
           let tgDirty = !Array.isArray(om.tpTargets) || om.tpTargets.length !== nextTgts.length;
           if (!tgDirty) {
             for (let i = 0; i < nextTgts.length; i++) {
@@ -2495,9 +2502,51 @@ const TalariaV8bLive = () => {
       setOmRewardSummaryTxt((prev) => (prev === rwd ? prev : rwd));
 
       const sd = document.getElementById("slPipsDisplay")?.textContent?.trim() || "—";
-      const td = document.getElementById("tpDistanceDisplay")?.textContent?.trim() || "—";
+      let td = document.getElementById("tpDistanceDisplay")?.textContent?.trim() || "—";
+      const mtpMirror = !!document.getElementById("multipleTPToggle")?.checked;
+      if ((td === "—" || td === "") && mtpMirror && om?.tpTargets && om.tpTargets.length > 1) {
+        const entryPx = parseFloat(document.getElementById("orderEntryPrice")?.value || 0);
+        const pip =
+          Number.isFinite(om.pipSize) && om.pipSize > 0 ? om.pipSize : 0.0001;
+        if (entryPx > 0 && pip > 0) {
+          let sum = 0;
+          let n = 0;
+          om.tpTargets.forEach((t) => {
+            const px = parseFloat(t?.price);
+            if (px > 0) {
+              sum += Math.abs(px - entryPx) / pip;
+              n++;
+            }
+          });
+          if (n > 0) td = `${(sum / n).toFixed(2)}`;
+        }
+      }
       setOmSlDistTxt((prev) => (prev === sd ? prev : sd));
       setOmTpDistTxt((prev) => (prev === td ? prev : td));
+
+      const oqNum = parseFloat(document.getElementById("orderQuantity")?.value ?? "");
+      const lotsStr = Number.isFinite(oqNum) ? oqNum.toFixed(2) : "";
+      setOmTpAvgLotsTxt((prev) => (prev === lotsStr ? prev : lotsStr));
+      let wapStr = "";
+      if (
+        mtpMirror &&
+        om?.tpTargets &&
+        om.tpTargets.length > 1 &&
+        typeof om._weightedAvgTPFromPricedTargets === "function"
+      ) {
+        const priced = om.tpTargets.filter((t) => t && parseFloat(t.price) > 0);
+        if (priced.length > 0) {
+          try {
+            const wap = om._weightedAvgTPFromPricedTargets(priced, "preview", {
+              quantity: Number.isFinite(oqNum) ? oqNum : parseFloat(document.getElementById("orderQuantity")?.value) || 1,
+              entryPrice: parseFloat(document.getElementById("orderEntryPrice")?.value || 0),
+              type: om.orderSide || "BUY",
+            });
+            if (Number.isFinite(wap) && typeof om.formatPrice === "function") wapStr = om.formatPrice(wap);
+          } catch (_) {}
+        }
+      }
+      setOmTpWapPriceTxt((prev) => (prev === wapStr ? prev : wapStr));
 
       const entryInfos = Array.from(document.querySelectorAll("#multiEntryRows .multi-entry-row-info")).map(
         (el) => el.textContent?.replace(/\s+/g, " ").trim() || ""
@@ -13080,17 +13129,21 @@ const TalariaV8bLive = () => {
               omPanelBridgeRef.current.entryDel = Date.now();
               const om = window.chart?.orderManager;
               if (om && typeof om.removeMultiEntryLevel === "function" && Array.isArray(om.multiEntryLevels)) {
-                const idx = entryRows.findIndex((r) => r.id === id);
-                if (idx >= 0) {
-                  const lev = om.multiEntryLevels[idx];
-                  const rid = lev && lev.id != null ? lev.id : id;
-                  try {
-                    om.removeMultiEntryLevel(rid);
-                  } catch (_) {
-                    try {
-                      om.removeMultiEntryLevel(id);
-                    } catch (_) {}
+                const row = entryRows.find((r) => r.id === id);
+                let lev = om.multiEntryLevels.find((l) => l && l.id === id);
+                if (!lev && row) {
+                  const rp = parseFloat(row.price);
+                  if (Number.isFinite(rp) && rp > 0) {
+                    lev = om.multiEntryLevels.find((l) => l && Math.abs(parseFloat(l.price) - rp) < 1e-7);
                   }
+                }
+                const rid = lev?.id != null ? lev.id : id;
+                try {
+                  om.removeMultiEntryLevel(rid);
+                } catch (_) {
+                  try {
+                    om.removeMultiEntryLevel(id);
+                  } catch (_) {}
                 }
               }
               setEntryRows((rows) => (rows.length > 1 ? rows.filter((r) => r.id !== id) : rows));
@@ -13595,27 +13648,36 @@ const TalariaV8bLive = () => {
           {(() => {
             const sizeUnit = currentSymbol.type==="futures" ? "Contracts" : "Lots";
             const totalQty = tpRows.reduce((s,r) => s + (parseFloat(r.qty)||0), 0);
-            const pricedTpRows = tpRows.filter((r) => parseFloat(r.price) > 0);
-            const avgTpPrice = pricedTpRows.length
-              ? (pricedTpRows.reduce((s, r) => s + (parseFloat(r.price) || 0), 0) / pricedTpRows.length).toFixed(2)
-              : "0.00";
+            const sortTpRowsBySide = (rows, side) => {
+              if (!rows || rows.length < 2) return rows;
+              return [...rows].sort((a, b) => {
+                const pa = parseFloat(a.price) || 0;
+                const pb = parseFloat(b.price) || 0;
+                return side === "sell" ? pb - pa : pa - pb;
+              });
+            };
+            const sortedTpRows = sortTpRowsBySide(tpRows, buySell);
             const updTp  = (id, field, val) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r));
             const stepTp = (id, field, dir, step=1) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
             const delTp = (id) => {
               omPanelBridgeRef.current.tpDel = Date.now();
               const om = window.chart?.orderManager;
               if (om && typeof om.removeTPTarget === "function" && Array.isArray(om.tpTargets) && om.tpTargets.length) {
-                const idx = tpRows.findIndex((r) => r.id === id);
-                if (idx >= 0) {
-                  const t = om.tpTargets[idx];
-                  const rid = t && t.id != null ? t.id : idx;
-                  try {
-                    om.removeTPTarget(rid);
-                  } catch (_) {
-                    try {
-                      om.removeTPTarget(idx);
-                    } catch (_) {}
+                const row = tpRows.find((r) => r.id === id);
+                let tRm = om.tpTargets.find((t) => t && t.id === id);
+                if (!tRm && row) {
+                  const rp = parseFloat(row.price);
+                  if (Number.isFinite(rp) && rp > 0) {
+                    tRm = om.tpTargets.find((t) => t && Math.abs(parseFloat(t.price) - rp) < 1e-7);
                   }
+                }
+                const rid = tRm?.id != null ? tRm.id : id;
+                try {
+                  om.removeTPTarget(rid);
+                } catch (_) {
+                  try {
+                    om.removeTPTarget(id);
+                  } catch (_) {}
                 }
               }
               setTpRows((rows) => (rows.length > 1 ? rows.filter((r) => r.id !== id) : rows));
@@ -13717,7 +13779,7 @@ const TalariaV8bLive = () => {
                   </div>
                   {/* Rows — scrollable after 5 */}
                   <div ref={tpScrollRef} className="tlr-scroll" style={{ padding:"3px 6px", maxHeight:52, overflowY:"auto" }}>
-                    {tpRows.map((row, i) => {
+                    {sortedTpRows.map((row, i) => {
                       const pct = totalQty > 0 ? ((parseFloat(row.qty)||0)/totalQty*100).toFixed(0) : "0";
                       return (
                         <div key={row.id} style={{ display:"flex", alignItems:"center", gap:3, height:22, marginBottom:1, opacity:row.enabled?1:0.38, transition:"opacity 0.15s" }}>
@@ -13800,8 +13862,16 @@ const TalariaV8bLive = () => {
                     </span>
                     <div style={{ flex:1 }}/>
                     {tpRows.length > 1 && (
-                      <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                        Avg <span style={{ color:c.ts, fontWeight:700 }}>{avgTpPrice}</span>
+                      <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", textAlign:"right", lineHeight:1.25, maxWidth:160 }}>
+                        Avg TP{" "}
+                        <span style={{ color:c.ts, fontWeight:700 }}>{omTpAvgLotsTxt || "—"}</span>
+                        {" lots"}
+                        {omTpWapPriceTxt ? (
+                          <>
+                            {" · "}
+                            <span style={{ color:c.ts, fontWeight:600 }}>{omTpWapPriceTxt}</span>
+                          </>
+                        ) : null}
                       </span>
                     )}
                     <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
