@@ -16483,7 +16483,8 @@ class Chart {
         const timeLabel = container.querySelector('.time-label');
         const _dm = this.drawingManager;
         
-        // Snap crosshair to candle center (like TradingView)
+        // Bar under cursor (for OHLC / lock). Lines & labels use raw (x,y) so the pointer
+        // sits on the crosshair intersection (snap-to-bar caused visible offset vs cursor).
         const rawDataIdx = this.pixelToDataIndex(x);
         let dataIdx = Math.round(rawDataIdx);
         const isCrosshairLocked = !!this.chartSettings?.crosshairLocked;
@@ -16491,14 +16492,16 @@ class Chart {
             const lastIdx = Math.max(0, this.data.length - 1);
             dataIdx = Math.max(0, Math.min(lastIdx, Math.round(this.lockedCrosshairDataIndex)));
         }
-        const snappedX = this.dataIndexToPixel(dataIdx); // Already returns candle center
         const hasSnappedCandle = dataIdx >= 0 && dataIdx < this.data.length;
         const snappedCandle = hasSnappedCandle ? this.data[dataIdx] : null;
 
-        let crosshairY = y;
+        // Pointer-aligned geometry (CSS px, canvas/wrapper space)
+        const lineX = x;
+        const lineY = y;
+
         let crosshairPrice = this.yScale ? this.yScale.invert(y) : null;
 
-        // Snap horizontal crosshair to nearest OHLC when magnet is active or Ctrl+draw
+        // Price readout: magnet + tick snap (line stays at lineY = y)
         const magnetMode = (this.drawingManager && this.drawingManager.magnetMode) || this.magnetMode || 'off';
         const magnetActive = magnetMode === 'weak' || magnetMode === 'strong' || magnetMode === true;
         const ctrlHeld = e.ctrlKey || e.metaKey;
@@ -16514,30 +16517,16 @@ class Chart {
             }
             const closestPx = this.yScale(closest);
             const pxDist = Math.abs(y - closestPx);
-            // 'weak' only snaps within 20px, 'strong' / ctrl always snaps
             const forceSnap = magnetMode === 'strong' || magnetMode === true || ctrlHeld;
             if (forceSnap || pxDist <= 30) {
                 crosshairPrice = closest;
-                crosshairY = closestPx;
             }
         }
 
-        // Tick-grid snap for instruments with a known tick size (NQ/ES → 0.25, GC → 0.10,
-        // CL → 0.01, USDJPY → 0.001, etc.). Real futures/crypto only trade at discrete tick
-        // increments, so the crosshair readout should reflect that instead of showing a
-        // free-floating `20150.68342`-style interpolation from `yScale.invert(y)`. The
-        // horizontal line snaps to the tick's pixel position too so the visual matches.
-        //
-        // Suppressed when the user is actively drawing (tool/drag) — drawings need sub-tick
-        // precision for price alignment on zoomed-in charts. The OHLC magnet above already
-        // handles OHLC snapping; for registered instruments OHLC values are themselves on
-        // the tick grid, so this second pass is a no-op there.
         if (this.yScale && Number.isFinite(crosshairPrice)
             && typeof this.getTickSize === 'function'
             && !(_dm && (_dm.currentTool || _dm.isDrawing || _dm.isDragging))) {
             const tick = this.getTickSize();
-            // Only snap for registered instruments — unregistered symbols return a 10^-precision
-            // fallback tick that would force weird rounding on arbitrary price data.
             const hasRegistrySpec = this.currentSymbol
                 && typeof window !== 'undefined'
                 && window.marketCalcEngine
@@ -16552,7 +16541,6 @@ class Chart {
                 const snappedPrice = Math.round(crosshairPrice / tick) * tick;
                 if (Number.isFinite(snappedPrice)) {
                     crosshairPrice = snappedPrice;
-                    crosshairY = this.yScale(snappedPrice);
                 }
             }
         }
@@ -16578,7 +16566,7 @@ class Chart {
         const plotW = Math.max(0, this.w - m.l - m.r);
         if (vLine) {
             vLine.style.top = '0px';
-            vLine.style.left = snappedX + 'px';
+            vLine.style.left = (lineX - crossWidth * 0.5) + 'px';
             vLine.style.width = crossWidth + 'px';
             vLine.style.height = 'calc(100% - 30px)';
             vLine.style.display = showLines ? 'block' : 'none';
@@ -16588,7 +16576,7 @@ class Chart {
             hLine.style.left = m.l + 'px';
             hLine.style.right = 'auto';
             hLine.style.width = plotW + 'px';
-            hLine.style.top = crosshairY + 'px';
+            hLine.style.top = (lineY - crossWidth * 0.5) + 'px';
             hLine.style.height = crossWidth + 'px';
             hLine.style.display = showLines ? 'block' : 'none';
             hLine.style.background = hBg;
@@ -16610,8 +16598,8 @@ class Chart {
                 const rect = this.canvas.getBoundingClientRect();
                 const chartWrapper = document.querySelector('.chart-wrapper');
                 const wrapperRect = chartWrapper ? chartWrapper.getBoundingClientRect() : {left: 0, top: 0};
-                dotIndicator.style.left = (rect.left - wrapperRect.left + snappedX) + 'px';
-                dotIndicator.style.top = (rect.top - wrapperRect.top + y) + 'px';
+                dotIndicator.style.left = (rect.left - wrapperRect.left + lineX) + 'px';
+                dotIndicator.style.top = (rect.top - wrapperRect.top + lineY) + 'px';
                 dotIndicator.style.display = 'block';
             } else {
                 dotIndicator.style.display = 'none';
@@ -16630,7 +16618,7 @@ class Chart {
             const _axisW = _axisLeft ? m.l : m.r;
             priceLabel.style.left = (_axisLeft ? 2 : (this.w - m.r)) + 'px';
             priceLabel.style.right = 'auto';
-            priceLabel.style.top = crosshairY + 'px';
+            priceLabel.style.top = lineY + 'px';
             priceLabel.style.transform = 'translateY(-50%)';
             priceLabel.style.width = (_axisW - 4) + 'px';
             priceLabel.style.textAlign = 'center';
@@ -16652,10 +16640,8 @@ class Chart {
                 timeframeMs = this._estimateTimeframeStepMs();
             }
             
-            // Time for label: match vertical line (locked crosshair uses clamped index, not raw mouse index).
-            const idxForTime = (isCrosshairLocked && Number.isFinite(this.lockedCrosshairDataIndex))
-                ? Math.max(0, Math.min(this.data.length - 1, Math.round(this.lockedCrosshairDataIndex)))
-                : rawDataIdx;
+            // Time at pointer X (matches vertical line, which tracks raw x).
+            const idxForTime = rawDataIdx;
             // Extrapolate past last / before first using last bar step (not firstBar + index * avg — wrong with gaps).
             let timestamp = typeof this.estimateTimestampForDataIndex === 'function'
                 ? this.estimateTimestampForDataIndex(idxForTime)
@@ -16684,7 +16670,7 @@ class Chart {
                 }
                 
                 timeLabel.textContent = timeStr;
-                timeLabel.style.left = snappedX + 'px';
+                timeLabel.style.left = lineX + 'px';
                 timeLabel.style.top = 'auto';
                 timeLabel.style.bottom = `${Math.max(2, Math.floor(m.b * 0.2))}px`;
                 timeLabel.style.transform = 'translateX(-50%)';
