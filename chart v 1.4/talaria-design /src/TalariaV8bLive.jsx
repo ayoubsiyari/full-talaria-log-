@@ -1273,6 +1273,10 @@ const TalariaV8bLive = () => {
   const [detachPos, setDetachPos] = useState({ x: 900, y: 80 });
   const [detachSize, setDetachSize] = useState({ w: 336, h: 560 });
   const [panelMode, setPanelMode] = useState("advanced");
+  /** Short windows where React row counts intentionally lead OM (panel add/delete) so reverse poll must not fight the forward bridge. */
+  const omPanelBridgeRef = useRef({ entryAdd: 0, entryDel: 0, tpAdd: 0, tpDel: 0 });
+  const OM_PANEL_BRIDGE_LEAD_MS = 750;
+  const isOmBridgeLead = (ts) => !!(ts && Date.now() - ts < OM_PANEL_BRIDGE_LEAD_MS);
   const isWide = panelDetached && detachSize.w >= 520;
   const opTemplates = ["Default","Scalp — Trend","Swing Trade","Breakout","Reversal"];
   const [rightPanel, setRightPanel] = useState(null);
@@ -2350,24 +2354,30 @@ const TalariaV8bLive = () => {
           price: String(l.price ?? "0"),
           risk: String(l.amount ?? "0"),
         }));
+        const entrySame = (a, b) =>
+          Math.abs((parseFloat(a.price) || 0) - (parseFloat(b.price) || 0)) < 1e-8 &&
+          Math.abs((parseFloat(a.risk) || 0) - (parseFloat(b.risk) || 0)) < 1e-6;
         setEntryRows((prev) => {
-          // React rail added levels before the forward bridge wrote to OM — don't shrink row count.
-          if (prev.length > next.length) return prev;
-          if (
-            prev.length === next.length &&
-            prev.every(
-              (p, i) => String(p.price) === next[i].price && String(p.risk) === next[i].risk,
-            )
-          ) {
-            return prev;
+          if (prev.length > next.length) {
+            // Panel just added rows; OM not updated yet — hold. Chart deleted rows — apply OM.
+            if (isOmBridgeLead(omPanelBridgeRef.current.entryAdd)) return prev;
+            return next;
           }
+          if (prev.length < next.length) {
+            // Panel removed a row; OM not updated yet — hold. Chart added a leg — apply OM.
+            if (isOmBridgeLead(omPanelBridgeRef.current.entryDel)) return prev;
+            return next;
+          }
+          if (prev.length === next.length && prev.every((p, i) => entrySame(p, next[i]))) return prev;
           return next;
         });
         if (next.length > 1) setPanelMode("advanced");
       } else {
         setEntryRows((rows) => {
           if (!rows.length) return rows;
-          if (rows[0].price === ep) return rows;
+          const epp = parseFloat(ep);
+          const cur = parseFloat(rows[0].price || "0");
+          if (Number.isFinite(epp) && Number.isFinite(cur) && Math.abs(cur - epp) < 1e-8) return rows;
           const nex = [...rows];
           nex[0] = { ...nex[0], price: ep };
           return nex;
@@ -2376,7 +2386,9 @@ const TalariaV8bLive = () => {
 
       setSlRows((rows) => {
         if (!rows.length) return rows;
-        if (rows[0].price === slp) return rows;
+        const slpN = parseFloat(slp);
+        const cur = parseFloat(rows[0].price || "0");
+        if (Number.isFinite(slpN) && Number.isFinite(cur) && Math.abs(cur - slpN) < 1e-8) return rows;
         const next = [...rows];
         next[0] = { ...next[0], price: slp };
         return next;
@@ -2385,24 +2397,26 @@ const TalariaV8bLive = () => {
       const slOn = !!document.getElementById("enableSL")?.checked;
       setSlEnabled((prev) => (prev === slOn ? prev : slOn));
 
-      if (omMultiTp && om.tpTargets.length > 1) {
+      if (omMultiTp && om.tpTargets.length >= 1) {
         const nextTp = om.tpTargets.map((t) => ({
           id: t.id,
           price: String(t.price ?? "0"),
           qty: String(t.percentage ?? "0"),
           enabled: true,
         }));
+        const tpSame = (a, b) =>
+          Math.abs((parseFloat(a.price) || 0) - (parseFloat(b.price) || 0)) < 1e-8 &&
+          Math.abs((parseFloat(a.qty) || 0) - (parseFloat(b.qty) || 0)) < 1e-6;
         setTpRows((prev) => {
-          if (prev.length > nextTp.length) return prev;
-          if (
-            prev.length === nextTp.length &&
-            prev.every(
-              (p, i) =>
-                String(p.price) === nextTp[i].price && String(p.qty) === nextTp[i].qty,
-            )
-          ) {
-            return prev;
+          if (prev.length > nextTp.length) {
+            if (isOmBridgeLead(omPanelBridgeRef.current.tpAdd)) return prev;
+            return nextTp;
           }
+          if (prev.length < nextTp.length) {
+            if (isOmBridgeLead(omPanelBridgeRef.current.tpDel)) return prev;
+            return nextTp;
+          }
+          if (prev.length === nextTp.length && prev.every((p, i) => tpSame(p, nextTp[i]))) return prev;
           return nextTp;
         });
         if (nextTp.length > 1) setPanelMode("advanced");
@@ -2411,7 +2425,9 @@ const TalariaV8bLive = () => {
           if (!rows.length) return rows;
           const r0 = rows[0];
           const tpOn = !!document.getElementById("enableTP")?.checked;
-          const priceChg = r0.price !== tpp;
+          const tppN = parseFloat(tpp);
+          const curP = parseFloat(r0.price || "0");
+          const priceChg = !Number.isFinite(tppN) || !Number.isFinite(curP) || Math.abs(curP - tppN) >= 1e-8;
           const enChg = !!r0.enabled !== tpOn;
           if (!priceChg && !enChg) return rows;
           const next = [...rows];
@@ -2461,7 +2477,7 @@ const TalariaV8bLive = () => {
     };
 
     tick();
-    const id = window.setInterval(tick, 120);
+    const id = window.setInterval(tick, 50);
     return () => clearInterval(id);
   }, [orderPanelOpen, riskBasis]);
 
@@ -13018,8 +13034,17 @@ const TalariaV8bLive = () => {
               : "0.00";
             const updRow = (id, field, val) => setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r));
             const stepRow = (id, field, dir, step=1) => setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
-            const delRow = (id) => setEntryRows(rows => rows.length > 1 ? rows.filter(r => r.id!==id) : rows);
-            const addRow = () => { setEntryRows(rows => [...rows, {id:Date.now(), price:"0", risk:"0"}]); setTimeout(()=>{ if(entryScrollRef.current) entryScrollRef.current.scrollTop = entryScrollRef.current.scrollHeight; }, 0); };
+            const delRow = (id) => {
+              omPanelBridgeRef.current.entryDel = Date.now();
+              setEntryRows((rows) => (rows.length > 1 ? rows.filter((r) => r.id !== id) : rows));
+            };
+            const addRow = () => {
+              omPanelBridgeRef.current.entryAdd = Date.now();
+              setEntryRows((rows) => [...rows, { id: Date.now(), price: "0", risk: "0" }]);
+              setTimeout(() => {
+                if (entryScrollRef.current) entryScrollRef.current.scrollTop = entryScrollRef.current.scrollHeight;
+              }, 0);
+            };
             const clearRows = () => { setEntryRows([{id:Date.now(), price:"0", risk:"0"}]); };
             const equalizeRisk = () => { const each = (100/entryRows.length).toFixed(0); setEntryRows(rows => rows.map(r => ({...r, risk:each}))); };
             const arw = (onClick, up, hk) => {
@@ -13517,8 +13542,17 @@ const TalariaV8bLive = () => {
               : "0.00";
             const updTp  = (id, field, val) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r));
             const stepTp = (id, field, dir, step=1) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
-            const delTp  = (id) => setTpRows(rows => rows.length > 1 ? rows.filter(r => r.id!==id) : rows);
-            const addTp  = () => { setTpRows(rows => [...rows, {id:Date.now(), price:"0", qty:"0", enabled:true}]); setTimeout(()=>{ if(tpScrollRef.current) tpScrollRef.current.scrollTop = tpScrollRef.current.scrollHeight; }, 0); };
+            const delTp = (id) => {
+              omPanelBridgeRef.current.tpDel = Date.now();
+              setTpRows((rows) => (rows.length > 1 ? rows.filter((r) => r.id !== id) : rows));
+            };
+            const addTp = () => {
+              omPanelBridgeRef.current.tpAdd = Date.now();
+              setTpRows((rows) => [...rows, { id: Date.now(), price: "0", qty: "0", enabled: true }]);
+              setTimeout(() => {
+                if (tpScrollRef.current) tpScrollRef.current.scrollTop = tpScrollRef.current.scrollHeight;
+              }, 0);
+            };
             const clearTp = () => setTpRows([{id:Date.now(), price:"0", qty:"100", enabled:true}]);
             const equalizeTp = () => { const each = (100/tpRows.length).toFixed(0); setTpRows(rows => rows.map(r => ({...r, qty:each}))); };
             const arw = (onClick, up, hk) => {
