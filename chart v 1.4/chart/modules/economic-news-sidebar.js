@@ -140,7 +140,12 @@
 
     function newsPanelIsActive() {
         var el = document.getElementById('newsContent');
-        return !!(el && el.classList.contains('active'));
+        if (el && el.classList.contains('active')) return true;
+        try {
+            return !!window.__v9NewsPanelActive;
+        } catch (err) {
+            return false;
+        }
     }
 
     /** Active chart ticker (e.g. EURUSD) — not used for FILE_* placeholders. */
@@ -511,31 +516,51 @@
         }
     }
 
+    function dispatchCalendarUpdated() {
+        try {
+            if (typeof window !== 'undefined' && window.dispatchEvent) {
+                window.dispatchEvent(new CustomEvent('economicCalendarUpdated'));
+            }
+        } catch (err) {}
+    }
+
     function render() {
-        if (!allNewsItemRoots().length) return;
+        var hasRoots = allNewsItemRoots().length > 0;
 
         if (state.loading) {
             var rng = getCalendarFetchRange();
             var loadLabel = rng.fromStr === rng.toStr
                 ? escapeHtml(rng.fromStr)
                 : escapeHtml(rng.fromStr) + ' – ' + escapeHtml(rng.toStr);
-            setNewsItemsHtml(
-                '<div class="news-loading" style="padding:24px;text-align:center;color:#6a6a7a;">Loading calendar for ' +
-                loadLabel + '…</div>'
-            );
+            if (hasRoots) {
+                setNewsItemsHtml(
+                    '<div class="news-loading" style="padding:24px;text-align:center;color:#6a6a7a;">Loading calendar for ' +
+                    loadLabel + '…</div>'
+                );
+            }
+            dispatchCalendarUpdated();
             return;
         }
         if (state.error) {
-            setNewsItemsHtml('<div style="padding:20px;color:#ef4444;font-size:13px;">' + escapeHtml(state.error) + '</div>');
+            if (hasRoots) {
+                setNewsItemsHtml('<div style="padding:20px;color:#ef4444;font-size:13px;">' + escapeHtml(state.error) + '</div>');
+            }
+            dispatchCalendarUpdated();
             return;
         }
         var list = filterEvents();
         if (!list.length) {
             var hint = 'No events match your filters or search. Try other impact levels, countries, or clear the search.';
-            setNewsItemsHtml('<div style="padding:24px;text-align:center;color:#6a6a7a;">' + escapeHtml(hint) + '</div>');
+            if (hasRoots) {
+                setNewsItemsHtml('<div style="padding:24px;text-align:center;color:#6a6a7a;">' + escapeHtml(hint) + '</div>');
+            }
+            dispatchCalendarUpdated();
             return;
         }
-        setNewsItemsHtml(list.map(renderItem).join(''));
+        if (hasRoots) {
+            setNewsItemsHtml(list.map(renderItem).join(''));
+        }
+        dispatchCalendarUpdated();
     }
 
     function tickCountdowns() {
@@ -902,5 +927,72 @@
                 }
             } catch (err) {}
         }, 350);
+    };
+
+    /**
+     * V9 React rail — same filters/tab/query as the DOM sidebar, without duplicating Finnhub logic.
+     */
+    window.__economicCalendarUi = {
+        referenceNowMs: referenceNowMs,
+        getFilteredEvents: function () {
+            return filterEvents().slice();
+        },
+        getStatus: function () {
+            return {
+                loading: state.loading,
+                error: state.error,
+                tab: state.tab,
+                query: state.query,
+                loaded: state.loaded,
+                filters: {
+                    impactHigh: state.filters.impactHigh,
+                    impactMedium: state.filters.impactMedium,
+                    impactLow: state.filters.impactLow,
+                    pairOnly: state.filters.pairOnly,
+                    countryCodes: state.filters.countryCodes ? state.filters.countryCodes.slice() : []
+                }
+            };
+        },
+        setTab: function (t) {
+            if (t !== 'upcoming' && t !== 'previous') return;
+            state.tab = t;
+            syncTabClasses();
+            render();
+            requestChartMarkerRedraw();
+        },
+        setQuery: function (q) {
+            state.query = q != null ? String(q) : '';
+            render();
+        },
+        setFilters: function (partial) {
+            if (!partial || typeof partial !== 'object') return;
+            var f = state.filters;
+            if (typeof partial.impactHigh === 'boolean') f.impactHigh = partial.impactHigh;
+            if (typeof partial.impactMedium === 'boolean') f.impactMedium = partial.impactMedium;
+            if (typeof partial.impactLow === 'boolean') f.impactLow = partial.impactLow;
+            if (typeof partial.pairOnly === 'boolean') f.pairOnly = partial.pairOnly;
+            if (Array.isArray(partial.countryCodes)) {
+                f.countryCodes = partial.countryCodes.filter(function (x) {
+                    return typeof x === 'string';
+                });
+            }
+            saveFiltersToStorage();
+            syncFilterControlsToDom();
+            render();
+            requestChartMarkerRedraw();
+        },
+        displayForEvent: function (e) {
+            if (!e || !Number.isFinite(e.t)) return null;
+            var now = referenceNowMs();
+            if (!Number.isFinite(now)) now = Date.now();
+            var tp = timeParts(e.t);
+            var upcoming = e.t >= now;
+            return {
+                time: tp.clock,
+                dateStr: tp.dateStr,
+                upcoming: upcoming,
+                countdown: upcoming ? formatCountdown(e.t - now) : ''
+            };
+        }
     };
 })();

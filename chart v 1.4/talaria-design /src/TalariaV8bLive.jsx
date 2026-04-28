@@ -437,6 +437,12 @@ const TalariaV8bLive = () => {
   const [ssOpen, setSsOpen] = useState(true);
   const [replaceTargetId, setReplaceTargetId] = useState(null);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    const onClearDraft = () => setScreenshots([]);
+    window.addEventListener("talaria:order-rail-clear-draft", onClearDraft);
+    return () => window.removeEventListener("talaria:order-rail-clear-draft", onClearDraft);
+  }, []);
   const replaceInputRef = useRef(null);
   const tipTimerRef = useRef(null);
   const [tipData, setTipData] = useState(null);
@@ -1362,6 +1368,74 @@ const TalariaV8bLive = () => {
   const [layoutPanels, setLayoutPanels] = useState({n:1,li:0});
   const [layoutSync, setLayoutSync] = useState({ crosshair: true, time: true, drawings: true, symbol: false, interval: false, dateRange: false, indicators: false, chartType: false });
   const [layoutTab, setLayoutTab] = useState("panels");
+
+  /** Same keys as the legacy News country filter (economic-news-sidebar.js). */
+  const ECON_CAL_COUNTRIES = ["US", "EU", "GB", "JP", "AU", "CA", "DE", "FR", "IT", "CN", "CH"];
+  const [ecoNewsRev, setEcoNewsRev] = useState(0);
+  const newsSearchToModuleDebounceRef = useRef(null);
+
+  const pushEconNewsFiltersToModule = (impactArr, symOnly, cntSel) => {
+    const api = window.__economicCalendarUi;
+    if (!api) return;
+    const allOff = ECON_CAL_COUNTRIES.every((co) => !cntSel[co]);
+    const allOn = ECON_CAL_COUNTRIES.every((co) => cntSel[co]);
+    let countryCodes;
+    if (allOff) countryCodes = ["__"];
+    else if (allOn) countryCodes = [];
+    else countryCodes = ECON_CAL_COUNTRIES.filter((co) => cntSel[co]);
+    api.setFilters({
+      impactHigh: impactArr.includes("high"),
+      impactMedium: impactArr.includes("med"),
+      impactLow: impactArr.includes("low"),
+      pairOnly: !!symOnly,
+      countryCodes,
+    });
+  };
+
+  useEffect(() => {
+    if (rightPanel !== "news") {
+      try { window.__v9NewsPanelActive = false; } catch (_) {}
+      return undefined;
+    }
+    try { window.__v9NewsPanelActive = true; } catch (_) {}
+    const api = window.__economicCalendarUi;
+    if (api) {
+      const s = api.getStatus();
+      setNewsTab(s.tab);
+      setNewsSearch(s.query);
+      const f = s.filters;
+      setNewsImpact([
+        ...(f.impactHigh ? ["high"] : []),
+        ...(f.impactMedium ? ["med"] : []),
+        ...(f.impactLow ? ["low"] : []),
+      ]);
+      setNewsSymbolOnly(!!f.pairOnly);
+      const codes = f.countryCodes || [];
+      const allOn = codes.length === 0;
+      const isNoneMode = codes.length === 1 && codes[0] === "__";
+      setNewsCntSel(
+        ECON_CAL_COUNTRIES.reduce((acc, co) => {
+          let v = 0;
+          if (allOn) v = 1;
+          else if (isNoneMode) v = 0;
+          else v = codes.indexOf(co) >= 0 ? 1 : 0;
+          acc[co] = v;
+          return acc;
+        }, {})
+      );
+    }
+    try {
+      window.loadEconomicNewsSidebar?.();
+    } catch (_) {}
+    const bump = () => setEcoNewsRev((x) => x + 1);
+    window.addEventListener("economicCalendarUpdated", bump);
+    const tick = setInterval(bump, 1000);
+    return () => {
+      try { window.__v9NewsPanelActive = false; } catch (_) {}
+      window.removeEventListener("economicCalendarUpdated", bump);
+      clearInterval(tick);
+    };
+  }, [rightPanel]);
 
   // ─── MULTI-PANEL LAYOUTS + SYNC ↔ window.panelManager ───────────────────
   // V9's layout picker uses (n=panel count 1..8, li=variant index). Legacy
@@ -12443,55 +12517,51 @@ const TalariaV8bLive = () => {
           )}
           <div style={{ flex: 1, overflowY: "auto", fontSize: 11 }} className="tlr-scroll">
             {rightPanel==="news" && (()=>{
-              const ALL_COUNTRIES = ["US","EU","GB","JP","AU","CA","DE","FR","IT","CN","CH"];
+              void ecoNewsRev;
               const cntNames = {US:"United States",EU:"Euro Zone",GB:"United Kingdom",JP:"Japan",AU:"Australia",CA:"Canada",DE:"Germany",FR:"France",IT:"Italy",CN:"China",CH:"Switzerland"};
               const impCol = {high:c.rd, med:"#FF8C00", low:"#FFD700"};
-              const newsData = [
-                {id:1, time:"06:00",countdown:"in 0h 20m",country:"AU",impact:"low",  title:"RBA Meeting Minutes",                      date:"2026.04.16",actual:null,forecast:"-",    previous:"-",    tab:"upcoming"},
-                {id:2, time:"06:30",countdown:"in 0h 50m",country:"JP",impact:"med",  title:"Japan Industrial Production m/m",            date:"2026.04.16",actual:null,forecast:"1.2%", previous:"-0.6%",tab:"upcoming"},
-                {id:3, time:"07:00",countdown:"in 1h 20m", country:"DE",impact:"low",  title:"Germany Import Price Index m/m",              date:"2026.04.16",actual:null,forecast:"0.4%", previous:"0.8%", tab:"upcoming"},
-                {id:4, time:"07:45",countdown:"in 2h 05m", country:"FR",impact:"med",  title:"France CPI m/m (Final)",                      date:"2026.04.16",actual:null,forecast:"0.6%", previous:"0.1%", tab:"upcoming"},
-                {id:5, time:"08:00",countdown:"in 2h 20m", country:"CH",impact:"low",  title:"Switzerland Trade Balance",                   date:"2026.04.16",actual:null,forecast:"3.4B", previous:"4.1B", tab:"upcoming"},
-                {id:6, time:"09:00",countdown:"in 3h 20m", country:"EU",impact:"high", title:"Eurozone CPI y/y (Final)",                     date:"2026.04.16",actual:null,forecast:"2.2%", previous:"2.3%", tab:"upcoming"},
-                {id:7, time:"09:00",countdown:"in 3h 20m", country:"EU",impact:"med",  title:"Eurozone Core CPI y/y (Final)",                date:"2026.04.16",actual:null,forecast:"2.4%", previous:"2.6%", tab:"upcoming"},
-                {id:8, time:"09:30",countdown:"in 3h 50m", country:"GB",impact:"high", title:"UK CPI y/y",                                   date:"2026.04.16",actual:null,forecast:"3.0%", previous:"2.8%", tab:"upcoming"},
-                {id:9, time:"09:30",countdown:"in 3h 50m", country:"GB",impact:"med",  title:"UK Core CPI y/y",                             date:"2026.04.16",actual:null,forecast:"3.5%", previous:"3.5%", tab:"upcoming"},
-                {id:10,time:"09:30",countdown:"in 3h 50m", country:"GB",impact:"low",  title:"UK PPI Input m/m",                            date:"2026.04.16",actual:null,forecast:"0.3%", previous:"-0.2%",tab:"upcoming"},
-                {id:11,time:"10:00",countdown:"in 4h 20m", country:"DE",impact:"high", title:"Germany ZEW Economic Sentiment",              date:"2026.04.16",actual:null,forecast:"-11.4",previous:"-26.0",tab:"upcoming"},
-                {id:12,time:"10:00",countdown:"in 4h 20m", country:"EU",impact:"med",  title:"Eurozone ZEW Economic Sentiment",             date:"2026.04.16",actual:null,forecast:"3.6",  previous:"39.8", tab:"upcoming"},
-                {id:13,time:"11:30",countdown:"in 5h 50m", country:"US",impact:"low",  title:"4-Week Bill Auction",                         date:"2026.04.16",actual:null,forecast:"-",    previous:"4.23%",tab:"upcoming"},
-                {id:14,time:"12:30",countdown:"in 6h 50m", country:"CA",impact:"high", title:"Canada CPI y/y",                              date:"2026.04.16",actual:null,forecast:"2.6%", previous:"2.6%", tab:"upcoming"},
-                {id:15,time:"12:30",countdown:"in 6h 50m", country:"CA",impact:"med",  title:"Canada Core CPI m/m",                        date:"2026.04.16",actual:null,forecast:"0.4%", previous:"0.7%", tab:"upcoming"},
-                {id:16,time:"12:30",countdown:"in 6h 50m", country:"US",impact:"high", title:"Core PPI m/m",                                date:"2026.04.16",actual:null,forecast:"0.2%", previous:"0.5%", tab:"upcoming"},
-                {id:17,time:"12:30",countdown:"in 6h 50m", country:"US",impact:"med",  title:"Retail Sales m/m",                           date:"2026.04.16",actual:null,forecast:"0.8%", previous:"-1.1%",tab:"upcoming"},
-                {id:18,time:"12:30",countdown:"in 6h 50m", country:"US",impact:"med",  title:"Retail Sales ex Autos m/m",                  date:"2026.04.16",actual:null,forecast:"0.4%", previous:"-0.4%",tab:"upcoming"},
-                {id:19,time:"13:15",countdown:"in 7h 35m", country:"US",impact:"high", title:"Industrial Production m/m",                  date:"2026.04.16",actual:null,forecast:"0.4%", previous:"-0.3%",tab:"upcoming"},
-                {id:20,time:"13:15",countdown:"in 7h 35m", country:"US",impact:"med",  title:"Capacity Utilization Rate",                  date:"2026.04.16",actual:null,forecast:"77.9%",previous:"78.2%",tab:"upcoming"},
-                {id:21,time:"14:00",countdown:"in 8h 20m", country:"US",impact:"low",  title:"Business Inventories m/m",                   date:"2026.04.16",actual:null,forecast:"0.3%", previous:"0.2%", tab:"upcoming"},
-                {id:22,time:"14:00",countdown:"in 8h 20m", country:"US",impact:"low",  title:"NAHB Housing Market Index",                  date:"2026.04.16",actual:null,forecast:"37",    previous:"39",   tab:"upcoming"},
-                {id:23,time:"14:30",countdown:"in 8h 50m", country:"US",impact:"low",  title:"Crude Oil Inventories",                      date:"2026.04.16",actual:null,forecast:"-1.2M", previous:"2.6M", tab:"upcoming"},
-                {id:24,time:"16:00",countdown:"in 10h 20m",country:"CA",impact:"med",  title:"BOC Governor Macklem Speaks",                date:"2026.04.16",actual:null,forecast:"-",    previous:"-",    tab:"upcoming"},
-                {id:25,time:"17:00",countdown:"in 11h 20m",country:"US",impact:"med",  title:"Fed Chair Powell Speaks",                    date:"2026.04.16",actual:null,forecast:"-",    previous:"-",    tab:"upcoming"},
-                {id:26,time:"17:30",countdown:"in 11h 50m",country:"US",impact:"low",  title:"5-Year TIPS Auction",                        date:"2026.04.16",actual:null,forecast:"-",    previous:"1.84%",tab:"upcoming"},
-                {id:27,time:"19:00",countdown:"in 13h 20m",country:"US",impact:"low",  title:"Fed Waller Speaks",                          date:"2026.04.16",actual:null,forecast:"-",    previous:"-",    tab:"upcoming"},
-                {id:28,time:"02:00",countdown:"in 19h 20m",country:"CN",impact:"high", title:"China Retail Sales y/y",                     date:"2026.04.17",actual:null,forecast:"4.2%", previous:"4.0%", tab:"upcoming"},
-                {id:29,time:"02:00",countdown:"in 19h 20m",country:"CN",impact:"high", title:"China Industrial Production y/y",            date:"2026.04.17",actual:null,forecast:"5.7%", previous:"5.9%", tab:"upcoming"},
-                {id:30,time:"12:30",countdown:"in 30h 50m",country:"US",impact:"high", title:"Philadelphia Fed Manufacturing Index",       date:"2026.04.17",actual:null,forecast:"-10.0",previous:"-26.4",tab:"upcoming"},
-                {id:7,time:"08:30",country:"US",impact:"high",title:"CPI m/m",date:"2026.04.15",actual:"0.1%",forecast:"0.3%",previous:"0.2%",tab:"previous"},
-                {id:8,time:"08:30",country:"US",impact:"high",title:"Core CPI m/m",date:"2026.04.15",actual:"0.3%",forecast:"0.3%",previous:"0.4%",tab:"previous"},
-                {id:9,time:"03:00",country:"CN",impact:"high",title:"GDP q/y",date:"2026.04.16",actual:"5.4%",forecast:"5.2%",previous:"5.4%",tab:"previous"},
-                {id:10,time:"10:00",country:"EU",impact:"med",title:"ECB President Lagarde Speaks",date:"2026.04.15",actual:"-",forecast:"-",previous:"-",tab:"previous"},
-                {id:11,time:"09:30",country:"GB",impact:"high",title:"GDP m/m",date:"2026.04.11",actual:"0.5%",forecast:"0.1%",previous:"-0.1%",tab:"previous"},
-                {id:12,time:"14:00",country:"US",impact:"med",title:"Michigan Consumer Sentiment",date:"2026.04.11",actual:"50.8",forecast:"54.5",previous:"57.0",tab:"previous"},
-              ];
-              const q = newsSearch.toLowerCase();
-              const filtered = newsData.filter(ev =>
-                ev.tab===newsTab &&
-                newsImpact.includes(ev.impact) &&
-                newsCntSel[ev.country] &&
-                (!q || ev.title.toLowerCase().includes(q) || ev.country.toLowerCase().includes(q))
-              );
-              const allCntOn = ALL_COUNTRIES.every(co=>newsCntSel[co]);
+              const api = typeof window !== "undefined" ? window.__economicCalendarUi : null;
+              const st = api ? api.getStatus() : null;
+              const rawList = api && st && !st.loading && !st.error ? api.getFilteredEvents() : [];
+              const filtered = rawList.map((e, idx) => {
+                const d = api.displayForEvent(e);
+                const imp = e.impact === "medium" ? "med" : e.impact;
+                return {
+                  id: `${e.t}:${idx}:${(e.event || "").slice(0, 48)}`,
+                  time: d ? d.time : "",
+                  countdown: d && d.upcoming && d.countdown ? d.countdown : null,
+                  country: e.countryKey || (String(e.country || "").trim().slice(0, 2).toUpperCase() || "US"),
+                  impact: imp,
+                  title: e.event,
+                  date: d ? d.dateStr : "",
+                  actual: e.actual,
+                  forecast: e.forecast,
+                  previous: e.previous,
+                  tab: newsTab,
+                };
+              });
+              const allCntOn = ECON_CAL_COUNTRIES.every((co) => newsCntSel[co]);
+              if (st && st.loading) {
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                    <div style={{ padding: "40px 14px", textAlign: "center", color: c.tm, fontSize: 11 }}>Loading economic calendar…</div>
+                  </div>
+                );
+              }
+              if (st && st.error) {
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                    <div style={{ padding: "24px 14px", textAlign: "center", color: c.rd, fontSize: 11 }}>{st.error}</div>
+                  </div>
+                );
+              }
+              if (!api) {
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                    <div style={{ padding: "24px 14px", textAlign: "center", color: c.tm, fontSize: 11 }}>Economic calendar unavailable.</div>
+                  </div>
+                );
+              }
               return (
                 <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
                   {/* Search + Filter button */}
@@ -12518,7 +12588,14 @@ const TalariaV8bLive = () => {
                     {/* Search bar */}
                     <div style={{flex:1,display:"flex",alignItems:"center",gap:6,background:c.well,border:`1px solid ${c.brH}`,padding:"5px 8px"}}>
                       <I n="search" s={13} cl={c.tm}/>
-                      <input type="text" placeholder="Search events…" value={newsSearch} onChange={e=>setNewsSearch(e.target.value)}
+                      <input type="text" placeholder="Search events…" value={newsSearch} onChange={(e) => {
+                        const v = e.target.value;
+                        setNewsSearch(v);
+                        if (newsSearchToModuleDebounceRef.current) clearTimeout(newsSearchToModuleDebounceRef.current);
+                        newsSearchToModuleDebounceRef.current = setTimeout(() => {
+                          window.__economicCalendarUi?.setQuery(v);
+                        }, 200);
+                      }}
                         style={{flex:1,background:"transparent",border:"none",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:0}}/>
                       {newsSearch && <div onClick={()=>setNewsSearch("")} style={{cursor:"default"}}><I n="x" s={12} cl={c.ts}/></div>}
                     </div>
@@ -12537,7 +12614,13 @@ const TalariaV8bLive = () => {
                               const isH=swHov===`ni-${lv}`;
                               return (
                                 <div key={lv}
-                                  onClick={()=>setNewsImpact(prev=>on?prev.filter(x=>x!==lv):[...prev,lv])}
+                                  onClick={()=>{
+                                    setNewsImpact((prev) => {
+                                      const next = on ? prev.filter((x) => x !== lv) : [...prev, lv];
+                                      queueMicrotask(() => pushEconNewsFiltersToModule(next, newsSymbolOnly, newsCntSel));
+                                      return next;
+                                    });
+                                  }}
                                   onMouseEnter={()=>setSwHov(`ni-${lv}`)} onMouseLeave={()=>setSwHov(null)}
                                   style={{padding:"3px 8px",fontSize:12,fontWeight:on?700:500,cursor:"default",
                                     letterSpacing:"0.03em",position:"relative",
@@ -12558,13 +12641,26 @@ const TalariaV8bLive = () => {
                         {/* Symbol only */}
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                           <span style={{fontSize:12,color:newsSymbolOnly?c.acL:c.ts,fontWeight:newsSymbolOnly?600:400,transition:"color 0.15s"}}>Chart symbol only</span>
-                          <Toggle on={newsSymbolOnly} onClick={()=>setNewsSymbolOnly(p=>!p)} color={c.acL} c={c} swHov={swHov} setSwHov={setSwHov}/>
+                          <Toggle on={newsSymbolOnly} onClick={()=>{
+                            setNewsSymbolOnly((p) => {
+                              const next = !p;
+                              queueMicrotask(() => pushEconNewsFiltersToModule(newsImpact, next, newsCntSel));
+                              return next;
+                            });
+                          }} color={c.acL} c={c} swHov={swHov} setSwHov={setSwHov}/>
                         </div>
                         {/* Countries */}
                         <div>
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
                             <span style={{fontSize:11,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>COUNTRIES</span>
-                            <div onClick={()=>setNewsCntSel(ALL_COUNTRIES.reduce((a,co)=>({...a,[co]:allCntOn?0:1}),{}))}
+                            <div onClick={()=>{
+                              setNewsCntSel((prev) => {
+                                const allOn = ECON_CAL_COUNTRIES.every((x) => prev[x]);
+                                const next = ECON_CAL_COUNTRIES.reduce((a, co) => ({ ...a, [co]: allOn ? 0 : 1 }), {});
+                                queueMicrotask(() => pushEconNewsFiltersToModule(newsImpact, newsSymbolOnly, next));
+                                return next;
+                              });
+                            }}
                               onMouseEnter={()=>setSwHov("ncAll")} onMouseLeave={()=>setSwHov(null)}
                               style={{width:28,textAlign:"center",fontSize:11,fontWeight:700,cursor:"default",letterSpacing:"0.04em",
                                 color:allCntOn?c.ts:c.acL,
@@ -12575,12 +12671,16 @@ const TalariaV8bLive = () => {
                             </div>
                           </div>
                           <div className="tlr-scroll" style={{maxHeight:130,overflowY:"auto",display:"flex",flexDirection:"column",gap:1}}>
-                            {ALL_COUNTRIES.map(co=>{
+                            {ECON_CAL_COUNTRIES.map(co=>{
                               const on=!!newsCntSel[co];
                               const isH=swHov===`nc-${co}`;
                               return (
                                 <div key={co}
-                                  onClick={()=>setNewsCntSel(prev=>({...prev,[co]:prev[co]?0:1}))}
+                                  onClick={()=>setNewsCntSel((prev)=>{
+                                    const next={...prev,[co]:prev[co]?0:1};
+                                    queueMicrotask(()=>pushEconNewsFiltersToModule(newsImpact,newsSymbolOnly,next));
+                                    return next;
+                                  })}
                                   onMouseEnter={()=>setSwHov(`nc-${co}`)} onMouseLeave={()=>setSwHov(null)}
                                   style={{display:"flex",alignItems:"center",gap:7,padding:"4px 8px",cursor:"default",position:"relative",
                                     background:on?c.acD:isH?"rgba(255,255,255,0.022)":"transparent",
@@ -12621,7 +12721,10 @@ const TalariaV8bLive = () => {
                       const isAct=newsTab===tab;
                       const isH=swHov===`ntab-${tab}`;
                       return (
-                        <div key={tab} onClick={()=>setNewsTab(tab)}
+                        <div key={tab} onClick={()=>{
+                          setNewsTab(tab);
+                          window.__economicCalendarUi?.setTab(tab);
+                        }}
                           onMouseEnter={()=>setSwHov(`ntab-${tab}`)} onMouseLeave={()=>setSwHov(null)}
                           style={{flex:1,padding:"7px 0",textAlign:"center",cursor:"default",
                             color:isAct?c.acL:isH?c.tx:c.ts,fontSize:11,fontWeight:isAct?700:500,
@@ -12734,7 +12837,7 @@ const TalariaV8bLive = () => {
                                   <span style={{fontSize:13,fontWeight:700,color:c.ts,
                                     fontVariantNumeric:"tabular-nums",textAlign:"center",lineHeight:1.35,
                                     whiteSpace:"nowrap",marginRight:16}}>
-                                    {ev.countdown.replace("in ","")}
+                                    {String(ev.countdown).replace(/^-\s*/, "")}
                                   </span>
                                 ) : hasAct && fcVal!=null ? (
                                   <>
@@ -14478,7 +14581,13 @@ const TalariaV8bLive = () => {
             const isPr   = swHov==="exec-btn_dn";
             return (
               <div style={{ padding:"0 8px 6px", flexShrink:0 }}>
-                <div onClick={() => { document.getElementById("placeOrderButton")?.click(); }} data-nodrag="1"
+                <div onClick={() => {
+                    const list = screenshots.map((s) => ({ dataUrl: s.dataUrl, name: s.name || "" }));
+                    if (typeof window !== "undefined") {
+                      window.__talariaV9RailScreenshots = list.length ? list : null;
+                    }
+                    document.getElementById("placeOrderButton")?.click();
+                  }} data-nodrag="1"
                   onMouseEnter={()=>setSwHov("exec-btn")} onMouseLeave={()=>setSwHov(null)}
                   onMouseDown={()=>setSwHov("exec-btn_dn")} onMouseUp={()=>setSwHov("exec-btn")}
                   style={{ width:"100%", height:36, cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",

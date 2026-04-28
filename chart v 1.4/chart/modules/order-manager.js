@@ -3163,6 +3163,17 @@ class OrderManager {
         if (entry.mfeTime == null && position.mfeTime != null) entry.mfeTime = position.mfeTime;
         if (entry.maeTime == null && position.maeTime != null) entry.maeTime = position.maeTime;
 
+        if (
+            !entry.railScreenshots &&
+            Array.isArray(position.railScreenshots) &&
+            position.railScreenshots.length > 0
+        ) {
+            entry.railScreenshots = position.railScreenshots.map((r) => ({
+                dataUrl: r.dataUrl,
+                name: r.name,
+            }));
+        }
+
         const copyArr = (a) => (Array.isArray(a) ? a.slice() : null);
         if (!entry.bar_close_r) {
             const bc = copyArr(position.bar_close_r);
@@ -5251,7 +5262,7 @@ class OrderManager {
             ` : ''}
             
             <!-- Trade Screenshots -->
-            ${trade.entryScreenshot || trade.exitScreenshot || (trade.entryScreenshots && trade.entryScreenshots.length > 0) ? `
+            ${trade.entryScreenshot || trade.exitScreenshot || (trade.entryScreenshots && trade.entryScreenshots.length > 0) || (trade.railScreenshots && trade.railScreenshots.length > 0) ? `
                 <div style="margin-bottom: 28px;">
                     <div style="color: #cbd5e1; font-size: 12px; font-weight: 600; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px;">
                         Chart Screenshots ${trade.isScaledTrade && trade.entryScreenshots ? `(${trade.entryScreenshots.length} entries)` : ''}
@@ -5363,6 +5374,32 @@ class OrderManager {
                                 </div>
                             </div>
                         ` : ''}
+                        </div>
+                    ` : ''}
+                    ${Array.isArray(trade.railScreenshots) && trade.railScreenshots.length > 0 ? `
+                        <div style="margin-top: 18px; padding-top: 18px; border-top: 1px solid rgba(148,163,184,0.15);">
+                            <div style="color: #94a3b8; font-size: 11px; margin-bottom: 10px; font-weight: 500;">Pre-trade attachments</div>
+                            <div style="display: grid; grid-template-columns: repeat(${Math.min(trade.railScreenshots.length, 3)}, 1fr); gap: 12px;">
+                                ${trade.railScreenshots.map((r, idx) => `
+                                    <div>
+                                        ${r.name ? `<div style="color:#64748b;font-size:10px;margin-bottom:6px;">${String(r.name).replace(/</g, '')}</div>` : ''}
+                                        <div style="
+                                            background: rgba(30,41,59,0.3);
+                                            border: 1px solid rgba(148,163,184,0.2);
+                                            border-radius: 8px;
+                                            overflow: hidden;
+                                            cursor: pointer;
+                                            transition: all 0.2s;
+                                        " onclick="window.chart.orderManager.showScreenshotPreview(${JSON.stringify(r.dataUrl)}, ${JSON.stringify(r.name || `Attachment ${idx + 1}`)})"
+                                           onmouseover="this.style.borderColor='rgba(148,163,184,0.4)';"
+                                           onmouseout="this.style.borderColor='rgba(148,163,184,0.2)';">
+                                            <img src="${r.dataUrl}"
+                                                 style="width: 100%; height: 80px; object-fit: cover; display: block;"
+                                                 alt="" />
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
                         </div>
                     ` : ''}
                 </div>
@@ -12249,6 +12286,10 @@ class OrderManager {
         if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
             try { this.chart.updateSVGPointerEvents(); } catch (_e) { /* ignore */ }
         }
+
+        try {
+            window.dispatchEvent(new CustomEvent('talaria:order-rail-clear-draft'));
+        } catch (_e) { /* ignore */ }
     }
 
     /**
@@ -17780,6 +17821,38 @@ class OrderManager {
         this.setEntryMode(false);
     }
 
+    /**
+     * V9 React order rail: user-uploaded pre-trade screenshots (data URLs).
+     * Consumed once per place — `window.__talariaV9RailScreenshots` set immediately before #placeOrderButton click.
+     * For split/pending legs, only splitIndex === 1 attaches so duplicates are not stored.
+     */
+    _consumeRailScreenshotsForOrder(order, opts = {}) {
+        if (!order) return;
+        const onlyFirstSplit = opts.onlyIfFirstSplit === true;
+        if (onlyFirstSplit) {
+            const si = order.splitIndex;
+            if (si != null && Number(si) > 1) return;
+        }
+        try {
+            const raw = typeof window !== 'undefined' ? window.__talariaV9RailScreenshots : null;
+            if (!raw || !Array.isArray(raw) || raw.length === 0) return;
+            const list = raw
+                .map((x) => ({
+                    dataUrl: String(x && x.dataUrl != null ? x.dataUrl : ''),
+                    name: String(x && x.name != null ? x.name : '').slice(0, 220),
+                }))
+                .filter((x) => x.dataUrl && x.dataUrl.startsWith('data:'));
+            if (!list.length) {
+                if (typeof window !== 'undefined') window.__talariaV9RailScreenshots = null;
+                return;
+            }
+            order.railScreenshots = list;
+            if (typeof window !== 'undefined') window.__talariaV9RailScreenshots = null;
+        } catch (_e) {
+            if (typeof window !== 'undefined') window.__talariaV9RailScreenshots = null;
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // MULTI-ENTRY UI SYSTEM — Panel-based multiple entry level management
     // ═══════════════════════════════════════════════════════════════════════
@@ -21639,6 +21712,7 @@ class OrderManager {
                             t._noTriggerBeforeTick = guardTick;
                         });
                     }
+                    if (idx === 0) this._consumeRailScreenshotsForOrder(order);
                     this._applyPreTradeVariablesFromOrderPanel(order);
                     if (this.orderService) {
                         this.orderService.registerOpenOrder(order);
@@ -22032,6 +22106,7 @@ class OrderManager {
             _tpNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick
         };
 
+        this._consumeRailScreenshotsForOrder(order);
         this._applyPreTradeVariablesFromOrderPanel(order);
 
         if (order.tpTargets && order.tpTargets.length > 0) {
@@ -22205,6 +22280,7 @@ class OrderManager {
             scaleWithExisting: this.scaleNextOrder
         };
 
+        this._consumeRailScreenshotsForOrder(pendingOrder);
         this._applyPreTradeVariablesFromOrderPanel(pendingOrder);
         
         // Reset scaling flag after storing
@@ -22278,6 +22354,7 @@ class OrderManager {
             scaleWithExisting: this.scaleNextOrder
         };
 
+        this._consumeRailScreenshotsForOrder(pendingOrder, { onlyIfFirstSplit: true });
         this._applyPreTradeVariablesFromOrderPanel(pendingOrder);
 
         if (this.orderService) {
@@ -23190,6 +23267,12 @@ class OrderManager {
                 closeType: 'MANUAL',
                 status: 'closed',
                 entryScreenshot: position.entryScreenshot || null,
+                railScreenshots: Array.isArray(position.railScreenshots)
+                    ? position.railScreenshots.map((r) => ({
+                          dataUrl: r.dataUrl,
+                          name: r.name,
+                      }))
+                    : [],
                 exitScreenshot: null, // Will be captured below
                 mfe: position.mfe || null,
                 mae: position.mae || null,
@@ -23815,7 +23898,8 @@ class OrderManager {
             _slNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick,
             _tpNoTriggerBeforeTime: currentCandle.t,
             _tpNoTriggerBeforeTick: this._getCurrentTickSnapshot().tick,
-            strategyVariables: pendingOrder.strategyVariables || null
+            strategyVariables: pendingOrder.strategyVariables || null,
+            railScreenshots: pendingOrder.railScreenshots || null
         };
 
         // Guard multi-TP targets against triggering on the fill candle
