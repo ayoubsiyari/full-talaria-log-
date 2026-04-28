@@ -975,6 +975,8 @@ const TalariaV8bLive = () => {
   const pinnedBarRef = useRef(null);
   const cpBarAnchorRef = useRef(null); // set when color picker is opened from the tl bar
   const closingDropdownKey = useRef(null);
+  /** Keeps latest closeWindows for chart.js → `talaria-v9-open-settings` without stale closures */
+  const closeWindowsRef = useRef(() => {});
   const [canvasDims, setCanvasDims] = useState({w:888,h:360});
   /** Data URL from real #chart-container capture — matches Copy/Download output (not SVG mock). */
   const [screenshotPreviewUrl, setScreenshotPreviewUrl] = useState(null);
@@ -4051,6 +4053,7 @@ const TalariaV8bLive = () => {
   ]);
 
   const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelected(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
+  closeWindowsRef.current = closeWindows;
   // closeAll is triggered by backdrop/outside clicks — intentionally does NOT close the indicators window
   const closeAll = () => {
     setDropdown(null); setSymbolSearch(""); setTfCat(null); setTfUnitOpen(false);
@@ -4113,6 +4116,19 @@ const TalariaV8bLive = () => {
     }, 250);
   };
   const hideTip = () => { clearTimeout(tipTimerRef.current); setTipData(null); };
+
+  // Chart right-click → Settings: same as logo menu → Settings (see chart.js openSettingsFromContextMenu)
+  useEffect(() => {
+    const onOpenSettings = (e) => {
+      try {
+        closeWindowsRef.current?.();
+      } catch (_) {}
+      setSettingsOpen(true);
+      if (e && typeof e.preventDefault === "function") e.preventDefault();
+    };
+    window.addEventListener("talaria-v9-open-settings", onOpenSettings);
+    return () => window.removeEventListener("talaria-v9-open-settings", onOpenSettings);
+  }, []);
 
   // Render a tool button
   const renderTB = (t, ref) => {

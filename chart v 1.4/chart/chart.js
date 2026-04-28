@@ -17616,6 +17616,17 @@ class Chart {
 
     openSettingsFromContextMenu() {
         if (typeof window !== 'undefined') {
+            // V9 live shell (React): listener calls preventDefault() and opens the same panel as logo → Settings
+            try {
+                const ev = new CustomEvent('talaria-v9-open-settings', { bubbles: false, cancelable: true });
+                const legacyContinue = window.dispatchEvent(ev);
+                if (!legacyContinue) {
+                    return;
+                }
+            } catch (_) {
+                /* fall through */
+            }
+
             if (typeof window._openMode === 'function') {
                 window._openMode();
                 return;
