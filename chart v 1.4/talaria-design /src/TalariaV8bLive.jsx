@@ -349,6 +349,11 @@ const TalariaV8bLive = () => {
   const slScrollRef = useRef(null);
   const [tpRows, setTpRows] = useState([{ id:0, price:"0", qty:"100", enabled:true }]);
   const tpScrollRef = useRef(null);
+  /** Mirrors #riskAmount / #rewardAmount / pip distance from hidden order panel (order-manager). */
+  const [omRiskSummaryTxt, setOmRiskSummaryTxt] = useState("$0");
+  const [omRewardSummaryTxt, setOmRewardSummaryTxt] = useState("$0");
+  const [omSlDistTxt, setOmSlDistTxt] = useState("—");
+  const [omTpDistTxt, setOmTpDistTxt] = useState("—");
   const [tagDefs] = useState([
     { id:"setup",     label:"Setup OK",    type:"bool" },
     { id:"htf",       label:"HTF Bias",    type:"bool" },
@@ -2163,6 +2168,73 @@ const TalariaV8bLive = () => {
 
     return () => clearTimeout(tid);
   }, [orderPanelOpen, buySell, orderType, sizeMode, riskVal, slPrice, entryRows, tpRows]);
+
+  // Mirror hidden #orderPanel → V8b React state. Chart drags / OM logic update the native inputs only;
+  // without this, the rail still shows 0 / Market while preview lines show Limit + real prices.
+  useEffect(() => {
+    if (!orderPanelOpen) return;
+    const tick = () => {
+      const panel = document.getElementById("orderPanel");
+      if (!panel?.classList.contains("visible")) return;
+
+      const ep = document.getElementById("orderEntryPrice")?.value ?? "";
+      const slp = document.getElementById("slPrice")?.value ?? "";
+      const tpp = document.getElementById("tpPrice")?.value ?? "";
+
+      setEntryRows((rows) => {
+        if (!rows.length) return rows;
+        if (rows[0].price === ep) return rows;
+        const next = [...rows];
+        next[0] = { ...next[0], price: ep };
+        return next;
+      });
+
+      setSlPrice((prev) => (prev === slp ? prev : slp));
+
+      setTpRows((rows) => {
+        if (!rows.length) return rows;
+        if (rows[0].price === tpp) return rows;
+        const next = [...rows];
+        next[0] = { ...next[0], price: tpp };
+        return next;
+      });
+
+      const buyOn = document.getElementById("buyTab")?.classList.contains("active");
+      const side = buyOn ? "buy" : "sell";
+      setBuySell((prev) => (prev === side ? prev : side));
+
+      const activeOt = document.querySelector("#orderPanel .order-type-btn.active");
+      const ot = activeOt?.dataset?.type;
+      if (ot && ["market", "limit", "stop"].includes(ot)) {
+        setOrderType((prev) => (prev === ot ? prev : ot));
+      }
+
+      const pm = document.querySelector("#orderPanel .position-mode-tab.active")?.dataset?.mode;
+      const sz = pm === "risk-percent" ? "%" : pm === "lot-size" ? "#" : "$";
+      setSizeMode((prev) => (prev === sz ? prev : sz));
+
+      const rid =
+        pm === "risk-percent" ? "riskAmountPercent" : pm === "lot-size" ? "lotSizeAmount" : "riskAmountUSD";
+      const rv = document.getElementById(rid)?.value;
+      if (rv != null && rv !== "") {
+        setRiskVal((prev) => (prev === rv ? prev : rv));
+      }
+
+      const rsk = document.getElementById("riskAmount")?.textContent?.trim() || "$0";
+      const rwd = document.getElementById("rewardAmount")?.textContent?.trim() || "$0";
+      setOmRiskSummaryTxt((prev) => (prev === rsk ? prev : rsk));
+      setOmRewardSummaryTxt((prev) => (prev === rwd ? prev : rwd));
+
+      const sd = document.getElementById("slPipsDisplay")?.textContent?.trim() || "—";
+      const td = document.getElementById("tpDistanceDisplay")?.textContent?.trim() || "—";
+      setOmSlDistTxt((prev) => (prev === sd ? prev : sd));
+      setOmTpDistTxt((prev) => (prev === td ? prev : td));
+    };
+
+    tick();
+    const id = window.setInterval(tick, 120);
+    return () => clearInterval(id);
+  }, [orderPanelOpen]);
 
   // Rollback overlay — callback ref attaches native mousemove the instant the node mounts
   // (avoids useEffect timing gap when rollback first becomes true)
@@ -12990,11 +13062,11 @@ const TalariaV8bLive = () => {
                   {/* Footer: Loss · Dist */}
                   <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", borderTop:"1px solid rgba(255,80,104,0.1)" }}>
                     <span style={{ fontSize:9, fontWeight:700, color:c.rd, fontVariantNumeric:"tabular-nums" }}>
-                      Loss <span style={{ fontWeight:800 }}>-$0.00</span>
+                      Loss <span style={{ fontWeight:800 }}>{omRiskSummaryTxt}</span>
                     </span>
                     <div style={{ flex:1 }}/>
                     <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                      Dist <span style={{ color:c.ts, fontWeight:700 }}>0.00</span>{" "}{currentSymbol.type==="futures"?"ticks":"pips"}
+                      Dist <span style={{ color:c.ts, fontWeight:700 }}>{omSlDistTxt}</span>{" "}{currentSymbol.type==="futures"?"ticks":"pips"}
                     </span>
                   </div>
                   {/* Advanced order content */}
@@ -13365,7 +13437,7 @@ const TalariaV8bLive = () => {
                   {/* Footer — always visible */}
                   <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", gap:6, borderTop:"1px solid rgba(0,212,161,0.1)" }}>
                     <span style={{ fontSize:9, fontWeight:700, color:c.gn, fontVariantNumeric:"tabular-nums" }}>
-                      Profit <span style={{ fontWeight:800 }}>+$0.00</span>
+                      Profit <span style={{ fontWeight:800 }}>{omRewardSummaryTxt}</span>
                     </span>
                     <div style={{ flex:1 }}/>
                     {tpRows.length > 1 && (
@@ -13374,7 +13446,7 @@ const TalariaV8bLive = () => {
                       </span>
                     )}
                     <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                      Dist <span style={{ color:c.ts, fontWeight:700 }}>0.00</span>
+                      Dist <span style={{ color:c.ts, fontWeight:700 }}>{omTpDistTxt}</span>
                       {" "}{currentSymbol.type==="futures" ? "ticks" : "pips"}
                     </span>
                   </div>
