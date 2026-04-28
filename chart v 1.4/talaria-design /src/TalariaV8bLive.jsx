@@ -2526,7 +2526,26 @@ const TalariaV8bLive = () => {
           setLayersItems([]);
           return;
         }
-        const items = dm.drawings.map((d) => {
+        // Filter out orphaned / unfinalized drawings:
+        //  - missing type or id (not a real shape yet)
+        //  - SVG group destroyed or detached from the document
+        //  - no valid points (placement was cancelled mid-draw)
+        const valid = dm.drawings.filter((d) => {
+          if (!d || !d.type) return false;
+          // group is a d3 selection; .node() returns the underlying SVGElement.
+          // After destroy() group is null/undefined or its node is no longer
+          // in the document — treat as stale.
+          try {
+            const g = d.group;
+            const node = g && (typeof g.node === 'function' ? g.node() : g);
+            if (!node || (node.isConnected === false)) return false;
+          } catch (_) { return false; }
+          if (!Array.isArray(d.points) || d.points.length === 0) return false;
+          const hasValidPoint = d.points.some(p => p && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)));
+          if (!hasValidPoint) return false;
+          return true;
+        });
+        const items = valid.map((d) => {
           const icon = LEGACY_TYPE_TO_V9_ICON[d.type] || 'trendline';
           const name = (typeof dm.getDrawingDisplayTitle === 'function')
             ? dm.getDrawingDisplayTitle(d)
@@ -2560,13 +2579,35 @@ const TalariaV8bLive = () => {
     // Style edits don't fire drawingsChanged — but we want the row name to
     // refresh if the user renames a drawing via the legacy toolbar.
     window.addEventListener('drawingStyleChanged', rebuild);
+    // File / symbol / timeframe switch reloads dm.drawings from storage —
+    // catch that or the tree keeps showing the previous chart's drawings.
+    window.addEventListener('chartDataLoaded', rebuild);
+    // Multi-panel: the active panel (and therefore window.chart.drawingManager)
+    // changes — rebuild against the newly active drawingManager.
+    window.addEventListener('panelSelected', rebuild);
+    window.addEventListener('returnedToSinglePanel', rebuild);
+    // Manual trigger: V9 calls window.__rebuildObjectsTree() when the
+    // Objects Tree panel is opened, to catch anything we may have missed.
+    window.__rebuildObjectsTree = rebuild;
     return () => {
       cancelled = true;
       window.removeEventListener('drawingsChanged', rebuild);
       window.removeEventListener('drawingStyleChanged', rebuild);
+      window.removeEventListener('chartDataLoaded', rebuild);
+      window.removeEventListener('panelSelected', rebuild);
+      window.removeEventListener('returnedToSinglePanel', rebuild);
+      if (window.__rebuildObjectsTree === rebuild) delete window.__rebuildObjectsTree;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Force a rebuild whenever the user opens the Objects Tree panel — a
+  // safety net for any drawing-state event we may not be listening to.
+  useEffect(() => {
+    if (rightPanel === 'layers' && typeof window.__rebuildObjectsTree === 'function') {
+      window.__rebuildObjectsTree();
+    }
+  }, [rightPanel]);
 
   // V9 group id → default legacy tool (used when no sub-tool was picked yet).
   const V9_GROUP_DEFAULT = {
