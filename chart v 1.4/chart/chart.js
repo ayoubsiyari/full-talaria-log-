@@ -1086,16 +1086,12 @@ class Chart {
             this.updateLoaderStep(2, 'completed');
             this.updateLoaderProgress(80, 'Calculating indicators & rendering...');
 
-            this.fitToView();
-            this.render();
+            // Do not fitToView/render the full window here — without #backtestingLoader (legacy had one)
+            // or before enterReplayMode(), users briefly saw every candle; replay then sliced and looked like a "restart".
 
-            // One rAF for paint; start replay on microtask (drops ~300ms of stacked timeouts)
-            requestAnimationFrame(() => {
-                this.render();
-                this.updateLoaderProgress(95, 'Starting replay mode...');
-                this.updateLoaderStep(3, 'active');
-                queueMicrotask(() => this.startBacktestingReplay(session));
-            });
+            this.updateLoaderProgress(95, 'Starting replay mode...');
+            this.updateLoaderStep(3, 'active');
+            queueMicrotask(() => this.startBacktestingReplay(session));
             
         } catch (error) {
             console.error('❌ Failed to load file data:', error);
@@ -1787,10 +1783,8 @@ class Chart {
         }
         
         // parseCSVChunk already resampled this.data and recalculated indicators.
-        // Skip the redundant full-dataset pass here — enterReplayMode will set up
-        // the correct sliced data immediately after.
-        this.fitToView();
-        this.render();
+        // Do not fitToView/render the full series here — enterReplayMode → updateChartData
+        // applies the backtest slice first; a full render would flash the entire history.
         
         // Auto-enter replay mode with first candle
         if (!this.replaySystem) {
