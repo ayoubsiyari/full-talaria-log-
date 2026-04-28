@@ -787,18 +787,15 @@ const TalariaV8bLive = () => {
   };
 
   // Helper: ensure replay is active before play/step. Returns the rs or null.
-  // Mirrors the legacy UX: when replay isn't yet active we trigger
-  // handleReplayButtonClick(), which enters pick-point mode — the user then
-  // clicks the chart to set the replay start. Auto-entering at 10% (the
-  // default of enterReplayMode) is unintuitive because it jumps the chart
-  // away from where the user was looking.
+  // When replay isn't yet active, callers should typically open the V9
+  // rollback (cut-line) overlay so the user can pick a start point with the
+  // V9 styling — NOT the legacy DOM overlay from goBackToPickPoint(). This
+  // helper is a fallback used only when the cut-line UI isn't available.
   const ensureReplayActive = () => {
     const rs = getReplaySystem();
     if (!rs) return null;
     if (rs.isActive) return rs;
-    if (typeof rs.handleReplayButtonClick === 'function') {
-      try { rs.handleReplayButtonClick(); } catch(e) { console.warn('[V9 Replay] enter failed', e); }
-    } else if (typeof rs.enterReplayMode === 'function') {
+    if (typeof rs.enterReplayMode === 'function') {
       try { rs.enterReplayMode(); } catch(e) { console.warn('[V9 Replay] enter failed', e); }
     }
     return rs;
@@ -1838,12 +1835,58 @@ const TalariaV8bLive = () => {
     }
   }, [btmTab]);
 
-  // When rollback is active, block and dismiss on any click
+  // When the V9 rollback (cut-line) overlay is active, intercept the next
+  // click: compute the candle index/timestamp at the click x and drive the
+  // legacy replaySystem to seek there. Mirrors the legacy pick-point flow
+  // (handlePickModeClick → startReplayAtIndex) but keeps V9 visual styling.
   useEffect(() => {
     if (!rollback) return;
     const handleClick = (e) => {
       e.stopPropagation();
       e.stopImmediatePropagation();
+      try {
+        const rs = getReplaySystem();
+        const chart = window.chart;
+        if (rs && chart) {
+          // Resolve x relative to the chart canvas (replaySystem uses
+          // chart.container rect; same coords as legacy handlePickModeClick).
+          const containerNode = chart.container && typeof chart.container.node === 'function'
+            ? chart.container.node()
+            : (chart.canvas && chart.canvas.parentElement) || chartCanvasRef.current;
+          if (containerNode) {
+            const rect = containerNode.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const inChartArea = x >= (chart.margin?.l || 0) && x <= (chart.w - (chart.margin?.r || 0));
+            if (inChartArea) {
+              // Use replaySystem helper if available; falls back to chart.pixelToDataIndex.
+              const candleIndex = typeof rs.getCandleIndexAtX === 'function'
+                ? rs.getCandleIndexAtX(x)
+                : (typeof chart.pixelToDataIndex === 'function'
+                    ? Math.round(chart.pixelToDataIndex(x))
+                    : -1);
+              if (candleIndex >= 0 && Array.isArray(chart.data) && chart.data[candleIndex]) {
+                const ts = chart.data[candleIndex].t;
+                if (!rs.isActive) {
+                  // Mirror legacy startReplayAtIndex: it enters replay mode
+                  // and seeks in one call. If unavailable, fall back to
+                  // enterReplayMode + goToReplayTimestamp.
+                  if (typeof rs.startReplayAtIndex === 'function') {
+                    rs.startReplayAtIndex(candleIndex);
+                  } else {
+                    if (typeof rs.enterReplayMode === 'function') rs.enterReplayMode();
+                    if (typeof rs.goToReplayTimestamp === 'function') rs.goToReplayTimestamp(ts);
+                  }
+                } else if (typeof rs.goToReplayTimestamp === 'function') {
+                  // Already in replay → rewind/seek to picked candle.
+                  rs.goToReplayTimestamp(ts);
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[V9 Replay] cut-line click failed', err);
+      }
       setRollback(false);
     };
     const t = setTimeout(() => window.addEventListener('click', handleClick, true), 0);
@@ -10536,9 +10579,16 @@ const TalariaV8bLive = () => {
                 </div>
               </div>}
             </div>
-            {/* Play / Pause — wired to chart.replaySystem (mirrors legacy toolbar). */}
+            {/* Play / Pause — wired to chart.replaySystem.
+                When replay isn't yet active, open the V9 cut-line so the
+                user picks a start point (legacy UX, V9 visuals). */}
             <button onClick={()=>{
-                const rs = ensureReplayActive();
+                const rs = getReplaySystem();
+                if (rs && !rs.isActive) {
+                  closeAll();
+                  setRollback(true);
+                  return;
+                }
                 if (!rs) { setPlaying(p=>!p); return; }
                 if (rs.isPlaying) {
                   if (typeof rs.pause === 'function') rs.pause();
@@ -10575,10 +10625,17 @@ const TalariaV8bLive = () => {
                   style={{position:"absolute",left:-10,right:-10,width:"calc(100% + 20px)",height:"100%",opacity:0,cursor:"default",margin:0}}/>
               </div>
             </div>);})()}
-            {/* Next candle (step forward) — wired to replaySystem.requestStepForward */}
+            {/* Next candle (step forward) — if replay isn't active, open
+                the V9 cut-line for the user to pick a start. Otherwise
+                step forward via replaySystem.requestStepForward. */}
             <button
               onClick={()=>{
-                const rs = ensureReplayActive();
+                const rs = getReplaySystem();
+                if (rs && !rs.isActive) {
+                  closeAll();
+                  setRollback(true);
+                  return;
+                }
                 if (rs && typeof rs.requestStepForward === 'function') rs.requestStepForward();
               }}
               onPointerDown={()=>setHov("rp-next-dn")} onPointerUp={()=>setHov("rp-next")} onPointerLeave={()=>{setHov(null);hideTip();}}
@@ -10588,22 +10645,14 @@ const TalariaV8bLive = () => {
               {hov==="rp-next-dn"&&<div style={{position:"absolute",bottom:0,left:"15%",right:"15%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
               {hov==="rp-next"&&<div style={{position:"absolute",bottom:0,left:"25%",right:"25%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
             </button>
-            {/* Rollback (cut) — wired to replaySystem.goBackToPickPoint when
-                active, otherwise enters the regular pick-point mode (legacy parity). */}
+            {/* Rollback (cut) — always uses the V9-styled cut-line overlay.
+                The overlay's click handler computes the candle timestamp
+                and drives replaySystem.startReplayAtIndex / goToReplayTimestamp. */}
             <button onClick={(e)=>{
                 e.stopPropagation();
-                const rs = getReplaySystem();
-                if (rs && rs.isActive && typeof rs.goBackToPickPoint === 'function') {
-                  try { rs.goBackToPickPoint(); } catch(err) { console.warn('[V9 Replay] goBack failed', err); }
-                  return;
-                }
-                if (rs && typeof rs.handleReplayButtonClick === 'function') {
-                  try { rs.handleReplayButtonClick(); } catch(err) { console.warn('[V9 Replay] enter failed', err); }
-                  return;
-                }
-                // Fallback to original V9 mock-only behavior if the chart
-                // module isn't available yet.
-                const opening=!rollback;if(opening)closeAll();setRollback(opening);
+                const opening=!rollback;
+                if(opening)closeAll();
+                setRollback(opening);
               }}
               onMouseEnter={e=>{setHov("rp-rb");showTip("Rollback",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
               style={{padding:"4px 5px",position:"relative",background:rollback?"rgba(74,106,255,0.08)":hov==="rp-rb"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"transform 0.15s ease, color 0.15s ease, background 0.12s",transform:rollback?"scale(1.18)":"scale(1)",color:rollback?c.acL:hov==="rp-rb"?c.tx:c.ts}}>
