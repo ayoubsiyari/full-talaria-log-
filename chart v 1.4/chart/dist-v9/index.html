@@ -39,10 +39,11 @@
 
         /* ──────────────────────────────────────────────────────────────
            Crosshair + price/time labels.
-           chart.js looks up `.crosshair-vertical/.crosshair-horizontal/
-           .price-label/.time-label` in `document` for the main chart and
-           positions them based on mouse coords. The styling here mirrors
-           legacy chart/index.html so behaviour matches exactly.
+           chart.js scopes those nodes to `canvas.parentElement` (same as legacy
+           chart-wrapper): never use `document.querySelector` for crosshair DOM,
+           because V9 puts `#panels-container` before `#chartWrapper` — the first
+           match would be a panel slot and mouse coords (main canvas) would
+           misalign. The styling here mirrors legacy chart/index.html.
            ────────────────────────────────────────────────────────────── */
         .crosshair-vertical,
         .crosshair-horizontal {
@@ -241,8 +242,9 @@
     <!-- Chart engine.
          chart.js exposes window.Chart synchronously and window.initializeChart
          as a callable. Its DOMContentLoaded handler fires after main.jsx has
-         mounted React (deferred too), so the #chartCanvas element exists. -->
-    <script defer src="/chart/chart.js"></script>
+         mounted React (deferred too), so the #chartCanvas element exists.
+         Bump ?v= whenever /chart assets change so browsers/CDNs don’t serve stale JS. -->
+    <script defer src="/chart/chart.js?v=20260428_crosshair_scope"></script>
 
     <!-- Replay system — must load AFTER chart.js (depends on it). -->
     <script defer src="/chart/modules/replay-system.js"></script>
@@ -253,7 +255,7 @@
     <!-- Panel manager — multi-panel layouts. Must load AFTER chart.js so
          it can wire scroll-sync against window.chart. The legacy index.html
          instantiates this inline; V9's bootstrap below does the same. -->
-    <script defer src="/chart/modules/panel-manager.js"></script>
+    <script defer src="/chart/modules/panel-manager.js?v=20260428_crosshair_scope"></script>
   <script type="module" crossorigin src="/chart/dist-v9/assets/index-D1MjF2o6.js"></script>
 </head>
 <body>
