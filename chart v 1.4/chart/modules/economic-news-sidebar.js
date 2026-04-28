@@ -225,7 +225,23 @@
         ccy = String(ccy || '').toUpperCase();
         if (!ccy) return false;
         var ecu = String(eventCurrency || '').trim().toUpperCase();
-        if (ecu === ccy) return true;
+        if (ecu === ccy) {
+            // Finnhub often duplicates the quote currency in `currency` even for foreign releases
+            // (e.g. China GDP with currency USD). For the USD leg, require US-relevant geography.
+            if (ccy === 'USD') {
+                var rawCo = String(eventCountry || '').toUpperCase();
+                if (rawCo.indexOf('UNITED STATES') !== -1 || rawCo === 'USA' || rawCo === 'US') {
+                    return true;
+                }
+                var usRegs = CCY_TO_REGION_CODES['USD'];
+                var ctShort = normCountryToken(eventCountry);
+                for (var ui = 0; ui < usRegs.length; ui++) {
+                    if (ctShort === usRegs[ui]) return true;
+                }
+                return false;
+            }
+            return true;
+        }
         var cty = normCountryToken(eventCountry);
         var regions = CCY_TO_REGION_CODES[ccy];
         if (!regions || !regions.length) {
@@ -316,11 +332,11 @@
     function passesUserFilters(e) {
         if (!passesImpactFilter(e)) return false;
         if (!passesCountryUserFilter(e)) return false;
+        if (!state.filters.pairOnly) return true;
         var pair = parseForexPair(getCurrentChartSymbol());
-        if (state.filters.pairOnly && pair) {
-            return eventMatchesChartPair(e, pair);
-        }
-        return true;
+        // If we cannot resolve a 6-letter FX pair, do not show every release — that looked like a broken filter.
+        if (!pair) return false;
+        return eventMatchesChartPair(e, pair);
     }
 
     function escapeHtml(s) {
