@@ -357,6 +357,8 @@ const TalariaV8bLive = () => {
   const [omEntryRowStatLines, setOmEntryRowStatLines] = useState([]);
   const [omTpRowStatLines, setOmTpRowStatLines] = useState([]);
   const [omMultiEntryTotalQtyTxt, setOmMultiEntryTotalQtyTxt] = useState("");
+  /** Multi-entry footer: same weighted Avg Entry as chart / #multiEntryAvgPrice — not unweighted mean of row prices. */
+  const [omEntryAvgPriceTxt, setOmEntryAvgPriceTxt] = useState("");
   /** Multi-TP footer: total size (#orderQuantity) + WAP — matches chart "Avg TP … lots" + weighted price. */
   const [omTpAvgLotsTxt, setOmTpAvgLotsTxt] = useState("");
   const [omTpWapPriceTxt, setOmTpWapPriceTxt] = useState("");
@@ -2561,6 +2563,22 @@ const TalariaV8bLive = () => {
       );
       const mq = document.getElementById("multiEntryTotalQty")?.textContent?.trim() || "";
       setOmMultiEntryTotalQtyTxt((prev) => (prev === mq ? prev : mq));
+
+      let entryAvgStr = "";
+      const avgDom = document.getElementById("multiEntryAvgPrice")?.textContent?.trim() || "";
+      if (avgDom && avgDom !== "0.00000") {
+        entryAvgStr = avgDom;
+      } else if (
+        om &&
+        typeof om._calcMultiEntryAvgPrice === "function" &&
+        typeof om.formatPrice === "function"
+      ) {
+        try {
+          const ap = om._calcMultiEntryAvgPrice();
+          if (Number.isFinite(ap) && ap > 0) entryAvgStr = om.formatPrice(ap);
+        } catch (_) {}
+      }
+      setOmEntryAvgPriceTxt((prev) => (prev === entryAvgStr ? prev : entryAvgStr));
 
       const tpStats = Array.from(document.querySelectorAll("#multipleTPList .order-tp-multi__row")).map((row) => {
         const rr = row.querySelector(".order-tp-multi__row-rr input")?.value?.trim() ?? "—";
@@ -13134,9 +13152,31 @@ const TalariaV8bLive = () => {
             };
             const sortedEntryRows = sortEntryRowsBySide(entryRows, buySell);
             const pricedEntryRows = entryRows.filter((r) => parseFloat(r.price) > 0);
-            const avgPrice = pricedEntryRows.length
-              ? (pricedEntryRows.reduce((s, r) => s + (parseFloat(r.price) || 0), 0) / pricedEntryRows.length).toFixed(2)
-              : "0.00";
+            const omFmt = typeof window !== "undefined" ? window.chart?.orderManager : null;
+            let entryAvgDisplay = "";
+            if (entryRows.length > 1) {
+              entryAvgDisplay = omEntryAvgPriceTxt;
+              if (
+                !entryAvgDisplay &&
+                omFmt &&
+                typeof omFmt._calcMultiEntryAvgPrice === "function" &&
+                typeof omFmt.formatPrice === "function"
+              ) {
+                try {
+                  const w = omFmt._calcMultiEntryAvgPrice();
+                  if (Number.isFinite(w) && w > 0) entryAvgDisplay = omFmt.formatPrice(w);
+                } catch (_) {}
+              }
+              if (!entryAvgDisplay && pricedEntryRows.length) {
+                const mean =
+                  pricedEntryRows.reduce((s, r) => s + (parseFloat(r.price) || 0), 0) / pricedEntryRows.length;
+                entryAvgDisplay =
+                  omFmt && typeof omFmt.formatPrice === "function"
+                    ? omFmt.formatPrice(mean)
+                    : String(mean);
+              }
+              if (!entryAvgDisplay) entryAvgDisplay = "0.00";
+            }
             const updRow = (id, field, val) => setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r));
             const stepRow = (id, field, dir, step=1) => setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
             const delRow = (id) => {
@@ -13385,7 +13425,7 @@ const TalariaV8bLive = () => {
                     <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", gap:6, borderTop:"1px solid rgba(74,106,255,0.1)" }}>
                       <div style={{ flex:1 }}/>
                       <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                        Avg <span style={{ color:c.ts, fontWeight:700 }}>{avgPrice}</span>
+                        Avg <span style={{ color:c.ts, fontWeight:700 }}>{entryAvgDisplay}</span>
                       </span>
                       <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
                         Qty <span style={{ color:c.ts, fontWeight:700 }}>{omMultiEntryTotalQtyTxt || `0.00 ${sizeUnit}`}</span>
