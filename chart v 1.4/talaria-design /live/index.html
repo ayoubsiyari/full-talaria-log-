@@ -285,7 +285,7 @@
          drawing-tools-*.js so the registry is populated before init. -->
     <script defer src="/chart/modules/drawing-tools-manager.js?v=20260428_prefs_drawing_sync"></script>
     <script defer src="/chart/modules/favorites-manager.js?v=20260428b_dblclick_v9"></script>
-    <script defer src="/chart/modules/keyboard-shortcuts.js?v=20260428b_dblclick_v9"></script>
+    <script defer src="/chart/modules/keyboard-shortcuts.js?v=20260428_v9_ss_wire"></script>
 
     <!-- Chart engine.
          chart.js exposes window.Chart synchronously and window.initializeChart
@@ -301,6 +301,7 @@
     <script defer src="/chart/modules/order-event-bus.js?v=20260428_place_order_v9"></script>
     <script defer src="/chart/modules/order-service.js?v=20260428_place_order_v9"></script>
     <script defer src="/chart/modules/order-manager.js?v=20260428_v9_rail_screenshots"></script>
+    <script defer src="/chart/modules/screenshot-manager.js?v=20260428_v9_wire"></script>
 
     <!-- Indicators: extend Chart.prototype, must load after chart.js. -->
     <script defer src="/chart/modules/chart-indicators-full.js?v=20260428b_dblclick_v9"></script>
@@ -508,6 +509,40 @@
             }
         }
         // Kick off after the deferred scripts have run.
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', tryBoot);
+        } else {
+            tryBoot();
+        }
+    })();
+    </script>
+    <script>
+    (function bootstrapScreenshotManager() {
+        var attempts = 0;
+        var MAX_ATTEMPTS = 200;
+        function tryBoot() {
+            var hasCls = (typeof ScreenshotManager !== 'undefined');
+            var ch = window.chart;
+            if (!hasCls || !ch) {
+                if (++attempts < MAX_ATTEMPTS) return setTimeout(tryBoot, 100);
+                console.warn('[V9 screenshotManager] gave up after', attempts, 'attempts',
+                    { ScreenshotManager: hasCls, chart: !!ch });
+                return;
+            }
+            if (window.screenshotManager) {
+                try {
+                    if (!ch.screenshotManager) ch.screenshotManager = window.screenshotManager;
+                } catch (_) {}
+                return;
+            }
+            try {
+                window.screenshotManager = new ScreenshotManager(ch);
+                ch.screenshotManager = window.screenshotManager;
+                console.log('[V9 screenshotManager] initialized');
+            } catch (err) {
+                console.error('[V9 screenshotManager] failed:', err);
+            }
+        }
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', tryBoot);
         } else {

@@ -650,6 +650,23 @@ const TalariaV8bLive = () => {
     return () => { cancelled = true; if (ro) ro.disconnect(); };
   }, []);
 
+  // Ctrl+S — open V9 screenshot panel (same as camera), not the legacy DOM modal
+  useEffect(() => {
+    const onOpen = () => {
+      try {
+        const el = chartCanvasRef.current;
+        if (el) {
+          const r = el.getBoundingClientRect();
+          setCanvasDims({ w: Math.round(r.width), h: Math.round(r.height) });
+        }
+      } catch (_) {}
+      setScreenshotFlash(true);
+      setTimeout(() => setScreenshotOpen(true), 260);
+    };
+    window.addEventListener("talaria-v9-open-screenshot", onOpen);
+    return () => window.removeEventListener("talaria-v9-open-screenshot", onOpen);
+  }, []);
+
   // ─── SYNC SYMBOL FROM CHART.JS ───────────────────────────────────────────
   // chart.js fires 'chartDataLoaded' (with detail.symbol, detail.timeframe)
   // whenever a new backtest session / pair is loaded. chart.js stores the
@@ -4014,6 +4031,41 @@ const TalariaV8bLive = () => {
     if(tfOpen) closePopup(setTfOpen, "tf");
     setTagDrop(null); setTlStyleDrop(null); setTlBarDrop(null); setTxtBarSizeOpen(false); setTxtBarDrop(null); setEmojiPanelOpen(false);
     setOpSymOpen(false); setOpSymSearch(""); setOpSizeOpen(false);
+  };
+
+  const copyScreenshotPageLink = async () => {
+    const url = typeof window !== "undefined" ? window.location.href : "";
+    const sm = window.screenshotManager;
+    try {
+      if (sm && typeof sm.copyText === "function") {
+        const ok = await sm.copyText(url);
+        if (sm.showNotification) sm.showNotification(ok ? "Chart link copied!" : "Could not copy link", ok ? "success" : "warning");
+        return;
+      }
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        await navigator.clipboard.writeText(url);
+        if (sm?.showNotification) sm.showNotification("Chart link copied!", "success");
+      }
+    } catch (_) {
+      if (sm?.showNotification) sm.showNotification("Could not copy link", "warning");
+    }
+  };
+
+  const runV9Screenshot = (action) => {
+    const sm = window.screenshotManager;
+    if (!sm || typeof sm.takeScreenshotFromOptions !== "function") {
+      console.warn("[V9] screenshotManager not ready");
+      if (sm?.showNotification) sm.showNotification("Screenshot engine not ready yet", "warning");
+      return;
+    }
+    void sm.takeScreenshotFromOptions(action, {
+      flash: true,
+      includeToolbar: true,
+      includeSidebar: false,
+      includeWatermark: true,
+      format: "png",
+      quality: 0.9,
+    });
   };
 
   const showTip = (label, el, side="top") => {
@@ -10919,9 +10971,9 @@ const TalariaV8bLive = () => {
             {/* right buttons */}
             <div style={{display:"flex",gap:6}}>
             {[
-              {label:"Copy Link", hk:"sc-cancel", act:()=>{}, primary:false},
-              {label:"Copy",     hk:"sc-copy",   act:()=>{}, primary:false},
-              {label:"Download", hk:"sc-dl",     act:()=>{}, primary:true},
+              {label:"Copy Link", hk:"sc-cancel", act:()=>{ void copyScreenshotPageLink(); }, primary:false},
+              {label:"Copy",     hk:"sc-copy",   act:()=>runV9Screenshot("copy"), primary:false},
+              {label:"Download", hk:"sc-dl",     act:()=>runV9Screenshot("download"), primary:true},
             ].map(({label,hk,act,primary})=>{
               const isH=swHov===hk, isDn=swHov===hk+"_dn";
               return (

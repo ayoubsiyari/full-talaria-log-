@@ -619,13 +619,14 @@ class KeyboardShortcutsManager {
     }
     
     takeSnapshot() {
-        // Trigger screenshot
         const screenshotBtn = document.getElementById('screenshotBtn');
         if (screenshotBtn) {
             screenshotBtn.click();
-        } else if (this.chart.screenshotManager) {
-            this.chart.screenshotManager.showScreenshotOptions();
+            return;
         }
+        try {
+            window.dispatchEvent(new CustomEvent('talaria-v9-open-screenshot', { bubbles: false }));
+        } catch (_) {}
     }
     
     resetChart() {
