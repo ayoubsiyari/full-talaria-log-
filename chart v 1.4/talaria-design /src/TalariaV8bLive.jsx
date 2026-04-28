@@ -11734,10 +11734,10 @@ const TalariaV8bLive = () => {
                   return (
                     <div key={item.id}
                       onClick={()=>{
+                        // Legacy parity (object-tree.js:364-366): item click → selectDrawing(d).
                         const dm = findDm(); const d = findDrawing(dm);
-                        if (dm && d && typeof dm.selectDrawing === 'function') {
-                          try { dm.selectDrawing(d); } catch(_) {}
-                        }
+                        if (!dm || !d) return;
+                        if (typeof dm.selectDrawing === 'function') dm.selectDrawing(d);
                       }}
                       onMouseEnter={()=>setSwHov(`lyr-${item.id}`)}
                       onMouseLeave={()=>setSwHov(null)}
@@ -11757,17 +11757,17 @@ const TalariaV8bLive = () => {
                       {/* jump to: center chart viewport on the drawing + select it */}
                       <div data-layeraction="1"
                         onClick={(e)=>{
+                          // Legacy parity (object-tree.js:316-319): jumpBtn click →
+                          // stopPropagation + jumpToDrawing(d).
                           e.stopPropagation();
                           _logAct('jump');
                           const dm = findDm(); const d = findDrawing(dm);
                           if (!dm || !d) return;
-                          try {
-                            if (dm.objectTreeManager && typeof dm.objectTreeManager.jumpToDrawing === 'function') {
-                              dm.objectTreeManager.jumpToDrawing(d);
-                            } else if (typeof dm.selectDrawing === 'function') {
-                              dm.selectDrawing(d);
-                            }
-                          } catch(_) {}
+                          if (dm.objectTreeManager && typeof dm.objectTreeManager.jumpToDrawing === 'function') {
+                            dm.objectTreeManager.jumpToDrawing(d);
+                          } else if (typeof dm.selectDrawing === 'function') {
+                            dm.selectDrawing(d);
+                          }
                         }}
                         onMouseEnter={()=>setSwHov(`lyrJ-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
@@ -11780,21 +11780,20 @@ const TalariaV8bLive = () => {
                       {/* visibility: flips drawing.visible and re-renders */}
                       <div data-layeraction="1"
                         onClick={(e)=>{
+                          // Legacy parity (object-tree.js:339-342, 526-538):
+                          // visibility click → toggle drawing.visible, renderDrawing,
+                          // saveDrawings (which fires drawingsChanged → V9 rebuilds).
                           e.stopPropagation();
                           _logAct('toggleVisibility');
                           const dm = findDm(); const d = findDrawing(dm);
                           if (!dm || !d) return;
-                          try {
-                            if (dm.objectTreeManager && typeof dm.objectTreeManager.toggleDrawingVisibility === 'function') {
-                              dm.objectTreeManager.toggleDrawingVisibility(d);
-                            } else {
-                              d.visible = d.visible === false ? true : false;
-                              if (typeof dm.renderDrawing === 'function') dm.renderDrawing(d);
-                            }
-                            // Optimistic local update so UI flips instantly
-                            // even if chart.js doesn't dispatch drawingsChanged.
-                            setLayersItems(prev => prev.map(x => x.id === item.id ? { ...x, _visible: d.visible !== false } : x));
-                          } catch(_) {}
+                          if (dm.objectTreeManager && typeof dm.objectTreeManager.toggleDrawingVisibility === 'function') {
+                            dm.objectTreeManager.toggleDrawingVisibility(d);
+                          } else {
+                            d.visible = d.visible === false ? true : false;
+                            if (typeof dm.renderDrawing === 'function') dm.renderDrawing(d);
+                            if (typeof dm.saveDrawings === 'function') dm.saveDrawings();
+                          }
                         }}
                         onMouseEnter={()=>setSwHov(`lyrV-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
@@ -11812,18 +11811,15 @@ const TalariaV8bLive = () => {
                       {/* delete: removes the drawing from chart.js */}
                       <div data-layeraction="1"
                         onClick={(e)=>{
+                          // Legacy parity (object-tree.js:355-358, 543-549):
+                          // delete click → stopPropagation + dm.deleteDrawing(d).
+                          // dm.deleteDrawing calls saveDrawings → dispatches
+                          // drawingsChanged → V9 rebuilds the tree automatically.
                           e.stopPropagation();
                           _logAct('delete');
                           const dm = findDm(); const d = findDrawing(dm);
                           if (!dm || !d) return;
-                          try {
-                            if (typeof dm.deleteDrawing === 'function') {
-                              dm.deleteDrawing(d);
-                            }
-                          } catch(_) {}
-                          // Optimistic UI update; the drawingsChanged listener
-                          // will reconcile with the canonical list.
-                          setLayersItems(prev => prev.filter(x => x.id !== item.id));
+                          if (typeof dm.deleteDrawing === 'function') dm.deleteDrawing(d);
                         }}
                         onMouseEnter={()=>setSwHov(`lyrD-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
