@@ -2111,18 +2111,48 @@ const TalariaV8bLive = () => {
     return () => window.removeEventListener("talaria:order-panel-visibility", onVis);
   }, []);
 
-  const orderPanelSyncGateRef = useRef(false);
+  const prevOrderPanelOpenRef = useRef(undefined);
   useLayoutEffect(() => {
-    if (!orderPanelSyncGateRef.current) {
-      orderPanelSyncGateRef.current = true;
+    if (prevOrderPanelOpenRef.current === undefined) {
+      prevOrderPanelOpenRef.current = orderPanelOpen;
       return;
     }
+    if (prevOrderPanelOpenRef.current === orderPanelOpen) return;
+    prevOrderPanelOpenRef.current = orderPanelOpen;
     const om = typeof window !== "undefined" && window.chart && window.chart.orderManager;
     const panel = document.getElementById("orderPanel");
     if (!om || typeof om.toggleOrderPanel !== "function") return;
     const vis = !!(panel && panel.classList.contains("visible"));
     if (orderPanelOpen && !vis) om.toggleOrderPanel();
     else if (!orderPanelOpen && vis) om.toggleOrderPanel();
+  }, [orderPanelOpen]);
+
+  // If #orderPanel is created after the first layout pass (order manager / replay init), open once it exists.
+  useEffect(() => {
+    if (!orderPanelOpen) return;
+    let cancelled = false;
+    let attempts = 0;
+    const maxAttempts = 160;
+    const tryOpen = () => {
+      if (cancelled || attempts++ > maxAttempts) return;
+      const om = window.chart?.orderManager;
+      const p = document.getElementById("orderPanel");
+      if (!p) {
+        requestAnimationFrame(tryOpen);
+        return;
+      }
+      if (typeof om?.toggleOrderPanel === "function" && !p.classList.contains("visible")) {
+        om.toggleOrderPanel();
+      }
+    };
+    tryOpen();
+    const t = setTimeout(tryOpen, 50);
+    const t2 = setTimeout(tryOpen, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+      clearTimeout(t2);
+    };
   }, [orderPanelOpen]);
 
   // Rollback overlay — callback ref attaches native mousemove the instant the node mounts

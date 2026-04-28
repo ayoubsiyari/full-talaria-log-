@@ -12003,6 +12003,10 @@ class OrderManager {
 
         if (!panel) return;
 
+        // Keep #orderPanel under #v9OrderPanelMount when the V9 rail is active (child layout
+        // effects run before parent — syncing here fixes empty rail when opening).
+        this.syncOrderPanelMountTarget();
+
         const isVisible = panel.classList.contains('visible');
         const v9OrderRail = typeof document !== 'undefined'
             && document.getElementById('v9OrderPanelMount')?.isConnected
