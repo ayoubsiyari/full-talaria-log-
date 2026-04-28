@@ -12025,7 +12025,7 @@ CHART_ROOT_FILES = {
     "index.html",
     # Full legacy monolithic chart (60k+ lines). Prefer editing V9 + dist-v9; see /chart/index.html stub.
     "legacy-index.html",
-    "index.v9.html",
+    "index.v9.html",  # redirect stub → legacy-index.html (no second monolith)
     "backtesting.html",
     "propfirm-backtest.html",
     "admin-dashboard.html",

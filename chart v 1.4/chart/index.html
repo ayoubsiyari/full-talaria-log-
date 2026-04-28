@@ -22,9 +22,9 @@
     run <code>npm run build:live</code>, deploy <code>chart/dist-v9/</code> plus <code>chart/chart.js</code>.
   </p>
   <p>
-    The former monolithic page (all inline scripts) now lives at
-    <a href="/chart/legacy-index.html"><code>/chart/legacy-index.html</code></a>
-    for local fallback / debugging only.
+    <strong>Single legacy monolith</strong> (all deferred scripts + <code>v9-chrome.css</code>):
+    <a href="/chart/legacy-index.html"><code>/chart/legacy-index.html</code></a>.
+    Old URLs <code>/chart/index.v9.html</code> redirect here — no second giant HTML file.
   </p>
   <pre>npm run build:live   # in chart v 1.4/talaria-design/</pre>
 </body>

@@ -7,9 +7,8 @@
  * every module (chart.js, drawing-tools-manager.js, order-manager.js, etc.)
  * keeps working unchanged.
  *
- * This stylesheet is loaded ONLY by chart/index.v9.html (not by index.html / legacy-index.html).
- * That way index.html stays exactly as the user has it today and we iterate
- * the redesign in a parallel file.
+ * Loaded by chart/legacy-index.html (the single monolithic legacy page). Stub
+ * chart/index.html does not load this; live UI is dist-v9 + talaria-design.
  *
  * What this file does:
  *   - Sets V9 design tokens on :root.
