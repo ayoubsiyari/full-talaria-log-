@@ -11771,9 +11771,10 @@ const TalariaV8bLive = () => {
                         }}
                         onMouseEnter={()=>setSwHov(`lyrJ-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
-                        style={{width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",
-                          cursor:"default",flexShrink:0,opacity:isJumpH?1:anyHov?0.55:0,
-                          transition:"opacity 0.04s"}}>
+                        onMouseDown={(e)=>e.stopPropagation()}
+                        style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",
+                          cursor:"pointer",flexShrink:0,opacity:isJumpH?1:anyHov?0.55:0,
+                          pointerEvents:"auto",transition:"opacity 0.04s"}}>
                         <I n="locate" s={15} cl={isJumpH?c.acL:c.ts}/>
                       </div>
                       {/* visibility: flips drawing.visible and re-renders */}
@@ -11797,9 +11798,10 @@ const TalariaV8bLive = () => {
                         }}
                         onMouseEnter={()=>setSwHov(`lyrV-${item.id}`)}
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
-                        style={{width:16,height:16,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",
-                          cursor:"default",flexShrink:0,opacity:isVisH?1:!isVis?1:anyHov?0.55:0,
-                          transition:"opacity 0.04s"}}>
+                        onMouseDown={(e)=>e.stopPropagation()}
+                        style={{width:22,height:22,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",
+                          cursor:"pointer",flexShrink:0,opacity:isVisH?1:!isVis?1:anyHov?0.55:0,
+                          pointerEvents:"auto",transition:"opacity 0.04s"}}>
                         <I n="eye" s={14} cl={isVisH?c.acL:isVis?c.ts:"#F5A020"}/>
                         {!isVis && (
                           <svg width={16} height={16} viewBox="0 0 16 16" style={{position:"absolute",top:0,left:0,pointerEvents:"none"}}>
@@ -11827,9 +11829,9 @@ const TalariaV8bLive = () => {
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
                         onMouseDown={(e)=>{e.stopPropagation();setSwHov(`lyrD-${item.id}_dn`);}}
                         onMouseUp={()=>setSwHov(`lyrD-${item.id}`)}
-                        style={{width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",
-                          cursor:"default",flexShrink:0,opacity:isDelH||isDelDn?1:anyHov?0.55:0,
-                          transform:isDelDn?"scale(0.86)":"scale(1)",
+                        style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",
+                          cursor:"pointer",flexShrink:0,opacity:isDelH||isDelDn?1:anyHov?0.55:0,
+                          pointerEvents:"auto",transform:isDelDn?"scale(0.86)":"scale(1)",
                           transition:"opacity 0.04s,transform 0.08s"}}>
                         <I n="trash" s={14} cl={isDelH||isDelDn?c.rd:c.ts}/>
                       </div>
