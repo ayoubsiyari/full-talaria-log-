@@ -30,6 +30,17 @@ function cpBuildColor(r, g, b, a) {
   return a>=1 ? `#${toHex2(r)}${toHex2(g)}${toHex2(b)}` : `rgba(${r},${g},${b},${+a.toFixed(2)})`;
 }
 
+/** WebKit Safari (not Chrome/Fx/Edg on iOS): CSS `zoom` + `100dvh`/`calc(100dvh/1.05)` do not stack like Chromium — leaves black bands under the shell. Use effective zoom 1 + full `100dvh` height (matches chart.js layout zoom). */
+function isWebKitSafariUA() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /\bSafari\b/i.test(ua)
+    && !/\bChrome\b/i.test(ua)
+    && !/\bChromium\b/i.test(ua)
+    && !/\bEdg\//i.test(ua)
+    && !/\b(FxiOS|CriOS|EdgiOS)\b/i.test(ua);
+}
+
 // ── Color Picker Popup ───────────────────────────────────────────────────────
 const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange, onAChange, onHexChange, onClose, onDragStart, dragging, animation, hideAlpha }) => {
   const rgb = hsvToRgb(h, s, v);
@@ -1757,6 +1768,11 @@ const TalariaV8bLive = () => {
   const currentChartType = chartTypeMap[chartType] || { icon: "candle", label: chartType };
   const gotoNextId = () => Date.now() + Math.random();
 
+  const Z = (typeof window !== 'undefined' && isWebKitSafariUA()) ? 1 : 1.05;
+  if (typeof window !== 'undefined' && window.__v9Zoom !== Z) {
+    window.__v9Zoom = Z;
+  }
+
   useEffect(() => {
     const onFSChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", onFSChange);
@@ -1966,7 +1982,6 @@ const TalariaV8bLive = () => {
   const rollbackOverlayCallbackRef = (node) => {
     rollbackOverlayRef.current = node;
     if (!node) return;
-    const Z = 1.05;
     // Cache rect — recomputed only on scroll/resize, never inside the hot path
     let rectLeft = 0, rectWidth = 0;
     const refreshRect = () => { const r = node.getBoundingClientRect(); rectLeft = r.left; rectWidth = r.width; };
@@ -2089,13 +2104,6 @@ const TalariaV8bLive = () => {
       </div>
     );
   };
-  const Z = 1.05; // root zoom — divide getBoundingClientRect values by this before using as fixed CSS coords
-  // Expose the root zoom to chart.js so its crosshair / mouse-coord math
-  // can divide clientX/Y by Z (the canvas's internal coord system is
-  // pre-zoom but mouse events / rect are post-zoom in Chrome's `zoom`).
-  if (typeof window !== 'undefined' && window.__v9Zoom !== Z) {
-    window.__v9Zoom = Z;
-  }
   const cpW = 210; // color picker width
   const CP_H = 280; // color picker estimated height
   const posFromRect = (rect, popW, gapY = 6) => {
@@ -3147,10 +3155,9 @@ const TalariaV8bLive = () => {
     if (!label || !el) return;
     tipTimerRef.current = setTimeout(() => {
       const r = el.getBoundingClientRect();
-      const Z2 = 1.05;
-      const cx = (r.left + r.width/2) / Z2;
-      const y = side === "bottom" ? r.bottom/Z2 : r.top/Z2;
-      const vw = window.innerWidth / Z2;
+      const cx = (r.left + r.width/2) / Z;
+      const y = side === "bottom" ? r.bottom/Z : r.top/Z;
+      const vw = window.innerWidth / Z;
       setTipData({ label, x: Math.max(40, Math.min(vw - 40, cx)), y, side });
     }, 250);
   };
@@ -3261,7 +3268,7 @@ const TalariaV8bLive = () => {
   const ddItems = getDdItems();
 
   return (
-    <div style={{ width: "100%", height: "calc(100dvh / 1.05)", background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zoom: 1.05, animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
+    <div style={{ width: "100%", height: Z === 1 ? "100dvh" : "calc(100dvh / 1.05)", background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zoom: Z, animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
       onClick={closeAll}>
       <style>{`
         @keyframes tlrWinIn  { from { opacity:0; transform:translate(-50%,-50%) scale(0.97) translateY(7px); } to { opacity:1; transform:translate(-50%,-50%) scale(1) translateY(0); } }
@@ -10634,7 +10641,6 @@ const TalariaV8bLive = () => {
               onPointerDown={(e)=>{
                 e.preventDefault();
                 e.currentTarget.setPointerCapture(e.pointerId);
-                const Z = 1.05;
                 const startY = e.clientY;
                 const startH = btmHeight;
                 const maxH = Math.floor(window.innerHeight / Z - 36);
