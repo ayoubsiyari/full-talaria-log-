@@ -13684,7 +13684,27 @@ const TalariaV8bLive = () => {
             };
             const addTp = () => {
               omPanelBridgeRef.current.tpAdd = Date.now();
-              setTpRows((rows) => [...rows, { id: Date.now(), price: "0", qty: "0", enabled: true }]);
+              setTpRows((rows) => {
+                const n = rows.length + 1;
+                const next = [...rows, { id: Date.now(), price: "0", qty: "0", enabled: true }];
+                const prevSum = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
+                if (sizeMode === "%") {
+                  const base = Math.floor(100 / n);
+                  const last = 100 - base * (n - 1);
+                  return next.map((r, i) => ({ ...r, qty: String(i < n - 1 ? base : last) }));
+                }
+                if (sizeMode === "$") {
+                  let total = prevSum;
+                  if (total <= 0) total = Math.max(1, parseFloat(riskVal) || 100);
+                  const share = Math.max(1, Math.round(total / n));
+                  const lastAmt = Math.max(0, total - share * (n - 1));
+                  return next.map((r, i) => ({ ...r, qty: String(i < n - 1 ? share : lastAmt) }));
+                }
+                let total = prevSum;
+                if (total <= 0) total = Math.max(0.01, parseFloat(riskVal) || 1);
+                const each = (total / n).toFixed(2);
+                return next.map((r) => ({ ...r, qty: each }));
+              });
               setTimeout(() => {
                 if (tpScrollRef.current) tpScrollRef.current.scrollTop = tpScrollRef.current.scrollHeight;
               }, 0);
@@ -13704,7 +13724,28 @@ const TalariaV8bLive = () => {
               }
               setTpRows([{ id: Date.now(), price: "0", qty: "100", enabled: true }]);
             };
-            const equalizeTp = () => { const each = (100/tpRows.length).toFixed(0); setTpRows(rows => rows.map(r => ({...r, qty:each}))); };
+            const equalizeTp = () => {
+              setTpRows((rows) => {
+                const n = rows.length;
+                if (n === 0) return rows;
+                if (sizeMode === "%") {
+                  const base = Math.floor(100 / n);
+                  const last = 100 - base * (n - 1);
+                  return rows.map((r, i) => ({ ...r, qty: String(i < n - 1 ? base : last) }));
+                }
+                if (sizeMode === "$") {
+                  const total = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
+                  const t = total > 0 ? total : Math.max(1, parseFloat(riskVal) || 100);
+                  const share = Math.max(1, Math.round(t / n));
+                  const lastAmt = Math.max(0, t - share * (n - 1));
+                  return rows.map((r, i) => ({ ...r, qty: String(i < n - 1 ? share : lastAmt) }));
+                }
+                const total = rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0);
+                const t = total > 0 ? total : Math.max(0.01, parseFloat(riskVal) || 1);
+                const each = (t / n).toFixed(2);
+                return rows.map((r) => ({ ...r, qty: each }));
+              });
+            };
             const arw = (onClick, up, hk) => {
               const isH = swHov===hk;
               return (
