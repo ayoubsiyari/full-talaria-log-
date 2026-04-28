@@ -10587,7 +10587,7 @@ const TalariaV8bLive = () => {
                 {/* Axis cursor zones — chart.js reserves 60px right and 30px bottom margin.
                      #timeAxisZone is a thin bottom strip so Chromium/Brave do not cover
                      canvas time labels; full-height transparent siblings can mis-composite. */}
-                <div id="priceAxisZone" className="axis-cursor-zone price-axis-zone" style={{ position: "absolute", right: 0, top: 5, bottom: 30, width: 60, background: "transparent", zIndex: 10, cursor: "ns-resize", pointerEvents: "auto" }} />
+                <div id="priceAxisZone" className="axis-cursor-zone price-axis-zone" style={{ position: "absolute", right: 0, top: 5, bottom: 30, width: 14, background: "transparent", zIndex: 10, cursor: "ns-resize", pointerEvents: "auto" }} />
                 <div id="timeAxisZone"  className="axis-cursor-zone time-axis-zone"  style={{ position: "absolute", left: 0, right: 60, bottom: 0, height: 10, background: "transparent", zIndex: 10, cursor: "ew-resize", pointerEvents: "auto" }} />
 
                 {/* Crosshair elements — chart.js positions these on mousemove */}

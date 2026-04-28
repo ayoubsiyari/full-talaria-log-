@@ -2976,6 +2976,9 @@ class DrawingToolsManager {
     _eventCanvasLocalXY(event) {
         const unwrap = (ev) => (ev && ev.sourceEvent) ? ev.sourceEvent : ev;
         const raw = unwrap(event);
+        if (this.chart && typeof this.chart._eventCanvasLocalXY === 'function' && raw) {
+            return this.chart._eventCanvasLocalXY(raw);
+        }
         const canvas = this.chart && this.chart.canvas;
         const fallback = () => {
             try {
@@ -3000,7 +3003,10 @@ class DrawingToolsManager {
         const rect = (this.chart && typeof this.chart._pointerLayoutRect === 'function')
             ? this.chart._pointerLayoutRect()
             : (canvas.parentElement || canvas).getBoundingClientRect();
-        return [cx - rect.left, cy - rect.top];
+        const z = (this.chart && typeof this.chart._v9LayoutZoom === 'function')
+            ? this.chart._v9LayoutZoom()
+            : 1;
+        return [(cx - rect.left) / z, (cy - rect.top) / z];
     }
 
     /**
@@ -7203,11 +7209,16 @@ class DrawingToolsManager {
         event.preventDefault();
         event.stopPropagation();
         
-        const rect = this.svg.node().getBoundingClientRect();
-        this.rectSelectStart = {
-            x: event.clientX - rect.left,
-            y: event.clientY - rect.top
-        };
+        let sx;
+        let sy;
+        if (this.chart && typeof this.chart._eventCanvasLocalXY === 'function') {
+            [sx, sy] = this.chart._eventCanvasLocalXY(event);
+        } else {
+            const rect = this.svg.node().getBoundingClientRect();
+            sx = event.clientX - rect.left;
+            sy = event.clientY - rect.top;
+        }
+        this.rectSelectStart = { x: sx, y: sy };
         this.isRectSelecting = true;
         
         // Enable SVG pointer-events temporarily for rectangular selection
@@ -7272,9 +7283,15 @@ class DrawingToolsManager {
     updateRectangularSelection(event) {
         if (!this.isRectSelecting || !this.rectSelectStart) return;
         
-        const rect = this.svg.node().getBoundingClientRect();
-        const currentX = event.clientX - rect.left;
-        const currentY = event.clientY - rect.top;
+        let currentX;
+        let currentY;
+        if (this.chart && typeof this.chart._eventCanvasLocalXY === 'function') {
+            [currentX, currentY] = this.chart._eventCanvasLocalXY(event);
+        } else {
+            const rect = this.svg.node().getBoundingClientRect();
+            currentX = event.clientX - rect.left;
+            currentY = event.clientY - rect.top;
+        }
         
         const x = Math.min(this.rectSelectStart.x, currentX);
         const y = Math.min(this.rectSelectStart.y, currentY);

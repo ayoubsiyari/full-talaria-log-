@@ -7671,8 +7671,9 @@ class Chart {
 
 	        const dpr = window.devicePixelRatio || 1;
 	        const rect = container.getBoundingClientRect();
-	        const nextW = Math.floor(rect.width || 0);
-	        const nextH = Math.floor(rect.height || 0);
+	        const ls = this._layoutSizeFromRect(rect);
+	        const nextW = ls.w;
+	        const nextH = ls.h;
 	        const dprChanged = this._lastResizeDpr !== dpr;
 	        const sizeChanged = oldW !== nextW || oldH !== nextH;
 
@@ -8496,9 +8497,7 @@ class Chart {
 
             // Fallback: compute with event position when available.
             if (event && this.canvas) {
-                const rect = this._pointerLayoutRect();
-                const mx = event.clientX - rect.left;
-                const my = event.clientY - rect.top;
+                const [mx, my] = this._eventCanvasLocalXY(event);
                 const eventDistance = Math.hypot(mx - this.boxZoom.startX, my - this.boxZoom.startY);
                 if (eventDistance >= this._rightClickDragThreshold) {
                     return true;
@@ -13465,6 +13464,26 @@ class Chart {
     }
 
     /**
+     * V9 live shell applies CSS `zoom` on the React root; pointer / rect from the browser are
+     * post-zoom while chart layout (`this.w`, resize) uses pre-zoom CSS px. React sets `window.__v9Zoom`.
+     */
+    _v9LayoutZoom() {
+        if (typeof window === 'undefined') return 1;
+        const z = window.__v9Zoom;
+        return (typeof z === 'number' && Number.isFinite(z) && z > 0) ? z : 1;
+    }
+
+    /** Chart wrapper size in layout px (matches `this.w` / `this.h` after resize). */
+    _layoutSizeFromRect(r) {
+        if (!r) return { w: 0, h: 0 };
+        const z = this._v9LayoutZoom();
+        return {
+            w: Math.max(1, Math.floor((r.width || 0) / z)),
+            h: Math.max(1, Math.floor((r.height || 0) / z)),
+        };
+    }
+
+    /**
      * Pointer in chart layout CSS px (same as updateCrosshair). Prefer over d3.pointer(..., svg).
      */
     _eventCanvasLocalXY(event) {
@@ -13480,7 +13499,8 @@ class Chart {
         }
         if (!Number.isFinite(cx) || !Number.isFinite(cy)) return [0, 0];
         const r = this._pointerLayoutRect();
-        return [cx - r.left, cy - r.top];
+        const z = this._v9LayoutZoom();
+        return [(cx - r.left) / z, (cy - r.top) / z];
     }
     
     /**
@@ -14042,9 +14062,7 @@ class Chart {
             // No zoom if we have no data
             if (!this.data || this.data.length === 0) return;
 
-            const rect = this._pointerLayoutRect();
-            const mx = e.clientX - rect.left;
-            const my = e.clientY - rect.top;
+            const [mx, my] = this._eventCanvasLocalXY(e);
             const m = this.margin;
             
             // Update cursor state
@@ -14179,9 +14197,7 @@ class Chart {
             if (this.tool) return;
             if (this.drawingManager && this.drawingManager.currentTool) return;
             
-            const rect = this._pointerLayoutRect();
-            const mx = e.clientX - rect.left;
-            const my = e.clientY - rect.top;
+            const [mx, my] = this._eventCanvasLocalXY(e);
             const mode = detectCursorMode(mx, my);
 
             // Start separate indicator panel resize when dragging a panel separator.
@@ -14290,9 +14306,7 @@ class Chart {
         // STEP 3 — Pan Logic (mousemove) + STEP 2 — Cursor Mode Update
         // ═══════════════════════════════════════════════════════════════════
         this.canvas.addEventListener('mousemove', e => {
-            const rect = this._pointerLayoutRect();
-            const mx = e.clientX - rect.left;
-            const my = e.clientY - rect.top;
+            const [mx, my] = this._eventCanvasLocalXY(e);
             
             // Update cursor tracking
             this.cursor.x = mx;
@@ -14308,8 +14322,9 @@ class Chart {
             if (this.drag.active) {
                 const now = performance.now();
                 const dt = now - this.movement.lastTime;
-                const dx = e.clientX - this.drag.lastX;
-                const dy = e.clientY - this.drag.lastY;
+                const zPan = this._v9LayoutZoom();
+                const dx = (e.clientX - this.drag.lastX) / zPan;
+                const dy = (e.clientY - this.drag.lastY) / zPan;
                 
                 // Calculate velocity for inertia
                 if (dt > 0) {
@@ -14518,9 +14533,7 @@ class Chart {
 
             // If mousemove events were missed, compute final right-drag distance from mouseup.
             if (dragType === 'boxZoom' && this.boxZoom.active && this.canvas) {
-                const rect = this._pointerLayoutRect();
-                const mx = e.clientX - rect.left;
-                const my = e.clientY - rect.top;
+                const [mx, my] = this._eventCanvasLocalXY(e);
                 this.boxZoom.endX = mx;
                 this.boxZoom.endY = my;
                 const finalDistance = Math.hypot(
@@ -14564,8 +14577,9 @@ class Chart {
             // Handle pan end - no inertia, stop immediately
             else if (dragType === 'pan' && wasDragging) {
                 const panClickThresholdPx = 5;
-                const panDx = e.clientX - (this.drag.startX ?? e.clientX);
-                const panDy = e.clientY - (this.drag.startY ?? e.clientY);
+                const zc = this._v9LayoutZoom();
+                const panDx = ((e.clientX - (this.drag.startX ?? e.clientX)) / zc);
+                const panDy = ((e.clientY - (this.drag.startY ?? e.clientY)) / zc);
                 const isChartClick = e.button === 0 && Math.hypot(panDx, panDy) < panClickThresholdPx;
                 // Real pan → sync scroll to other panels. Tiny movement (click) → skip so Time-sync
                 // click handler can align by bar time without fighting right-edge sync.
@@ -14608,9 +14622,7 @@ class Chart {
                         const pm = window.panelManager;
                         if (pm && pm.syncSettings && pm.syncSettings.time && pm.currentLayout !== '1'
                             && this.data && this.data.length) {
-                            const rect = this._pointerLayoutRect();
-                            const mx = e.clientX - rect.left;
-                            const my = e.clientY - rect.top;
+                            const [mx, my] = this._eventCanvasLocalXY(e);
                             const mode = detectCursorMode(mx, my);
                             if (mode === 'chart' || mode === 'timeAxis') {
                                 const idx = Math.floor(this.pixelToDataIndex(mx));
@@ -14716,9 +14728,9 @@ class Chart {
             // Keep right-drag box-zoom tracking in capture phase so we don't miss
             // movement when another layer consumes bubble-phase mousemove events.
             if (this.drag && this.drag.active && this.drag.type === 'boxZoom' && this.boxZoom && this.boxZoom.active && this.canvas) {
-                const rect = this._pointerLayoutRect();
-                this.boxZoom.endX = e.clientX - rect.left;
-                this.boxZoom.endY = e.clientY - rect.top;
+                const [lx, ly] = this._eventCanvasLocalXY(e);
+                this.boxZoom.endX = lx;
+                this.boxZoom.endY = ly;
                 const dragDistance = Math.hypot(
                     this.boxZoom.endX - this.boxZoom.startX,
                     this.boxZoom.endY - this.boxZoom.startY
@@ -14731,13 +14743,13 @@ class Chart {
             // Continue axis/pan drags even when mouse is outside the canvas
             if (this.drag && this.drag.active && this.canvas) {
                 const rect = this._pointerLayoutRect();
-                const mx = e.clientX - rect.left;
-                const my = e.clientY - rect.top;
+                const [mx, my] = this._eventCanvasLocalXY(e);
                 const isOutside = e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom;
 
                 if (isOutside) {
-                    const dx = e.clientX - this.drag.lastX;
-                    const dy = e.clientY - this.drag.lastY;
+                    const zd = this._v9LayoutZoom();
+                    const dx = (e.clientX - this.drag.lastX) / zd;
+                    const dy = (e.clientY - this.drag.lastY) / zd;
 
                     if (this.drag.type === 'separatePanelAxis' && this.drag.separatePanelSlot &&
                         typeof this.separatePanelAxisDragStep === 'function') {
@@ -14813,7 +14825,8 @@ class Chart {
                 return;
             }
             if (typeof this.updateEconomicCalendarHover === 'function') {
-                this.updateEconomicCalendarHover(e.clientX - rect.left, e.clientY - rect.top, e);
+                const [lx, ly] = this._eventCanvasLocalXY(e);
+                this.updateEconomicCalendarHover(lx, ly, e);
             }
         }, false);
         
@@ -14833,9 +14846,7 @@ class Chart {
         // Double-click on Axis → Auto-scale and LOCK (TradingView style)
         // ═══════════════════════════════════════════════════════════════════
         this.canvas.addEventListener('dblclick', e => {
-            const rect = this._pointerLayoutRect();
-            const mx = e.clientX - rect.left;
-            const my = e.clientY - rect.top;
+            const [mx, my] = this._eventCanvasLocalXY(e);
             const mode = this.cursor.mode || detectCursorMode(mx, my);
             
             if (mode === 'separatePanelAxis' && this.cursor.separatePanelSlot &&
@@ -16471,9 +16482,10 @@ class Chart {
         }
 
         const rect = this._pointerLayoutRect();
+        const z = this._v9LayoutZoom();
         const syntheticEvent = {
-            clientX: rect.left + this.mouseX,
-            clientY: rect.top + this.mouseY,
+            clientX: rect.left + this.mouseX * z,
+            clientY: rect.top + this.mouseY * z,
             ctrlKey: keyState.ctrlKey !== undefined ? !!keyState.ctrlKey : !!this._lastCrosshairCtrlKey,
             metaKey: keyState.metaKey !== undefined ? !!keyState.metaKey : !!this._lastCrosshairMetaKey
         };
@@ -16489,10 +16501,11 @@ class Chart {
         // already expanded) against the canvas/chart internal w/h.  When they
         // diverge a layout change happened and resize() hasn't caught up yet.
         const _ctrEl = this.canvas.parentElement;
-        if (_ctrEl) {
+            if (_ctrEl) {
             const _cR = _ctrEl.getBoundingClientRect();
-            const _cW = Math.floor(_cR.width || 0);
-            const _cH = Math.floor(_cR.height || 0);
+            const _ls = this._layoutSizeFromRect(_cR);
+            const _cW = _ls.w;
+            const _cH = _ls.h;
             if (_cW > 2 && _cH > 2 &&
                 (Math.abs(_cW - this.w) > 4 || Math.abs(_cH - this.h) > 4)) {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
@@ -16500,8 +16513,7 @@ class Chart {
             }
         }
 
-        const rect = this._pointerLayoutRect();
-        const x = e.clientX - rect.left, y = e.clientY - rect.top;
+        const [x, y] = this._eventCanvasLocalXY(e);
         const m = this.margin;
 
         this.mouseX = x;
@@ -16839,9 +16851,7 @@ class Chart {
             return;
         }
         
-        const rect = this._pointerLayoutRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        const [x, y] = this._eventCanvasLocalXY(e);
         const m = this.margin;
         
         // Check if mouse is in chart area (with some padding on the right for price axis)
