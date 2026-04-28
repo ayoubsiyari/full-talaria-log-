@@ -39,10 +39,11 @@
 
         /* ──────────────────────────────────────────────────────────────
            Crosshair + price/time labels.
-           chart.js looks up `.crosshair-vertical/.crosshair-horizontal/
-           .price-label/.time-label` in `document` for the main chart and
-           positions them based on mouse coords. The styling here mirrors
-           legacy chart/index.html so behaviour matches exactly.
+           chart.js scopes those nodes to `canvas.parentElement` (same as legacy
+           chart-wrapper): never use `document.querySelector` for crosshair DOM,
+           because V9 puts `#panels-container` before `#chartWrapper` — the first
+           match would be a panel slot and mouse coords (main canvas) would
+           misalign. The styling here mirrors legacy chart/index.html.
            ────────────────────────────────────────────────────────────── */
         .crosshair-vertical,
         .crosshair-horizontal {
