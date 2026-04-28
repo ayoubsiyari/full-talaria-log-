@@ -32,6 +32,9 @@ class PreferencesSyncManager {
                     const result = await response.json();
                     if (result.success) {
                         this.preferences = result.preferences;
+                        // Keep userStorage keys (e.g. drawingToolStyles) in sync with server truth
+                        // so modules that only read userStorage on init see the same data after refresh.
+                        this.persistLoadedPreferencesToLocalStorage();
                         console.log('📥 User preferences loaded from cloud');
                         this.isLoaded = true;
                         return this.preferences;
@@ -50,6 +53,35 @@ class PreferencesSyncManager {
             this.preferences = this.loadFromLocalStorage();
             this.isLoaded = true;
             return this.preferences;
+        }
+    }
+
+    /**
+     * After a successful GET from /api/chart/preferences, mirror each known field into userStorage
+     * using the same paths as saveToLocalStorage (scoped keys, JSON encoding).
+     */
+    persistLoadedPreferencesToLocalStorage() {
+        if (!this.preferences) return;
+        const fields = [
+            'tool_defaults',
+            'timeframe_favorites',
+            'chart_templates',
+            'keyboard_shortcuts',
+            'drawing_tool_styles',
+            'panel_sync_settings',
+            'panel_settings',
+            'market_config',
+            'protection_settings',
+            'general_settings',
+            'keep_drawing_enabled'
+        ];
+        for (const f of fields) {
+            if (this.preferences[f] === undefined) continue;
+            try {
+                this.saveToLocalStorage(f, this.preferences[f]);
+            } catch (e) {
+                console.warn('persistLoadedPreferencesToLocalStorage:', f, e);
+            }
         }
     }
 

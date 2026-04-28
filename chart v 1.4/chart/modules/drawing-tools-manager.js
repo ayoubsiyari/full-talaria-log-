@@ -503,6 +503,8 @@ class DrawingToolsManager {
      * Initialize the drawing manager
      */
     init() {
+        this._bindToolStylesToPreferencesSync();
+
         // Create SVG layers if they don't exist
         this.createSVGLayers();
         
@@ -8752,9 +8754,42 @@ class DrawingToolsManager {
         }
         
         try {
-            userStorage.setItem('drawingToolStyles', JSON.stringify(this.savedToolStyles));
+            const payload = JSON.parse(JSON.stringify(this.savedToolStyles));
+            if (typeof window !== 'undefined' && window.preferencesSync && typeof window.preferencesSync.updatePreference === 'function') {
+                window.preferencesSync.updatePreference('drawing_tool_styles', payload);
+            } else {
+                userStorage.setItem('drawingToolStyles', JSON.stringify(this.savedToolStyles));
+            }
         } catch (e) {
             console.warn('Failed to save tool style:', e);
+        }
+    }
+
+    /**
+     * Keep savedToolStyles aligned with preferences sync (cloud GET + userStorage) after refresh.
+     */
+    _bindToolStylesToPreferencesSync() {
+        if (this._toolStylesPrefBound) return;
+        this._toolStylesPrefBound = true;
+
+        this._onDrawingToolStylesPreferencesLoaded = () => {
+            try {
+                const styles = window.preferencesSync && window.preferencesSync.get('drawing_tool_styles', null);
+                if (styles && typeof styles === 'object' && Object.keys(styles).length > 0) {
+                    this.savedToolStyles = JSON.parse(JSON.stringify(styles));
+                } else {
+                    this.savedToolStyles = this.loadSavedToolStyles();
+                }
+            } catch (e) {
+                this.savedToolStyles = this.loadSavedToolStyles();
+            }
+        };
+
+        if (typeof window !== 'undefined') {
+            window.addEventListener('preferencesLoaded', this._onDrawingToolStylesPreferencesLoaded);
+            if (window.preferencesSync && typeof window.preferencesSync.isReady === 'function' && window.preferencesSync.isReady()) {
+                this._onDrawingToolStylesPreferencesLoaded();
+            }
         }
     }
     
