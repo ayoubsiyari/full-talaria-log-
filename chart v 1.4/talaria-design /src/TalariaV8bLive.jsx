@@ -10548,10 +10548,22 @@ const TalariaV8bLive = () => {
               background:`linear-gradient(180deg,transparent,`+c.hvLn+`,transparent)`, pointerEvents:"none", zIndex:2 }}/>}
           </div>
         </div>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative" }}>
-          <div style={{ flex: 1, position: "relative", background: c.bg, display: "flex" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", minHeight: 0 }}>
+          {/* Match legacy chart/index.html #chart-container: absolutely filled slot — not flex:1 on
+              this node (Safari can disagree canvas vs overlay rects when the chart area is flex-sized). */}
+          <div style={{ flex: 1, position: "relative", background: c.bg, minHeight: 0 }}>
             <div ref={chartCanvasRef} id="chart-container"
-              style={{ flex: 1, position: "relative", overflow: "hidden", isolation: "isolate", userSelect:"none", cursor: rollback?"none":"default" }}>
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                overflow: "hidden",
+                isolation: "isolate",
+                userSelect: "none",
+                cursor: rollback ? "none" : "default",
+              }}>
               {/* ────────────────────────────────────────────────────────────────
                    #panels-container MUST come BEFORE #chartWrapper in DOM.
                    In multi-panel mode panelManager sets both to z-index:10 and

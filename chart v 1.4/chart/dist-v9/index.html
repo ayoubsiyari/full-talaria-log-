@@ -235,7 +235,7 @@
 
     <!-- Drawing-tools manager — orchestrator. Must load AFTER all individual
          drawing-tools-*.js so the registry is populated before init. -->
-    <script defer src="/chart/modules/drawing-tools-manager.js?v=20260429_safari_layout_rect"></script>
+    <script defer src="/chart/modules/drawing-tools-manager.js?v=20260429_v9_chart_fill"></script>
     <script defer src="/chart/modules/favorites-manager.js?v=20260428b_dblclick_v9"></script>
     <script defer src="/chart/modules/keyboard-shortcuts.js?v=20260428b_dblclick_v9"></script>
 
@@ -244,7 +244,7 @@
          as a callable. Its DOMContentLoaded handler fires after main.jsx has
          mounted React (deferred too), so the #chartCanvas element exists.
          Bump ?v= whenever /chart assets change so browsers/CDNs don’t serve stale JS. -->
-    <script defer src="/chart/chart.js?v=20260429_safari_layout_rect"></script>
+    <script defer src="/chart/chart.js?v=20260429_v9_chart_fill"></script>
 
     <!-- Replay system — must load AFTER chart.js (depends on it). -->
     <script defer src="/chart/modules/replay-system.js?v=20260428b_dblclick_v9"></script>
