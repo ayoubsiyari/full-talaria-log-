@@ -958,7 +958,6 @@ const TalariaV8bLive = () => {
   const pinnedBarRef = useRef(null);
   const cpBarAnchorRef = useRef(null); // set when color picker is opened from the tl bar
   const closingDropdownKey = useRef(null);
-  const [canvasDims, setCanvasDims] = useState({w:888,h:360});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileTab, setProfileTab] = useState("account");
@@ -1065,11 +1064,6 @@ const TalariaV8bLive = () => {
   const [emojiCat, setEmojiCat] = useState("smileys");
   const [emojiSearch, setEmojiSearch] = useState("");
   const [faqExpand, setFaqExpand] = useState(null);
-  const [screenshotOpen, setScreenshotOpen] = useState(false);
-  const [scLinkOpen, setScLinkOpen] = useState(false);
-  const [scLinkSearch, setScLinkSearch] = useState("");
-  const [scLinkedTrade, setScLinkedTrade] = useState(null);
-  const [scLinkPhase, setScLinkPhase] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [pinnedBarOpen, setPinnedBarOpen] = useState(true);
   const [pinnedBarPos, setPinnedBarPos] = useState({ x: 50, y: 80 });
@@ -1365,7 +1359,6 @@ const TalariaV8bLive = () => {
   const isWide = panelDetached && detachSize.w >= 520;
   const opTemplates = ["Default","Scalp — Trend","Swing Trade","Breakout","Reversal"];
   const [rightPanel, setRightPanel] = useState(null);
-  const [screenshotPos, setScreenshotPos] = useState({ x: 0, y: 0 });
   const [layersOpen, setLayersOpen] = useState(false);
   const [layersPos, setLayersPos] = useState({ x: 0, y: 0 });
   const [layersCat, setLayersCat] = useState("drawings");
@@ -4000,12 +3993,12 @@ const TalariaV8bLive = () => {
     tool, groupSelected,
   ]);
 
-  const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelected(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
+  const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelected(null); setSDrop(null); setColorPicker(null); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
   // closeAll is triggered by backdrop/outside clicks — intentionally does NOT close the indicators window
   const closeAll = () => {
     setDropdown(null); setSymbolSearch(""); setTfCat(null); setTfUnitOpen(false);
     setSDrop(null); setColorPicker(null); setSettDrop(null);
-    setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setScreenshotOpen(false); setLayersOpen(false); setProfileOpen(false);
+    setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setLayersOpen(false); setProfileOpen(false);
     if(logoMenu) closePopup(setLogoMenu, "logoMenu");
     if(replayOpts) closePopup(setReplayOpts, "replayOpts");
     if(gotoOpen) closePopup(setGotoOpen, "goto");
@@ -10730,223 +10723,6 @@ const TalariaV8bLive = () => {
         </div>
         );
       })()}
-      {(screenshotOpen || closing.has("screenshot")) && (
-        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${screenshotPos.y}px)`,left:`calc(50% + ${screenshotPos.x}px)`,transform:"translate(-50%,-50%)",width:920,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("screenshot")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
-          <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
-          <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"screenshot",startX:e.clientX,startY:e.clientY,ox:screenshotPos.x,oy:screenshotPos.y});}}
-            style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
-            <I n="screenshot" s={17} cl={c.acL}/>
-            <span style={{fontSize:14,fontWeight:700,marginLeft:8,color:c.tx}}>Screenshot</span>
-            <span style={{fontSize:13,color:c.tm,fontVariantNumeric:"tabular-nums",marginLeft:8,flex:1}}>{canvasDims.w} × {canvasDims.h} px</span>
-            <div onMouseDown={(e)=>e.stopPropagation()} onClick={()=>animClose(setScreenshotOpen,"screenshot")}
-              onMouseEnter={()=>setSwHov("xScreenshot")} onMouseLeave={()=>setSwHov(null)}
-              style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",background:swHov==="xScreenshot"?"rgba(255,80,80,0.07)":"transparent",transition:"background 0.12s",flexShrink:0}}>
-              <I n="x" s={18} cl={swHov==="xScreenshot"?c.rd:c.ts}/>
-            </div>
-          </div>
-          <div style={{height:1,background:c.br,flexShrink:0}}/>
-
-          {/* chart preview */}
-          <div style={{padding:"14px 16px 0",flexShrink:0}}>
-            {(()=>{
-              const candles=[[48,56,44,54,0],[54,61,52,58,0],[58,60,53,55,1],[55,59,51,57,0],[57,65,55,63,0],[63,67,58,60,1],[60,64,57,62,0],[62,69,61,68,0],[68,72,65,70,0],[70,68,63,65,1],[65,70,63,68,0],[68,74,67,72,0],[72,76,70,74,0],[74,72,68,69,1],[69,73,67,71,0],[71,76,70,75,0],[75,79,73,77,0],[77,75,71,72,1],[72,77,71,76,0],[76,82,75,80,0],[80,84,78,82,0],[82,86,80,84,0],[84,82,79,80,1],[80,83,78,82,0],[82,87,81,86,0],[86,90,84,88,0],[88,86,83,84,1],[84,88,83,87,0],[87,92,86,91,0],[91,94,89,92,0],[92,90,87,88,1],[88,92,87,91,0],[91,95,90,94,0],[94,97,92,95,0],[95,93,90,91,1],[91,95,90,94,0],[94,98,93,97,0],[97,100,95,98,0],[98,96,93,94,1],[94,98,93,97,0],[97,102,96,100,0],[100,103,98,101,0]];
-              const allClose=candles.map(d=>d[3]);
-              const allH=candles.map(d=>d[1]), allL=candles.map(d=>d[2]);
-              const minP=Math.min(...allL)-3, maxP=Math.max(...allH)+3, range=maxP-minP;
-              const W=888, H=Math.round(888*(canvasDims.h/canvasDims.w)), padR=44, padB=22, padT=10;
-              const chartW=W-padR, chartH=H-padB-padT;
-              const py=(p)=>padT+chartH*(1-(p-minP)/range);
-              const step=chartW/candles.length;
-              const candleW=Math.max(Math.floor(step)-3,4);
-              const ma=allClose.map((_,i)=>i<8?null:allClose.slice(i-8,i+1).reduce((a,b)=>a+b,0)/9);
-              const gridCount=6;
-              const gridPrices=Array.from({length:gridCount},(_,i)=>Math.round(minP+(range/(gridCount-1))*i));
-              const times=["15:30","16:00","16:30","17:00","17:30","18:00","18:30"];
-              const lastClose=allClose[allClose.length-1];
-              return (
-                <div style={{background:c.bg,border:`1px solid ${c.brH}`,position:"relative",overflow:"hidden",height:H}}>
-                  <svg width={W} height={H} style={{display:"block",position:"absolute",inset:0}}>
-                    {gridPrices.map(p=>(
-                      <g key={p}>
-                        <line x1={0} y1={py(p)} x2={chartW} y2={py(p)} stroke="rgba(140,160,255,0.06)" strokeWidth={1}/>
-                        <text x={chartW+5} y={py(p)+3.5} fontSize={8} fill={c.tm} fontFamily={F} fontVariantNumeric="tabular-nums">{p.toFixed(0)}</text>
-                      </g>
-                    ))}
-                    {times.map((t,i)=>(
-                      <text key={t} x={Math.round(i*(chartW/6))+2} y={H-6} fontSize={8} fill={c.tm} fontFamily={F} fontVariantNumeric="tabular-nums">{t}</text>
-                    ))}
-                    <polyline
-                      points={ma.map((v,i)=>v==null?null:`${Math.round(step*i+step/2)},${py(v)}`).filter(Boolean).join(" ")}
-                      fill="none" stroke={c.acL} strokeWidth={1.5} opacity={0.55}/>
-                    {candles.map(([o,h,l,cl,bear],i)=>{
-                      const x=Math.round(step*i+(step-candleW)/2);
-                      const col=bear?c.rd:c.gn;
-                      const bodyY=py(Math.max(o,cl)), bodyH=Math.max(Math.abs(py(o)-py(cl)),2);
-                      return (
-                        <g key={i}>
-                          <line x1={x+candleW/2} y1={py(h)} x2={x+candleW/2} y2={py(l)} stroke={col} strokeWidth={1} opacity={0.7}/>
-                          <rect x={x} y={bodyY} width={candleW} height={bodyH} fill={col} opacity={0.9}/>
-                        </g>
-                      );
-                    })}
-                    <line x1={0} y1={py(lastClose)} x2={chartW} y2={py(lastClose)} stroke={c.acL} strokeWidth={1} strokeDasharray="5,3" opacity={0.55}/>
-                    <rect x={chartW} y={py(lastClose)-9} width={padR} height={18} fill={c.ac} opacity={0.9}/>
-                    <text x={chartW+5} y={py(lastClose)+4} fontSize={8.5} fill="#fff" fontFamily={F} fontWeight="700" fontVariantNumeric="tabular-nums">{lastClose}.00</text>
-                  </svg>
-                  <div style={{position:"absolute",top:8,left:10,display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:15,fontWeight:800,color:c.tx,letterSpacing:"-0.02em"}}>{symbol}</span>
-                    <span style={{fontSize:10,color:c.tm,background:"rgba(140,160,255,0.08)",padding:"2px 6px",border:`1px solid ${c.br}`}}>1m · Candles</span>
-                    <span style={{fontSize:10,color:c.gn,fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{lastClose}.00</span>
-                    <span style={{fontSize:12,color:c.gn,fontWeight:600}}>+2.15%</span>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-
-          {/* footer */}
-          <div style={{padding:"10px 16px 12px",borderTop:`1px solid ${c.br}`,marginTop:14,display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-            {/* Link to Trade — left side */}
-            {(()=>{
-              const scTrades=[
-                {id:"#1001",sym:"EUR/JPY",side:"LONG"},
-                {id:"#1002",sym:"GBP/USD",side:"SHORT"},
-                {id:"#1003",sym:"USD/JPY",side:"LONG"},
-                {id:"#1004",sym:"EUR/USD",side:"SHORT"},
-                {id:"#1005",sym:"AUD/USD",side:"LONG"},
-                {id:"#1006",sym:"USD/CAD",side:"SHORT"},
-                {id:"#1007",sym:"NZD/USD",side:"LONG"},
-                {id:"#1008",sym:"EUR/GBP",side:"SHORT"},
-                {id:"#1009",sym:"USD/CHF",side:"LONG"},
-              ];
-              const q=scLinkSearch.toLowerCase().trim();
-              const filtered=scTrades.filter(t=>t.id.toLowerCase().includes(q)||t.sym.toLowerCase().includes(q)||t.side.toLowerCase().includes(q));
-              const isLH=swHov==="sc-link";
-              const isLinked=!!scLinkedTrade;
-              return (
-                <div style={{position:"relative"}}>
-                  {scLinkOpen && (
-                    <div style={{position:"absolute",bottom:"calc(100% + 5px)",left:0,zIndex:9100,
-                      background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,boxShadow:"0 4px 16px rgba(0,0,0,0.5)",
-                      width:260,fontFamily:F}}>
-                      <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
-                      {/* search */}
-                      <div style={{padding:"7px 10px 5px",borderBottom:`1px solid ${c.br}`}}>
-                        <div style={{display:"flex",alignItems:"center",gap:5,background:"rgba(255,255,255,0.04)",border:`1px solid ${c.br}`,padding:"3px 8px"}}>
-                          <svg width={11} height={11} viewBox="0 96 960 960" fill="none">
-                            <path d="M796 912 532 648q-30 24-69 38t-83 14q-109 0-184.5-75.5T120 440q0-109 75.5-184.5T380 180q109 0 184.5 75.5T640 440q0 44-14 83t-38 69l264 264-56 56ZM380 576q75 0 127.5-52.5T560 396q0-75-52.5-127.5T380 216q-75 0-127.5 52.5T200 396q0 75 52.5 127.5T380 576Z" fill={c.tm}/>
-                          </svg>
-                          <input autoFocus value={scLinkSearch} onChange={e=>setScLinkSearch(e.target.value)}
-                            placeholder="Search trades…"
-                            style={{flex:1,background:"transparent",border:"none",outline:"none",fontFamily:F,
-                              fontSize:12,color:c.tx}}/>
-                          {scLinkSearch && (
-                            <div onClick={()=>setScLinkSearch("")} style={{cursor:"default",color:c.tm,lineHeight:1}}>×</div>
-                          )}
-                        </div>
-                      </div>
-                      {/* list */}
-                      <div className="tlr-scroll" style={{maxHeight:180,overflowY:"auto",padding:"3px 0"}}>
-                        {filtered.length===0 ? (
-                          <div style={{padding:"8px 12px",fontSize:12,color:c.tm,textAlign:"center"}}>No trades found</div>
-                        ) : filtered.map(t=>{
-                          const isAct=scLinkedTrade===t.id;
-                          const isH=swHov===`sc-trade-${t.id}`||swHov===`sc-ph-${t.id}-Pre`||swHov===`sc-ph-${t.id}-Post`;
-                          return (
-                            <div key={t.id}
-                              onMouseEnter={()=>setSwHov(`sc-trade-${t.id}`)} onMouseLeave={()=>setSwHov(null)}
-                              style={{display:"flex",alignItems:"center",padding:"5px 10px",cursor:"default",
-                                position:"relative",gap:6,minHeight:28,
-                                background:isAct?c.acD:isH?c.hv2:"transparent",
-                                transition:"background 0.1s"}}>
-                              {isAct && <div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,
-                                background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,
-                                boxShadow:`0 0 6px ${c.acG}`}}/>}
-                              <span style={{fontSize:12,fontWeight:isAct?700:500,color:isAct?c.acL:isH?c.tx:c.ts,minWidth:42,fontVariantNumeric:"tabular-nums"}}>{t.id}</span>
-                              <span style={{fontSize:12,color:isAct?c.tx:isH?c.tx:c.ts,flex:1}}>{t.sym}</span>
-                              <span style={{fontSize:11,fontWeight:600,color:t.side==="LONG"?c.gn:c.rd,marginRight:4}}>{t.side}</span>
-                              {/* Pre / Post inline buttons — visible on hover or when this trade is selected */}
-                              {(isH||isAct) && (
-                                <div style={{display:"flex",gap:1,flexShrink:0}}>
-                                  {["Pre","Post"].map(ph=>{
-                                    const isPh=isAct&&scLinkPhase===ph;
-                                    const isPhH=swHov===`sc-ph-${t.id}-${ph}`;
-                                    return (
-                                      <div key={ph}
-                                        onClick={e=>{e.stopPropagation();setScLinkedTrade(t.id);setScLinkPhase(ph);setScLinkOpen(false);setScLinkSearch("");}}
-                                        onMouseEnter={e=>{e.stopPropagation();setSwHov(`sc-ph-${t.id}-${ph}`);}}
-                                        onMouseLeave={e=>{e.stopPropagation();setSwHov(`sc-trade-${t.id}`);}}
-                                        style={{fontSize:10,fontWeight:700,padding:"3px 7px",cursor:"default",
-                                          position:"relative",
-                                          color:isPh?c.acL:isPhH?c.tx:c.ts,
-                                          background:isPh?"rgba(74,106,255,0.08)":isPhH?c.hv:"transparent",
-                                          transition:"background 0.1s,color 0.1s"}}>
-                                        {ph}
-                                        {isPh&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
-                                        {!isPh&&isPhH&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  <div onClick={()=>{setScLinkOpen(o=>!o);setScLinkSearch("");}}
-                    onMouseEnter={()=>setSwHov("sc-link")} onMouseLeave={()=>setSwHov(null)}
-                    style={{height:28,padding:"0 12px",display:"flex",alignItems:"center",gap:6,cursor:"default",
-                      background:isLinked?"rgba(74,106,255,0.08)":isLH?c.hv:c.hv2,
-                      border:`1px solid ${isLinked?"rgba(74,106,255,0.4)":isLH?"rgba(140,160,255,0.3)":"rgba(140,160,255,0.18)"}`,
-                      transition:"background 0.12s,border-color 0.12s"}}>
-                    <svg width={13} height={13} viewBox="0 96 960 960" fill={isLinked?c.acL:isLH?c.tx:c.ts}>
-                      <path d="M440 726 296 582l56-56 88 88 168-168 56 56-224 224ZM200 976q-33 0-56.5-23.5T120 896V296q0-33 23.5-56.5T200 216h360l200 200v480q0 33-23.5 56.5T680 976H200Zm0-80h480V456H520V296H200v600Zm0 0V296v600Z"/>
-                    </svg>
-                    <span style={{fontSize:13,fontWeight:600,color:isLinked?c.acL:isLH?c.tx:c.ts,whiteSpace:"nowrap"}}>
-                      {isLinked ? `${scLinkedTrade}${scLinkPhase?` · ${scLinkPhase}`:""}` : "Link to Trade"}
-                    </span>
-                    {isLinked && (
-                      <div onClick={e=>{e.stopPropagation();setScLinkedTrade(null);setScLinkPhase(null);}}
-                        style={{marginLeft:2,color:c.tm,fontSize:14,lineHeight:1,cursor:"default"}}
-                        onMouseEnter={e=>{e.currentTarget.style.color=c.rd;}} onMouseLeave={e=>{e.currentTarget.style.color=c.tm;}}>×</div>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-            {/* right buttons */}
-            <div style={{display:"flex",gap:6}}>
-            {[
-              {label:"Copy Link", hk:"sc-cancel", act:()=>{}, primary:false},
-              {label:"Copy",     hk:"sc-copy",   act:()=>{}, primary:false},
-              {label:"Download", hk:"sc-dl",     act:()=>{}, primary:true},
-            ].map(({label,hk,act,primary})=>{
-              const isH=swHov===hk, isDn=swHov===hk+"_dn";
-              return (
-                <button key={hk} onClick={act}
-                  onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
-                  onMouseDown={()=>setSwHov(hk+"_dn")} onMouseUp={()=>setSwHov(hk)}
-                  style={{height:28,padding:"0 18px",display:"flex",alignItems:"center",justifyContent:"center",
-                    boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:primary?700:600,
-                    color:primary?"#fff":isH?c.tx:c.ts,
-                    background:primary
-                      ? isDn?c.ac:isH?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`
-                      : isH?"rgba(140,160,255,0.08)":c.hv2,
-                    border:primary?`1px solid ${isH?c.acL:"rgba(74,106,255,0.5)"}`:`1px solid ${isH?"rgba(140,160,255,0.35)":"rgba(140,160,255,0.18)"}`,
-                    transform:isDn?"scale(0.97)":"scale(1)",
-                    transition:"background 0.12s,border-color 0.12s,transform 0.08s",
-                    WebkitFontSmoothing:"antialiased"}}>
-                  {label}
-                </button>
-              );
-            })}
-            </div>
-          </div>
-        </div>
-      )}
-
 
       {(logoMenu||closing.has("logoMenu")) && (
         <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:10,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:168,fontFamily:F,animation:closing.has("logoMenu")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
@@ -11368,7 +11144,7 @@ const TalariaV8bLive = () => {
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: c.br }}/>
         {[{id:"layout",icon:"layout",label:"Layout"},{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
-          <button key={id} onClick={(e) => { if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} } if(id==="layout"){ e.stopPropagation(); if(rightPanel==="layout"){setRightPanel(null);}else{setRightPanel("layout");setOrderPanelOpen(false);} } if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); } if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} } if(id==="expand"){ e.stopPropagation(); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }}} onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
+          <button key={id} onClick={(e) => { if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} } if(id==="layout"){ e.stopPropagation(); if(rightPanel==="layout"){setRightPanel(null);}else{setRightPanel("layout");setOrderPanelOpen(false);} } if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setScreenshotFlash(true); setTimeout(()=>{ try { window.screenshotManager?.showScreenshotOptions?.(); } catch (err) { console.error("[V9] screenshot:", err); } }, 260); } if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} } if(id==="expand"){ e.stopPropagation(); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }}} onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
             style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "default", position: "relative",
               background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&rightPanel==="layout") || (id==="expand"&&isFullscreen); return isActive ? "rgba(74,106,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),
               transition: "background 0.12s" }}>
@@ -15192,7 +14968,6 @@ const TalariaV8bLive = () => {
             else if (dragging.target === "profile") setProfilePos(cc(dragging.ox+dx, dragging.oy+dy, 400, 540));
             else if (dragging.target === "faq") setFaqPos(cc(dragging.ox+dx, dragging.oy+dy, 440, 540));
             else if (dragging.target === "news") setNewsPos({ x: dragging.ox + dx, y: dragging.oy + dy });
-            else if (dragging.target === "screenshot") setScreenshotPos(cc(dragging.ox+dx, dragging.oy+dy, 920, 580));
             else if (dragging.target === "layers") setLayersPos({ x: dragging.ox + dx, y: dragging.oy + dy });
             else if (dragging.target === "layout") setLayoutPos({ x: dragging.ox + dx, y: dragging.oy + dy });
           }}

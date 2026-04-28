@@ -625,6 +625,8 @@ class KeyboardShortcutsManager {
             screenshotBtn.click();
         } else if (this.chart.screenshotManager) {
             this.chart.screenshotManager.showScreenshotOptions();
+        } else if (window.screenshotManager && typeof window.screenshotManager.showScreenshotOptions === 'function') {
+            window.screenshotManager.showScreenshotOptions();
         }
     }
     
