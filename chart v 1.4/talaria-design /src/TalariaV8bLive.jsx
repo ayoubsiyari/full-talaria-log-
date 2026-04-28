@@ -2159,13 +2159,109 @@ const TalariaV8bLive = () => {
           const br = document.querySelector(`input[name="balanceType"][value="${wantBal}"]`);
           if (br && !br.checked) br.click();
         } else setIn("lotSizeAmount", riskVal);
-        // Preview lines require #orderEntryPrice > 0 (order-manager.js updatePreviewLines). The V8b
-        // mock defaults entry to "0"; writing that wipes the live price updateOrderPanelPrice() set.
-        const entryPx = parseFloat(entryRows[0]?.price ?? "0");
-        if (entryPx > 0) {
-          setIn("orderEntryPrice", String(entryPx));
-        } else {
-          om?.updateOrderPanelPrice?.();
+        // Multi-entry / multi-TP: chart preview uses orderManager.multiEntryLevels + tpTargets (see order-manager.js).
+        const omHasMultiEntry = !!(om?.isMultiEntryMode && (om.multiEntryLevels?.length ?? 0) > 1);
+        const mtpOn = !!document.getElementById("multipleTPToggle")?.checked;
+        const omHasMultiTp = mtpOn && Array.isArray(om?.tpTargets) && om.tpTargets.length > 1;
+
+        if (entryRows.length > 1 && om) {
+          if (!om.isMultiEntryMode) om.setEntryMode(true);
+          const want = entryRows.map((r, i) => {
+            let pid = r.id;
+            if (typeof pid === "number" && Number.isFinite(pid)) {
+              /* keep */
+            } else if (pid != null && Number.isFinite(Number(pid))) {
+              pid = Number(pid);
+            } else {
+              pid = om.multiEntryLevels?.[i]?.id ?? i + 1;
+            }
+            return {
+              id: pid,
+              price: parseFloat(r.price) || 0,
+              amount: parseFloat(r.risk) || 0,
+            };
+          });
+          let dirty =
+            !Array.isArray(om.multiEntryLevels) || om.multiEntryLevels.length !== want.length;
+          if (!dirty) {
+            for (let i = 0; i < want.length; i++) {
+              const a = om.multiEntryLevels[i];
+              const w = want[i];
+              if (!a || a.price !== w.price || a.amount !== w.amount) {
+                dirty = true;
+                break;
+              }
+            }
+          }
+          if (dirty) {
+            om.multiEntryLevels = want.map((w) => ({ id: w.id, price: w.price, amount: w.amount }));
+            om.renderMultiEntryRows?.();
+            om.updateMultiEntrySummary?.();
+            om.syncMultiEntryToSplitEntries?.();
+          }
+        } else if (!omHasMultiEntry) {
+          // Preview lines require #orderEntryPrice > 0 (order-manager.js updatePreviewLines). The V8b
+          // mock defaults entry to "0"; writing that wipes the live price updateOrderPanelPrice() set.
+          const entryPx = parseFloat(entryRows[0]?.price ?? "0");
+          if (entryPx > 0) {
+            setIn("orderEntryPrice", String(entryPx));
+          } else {
+            om?.updateOrderPanelPrice?.();
+          }
+        }
+
+        // Multi-TP: mirror React rows into om.tpTargets + list DOM (avoid toggling checkbox every tick — it re-inits).
+        const tpActive = tpRows.filter((r) => r.enabled !== false);
+        if (tpActive.length > 1 && om) {
+          const mtpEl = document.getElementById("multipleTPToggle");
+          if (mtpEl && !mtpEl.checked) {
+            mtpEl.checked = true;
+            const multiTPBtn = document.getElementById("multiTPBtn");
+            const multipleTPSettings = document.getElementById("multipleTPSettings");
+            const tpSingleView = document.querySelector("#orderPanel .order-tp-single");
+            if (multiTPBtn) {
+              multiTPBtn.textContent = "Single";
+              multiTPBtn.classList.add("active");
+            }
+            if (multipleTPSettings) multipleTPSettings.classList.remove("is-hidden");
+            if (tpSingleView) tpSingleView.classList.add("is-hidden");
+            mtpEl.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+          const nextTgts = tpActive.map((r, idx) => ({
+            id: typeof r.id === "number" && Number.isFinite(r.id) ? r.id : idx + 1,
+            price: parseFloat(r.price) || 0,
+            percentage: parseFloat(r.qty) || 0,
+          }));
+          let tgDirty = !Array.isArray(om.tpTargets) || om.tpTargets.length !== nextTgts.length;
+          if (!tgDirty) {
+            for (let i = 0; i < nextTgts.length; i++) {
+              const a = om.tpTargets[i];
+              const w = nextTgts[i];
+              if (!a || a.price !== w.price || a.percentage !== w.percentage) {
+                tgDirty = true;
+                break;
+              }
+            }
+          }
+          if (tgDirty) {
+            om.tpTargets = nextTgts.map((t) => ({ ...t }));
+            om.renderTPTargets?.();
+          }
+        } else if (!omHasMultiTp) {
+          const mtpEl = document.getElementById("multipleTPToggle");
+          if (mtpEl?.checked && tpActive.length <= 1) {
+            mtpEl.checked = false;
+            const multiTPBtn = document.getElementById("multiTPBtn");
+            const multipleTPSettings = document.getElementById("multipleTPSettings");
+            const tpSingleView = document.querySelector("#orderPanel .order-tp-single");
+            if (multiTPBtn) {
+              multiTPBtn.textContent = "Multi";
+              multiTPBtn.classList.remove("active");
+            }
+            if (multipleTPSettings) multipleTPSettings.classList.add("is-hidden");
+            if (tpSingleView) tpSingleView.classList.remove("is-hidden");
+            mtpEl.dispatchEvent(new Event("change", { bubbles: true }));
+          }
         }
 
         const tp0 = tpRows[0];
@@ -2176,8 +2272,11 @@ const TalariaV8bLive = () => {
         const slPx = parseFloat(slRowPx);
         if (slEnabled && slPx > 0) setIn("slPrice", slRowPx);
 
+        const tpMultiActive = !!document.getElementById("multipleTPToggle")?.checked;
         const tpPx = parseFloat(tp0?.price ?? "0");
-        if (tp0?.enabled !== false && tpPx > 0) setIn("tpPrice", String(tp0.price));
+        if (!tpMultiActive && tpActive.length <= 1 && tp0?.enabled !== false && tpPx > 0) {
+          setIn("tpPrice", String(tp0.price));
+        }
 
         om?.calculatePositionFromRisk?.();
         om?.calculateAdvancedRiskReward?.();
@@ -2205,14 +2304,41 @@ const TalariaV8bLive = () => {
       const ep = document.getElementById("orderEntryPrice")?.value ?? "";
       const slp = document.getElementById("slPrice")?.value ?? "";
       const tpp = document.getElementById("tpPrice")?.value ?? "";
+      const om = window.chart?.orderManager;
+      const omMultiEntry =
+        !!(om?.isMultiEntryMode && Array.isArray(om.multiEntryLevels) && om.multiEntryLevels.length > 0);
+      const omMultiTp =
+        !!document.getElementById("multipleTPToggle")?.checked &&
+        Array.isArray(om?.tpTargets) &&
+        om.tpTargets.length > 0;
 
-      setEntryRows((rows) => {
-        if (!rows.length) return rows;
-        if (rows[0].price === ep) return rows;
-        const next = [...rows];
-        next[0] = { ...next[0], price: ep };
-        return next;
-      });
+      if (omMultiEntry) {
+        const next = om.multiEntryLevels.map((l) => ({
+          id: l.id,
+          price: String(l.price ?? "0"),
+          risk: String(l.amount ?? "0"),
+        }));
+        setEntryRows((prev) => {
+          if (
+            prev.length === next.length &&
+            prev.every(
+              (p, i) => String(p.price) === next[i].price && String(p.risk) === next[i].risk,
+            )
+          ) {
+            return prev;
+          }
+          return next;
+        });
+        if (next.length > 1) setPanelMode("advanced");
+      } else {
+        setEntryRows((rows) => {
+          if (!rows.length) return rows;
+          if (rows[0].price === ep) return rows;
+          const nex = [...rows];
+          nex[0] = { ...nex[0], price: ep };
+          return nex;
+        });
+      }
 
       setSlRows((rows) => {
         if (!rows.length) return rows;
@@ -2225,17 +2351,39 @@ const TalariaV8bLive = () => {
       const slOn = !!document.getElementById("enableSL")?.checked;
       setSlEnabled((prev) => (prev === slOn ? prev : slOn));
 
-      setTpRows((rows) => {
-        if (!rows.length) return rows;
-        const r0 = rows[0];
-        const tpOn = !!document.getElementById("enableTP")?.checked;
-        const priceChg = r0.price !== tpp;
-        const enChg = !!r0.enabled !== tpOn;
-        if (!priceChg && !enChg) return rows;
-        const next = [...rows];
-        next[0] = { ...r0, price: tpp, enabled: tpOn };
-        return next;
-      });
+      if (omMultiTp && om.tpTargets.length > 1) {
+        const nextTp = om.tpTargets.map((t) => ({
+          id: t.id,
+          price: String(t.price ?? "0"),
+          qty: String(t.percentage ?? "0"),
+          enabled: true,
+        }));
+        setTpRows((prev) => {
+          if (
+            prev.length === nextTp.length &&
+            prev.every(
+              (p, i) =>
+                String(p.price) === nextTp[i].price && String(p.qty) === nextTp[i].qty,
+            )
+          ) {
+            return prev;
+          }
+          return nextTp;
+        });
+        if (nextTp.length > 1) setPanelMode("advanced");
+      } else {
+        setTpRows((rows) => {
+          if (!rows.length) return rows;
+          const r0 = rows[0];
+          const tpOn = !!document.getElementById("enableTP")?.checked;
+          const priceChg = r0.price !== tpp;
+          const enChg = !!r0.enabled !== tpOn;
+          if (!priceChg && !enChg) return rows;
+          const next = [...rows];
+          next[0] = { ...r0, price: tpp, enabled: tpOn };
+          return next;
+        });
+      }
 
       const buyOn = document.getElementById("buyTab")?.classList.contains("active");
       const side = buyOn ? "buy" : "sell";
