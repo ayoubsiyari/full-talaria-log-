@@ -773,6 +773,69 @@ const TalariaV8bLive = () => {
     return () => window.removeEventListener("timeframeChanged", handleTfChanged);
   }, []);
 
+  // ──────────────────────────────────────────────────────────────────────
+  // Replay bridge — wires V9 replay-bar UI to window.chart.replaySystem
+  // (defined in chart/modules/replay-system.js). Mirrors the legacy toolbar
+  // exactly: same play()/pause(), setSpeed(), setPlaybackMode(),
+  // requestStepForward(), enterReplayMode()/exitReplayMode() calls.
+  //
+  // Ensures user actions on V9 buttons reach the chart, and that legacy
+  // hotkeys (Space=play, →=step) are reflected back into V9 state.
+  // ──────────────────────────────────────────────────────────────────────
+  const getReplaySystem = () => {
+    return (window.chart && window.chart.replaySystem) || null;
+  };
+
+  // Helper: ensure replay is active before play/step. Returns the rs or null.
+  const ensureReplayActive = () => {
+    const rs = getReplaySystem();
+    if (!rs) return null;
+    if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
+      try { rs.enterReplayMode(); } catch(e) { console.warn('[V9 Replay] enter failed', e); }
+    }
+    return rs;
+  };
+
+  // Poll replaySystem state and reflect into V9 (legacy hotkeys / clone toolbar
+  // can change isPlaying/playbackMode/speed without going through V9 buttons).
+  useEffect(() => {
+    let cancelled = false;
+    const sync = () => {
+      if (cancelled) return;
+      const rs = getReplaySystem();
+      if (rs) {
+        if (typeof rs.isPlaying === 'boolean' && rs.isPlaying !== playing) {
+          setPlaying(rs.isPlaying);
+        }
+        const mode = typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : rs.playbackMode;
+        if (mode && mode !== replayMode) setReplayMode(mode);
+        if (Number.isFinite(rs.speed) && rs.speed !== speed) setSpeed(rs.speed);
+      }
+    };
+    const id = setInterval(sync, 250);
+    return () => { cancelled = true; clearInterval(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, replayMode, speed]);
+
+  // Push V9 mode changes into the replaySystem (skip if user just synced from rs).
+  useEffect(() => {
+    const rs = getReplaySystem();
+    if (!rs || typeof rs.setPlaybackMode !== 'function') return;
+    const current = typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : rs.playbackMode;
+    if (current !== replayMode) {
+      try { rs.setPlaybackMode(replayMode); } catch(e) { console.warn('[V9 Replay] setPlaybackMode failed', e); }
+    }
+  }, [replayMode]);
+
+  // Push V9 speed changes into the replaySystem.
+  useEffect(() => {
+    const rs = getReplaySystem();
+    if (!rs || typeof rs.setSpeed !== 'function') return;
+    if (rs.speed !== speed) {
+      try { rs.setSpeed(speed); } catch(e) { console.warn('[V9 Replay] setSpeed failed', e); }
+    }
+  }, [speed]);
+
   // ────────────────────────────────────────────────────────────────────────
 
   const rollbackLineRef = useRef(null);
@@ -10465,8 +10528,17 @@ const TalariaV8bLive = () => {
                 </div>
               </div>}
             </div>
-            {/* Play / Pause */}
-            <button onClick={()=>setPlaying(!playing)}
+            {/* Play / Pause — wired to chart.replaySystem (mirrors legacy toolbar). */}
+            <button onClick={()=>{
+                const rs = ensureReplayActive();
+                if (!rs) { setPlaying(p=>!p); return; }
+                if (rs.isPlaying) {
+                  if (typeof rs.pause === 'function') rs.pause();
+                } else {
+                  if (typeof rs.play === 'function') rs.play();
+                }
+                setPlaying(!!rs.isPlaying);
+              }}
               onMouseEnter={e=>{setHov("rp-play");showTip(playing?"Pause":"Play",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
               style={{padding:"4px 5px",position:"relative",background:hov==="rp-play"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"background 0.12s"}}>
               <I n={playing?"pause":"play"} s={18} cl={hov==="rp-play"?(playing?"#FFA060":c.gn):(playing?"#FF8C42":"rgba(0,212,161,0.7)")}/>
@@ -10495,8 +10567,12 @@ const TalariaV8bLive = () => {
                   style={{position:"absolute",left:-10,right:-10,width:"calc(100% + 20px)",height:"100%",opacity:0,cursor:"default",margin:0}}/>
               </div>
             </div>);})()}
-            {/* Next candle (step forward) */}
+            {/* Next candle (step forward) — wired to replaySystem.requestStepForward */}
             <button
+              onClick={()=>{
+                const rs = ensureReplayActive();
+                if (rs && typeof rs.requestStepForward === 'function') rs.requestStepForward();
+              }}
               onPointerDown={()=>setHov("rp-next-dn")} onPointerUp={()=>setHov("rp-next")} onPointerLeave={()=>{setHov(null);hideTip();}}
               onMouseEnter={e=>{setHov(h=>h==="rp-next-dn"?h:"rp-next");showTip("Step Forward",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
               style={{padding:"4px 5px",position:"relative",background:hov==="rp-next-dn"?"rgba(74,106,255,0.08)":hov==="rp-next"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"transform 0.08s ease, color 0.15s ease, background 0.12s",transform:hov==="rp-next-dn"?"scale(0.88)":"scale(1)",color:hov==="rp-next-dn"?c.acL:hov==="rp-next"?c.tx:c.ts}}>
