@@ -4009,6 +4009,30 @@ const TalariaV8bLive = () => {
     setOpSymOpen(false); setOpSymSearch(""); setOpSizeOpen(false);
   };
 
+  /** Opens `modules/screenshot-manager.js` UI (real chart capture). Retries if bootstrap is still waiting on `window.chart`. */
+  const openV9ScreenshotMenu = () => {
+    const attempt = (remaining) => {
+      try {
+        const sm = window.screenshotManager;
+        if (sm && typeof sm.showScreenshotOptions === "function") {
+          sm.showScreenshotOptions();
+          return;
+        }
+      } catch (err) {
+        console.error("[V9] screenshot:", err);
+        return;
+      }
+      if (remaining > 0) {
+        setTimeout(() => attempt(remaining - 1), 100);
+        return;
+      }
+      console.warn(
+        "[V9] screenshotManager not available — ensure /chart/modules/screenshot-manager.js is loaded and chart/bootstrap ran."
+      );
+    };
+    attempt(45);
+  };
+
   const showTip = (label, el, side="top") => {
     clearTimeout(tipTimerRef.current);
     if (!label || !el) return;
@@ -11144,7 +11168,7 @@ const TalariaV8bLive = () => {
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: c.br }}/>
         {[{id:"layout",icon:"layout",label:"Layout"},{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
-          <button key={id} onClick={(e) => { if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} } if(id==="layout"){ e.stopPropagation(); if(rightPanel==="layout"){setRightPanel(null);}else{setRightPanel("layout");setOrderPanelOpen(false);} } if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setScreenshotFlash(true); setTimeout(()=>{ try { window.screenshotManager?.showScreenshotOptions?.(); } catch (err) { console.error("[V9] screenshot:", err); } }, 260); } if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} } if(id==="expand"){ e.stopPropagation(); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }}} onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
+          <button key={id} onClick={(e) => { if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} } if(id==="layout"){ e.stopPropagation(); if(rightPanel==="layout"){setRightPanel(null);}else{setRightPanel("layout");setOrderPanelOpen(false);} } if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); setScreenshotFlash(true); setTimeout(()=>openV9ScreenshotMenu(), 260); } if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} } if(id==="expand"){ e.stopPropagation(); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }}} onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
             style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "default", position: "relative",
               background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&rightPanel==="layout") || (id==="expand"&&isFullscreen); return isActive ? "rgba(74,106,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),
               transition: "background 0.12s" }}>
