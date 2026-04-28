@@ -297,6 +297,12 @@
     <!-- Replay system — must load AFTER chart.js (depends on it). -->
     <script defer src="/chart/modules/replay-system.js?v=20260428_goback_cut"></script>
 
+    <!-- Order placement UI (#orderPanel) — required for Place Order rail + order-manager.
+         Same stack as legacy-index.html; without these, OrderManager never constructs. -->
+    <script defer src="/chart/modules/order-event-bus.js?v=20260428_place_order_v9"></script>
+    <script defer src="/chart/modules/order-service.js?v=20260428_place_order_v9"></script>
+    <script defer src="/chart/modules/order-manager.js?v=20260428_place_order_v9"></script>
+
     <!-- Indicators: extend Chart.prototype, must load after chart.js. -->
     <script defer src="/chart/modules/chart-indicators-full.js?v=20260428b_dblclick_v9"></script>
 
