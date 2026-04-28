@@ -11814,7 +11814,15 @@ class Chart {
         // X-axis (time) labels – use pre-built ticks (synced with vertical grid lines)
         this.ctx.textAlign = 'center';
         this.ctx.fillStyle = this.chartSettings.scaleTextColor;
+        // Bottom strip reserved for #timeAxisZone hit-testing (must match CSS height in layout).
+        // A full-height transparent overlay above canvas in Chromium/Brave can composit in a way
+        // that hides fillText in the margin; keep labels in the band above the strip.
+        const timeAxisGrabStripPx = 10;
+        const stripUsed = Math.min(timeAxisGrabStripPx, m.b);
+        const timeLabelY = this.h - m.b + (m.b - stripUsed) / 2;
         if (this._timeTicks && this._timeTicks.length > 0) {
+            const prevBaseline = this.ctx.textBaseline;
+            this.ctx.textBaseline = 'middle';
             for (let i = 0; i < this._timeTicks.length; i++) {
                 const tick = this._timeTicks[i];
                 const x = tick.x;
@@ -11825,8 +11833,9 @@ class Chart {
                 this.ctx.stroke();
                 this.ctx.fillStyle = this.chartSettings.scaleTextColor;
                 this.ctx.font = scaleFont;
-                this.ctx.fillText(tick.label, x, this.h - 10);
+                this.ctx.fillText(tick.label, x, timeLabelY);
             }
+            this.ctx.textBaseline = prevBaseline;
         }
         this.ctx.setLineDash([]);
         this.ctx.font = scaleFont;
@@ -11960,11 +11969,16 @@ class Chart {
                 isRound = idx % Math.max(1, labelInterval) === 0;
             } else {
                 // Keep intraday cadence deterministic without depending on timezone offset.
-                // This prevents custom intervals like 13m from losing all round ticks
-                // in non-divisible timezones.
+                // Tolerant divisibility: strict `delta % interval === 0` can miss ticks across
+                // engines when timestamps are slightly non-integer at the edge.
                 const deltaFromBase = candle.t - tickAlignmentBaseTs;
-                isRound = labelIntervalMs > 0 && Number.isFinite(deltaFromBase)
-                    && deltaFromBase % labelIntervalMs === 0;
+                if (labelIntervalMs > 0 && Number.isFinite(deltaFromBase)) {
+                    const rem = ((deltaFromBase % labelIntervalMs) + labelIntervalMs) % labelIntervalMs;
+                    const tol = 0.5;
+                    isRound = rem < tol || rem > labelIntervalMs - tol;
+                } else {
+                    isRound = false;
+                }
             }
 
             const hasBoundary = isBoundary && !!boundaryLabel;

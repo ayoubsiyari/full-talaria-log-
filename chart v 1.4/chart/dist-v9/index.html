@@ -35,7 +35,7 @@
             z-index: 5;
         }
         #priceAxisZone { right: 0; top: 0; bottom: 18px; width: 60px; cursor: ns-resize; }
-        #timeAxisZone  { left: 0; right: 60px; bottom: 0; height: 18px; cursor: ew-resize; }
+        #timeAxisZone  { left: 0; right: 60px; bottom: 0; height: 10px; cursor: ew-resize; }
 
         /* ──────────────────────────────────────────────────────────────
            Crosshair + price/time labels.
@@ -244,7 +244,7 @@
          as a callable. Its DOMContentLoaded handler fires after main.jsx has
          mounted React (deferred too), so the #chartCanvas element exists.
          Bump ?v= whenever /chart assets change so browsers/CDNs don’t serve stale JS. -->
-    <script defer src="/chart/chart.js?v=20260429_crosshair_layout_parent"></script>
+    <script defer src="/chart/chart.js?v=20260428_chromium_time_axis"></script>
 
     <!-- Replay system — must load AFTER chart.js (depends on it). -->
     <script defer src="/chart/modules/replay-system.js?v=20260428b_dblclick_v9"></script>

@@ -10584,14 +10584,11 @@ const TalariaV8bLive = () => {
               <div id="chartWrapper" className="chart-wrapper" style={{ position: "absolute", inset: 0 }}>
                 <canvas id="chartCanvas" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", background: "transparent" }} />
                 <svg id="drawingSvg" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
-                {/* Axis cursor zones — chart.js reads their dimensions to know
-                     how much room to reserve for axis labels (60px right gutter
-                     for price, 30px bottom gutter for time). Mirrors legacy
-                     .price-axis-zone / .time-axis-zone CSS at chart/index.html
-                     line 26191/26207. Setting width:0/height:0 makes chart.js
-                     draw labels OFF-canvas. */}
+                {/* Axis cursor zones — chart.js reserves 60px right and 30px bottom margin.
+                     #timeAxisZone is a thin bottom strip so Chromium/Brave do not cover
+                     canvas time labels; full-height transparent siblings can mis-composite. */}
                 <div id="priceAxisZone" className="axis-cursor-zone price-axis-zone" style={{ position: "absolute", right: 0, top: 5, bottom: 30, width: 60, background: "transparent", zIndex: 10, cursor: "ns-resize", pointerEvents: "auto" }} />
-                <div id="timeAxisZone"  className="axis-cursor-zone time-axis-zone"  style={{ position: "absolute", left: 0, right: 60, bottom: 0, height: 30, background: "transparent", zIndex: 10, cursor: "ew-resize", pointerEvents: "auto" }} />
+                <div id="timeAxisZone"  className="axis-cursor-zone time-axis-zone"  style={{ position: "absolute", left: 0, right: 60, bottom: 0, height: 10, background: "transparent", zIndex: 10, cursor: "ew-resize", pointerEvents: "auto" }} />
 
                 {/* Crosshair elements — chart.js positions these on mousemove */}
                 <div className="crosshair-vertical" style={{ position: "absolute", pointerEvents: "none", zIndex: 10, display: "none" }} />
