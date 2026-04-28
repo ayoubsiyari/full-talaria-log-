@@ -7326,6 +7326,28 @@ class OrderManager {
                     display: none !important;
                 }
 
+                /* V9 React shell: keep native #orderPanel in DOM for order-manager logic/events,
+                   but hide it — the visible UI is React inside #v9OrderPanelMount. */
+                .order-panel.order-panel--v9-react-hidden {
+                    position: fixed !important;
+                    left: -9999px !important;
+                    top: 0 !important;
+                    right: auto !important;
+                    width: 420px !important;
+                    max-width: 420px !important;
+                    height: 100vh !important;
+                    opacity: 0 !important;
+                    pointer-events: none !important;
+                    z-index: -1 !important;
+                    margin: 0 !important;
+                    transform: none !important;
+                    box-shadow: none !important;
+                    transition: none !important;
+                }
+                .order-panel.order-panel--v9-react-hidden.visible {
+                    right: auto !important;
+                }
+
                 /* ── EDGE HANDLE ─────────────────────────────────────────────────── */
                 .order-panel__edge-handle {
                     position: absolute;
@@ -11987,6 +12009,17 @@ class OrderManager {
     syncOrderPanelMountTarget() {
         const panel = document.getElementById('orderPanel');
         if (!panel) return;
+
+        if (typeof window !== 'undefined' && window.__talariaV9ReactOrderUi) {
+            panel.classList.remove('order-panel--v9-docked');
+            panel.classList.add('order-panel--v9-react-hidden');
+            if (panel.parentElement !== document.body) {
+                document.body.appendChild(panel);
+            }
+            return;
+        }
+
+        panel.classList.remove('order-panel--v9-react-hidden');
         const mount = document.getElementById('v9OrderPanelMount');
         const useMount = typeof window !== 'undefined' && window.__talariaV9OrderRailOpen
             && mount && mount.isConnected;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { V9ReactPlaceOrder } from "./V9ReactPlaceOrder.jsx";
 
 // ── Color utilities ──────────────────────────────────────────────────────────
 function parseColor(str) {
@@ -297,28 +298,6 @@ const EMOJI_CATS = [
   { id:"objects",  icon:"💡", label:"Objects",  emojis:["💡","🔦","🕯","📱","💻","⌨️","🖥","🖨","🖱","💾","💿","📀","📷","📸","📹","🎥","📞","☎️","📺","📻","🎙","⏱","⏰","⌚","📡","🔋","🔌","💰","💳","💎","🔑","🗝","🔒","🔓","🔨","🔧","🔩","⚙️","⚒","🛠","🗡","⚔️","🛡","🪚","🔗","📎","🖇","📏","📐","✂️","🗃","📦","📫","📬","📭","📮","🗑","🚽","🛁","🧴","🧹","🧺","🧻","🪣","🧼","🪥","🪒","🛒","🚪","🪟","🛏","🛋","🪑","🚿","🪞","🧲","🪜","🧯","🛒","💈","⚗️","🔭","🔬","🩺","🩻","💊","🩹","🩼","🩺","🩻","🧪","🧫","🧬","🏺","🧿","💎"] },
   { id:"symbols",  icon:"❤️", label:"Symbols",  emojis:["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️","☪️","🕉","✡️","🔯","🕎","☯️","🛐","⛔","🚫","💯","✅","❌","❎","🔴","🟠","🟡","🟢","🔵","🟣","⚫","⚪","🟤","🔺","🔻","💠","🔶","🔷","🔸","🔹","▪️","▫️","◾","◽","⬛","⬜","🔱","⚜️","🏵","🔰","♻️","✔️","☑️","🔘","🔲","🔳","⬜","⬛","🏁","🚩","🎌","🏴","🏳","🏴‍☠️","💢","💥","💫","💦","💨","🕳","💬","💭","💤","♠️","♥️","♦️","♣️","🃏","🎴","🀄"] },
 ];
-
-/** DOM mount for chart.js `order-manager` `#orderPanel` inside the V9 order rail / detached shell. */
-function V9OrderPanelMountHost() {
-  useLayoutEffect(() => {
-    if (typeof window !== "undefined") {
-      window.__talariaV9OrderRailOpen = true;
-      window.chart?.orderManager?.syncOrderPanelMountTarget?.();
-    }
-    return () => {
-      if (typeof window !== "undefined") {
-        window.__talariaV9OrderRailOpen = false;
-        window.chart?.orderManager?.syncOrderPanelMountTarget?.();
-      }
-    };
-  }, []);
-  return (
-    <div
-      id="v9OrderPanelMount"
-      style={{ flex: 1, minHeight: 0, position: "relative", overflow: "hidden", width: "100%" }}
-    />
-  );
-}
 
 const TalariaV8bLive = () => {
   const [tool, setTool] = useState("crosshair");
@@ -12474,7 +12453,7 @@ const TalariaV8bLive = () => {
           ? { position:"fixed", top:detachPos.y, left:detachPos.x, width:detachSize.w, height:detachSize.h, background:c.sf, border:`1px solid rgba(140,160,255,0.28)`, display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:F, zIndex:9100, boxShadow:"0 12px 40px rgba(0,0,0,0.75), 0 0 0 1px rgba(140,160,255,0.18)", animation:"tlrPanelIn 0.18s ease forwards" }
           : { width:"100%", background:c.sf, borderLeft:`2px solid rgba(140,160,255,0.3)`, display:"flex", flexDirection:"column", height:"100%", animation:"tlrPanelIn 0.18s ease forwards", overflow:"hidden", fontFamily:F }
         }>
-          <V9OrderPanelMountHost />
+          <V9ReactPlaceOrder c={c} F={F} symbol={symbol} currentSymbol={currentSymbol} setOrderPanelOpen={setOrderPanelOpen} />
           {panelDetached && <>
             <div onMouseDown={e=>{ e.preventDefault(); e.stopPropagation(); const sx=e.clientX,sw=detachSize.w; let nw=sw; const mv=me=>{ nw=Math.max(280,Math.min(sw+(me.clientX-sx),window.innerWidth-detachPos.x)); if(panelRef.current) panelRef.current.style.width=nw+"px"; }; const up=()=>{ setDetachSize(s=>({...s,w:nw})); window.removeEventListener("mousemove",mv);window.removeEventListener("mouseup",up);}; window.addEventListener("mousemove",mv);window.addEventListener("mouseup",up); }} style={{position:"absolute",right:0,top:0,bottom:0,width:5,cursor:"ew-resize",zIndex:20}}/>
             <div onMouseDown={e=>{ e.preventDefault(); e.stopPropagation(); const sy=e.clientY,sh=detachSize.h; let nh=sh; const mv=me=>{ nh=Math.max(300,Math.min(sh+(me.clientY-sy),window.innerHeight-detachPos.y)); if(panelRef.current) panelRef.current.style.height=nh+"px"; }; const up=()=>{ setDetachSize(s=>({...s,h:nh})); window.removeEventListener("mousemove",mv);window.removeEventListener("mouseup",up);}; window.addEventListener("mousemove",mv);window.addEventListener("mouseup",up); }} style={{position:"absolute",bottom:0,left:0,right:0,height:5,cursor:"ns-resize",zIndex:20}}/>
