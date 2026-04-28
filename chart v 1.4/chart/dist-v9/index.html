@@ -297,6 +297,11 @@
     <!-- Replay system — must load AFTER chart.js (depends on it). -->
     <script defer src="/chart/modules/replay-system.js?v=20260428_goback_cut"></script>
 
+    <!-- Order: bus + service + #orderPanel (V9 React shell drives hidden DOM) -->
+    <script defer src="/chart/modules/order-event-bus.js?v=20260428_place_order_v9"></script>
+    <script defer src="/chart/modules/order-service.js?v=20260428_place_order_v9"></script>
+    <script defer src="/chart/modules/order-manager.js?v=20260428_v9_om_wiring"></script>
+
     <!-- Indicators: extend Chart.prototype, must load after chart.js. -->
     <script defer src="/chart/modules/chart-indicators-full.js?v=20260428b_dblclick_v9"></script>
 
@@ -304,7 +309,7 @@
          it can wire scroll-sync against window.chart. The legacy index.html
          instantiates this inline; V9's bootstrap below does the same. -->
     <script defer src="/chart/modules/panel-manager.js?v=20260428b_dblclick_v9"></script>
-  <script type="module" crossorigin src="/chart/dist-v9/assets/index-DxPq8snS.js"></script>
+  <script type="module" crossorigin src="/chart/dist-v9/assets/index-Ch0C1BHe.js"></script>
 </head>
 <body>
     <div id="backtestingLoader" aria-live="polite" aria-busy="true">
