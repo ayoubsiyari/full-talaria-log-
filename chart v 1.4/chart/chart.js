@@ -13439,6 +13439,26 @@ class Chart {
     }
     
     /**
+     * Pointer position in canvas CSS pixels (same as updateCrosshair). Prefer over
+     * d3.pointer(..., svg) so Safari matches Chromium when SVG/canvas layout rects differ.
+     */
+    _eventCanvasLocalXY(event) {
+        if (!this.canvas || !event) return [0, 0];
+        let cx = event.clientX;
+        let cy = event.clientY;
+        if (!Number.isFinite(cx) || !Number.isFinite(cy)) {
+            const t = (event.touches && event.touches[0]) || (event.changedTouches && event.changedTouches[0]);
+            if (t) {
+                cx = t.clientX;
+                cy = t.clientY;
+            }
+        }
+        if (!Number.isFinite(cx) || !Number.isFinite(cy)) return [0, 0];
+        const r = this.canvas.getBoundingClientRect();
+        return [cx - r.left, cy - r.top];
+    }
+    
+    /**
      * Convert pixel X coordinate to data index
      * @param {number} pixelX - Pixel X coordinate
      * @returns {number} Data index
@@ -15185,7 +15205,7 @@ class Chart {
                 return;
             }
             
-            const [x, y] = d3.pointer(event);
+            const [x, y] = this._eventCanvasLocalXY(event);
             
             // Ensure we have valid scales before proceeding
             if (!this.xScale || !this.yScale) {
@@ -15257,7 +15277,7 @@ class Chart {
             event.preventDefault();
             
             // Get current pointer coordinates - snap to candle center
-            const [rawX, y] = d3.pointer(event);
+            const [rawX, y] = this._eventCanvasLocalXY(event);
             const snapIdx = Math.round(this.pixelToDataIndex(rawX));
             const x = this.dataIndexToPixel(snapIdx);
             
@@ -15403,7 +15423,7 @@ class Chart {
             }
             
             if (!this.tool) { // Only handle selection when not in drawing mode
-                const [x, y] = d3.pointer(event);
+                const [x, y] = this._eventCanvasLocalXY(event);
                 const foundDrawing = this.findDrawingAtPoint(x, y);
                 
                 if (foundDrawing) {
@@ -15423,7 +15443,7 @@ class Chart {
         // Handle drawing completion on SVG mouseup
         this.svg.on('mouseup', (event) => {
             if (start && startData && this.tool) {  // Only handle if we're in drawing mode
-                const [rawX, y] = d3.pointer(event);
+                const [rawX, y] = this._eventCanvasLocalXY(event);
                 // Snap end point to candle center
                 const endIdx = Math.round(this.pixelToDataIndex(rawX));
                 const x = this.dataIndexToPixel(endIdx);
@@ -16166,8 +16186,7 @@ class Chart {
                     event.stopPropagation();
                     event.preventDefault();
                     
-                    const svgNode = chart.svg.node();
-                    const [mouseX, mouseY] = d3.pointer(event, svgNode);
+                    const [mouseX, mouseY] = chart._eventCanvasLocalXY(event);
                     
                     // Store initial positions for dragging
                     dragStartData = {
@@ -16195,9 +16214,7 @@ class Chart {
                         moveEvent.stopPropagation();
                         moveEvent.preventDefault();
                         
-                        // Get coordinates relative to the SVG
-                        const svgNode = chart.svg.node();
-                        const [currentX, currentY] = d3.pointer(moveEvent, svgNode);
+                        const [currentX, currentY] = chart._eventCanvasLocalXY(moveEvent);
                         
                         // Calculate pixel deltas
                         const dx = currentX - dragStartData.mouseX;

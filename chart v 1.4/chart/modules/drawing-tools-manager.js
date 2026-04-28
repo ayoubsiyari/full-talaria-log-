@@ -2971,12 +2971,45 @@ class DrawingToolsManager {
     }
 
     /**
+     * Canvas-local CSS pixels — same space as Chart.updateCrosshair (clientX/Y − canvas rect).
+     * Avoid d3.pointer(..., svg): Safari can diverge from Chromium when SVG vs canvas
+     * getBoundingClientRect differ (subpixels / compositing), so drawings no longer match the pointer or crosshair.
+     */
+    _eventCanvasLocalXY(event) {
+        const unwrap = (ev) => (ev && ev.sourceEvent) ? ev.sourceEvent : ev;
+        const raw = unwrap(event);
+        const canvas = this.chart && this.chart.canvas;
+        const fallback = () => {
+            try {
+                return d3.pointer(raw || event, this.svg.node());
+            } catch (_) {
+                return [0, 0];
+            }
+        };
+        if (!canvas || !raw) return fallback();
+
+        let cx = raw.clientX;
+        let cy = raw.clientY;
+        if (!Number.isFinite(cx) || !Number.isFinite(cy)) {
+            const t = (raw.touches && raw.touches[0]) || (raw.changedTouches && raw.changedTouches[0]);
+            if (t) {
+                cx = t.clientX;
+                cy = t.clientY;
+            }
+        }
+        if (!Number.isFinite(cx) || !Number.isFinite(cy)) return fallback();
+
+        const rect = canvas.getBoundingClientRect();
+        return [cx - rect.left, cy - rect.top];
+    }
+
+    /**
      * Get data point from mouse event
      * Returns {x: candleIndex, y: price}
      * For freehand tools (path, brush, highlighter), uses continuous coordinates for smooth curves
      */
     getDataPoint(event, toolTypeOverride = this.currentTool) {
-        let [screenX, screenY] = d3.pointer(event, this.svg.node());
+        let [screenX, screenY] = this._eventCanvasLocalXY(event);
         const activeToolType = toolTypeOverride || this.currentTool;
 
         const isResizingVolumeProfileRightBoundary = this.isVolumeProfileToolType(activeToolType)
@@ -4280,7 +4313,7 @@ class DrawingToolsManager {
 
         const getDragDataPoint = (dragEvent) => {
             const src = (dragEvent && dragEvent.sourceEvent) ? dragEvent.sourceEvent : dragEvent;
-            const ptr = d3.pointer(src, self.svg.node());
+            const ptr = self._eventCanvasLocalXY(src);
             const screenX = ptr[0];
             const screenY = ptr[1];
             const point = CoordinateUtils.screenToData(screenX, screenY, {
@@ -5177,7 +5210,7 @@ class DrawingToolsManager {
                     ? this.resizingDrawing.type
                     : this.currentTool;
         const point = this.getDataPoint(sourceEvent, toolTypeForPoint);
-        const [screenX, screenY] = d3.pointer(sourceEvent, this.svg.node());
+        const [screenX, screenY] = this._eventCanvasLocalXY(sourceEvent);
         // Get scales from chart instance
         const scales = {
             xScale: this.chart.xScale,
