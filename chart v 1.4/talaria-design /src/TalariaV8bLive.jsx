@@ -353,6 +353,10 @@ const TalariaV8bLive = () => {
   const [omRewardSummaryTxt, setOmRewardSummaryTxt] = useState("$0");
   const [omSlDistTxt, setOmSlDistTxt] = useState("—");
   const [omTpDistTxt, setOmTpDistTxt] = useState("—");
+  /** Per-row strings scraped from hidden #orderPanel (order-manager) — matches chart/preview math. */
+  const [omEntryRowStatLines, setOmEntryRowStatLines] = useState([]);
+  const [omTpRowStatLines, setOmTpRowStatLines] = useState([]);
+  const [omMultiEntryTotalQtyTxt, setOmMultiEntryTotalQtyTxt] = useState("");
   const [tagDefs] = useState([
     { id:"setup",     label:"Setup OK",    type:"bool" },
     { id:"htf",       label:"HTF Bias",    type:"bool" },
@@ -2279,6 +2283,16 @@ const TalariaV8bLive = () => {
           if (numEl && String(numEl.value || "") !== String(nextTgts.length)) {
             numEl.value = String(nextTgts.length);
           }
+        } else if (om && omHasMultiTp && tpRows.length === 1) {
+          // React has one TP row but OM still lists multiple (bridge missed remove). Drop extras so preview math matches.
+          while (Array.isArray(om.tpTargets) && om.tpTargets.length > 1) {
+            const last = om.tpTargets[om.tpTargets.length - 1];
+            try {
+              om.removeTPTarget(last != null && last.id != null ? last.id : om.tpTargets.length - 1);
+            } catch (_) {
+              break;
+            }
+          }
         } else if (!omHasMultiTp) {
           const mtpEl = document.getElementById("multipleTPToggle");
           if (mtpEl?.checked && tpActive.length <= 1) {
@@ -2375,6 +2389,10 @@ const TalariaV8bLive = () => {
       } else {
         setEntryRows((rows) => {
           if (!rows.length) return rows;
+          if (rows.length > 1) {
+            const r0 = rows[0];
+            return [{ ...r0, price: ep, risk: r0.risk }];
+          }
           const epp = parseFloat(ep);
           const cur = parseFloat(rows[0].price || "0");
           if (Number.isFinite(epp) && Number.isFinite(cur) && Math.abs(cur - epp) < 1e-8) return rows;
@@ -2423,8 +2441,12 @@ const TalariaV8bLive = () => {
       } else {
         setTpRows((rows) => {
           if (!rows.length) return rows;
-          const r0 = rows[0];
           const tpOn = !!document.getElementById("enableTP")?.checked;
+          if (rows.length > 1) {
+            const r0 = rows[0];
+            return [{ ...r0, price: tpp, qty: r0.qty ?? "100", enabled: tpOn }];
+          }
+          const r0 = rows[0];
           const tppN = parseFloat(tpp);
           const curP = parseFloat(r0.price || "0");
           const priceChg = !Number.isFinite(tppN) || !Number.isFinite(curP) || Math.abs(curP - tppN) >= 1e-8;
@@ -2474,6 +2496,24 @@ const TalariaV8bLive = () => {
       const td = document.getElementById("tpDistanceDisplay")?.textContent?.trim() || "—";
       setOmSlDistTxt((prev) => (prev === sd ? prev : sd));
       setOmTpDistTxt((prev) => (prev === td ? prev : td));
+
+      const entryInfos = Array.from(document.querySelectorAll("#multiEntryRows .multi-entry-row-info")).map(
+        (el) => el.textContent?.replace(/\s+/g, " ").trim() || ""
+      );
+      setOmEntryRowStatLines((prev) =>
+        prev.length === entryInfos.length && prev.every((v, i) => v === entryInfos[i]) ? prev : entryInfos
+      );
+      const mq = document.getElementById("multiEntryTotalQty")?.textContent?.trim() || "";
+      setOmMultiEntryTotalQtyTxt((prev) => (prev === mq ? prev : mq));
+
+      const tpStats = Array.from(document.querySelectorAll("#multipleTPList .order-tp-multi__row")).map((row) => {
+        const rr = row.querySelector(".order-tp-multi__row-rr input")?.value?.trim() ?? "—";
+        const profit = row.querySelector(".order-tp-multi__row-profit input")?.value?.trim() ?? "0";
+        return `${rr}R · $${profit}`;
+      });
+      setOmTpRowStatLines((prev) =>
+        prev.length === tpStats.length && prev.every((v, i) => v === tpStats[i]) ? prev : tpStats
+      );
     };
 
     tick();
@@ -13036,6 +13076,21 @@ const TalariaV8bLive = () => {
             const stepRow = (id, field, dir, step=1) => setEntryRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
             const delRow = (id) => {
               omPanelBridgeRef.current.entryDel = Date.now();
+              const om = window.chart?.orderManager;
+              if (om && typeof om.removeMultiEntryLevel === "function" && Array.isArray(om.multiEntryLevels)) {
+                const idx = entryRows.findIndex((r) => r.id === id);
+                if (idx >= 0) {
+                  const lev = om.multiEntryLevels[idx];
+                  const rid = lev && lev.id != null ? lev.id : id;
+                  try {
+                    om.removeMultiEntryLevel(rid);
+                  } catch (_) {
+                    try {
+                      om.removeMultiEntryLevel(id);
+                    } catch (_) {}
+                  }
+                }
+              }
               setEntryRows((rows) => (rows.length > 1 ? rows.filter((r) => r.id !== id) : rows));
             };
             const addRow = () => {
@@ -13155,19 +13210,21 @@ const TalariaV8bLive = () => {
                               {arw(()=>stepRow(row.id,"risk",-1), false, `er-${row.id}-dn`)}
                             </div>
                           </div>
-                          {/* Pct · lots inline */}
+                          {/* Pct · lots inline — prefer OM-rendered line from hidden #multiEntryRows when present */}
                           <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", whiteSpace:"nowrap", flexShrink:0 }}>
-                            {sizeMode==="$"
-                              ? <><span style={{ color:c.ts }}>{pct}%</span>{" · "}0.00 {sizeUnit}</>
-                              : sizeMode==="%"
-                              ? <><span style={{ color:c.ts }}>${(parseFloat(row.risk||"0")/100*(riskBasis==="balance"?accountBalance:accountEquity)).toFixed(0)}</span>{" · "}0.00 {sizeUnit}</>
-                              : <>0.00 {sizeUnit}</>
+                            {omEntryRowStatLines[i]
+                              ? omEntryRowStatLines[i]
+                              : sizeMode==="$"
+                                ? <><span style={{ color:c.ts }}>{pct}%</span>{" · "}0.00 {sizeUnit}</>
+                                : sizeMode==="%"
+                                  ? <><span style={{ color:c.ts }}>${(parseFloat(row.risk||"0")/100*(riskBasis==="balance"?accountBalance:accountEquity)).toFixed(0)}</span>{" · "}0.00 {sizeUnit}</>
+                                  : <>0.00 {sizeUnit}</>
                             }
                           </span>
                           <div style={{ flex:1 }}/>
                           {/* Delete — far right, hidden when only 1 row */}
                           {entryRows.length > 1 ? (
-                            <div onClick={()=>delRow(row.id)}
+                            <div onClick={(e) => { e.stopPropagation(); delRow(row.id); }}
                               onMouseEnter={()=>setSwHov(`ed-${row.id}`)} onMouseLeave={()=>setSwHov(null)}
                               style={{ width:16, height:20, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0, color:swHov===`ed-${row.id}`?c.rd:c.ts, transition:"color 0.1s" }}>
                               <I n="x" s={9} cl={swHov===`ed-${row.id}`?c.rd:c.ts}/>
@@ -13185,7 +13242,7 @@ const TalariaV8bLive = () => {
                         Avg <span style={{ color:c.ts, fontWeight:700 }}>{avgPrice}</span>
                       </span>
                       <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
-                        Qty <span style={{ color:c.ts, fontWeight:700 }}>0.00 {sizeUnit}</span>
+                        Qty <span style={{ color:c.ts, fontWeight:700 }}>{omMultiEntryTotalQtyTxt || `0.00 ${sizeUnit}`}</span>
                       </span>
                     </div>
                   )}
@@ -13544,6 +13601,21 @@ const TalariaV8bLive = () => {
             const stepTp = (id, field, dir, step=1) => setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:String(Math.max(0, parseFloat(r[field]||"0")+dir*step))} : r));
             const delTp = (id) => {
               omPanelBridgeRef.current.tpDel = Date.now();
+              const om = window.chart?.orderManager;
+              if (om && typeof om.removeTPTarget === "function" && Array.isArray(om.tpTargets) && om.tpTargets.length) {
+                const idx = tpRows.findIndex((r) => r.id === id);
+                if (idx >= 0) {
+                  const t = om.tpTargets[idx];
+                  const rid = t && t.id != null ? t.id : idx;
+                  try {
+                    om.removeTPTarget(rid);
+                  } catch (_) {
+                    try {
+                      om.removeTPTarget(idx);
+                    } catch (_) {}
+                  }
+                }
+              }
               setTpRows((rows) => (rows.length > 1 ? rows.filter((r) => r.id !== id) : rows));
             };
             const addTp = () => {
@@ -13553,7 +13625,21 @@ const TalariaV8bLive = () => {
                 if (tpScrollRef.current) tpScrollRef.current.scrollTop = tpScrollRef.current.scrollHeight;
               }, 0);
             };
-            const clearTp = () => setTpRows([{id:Date.now(), price:"0", qty:"100", enabled:true}]);
+            const clearTp = () => {
+              omPanelBridgeRef.current.tpDel = Date.now();
+              const om = window.chart?.orderManager;
+              if (om && typeof om.removeTPTarget === "function" && Array.isArray(om.tpTargets)) {
+                while (om.tpTargets.length > 0) {
+                  const last = om.tpTargets[om.tpTargets.length - 1];
+                  try {
+                    om.removeTPTarget(last?.id != null ? last.id : om.tpTargets.length - 1);
+                  } catch (_) {
+                    break;
+                  }
+                }
+              }
+              setTpRows([{ id: Date.now(), price: "0", qty: "100", enabled: true }]);
+            };
             const equalizeTp = () => { const each = (100/tpRows.length).toFixed(0); setTpRows(rows => rows.map(r => ({...r, qty:each}))); };
             const arw = (onClick, up, hk) => {
               const isH = swHov===hk;
@@ -13684,16 +13770,18 @@ const TalariaV8bLive = () => {
                               {arw(()=>stepTp(row.id,"qty",-1), false, `tq-${row.id}-dn`)}
                             </div>
                           </div>
-                          {/* Pct · lots inline */}
+                          {/* Pct · lots / RR+profit — prefer OM multi-TP row from hidden #multipleTPList */}
                           <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", whiteSpace:"nowrap", flexShrink:0 }}>
-                            {sizeMode==="#"
-                              ? <>0.00 {sizeUnit}</>
-                              : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}0.00 {sizeUnit}</>
+                            {omTpRowStatLines[i]
+                              ? omTpRowStatLines[i]
+                              : sizeMode==="#"
+                                ? <>0.00 {sizeUnit}</>
+                                : <><span style={{ color:c.ts }}>{pct}%</span>{" · "}0.00 {sizeUnit}</>
                             }
                           </span>
                           <div style={{ flex:1 }}/>
                           {tpRows.length > 1 ? (
-                            <div onClick={()=>delTp(row.id)}
+                            <div onClick={(e) => { e.stopPropagation(); delTp(row.id); }}
                               onMouseEnter={()=>setSwHov(`tpd-${row.id}`)} onMouseLeave={()=>setSwHov(null)}
                               style={{ width:16, height:20, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", flexShrink:0, color:swHov===`tpd-${row.id}`?c.rd:c.ts, transition:"color 0.1s" }}>
                               <I n="x" s={9} cl={swHov===`tpd-${row.id}`?c.rd:c.ts}/>
