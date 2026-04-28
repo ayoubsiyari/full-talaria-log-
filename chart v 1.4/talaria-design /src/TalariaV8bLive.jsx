@@ -2133,14 +2133,31 @@ const TalariaV8bLive = () => {
         else if (sizeMode === "%") setIn("riskAmountPercent", riskVal);
         else setIn("lotSizeAmount", riskVal);
 
-        setIn("orderEntryPrice", entryRows[0]?.price ?? "0");
-        setIn("slPrice", slPrice);
-        setIn("tpPrice", tpRows[0]?.price ?? "0");
-
         const om = window.chart?.orderManager;
+        // Preview lines require #orderEntryPrice > 0 (order-manager.js updatePreviewLines). The V8b
+        // mock defaults entry to "0"; writing that wipes the live price updateOrderPanelPrice() set.
+        const entryPx = parseFloat(entryRows[0]?.price ?? "0");
+        if (entryPx > 0) {
+          setIn("orderEntryPrice", String(entryPx));
+        } else {
+          om?.updateOrderPanelPrice?.();
+        }
+
+        const slPx = parseFloat(String(slPrice ?? "0"));
+        if (slPx > 0) setIn("slPrice", String(slPrice));
+
+        const tpPx = parseFloat(tpRows[0]?.price ?? "0");
+        if (tpPx > 0) setIn("tpPrice", String(tpRows[0].price));
+
         om?.calculatePositionFromRisk?.();
         om?.calculateAdvancedRiskReward?.();
         om?.updatePlaceButtonText?.();
+
+        requestAnimationFrame(() => {
+          try {
+            om?.updatePreviewLines?.();
+          } catch (_) {}
+        });
       } catch (_) {}
     }, 80);
 
