@@ -1088,45 +1088,24 @@ class ScreenshotManager {
         document.getElementById('copyToClipboard').onclick = () => this.takeScreenshot('copy');
     }
     
-    _readLegacyModalScreenshotOptions() {
-        return {
-            includeToolbar: document.getElementById('includeToolbar')?.checked ?? true,
-            includeSidebar: document.getElementById('includeSidebar')?.checked ?? false,
-            includeDrawings: document.getElementById('includeDrawings')?.checked ?? true,
-            includeWatermark: document.getElementById('includeWatermark')?.checked ?? true,
-            format: document.querySelector('input[name="imageFormat"]:checked')?.value ?? 'png',
-            quality: parseFloat(document.getElementById('imageQuality')?.value ?? 0.9),
-        };
-    }
-
     /**
-     * Capture chart to clipboard or file — options supplied by caller (e.g. V9 React shell).
-     * Does not open the legacy DOM screenshot modal.
-     * @param {'download'|'copy'} action
-     * @param {object} rawOpts
-     * @param {boolean} [rawOpts.flash=true] Run full-screen flash (set false if UI already flashed)
-     * @param {boolean} [rawOpts.removeLegacyModal=false] Remove #screenshotModal and wait 50ms (legacy modal flow only)
+     * Take screenshot
      */
-    async takeScreenshotFromOptions(action = 'download', rawOpts = {}) {
-        const {
-            flash = true,
-            removeLegacyModal = false,
-            includeToolbar = true,
-            includeSidebar = false,
-            includeWatermark = true,
-            format = 'png',
-            quality = 0.9,
-        } = rawOpts;
-
-        if (flash) {
-            this.flashCapture();
-        }
+    async takeScreenshot(action = 'download') {
+        this.flashCapture();
 
         try {
-            if (removeLegacyModal) {
-                document.getElementById('screenshotModal')?.remove();
-                await new Promise((resolve) => setTimeout(resolve, 50));
-            }
+            // Get options
+            const includeToolbar = document.getElementById('includeToolbar')?.checked ?? true;
+            const includeSidebar = document.getElementById('includeSidebar')?.checked ?? false;
+            const includeDrawings = document.getElementById('includeDrawings')?.checked ?? true;
+            const includeWatermark = document.getElementById('includeWatermark')?.checked ?? true;
+            const format = document.querySelector('input[name="imageFormat"]:checked')?.value ?? 'png';
+            const quality = parseFloat(document.getElementById('imageQuality')?.value ?? 0.9);
+            
+            // Close the modal first
+            document.getElementById('screenshotModal')?.remove();
+            await new Promise(resolve => setTimeout(resolve, 50));
 
             // Get the chart container
             let targetElement = document.getElementById('chart-container');
@@ -1232,18 +1211,6 @@ class ScreenshotManager {
             console.error('❌ Screenshot error:', error);
             this.showNotification('Screenshot failed: ' + error.message, 'error');
         }
-    }
-
-    /**
-     * Legacy "Take Screenshot" modal: read checkboxes from #screenshotModal, then capture.
-     */
-    async takeScreenshot(action = 'download') {
-        const opts = this._readLegacyModalScreenshotOptions();
-        return this.takeScreenshotFromOptions(action, {
-            ...opts,
-            flash: true,
-            removeLegacyModal: true,
-        });
     }
     
     /**
