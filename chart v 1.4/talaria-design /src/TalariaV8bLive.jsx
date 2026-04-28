@@ -1743,7 +1743,13 @@ const TalariaV8bLive = () => {
   //   priceLineColor → priceLineColor
   //   priceLine   → showPriceLine
   //   textColor   → scaleTextColor + symbolTextColor
-  //   unifiedBarColorVal → unifiedBarColor (kept enabled when non-empty)
+  //   unifiedBarColor (checkbox) → unifiedBarColorEnabled
+  //   unifiedBarColorVal → unifiedBarColor (hex)
+  //   gridLinesOn → showGrid + gridStyle (Vert and horz | None)
+  //   gridLineStyle / gridLineThickness → gridPattern, gridLineWidth
+  //   crosshairOn → showCrosshair (chart.js updateCrosshair + panel sync)
+  //   crosshairStyle → crosshairPattern
+  //   priceLineStyle / priceLineThickness → priceLinePattern, priceLineWidth
   useEffect(() => {
     const apply = () => {
       const chart = window.chart;
@@ -1771,11 +1777,71 @@ const TalariaV8bLive = () => {
         if (v == null) continue;
         if (cs[k] !== v) { cs[k] = v; changed = true; }
       }
-      // unifiedBarColor: only push when V9 actually has a value to apply.
+      // chart.js reads unifiedBarColorEnabled + unifiedBarColor (see drawCandles); both are required.
+      const wantUnified = !!settings.unifiedBarColor;
+      if (cs.unifiedBarColorEnabled !== wantUnified) {
+        cs.unifiedBarColorEnabled = wantUnified;
+        changed = true;
+      }
       if (settings.unifiedBarColorVal && cs.unifiedBarColor !== settings.unifiedBarColorVal) {
         cs.unifiedBarColor = settings.unifiedBarColorVal;
         changed = true;
       }
+
+      const applyCanvasTheme = (targetCs) => {
+        let c = false;
+        const wantGrid = !!settings.gridLinesOn;
+        if (targetCs.showGrid !== wantGrid) {
+          targetCs.showGrid = wantGrid;
+          c = true;
+        }
+        const gridStyleVal = wantGrid ? "Vert and horz" : "None";
+        if (targetCs.gridStyle !== gridStyleVal) {
+          targetCs.gridStyle = gridStyleVal;
+          c = true;
+        }
+        const gPat =
+          ({ solid: "solid", dashed: "dashed", dotted: "dotted", longDash: "longDash" })[settings.gridLineStyle] ||
+          "solid";
+        if (targetCs.gridPattern !== gPat) {
+          targetCs.gridPattern = gPat;
+          c = true;
+        }
+        const gLw = Math.max(1, parseInt(settings.gridLineThickness, 10) || 1);
+        if (targetCs.gridLineWidth !== gLw) {
+          targetCs.gridLineWidth = gLw;
+          c = true;
+        }
+
+        const wantCross = !!settings.crosshairOn;
+        if (targetCs.showCrosshair !== wantCross) {
+          targetCs.showCrosshair = wantCross;
+          c = true;
+        }
+        let cxPat = settings.crosshairStyle || "dashed";
+        if (cxPat === "longDash") cxPat = "dashed";
+        if (cxPat !== "solid" && cxPat !== "dotted") cxPat = "dashed";
+        if (targetCs.crosshairPattern !== cxPat) {
+          targetCs.crosshairPattern = cxPat;
+          c = true;
+        }
+
+        const pPat =
+          ({ solid: "solid", dashed: "dashed", dotted: "dotted", longDash: "longDash" })[settings.priceLineStyle] ||
+          "solid";
+        if (targetCs.priceLinePattern !== pPat) {
+          targetCs.priceLinePattern = pPat;
+          c = true;
+        }
+        const pLw = Math.max(1, parseInt(settings.priceLineThickness, 10) || 1);
+        if (targetCs.priceLineWidth !== pLw) {
+          targetCs.priceLineWidth = pLw;
+          c = true;
+        }
+        return c;
+      };
+
+      if (applyCanvasTheme(cs)) changed = true;
       if (!changed) return true;
       try { chart.applyChartSettings?.(); } catch (_) {}
       try { chart.render?.(); } catch (_) {}
@@ -1785,9 +1851,13 @@ const TalariaV8bLive = () => {
         for (const p of panels) {
           const pc = p?.chartInstance;
           if (!pc || pc === chart || !pc.chartSettings) continue;
+          const pcs = pc.chartSettings;
           for (const [k, v] of Object.entries(map)) {
-            if (v != null) pc.chartSettings[k] = v;
+            if (v != null) pcs[k] = v;
           }
+          if (pcs.unifiedBarColorEnabled !== wantUnified) pcs.unifiedBarColorEnabled = wantUnified;
+          if (settings.unifiedBarColorVal) pcs.unifiedBarColor = settings.unifiedBarColorVal;
+          applyCanvasTheme(pcs);
           try { pc.applyChartSettings?.(); } catch (_) {}
           try { pc.render?.(); } catch (_) {}
         }

@@ -408,6 +408,7 @@ class Chart {
             gridStyle: 'Vert and horz', // 'Vert and horz', 'Vertical', 'Horizontal', 'None'
             showGrid: true,
             gridPattern: 'solid',
+            gridLineWidth: 1,
             
             // Session breaks
             showSessionBreaks: false,
@@ -456,6 +457,8 @@ class Chart {
             // Price line (last close horizontal line)
             showPriceLine: true,
             priceLineColor: '#2962ff',
+            priceLinePattern: 'dashed', // 'solid' | 'dashed' | 'dotted' | 'longDash'
+            priceLineWidth: 1,
 
             // Area / Baseline chart colors
             areaLineColor: '#089981',
@@ -4663,6 +4666,7 @@ class Chart {
         
         // Initialize settings if not present (already set in constructor)
         if (typeof this.chartSettings.gridPattern === 'undefined') this.chartSettings.gridPattern = 'solid';
+        if (typeof this.chartSettings.gridLineWidth === 'undefined') this.chartSettings.gridLineWidth = 1;
         if (typeof this.chartSettings.gridColor === 'undefined') this.chartSettings.gridColor = 'rgba(42, 46, 57, 0.4)';
         if (typeof this.chartSettings.sessionBreaksPattern === 'undefined') this.chartSettings.sessionBreaksPattern = 'solid';
         if (typeof this.chartSettings.crosshairPattern === 'undefined') this.chartSettings.crosshairPattern = 'dashed';
@@ -4671,6 +4675,8 @@ class Chart {
         if (typeof this.chartSettings.watermarkColor === 'undefined') this.chartSettings.watermarkColor = 'rgba(120, 123, 134, 0.1)';
         if (typeof this.chartSettings.scaleLinePattern === 'undefined') this.chartSettings.scaleLinePattern = 'solid';
         if (typeof this.chartSettings.scaleLineWidth === 'undefined') this.chartSettings.scaleLineWidth = 2;
+        if (typeof this.chartSettings.priceLinePattern === 'undefined') this.chartSettings.priceLinePattern = 'dashed';
+        if (typeof this.chartSettings.priceLineWidth === 'undefined') this.chartSettings.priceLineWidth = 1;
         if (typeof this.chartSettings.scaleTextColor === 'undefined') this.chartSettings.scaleTextColor = '#ffffff';
         if (typeof this.chartSettings.cursorLabelTextColor === 'undefined') this.chartSettings.cursorLabelTextColor = '#d1d4dc';
         if (typeof this.chartSettings.cursorLabelBgColor === 'undefined') this.chartSettings.cursorLabelBgColor = '#363a45';
@@ -11691,11 +11697,21 @@ class Chart {
         
         const showHorizontal = this.chartSettings.gridStyle === 'Vert and horz' || this.chartSettings.gridStyle === 'Horizontal';
         const showVertical = this.chartSettings.gridStyle === 'Vert and horz' || this.chartSettings.gridStyle === 'Vertical';
+
+        const gridLW = Math.max(1, parseInt(this.chartSettings.gridLineWidth, 10) || 1);
+        const gridPat = this.chartSettings.gridPattern || 'solid';
+        const applyGridDash = () => {
+            if (gridPat === 'dashed') this.ctx.setLineDash([6, 4]);
+            else if (gridPat === 'dotted') this.ctx.setLineDash([2, 4]);
+            else if (gridPat === 'longDash') this.ctx.setLineDash([10, 5]);
+            else this.ctx.setLineDash([]);
+        };
         
         // Horizontal grid lines (price levels) - aligned with y-axis labels
         if (showHorizontal) {
             this.ctx.strokeStyle = this.chartSettings.gridColor;
-            this.ctx.lineWidth = 1;
+            this.ctx.lineWidth = gridLW;
+            applyGridDash();
             
             // Use same tick calculation as y-axis to ensure alignment
             const numYTicks = Math.max(8, Math.min(15, Math.floor(ch / 60)));
@@ -11717,7 +11733,8 @@ class Chart {
         // Vertical grid lines – use same tick positions as time-axis labels for perfect sync
         if (showVertical && this._timeTicks && this._timeTicks.length > 0) {
             this.ctx.strokeStyle = this.chartSettings.gridColor;
-            this.ctx.lineWidth = 1;
+            this.ctx.lineWidth = gridLW;
+            applyGridDash();
             for (let i = 0; i < this._timeTicks.length; i++) {
                 const x = this._timeTicks[i].x;
                 if (x >= m.l && x <= this.w - m.r) {
@@ -11733,11 +11750,13 @@ class Chart {
         if (this.chartSettings.showVolume && volumeAreaHeight > 0) {
             this.ctx.strokeStyle = this.chartSettings.gridColor || 'rgba(255, 255, 255, 0.08)';
             this.ctx.lineWidth = 1;
+            this.ctx.setLineDash([]);
             this.ctx.beginPath();
             this.ctx.moveTo(m.l, this.h - m.b - volumeAreaHeight);
             this.ctx.lineTo(this.w - m.r, this.h - m.b - volumeAreaHeight);
             this.ctx.stroke();
         }
+        this.ctx.setLineDash([]);
     }
     
     /**
@@ -13131,10 +13150,14 @@ class Chart {
 
         this.ctx.save();
 
-        // Dashed line across chart area
+        const plPat = this.chartSettings.priceLinePattern || 'dashed';
+        const plW = Math.max(1, parseInt(this.chartSettings.priceLineWidth, 10) || 1);
         this.ctx.strokeStyle = color;
-        this.ctx.lineWidth = 1;
-        this.ctx.setLineDash([4, 4]);
+        this.ctx.lineWidth = plW;
+        if (plPat === 'solid') this.ctx.setLineDash([]);
+        else if (plPat === 'dotted') this.ctx.setLineDash([2, 4]);
+        else if (plPat === 'longDash') this.ctx.setLineDash([10, 5]);
+        else this.ctx.setLineDash([4, 4]);
         this.ctx.beginPath();
         this.ctx.moveTo(m.l, y);
         this.ctx.lineTo(this.w - m.r, y);
@@ -16634,9 +16657,10 @@ class Chart {
         }
         
         // Show crosshair lines for 'cross' cursor type, eraser, drawing tool active, or drawing selected/moved
-        // DON'T show lines for 'dot' or 'arrow' cursor types
+        // DON'T show lines for 'dot' or 'arrow' cursor types. Respect chartSettings.showCrosshair (V9 theme panel).
         const _drawingActive = !!(_dm && (_dm.currentTool || _dm.selectedDrawing || _dm.isDrawing || _dm.isDragging));
-        const showLines = (this.cursorType === 'cross' || this.cursorType === 'eraser' || this.tool || _drawingActive) && this.cursorType !== 'dot';
+        const crosshairSettingOn = this.chartSettings?.showCrosshair !== false;
+        const showLines = crosshairSettingOn && (this.cursorType === 'cross' || this.cursorType === 'eraser' || this.tool || _drawingActive) && this.cursorType !== 'dot';
         const crossColor = (this.chartSettings && this.chartSettings.crosshairColor) || 'rgba(120,123,134,0.4)';
         const crossPattern = (this.chartSettings && this.chartSettings.crosshairPattern) || 'dashed';
         const crossWidth = Math.max(1, parseInt(this.chartSettings?.crosshairWidth, 10) || 2);
@@ -19032,6 +19056,14 @@ class Chart {
             if (priceLabel) priceLabel.style.display = 'none';
             if (timeLabel) timeLabel.style.display = 'none';
             this.currentCrosshairTimestamp = null;
+            return;
+        }
+
+        if (this.chartSettings && this.chartSettings.showCrosshair === false) {
+            if (vLine) vLine.style.display = 'none';
+            if (hLine) hLine.style.display = 'none';
+            if (priceLabel) priceLabel.style.display = 'none';
+            if (timeLabel) timeLabel.style.display = 'none';
             return;
         }
         
