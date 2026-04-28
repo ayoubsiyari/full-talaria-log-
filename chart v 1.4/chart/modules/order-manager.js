@@ -7146,34 +7146,39 @@ class OrderManager {
      */
     createOrderButtons() {
         const toolbar = document.querySelector('.toolbar-right');
-        if (!toolbar) return;
-        
-        const orderContainer = document.createElement('div');
-        orderContainer.id = 'orderButtons';
-        orderContainer.style.cssText = `
-            display: flex;
-            gap: 8px;
-            margin-left: 8px;
-            align-items: center;
-        `;
-        
-        // Place Order Button (styled as "New order")
-        const placeOrderBtn = document.createElement('button');
-        placeOrderBtn.id = 'placeOrderBtn';
-        placeOrderBtn.className = 'new-order-btn';
-        placeOrderBtn.style.cssText = `
-            font-weight: 600;
-            font-size: 13px;
-            min-width: 120px;
-            padding: 8px 16px;
-        `;
-        placeOrderBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></svg> New order';
-        placeOrderBtn.onclick = () => this.toggleOrderPanel();
-        
-        orderContainer.appendChild(placeOrderBtn);
-        toolbar.insertBefore(orderContainer, toolbar.firstChild);
-        
-        // Create the order panel
+        if (toolbar) {
+            const orderContainer = document.createElement('div');
+            orderContainer.id = 'orderButtons';
+            orderContainer.style.cssText = `
+                display: flex;
+                gap: 8px;
+                margin-left: 8px;
+                align-items: center;
+            `;
+
+            // Place Order Button (styled as "New order")
+            const placeOrderBtn = document.createElement('button');
+            placeOrderBtn.id = 'placeOrderBtn';
+            placeOrderBtn.className = 'new-order-btn';
+            placeOrderBtn.style.cssText = `
+                font-weight: 600;
+                font-size: 13px;
+                min-width: 120px;
+                padding: 8px 16px;
+            `;
+            placeOrderBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></svg> New order';
+            placeOrderBtn.onclick = () => this.toggleOrderPanel();
+
+            orderContainer.appendChild(placeOrderBtn);
+            toolbar.insertBefore(orderContainer, toolbar.firstChild);
+            console.log('✅ Order buttons created');
+        } else {
+            // V9 live shell (React) replaces the legacy toolbar — no .toolbar-right.
+            // We still must build #orderPanel so Place Order can dock into #v9OrderPanelMount.
+            console.warn('⚠️ .toolbar-right not found — skipping legacy toolbar buttons; order panel only (V9 / React chrome).');
+        }
+
+        // Always create the panel DOM (was incorrectly gated on .toolbar-right).
         this.createOrderPanel();
 
         if (!this._panelSelectedOrderUiBound && typeof window !== 'undefined') {
@@ -7186,8 +7191,6 @@ class OrderManager {
                 }
             });
         }
-        
-        console.log('✅ Order buttons created');
     }
 
     /**
