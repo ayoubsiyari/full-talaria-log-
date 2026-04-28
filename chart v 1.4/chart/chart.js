@@ -16456,15 +16456,40 @@ class Chart {
             }
         }
 
-        const rect = this.canvas.getBoundingClientRect();
-        // V9 mounts the chart inside a `zoom: 1.05` wrapper. clientX/Y and
-        // getBoundingClientRect both report post-zoom screen pixels, but the
-        // canvas's internal coordinate system (and `this.w`/`this.h`) are
-        // pre-zoom. Divide the offset by the zoom factor so the crosshair
-        // aligns precisely with the real cursor position. Legacy index.html
-        // never sets window.__v9Zoom, so this is a no-op there.
-        const __zV9 = (typeof window !== 'undefined' && Number(window.__v9Zoom)) || 1;
-        const x = (e.clientX - rect.left) / __zV9, y = (e.clientY - rect.top) / __zV9;
+        // Compute mouse position in canvas-internal CSS pixels. V9 wraps the
+        // chart in a `zoom: 1.05` container which makes `clientX - rect.left`
+        // ambiguous (Chrome's interpretation of rect vs clientX under `zoom`
+        // has changed across versions). Prefer `offsetX/Y` when the event
+        // target is the canvas itself — those are defined as CSS pixels
+        // relative to the canvas padding box and are zoom-invariant.
+        let x, y;
+        if (e.target === this.canvas
+            && typeof e.offsetX === 'number' && Number.isFinite(e.offsetX)
+            && typeof e.offsetY === 'number' && Number.isFinite(e.offsetY)) {
+            x = e.offsetX;
+            y = e.offsetY;
+        } else {
+            // Fallback for document/SVG-level listeners and synthetic events.
+            // Detect at runtime whether getBoundingClientRect returns visual
+            // (old Chrome) or CSS (new Chrome) pixels by comparing to
+            // offsetWidth (always in CSS pixels pre-zoom).
+            const rect = this.canvas.getBoundingClientRect();
+            const cssW = this.canvas.offsetWidth || this.canvas.clientWidth || rect.width || 1;
+            const rectScale = rect.width / cssW; // 1 when rect is CSS, zoom when rect is visual
+            const zV9 = (typeof window !== 'undefined' && Number(window.__v9Zoom)) || 1;
+            if (Math.abs(rectScale - 1) < 0.02) {
+                // Modern browsers: rect is in CSS pixels, clientX is in
+                // visual pixels. Convert clientX to CSS by dividing by zoom,
+                // then subtract rect (already CSS).
+                x = e.clientX / zV9 - rect.left;
+                y = e.clientY / zV9 - rect.top;
+            } else {
+                // Legacy: rect and clientX both in visual pixels. Subtract
+                // then divide by the measured scale.
+                x = (e.clientX - rect.left) / rectScale;
+                y = (e.clientY - rect.top) / rectScale;
+            }
+        }
         const m = this.margin;
 
         this.mouseX = x;
