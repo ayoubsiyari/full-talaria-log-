@@ -2389,7 +2389,8 @@ const TalariaV8bLive = () => {
       } else {
         setEntryRows((rows) => {
           if (!rows.length) return rows;
-          if (rows.length > 1) {
+          // Don't collapse while user just clicked "+" — OM is still single-entry until forward bridge runs (~80ms).
+          if (rows.length > 1 && !isOmBridgeLead(omPanelBridgeRef.current.entryAdd)) {
             const r0 = rows[0];
             return [{ ...r0, price: ep, risk: r0.risk }];
           }
@@ -2442,7 +2443,8 @@ const TalariaV8bLive = () => {
         setTpRows((rows) => {
           if (!rows.length) return rows;
           const tpOn = !!document.getElementById("enableTP")?.checked;
-          if (rows.length > 1) {
+          // Don't collapse while user just clicked "+" — OM is still single-TP until forward bridge enables multi.
+          if (rows.length > 1 && !isOmBridgeLead(omPanelBridgeRef.current.tpAdd)) {
             const r0 = rows[0];
             return [{ ...r0, price: tpp, qty: r0.qty ?? "100", enabled: tpOn }];
           }
