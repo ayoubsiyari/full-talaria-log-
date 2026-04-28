@@ -2090,6 +2090,12 @@ const TalariaV8bLive = () => {
     );
   };
   const Z = 1.05; // root zoom — divide getBoundingClientRect values by this before using as fixed CSS coords
+  // Expose the root zoom to chart.js so its crosshair / mouse-coord math
+  // can divide clientX/Y by Z (the canvas's internal coord system is
+  // pre-zoom but mouse events / rect are post-zoom in Chrome's `zoom`).
+  if (typeof window !== 'undefined' && window.__v9Zoom !== Z) {
+    window.__v9Zoom = Z;
+  }
   const cpW = 210; // color picker width
   const CP_H = 280; // color picker estimated height
   const posFromRect = (rect, popW, gapY = 6) => {

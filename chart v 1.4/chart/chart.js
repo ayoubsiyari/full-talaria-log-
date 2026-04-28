@@ -16457,7 +16457,14 @@ class Chart {
         }
 
         const rect = this.canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left, y = e.clientY - rect.top;
+        // V9 mounts the chart inside a `zoom: 1.05` wrapper. clientX/Y and
+        // getBoundingClientRect both report post-zoom screen pixels, but the
+        // canvas's internal coordinate system (and `this.w`/`this.h`) are
+        // pre-zoom. Divide the offset by the zoom factor so the crosshair
+        // aligns precisely with the real cursor position. Legacy index.html
+        // never sets window.__v9Zoom, so this is a no-op there.
+        const __zV9 = (typeof window !== 'undefined' && Number(window.__v9Zoom)) || 1;
+        const x = (e.clientX - rect.left) / __zV9, y = (e.clientY - rect.top) / __zV9;
         const m = this.margin;
 
         this.mouseX = x;
