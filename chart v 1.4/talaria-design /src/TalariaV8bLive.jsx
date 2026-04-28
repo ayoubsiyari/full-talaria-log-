@@ -1431,9 +1431,15 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     if (rightPanel !== "news") {
       try { window.__v9NewsPanelActive = false; } catch (_) {}
+      try {
+        document.getElementById("newsContent")?.classList.remove("active");
+      } catch (_) {}
       return undefined;
     }
     try { window.__v9NewsPanelActive = true; } catch (_) {}
+    try {
+      document.getElementById("newsContent")?.classList.add("active");
+    } catch (_) {}
     const api = window.__economicCalendarUi;
     if (api) {
       const s = api.getStatus();
@@ -1468,6 +1474,9 @@ const TalariaV8bLive = () => {
     const tick = setInterval(bump, 1000);
     return () => {
       try { window.__v9NewsPanelActive = false; } catch (_) {}
+      try {
+        document.getElementById("newsContent")?.classList.remove("active");
+      } catch (_) {}
       window.removeEventListener("economicCalendarUpdated", bump);
       clearInterval(tick);
     };

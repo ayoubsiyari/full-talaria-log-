@@ -2,7 +2,18 @@
 
 import React, { useEffect } from "react";
 
-/** Full-screen embed: static bundle from `chart v 1.4/talaria-design` → `public/talaria-v8b-design/`. */
+/**
+ * Full-screen chart embed.
+ *
+ * `/talaria-v8b-design/` is the **minimal** Vite build (React only — no chart.js, no economic calendar).
+ * For the **full V9 live** chart + Finnhub calendar + markers, the iframe must load the **`build:live`**
+ * output (`chart/dist-v9/`), copied under `public/chart/dist-v9/` so this resolves to `/chart/dist-v9/index.html`.
+ *
+ * Override with `NEXT_PUBLIC_TALARIA_V9_IFRAME_SRC` (e.g. `https://your-api-host/chart/index.html`).
+ */
+const TALARIA_V9_IFRAME_SRC =
+  process.env.NEXT_PUBLIC_TALARIA_V9_IFRAME_SRC || "/chart/dist-v9/index.html";
+
 export default function BacktestDesignDemoPage() {
   useEffect(() => {
     let mounted = true;
@@ -53,8 +64,8 @@ export default function BacktestDesignDemoPage() {
     <div className="fixed inset-0 z-[100] flex flex-col bg-[#07080E] m-0 p-0" dir="ltr" lang="en">
       
       <iframe
-        title="Talaria V8b UI mock"
-        src="/talaria-v8b-design/"
+        title="Talaria V9 live chart"
+        src={TALARIA_V9_IFRAME_SRC}
         className="h-[100dvh] w-full flex-1 shrink-0 border-0"
       />
     </div>
