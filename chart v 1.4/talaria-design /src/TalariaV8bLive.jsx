@@ -4235,8 +4235,11 @@ const TalariaV8bLive = () => {
     if (sub && sub.icon && V9_ICON_TO_LEGACY[sub.icon] !== undefined) {
       return V9_ICON_TO_LEGACY[sub.icon];
     }
-    if (V9_ICON_TO_LEGACY[tool] !== undefined) return V9_ICON_TO_LEGACY[tool];
+    // Per-group defaults before treating `tool` as an icon id. The Volume Tools
+    // group id is `brush` but V9_ICON_TO_LEGACY also maps icon `brush` → highlighter
+    // (Brushes sub-tool); without this order, anchored-vwap never wins.
     if (V9_GROUP_DEFAULT[tool] !== undefined) return V9_GROUP_DEFAULT[tool];
+    if (V9_ICON_TO_LEGACY[tool] !== undefined) return V9_ICON_TO_LEGACY[tool];
     return null;
   };
 
@@ -4935,7 +4938,12 @@ const TalariaV8bLive = () => {
   const renderTB = (t, ref) => {
     // Prefer explicit group icon (e.g. Shapes → rect) before first dropdown row so
     // the rail matches defaults like Rectangle, not the first list item (Triangle).
-    const activeIcon = (t.dd && (groupSelected[t.id]?.icon || t.icon || t.dd.find(x=>!x.h)?.icon)) || t.icon;
+    // Volume Tools (`brush`): group icon is "bars" but default sub-tool is Anchored VWAP.
+    const firstDdIcon = t.dd && t.dd.find(x => !x.h)?.icon;
+    const activeIcon = (t.dd && (
+      groupSelected[t.id]?.icon
+      || (t.id === "brush" ? (firstDdIcon || "vwap") : t.icon || firstDdIcon)
+    )) || t.icon;
     const ddOpen = dropdown === t.id;
     const act = t.id === "pinbar" ? pinnedBarOpen : tool === t.id;
     const h = hov === t.id;
