@@ -1073,10 +1073,8 @@ const TalariaV8bLive = () => {
     return () => window.removeEventListener("timeframeChanged", handleTfChanged);
   }, []);
 
-  // Multi-panel: toolbar pair/TF follow the focused tile. In-chart OHLC labels are
-  // owned by chart.js (#chartSymbol / #chartTimeframe) — not React `symbol` — so we
-  // re-stamp the main chart's OHLC from window.chart after toolbar updates (React can
-  // clear those spans on re-render).
+  // Multi-panel: keep toolbar pair/TF in sync with the focused panel (see also the effect
+  // below that re-stamps main-tile OHLC from window.chart).
   useEffect(() => {
     const normalizeSymbol = (s) => {
       if (!s || typeof s !== "string") return s;
@@ -1116,18 +1114,21 @@ const TalariaV8bLive = () => {
     };
   }, []);
 
-  // Toolbar `symbol` / `tf` can reflect the focused panel; #chartSymbol / #chartTimeframe
-  // must stay the main chart's values (chart.js). Re-stamp after React updates.
+  // Multi-panel: top toolbar `symbol` / `tf` track the focused tile; the main tile's
+  // #chartSymbol / #chartTimeframe must stay `window.chart`'s pair. Re-stamp from chart.js
+  // whenever toolbar state changes so nothing leaves the unsuffixed OHLC nodes stale or wrong.
   useEffect(() => {
-    try {
-      const main = window.chart;
-      if (!main || typeof main.updateChartOHLCSymbol !== "function" || !main.currentSymbol) return;
-      queueMicrotask(() => {
-        try {
-          main.updateChartOHLCSymbol(main.currentSymbol);
-        } catch (_) {}
-      });
-    } catch (_) {}
+    if (typeof window === "undefined") return;
+    if (!v9IsMultiPanelLayoutActive()) return;
+    const main = window.chart;
+    if (!main || typeof main.updateChartOHLCSymbol !== "function") return;
+    const sym = main.currentSymbol;
+    if (!sym) return;
+    requestAnimationFrame(() => {
+      try {
+        main.updateChartOHLCSymbol(sym);
+      } catch (_) {}
+    });
   }, [symbol, tf]);
 
   // ──────────────────────────────────────────────────────────────────────
@@ -4700,6 +4701,28 @@ const TalariaV8bLive = () => {
   };
 
   const ddItems = getDdItems();
+
+  const mainOhlcInfoEl = useMemo(
+    () => (
+      <div id="ohlcInfo" style={{ position: "absolute", top: 8, left: 10, zIndex: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+          <span id="chartSymbol" style={{ fontSize: 13, fontWeight: 700 }} />
+          <span id="chartTimeframe" style={{ fontSize: 11, color: c.tm }} />
+          <div onClick={(e) => { e.stopPropagation(); setRollback(!rollback); }} style={{ cursor: "default", opacity: rollback ? 1 : 0.4, display: "flex", alignItems: "center", gap: 3 }}>
+            <I n="rollback" s={13} cl={rollback ? c.gn : c.rd}/>
+            <span style={{ fontSize: 12, color: rollback ? c.gn : c.rd, fontWeight: 700 }}>{rollback ? "RB" : "LOCKED"}</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, fontSize: 13 }}>
+          <span style={{ color: c.tm, fontWeight: 600 }}>O <span id="open" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
+          <span style={{ color: c.tm, fontWeight: 600 }}>H <span id="high" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
+          <span style={{ color: c.tm, fontWeight: 600 }}>L <span id="low" style={{ color: c.rd, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
+          <span style={{ color: c.tm, fontWeight: 600 }}>C <span id="close" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
+        </div>
+      </div>
+    ),
+    [rollback, darkMode, c.tm, c.gn, c.rd]
+  );
 
   return (
     <div style={{ width: "100%", height: Z === 1 ? "100dvh" : "calc(100dvh / 1.05)", background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zoom: Z, animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
@@ -12027,23 +12050,9 @@ const TalariaV8bLive = () => {
                 <div className="price-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
                 <div className="time-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
 
-                {/* OHLC Info Panel — IDs match what chart.js expects so it updates these on hover */}
-                <div id="ohlcInfo" style={{ position: "absolute", top: 8, left: 10, zIndex: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                    <span id="chartSymbol" style={{ fontSize: 13, fontWeight: 700 }} />
-                    <span id="chartTimeframe" style={{ fontSize: 11, color: c.tm }} />
-                    <div onClick={(e) => { e.stopPropagation(); setRollback(!rollback); }} style={{ cursor: "default", opacity: rollback ? 1 : 0.4, display: "flex", alignItems: "center", gap: 3 }}>
-                      <I n="rollback" s={13} cl={rollback ? c.gn : c.rd}/>
-                      <span style={{ fontSize: 12, color: rollback ? c.gn : c.rd, fontWeight: 700 }}>{rollback ? "RB" : "LOCKED"}</span>
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, fontSize: 13 }}>
-                    <span style={{ color: c.tm, fontWeight: 600 }}>O <span id="open" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
-                    <span style={{ color: c.tm, fontWeight: 600 }}>H <span id="high" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
-                    <span style={{ color: c.tm, fontWeight: 600 }}>L <span id="low" style={{ color: c.rd, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
-                    <span style={{ color: c.tm, fontWeight: 600 }}>C <span id="close" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
-                  </div>
-                </div>
+                {/* OHLC: chart.js owns #chartSymbol / #chartTimeframe + OHLC values; memoized subtree +
+                    multi-panel effect re-stamping window.chart keeps main tile vs toolbar in sync. */}
+                {mainOhlcInfoEl}
               </div>
 
               {/* Overlays — stay on top of both #chartWrapper and #panels-container */}
