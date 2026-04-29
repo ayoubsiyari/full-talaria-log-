@@ -1202,6 +1202,9 @@ class ArrowTool extends BaseDrawing {
     }
 
     renderInfoBox(x1, y1, x2, y2, scales) {
+        if (typeof window.mergeDefaultDrawingInfoMetricsIfNeeded === 'function') {
+            window.mergeDefaultDrawingInfoMetricsIfNeeded(this.style);
+        }
         const infoSettings = this.style.infoSettings || {};
         if (!infoSettings.showInfo) return;
 
