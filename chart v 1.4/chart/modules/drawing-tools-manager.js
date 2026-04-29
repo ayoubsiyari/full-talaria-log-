@@ -921,9 +921,7 @@ class DrawingToolsManager {
             const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
             if (!svgNode) return false;
 
-            const svgRect = svgNode.getBoundingClientRect();
-            const mouseX = event.clientX - svgRect.left;
-            const mouseY = event.clientY - svgRect.top;
+            const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
             const valueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY);
             const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true });
 
@@ -1054,9 +1052,7 @@ class DrawingToolsManager {
                 const isAnchoredVwapAnchorTarget = !!(rawTarget && rawTarget.closest && rawTarget.closest('.anchored-vwap-anchor, .anchored-vwap-anchor-hit'));
                 if (isAnchoredVwapAnchorTarget) return;
 
-                const svgRect = svgNode.getBoundingClientRect();
-                const mouseX = event.clientX - svgRect.left;
-                const mouseY = event.clientY - svgRect.top;
+                const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
                 let drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true });
                 const topVolumeProfileValueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY, { includeLocked: true });
                 if (topVolumeProfileValueLabelDrawing && !drawingsAtPoint.includes(topVolumeProfileValueLabelDrawing)) {
@@ -2506,9 +2502,7 @@ class DrawingToolsManager {
             if (event.buttons !== undefined && (event.buttons & 1) === 0) {
                 return;
             }
-            const svgRect = this.svg.node().getBoundingClientRect();
-            const currentScreenX = event.clientX - svgRect.left;
-            const currentScreenY = event.clientY - svgRect.top;
+            const [currentScreenX, currentScreenY] = this._eventCanvasLocalXY(event);
             
             // Calculate pixel delta
             const pixelDx = currentScreenX - this.dragStartScreen.x;
@@ -2582,9 +2576,7 @@ class DrawingToolsManager {
                 this.customHandleRole = null;
                 return;
             }
-            const svgRect = this.svg.node().getBoundingClientRect();
-            const screenX = event.clientX - svgRect.left;
-            const screenY = event.clientY - svgRect.top;
+            const [screenX, screenY] = this._eventCanvasLocalXY(event);
             const dataPoint = this.getDataPoint(event);
             
             const context = {
@@ -3007,6 +2999,11 @@ class DrawingToolsManager {
             ? this.chart._v9LayoutZoom()
             : 1;
         return [(cx - rect.left) / z, (cy - rect.top) / z];
+    }
+
+    /** Layout-space XY from viewport client coords (matches `_eventCanvasLocalXY`; use for hit-testing when only x/y are available). */
+    _clientXYToLayoutXY(clientX, clientY) {
+        return this._eventCanvasLocalXY({ clientX, clientY });
     }
 
     /**
@@ -4074,9 +4071,7 @@ class DrawingToolsManager {
             // [debug removed]
             
             // STROKE-ONLY CHECK: Verify click is actually on a stroke, not fill area
-            const svgRect = self.svg.node().getBoundingClientRect();
-            const mouseX = event.clientX - svgRect.left;
-            const mouseY = event.clientY - svgRect.top;
+            const [mouseX, mouseY] = self._eventCanvasLocalXY(event);
             
             // For shapes (rectangle, triangle, ellipse, circle), verify click is on stroke
             const shapeTypes = ['rectangle', 'triangle', 'ellipse', 'circle'];
@@ -4399,9 +4394,7 @@ class DrawingToolsManager {
                         const srcEvent = event.sourceEvent || event;
                         const svgNode = self.svg && self.svg.node ? self.svg.node() : null;
                         if (svgNode && srcEvent && typeof srcEvent.clientX === 'number' && typeof srcEvent.clientY === 'number') {
-                            const svgRect = svgNode.getBoundingClientRect();
-                            const mouseX = srcEvent.clientX - svgRect.left;
-                            const mouseY = srcEvent.clientY - svgRect.top;
+                            const [mouseX, mouseY] = self._eventCanvasLocalXY(srcEvent);
 
                             const strokeWidth = parseFloat(targetSelection.attr('stroke-width')) || 2;
                             const baseTol = Math.max(4, strokeWidth / 2);
@@ -4648,9 +4641,7 @@ class DrawingToolsManager {
 
         const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
         if (svgNode && event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
-            const svgRect = svgNode.getBoundingClientRect();
-            const startMouseX = event.clientX - svgRect.left;
-            const startMouseY = event.clientY - svgRect.top;
+            const [startMouseX, startMouseY] = this._eventCanvasLocalXY(event);
             const shouldBlockVolumeProfileTextDirectMove = drawings.some((d) =>
                 this.isVolumeProfileLevelLineHit(d, startMouseX, startMouseY)
                 || this.isVolumeProfileValuesLabelHit(d, startMouseX, startMouseY)
@@ -5249,12 +5240,9 @@ class DrawingToolsManager {
         if (canvas) canvas.style.cursor = 'move';
         this.svg.style('cursor', 'move');
         
-        // Store screen coordinates for smooth pixel-based dragging
-        const svgRect = this.svg.node().getBoundingClientRect();
-        this.dragStartScreen = {
-            x: event.clientX - svgRect.left,
-            y: event.clientY - svgRect.top
-        };
+        // Store screen coordinates for smooth pixel-based dragging (layout px — matches getDataPoint / V9 zoom)
+        const [sx, sy] = this._eventCanvasLocalXY(event);
+        this.dragStartScreen = { x: sx, y: sy };
 
         // Store original group transform so dragging uses delta translation (prevents jumps)
         const parseTranslate = (t) => {
@@ -6327,8 +6315,11 @@ class DrawingToolsManager {
         const svgRect = svgNode && typeof svgNode.getBoundingClientRect === 'function'
             ? svgNode.getBoundingClientRect()
             : null;
-        const clientX = Number.isFinite(mouseX) && svgRect ? (svgRect.left + mouseX) : NaN;
-        const clientY = Number.isFinite(mouseY) && svgRect ? (svgRect.top + mouseY) : NaN;
+        const zPx = (this.chart && typeof this.chart._v9LayoutZoom === 'function')
+            ? this.chart._v9LayoutZoom()
+            : 1;
+        const clientX = Number.isFinite(mouseX) && svgRect ? (svgRect.left + mouseX * zPx) : NaN;
+        const clientY = Number.isFinite(mouseY) && svgRect ? (svgRect.top + mouseY * zPx) : NaN;
 
         for (const label of labelNodes) {
             if (!label) continue;
@@ -7215,15 +7206,7 @@ class DrawingToolsManager {
         event.preventDefault();
         event.stopPropagation();
         
-        let sx;
-        let sy;
-        if (this.chart && typeof this.chart._eventCanvasLocalXY === 'function') {
-            [sx, sy] = this.chart._eventCanvasLocalXY(event);
-        } else {
-            const rect = this.svg.node().getBoundingClientRect();
-            sx = event.clientX - rect.left;
-            sy = event.clientY - rect.top;
-        }
+        const [sx, sy] = this._eventCanvasLocalXY(event);
         this.rectSelectStart = { x: sx, y: sy };
         this.isRectSelecting = true;
         
@@ -7289,15 +7272,7 @@ class DrawingToolsManager {
     updateRectangularSelection(event) {
         if (!this.isRectSelecting || !this.rectSelectStart) return;
         
-        let currentX;
-        let currentY;
-        if (this.chart && typeof this.chart._eventCanvasLocalXY === 'function') {
-            [currentX, currentY] = this.chart._eventCanvasLocalXY(event);
-        } else {
-            const rect = this.svg.node().getBoundingClientRect();
-            currentX = event.clientX - rect.left;
-            currentY = event.clientY - rect.top;
-        }
+        const [currentX, currentY] = this._eventCanvasLocalXY(event);
         
         const x = Math.min(this.rectSelectStart.x, currentX);
         const y = Math.min(this.rectSelectStart.y, currentY);
@@ -8384,9 +8359,7 @@ class DrawingToolsManager {
      * @returns {Object} - { isStacked: boolean, lines: Array, count: number, drawings: Array }
      */
     getStackedLinesAt(clientX, clientY, threshold = 3) {
-        const svgRect = this.svg.node().getBoundingClientRect();
-        const mouseX = clientX - svgRect.left;
-        const mouseY = clientY - svgRect.top;
+        const [mouseX, mouseY] = this._clientXYToLayoutXY(clientX, clientY);
         return this.findStackedLines(mouseX, mouseY, threshold);
     }
     
@@ -8398,9 +8371,7 @@ class DrawingToolsManager {
      * @returns {Array} - Array of line info objects { drawing, element, drawingId, type }
      */
     getLinesAt(clientX, clientY) {
-        const svgRect = this.svg.node().getBoundingClientRect();
-        const mouseX = clientX - svgRect.left;
-        const mouseY = clientY - svgRect.top;
+        const [mouseX, mouseY] = this._clientXYToLayoutXY(clientX, clientY);
         return this.findLinesAtPoint(mouseX, mouseY);
     }
     
@@ -8528,9 +8499,7 @@ class DrawingToolsManager {
      * Check proximity to drawings and change cursor when over a line
      */
     checkDrawingProximity(event) {
-        const svgRect = this.svg.node().getBoundingClientRect();
-        const mouseX = event.clientX - svgRect.left;
-        const mouseY = event.clientY - svgRect.top;
+        const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
         
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (!canvas) return;

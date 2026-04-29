@@ -14702,9 +14702,7 @@ class Chart {
                     const svgNode = this.svg && this.svg.node();
                     let vpHandled = false;
                     if (svgNode) {
-                        const svgRect = svgNode.getBoundingClientRect();
-                        const mouseX = e.clientX - svgRect.left;
-                        const mouseY = e.clientY - svgRect.top;
+                        const [mouseX, mouseY] = this._eventCanvasLocalXY(e);
                         const hits = this.drawingManager.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true });
                         const top = hits && hits.length ? hits[0] : null;
                         if (top && !top.locked && this.drawingManager.isVolumeProfileToolType(top.type)) {
