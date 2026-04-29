@@ -2808,7 +2808,12 @@ const TalariaV8bLive = () => {
   const isRRTool = tlSubTool.icon === "longPos" || tlSubTool.icon === "shortPos";
 
   useEffect(() => {
-    if (tool !== "trendline" && tool !== "rect" && tool !== "channel" && tool !== "brush2" && tool !== "fib" && tool !== "pattern") { setTlSettOpen(false); setTlBarDrop(null); }
+    // Include `measure` — opening Style sets tool to the drawing’s panel group; omitting it
+    // immediately cleared tlSettOpen whenever the active rail tool was Range / measure.
+    if (tool !== "trendline" && tool !== "rect" && tool !== "channel" && tool !== "brush2" && tool !== "fib" && tool !== "pattern" && tool !== "measure") {
+      setTlSettOpen(false);
+      setTlBarDrop(null);
+    }
     if (tool !== "text") { setTxtSettOpen(false); setTxtSizeOpen(false); setTxtBarSizeOpen(false); setTxtBarDrop(null); }
   }, [tool]);
 
@@ -10165,7 +10170,31 @@ const TalariaV8bLive = () => {
           <TlSep/>
           {/* btn 7: settings */}
           <TlBtn id="tl-sett" isAct={tlSettOpen||closing.has("tlsett")} tip="Style"
-            onClick={e=>{if(tlBarDrop)closeTlBarDrop();setColorPicker(null);if(tlSettOpen||closing.has("tlsett")){closeTlSett();}else{if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-498));const y=r.bottom/Z+8;setTlSettPos({x,y});setTlSettOpen(true);}}}>
+            onClick={e=>{
+              if (tlBarDrop) closeTlBarDrop();
+              setColorPicker(null);
+              if (tlSettOpen || closing.has("tlsett")) { closeTlSett(); return; }
+              if (txtSettOpen) closeTxtSett();
+              if (vwapSettOpen) closeVwapSett();
+              if (vpSettOpen) closeVpSett();
+              if (avSettOpen) closeAvSett();
+              const r = e.currentTarget.getBoundingClientRect();
+              const vpW = window.innerWidth / Z;
+              const xFallback = Math.max(8, Math.min(r.left / Z, vpW - 498));
+              const yFallback = r.bottom / Z + 8;
+              const d = getSelectedDrawingForTemplate();
+              const hook = typeof window !== "undefined" ? window.__v9OpenDrawingSettings : null;
+              if (d && typeof hook === "function") {
+                const anchorX = r.left + r.width / 2;
+                const anchorY = r.bottom + 8;
+                try {
+                  if (hook(d, anchorX, anchorY)) return;
+                } catch (_) {}
+              }
+              window.chart?.drawingManager?.toolbar?.showNotification?.(
+                d ? "Open style from the chart or pick a line/shape tool first." : "Select a drawing first."
+              );
+            }}>
             {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
           </TlBtn>
           {/* btn 8: more */}
