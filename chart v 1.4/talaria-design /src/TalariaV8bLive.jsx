@@ -2646,7 +2646,17 @@ const TalariaV8bLive = () => {
       if (!e.target.closest('.tlr-cp')) setColorPicker(null);
       if (!e.target.closest('[data-tlbar]')) { setTlBarDrop(null); setTlSaveAsMode(false); setTlNewTplName(""); setVwapBarDrop(null); }
       setTlSettTplDrop(false);
-      if (e.target.closest('[data-sdrop]')) return;
+      // Ignore floating drawing UI: (1) React panels/dropdowns [data-sdrop], (2) legacy chart.js
+      // #drawing-toolbar (not under this React tree — mousedown can't be stopped from JSX).
+      // Without this, the first mousedown runs before click and was tearing down tlSettOpen /
+      // dropdown state so buttons felt like they needed extra clicks.
+      if (
+        e.target.closest('[data-sdrop]') ||
+        e.target.closest('#drawing-toolbar') ||
+        e.target.closest('.drawing-toolbar')
+      ) {
+        return;
+      }
       setSettDrop(null);
       setTlStyleDrop(null);
       setDropdown(null);
@@ -9826,7 +9836,9 @@ const TalariaV8bLive = () => {
         };
         const TlSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
-        <div ref={tlBarRef} data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
+        <div ref={tlBarRef} data-sdrop="1" data-tlbar="1"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={e=>e.stopPropagation()}
           style={{ position:"fixed", top:tlBarPos.y, left:tlBarPos.x, zIndex:9050,
                    background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
                    boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
@@ -10176,7 +10188,9 @@ const TalariaV8bLive = () => {
           }
         }
         return (
-          <div ref={pinnedBarRef} data-sdrop="1" onClick={e=>e.stopPropagation()}
+          <div ref={pinnedBarRef} data-sdrop="1"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={e=>e.stopPropagation()}
             style={{position:"fixed",top:pinnedBarPos.y,left:pinnedBarPos.x,zIndex:9050,
                     background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,
                     boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(201,168,76,0.15)`,
