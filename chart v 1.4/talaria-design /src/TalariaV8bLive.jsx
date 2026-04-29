@@ -385,7 +385,7 @@ const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange
   const hueColor = `hsl(${h},100%,50%)`;
   const outColor = cpBuildColor(rgb.r, rgb.g, rgb.b, a);
   return (
-    <div className="tlr-cp tlr-gloss" data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:pos.top,left:pos.left,zIndex:9200,width:210,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 20px 56px rgba(0,0,0,0.92), 0 0 20px rgba(38,67,247,0.1)`,fontFamily:F,animation:animation||"tlrPopIn 0.15s ease"}}>
+    <div className="tlr-cp tlr-gloss" data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:pos.top,left:pos.left,zIndex:10100,width:210,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 20px 56px rgba(0,0,0,0.92), 0 0 20px rgba(38,67,247,0.1)`,fontFamily:F,animation:animation||"tlrPopIn 0.15s ease"}}>
       <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
       <div style={{padding:10}}>
         {/* SV square */}
@@ -5192,7 +5192,7 @@ const TalariaV8bLive = () => {
       {/* ── Trend Line Settings Window ── */}
       {(tool === "trendline" || tool === "rect" || tool === "channel" || tool === "brush2" || tool === "fib" || isPatternTool || tool === "measure") && (tlSettOpen || closing.has("tlsett")) && (
         <div data-sdrop="1" onClick={e => { e.stopPropagation(); setTlStyleDrop(null); }}
-          style={{ position:"fixed", left:tlSettPos.x, top:tlSettPos.y, zIndex:9100, width:440, fontFamily:F,
+          style={{ position:"fixed", left:tlSettPos.x, top:tlSettPos.y, zIndex:10050, width:440, fontFamily:F,
                    background:c.sf, border:`1px solid ${c.brH}`,
                    boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                    display:"flex", flexDirection:"column",
@@ -5331,7 +5331,7 @@ const TalariaV8bLive = () => {
               )}
             </div>
             {/* close button */}
-            <div onMouseDown={e=>e.stopPropagation()} onClick={closeTlSett}
+            <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={closeTlSett}
               onMouseEnter={()=>setHov("tlx")} onMouseLeave={()=>setHov(null)}
               style={{ width:30, height:30, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", position:"relative",
                        background:hov==="tlx"?"rgba(255,80,80,0.07)":"transparent", transition:"background 0.12s" }}>
@@ -7669,7 +7669,8 @@ const TalariaV8bLive = () => {
             })()}
           </div>
           {/* footer */}
-          <div style={{ borderTop:`1px solid ${c.brH}`, display:"flex", alignItems:"center", justifyContent:"flex-end", padding:"10px 14px 14px", gap:8 }}>
+          <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
+            style={{ borderTop:`1px solid ${c.brH}`, display:"flex", alignItems:"center", justifyContent:"flex-end", padding:"10px 14px 14px", gap:8 }}>
             <B hk="tl-cancel" onClick={closeTlSett}>Cancel</B>
             <B primary hk="tl-ok" onClick={closeTlSett}>OK</B>
           </div>
@@ -7943,7 +7944,7 @@ const TalariaV8bLive = () => {
         const txtTabIdx=txtTabs.findIndex(([id])=>id===txtSettTab);
         return (
         <div data-sdrop="1" onClick={e=>{e.stopPropagation();setTxtSizeOpen(false);}}
-          style={{position:"fixed",left:txtSettPos.x,top:txtSettPos.y,zIndex:9100,width:420,fontFamily:F,
+          style={{position:"fixed",left:txtSettPos.x,top:txtSettPos.y,zIndex:10050,width:420,fontFamily:F,
                   background:c.sf,border:`1px solid ${c.brH}`,
                   boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                   display:"flex",flexDirection:"column",
@@ -8531,7 +8532,7 @@ const TalariaV8bLive = () => {
         const isClosing = closing.has("tlbardrop") && !tlBarDrop;
         return (
         <div ref={tlBarDropRef} data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
-          style={{ position:"fixed", top, left, zIndex:9150,
+          style={{ position:"fixed", top, left, zIndex:10050,
                    width: (key==="style"||key==="width") ? 88 : undefined, minWidth: (key==="style"||key==="width") ? undefined : 148,
                    background:c.sf, border:`1px solid ${c.brH}`, fontFamily:F,
                    boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,
@@ -8774,7 +8775,7 @@ const TalariaV8bLive = () => {
         const tabs=[["style","Style"],["inputs","Inputs"],["coordinates","Coordinates"],["visibility","Visibility"]];
         return (
           <div data-sdrop="1" onClick={e=>{e.stopPropagation();setVwapStyleDrop(null);}}
-            style={{position:"fixed",left:vwapSettPos.x,top:vwapSettPos.y,zIndex:9100,width:420,fontFamily:F,
+            style={{position:"fixed",left:vwapSettPos.x,top:vwapSettPos.y,zIndex:10050,width:420,fontFamily:F,
                     background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                     display:"flex",flexDirection:"column",
                     animation:closing.has("vwapsett")?"tlrPopOut 0.155s ease both":"tlrPopIn 0.15s ease"}}>
@@ -9150,7 +9151,7 @@ const TalariaV8bLive = () => {
         const tabs=[["style","Style"],["inputs","Inputs"],["coordinates","Coordinates"],["visibility","Visibility"]];
         return (
           <div data-sdrop="1" onClick={e=>{e.stopPropagation();setVpStyleDrop(null);}}
-            style={{position:"fixed",left:vpSettPos.x,top:vpSettPos.y,zIndex:9100,width:420,fontFamily:F,
+            style={{position:"fixed",left:vpSettPos.x,top:vpSettPos.y,zIndex:10050,width:420,fontFamily:F,
                     background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                     display:"flex",flexDirection:"column",
                     animation:closing.has("vpsett")?"tlrPopOut 0.155s ease both":"tlrPopIn 0.15s ease"}}>
@@ -9531,7 +9532,7 @@ const TalariaV8bLive = () => {
         const tabs=[["style","Style"],["inputs","Inputs"],["coordinates","Coordinates"],["visibility","Visibility"]];
         return (
           <div data-sdrop="1" onClick={e=>{e.stopPropagation();setAvStyleDrop(null);}}
-            style={{position:"fixed",left:avSettPos.x,top:avSettPos.y,zIndex:9100,width:420,fontFamily:F,
+            style={{position:"fixed",left:avSettPos.x,top:avSettPos.y,zIndex:10050,width:420,fontFamily:F,
                     background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                     display:"flex",flexDirection:"column",
                     animation:closing.has("avsett")?"tlrPopOut 0.155s ease both":"tlrPopIn 0.15s ease"}}>
@@ -14348,7 +14349,7 @@ const TalariaV8bLive = () => {
           );
         })() : orderPanelOpen ? (
         <div ref={panelRef} key={panelDetached?"order-float":"order-dock"} style={panelDetached
-          ? { position:"fixed", top:detachPos.y, left:detachPos.x, width:detachSize.w, height:detachSize.h, background:c.sf, border:`1px solid rgba(140,160,255,0.28)`, display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:F, zIndex:9100, boxShadow:"0 12px 40px rgba(0,0,0,0.75), 0 0 0 1px rgba(140,160,255,0.18)", animation:"tlrPanelIn 0.18s ease forwards" }
+          ? { position:"fixed", top:detachPos.y, left:detachPos.x, width:detachSize.w, height:detachSize.h, background:c.sf, border:`1px solid rgba(140,160,255,0.28)`, display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:F, zIndex:10050, boxShadow:"0 12px 40px rgba(0,0,0,0.75), 0 0 0 1px rgba(140,160,255,0.18)", animation:"tlrPanelIn 0.18s ease forwards" }
           : { width:"100%", background:c.sf, borderLeft:`2px solid rgba(140,160,255,0.3)`, display:"flex", flexDirection:"column", height:"100%", animation:"tlrPanelIn 0.18s ease forwards", overflow:"hidden", fontFamily:F }
         }>
 
@@ -15979,7 +15980,7 @@ const TalariaV8bLive = () => {
         const tplOpts = [...(customTemplates.length>0?[{divider:"SAVED"},...customTemplates,{divider:"DEFAULT"}]:[]),...defaultTplOpts];
         const cfgMap = { gridStyle:{key:"gridLineStyle",type:"style"}, gridThick:{key:"gridLineThickness",type:"thick"}, priceStyle:{key:"priceLineStyle",type:"style"}, priceThick:{key:"priceLineThickness",type:"thick"}, chartTimeFormat:{key:"timeFormat",type:"select",opts:["24h","12h"]}, chartTimezone:{key:"timezone",type:"select",opts:["UTC","UTC+3 (Riyadh)","UTC+4 (Dubai)","UTC+5:30 (IST)","UTC+8 (Asia)","UTC-5 (EST)","UTC-8 (PST)"]}, chartPrecision:{key:"precision",type:"select",opts:["0.00000","0.0000","0.000","0.00","0.0"]}, chartTemplate:{key:"chartTemplate",type:"template",opts:tplOpts} };
         if (settDrop==="profLang") return <>
-          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:9250,width:settDropPos.w||140,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
+          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,width:settDropPos.w||140,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
             <div style={{padding:"4px 0"}}>
               <div style={{padding:"5px 12px 3px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>LANGUAGE</div>
@@ -16000,7 +16001,7 @@ const TalariaV8bLive = () => {
           </div>
         </>;
         if (settDrop==="loadTemplate") return <>
-          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:9250,width:settDropPos.w||150,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
+          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,width:settDropPos.w||150,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
             <div style={{padding:"4px 0"}}>
               <div style={{padding:"5px 12px 3px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>SAVED TEMPLATES</div>
@@ -16033,7 +16034,7 @@ const TalariaV8bLive = () => {
         const styleOpts = [{val:"solid",dash:"none"},{val:"dashed",dash:"5,4"},{val:"dotted",dash:"1.5,4"},{val:"longDash",dash:"10,5"}];
         const thickOpts = [0.5,1,1.5,2,2.5,3];
         return <>
-          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:9250,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease",...(settDropPos.w?{width:settDropPos.w}:{minWidth:80})}}>
+          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease",...(settDropPos.w?{width:settDropPos.w}:{minWidth:80})}}>
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
             <div style={{padding:"4px 0"}}>
               {cfg.type==="select" && cfg.opts.map(opt=>{
@@ -16121,7 +16122,7 @@ const TalariaV8bLive = () => {
             }
           }}
           onMouseUp={()=>setCpDragging(null)}
-          style={{position:"fixed",inset:0,zIndex:9300,cursor:cpDragging==='sv'?'crosshair':'ew-resize'}}
+          style={{position:"fixed",inset:0,zIndex:10150,cursor:cpDragging==='sv'?'crosshair':'ew-resize'}}
         />
       )}
       {/* ── Go To Calendar sub-window ── */}
