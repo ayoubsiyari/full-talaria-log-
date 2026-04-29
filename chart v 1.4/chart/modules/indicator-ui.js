@@ -1582,7 +1582,7 @@ function createIndicatorSelectionMenu(chartInstance) {
                 }
             });
             let targetChart = (typeof window.getActiveChart === 'function' ? window.getActiveChart() : null) || chartInstance;
-            if (typeof targetChart.addIndicator !== 'function') {
+            if (!targetChart || typeof targetChart.addIndicator !== 'function') {
                 targetChart = window.chart || window.mainChart;
             }
             if (targetChart && typeof targetChart.addIndicator === 'function') {
@@ -1967,10 +1967,10 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         });
 
         let targetChart = (typeof window.getActiveChart === 'function' ? window.getActiveChart() : null) || chartInstance;
-        if (typeof targetChart.addIndicator !== 'function') {
+        if (!targetChart || typeof targetChart.addIndicator !== 'function') {
             targetChart = window.chart || window.mainChart;
         }
-        
+
         if (!targetChart || typeof targetChart.addIndicator !== 'function') {
             console.error('❌ No valid chart instance with addIndicator method found');
             alert('Error: Chart indicator system not loaded. Please refresh the page.');

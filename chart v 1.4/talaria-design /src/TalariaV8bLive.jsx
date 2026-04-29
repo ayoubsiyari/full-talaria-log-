@@ -958,9 +958,9 @@ const TalariaV8bLive = () => {
     return () => { cancelled = true; };
   }, [chartType]);
 
-  // Indicator id-map ref used by the indicator-sync useEffect declared
-  // further down (after indActive's useState() call to avoid a TDZ).
-  const indicatorIdMapRef = useRef({}); // { [v9Id]: chartJsId }
+  // Per Chart instance (main + panel tiles): V9 id (e.g. "SMA") → chart.js runtime id.
+  // WeakMap so each focused tile keeps its own mapping (multi-panel).
+  const indicatorMapsByChartRef = useRef(null); // WeakMap<object, Record<string, string>> | null
 
   const chartTfToV9 = (cTf) => {
     if (!cTf) return null;
@@ -1996,7 +1996,7 @@ const TalariaV8bLive = () => {
   // V9's indActive (array of V9 indicator IDs like "SMA", "RSI") drives
   // chart.js's chart.addIndicator(type) / chart.removeIndicator(id).
   // Each chart.js indicator gets a unique runtime ID; we track V9-ID → chart-ID
-  // in indicatorIdMapRef.current (declared earlier near the other sync effects).
+  // per Chart instance in indicatorMapsByChartRef (WeakMap).
   // Placed AFTER `indActive`'s useState because the dep array `[indActive]` is
   // evaluated at render time and would TDZ if hoisted above.
   useEffect(() => {
@@ -2022,9 +2022,27 @@ const TalariaV8bLive = () => {
     let cancelled = false;
     let attempts = 0;
 
+    const getMapForChart = (ch) => {
+      if (!ch) return null;
+      let wm = indicatorMapsByChartRef.current;
+      if (!wm) {
+        wm = new WeakMap();
+        indicatorMapsByChartRef.current = wm;
+      }
+      let m = wm.get(ch);
+      if (!m) {
+        m = Object.create(null);
+        wm.set(ch, m);
+      }
+      return m;
+    };
+
     const apply = () => {
       if (cancelled) return;
-      const chart = window.chart;
+      const chart =
+        typeof window.getActiveChart === "function"
+          ? window.getActiveChart()
+          : window.chart;
       // Wait for chart.js to be ready AND data to be loaded — addIndicator
       // alerts and bails out early when this.data is empty.
       if (!chart || typeof chart.addIndicator !== "function" || !chart.data || chart.data.length === 0) {
@@ -2038,7 +2056,8 @@ const TalariaV8bLive = () => {
       }
       console.log("[V9 ind] chart ready, applying. data.length=", chart.data.length);
 
-      const map = indicatorIdMapRef.current;
+      const map = getMapForChart(chart);
+      if (!map) return;
       const nowSet = new Set(indActive);
       const prevSet = new Set(Object.keys(map));
 
@@ -2081,8 +2100,56 @@ const TalariaV8bLive = () => {
       try { if (typeof chart.render === "function") chart.render(); } catch (_) {}
     };
 
+    const onPanelOrData = () => {
+      attempts = 0;
+      apply();
+    };
+
+    // When the focused tile changes, mirror V9's indActive + id-map from that chart's
+    // real indicators (so we don't re-apply the previous tile's list onto the new one).
+    const syncIndUiFromFocusedChart = () => {
+      if (cancelled) return;
+      const chart =
+        typeof window.getActiveChart === "function"
+          ? window.getActiveChart()
+          : window.chart;
+      if (!chart || !Array.isArray(chart.indicators?.active)) return;
+      const TYPE_TO_V9 = {};
+      for (const [v9Id, t] of Object.entries(ID_TO_TYPE)) {
+        TYPE_TO_V9[t] = v9Id;
+      }
+      const map = getMapForChart(chart);
+      if (!map) return;
+      for (const k of Object.keys(map)) delete map[k];
+      const next = [];
+      for (const ind of chart.indicators.active) {
+        const v9 = TYPE_TO_V9[ind.type];
+        if (v9 && ind.id) {
+          map[v9] = ind.id;
+          if (!next.includes(v9)) next.push(v9);
+        }
+      }
+      setIndActive((prev) => {
+        if (
+          prev.length === next.length &&
+          prev.every((x, i) => x === next[i])
+        ) {
+          return prev;
+        }
+        return next;
+      });
+    };
+
     apply();
-    return () => { cancelled = true; };
+    window.addEventListener("panelSelected", syncIndUiFromFocusedChart);
+    window.addEventListener("panelsCreated", onPanelOrData);
+    window.addEventListener("chartDataLoaded", onPanelOrData);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("panelSelected", syncIndUiFromFocusedChart);
+      window.removeEventListener("panelsCreated", onPanelOrData);
+      window.removeEventListener("chartDataLoaded", onPanelOrData);
+    };
   }, [indActive]);
 
   const [indSelected, setIndSelected] = useState(null);
