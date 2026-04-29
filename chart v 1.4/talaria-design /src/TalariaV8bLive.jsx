@@ -3884,7 +3884,11 @@ const TalariaV8bLive = () => {
     let cancelled = false; let n = 0;
     const apply = () => {
       if (cancelled) return;
-      const dm = window.chart && window.chart.drawingManager;
+      const ch =
+        typeof window.getActiveChart === "function"
+          ? window.getActiveChart()
+          : window.chart;
+      const dm = ch && ch.drawingManager;
       if (!dm || typeof dm.setTool !== 'function') {
         if (++n < 50) setTimeout(apply, 100);
         return;
@@ -3908,13 +3912,19 @@ const TalariaV8bLive = () => {
           dm.setTool(legacy);
         }
       } catch (err) { console.warn('[V9 tool bridge] setTool failed:', legacy, err); }
-
-      // Multi-panel: legacy panel-manager mirrors tool to all panels via
-      // the `_mirrored=true` propagation inside dm.setTool, so we don't
-      // need to iterate panels here.
     };
     apply();
-    return () => { cancelled = true; };
+    const onPanelSelected = () => {
+      n = 0;
+      apply();
+    };
+    window.addEventListener("panelSelected", onPanelSelected);
+    window.addEventListener("panelsCreated", onPanelSelected);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("panelSelected", onPanelSelected);
+      window.removeEventListener("panelsCreated", onPanelSelected);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool, groupSelected]);
 

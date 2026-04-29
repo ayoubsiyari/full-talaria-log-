@@ -425,6 +425,23 @@
          ────────────────────────────────────────────────────────────────── -->
     <script>
     (function bootstrapPanelManager() {
+        if (typeof window.getActiveChart !== 'function') {
+            window.getActiveChart = function() {
+                try {
+                    var pm = window.panelManager;
+                    if (pm && pm.panels && pm.panels.length > 0) {
+                        var idx = pm.selectedPanelIndex || 0;
+                        var panel = pm.panels[idx];
+                        if (panel) {
+                            if (idx === 0 && panel.isMainChart) return window.chart;
+                            if (panel.chartInstance) return panel.chartInstance;
+                        }
+                    }
+                } catch (e) {}
+                return window.chart;
+            };
+        }
+
         var attempts = 0;
         var MAX_ATTEMPTS = 200; // ~20s
         function tryBoot() {

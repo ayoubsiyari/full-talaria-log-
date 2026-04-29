@@ -446,6 +446,25 @@
          ────────────────────────────────────────────────────────────────── -->
     <script>
     (function bootstrapPanelManager() {
+        /* chart.js, drawing-tools-manager, indicator-ui, order-manager call this to resolve
+           the focused tile. Legacy index defines it; V9 must too or everything targets window.chart. */
+        if (typeof window.getActiveChart !== 'function') {
+            window.getActiveChart = function() {
+                try {
+                    var pm = window.panelManager;
+                    if (pm && pm.panels && pm.panels.length > 0) {
+                        var idx = pm.selectedPanelIndex || 0;
+                        var panel = pm.panels[idx];
+                        if (panel) {
+                            if (idx === 0 && panel.isMainChart) return window.chart;
+                            if (panel.chartInstance) return panel.chartInstance;
+                        }
+                    }
+                } catch (e) {}
+                return window.chart;
+            };
+        }
+
         var attempts = 0;
         var MAX_ATTEMPTS = 200; // ~20s
         function tryBoot() {
