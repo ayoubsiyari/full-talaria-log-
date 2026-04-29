@@ -2115,7 +2115,11 @@ const TalariaV8bLive = () => {
         }
       }
 
-      try { if (typeof chart.render === "function") chart.render(); } catch (_) {}
+      try {
+        if (typeof chart.render === "function") chart.render();
+        // `#ohlcIndicators` is React-rendered; addIndicator can run before first commit → chips empty forever unless we re-sync.
+        if (typeof chart.updateOHLCIndicators === "function") chart.updateOHLCIndicators();
+      } catch (_) {}
     };
 
     const onPanelOrData = () => {
@@ -4729,6 +4733,33 @@ const TalariaV8bLive = () => {
     ),
     [rollback, darkMode, c.tm, c.gn, c.rd]
   );
+
+  // Repaint indicator legend chips after `#ohlcIndicators` exists (fixes race vs chart.addIndicator) and when OHLC host remounts.
+  useLayoutEffect(() => {
+    const flush = () => {
+      try {
+        const ch =
+          typeof window.getActiveChart === "function"
+            ? window.getActiveChart()
+            : window.chart;
+        if (ch && typeof ch.updateOHLCIndicators === "function") ch.updateOHLCIndicators();
+      } catch (_) {}
+    };
+    flush();
+    const raf = requestAnimationFrame(flush);
+    const t = window.setTimeout(flush, 0);
+    const onChartReady = () => flush();
+    window.addEventListener("chartDataLoaded", onChartReady);
+    window.addEventListener("panelsCreated", onChartReady);
+    window.addEventListener("panelSelected", onChartReady);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(t);
+      window.removeEventListener("chartDataLoaded", onChartReady);
+      window.removeEventListener("panelsCreated", onChartReady);
+      window.removeEventListener("panelSelected", onChartReady);
+    };
+  }, [rollback, darkMode, c.tm, c.gn, c.rd]);
 
   return (
     <div style={{ width: "100%", height: Z === 1 ? "100dvh" : "calc(100dvh / 1.05)", background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zoom: Z, animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
