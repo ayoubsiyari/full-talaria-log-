@@ -4981,8 +4981,32 @@ const TalariaV8bLive = () => {
               } catch (err) { console.warn('[V9] undo/redo failed:', err); }
               return;
             }
-            if (t.id === "lock") { setTool(tool === "lock" ? "crosshair" : "lock"); setDropdown(null); return; }
-            if (t.dd) { setTool(t.id); if (act) openDd(e.currentTarget.parentElement); else closeDropdown(); }
+            if (t.id === "lock") {
+              const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+              const dm = ch && ch.drawingManager;
+              const tb = dm && dm.toolbar;
+              if (dm) {
+                const list = [];
+                if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
+                  dm.selectedDrawings.forEach(d => { if (d) list.push(d); });
+                } else if (dm.selectedDrawing) list.push(dm.selectedDrawing);
+                else if (tb && tb.currentDrawing) list.push(tb.currentDrawing);
+                if (list.length) {
+                  list.forEach(d => { try { dm.toggleLock(d); } catch (_) {} });
+                } else if (typeof tb?.showNotification === "function") {
+                  tb.showNotification("Select a drawing first");
+                } else if (typeof ch?.showNotification === "function") {
+                  ch.showNotification("Select a drawing first");
+                }
+              }
+              setDropdown(null);
+              return;
+            }
+            if (t.dd) {
+              if (!["eye", "magnet", "trash"].includes(t.id)) setTool(t.id);
+              if (dropdown === t.id) closeDropdown();
+              else openDd(e.currentTarget.parentElement);
+            }
             else { setTool(t.id); setDropdown(null); }
           }}
           style={{
@@ -5006,7 +5030,7 @@ const TalariaV8bLive = () => {
           onMouseLeave={() => setHov(null)}
           onClick={(e) => {
             e.stopPropagation();
-            setTool(t.id);
+            if (!["eye", "magnet", "trash"].includes(t.id)) setTool(t.id);
             openDd(e.currentTarget.parentElement);
           }}
           style={{
@@ -10262,6 +10286,33 @@ const TalariaV8bLive = () => {
                   {isSelected && <div style={{position:"absolute",left:0,top:"10%",bottom:"10%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 4px ${c.acG}`}}/>}
                   <button
                     onClick={(e) => {
+                      const ch =
+                        typeof window.getActiveChart === "function"
+                          ? window.getActiveChart()
+                          : window.chart;
+                      if (activeKey === "eye" && ch && typeof ch.handleVisibilityMenuAction === "function") {
+                        if (item.icon === "eyeAll") ch.handleVisibilityMenuAction("drawings");
+                        else if (item.icon === "eyeInd") ch.handleVisibilityMenuAction("indicators");
+                        else if (item.icon === "eyePos") ch.handleVisibilityMenuAction("positions");
+                        else if (item.icon === "eyeHide") ch.handleVisibilityMenuAction("all");
+                        closeDropdown();
+                        return;
+                      }
+                      if (activeKey === "magnet") {
+                        const dm = ch && ch.drawingManager;
+                        if (item.icon === "magnetOff") dm?.setMagnetMode?.("off");
+                        else if (item.icon === "magnetWeak") dm?.setMagnetMode?.("weak");
+                        else if (item.icon === "magnetStrong") dm?.setMagnetMode?.("strong");
+                        closeDropdown();
+                        return;
+                      }
+                      if (activeKey === "trash") {
+                        if (item.icon === "trashDraw") ch?.clearOnlyDrawings?.({ confirmPrompt: false });
+                        else if (item.icon === "trashInd") ch?.clearOnlyIndicators?.({ confirmPrompt: false });
+                        else if (item.icon === "trash") ch?.clearDrawingsAndIndicators?.({ confirmPrompt: false });
+                        closeDropdown();
+                        return;
+                      }
                       setTool(activeKey); setGroupSelected(p => ({...p, [activeKey]: item})); closeDropdown();
                       if (item.icon === "emoji") {
                         const r = e.currentTarget.getBoundingClientRect();
