@@ -3802,21 +3802,18 @@ const TalariaV8bLive = () => {
   }, [tool, groupSelected]);
 
   // After finalizeDrawing(), legacy chart clears dm.currentTool unless brush /
-  // highlighter / keep-drawing mode. Wrap finalizeDrawing here so the V9 rail
-  // matches (Cursor) without modifying chart modules.
+  // highlighter / keep-drawing mode. Wrap finalizeDrawing on every drawing
+  // manager (main `window.chart` + each panel's chartInstance) — strokes often
+  // finalize on a panel DM while only patching `window.chart` left V9 stuck on
+  // Trend Line / etc.
   useEffect(() => {
     let cancelled = false;
-    let attempts = 0;
-    let restore = null;
-    const tryHook = () => {
-      if (cancelled) return;
-      const dm = window.chart && window.chart.drawingManager;
-      if (!dm || typeof dm.finalizeDrawing !== "function") {
-        if (++attempts < 80) setTimeout(tryHook, 100);
-        return;
-      }
-      if (dm.__v9FinalizeWrapped) return;
-      dm.__v9FinalizeWrapped = true;
+    /** @type {{ dm: object, orig: function, wrapped: function }[]} */
+    const tracked = [];
+
+    const patchDm = (dm) => {
+      if (!dm || typeof dm.finalizeDrawing !== "function") return;
+      if (tracked.some((t) => t.dm === dm)) return;
       const orig = dm.finalizeDrawing.bind(dm);
       const wrapped = function v9WrappedFinalizeDrawing() {
         orig();
@@ -3829,17 +3826,43 @@ const TalariaV8bLive = () => {
         } catch (_) {}
       };
       dm.finalizeDrawing = wrapped;
-      restore = () => {
-        try {
-          if (dm.finalizeDrawing === wrapped) dm.finalizeDrawing = orig;
-          delete dm.__v9FinalizeWrapped;
-        } catch (_) {}
-      };
+      tracked.push({ dm, orig, wrapped });
     };
-    tryHook();
+
+    const patchAllManagers = () => {
+      if (cancelled) return;
+      patchDm(window.chart && window.chart.drawingManager);
+      const panels = window.panelManager && window.panelManager.panels;
+      if (Array.isArray(panels)) {
+        panels.forEach((p) => patchDm(p && p.chartInstance && p.chartInstance.drawingManager));
+      }
+    };
+
+    let attempts = 0;
+    const tick = () => {
+      if (cancelled) return;
+      patchAllManagers();
+      if (++attempts < 100) setTimeout(tick, 100);
+    };
+    tick();
+
+    const onChartStructure = () => patchAllManagers();
+    window.addEventListener("panelSelected", onChartStructure);
+    window.addEventListener("panelsCreated", onChartStructure);
+    window.addEventListener("chartDataLoaded", onChartStructure);
+    window.addEventListener("returnedToSinglePanel", onChartStructure);
+
     return () => {
       cancelled = true;
-      if (restore) restore();
+      window.removeEventListener("panelSelected", onChartStructure);
+      window.removeEventListener("panelsCreated", onChartStructure);
+      window.removeEventListener("chartDataLoaded", onChartStructure);
+      window.removeEventListener("returnedToSinglePanel", onChartStructure);
+      tracked.forEach(({ dm, orig, wrapped }) => {
+        try {
+          if (dm.finalizeDrawing === wrapped) dm.finalizeDrawing = orig;
+        } catch (_) {}
+      });
     };
   }, []);
 
