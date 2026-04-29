@@ -4093,7 +4093,7 @@ class DrawingToolsManager {
             // For shapes (rectangle, triangle, ellipse, circle), verify click is on stroke
             const shapeTypes = ['rectangle', 'triangle', 'ellipse', 'circle'];
             if (shapeTypes.includes(drawing.type)) {
-                const isShapeBorderHit = targetSelection.classed('shape-border-hit');
+                const isShapeBorderHit = targetSel.classed('shape-border-hit');
                 // Use the same geometric hit-test as hover/direct-drag so the hover zone matches selection.
                 const drawingsAtPoint = self.findDrawingsAtPoint(mouseX, mouseY);
                 const clickedOnStroke = isShapeBorderHit || drawingsAtPoint.some(d => d && d.id === drawing.id);
