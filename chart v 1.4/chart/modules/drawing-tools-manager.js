@@ -742,10 +742,16 @@ class DrawingToolsManager {
         };
         
         // Settings callback - opens settings panel (same V9 hook as editDrawing / dblclick)
-        this.toolbar.onSettings = (drawing) => {
+        this.toolbar.onSettings = (drawing, anchorX, anchorY) => {
             const rect = self.toolbar.toolbar.getBoundingClientRect();
-            const x = rect.left + rect.width / 2;
-            const y = rect.bottom + 10;
+            const x =
+                typeof anchorX === 'number' && !Number.isNaN(anchorX)
+                    ? anchorX
+                    : rect.left + rect.width / 2;
+            const y =
+                typeof anchorY === 'number' && !Number.isNaN(anchorY)
+                    ? anchorY
+                    : rect.bottom + 10;
             if (typeof window !== 'undefined' && typeof window.__v9OpenDrawingSettings === 'function') {
                 try {
                     const handled = window.__v9OpenDrawingSettings(drawing, x, y);

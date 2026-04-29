@@ -1738,8 +1738,13 @@ class DrawingToolbar {
         if (settingsBtn) {
             settingsBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                // Read bounds *before* hide() — display:none makes getBoundingClientRect()
+                // all zeros and breaks V9 / legacy panel anchoring (felt like first click did nothing).
+                const r = this.toolbar.getBoundingClientRect();
+                const anchorX = r.left + r.width / 2;
+                const anchorY = r.bottom + 10;
                 this.hide(); // Hide toolbar when opening settings
-                this.onSettings(drawing);
+                this.onSettings(drawing, anchorX, anchorY);
             });
         }
         
@@ -1921,8 +1926,8 @@ class DrawingToolbar {
         console.log('More options for:', drawing, 'at', x, y);
     }
     
-    onSettings(drawing) {
-        // Override this - will open settings panel
+    onSettings(drawing, anchorX, anchorY) {
+        // Override this - will open settings panel (optional anchor from toolbar rect before hide)
         console.log('Settings for:', drawing);
     }
     
