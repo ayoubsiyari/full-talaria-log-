@@ -1414,17 +1414,6 @@ class DrawingToolsManager {
     }
 
     /**
-     * Signal V9 shell (React toolbar) to leave drawing-tool selection after a completed stroke.
-     * Drawing-tools-manager already clears dm.currentTool here; TalariaV8bLive listens for this event.
-     */
-    _emitV9DrawingFinalized() {
-        if (typeof window === 'undefined') return;
-        try {
-            window.dispatchEvent(new CustomEvent('talaria-v9-drawing-finalized'));
-        } catch (_) {}
-    }
-
-    /**
      * Clear current tool (cursor mode)
      */
     clearTool(_mirrored = false) {
@@ -3340,7 +3329,6 @@ class DrawingToolsManager {
             
             // Clear the tool so button deactivates
             this.clearTool();
-            this._emitV9DrawingFinalized();
             
             // Don't save to localStorage yet
             return;
@@ -3456,7 +3444,6 @@ class DrawingToolsManager {
             if (typeof window !== 'undefined' && typeof window.syncMagnetButton === 'function') {
                 window.syncMagnetButton();
             }
-            this._emitV9DrawingFinalized();
             // Don't set cursor tool as active - let user click it to reactivate the last tool
         }
     }
