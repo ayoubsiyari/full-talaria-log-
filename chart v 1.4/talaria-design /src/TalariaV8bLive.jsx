@@ -117,6 +117,16 @@ function v9ShowInfoTypesFromChartInfoSettings(info) {
   return out;
 }
 
+/** V9 Text tab uses `vertAlign` "center"; chart line tools use `textVAlign` / `textPosition` "middle". */
+function v9UiVertToChartVert(ui) {
+  const v = ui || "top";
+  return v === "center" ? "middle" : v;
+}
+function v9ChartVertToUi(chartVert) {
+  const v = chartVert || "top";
+  return v === "middle" ? "center" : v;
+}
+
 /** PRE variables from `chart.backtestingSession` — same filter as order-manager.js `_getPreTradeVariableDefs`. */
 function getPreTradeVariablesFromSession(chart) {
   try {
@@ -4344,6 +4354,13 @@ const TalariaV8bLive = () => {
           labelFontSize: String(s.labelFontSize ?? prev.labelFontSize),
           labelBg: !!s.labelBackground,
           labelBgColor: s.labelBackgroundColor || prev.labelBgColor,
+          textContent: typeof drawing.text === 'string' ? drawing.text : prev.textContent,
+          textColor: s.textColor || prev.textColor,
+          textSize: String(s.fontSize ?? prev.textSize),
+          textBold: s.fontWeight === 'bold' || (typeof s.fontWeight === 'number' && s.fontWeight >= 600),
+          textItalic: s.fontStyle === 'italic',
+          vertAlign: v9ChartVertToUi(s.textVAlign || s.textPosition || prev.vertAlign),
+          horizAlign: (s.textHAlign || s.textAlign || prev.horizAlign),
         }));
 
         // Position panel near dblclick (clientX/Y are post-zoom; tlSettPos
@@ -4408,6 +4425,10 @@ const TalariaV8bLive = () => {
     const readDrawingStyle = (d) => {
       if (!d || !d.style) return null;
       const s = d.style;
+      const chVert = s.textVAlign || s.textPosition;
+      const bold =
+        s.fontWeight === "bold" ||
+        (typeof s.fontWeight === "number" && s.fontWeight >= 600);
       const stroke = s.stroke || s.color || s.lineColor;
       const widthRaw = s.strokeWidth ?? s.lineWidth;
       const widthStr = widthRaw != null ? String(parseInt(widthRaw, 10) || 2) : undefined;
@@ -4440,6 +4461,13 @@ const TalariaV8bLive = () => {
               };
             })()
           : {}),
+        ...(typeof d.text === 'string' ? { textContent: d.text } : {}),
+        ...(s.textColor ? { textColor: s.textColor } : {}),
+        ...(s.fontSize != null ? { textSize: String(s.fontSize) } : {}),
+        ...(s.fontWeight != null && s.fontWeight !== '' ? { textBold: bold } : {}),
+        ...(s.fontStyle ? { textItalic: s.fontStyle === 'italic' } : {}),
+        ...(chVert ? { vertAlign: v9ChartVertToUi(chVert) } : {}),
+        ...((s.textHAlign || s.textAlign) ? { horizAlign: s.textHAlign || s.textAlign } : {}),
       };
     };
     const hook = () => {
@@ -4536,6 +4564,17 @@ const TalariaV8bLive = () => {
       labelFontSize: parseInt(tlStyle.labelFontSize, 10) || 12,
       labelBackground: !!tlStyle.labelBg,
       labelBackgroundColor: tlStyle.labelBgColor,
+      // Line/shape label text (Text tab — matches drawing-tools-lines renderTextLabel)
+      textColor: tlStyle.textColor,
+      fontSize: parseInt(String(tlStyle.textSize), 10) || 14,
+      fontWeight: tlStyle.textBold ? "bold" : "normal",
+      fontStyle: tlStyle.textItalic ? "italic" : "normal",
+      ...(() => {
+        const tv = v9UiVertToChartVert(tlStyle.vertAlign);
+        return { textVAlign: tv, textPosition: tv };
+      })(),
+      textHAlign: tlStyle.horizAlign || "center",
+      textAlign: tlStyle.horizAlign || "center",
     };
 
     // Persist as default for this tool — new drawings inherit via applySavedStyle.
@@ -4573,6 +4612,11 @@ const TalariaV8bLive = () => {
         // Capture before state for undo (mirror legacy onBeforeUpdate).
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
         Object.assign(d.style, stylePatch);
+        const nextText = tlStyle.textContent != null ? String(tlStyle.textContent) : "";
+        d.text = nextText;
+        if (typeof d.setText === "function") {
+          try { d.setText(nextText); } catch (_) {}
+        }
         // Fib tools also store per-level color/width — mirror legacy toolbar.
         const isFib = d.type && (d.type.startsWith('fibonacci-') || d.type.startsWith('fib-') || d.type.startsWith('trend-fib-'));
         if (isFib) {
@@ -4602,6 +4646,8 @@ const TalariaV8bLive = () => {
     tlStyle.priceLabels, tlStyle.timeLabels, tlStyle.rangeType,
     tlStyle.showInfo, tlStyle.showInfoTypes,
     tlStyle.labelColor, tlStyle.labelFontSize, tlStyle.labelBg, tlStyle.labelBgColor,
+    tlStyle.textContent, tlStyle.textColor, tlStyle.textSize, tlStyle.textBold, tlStyle.textItalic,
+    tlStyle.vertAlign, tlStyle.horizAlign,
     tool, groupSelected,
   ]);
 
@@ -9526,7 +9572,10 @@ const TalariaV8bLive = () => {
             <div
               onMouseEnter={e=>{setHov(id);if(tip)showTip(tip,e.currentTarget,"bottom");}}
               onMouseLeave={()=>{setHov(null);hideTip();}}
-              onClick={onClick}
+              onClick={(e) => {
+                if (e && typeof e.stopPropagation === "function") e.stopPropagation();
+                if (typeof onClick === "function") onClick(e);
+              }}
               style={{width:w||32,height:32,display:"flex",alignItems:"center",justifyContent:"center",
                       cursor:"default",position:"relative",flexShrink:0,userSelect:"none",
                       background: isAct ? "rgba(74,106,255,0.08)" : isH ? c.hv : "transparent",

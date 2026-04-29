@@ -234,6 +234,8 @@ class DrawingToolbar {
         // Setup event handlers
         this.setupEventHandlers();
 
+        // Avoid stacking listeners when show() runs again before hide() (multi-select / rapid updates).
+        document.removeEventListener('click', this.handleDocumentClick, true);
         document.addEventListener('click', this.handleDocumentClick, true);
     }
 
