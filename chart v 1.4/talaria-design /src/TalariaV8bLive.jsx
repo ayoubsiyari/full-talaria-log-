@@ -4965,8 +4965,8 @@ const TalariaV8bLive = () => {
     const hArr = hov === t.id + "-arr";
     const arrCol = act ? accentCol : hArr ? c.tx : c.tm;
     return (
-      <div key={t.id} style={{ position: "relative", width: "100%", display: "flex", transform: isPressed ? "scale(0.88)" : "scale(1)", transition: "transform 0.08s ease" }}>
-        {/* Icon button — selects the tool only */}
+      <div key={t.id} style={{ position: "relative", width: "100%", display: "flex", flexDirection: "row", alignItems: "stretch", transform: isPressed ? "scale(0.88)" : "scale(1)", transition: "transform 0.08s ease" }}>
+        {/* Icon button — selects the tool (split from chevron so arrow opens menu only) */}
         <button
           ref={ref}
           onPointerDown={t.action ? () => setBtnPressed(t.id) : undefined}
@@ -5018,10 +5018,10 @@ const TalariaV8bLive = () => {
             else { setTool(t.id); setDropdown(null); }
           }}
           style={{
-            width: "100%", height: 32, display: "flex", alignItems: "center", justifyContent: "flex-end",
+            flex: 1, minWidth: 0, height: 32, display: "flex", alignItems: "center", justifyContent: "flex-end",
             background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
             border: "none", cursor: "default", color: pressCol,
-            padding: 0, paddingRight: 10,
+            padding: 0, paddingRight: 4,
             transition: "color 0.15s ease, background 0.12s", position: "relative", fontFamily: F,
           }}>
           {t.id === "pinbar"
@@ -5032,22 +5032,23 @@ const TalariaV8bLive = () => {
         {act && <div style={{ position: "absolute", left: 3, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg, transparent, ${accentCol}, transparent)`, boxShadow: `0 0 6px ${accentGlow}`, pointerEvents: "none", zIndex: 2 }}/>}
         {h && !act && !isPressed && <div style={{ position: "absolute", left: 3, top: "25%", bottom: "25%", width: 1, background: `linear-gradient(180deg, transparent, `+c.hvLn+`, transparent)`, pointerEvents: "none", zIndex: 2 }}/>}
         {isPressed && <div style={{ position: "absolute", left: 3, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}`, pointerEvents: "none", zIndex: 2 }}/>}
-        {/* Arrow button — opens dropdown independently */}
+        {/* Arrow — menu only; does not arm / select the tool (that is the icon button) */}
         {t.dd && <button
+          type="button"
           onMouseEnter={() => setHov(t.id + "-arr")}
           onMouseLeave={() => setHov(null)}
           onClick={(e) => {
             e.stopPropagation();
-            if (!["eye", "magnet", "trash"].includes(t.id)) setTool(t.id);
+            e.preventDefault();
             openDd(e.currentTarget.parentElement);
           }}
           style={{
-            position: "absolute", right: 0, top: 0,
-            width: 8, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
+            width: 10, height: 32, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
             background: hArr ? "rgba(255,255,255,0.06)" : "transparent",
             border: "none", cursor: "default",
-            padding: 0, flexShrink: 0,
+            padding: 0,
             transition: "background 0.12s", fontFamily: F,
+            zIndex: 2,
           }}>
           <svg width={5} height={5} viewBox="320 -720 296 480" preserveAspectRatio="xMaxYMid meet" fill={arrCol} style={{transition:"fill 0.12s"}}>
             <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>
