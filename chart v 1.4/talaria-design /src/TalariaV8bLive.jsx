@@ -4706,35 +4706,57 @@ const TalariaV8bLive = () => {
 
   const ddItems = getDdItems();
 
+  /* Same DOM shape as panel-manager.js (flag dot + single-line OHLC + change); chart.js owns ids #open … #chartChange */
   const mainOhlcInfoEl = useMemo(
     () => (
-      <div id="ohlcInfo" style={{ position: "absolute", top: 8, left: 10, zIndex: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-          <span id="chartSymbol" style={{ fontSize: 13, fontWeight: 700 }} />
-          <span id="chartTimeframe" style={{ fontSize: 11, color: c.tm }} />
-          <div onClick={(e) => { e.stopPropagation(); setRollback(!rollback); }} style={{ cursor: "default", opacity: rollback ? 1 : 0.4, display: "flex", alignItems: "center", gap: 3 }}>
-            <I n="rollback" s={13} cl={rollback ? c.gn : c.rd}/>
-            <span style={{ fontSize: 12, color: rollback ? c.gn : c.rd, fontWeight: 700 }}>{rollback ? "RB" : "LOCKED"}</span>
+      <div id="ohlcInfo" className="ohlc-info">
+        <div className="ohlc-header">
+          <div className="ohlc-symbol-block" style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
+            <span className="ohlc-symbol-dot" id="ohlcSymbolDot">●</span>
+            <span id="chartSymbol" className="ohlc-symbol-text" style={{ fontSize: 13, fontWeight: 700 }} />
+            <span className="ohlc-separator">·</span>
+            <span id="chartTimeframe" style={{ fontSize: 11 }} />
+            <div
+              onClick={(e) => { e.stopPropagation(); setRollback(!rollback); }}
+              style={{ cursor: "default", opacity: rollback ? 1 : 0.4, display: "flex", alignItems: "center", gap: 3, pointerEvents: "auto" }}
+            >
+              <I n="rollback" s={13} cl={rollback ? c.gn : c.rd} />
+              <span style={{ fontSize: 12, color: rollback ? c.gn : c.rd, fontWeight: 700 }}>{rollback ? "RB" : "LOCKED"}</span>
+            </div>
+          </div>
+          <div className="ohlc-stats">
+            <div className="ohlc-item">
+              <span className="ohlc-label">O</span>
+              <span className="ohlc-value" id="open" style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span>
+            </div>
+            <div className="ohlc-item">
+              <span className="ohlc-label">H</span>
+              <span className="ohlc-value" id="high" style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span>
+            </div>
+            <div className="ohlc-item">
+              <span className="ohlc-label">L</span>
+              <span className="ohlc-value" id="low" style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span>
+            </div>
+            <div className="ohlc-item">
+              <span className="ohlc-label">C</span>
+              <span className="ohlc-value" id="close" style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span>
+            </div>
+            <span className="ohlc-change" id="chartChange">—</span>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8, fontSize: 13 }}>
-          <span style={{ color: c.tm, fontWeight: 600 }}>O <span id="open" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
-          <span style={{ color: c.tm, fontWeight: 600 }}>H <span id="high" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
-          <span style={{ color: c.tm, fontWeight: 600 }}>L <span id="low" style={{ color: c.rd, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
-          <span style={{ color: c.tm, fontWeight: 600 }}>C <span id="close" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
+        <div className="ohlc-body">
+          <div
+            id="ohlcIndicators"
+            className="ohlc-indicators"
+            style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4, marginTop: 2, fontSize: 11, pointerEvents: "auto", position: "relative", zIndex: 100 }}
+          />
         </div>
-        {/* chart.js `updateOHLCIndicators` appends overlay indicator chips (SMA, etc.); id must match main chart (no suffix for panel 0) */}
-        <div
-          id="ohlcIndicators"
-          className="ohlc-indicators"
-          style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4, marginTop: 4, fontSize: 11, pointerEvents: "auto", position: "relative", zIndex: 100 }}
-        />
       </div>
     ),
-    [rollback, darkMode, c.tm, c.gn, c.rd]
+    [rollback, darkMode, c.gn, c.rd]
   );
 
-  // Repaint indicator legend chips after `#ohlcIndicators` exists (fixes race vs chart.addIndicator) and when OHLC host remounts.
+  // Repaint indicator chips + flag dot after OHLC host exists (race vs chart init).
   useLayoutEffect(() => {
     const flush = () => {
       try {
@@ -4743,6 +4765,9 @@ const TalariaV8bLive = () => {
             ? window.getActiveChart()
             : window.chart;
         if (ch && typeof ch.updateOHLCIndicators === "function") ch.updateOHLCIndicators();
+        if (ch && ch.currentSymbol && typeof ch.updateChartOHLCSymbol === "function") {
+          ch.updateChartOHLCSymbol(ch.currentSymbol);
+        }
       } catch (_) {}
     };
     flush();
@@ -4759,7 +4784,7 @@ const TalariaV8bLive = () => {
       window.removeEventListener("panelsCreated", onChartReady);
       window.removeEventListener("panelSelected", onChartReady);
     };
-  }, [rollback, darkMode, c.tm, c.gn, c.rd]);
+  }, [rollback, darkMode, c.gn, c.rd]);
 
   return (
     <div style={{ width: "100%", height: Z === 1 ? "100dvh" : "calc(100dvh / 1.05)", background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zoom: Z, animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}

@@ -230,11 +230,9 @@
             background-color: #2962ff !important;
         }
 
-        /* Multi-panel: panel-manager injects .ohlc-info + #chartSymbol1, #open1, …
-           (chart.js updates these). Full OHLC rules live in chart/legacy-index.html;
-           this shell does not load that CSS. Panel .panel-canvas is z-index:1 and
-           .panel-svg is z-index:10 — without position+z-index the OHLC block paints
-           under the canvas and looks “empty”. */
+        /* Multi-panel + main #chartWrapper: same OHLC layout as panel-manager (chart.js updates these).
+           Panel .panel-canvas is z-index:1 — OHLC needs stacking above canvas. */
+        #chart-container #chartWrapper .ohlc-info,
         #panels-container .panel-chart-container .ohlc-info {
             position: absolute;
             top: 8px;
@@ -249,26 +247,29 @@
             pointer-events: none;
             max-width: min(560px, 92%);
         }
+        #chart-container #chartWrapper .ohlc-header,
         #panels-container .ohlc-header {
             display: flex;
             align-items: center;
             flex-wrap: wrap;
             gap: 8px;
         }
+        #chart-container #chartWrapper .ohlc-stats,
         #panels-container .ohlc-stats {
             display: flex;
             align-items: center;
             flex-wrap: wrap;
             gap: 6px;
         }
+        #chart-container #chartWrapper .ohlc-item,
         #panels-container .ohlc-item {
             display: inline-flex;
             align-items: center;
             gap: 2px;
         }
 
-        /* chart.js loads FlagCDN `w80` PNGs into #ohlcSymbolDot1 … — without legacy-index.css
-           they paint at intrinsic bitmap size (~80px). Mirror legacy .chart-panel … rules. */
+        /* chart.js loads FlagCDN `w80` PNGs into #ohlcSymbolDot / #ohlcSymbolDot1 … */
+        #chart-container #chartWrapper .ohlc-symbol-dot,
         #panels-container .ohlc-symbol-dot {
             width: 18px;
             height: 18px;
@@ -282,6 +283,7 @@
             vertical-align: middle;
             box-sizing: border-box;
         }
+        #chart-container #chartWrapper .ohlc-symbol-dot.ohlc-dot-flags,
         #panels-container .ohlc-symbol-dot.ohlc-dot-flags {
             width: 29px;
             height: 16px;
@@ -291,6 +293,7 @@
             position: relative;
             overflow: visible;
         }
+        #chart-container #chartWrapper .ohlc-dot-flag,
         #panels-container .ohlc-dot-flag {
             position: absolute;
             width: 18px;
@@ -300,11 +303,13 @@
             box-sizing: border-box;
             pointer-events: none;
         }
+        #chart-container #chartWrapper .ohlc-dot-flag-base,
         #panels-container .ohlc-dot-flag-base {
             left: 0;
             top: 0;
             z-index: 2;
         }
+        #chart-container #chartWrapper .ohlc-dot-flag-quote,
         #panels-container .ohlc-dot-flag-quote {
             left: 11px;
             top: 0;
