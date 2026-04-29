@@ -81,7 +81,8 @@ class DrawingToolbar {
                 border-radius: 8px;
                 padding: 0 12px 0 0;
                 height: 48px;
-                z-index: 10000;
+                /* Below V9 React shell (tool dropdown / style panels use z-index ~11000 on document.body). */
+                z-index: 8000;
                 gap: 4px;
                 align-items: center;
                 flex-wrap: nowrap;
@@ -178,7 +179,7 @@ class DrawingToolbar {
             .drawing-toolbar.dragging {
                 box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
                 opacity: 0.95;
-                z-index: 10001;
+                z-index: 8001;
             }
             
             body.light-mode .drawing-toolbar .toolbar-btn {
@@ -407,7 +408,7 @@ class DrawingToolbar {
                     display: none;
                     flex-direction: column;
                     gap: 0;
-                    z-index: 10001;
+                    z-index: 8001;
                     min-width: 280px;
                 }
                 .color-palette.active {
@@ -613,7 +614,7 @@ class DrawingToolbar {
                     display: none;
                     flex-direction: column;
                     gap: 2px;
-                    z-index: 10001;
+                    z-index: 8001;
                     min-width: 130px;
                 }
                 

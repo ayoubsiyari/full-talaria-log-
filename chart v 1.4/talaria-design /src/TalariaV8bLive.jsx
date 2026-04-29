@@ -2621,6 +2621,11 @@ const TalariaV8bLive = () => {
     return () => document.removeEventListener("fullscreenchange", onFSChange);
   }, []);
 
+  // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
+  useEffect(() => {
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429c-click-ui";
+  }, []);
+
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") {
