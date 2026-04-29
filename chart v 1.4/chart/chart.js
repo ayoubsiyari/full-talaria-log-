@@ -1412,7 +1412,11 @@ class Chart {
             this.priceZoom = 1;
             this.priceOffset = 0;
             this.autoScale = true;
-            if (this.priceScale) this.priceScale.autoScale = true;
+            if (this.priceScale) {
+                this.priceScale.autoScale = true;
+                this.priceScale.locked = false;
+            }
+            if (this.timeScale) this.timeScale.locked = false;
             this.manualCenterPrice = null;
             this.manualRange = null;
             this._chartViewRestored = false;
@@ -1681,10 +1685,21 @@ class Chart {
             this.priceZoom = 1;
             this.priceOffset = 0;
             this.autoScale = true;
-            if (this.priceScale) this.priceScale.autoScale = true;
+            if (this.priceScale) {
+                this.priceScale.autoScale = true;
+                // Fresh instrument must rescale Y — stale locked axis hides candles (wrong domain).
+                this.priceScale.locked = false;
+            }
+            if (this.timeScale) this.timeScale.locked = false;
             this.manualCenterPrice = null;
             this.manualRange = null;
             this._chartViewRestored = false;
+
+            const pairSwitched = outgoingPanelFileId != null
+                && String(outgoingPanelFileId) !== String(targetFileId);
+            if (pairSwitched) {
+                this._pendingChartViewSanityCheck = true;
+            }
 
             if (typeof this.recalculateIndicators === 'function') {
                 try { this.recalculateIndicators(); } catch (e) {}
@@ -1694,10 +1709,13 @@ class Chart {
             this.resize();
 
             const pm = window.panelManager;
-            const alignScrollToMain = !!(pm && pm.syncSettings
+            // Copying main scroll onto a new pair often lands on an empty X window (no bars in
+            // slice → calculateScales keeps old Y domain → blank chart + "LOCKED" legend).
+            let alignScrollToMain = !!(pm && pm.syncSettings
                 && (pm.syncSettings.time || pm.syncSettings.dateRange)
                 && mainChart && mainChart !== this && mainChart.data && mainChart.data.length > 0
                 && this.data && this.data.length > 0);
+            if (pairSwitched) alignScrollToMain = false;
 
             const computeAlignedOffset = () => {
                 const sourceSpacing = mainChart.getCandleSpacing
@@ -1710,6 +1728,20 @@ class Chart {
                 return mainChart.offsetX * ratio;
             };
 
+            const panelVisibleBarCount = () => {
+                if (!this.data || this.data.length === 0) return 0;
+                const m = this.margin;
+                const cw = this.w - m.l - m.r;
+                if (cw <= 0) return this.data.length;
+                const cs = this.getCandleSpacing
+                    ? this.getCandleSpacing()
+                    : this._getSpacingForCandleWidth(this.candleWidth);
+                const buf = 20;
+                const i0 = Math.max(0, -Math.floor(this.offsetX / cs) - buf);
+                const i1 = Math.min(this.data.length, -Math.floor(this.offsetX / cs) + Math.ceil(cw / cs) + buf);
+                return Math.max(0, i1 - i0);
+            };
+
             if (alignScrollToMain) {
                 this.offsetX = computeAlignedOffset();
                 if (this.constrainOffset) this.constrainOffset();
@@ -1717,6 +1749,11 @@ class Chart {
                 // override our synced offset with fitToView().
                 this._chartViewRestored = true;
             } else {
+                this.fitToView();
+            }
+
+            if (alignScrollToMain && panelVisibleBarCount() === 0) {
+                this._chartViewRestored = false;
                 this.fitToView();
             }
 
@@ -1731,6 +1768,10 @@ class Chart {
                     this.offsetX = computeAlignedOffset();
                     if (this.constrainOffset) this.constrainOffset();
                     this._chartViewRestored = true;
+                    if (panelVisibleBarCount() === 0) {
+                        this._chartViewRestored = false;
+                        this.fitToView();
+                    }
                 } else {
                     this._chartViewRestored = false;
                     this.fitToView();
