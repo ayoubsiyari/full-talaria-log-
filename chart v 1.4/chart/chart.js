@@ -16868,15 +16868,21 @@ class Chart {
                 
                 const ohlcElems = [openElem, highElem, lowElem, closeElem];
                 const priceMap = [candle.o, candle.h, candle.l, candle.c];
+                const _ohlcUp = this.chartSettings.bodyUpColor || this.chartSettings.candleUpColor || '#089981';
+                const _ohlcDn = this.chartSettings.bodyDownColor || this.chartSettings.candleDownColor || '#f23645';
+                const _ohlcNeutral = this.chartSettings.symbolTextColor || '';
                 ohlcElems.forEach((elem, idx) => {
                     if (!elem) return;
                     elem.textContent = formatPrice(priceMap[idx]);
-                    elem.style.color = this.chartSettings.symbolTextColor || '';
                     elem.classList.remove('up', 'down');
                     if (candle.c > candle.o) {
                         elem.classList.add('up');
+                        elem.style.color = _ohlcUp;
                     } else if (candle.c < candle.o) {
                         elem.classList.add('down');
+                        elem.style.color = _ohlcDn;
+                    } else {
+                        elem.style.color = _ohlcNeutral;
                     }
                 });
                 
@@ -16887,7 +16893,7 @@ class Chart {
                 if (chartChangeElem) {
                     chartChangeElem.textContent = `${change >= 0 ? '+' : ''}${formatPrice(Math.abs(change))} (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%)`;
                     chartChangeElem.className = change >= 0 ? 'ohlc-change positive' : 'ohlc-change negative';
-                    chartChangeElem.style.color = this.chartSettings.symbolTextColor || '';
+                    chartChangeElem.style.color = change > 0 ? _ohlcUp : change < 0 ? _ohlcDn : _ohlcNeutral;
                     // Enforce showBarChangeValues flag
                     chartChangeElem.style.display = this.chartSettings.showBarChangeValues !== false ? '' : 'none';
                 }
@@ -19291,15 +19297,21 @@ class Chart {
         
         const ohlcElems = [openElem, highElem, lowElem, closeElem];
         const priceMap = [candle.o, candle.h, candle.l, candle.c];
+        const _ohlcUp = this.chartSettings.bodyUpColor || this.chartSettings.candleUpColor || '#089981';
+        const _ohlcDn = this.chartSettings.bodyDownColor || this.chartSettings.candleDownColor || '#f23645';
+        const _ohlcNeutral = this.chartSettings.symbolTextColor || '';
         ohlcElems.forEach((elem, idx) => {
             if (!elem) return;
             elem.textContent = formatPrice(priceMap[idx]);
-            elem.style.color = this.chartSettings.symbolTextColor || '';
             elem.classList.remove('up', 'down');
             if (candle.c > candle.o) {
                 elem.classList.add('up');
+                elem.style.color = _ohlcUp;
             } else if (candle.c < candle.o) {
                 elem.classList.add('down');
+                elem.style.color = _ohlcDn;
+            } else {
+                elem.style.color = _ohlcNeutral;
             }
         });
         
@@ -19310,7 +19322,7 @@ class Chart {
         if (chartChangeElem) {
             chartChangeElem.textContent = `${change >= 0 ? '+' : ''}${formatPrice(Math.abs(change))} (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%)`;
             chartChangeElem.className = change >= 0 ? 'ohlc-change positive' : 'ohlc-change negative';
-            chartChangeElem.style.color = this.chartSettings.symbolTextColor || '';
+            chartChangeElem.style.color = change > 0 ? _ohlcUp : change < 0 ? _ohlcDn : _ohlcNeutral;
             // Enforce showBarChangeValues flag
             chartChangeElem.style.display = this.chartSettings.showBarChangeValues !== false ? '' : 'none';
         }
