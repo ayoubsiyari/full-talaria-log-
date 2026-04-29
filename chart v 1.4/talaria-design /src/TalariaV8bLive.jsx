@@ -4719,6 +4719,12 @@ const TalariaV8bLive = () => {
           <span style={{ color: c.tm, fontWeight: 600 }}>L <span id="low" style={{ color: c.rd, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
           <span style={{ color: c.tm, fontWeight: 600 }}>C <span id="close" style={{ color: c.gn, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>—</span></span>
         </div>
+        {/* chart.js `updateOHLCIndicators` appends overlay indicator chips (SMA, etc.); id must match main chart (no suffix for panel 0) */}
+        <div
+          id="ohlcIndicators"
+          className="ohlc-indicators"
+          style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4, marginTop: 4, fontSize: 11, pointerEvents: "auto", position: "relative", zIndex: 100 }}
+        />
       </div>
     ),
     [rollback, darkMode, c.tm, c.gn, c.rd]

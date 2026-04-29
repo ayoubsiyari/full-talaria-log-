@@ -5690,7 +5690,8 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 };
     
     Chart.prototype.updateOHLCIndicators = function() {
-        const idSuffix = (this.panelIndex !== undefined) ? this.panelIndex : '';
+        // Main chart (panel 0 or single-chart) uses unsuffixed DOM ids; see chart.js updateChartOHLCSymbol / crosshair OHLC.
+        const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? this.panelIndex : '';
         const div = document.getElementById('ohlcIndicators' + idSuffix);
         
         if (!div) return;

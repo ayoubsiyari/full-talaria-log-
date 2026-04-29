@@ -2119,7 +2119,7 @@ function setupIndicatorUI(chartInstance) {
     
     // Override the default OHLC indicator display to allow editing
     chartInstance.updateOHLCIndicators = function() {
-        const idSuffix = (this.panelIndex !== undefined) ? this.panelIndex : '';
+        const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? this.panelIndex : '';
         const div = document.getElementById('ohlcIndicators' + idSuffix);
         
         if (!div) return;
@@ -2535,7 +2535,7 @@ if (typeof Chart !== 'undefined' && !Chart.prototype.updateIndicator) {
 if (typeof Chart !== 'undefined') {
     const originalUpdateOHLC = Chart.prototype.updateOHLCIndicators;
     Chart.prototype.updateOHLCIndicators = function() {
-        const idSuffix = (this.panelIndex !== undefined) ? this.panelIndex : '';
+        const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? this.panelIndex : '';
         const div = document.getElementById('ohlcIndicators' + idSuffix);
         
         if (!div) return;
