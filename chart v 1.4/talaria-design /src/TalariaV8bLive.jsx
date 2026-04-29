@@ -2639,32 +2639,31 @@ const TalariaV8bLive = () => {
 
   useEffect(() => {
     const handler = (e) => {
-      if (!e.target.closest('.tlr-cp')) setColorPicker(null);
-      if (!e.target.closest('[data-tlbar]')) {
+      const el = e.target;
+      if (!el || typeof el.closest !== "function") return;
+      // IMPORTANT: return BEFORE any setState. Previously setColorPicker / tlBar ran first; presses
+      // inside [data-sdrop] (tool dropdown, settings, etc.) still triggered those updates on
+      // mousedown—extra renders before click and “needs many taps” symptoms on crowded stacks.
+      if (
+        el.closest("[data-sdrop]") ||
+        el.closest("#drawing-toolbar") ||
+        el.closest(".drawing-toolbar") ||
+        el.closest(".tlr-cp")
+      ) {
+        return;
+      }
+      setColorPicker(null);
+      if (!el.closest("[data-tlbar]")) {
         setTlBarDrop(null);
         setTlSaveAsMode(false);
         setTlNewTplName("");
         setVwapBarDrop(null);
       }
-      // Popovers marked [data-sdrop], legacy DOM drawing toolbar, or template chrome — never
-      // treat as “click outside” for panel teardown (same as before).
-      if (
-        e.target.closest('[data-sdrop]') ||
-        e.target.closest('#drawing-toolbar') ||
-        e.target.closest('.drawing-toolbar')
-      ) {
-        return;
-      }
-      // Only dismiss rail/settings/dropdown state when the press actually lands on the chart
-      // surface. Doing this for “anywhere except data-sdrop” made mis-routed hits (zoom/CSS)
-      // clear state on mousedown before the button click fired.
       const onChartSurface =
-        e.target.closest('#chart-container') ||
-        e.target.closest('#panels-container');
+        el.closest("#chart-container") ||
+        el.closest("#panels-container");
       if (!onChartSurface) return;
 
-      // Same as legacy “click chart → dismiss chrome”: symbol search, TF flyouts, menus, etc.
-      // (closeAll is intentionally not on bubbled child clicks — see root onClick.)
       try { closeAllRef.current?.(); } catch (_) {}
       setTlSettTplDrop(false);
       setTlSettOpen(false);
@@ -7728,7 +7727,7 @@ const TalariaV8bLive = () => {
         };
         return (
         <div data-sdrop="1" onClick={e=>e.stopPropagation()}
-          style={{position:"fixed",top:tlBarPos.y,left:tlBarPos.x,zIndex:9050,
+          style={{position:"fixed",top:tlBarPos.y,left:tlBarPos.x,zIndex:11000,
                   background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,
                   boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
                   display:"flex",flexDirection:"row",alignItems:"stretch",
@@ -9888,7 +9887,7 @@ const TalariaV8bLive = () => {
         <div ref={tlBarRef} data-sdrop="1" data-tlbar="1"
           onMouseDown={(e) => e.stopPropagation()}
           onClick={e=>e.stopPropagation()}
-          style={{ position:"fixed", top:tlBarPos.y, left:tlBarPos.x, zIndex:9050,
+          style={{ position:"fixed", top:tlBarPos.y, left:tlBarPos.x, zIndex:11000,
                    background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
                    boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
                    display:"flex", flexDirection:"row", alignItems:"stretch",
@@ -10264,7 +10263,7 @@ const TalariaV8bLive = () => {
           <div ref={pinnedBarRef} data-sdrop="1"
             onMouseDown={(e) => e.stopPropagation()}
             onClick={e=>e.stopPropagation()}
-            style={{position:"fixed",top:pinnedBarPos.y,left:pinnedBarPos.x,zIndex:9050,
+            style={{position:"fixed",top:pinnedBarPos.y,left:pinnedBarPos.x,zIndex:11000,
                     background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,
                     boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(201,168,76,0.15)`,
                     animation:"tlrPopIn 0.15s ease",userSelect:"none",display:"flex",flexDirection:"row",fontFamily:F}}>
@@ -10325,9 +10324,9 @@ const TalariaV8bLive = () => {
         if (!tDd?.dd) return null;
         const items = Array.isArray(tDd.dd) ? tDd.dd : [{h: tDd.label.toUpperCase()}, {icon: tDd.icon, label: tDd.label}];
         const isDdClosing = closing.has("tldrop") && !dropdown;
-        return (
+        const ddPanel = (
         <div data-sdrop="1" onClick={(e) => e.stopPropagation()} style={{
-          position: "fixed", top: ddPos.top, left: ddPos.left, zIndex: 9060,
+          position: "fixed", top: ddPos.top, left: ddPos.left, zIndex: 11000,
           background: c.sf, border: `1px solid ${c.brH}`,
           boxShadow: `0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,
           minWidth: 190, fontFamily: F,
@@ -10455,6 +10454,7 @@ const TalariaV8bLive = () => {
           </div>
         </div>
         );
+        return typeof document !== "undefined" ? createPortal(ddPanel, document.body) : ddPanel;
       })()}
 
 
@@ -10479,7 +10479,7 @@ const TalariaV8bLive = () => {
         const VSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
           <div data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
-            style={{ position:"fixed", top:vwapBarPos.y, left:vwapBarPos.x, zIndex:9050,
+            style={{ position:"fixed", top:vwapBarPos.y, left:vwapBarPos.x, zIndex:11000,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
                      boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
                      display:"flex", flexDirection:"row", alignItems:"stretch",
@@ -10648,7 +10648,7 @@ const TalariaV8bLive = () => {
         const VPSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
           <div data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
-            style={{ position:"fixed", top:vpBarPos.y, left:vpBarPos.x, zIndex:9050,
+            style={{ position:"fixed", top:vpBarPos.y, left:vpBarPos.x, zIndex:11000,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
                      boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
                      display:"flex", flexDirection:"row", alignItems:"stretch",
@@ -10741,7 +10741,7 @@ const TalariaV8bLive = () => {
         const AVSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
           <div data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
-            style={{ position:"fixed", top:avBarPos.y, left:avBarPos.x, zIndex:9050,
+            style={{ position:"fixed", top:avBarPos.y, left:avBarPos.x, zIndex:11000,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
                      boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
                      display:"flex", flexDirection:"row", alignItems:"stretch",
@@ -10841,7 +10841,7 @@ const TalariaV8bLive = () => {
         };
         return (
           <div data-sdrop="1" onClick={e=>e.stopPropagation()}
-            style={{position:"fixed",left:px,top:py,width:W,height:H,zIndex:9300,
+            style={{position:"fixed",left:px,top:py,width:W,height:H,zIndex:11000,
                     background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,
                     boxShadow:"0 8px 32px rgba(0,0,0,0.6)",
                     display:"flex",flexDirection:"column",fontFamily:F}}>
@@ -12720,7 +12720,7 @@ const TalariaV8bLive = () => {
                 {replayOpts&&<div style={{position:"absolute",bottom:0,left:"15%",right:"15%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                 {hov==="rp-mode"&&!replayOpts&&<div style={{position:"absolute",bottom:0,left:"25%",right:"25%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
               </button>
-              {(replayOpts||closing.has("replayOpts"))&&<div style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",zIndex:9050,pointerEvents:"none"}}>
+              {(replayOpts||closing.has("replayOpts"))&&<div style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",zIndex:11000,pointerEvents:"none"}}>
                 <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{pointerEvents:"auto",background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 28px rgba(0,0,0,0.7),0 0 14px ${c.acG}`,minWidth:160,animation:closing.has("replayOpts")?"tlrPopOut 0.13s ease both":"tlrPopIn 0.15s ease both"}}>
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                   <div style={{padding:"6px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>MODE</div>
@@ -12851,7 +12851,7 @@ const TalariaV8bLive = () => {
                 const addItem=(item)=>{setGotoPresets(prev=>[...prev,{...item,id:gotoNextId()}]);};
                 const iSt={background:c.well,border:`1px solid ${c.brH}`,color:c.tx,fontSize:13,padding:"6px 9px",fontFamily:F,outline:"none",width:"100%",boxSizing:"border-box",colorScheme:c.inputScheme};
                 return(
-                <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",zIndex:9050,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 12px 48px rgba(0,0,0,0.8),0 0 18px ${c.acG}`,width:300,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("goto")?"tlrPopOut 0.13s ease both":"tlrPopIn 0.15s ease both",maxHeight:480}}>
+                <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",zIndex:11000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 12px 48px rgba(0,0,0,0.8),0 0 18px ${c.acG}`,width:300,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("goto")?"tlrPopOut 0.13s ease both":"tlrPopIn 0.15s ease both",maxHeight:480}}>
                   {/* Top accent bar */}
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
                   {/* Header */}
