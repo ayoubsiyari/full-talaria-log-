@@ -4482,6 +4482,7 @@ class ReplaySystem {
         // Fire event for drawings refresh
         window.dispatchEvent(new CustomEvent('chartDataLoaded', {
             detail: { 
+                chart: this.chart,
                 data: this.chart.data,
                 rawData: this.chart.rawData,
                 symbol: this.chart.currentSymbol,

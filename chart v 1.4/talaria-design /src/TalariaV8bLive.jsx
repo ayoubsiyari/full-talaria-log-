@@ -42,6 +42,33 @@ function isWebKitSafariUA() {
     && !/\b(FxiOS|CriOS|EdgiOS)\b/i.test(ua);
 }
 
+/** Multi-panel layouts (≠ single tile): V9 header symbol/TF follows `panelManager` selection. */
+function v9IsMultiPanelLayoutActive() {
+  try {
+    const pm = typeof window !== "undefined" ? window.panelManager : null;
+    if (!pm) return false;
+    const lay = pm.getCurrentLayout?.() || pm.currentLayout || "1";
+    if (lay !== "1") return true;
+    return Array.isArray(pm.panels) && pm.panels.length > 1;
+  } catch (_) {
+    return false;
+  }
+}
+
+/** Chart instance that should drive the V9 pair + timeframe display. */
+function v9ActiveChartInstance() {
+  try {
+    const pm = typeof window !== "undefined" ? window.panelManager : null;
+    if (!pm || !v9IsMultiPanelLayoutActive()) {
+      return typeof window !== "undefined" ? window.chart : null;
+    }
+    return pm.getSelectedPanel?.()?.chartInstance
+      || (typeof window !== "undefined" ? window.chart : null);
+  } catch (_) {
+    return typeof window !== "undefined" ? window.chart : null;
+  }
+}
+
 /** PRE variables from `chart.backtestingSession` — same filter as order-manager.js `_getPreTradeVariableDefs`. */
 function getPreTradeVariablesFromSession(chart) {
   try {
@@ -820,7 +847,8 @@ const TalariaV8bLive = () => {
     let attempts = 0;
     const tick = () => {
       if (cancelled) return;
-      const s = window.chart?.currentSymbol;
+      const activeChart = v9ActiveChartInstance();
+      const s = activeChart?.currentSymbol;
       if (s) apply(s, "poll");
       refreshSessionPairs();
       // Keep polling for ~30s in case the user navigates between sessions.
@@ -829,7 +857,13 @@ const TalariaV8bLive = () => {
     tick();
 
     const handleDataLoaded = (e) => {
-      apply(e?.detail?.symbol, "event");
+      const d = e?.detail || {};
+      const src = d.chart;
+      if (v9IsMultiPanelLayoutActive()) {
+        const active = v9ActiveChartInstance();
+        if (src && active && src !== active) return;
+      }
+      apply(d.symbol, "event");
       refreshSessionPairs();
     };
     window.addEventListener('chartDataLoaded', handleDataLoaded);
@@ -928,6 +962,41 @@ const TalariaV8bLive = () => {
   // further down (after indActive's useState() call to avoid a TDZ).
   const indicatorIdMapRef = useRef({}); // { [v9Id]: chartJsId }
 
+  const chartTfToV9 = (cTf) => {
+    if (!cTf) return null;
+    const s = String(cTf).toLowerCase().trim();
+    if (s === "1mo") return "1M";
+    if (/^\d+h$/.test(s)) return s.toUpperCase();
+    if (/^\d+d$/.test(s) || /^\d+w$/.test(s)) return s.toUpperCase();
+    return s;
+  };
+
+  const routeSessionFileLoadToSelectedPanel = (fileId) => {
+    if (fileId == null) return;
+    const fid = typeof fileId === "string" ? fileId : String(fileId);
+    try {
+      const pm = window.panelManager;
+      if (!pm || !v9IsMultiPanelLayoutActive()) {
+        if (window.chart && typeof window.chart.loadFileData === "function") {
+          window.chart.loadFileData(fid);
+        }
+        return;
+      }
+      const panel = pm.panels?.[pm.selectedPanelIndex ?? 0];
+      const pc = panel?.chartInstance;
+      const isMain = !!(panel && (panel.isMainChart || pc === window.chart));
+      if (isMain && window.chart && typeof window.chart.loadFileData === "function") {
+        window.chart.loadFileData(fid);
+      } else if (pc && typeof pc.loadPanelFileData === "function") {
+        void pc.loadPanelFileData(fid);
+      } else if (window.chart && typeof window.chart.loadFileData === "function") {
+        window.chart.loadFileData(fid);
+      }
+    } catch (err) {
+      console.warn("[V9 sym] routeSessionFileLoadToSelectedPanel failed", err);
+    }
+  };
+
   // ─── SYNC TIMEFRAME → chart.js ───────────────────────────────────────────
   // V9 'tf' state ("1m", "5m", "15m", "30m", "1H", "4H", "1D", "1W", "1M")
   // drives chart.js's setTimeframe().
@@ -957,6 +1026,23 @@ const TalariaV8bLive = () => {
         if (attempts++ < 60) setTimeout(apply, 200);
         return;
       }
+      const pm = window.panelManager;
+      if (
+        pm &&
+        typeof pm.updateSelectedPanelTimeframe === "function" &&
+        v9IsMultiPanelLayoutActive()
+      ) {
+        const sel = pm.getSelectedPanel?.();
+        const pci = sel?.chartInstance;
+        const curTf = pci?.currentTimeframe ?? chart.currentTimeframe;
+        if (curTf === target) return;
+        try {
+          pm.updateSelectedPanelTimeframe(target);
+        } catch (err) {
+          console.warn("[V9] updateSelectedPanelTimeframe failed for", tf, "->", target, err);
+        }
+        return;
+      }
       // setTimeframe early-returns if rawData empty AND no currentFileId; that's fine.
       if (chart.currentTimeframe === target) return;
       try {
@@ -973,27 +1059,58 @@ const TalariaV8bLive = () => {
   // Listen for chart.js timeframe changes (e.g. legacy hotkey, replay system,
   // panel sync) and reflect them back into V9 state so the UI stays in sync.
   useEffect(() => {
-    const chartTfToV9 = (cTf) => {
-      if (!cTf) return null;
-      const s = String(cTf).toLowerCase().trim();
-      if (s === "1mo") return "1M";
-      // Hours: "1h" → "1H", "4h" → "4H".
-      if (/^\d+h$/.test(s)) return s.toUpperCase();
-      // Days/weeks: "1d" → "1D", "1w" → "1W".
-      if (/^\d+d$/.test(s) || /^\d+w$/.test(s)) return s.toUpperCase();
-      // Minutes stay lowercase: "1m", "5m", "15m", "30m".
-      return s;
-    };
-
     const handleTfChanged = (e) => {
-      const cTf = e?.detail?.timeframe || window.chart?.currentTimeframe;
+      let cTf = e?.detail?.timeframe;
+      if (!cTf) {
+        const active = v9ActiveChartInstance();
+        cTf = active?.currentTimeframe ?? window.chart?.currentTimeframe;
+      }
       const mapped = chartTfToV9(cTf);
       if (mapped) setTf(mapped);
     };
 
-    // chart.js dispatches both 'timeframeChanged' and 'dataLoaded' on tf changes.
     window.addEventListener("timeframeChanged", handleTfChanged);
     return () => window.removeEventListener("timeframeChanged", handleTfChanged);
+  }, []);
+
+  // Multi-panel: keep V9 pair + TF matching the selected tile (panelManager).
+  useEffect(() => {
+    const normalizeSymbol = (s) => {
+      if (!s || typeof s !== "string") return s;
+      const u = s.toUpperCase().replace(/\s+/g, "");
+      if (u.includes("/")) return u;
+      if (/^[A-Z]{6}$/.test(u)) return u.slice(0, 3) + "/" + u.slice(3);
+      return u;
+    };
+
+    const onPanelSelected = (e) => {
+      const d = e?.detail || {};
+      const panel = d.panel;
+      const ci = panel?.chartInstance;
+      if (ci) {
+        const raw = ci.currentSymbol ?? ci.symbol;
+        if (raw) {
+          const sym = normalizeSymbol(String(raw).trim());
+          if (sym) setSymbol(sym);
+        }
+      }
+      const cTf = (ci && ci.currentTimeframe) || d.timeframe;
+      const mapped = chartTfToV9(cTf);
+      if (mapped) setTf(mapped);
+    };
+
+    const onPanelTimeframeChanged = (e) => {
+      const cTf = e?.detail?.timeframe;
+      const mapped = chartTfToV9(cTf);
+      if (mapped) setTf(mapped);
+    };
+
+    window.addEventListener("panelSelected", onPanelSelected);
+    window.addEventListener("panelTimeframeChanged", onPanelTimeframeChanged);
+    return () => {
+      window.removeEventListener("panelSelected", onPanelSelected);
+      window.removeEventListener("panelTimeframeChanged", onPanelTimeframeChanged);
+    };
   }, []);
 
   // ──────────────────────────────────────────────────────────────────────
@@ -11391,11 +11508,12 @@ const TalariaV8bLive = () => {
                           setSymbol(s.id);
                           setSymbolOpen(false);
                           setSymbolSearch("");
-                          // Tell chart.js to swap its loaded data to the picked
-                          // pair. fileId comes from session.instruments[ticker].fileId.
-                          if(s.fileId != null && window.chart?.loadFileData){
-                            try { window.chart.loadFileData(s.fileId); }
-                            catch(err){ console.warn('[V9 sym] loadFileData failed', err); }
+                          // Route load to the selected multi-panel tile (main → loadFileData,
+                          // other panels → chartInstance.loadPanelFileData). Symbol sync in
+                          // panel-manager still applies when layout sync is enabled.
+                          if (s.fileId != null) {
+                            try { routeSessionFileLoadToSelectedPanel(s.fileId); }
+                            catch (err) { console.warn("[V9 sym] session file load failed", err); }
                           }
                         }}
                         style={{display:"flex",alignItems:"center",gap:9,padding:"5px 14px",cursor:"default",position:"relative",

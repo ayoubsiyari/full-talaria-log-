@@ -1286,6 +1286,7 @@ class Chart {
 
         window.dispatchEvent(new CustomEvent('chartDataLoaded', {
             detail: {
+                chart: this,
                 data: this.data,
                 rawData: this.rawData,
                 symbol: this.currentSymbol,
@@ -8601,6 +8602,7 @@ class Chart {
 	                    // Notify panels that new data is available
 	                    window.dispatchEvent(new CustomEvent('chartDataLoaded', {
 	                        detail: { 
+	                            chart: this,
 	                            data: this.data,
 	                            rawData: this.rawData,
 	                            symbol: this.currentSymbol,
@@ -10693,6 +10695,7 @@ class Chart {
     _fireChartDataLoaded() {
         window.dispatchEvent(new CustomEvent('chartDataLoaded', {
             detail: { 
+                chart: this,
                 data: this.data,
                 rawData: this.rawData,
                 symbol: this.currentSymbol,
