@@ -711,17 +711,46 @@ const TalariaV8bLive = () => {
         }
         if (!session) return;
 
+        const chart = window.chart;
+        /** Prefer chart.js pair resolver (parses EURUSD from filename when map key is wrong). */
+        const resolveTickerForInstrument = (tickerKey, info, fileId) => {
+          const fid = fileId ?? info?.fileId ?? info?.datasetId ?? null;
+          let resolved = null;
+          try {
+            if (chart?.resolveSessionTickerForFileId && fid != null)
+              resolved = chart.resolveSessionTickerForFileId(session, fid);
+          } catch (_) {}
+          if (resolved && String(resolved).trim())
+            return normalizeSymbol(String(resolved).trim());
+          const rawLabel =
+            (info && (info.symbolName || info.symbol || info.displaySymbol || info.display_symbol || info.name))
+            || info?.ticker
+            || tickerKey;
+          let attempt = String(rawLabel || "").trim();
+          try {
+            if (chart?._formatPairTicker && (attempt || info?.fileName || info?.name))
+              attempt = chart._formatPairTicker(attempt, info?.fileName || info?.name || "") || attempt;
+          } catch (_) {}
+          let out = normalizeSymbol(attempt);
+          // Session map key / row.ticker is sometimes only the quote currency (e.g. "USD").
+          const looksBroken =
+            !out.includes("/") && /^[A-Z]{3}$/.test(out);
+          if (looksBroken) {
+            const fb =
+              session.symbol || session.pair || session.symbolName
+              || chart?.currentSymbol
+              || null;
+            if (fb) out = normalizeSymbol(String(fb).trim());
+          }
+          return out;
+        };
+
         const pairs = [];
         if (session.instruments && typeof session.instruments === 'object') {
           for (const [ticker, info] of Object.entries(session.instruments)) {
             const fid = info?.fileId ?? info?.datasetId ?? null;
-            // Object key can be a shorthand ("USD") while the row holds the real pair (symbolName/symbol).
-            const label =
-              (info && (info.symbolName || info.symbol || info.displaySymbol || info.display_symbol || info.name))
-              || info?.ticker
-              || ticker;
-            if (label)
-              pairs.push({ ticker: normalizeSymbol(String(label).trim()), fileId: fid });
+            const sym = resolveTickerForInstrument(ticker, info, fid);
+            if (sym) pairs.push({ ticker: sym, fileId: fid });
           }
         } else if (Array.isArray(session.symbols)) {
           for (const s of session.symbols) {
@@ -761,11 +790,23 @@ const TalariaV8bLive = () => {
       refreshSessionPairs();
     };
     window.addEventListener('chartDataLoaded', handleDataLoaded);
+    window.__v9RefreshSessionPairs = refreshSessionPairs;
     return () => {
       cancelled = true;
+      try {
+        delete window.__v9RefreshSessionPairs;
+      } catch (_) {}
       window.removeEventListener('chartDataLoaded', handleDataLoaded);
     };
   }, []);
+
+  // Refresh BACKTEST pair list when opening the picker so chart.js session resolvers are available.
+  useEffect(() => {
+    if (!symbolOpen) return;
+    try {
+      if (typeof window.__v9RefreshSessionPairs === "function") window.__v9RefreshSessionPairs();
+    } catch (_) {}
+  }, [symbolOpen]);
 
   // Finnhub economic calendar pair-filter reads window.chart.currentSymbol; V9 can show
   // the correct pair before chart.js finishes resolving tickers. Mirror compact ticker here.
