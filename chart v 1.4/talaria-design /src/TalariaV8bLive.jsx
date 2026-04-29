@@ -5032,28 +5032,32 @@ const TalariaV8bLive = () => {
         {act && <div style={{ position: "absolute", left: 3, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg, transparent, ${accentCol}, transparent)`, boxShadow: `0 0 6px ${accentGlow}`, pointerEvents: "none", zIndex: 2 }}/>}
         {h && !act && !isPressed && <div style={{ position: "absolute", left: 3, top: "25%", bottom: "25%", width: 1, background: `linear-gradient(180deg, transparent, `+c.hvLn+`, transparent)`, pointerEvents: "none", zIndex: 2 }}/>}
         {isPressed && <div style={{ position: "absolute", left: 3, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}`, pointerEvents: "none", zIndex: 2 }}/>}
-        {/* Arrow — menu only; does not arm / select the tool (that is the icon button) */}
-        {t.dd && <button
-          type="button"
-          onMouseEnter={() => setHov(t.id + "-arr")}
-          onMouseLeave={() => setHov(null)}
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            openDd(e.currentTarget.parentElement);
-          }}
-          style={{
-            width: 10, height: 32, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-            background: hArr ? "rgba(255,255,255,0.06)" : "transparent",
-            border: "none", cursor: "default",
-            padding: 0,
-            transition: "background 0.12s", fontFamily: F,
-            zIndex: 2,
-          }}>
-          <svg width={5} height={5} viewBox="320 -720 296 480" preserveAspectRatio="xMaxYMid meet" fill={arrCol} style={{transition:"fill 0.12s"}}>
-            <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>
-          </svg>
-        </button>}
+        {/* Chevron or same-width spacer so Lock / Pinned / Undo / Redo align with split rows */}
+        {t.dd ? (
+          <button
+            type="button"
+            onMouseEnter={() => setHov(t.id + "-arr")}
+            onMouseLeave={() => setHov(null)}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              openDd(e.currentTarget.parentElement);
+            }}
+            style={{
+              width: 10, height: 32, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+              background: hArr ? "rgba(255,255,255,0.06)" : "transparent",
+              border: "none", cursor: "default",
+              padding: 0,
+              transition: "background 0.12s", fontFamily: F,
+              zIndex: 2,
+            }}>
+            <svg width={5} height={5} viewBox="320 -720 296 480" preserveAspectRatio="xMaxYMid meet" fill={arrCol} style={{transition:"fill 0.12s"}}>
+              <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>
+            </svg>
+          </button>
+        ) : (
+          <div style={{ width: 10, height: 32, flexShrink: 0, pointerEvents: "none" }} aria-hidden />
+        )}
         {h && !ddOpen && !t.dd && <div style={{ position: "absolute", left: "calc(100% + 10px)", top: "50%", transform: "translateY(-50%)", background: c.el, border: `1px solid ${c.brH}`, padding: "4px 10px", fontSize: 12, fontWeight: 600, fontFamily: F, color: c.tx, whiteSpace: "nowrap", zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.6)", borderLeft: `2px solid ${act ? accentCol : c.brH}` }}>{t.label}</div>}
       </div>
     );
