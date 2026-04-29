@@ -11892,7 +11892,11 @@ const TalariaV8bLive = () => {
                    panelManager.applyLayout() resizes / hides this when
                    switching to a multi-panel layout and restores it when going
                    back to '1'. */}
-              <div id="chartWrapper" className="chart-wrapper" style={{ position: "absolute", inset: 0 }}>
+              {/* Do not put layout (width/left/…) in React style here — panel-manager sets
+                  those INLINE per layout; React re-renders would reset style={{ inset:0 }} and
+                  wipe sizing, so #chartWrapper spans the full chart and stacks over other panels
+                  (ghost main OHLC / broken tiles). Default fill comes from live/index.html CSS. */}
+              <div id="chartWrapper" className="chart-wrapper">
                 <canvas id="chartCanvas" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", background: "transparent" }} />
                 <svg id="drawingSvg" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
                 {/* Axis cursor zones — chart.js reserves 60px right and 30px bottom margin.

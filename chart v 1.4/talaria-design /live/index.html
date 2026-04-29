@@ -24,6 +24,19 @@
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html, body, #root { width: 100%; height: 100%; overflow: hidden; background: #07080E; }
 
+        /* Single-layout default for main tiles. Multi-panel: panel-manager.applyLayout() sets
+           width/height/left/top as INLINE styles — React must not own #chartWrapper geometry or
+           each re-render replaces the whole style attribute and drops panel placement (wrapper
+           goes full #chart-container and paints over #panels-container → duplicate main UI). */
+        #chartWrapper.chart-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
         /* Canvas + drawing-svg sit inside the V9 chart-area div.
            They fill their parent so chart.js renders into the available space.
            Pointer events stay on the canvas; SVG is for drawings only. */
