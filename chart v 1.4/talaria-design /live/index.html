@@ -591,10 +591,43 @@
                 }
             };
 
-            // Compatibility shim used by panel-manager internals on layout switch.
-            window.renderPanelChart = function(panel /*, sourceData */) {
+            // Same as legacy chart/index.html renderPanelChart — seeds panel data when the main
+            // chart finishes loading after panels already exist (V9 React mount order).
+            window.renderPanelChart = function(panel, sourceData) {
+                var chart = window.chart;
                 if (!panel) return;
                 if (!panel.chartInstance) window.initPanelChart(panel);
+                if (sourceData && panel.chartInstance) {
+                    var pcSelf = panel.chartInstance;
+                    var alreadyHasData = (Array.isArray(pcSelf.data) && pcSelf.data.length > 0)
+                        || (Array.isArray(pcSelf.rawData) && pcSelf.rawData.length > 0)
+                        || (Array.isArray(pcSelf._panelFullRawData) && pcSelf._panelFullRawData.length > 0)
+                        || pcSelf._isLoadingOwnPairData;
+                    if (alreadyHasData) return;
+                    if (chart && chart.chartSettings) {
+                        panel.chartInstance.chartSettings = JSON.parse(JSON.stringify(chart.chartSettings));
+                        if (panel.chartInstance.canvas) {
+                            panel.chartInstance.canvas.style.backgroundColor = panel.chartInstance.chartSettings.backgroundColor;
+                        }
+                    }
+                    var hasOwnPairData = panel.chartInstance._isLoadingOwnPairData
+                        || (Array.isArray(panel.chartInstance._panelFullRawData) && panel.chartInstance._panelFullRawData.length > 0);
+                    if (!hasOwnPairData) {
+                        if (chart && chart.currentSymbol) {
+                            panel.chartInstance.currentSymbol = chart.currentSymbol;
+                        }
+                        panel.chartInstance.rawData = chart.rawData || [];
+                        panel.chartInstance.data = panel.chartInstance.resampleData(
+                            panel.chartInstance.rawData,
+                            panel.timeframe || '1m'
+                        );
+                        panel.chartInstance.fitToView();
+                        panel.chartInstance.render();
+                        if (panel.chartInstance.currentSymbol && panel.chartInstance.updateChartOHLCSymbol) {
+                            panel.chartInstance.updateChartOHLCSymbol(panel.chartInstance.currentSymbol);
+                        }
+                    }
+                }
             };
 
             window.addEventListener('panelsCreated', function(event) {
@@ -608,6 +641,49 @@
                         try { window.chart.orderManager.syncOrderVisualsToActiveChart(); } catch(_){}
                     }
                 }, 200);
+            });
+
+            window.addEventListener('panelTimeframeChanged', function(event) {
+                var d = event && event.detail;
+                if (!d) return;
+                var panelIndex = d.panelIndex;
+                var timeframe = d.timeframe;
+                var panel = d.panel;
+                if (panel && panel.chartInstance) {
+                    panel.chartInstance.setTimeframe(timeframe);
+                    if (window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.interval) {
+                        window.panelManager.syncInterval(panel, timeframe);
+                    }
+                } else if (window.panelManager) {
+                    var plist = window.panelManager.getPanels();
+                    var targetPanel = plist && plist[panelIndex];
+                    if (targetPanel && targetPanel.chartInstance) {
+                        targetPanel.chartInstance.setTimeframe(timeframe);
+                        if (window.panelManager.syncSettings && window.panelManager.syncSettings.interval) {
+                            window.panelManager.syncInterval(targetPanel, timeframe);
+                        }
+                    }
+                }
+            });
+
+            window.addEventListener('chartDataLoaded', function(event) {
+                if (!window.panelManager || window.panelManager.getCurrentLayout() === '1') return;
+                var panels = window.panelManager.getPanels();
+                if (!panels || !panels.length) return;
+                var detail = event && event.detail;
+                var sourceData = detail && detail.data;
+                panels.forEach(function(panel) {
+                    if (!panel.chartInstance) {
+                        window.initPanelChart(panel);
+                        return;
+                    }
+                    var pc = panel.chartInstance;
+                    var hasData = (Array.isArray(pc.data) && pc.data.length > 0)
+                        || (Array.isArray(pc.rawData) && pc.rawData.length > 0)
+                        || (Array.isArray(pc._panelFullRawData) && pc._panelFullRawData.length > 0);
+                    if (hasData) return;
+                    window.renderPanelChart(panel, sourceData);
+                });
             });
 
             // panelDrawingSync stub matching legacy (drawing sync is handled
