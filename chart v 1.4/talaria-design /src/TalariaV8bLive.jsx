@@ -1470,6 +1470,8 @@ const TalariaV8bLive = () => {
   const closingDropdownKey = useRef(null);
   /** Keeps latest closeWindows for chart.js → `talaria-v9-open-settings` without stale closures */
   const closeWindowsRef = useRef(() => {});
+  /** Latest closeAll for document mousedown (must not be inlined before closeAll exists below). */
+  const closeAllRef = useRef(() => {});
   const [canvasDims, setCanvasDims] = useState({w:888,h:360});
   /** Data URL from real #chart-container capture — matches Copy/Download output (not SVG mock). */
   const [screenshotPreviewUrl, setScreenshotPreviewUrl] = useState(null);
@@ -2661,10 +2663,10 @@ const TalariaV8bLive = () => {
         e.target.closest('#panels-container');
       if (!onChartSurface) return;
 
+      // Same as legacy “click chart → dismiss chrome”: symbol search, TF flyouts, menus, etc.
+      // (closeAll is intentionally not on bubbled child clicks — see root onClick.)
+      try { closeAllRef.current?.(); } catch (_) {}
       setTlSettTplDrop(false);
-      setSettDrop(null);
-      setTlStyleDrop(null);
-      setDropdown(null);
       setTlSettOpen(false);
     };
     const scrollHandler = () => { setSettDrop(null); setColorPicker(null); };
@@ -4892,6 +4894,7 @@ const TalariaV8bLive = () => {
     setTagDrop(null); setTlStyleDrop(null); setTlBarDrop(null); setTxtBarSizeOpen(false); setTxtBarDrop(null); setEmojiPanelOpen(false);
     setOpSymOpen(false); setOpSymSearch(""); setOpSizeOpen(false);
   };
+  closeAllRef.current = closeAll;
 
   const copyScreenshotPageLink = async () => {
     const url = typeof window !== "undefined" ? window.location.href : "";
@@ -5176,7 +5179,12 @@ const TalariaV8bLive = () => {
 
   return (
     <div style={{ width: "100%", height: "100dvh", background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
-      onClick={closeAll}>
+      onClick={(e) => {
+        // Never run closeAll on bubbled clicks from children — it ran after every button/dropdown
+        // handler and cleared state in the same tick (felt like “dead clicks”, many taps needed).
+        if (e.target !== e.currentTarget) return;
+        closeAll();
+      }}>
       <style>{`
         @keyframes tlrWinIn  { from { opacity:0; transform:translate(-50%,-50%) scale(0.97) translateY(7px); } to { opacity:1; transform:translate(-50%,-50%) scale(1) translateY(0); } }
         @keyframes tlrWinOut { from { opacity:1; transform:translate(-50%,-50%) scale(1) translateY(0); } to { opacity:0; transform:translate(-50%,-50%) scale(0.97) translateY(7px); } }
