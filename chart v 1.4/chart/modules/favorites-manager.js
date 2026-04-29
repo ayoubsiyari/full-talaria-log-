@@ -556,10 +556,8 @@ class FavoritesManager {
     }
     
     render() {
-        if (!this.toolbarElement) {
-            console.error('❌ Favorites toolbar element not found');
-            return;
-        }
+        // V9 Live has no #favoritesTools — expected; multi-panel creates a manager per chart without spamming the console.
+        if (!this.toolbarElement) return;
         
         // Clear current content
         this.toolbarElement.innerHTML = '';
@@ -747,17 +745,11 @@ class FavoritesManager {
     
     // Setup drag functionality
     setupDrag() {
-        if (!this.toolbar) {
-            console.error('❌ Toolbar element not found');
-            return;
-        }
-        
+        if (!this.toolbar) return;
+
         // Use the drag handle element
         const dragHandle = this.toolbar.querySelector('.favorites-drag-handle');
-        if (!dragHandle) {
-            console.error('❌ Drag handle not found');
-            return;
-        }
+        if (!dragHandle) return;
         
         let animationFrameId = null;
         let currentMouseX = 0;
@@ -901,10 +893,7 @@ class FavoritesManager {
     // Setup toggle button
     setupToggleButton() {
         const toggleBtn = document.getElementById('toggleFavoritesBar');
-        if (!toggleBtn) {
-            console.warn('⚠️ Toggle favorites button not found');
-            return;
-        }
+        if (!toggleBtn) return;
         
         // Set initial state
         if (this.isVisible) {
