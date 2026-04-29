@@ -3511,7 +3511,7 @@ const TalariaV8bLive = () => {
     ]}],
     // Group 4 - Shapes
     [{ id: "rect", icon: "rect", label: "Shapes", dd: [
-      {h:"SHAPES"},{icon:"triangle",label:"Triangle"},{icon:"rect",label:"Rectangle"},{icon:"arcShape",label:"Arc"},{icon:"ellipse",label:"Ellipse"},{icon:"circle",label:"Circle"},
+      {h:"SHAPES"},{icon:"rect",label:"Rectangle"},{icon:"triangle",label:"Triangle"},{icon:"arcShape",label:"Arc"},{icon:"ellipse",label:"Ellipse"},{icon:"circle",label:"Circle"},
       {h:"ARROWS"},{icon:"arrowMarker",label:"Arrow Marker"},{icon:"arrowLine",label:"Arrow"},{icon:"arrowUp",label:"Arrow Mark Up"},{icon:"arrowDn",label:"Arrow Mark Down"}
     ]}],
     // Group 5 - Channels & Pitchforks
@@ -4248,7 +4248,9 @@ const TalariaV8bLive = () => {
 
   // Render a tool button
   const renderTB = (t, ref) => {
-    const activeIcon = (t.dd && (groupSelected[t.id]?.icon || t.dd.find(x=>!x.h)?.icon)) || t.icon;
+    // Prefer explicit group icon (e.g. Shapes → rect) before first dropdown row so
+    // the rail matches defaults like Rectangle, not the first list item (Triangle).
+    const activeIcon = (t.dd && (groupSelected[t.id]?.icon || t.icon || t.dd.find(x=>!x.h)?.icon)) || t.icon;
     const ddOpen = dropdown === t.id;
     const act = t.id === "pinbar" ? pinnedBarOpen : tool === t.id;
     const h = hov === t.id;
