@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
 import { applyV9ThemeSettingsToChart } from "./v9ThemeSync.js";
 
 // ── Color utilities ──────────────────────────────────────────────────────────
@@ -125,6 +125,218 @@ function v9UiVertToChartVert(ui) {
 function v9ChartVertToUi(chartVert) {
   const v = chartVert || "top";
   return v === "middle" ? "center" : v;
+}
+
+/** drawing.points[] — x = bar index, y = price → V9 Coordinates tab (`pt{n}Price` / `pt{n}Bar`). */
+function v9CoordPatchFromDrawing(d) {
+  const pts = d && d.points;
+  if (!Array.isArray(pts) || pts.length === 0) return {};
+  const patch = {};
+  const fmtPrice = (y) => {
+    if (typeof y !== "number" || !Number.isFinite(y)) return "";
+    const s = String(y);
+    return s.length > 14 ? y.toFixed(8).replace(/\.?0+$/, "") : s;
+  };
+  for (let i = 0; i < Math.min(pts.length, 7); i++) {
+    const p = pts[i];
+    if (!p) continue;
+    const n = i + 1;
+    patch[`pt${n}Price`] = fmtPrice(p.y);
+    patch[`pt${n}Bar`] = Number.isFinite(p.x) ? String(Math.round(p.x)) : "";
+  }
+  return patch;
+}
+
+/** drawing.visibility._ranges — keys m/h/d/w/M (chart.js) ↔ V9 Visibility tab. */
+function v9VisibilityPatchFromDrawing(d) {
+  const rng = d && d.visibility && d.visibility._ranges;
+  if (!rng || typeof rng !== "object") return {};
+  const row = (r) => {
+    if (!r || typeof r !== "object") return null;
+    return {
+      checked: r.enabled !== false,
+      min: Number.isFinite(+r.min) ? +r.min : 1,
+      max: Number.isFinite(+r.max) ? +r.max : 1,
+    };
+  };
+  const patch = {};
+  const vm = row(rng.m);
+  if (vm) patch.visMinutes = vm;
+  const vh = row(rng.h);
+  if (vh) patch.visHours = vh;
+  const vd = row(rng.d);
+  if (vd) patch.visDays = vd;
+  const vw = row(rng.w);
+  if (vw) patch.visWeeks = vw;
+  const vmo = row(rng.M || rng.mo);
+  if (vmo) patch.visMonths = vmo;
+  return patch;
+}
+
+function v9ApplyPointsFromTlStyle(d, tlStyle) {
+  if (!d || !Array.isArray(d.points) || d.points.length === 0 || !tlStyle) return false;
+  const next = d.points.map((p, i) => {
+    const n = i + 1;
+    const pk = `pt${n}Price`;
+    const bk = `pt${n}Bar`;
+    let x = p.x;
+    let y = p.y;
+    const rawP = tlStyle[pk];
+    if (rawP !== undefined && rawP !== null && String(rawP).trim() !== "") {
+      const py = parseFloat(String(rawP).replace(/,/g, ""));
+      if (Number.isFinite(py)) y = py;
+    }
+    const rawB = tlStyle[bk];
+    if (rawB !== undefined && rawB !== null && String(rawB).trim() !== "") {
+      const px = parseInt(String(rawB), 10);
+      if (Number.isFinite(px)) x = px;
+    }
+    return { ...p, x, y };
+  });
+  const same =
+    next.length === d.points.length &&
+    next.every((np, i) => {
+      const op = d.points[i];
+      return op && np.x === op.x && np.y === op.y;
+    });
+  if (same) return false;
+  if (typeof d.update === "function") {
+    d.update(next);
+  } else {
+    d.points = next;
+    if (d.meta) d.meta.updatedAt = Date.now();
+    if (typeof d.recalculateTimestamps === "function") d.recalculateTimestamps();
+  }
+  return true;
+}
+
+/** Writes tlStyle.vis* → drawing.visibility._ranges (units m/h/d/w/M; mo mirrors M). */
+function v9ApplyVisibilityFromTlStyle(d, tlStyle) {
+  if (!d || !tlStyle) return false;
+  const pairs = [
+    ["m", "visMinutes"],
+    ["h", "visHours"],
+    ["d", "visDays"],
+    ["w", "visWeeks"],
+    ["M", "visMonths"],
+  ];
+  let changed = false;
+  for (const [unit, key] of pairs) {
+    const v = tlStyle[key];
+    if (!v || typeof v !== "object") continue;
+    if (!d.visibility) d.visibility = {};
+    if (!d.visibility._ranges) d.visibility._ranges = {};
+    const prev = d.visibility._ranges[unit];
+    const next = {
+      enabled: v.checked !== false,
+      min: Number(v.min) || 1,
+      max: Number(v.max) || 1,
+    };
+    const prevEq =
+      prev &&
+      prev.enabled === next.enabled &&
+      Number(prev.min) === next.min &&
+      Number(prev.max) === next.max;
+    if (!prevEq) changed = true;
+    d.visibility._ranges[unit] = next;
+  }
+  if (tlStyle.visMonths && d.visibility && d.visibility._ranges && d.visibility._ranges.M) {
+    d.visibility._ranges.mo = { ...d.visibility._ranges.M };
+  }
+  return changed;
+}
+
+const V9_LEGACY_DASH_STRING_TO_LINE_TYPE = (() => {
+  const map = {};
+  Object.entries({ solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4' }).forEach(([k, v]) => { map[v] = k; });
+  map['7,4'] = 'dashed'; map['4,4'] = 'dashed'; map['1,3'] = 'dotted';
+  return map;
+})();
+
+/** Full chart.js drawing → V9 `tlStyle` patch (toolbar selection + settings read-back). */
+function v9TlStylePatchFromDrawing(d) {
+  if (!d) return null;
+  const s = d.style || {};
+  const chVert = s.textVAlign || s.textPosition;
+  const bold =
+    s.fontWeight === "bold" ||
+    (typeof s.fontWeight === "number" && s.fontWeight >= 600);
+  const stroke = s.stroke || s.color || s.lineColor;
+  const widthRaw = s.strokeWidth ?? s.lineWidth;
+  const widthStr = widthRaw != null ? String(parseInt(widthRaw, 10) || 2) : undefined;
+  const dashRaw = (s.dashArray ?? s.strokeDasharray ?? '').toString().replace(/\s+/g, '');
+  const lineType = V9_LEGACY_DASH_STRING_TO_LINE_TYPE[dashRaw] ?? (dashRaw ? 'dashed' : 'solid');
+  return {
+    ...(stroke ? { lineColor: stroke } : {}),
+    ...(widthStr ? { lineWidth: widthStr } : {}),
+    lineType,
+    ...(s.fill ? { bgColor: s.fill } : (s.backgroundColor ? { bgColor: s.backgroundColor } : {})),
+    ...(s.startStyle ? { ep1: s.startStyle } : {}),
+    ...(s.endStyle ? { ep2: s.endStyle } : {}),
+    ...(typeof s.extendLeft === 'boolean' ? { extendLeft: s.extendLeft } : {}),
+    ...(typeof s.extendRight === 'boolean' ? { extendRight: s.extendRight } : {}),
+    ...(typeof s.showPriceLabel === 'boolean' ? { priceLabels: s.showPriceLabel } : {}),
+    ...(typeof s.showTimeLabel === 'boolean' ? { timeLabels: s.showTimeLabel } : {}),
+    ...(s.labelColor ? { labelColor: s.labelColor } : {}),
+    ...(s.labelFontSize != null ? { labelFontSize: String(s.labelFontSize) } : {}),
+    ...(typeof s.labelBackground === 'boolean' ? { labelBg: s.labelBackground } : {}),
+    ...(s.labelBackgroundColor ? { labelBgColor: s.labelBackgroundColor } : {}),
+    ...(s.infoSettings && typeof s.infoSettings === 'object'
+      ? (() => {
+          const types = v9ShowInfoTypesFromChartInfoSettings(s.infoSettings);
+          const show =
+            s.infoSettings.showInfo === true ||
+            (types.length > 0 && s.infoSettings.showInfo !== false);
+          return {
+            showInfo: show,
+            showInfoTypes: types.length > 0 ? types : ['Price range'],
+          };
+        })()
+      : {}),
+    ...(typeof d.text === 'string' ? { textContent: d.text } : {}),
+    ...(s.textColor ? { textColor: s.textColor } : {}),
+    ...(s.fontSize != null ? { textSize: String(s.fontSize) } : {}),
+    ...(s.fontWeight != null && s.fontWeight !== '' ? { textBold: bold } : {}),
+    ...(s.fontStyle ? { textItalic: s.fontStyle === 'italic' } : {}),
+    ...(chVert ? { vertAlign: v9ChartVertToUi(chVert) } : {}),
+    ...((s.textHAlign || s.textAlign) ? { horizAlign: s.textHAlign || s.textAlign } : {}),
+    ...v9CoordPatchFromDrawing(d),
+    ...v9VisibilityPatchFromDrawing(d),
+  };
+}
+
+function v9DeepCloneJson(obj) {
+  if (obj === undefined) return undefined;
+  return JSON.parse(JSON.stringify(obj));
+}
+
+/** Persists a drawing template like `drawing-toolbar.js` showSaveTemplateDialog (per drawing.type). */
+function v9SaveDrawingTemplateToStorage(name, drawing) {
+  if (typeof window === 'undefined' || !name || !drawing || !drawing.type) return false;
+  const ch = typeof window.getActiveChart === 'function' ? window.getActiveChart() : window.chart;
+  const dm = ch && ch.drawingManager;
+  const tb = dm && dm.toolbar;
+  const us = window.userStorage;
+  if (!tb || typeof tb.getSavedTemplates !== 'function' || typeof tb.getTemplatesKey !== 'function' || !us) return false;
+  const actualDrawing = (dm && dm.drawings && dm.drawings.find((x) => x.id === drawing.id)) || drawing;
+  const templates = tb.getSavedTemplates(actualDrawing.type);
+  const styleSnapshot = v9DeepCloneJson(actualDrawing.style || {}) || {};
+  const newTemplate = {
+    id: Date.now().toString(),
+    name: name.trim(),
+    style: styleSnapshot,
+    text: actualDrawing.text,
+    levels: v9DeepCloneJson(actualDrawing.levels),
+    stroke: styleSnapshot.stroke || (actualDrawing.style && actualDrawing.style.stroke),
+    strokeWidth: styleSnapshot.strokeWidth ?? (actualDrawing.style && actualDrawing.style.strokeWidth),
+    fill: styleSnapshot.fill,
+    opacity: styleSnapshot.opacity !== undefined ? styleSnapshot.opacity : (actualDrawing.style && actualDrawing.style.opacity),
+  };
+  templates.push(newTemplate);
+  us.setItem(tb.getTemplatesKey(actualDrawing.type), JSON.stringify(templates));
+  window.dispatchEvent(new CustomEvent('drawingTemplatesUpdated', { detail: { toolType: actualDrawing.type } }));
+  if (typeof tb.showNotification === 'function') tb.showNotification(`Template "${name.trim()}" saved!`);
+  return true;
 }
 
 /** PRE variables from `chart.backtestingSession` — same filter as order-manager.js `_getPreTradeVariableDefs`. */
@@ -1444,7 +1656,7 @@ const TalariaV8bLive = () => {
   const [tlInfoDropAnchor, setTlInfoDropAnchor] = useState(null);
   const [tlStyleDropUp, setTlStyleDropUp] = useState(false);
   const [tlBarDrop, setTlBarDrop] = useState(null);
-  const [tlTemplates, setTlTemplates] = useState([]);
+  const [tlTemplatesRev, setTlTemplatesRev] = useState(0);
   const [tlBarDropAnchor, setTlBarDropAnchor] = useState({ btnTop: 0, btnBottom: 0, left: 0, right: 0, barX: 0, barY: 0 });
   const tlLastBarDropRef = useRef("style");
   const [tlSaveAsMode, setTlSaveAsMode] = useState(false);
@@ -4039,6 +4251,43 @@ const TalariaV8bLive = () => {
   // had before the panel opened, so closing the panel restores them.
   const editingDrawingRef = useRef(null);
 
+  const getSelectedDrawingForTemplate = useCallback(() => {
+    try {
+      const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+      const dm = ch && ch.drawingManager;
+      if (!dm) return null;
+      if (editingDrawingRef.current?.drawing) return editingDrawingRef.current.drawing;
+      const tb = dm.toolbar;
+      if (tb?.currentDrawing) return tb.currentDrawing;
+      if (dm.selectedDrawing) return dm.selectedDrawing;
+      if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) return dm.selectedDrawings[0];
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }, []);
+
+  const tlSavedTemplateList = useMemo(() => {
+    void tlTemplatesRev;
+    try {
+      const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+      const tb = ch?.drawingManager?.toolbar;
+      if (!tb || typeof tb.getSavedTemplates !== "function") return [];
+      const d = getSelectedDrawingForTemplate();
+      const toolType = (d && d.type) || resolveLegacyTool();
+      if (!toolType) return [];
+      return tb.getSavedTemplates(toolType) || [];
+    } catch (_) {
+      return [];
+    }
+  }, [tlTemplatesRev, tool, groupSelected, tlBarSelected, tlBarSelectedType, tlSettOpen, getSelectedDrawingForTemplate]);
+
+  useEffect(() => {
+    const bump = () => setTlTemplatesRev((n) => n + 1);
+    window.addEventListener("drawingTemplatesUpdated", bump);
+    return () => window.removeEventListener("drawingTemplatesUpdated", bump);
+  }, []);
+
   // Push the current tool selection into the legacy chart.js drawing system.
   // Runs whenever V9's tool / groupSelected changes. Polls briefly because
   // chart.js / drawingManager may not be initialized yet on first mount.
@@ -4361,6 +4610,8 @@ const TalariaV8bLive = () => {
           textItalic: s.fontStyle === 'italic',
           vertAlign: v9ChartVertToUi(s.textVAlign || s.textPosition || prev.vertAlign),
           horizAlign: (s.textHAlign || s.textAlign || prev.horizAlign),
+          ...v9CoordPatchFromDrawing(drawing),
+          ...v9VisibilityPatchFromDrawing(drawing),
         }));
 
         // Position panel near dblclick (clientX/Y are post-zoom; tlSettPos
@@ -4414,62 +4665,6 @@ const TalariaV8bLive = () => {
   // tlStyle so the V9 toolbar reflects the actual shape (not stale defaults).
   useEffect(() => {
     let cancelled = false; let n = 0;
-    // Map a chart.js drawing.style → partial V9 tlStyle.
-    const LEGACY_DASH_TO_V9 = (() => {
-      const map = {};
-      Object.entries({ solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4' }).forEach(([k, v]) => { map[v] = k; });
-      // Tolerate alternate dash strings the legacy toolbar may emit.
-      map['7,4'] = 'dashed'; map['4,4'] = 'dashed'; map['1,3'] = 'dotted';
-      return map;
-    })();
-    const readDrawingStyle = (d) => {
-      if (!d || !d.style) return null;
-      const s = d.style;
-      const chVert = s.textVAlign || s.textPosition;
-      const bold =
-        s.fontWeight === "bold" ||
-        (typeof s.fontWeight === "number" && s.fontWeight >= 600);
-      const stroke = s.stroke || s.color || s.lineColor;
-      const widthRaw = s.strokeWidth ?? s.lineWidth;
-      const widthStr = widthRaw != null ? String(parseInt(widthRaw, 10) || 2) : undefined;
-      const dashRaw = (s.dashArray ?? s.strokeDasharray ?? '').toString().replace(/\s+/g, '');
-      const lineType = LEGACY_DASH_TO_V9[dashRaw] ?? (dashRaw ? 'dashed' : 'solid');
-      return {
-        ...(stroke ? { lineColor: stroke } : {}),
-        ...(widthStr ? { lineWidth: widthStr } : {}),
-        lineType,
-        ...(s.fill ? { bgColor: s.fill } : (s.backgroundColor ? { bgColor: s.backgroundColor } : {})),
-        ...(s.startStyle ? { ep1: s.startStyle } : {}),
-        ...(s.endStyle ? { ep2: s.endStyle } : {}),
-        ...(typeof s.extendLeft === 'boolean' ? { extendLeft: s.extendLeft } : {}),
-        ...(typeof s.extendRight === 'boolean' ? { extendRight: s.extendRight } : {}),
-        ...(typeof s.showPriceLabel === 'boolean' ? { priceLabels: s.showPriceLabel } : {}),
-        ...(typeof s.showTimeLabel === 'boolean' ? { timeLabels: s.showTimeLabel } : {}),
-        ...(s.labelColor ? { labelColor: s.labelColor } : {}),
-        ...(s.labelFontSize != null ? { labelFontSize: String(s.labelFontSize) } : {}),
-        ...(typeof s.labelBackground === 'boolean' ? { labelBg: s.labelBackground } : {}),
-        ...(s.labelBackgroundColor ? { labelBgColor: s.labelBackgroundColor } : {}),
-        ...(s.infoSettings && typeof s.infoSettings === 'object'
-          ? (() => {
-              const types = v9ShowInfoTypesFromChartInfoSettings(s.infoSettings);
-              const show =
-                s.infoSettings.showInfo === true ||
-                (types.length > 0 && s.infoSettings.showInfo !== false);
-              return {
-                showInfo: show,
-                showInfoTypes: types.length > 0 ? types : ['Price range'],
-              };
-            })()
-          : {}),
-        ...(typeof d.text === 'string' ? { textContent: d.text } : {}),
-        ...(s.textColor ? { textColor: s.textColor } : {}),
-        ...(s.fontSize != null ? { textSize: String(s.fontSize) } : {}),
-        ...(s.fontWeight != null && s.fontWeight !== '' ? { textBold: bold } : {}),
-        ...(s.fontStyle ? { textItalic: s.fontStyle === 'italic' } : {}),
-        ...(chVert ? { vertAlign: v9ChartVertToUi(chVert) } : {}),
-        ...((s.textHAlign || s.textAlign) ? { horizAlign: s.textHAlign || s.textAlign } : {}),
-      };
-    };
     const hook = () => {
       if (cancelled) return;
       const dm = window.chart && window.chart.drawingManager;
@@ -4484,7 +4679,7 @@ const TalariaV8bLive = () => {
         try {
           setTlBarSelected(true);
           setTlBarSelectedType(drawing && drawing.type);
-          const patch = readDrawingStyle(drawing);
+          const patch = v9TlStylePatchFromDrawing(drawing);
           if (patch) {
             suppressForwardBridge.current = true;
             setTlStyle(s => ({ ...s, ...patch }));
@@ -4626,6 +4821,8 @@ const TalariaV8bLive = () => {
           d.style.trendLineWidth = widthNum;
           d.style.levelsLineWidth = widthNum;
         }
+        try { v9ApplyPointsFromTlStyle(d, tlStyle); } catch (_) {}
+        try { v9ApplyVisibilityFromTlStyle(d, tlStyle); } catch (_) {}
         // Prefer onUpdate (history + render + persist + saveDrawings).
         if (tb && typeof tb.onUpdate === 'function') {
           try { tb.onUpdate(d); } catch (_) { try { dm.renderDrawing?.(d); } catch (_) {} }
@@ -4648,6 +4845,11 @@ const TalariaV8bLive = () => {
     tlStyle.labelColor, tlStyle.labelFontSize, tlStyle.labelBg, tlStyle.labelBgColor,
     tlStyle.textContent, tlStyle.textColor, tlStyle.textSize, tlStyle.textBold, tlStyle.textItalic,
     tlStyle.vertAlign, tlStyle.horizAlign,
+    tlStyle.pt1Price, tlStyle.pt1Bar, tlStyle.pt2Price, tlStyle.pt2Bar,
+    tlStyle.pt3Price, tlStyle.pt3Bar, tlStyle.pt4Price, tlStyle.pt4Bar,
+    tlStyle.pt5Price, tlStyle.pt5Bar, tlStyle.pt6Price, tlStyle.pt6Bar,
+    tlStyle.pt7Price, tlStyle.pt7Bar,
+    tlStyle.visMinutes, tlStyle.visHours, tlStyle.visDays, tlStyle.visWeeks, tlStyle.visMonths,
     tool, groupSelected,
   ]);
 
@@ -5013,7 +5215,15 @@ const TalariaV8bLive = () => {
                   <div style={{height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                   <div style={{padding:"4px 0"}}>
                     {[["Save as", ()=>{ setTlSaveAsMode(true); setTlNewTplName(""); }],
-                      ["Apply default", ()=>{ closeTlSettTplDrop(); }]].map(([lbl, action])=>{
+                      ["Apply default", ()=>{
+                        const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+                        const tb = ch?.drawingManager?.toolbar;
+                        const d = getSelectedDrawingForTemplate();
+                        if (!tb || typeof tb.applyDefaultTemplate !== "function") return;
+                        if (!d) { tb.showNotification?.("Select a drawing first"); return; }
+                        tb.applyDefaultTemplate(d);
+                        closeTlSettTplDrop();
+                      }]].map(([lbl, action])=>{
                       const isH=hov===`stpl-${lbl}`, isAct=lbl==="Save as"&&tlSaveAsMode;
                       return (
                         <div key={lbl} onClick={action}
@@ -5030,12 +5240,16 @@ const TalariaV8bLive = () => {
                       <div style={{padding:"4px 8px 4px 12px",display:"flex",alignItems:"center",gap:4,boxSizing:"border-box",width:"100%"}} onMouseDown={e=>e.stopPropagation()}>
                         <input autoFocus value={tlNewTplName} onChange={e=>setTlNewTplName(e.target.value)}
                           onKeyDown={e=>{
-                            if(e.key==="Enter"&&tlNewTplName.trim()){setTlTemplates(ts=>[...ts,{name:tlNewTplName.trim(),style:{...tlStyle}}]);setTlSaveAsMode(false);setTlNewTplName("");}
-                            if(e.key==="Escape"){setTlSaveAsMode(false);setTlNewTplName("");}
+                            if (e.key === "Enter" && tlNewTplName.trim()) {
+                              const d = getSelectedDrawingForTemplate();
+                              if (!d) { window.chart?.drawingManager?.toolbar?.showNotification?.("Select a drawing first"); return; }
+                              if (v9SaveDrawingTemplateToStorage(tlNewTplName, d)) { setTlSaveAsMode(false); setTlNewTplName(""); }
+                            }
+                            if (e.key === "Escape") { setTlSaveAsMode(false); setTlNewTplName(""); }
                           }}
                           placeholder="Template name…"
                           style={{flex:1,minWidth:0,background:c.hv,border:"1px solid rgba(140,160,255,0.22)",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:"3px 6px",boxSizing:"border-box",cursor:"text"}}/>
-                        <div onClick={()=>{if(tlNewTplName.trim()){setTlTemplates(ts=>[...ts,{name:tlNewTplName.trim(),style:{...tlStyle}}]);setTlSaveAsMode(false);setTlNewTplName("");}}}
+                        <div onClick={()=>{ if (!tlNewTplName.trim()) return; const d = getSelectedDrawingForTemplate(); if (!d) { window.chart?.drawingManager?.toolbar?.showNotification?.("Select a drawing first"); return; } if (v9SaveDrawingTemplateToStorage(tlNewTplName, d)) { setTlSaveAsMode(false); setTlNewTplName(""); } }}
                           onMouseEnter={()=>setHov("stpl-save-ok")} onMouseLeave={()=>setHov(null)}
                           style={{padding:"2px 4px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",flexShrink:0,position:"relative",
                                   background:hov==="stpl-save-ok"?c.hv:"transparent",transition:"background 0.12s"}}>
@@ -5044,18 +5258,31 @@ const TalariaV8bLive = () => {
                         </div>
                       </div>
                     )}
-                    {tlTemplates.length === 0 && !tlSaveAsMode ? (
+                    {tlSavedTemplateList.length === 0 && !tlSaveAsMode ? (
                       <div style={{padding:"6px 12px"}}>
                         <span style={{fontSize:11, color:c.tm, fontStyle:"italic"}}>No saved templates</span>
                       </div>
-                    ) : tlTemplates.map((tpl, idx)=>(
-                      <div key={idx}
+                    ) : tlSavedTemplateList.map((tpl, idx)=>(
+                      <div key={tpl.id || idx}
                         onMouseEnter={()=>setHov(`stpl-${idx}`)} onMouseLeave={()=>setHov(null)}
                         style={{ display:"flex", alignItems:"center", padding:"4px 8px 4px 12px", cursor:"default", position:"relative",
                                  background:hov===`stpl-${idx}`?c.hv2:"transparent", transition:"background 0.1s" }}>
-                        <span onClick={()=>{ setTlStyle(tpl.style); closeTlSettTplDrop(); }}
+                        <span onClick={()=>{
+                          const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+                          const tb = ch?.drawingManager?.toolbar;
+                          const d = getSelectedDrawingForTemplate();
+                          if (!tb || !d || !tpl.id) return;
+                          tb.applyTemplate(d, tpl.id);
+                          closeTlSettTplDrop();
+                        }}
                           style={{flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontSize:12, color:hov===`stpl-${idx}`?c.tx:c.ts, fontWeight:500}}>{tpl.name}</span>
-                        <div onClick={e=>{ e.stopPropagation(); setTlTemplates(ts=>ts.filter((_,i)=>i!==idx)); }}
+                        <div onClick={e=>{ e.stopPropagation();
+                          const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+                          const tb = ch?.drawingManager?.toolbar;
+                          const d = getSelectedDrawingForTemplate();
+                          const toolType = (d && d.type) || resolveLegacyTool();
+                          if (tb && toolType && tpl.id) tb.deleteTemplate(toolType, tpl.id);
+                        }}
                           onMouseEnter={()=>setHov(`stpl-del-${idx}`)} onMouseLeave={()=>setHov(`stpl-${idx}`)}
                           style={{ padding:"2px 4px", cursor:"default" }}>
                           <I n="x" s={11} cl={hov===`stpl-del-${idx}`?c.rd:c.tm}/>
@@ -9644,7 +9871,15 @@ const TalariaV8bLive = () => {
                 <div style={{height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                 <div style={{padding:"4px 0"}}>
                   {[["Save as", ()=>{ setTlSaveAsMode(true); setTlNewTplName(""); }],
-                    ["Apply default", ()=>{ closeTlBarDrop(); }]].map(([lbl, action])=>{
+                    ["Apply default", ()=>{
+                      const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+                      const tb = ch?.drawingManager?.toolbar;
+                      const d = getSelectedDrawingForTemplate();
+                      if (!tb || typeof tb.applyDefaultTemplate !== "function") return;
+                      if (!d) { tb.showNotification?.("Select a drawing first"); return; }
+                      tb.applyDefaultTemplate(d);
+                      closeTlBarDrop();
+                    }]].map(([lbl, action])=>{
                     const isH=hov===`tbdrop-${lbl}`, isAct=lbl==="Save as"&&tlSaveAsMode;
                     return (
                       <div key={lbl} onClick={action}
@@ -9661,12 +9896,16 @@ const TalariaV8bLive = () => {
                     <div style={{padding:"4px 8px 4px 12px",display:"flex",alignItems:"center",gap:4,boxSizing:"border-box",width:"100%"}} onMouseDown={e=>e.stopPropagation()}>
                       <input autoFocus value={tlNewTplName} onChange={e=>setTlNewTplName(e.target.value)}
                         onKeyDown={e=>{
-                          if(e.key==="Enter"&&tlNewTplName.trim()){setTlTemplates(ts=>[...ts,{name:tlNewTplName.trim(),style:{...tlStyle}}]);setTlSaveAsMode(false);setTlNewTplName("");}
-                          if(e.key==="Escape"){setTlSaveAsMode(false);setTlNewTplName("");}
+                          if (e.key === "Enter" && tlNewTplName.trim()) {
+                            const d = getSelectedDrawingForTemplate();
+                            if (!d) { window.chart?.drawingManager?.toolbar?.showNotification?.("Select a drawing first"); return; }
+                            if (v9SaveDrawingTemplateToStorage(tlNewTplName, d)) { setTlSaveAsMode(false); setTlNewTplName(""); }
+                          }
+                          if (e.key === "Escape") { setTlSaveAsMode(false); setTlNewTplName(""); }
                         }}
                         placeholder="Template name…"
                         style={{flex:1,minWidth:0,background:c.hv,border:"1px solid rgba(140,160,255,0.22)",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:"3px 6px",boxSizing:"border-box"}}/>
-                      <div onClick={()=>{if(tlNewTplName.trim()){setTlTemplates(ts=>[...ts,{name:tlNewTplName.trim(),style:{...tlStyle}}]);setTlSaveAsMode(false);setTlNewTplName("");}}}
+                      <div onClick={()=>{ if (!tlNewTplName.trim()) return; const d = getSelectedDrawingForTemplate(); if (!d) { window.chart?.drawingManager?.toolbar?.showNotification?.("Select a drawing first"); return; } if (v9SaveDrawingTemplateToStorage(tlNewTplName, d)) { setTlSaveAsMode(false); setTlNewTplName(""); } }}
                         onMouseEnter={()=>setHov("tpl-save-ok")} onMouseLeave={()=>setHov(null)}
                         style={{padding:"2px 4px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",flexShrink:0,position:"relative",
                                 background:hov==="tpl-save-ok"?c.hv:"transparent",transition:"background 0.12s"}}>
@@ -9675,18 +9914,31 @@ const TalariaV8bLive = () => {
                       </div>
                     </div>
                   )}
-                  {tlTemplates.length === 0 && !tlSaveAsMode ? (
+                  {tlSavedTemplateList.length === 0 && !tlSaveAsMode ? (
                     <div style={{padding:"6px 12px"}}>
                       <span style={{fontSize:11, color:c.tm, fontStyle:"italic"}}>No saved templates</span>
                     </div>
-                  ) : tlTemplates.map((tpl, idx)=>(
-                    <div key={idx}
+                  ) : tlSavedTemplateList.map((tpl, idx)=>(
+                    <div key={tpl.id || idx}
                       onMouseEnter={()=>setHov(`tbtpl-${idx}`)} onMouseLeave={()=>setHov(null)}
                       style={{ display:"flex", alignItems:"center", padding:"4px 8px 4px 12px", cursor:"default", position:"relative",
                                background:hov===`tbtpl-${idx}`?c.hv2:"transparent", transition:"background 0.1s" }}>
-                      <span onClick={()=>{ setTlStyle(tpl.style); closeTlBarDrop(); }}
+                      <span onClick={()=>{
+                        const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+                        const tb = ch?.drawingManager?.toolbar;
+                        const d = getSelectedDrawingForTemplate();
+                        if (!tb || !d || !tpl.id) return;
+                        tb.applyTemplate(d, tpl.id);
+                        closeTlBarDrop();
+                      }}
                         style={{flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontSize:12, color:hov===`tbtpl-${idx}`?c.tx:c.ts, fontWeight:500}}>{tpl.name}</span>
-                      <div onClick={e=>{ e.stopPropagation(); setTlTemplates(ts=>ts.filter((_,i)=>i!==idx)); }}
+                      <div onClick={e=>{ e.stopPropagation();
+                        const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+                        const tb = ch?.drawingManager?.toolbar;
+                        const d = getSelectedDrawingForTemplate();
+                        const toolType = (d && d.type) || resolveLegacyTool();
+                        if (tb && toolType && tpl.id) tb.deleteTemplate(toolType, tpl.id);
+                      }}
                         onMouseEnter={()=>setHov(`tbtpl-del-${idx}`)} onMouseLeave={()=>setHov(`tbtpl-${idx}`)}
                         style={{ padding:"2px 4px", cursor:"default" }}>
                         <I n="x" s={11} cl={hov===`tbtpl-del-${idx}`?c.rd:c.tm}/>
