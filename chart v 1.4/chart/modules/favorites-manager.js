@@ -646,6 +646,7 @@ class FavoritesManager {
     }
     
     updateActiveState(activeTool) {
+        if (!this.toolbarElement) return;
         // Remove active class from all favorite buttons
         const allFavBtns = this.toolbarElement.querySelectorAll('.favorite-tool-btn');
         allFavBtns.forEach(btn => btn.classList.remove('active'));
@@ -659,6 +660,7 @@ class FavoritesManager {
     
     // Public method to sync active state from drawing manager
     syncActiveState(toolType) {
+        if (!this.toolbarElement) return;
         if (!toolType || toolType === 'cursor') {
             // Remove active state from all
             const allFavBtns = this.toolbarElement.querySelectorAll('.favorite-tool-btn');

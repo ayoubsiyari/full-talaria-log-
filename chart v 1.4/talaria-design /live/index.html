@@ -495,9 +495,9 @@
          time it runs (React's main.jsx is also deferred).
          ────────────────────────────────────────────────────────────── -->
 
-    <!-- Tier A — pure helpers (no DOM dependencies). -->
-    <script defer src="/chart/modules/preferences-init.js?v=20260428b_dblclick_v9"></script>
-    <script defer src="/chart/modules/preferences-sync.js?v=20260428_prefs_drawing_sync"></script>
+    <!-- Tier A — preferences-sync MUST run before preferences-init (defines window.preferencesSync). -->
+    <script defer src="/chart/modules/preferences-sync.js?v=20260429_v9_prefs_order"></script>
+    <script defer src="/chart/modules/preferences-init.js?v=20260429_v9_prefs_order"></script>
     <script defer src="/chart/modules/market-calculations.js?v=20260428b_dblclick_v9"></script>
     <script defer src="/chart/modules/chart-env.defaults.js?v=20260428b_dblclick_v9"></script>
     <script defer src="/chart/modules/chart-env.generated.js?v=20260428b_dblclick_v9"></script>
@@ -533,7 +533,7 @@
     <!-- Drawing-tools manager — orchestrator. Must load AFTER all individual
          drawing-tools-*.js so the registry is populated before init. -->
     <script defer src="/chart/modules/drawing-tools-manager.js?v=20260429_resize_hover_z"></script>
-    <script defer src="/chart/modules/favorites-manager.js?v=20260428b_dblclick_v9"></script>
+    <script defer src="/chart/modules/favorites-manager.js?v=20260429_fav_v9_nullguard"></script>
     <script defer src="/chart/modules/keyboard-shortcuts.js?v=20260428_v9_ss_wire"></script>
 
     <!-- Chart engine.

@@ -12093,6 +12093,12 @@ const TalariaV8bLive = () => {
                 userSelect: "none",
                 cursor: rollback ? "none" : "default",
               }}>
+              {/* Legacy probes: panel-manager + replay-system expect these IDs; V9 UI lives in React. */}
+              <button type="button" id="layout-selector-btn" data-open-mode="settings-panel" tabIndex={-1} aria-hidden="true" style={{ display: "none" }} />
+              <div id="replayToolbar" aria-hidden="true" style={{ position: "fixed", left: -9999, top: 0, width: 1, height: 1, overflow: "hidden", pointerEvents: "none", visibility: "hidden" }}>
+                <div id="replayToolbarHandle" />
+                <button type="button" id="replayModeBtn" tabIndex={-1} />
+              </div>
               {/* ────────────────────────────────────────────────────────────────
                    #panels-container MUST come BEFORE #chartWrapper in DOM.
                    In multi-panel mode panelManager sets both to z-index:10 and
