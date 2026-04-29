@@ -741,15 +741,28 @@ class DrawingToolsManager {
             self.deleteDrawing(drawing);
         };
         
-        // Settings callback - opens settings panel
+        // Settings callback - opens settings panel (same V9 hook as editDrawing / dblclick)
         this.toolbar.onSettings = (drawing) => {
             const rect = self.toolbar.toolbar.getBoundingClientRect();
-            // Capture before state immediately (panel not yet open)
+            const x = rect.left + rect.width / 2;
+            const y = rect.bottom + 10;
+            if (typeof window !== 'undefined' && typeof window.__v9OpenDrawingSettings === 'function') {
+                try {
+                    const handled = window.__v9OpenDrawingSettings(drawing, x, y);
+                    if (handled) {
+                        if (self.toolbar && typeof self.toolbar.hide === 'function') self.toolbar.hide();
+                        if (drawing && drawing.type === 'image') drawing._keepEmpty = true;
+                        return;
+                    }
+                } catch (err) {
+                    console.warn('[V9 toolbar settings] hook threw, falling back to legacy panel:', err);
+                }
+            }
             const beforeState = self.history ? self.history.captureState(drawing) : null;
             self.settingsPanel.show(
                 drawing,
-                rect.left + rect.width / 2,
-                rect.bottom + 10,
+                x,
+                y,
                 (updatedDrawing) => {
                     if (self.history && beforeState) {
                         self.history.recordModify(updatedDrawing, beforeState);
