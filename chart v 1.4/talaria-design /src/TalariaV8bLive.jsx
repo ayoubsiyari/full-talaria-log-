@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { applyV9ThemeSettingsToChart } from "./v9ThemeSync.js";
 
 // ── Color utilities ──────────────────────────────────────────────────────────
@@ -385,7 +386,7 @@ const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange
   const hueColor = `hsl(${h},100%,50%)`;
   const outColor = cpBuildColor(rgb.r, rgb.g, rgb.b, a);
   return (
-    <div className="tlr-cp tlr-gloss" data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:pos.top,left:pos.left,zIndex:10100,width:210,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 20px 56px rgba(0,0,0,0.92), 0 0 20px rgba(38,67,247,0.1)`,fontFamily:F,animation:animation||"tlrPopIn 0.15s ease"}}>
+    <div className="tlr-cp tlr-gloss" data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:pos.top,left:pos.left,zIndex:11100,width:210,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 20px 56px rgba(0,0,0,0.92), 0 0 20px rgba(38,67,247,0.1)`,fontFamily:F,animation:animation||"tlrPopIn 0.15s ease"}}>
       <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
       <div style={{padding:10}}>
         {/* SV square */}
@@ -2674,6 +2675,29 @@ const TalariaV8bLive = () => {
       document.removeEventListener('wheel', scrollHandler);
     };
   }, []);
+
+  // While the V9 style panel is open, release the full-chart #drawingSvg hit-capture layer
+  // (z-index 11 + pointer-events all) so nothing under the body-portaled panel eats clicks.
+  useEffect(() => {
+    const active = tlSettOpen || closing.has("tlsett");
+    if (!active || typeof document === "undefined") return;
+    const svg = document.getElementById("drawingSvg");
+    if (!svg) return;
+    const prev = svg.style.pointerEvents;
+    const prevZ = svg.style.zIndex;
+    svg.style.pointerEvents = "none";
+    svg.style.zIndex = "1";
+    return () => {
+      svg.style.pointerEvents = prev;
+      svg.style.zIndex = prevZ;
+      try {
+        const ch = typeof window !== "undefined" ? window.chart : null;
+        if (ch && typeof ch.updateSVGPointerEvents === "function") ch.updateSVGPointerEvents();
+        const dm = ch && ch.drawingManager;
+        if (dm && typeof dm._updateAxisZonePointerEvents === "function") dm._updateAxisZonePointerEvents();
+      } catch (_) {}
+    };
+  }, [tlSettOpen, closing]);
 
   useEffect(() => {
     if (!document.querySelector('link[href*="Exo+2"]')) {
@@ -5189,10 +5213,10 @@ const TalariaV8bLive = () => {
 
       `}</style>
 
-      {/* ── Trend Line Settings Window ── */}
-      {(tool === "trendline" || tool === "rect" || tool === "channel" || tool === "brush2" || tool === "fib" || isPatternTool || tool === "measure") && (tlSettOpen || closing.has("tlsett")) && (
+      {/* ── Trend Line Settings Window (portal → body: legacy drawing-toolbar is appendChild(body) @ z-index 10000, paints above #root) ── */}
+      {(tool === "trendline" || tool === "rect" || tool === "channel" || tool === "brush2" || tool === "fib" || isPatternTool || tool === "measure") && (tlSettOpen || closing.has("tlsett")) && typeof document !== "undefined" && createPortal(
         <div data-sdrop="1" onClick={e => { e.stopPropagation(); setTlStyleDrop(null); }}
-          style={{ position:"fixed", left:tlSettPos.x, top:tlSettPos.y, zIndex:10050, width:440, fontFamily:F,
+          style={{ position:"fixed", left:tlSettPos.x, top:tlSettPos.y, zIndex:11000, width:440, fontFamily:F,
                    background:c.sf, border:`1px solid ${c.brH}`,
                    boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                    display:"flex", flexDirection:"column",
@@ -7675,7 +7699,7 @@ const TalariaV8bLive = () => {
             <B primary hk="tl-ok" onClick={closeTlSett}>OK</B>
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* ── Text Tool mini-bar ── */}
       {tool === "text" && (()=>{
@@ -16105,7 +16129,7 @@ const TalariaV8bLive = () => {
           </div>
         </>;
       })()}
-      {cpDragging && (
+      {cpDragging && typeof document !== "undefined" && createPortal(
         <div
           onMouseMove={(e)=>{
             if(!cpDragRect) return;
@@ -16122,8 +16146,9 @@ const TalariaV8bLive = () => {
             }
           }}
           onMouseUp={()=>setCpDragging(null)}
-          style={{position:"fixed",inset:0,zIndex:10150,cursor:cpDragging==='sv'?'crosshair':'ew-resize'}}
-        />
+          style={{position:"fixed",inset:0,zIndex:11200,cursor:cpDragging==='sv'?'crosshair':'ew-resize'}}
+        />,
+        document.body
       )}
       {/* ── Go To Calendar sub-window ── */}
       {gotoCalOpen&&(()=>{
@@ -16280,7 +16305,7 @@ const TalariaV8bLive = () => {
         );
       })()}
 
-      {(colorPicker || closing.has("cp")) && <>
+      {(colorPicker || closing.has("cp")) && typeof document !== "undefined" && createPortal(
         <ColorPickerPopup
           pos={cpPos} h={cpH} s={cpS} v={cpV} a={cpA} hexStr={cpHex} c={c} F={F}
           onSVChange={(ns,nv)=>{ setCpS(ns); setCpV(nv); cpApply(cpH,ns,nv,cpA); }}
@@ -16293,7 +16318,7 @@ const TalariaV8bLive = () => {
           hideAlpha={colorPicker==="tlTextColor"||colorPicker==="tlLineColor"||colorPicker==="tlMidLineColor"||colorPicker==="tlLabelColor"||colorPicker?.startsWith("chLine-")||colorPicker?.startsWith("regLine-")||colorPicker?.startsWith("pfLevel-")||colorPicker?.startsWith("fibLevel-")||colorPicker==="fibTrendColor"||colorPicker?.startsWith("gannPrice-")||colorPicker?.startsWith("gannTime-")||colorPicker?.startsWith("gannGrid-")||colorPicker?.startsWith("gannFanLv-")||colorPicker?.startsWith("gannArc-")||colorPicker==="txtTextColor"||colorPicker==="rr_entryColor"||colorPicker==="rr_labelColor"||colorPicker==="gotoNewColor"||colorPicker==="pinLabelColor"}
           animation={closing.has("cp")?"tlrPopOut 0.15s ease both":"tlrPopIn 0.15s ease"}
         />
-      </>}
+      , document.body)}
       {dragging && (
         <div
           onMouseMove={(e) => {
