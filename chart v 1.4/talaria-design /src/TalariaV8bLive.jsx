@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { applyV9ThemeSettingsToChart } from "./v9ThemeSync.js";
 
 // ── Color utilities ──────────────────────────────────────────────────────────
 function parseColor(str) {
@@ -571,9 +572,12 @@ const TalariaV8bLive = () => {
         return;
       }
 
-      // Already initialized? Just notify resize.
+      // Already initialized? Just notify resize + push latest V9 theme (StrictMode / HMR).
       if (window.chart) {
         window.dispatchEvent(new Event('resize'));
+        try {
+          applyV9ThemeSettingsToChart(settingsRef.current);
+        } catch (_) {}
         return;
       }
 
@@ -608,6 +612,9 @@ const TalariaV8bLive = () => {
           } catch (_) {}
         };
         forceResize();
+        try {
+          applyV9ThemeSettingsToChart(settingsRef.current);
+        } catch (_) {}
         try {
           const om = window.chart?.orderManager;
           om?.syncOrderPanelMountTarget?.();
@@ -1719,6 +1726,10 @@ const TalariaV8bLive = () => {
     priceLineStyle: "solid", priceLineThickness: 1,
     chartTemplate: "Dark Classic",
   });
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
 
   const [indOpen, setIndOpen] = useState(false);
   const [indPinned, setIndPinned] = useState([]);
@@ -1750,13 +1761,21 @@ const TalariaV8bLive = () => {
   //   crosshairOn → showCrosshair (chart.js updateCrosshair + panel sync)
   //   crosshairStyle → crosshairPattern
   //   priceLineStyle / priceLineThickness → priceLinePattern, priceLineWidth
+  // Same fn as chart/modules/v9-theme-bridge.js — exposed for legacy HTML; implementation is bundled here
+  // so dev (vite proxy to remote /chart/modules/) cannot 404 the bridge.
   useEffect(() => {
-    const apply = () => {
-      if (typeof window.talariaApplyV9ThemeSettings === "function") {
-        return window.talariaApplyV9ThemeSettings(settings);
-      }
-      return false;
+    window.talariaApplyV9ThemeSettings = applyV9ThemeSettingsToChart;
+    return () => {
+      try {
+        if (window.talariaApplyV9ThemeSettings === applyV9ThemeSettingsToChart) {
+          delete window.talariaApplyV9ThemeSettings;
+        }
+      } catch (_) {}
     };
+  }, []);
+
+  useEffect(() => {
+    const apply = () => applyV9ThemeSettingsToChart(settings);
     if (apply()) return;
     let n = 0;
     const id = setInterval(() => {
