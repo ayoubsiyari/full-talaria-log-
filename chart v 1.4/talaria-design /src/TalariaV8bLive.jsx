@@ -2434,42 +2434,54 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     if (!rollback) return;
     const handleClick = (e) => {
+      const el = e.target;
+      // Never steal clicks from header, rail, or any UI outside the chart slot (#chart-container).
+      if (!el || !el.closest || !el.closest("#chart-container")) return;
+      // OHLC row, indicator chips, LOCKED toggle — must receive clicks normally.
+      if (el.closest(".ohlc-info")) return;
+
       e.stopPropagation();
       e.stopImmediatePropagation();
       try {
         const rs = getReplaySystem();
-        const chart = window.chart;
+        const chart =
+          typeof window.getActiveChart === "function"
+            ? window.getActiveChart()
+            : window.chart;
         if (rs && chart) {
-          // Resolve x relative to the chart canvas (replaySystem uses
-          // chart.container rect; same coords as legacy handlePickModeClick).
-          const containerNode = chart.container && typeof chart.container.node === 'function'
-            ? chart.container.node()
-            : (chart.canvas && chart.canvas.parentElement) || chartCanvasRef.current;
+          const containerNode =
+            chart.container && typeof chart.container.node === "function"
+              ? chart.container.node()
+              : (chart.canvas && chart.canvas.parentElement) || chartCanvasRef.current;
           if (containerNode) {
             const rect = containerNode.getBoundingClientRect();
             const x = e.clientX - rect.left;
-            const inChartArea = x >= (chart.margin?.l || 0) && x <= (chart.w - (chart.margin?.r || 0));
+            const inChartArea =
+              x >= (chart.margin?.l || 0) &&
+              x <= (chart.w - (chart.margin?.r || 0));
             if (inChartArea) {
-              // Use replaySystem helper if available; falls back to chart.pixelToDataIndex.
-              const candleIndex = typeof rs.getCandleIndexAtX === 'function'
-                ? rs.getCandleIndexAtX(x)
-                : (typeof chart.pixelToDataIndex === 'function'
+              const candleIndex =
+                typeof rs.getCandleIndexAtX === "function"
+                  ? rs.getCandleIndexAtX(x)
+                  : typeof chart.pixelToDataIndex === "function"
                     ? Math.round(chart.pixelToDataIndex(x))
-                    : -1);
-              if (candleIndex >= 0 && Array.isArray(chart.data) && chart.data[candleIndex]) {
+                    : -1;
+              if (
+                candleIndex >= 0 &&
+                Array.isArray(chart.data) &&
+                chart.data[candleIndex]
+              ) {
                 const ts = chart.data[candleIndex].t;
                 if (!rs.isActive) {
-                  // Mirror legacy startReplayAtIndex: it enters replay mode
-                  // and seeks in one call. If unavailable, fall back to
-                  // enterReplayMode + goToReplayTimestamp.
-                  if (typeof rs.startReplayAtIndex === 'function') {
+                  if (typeof rs.startReplayAtIndex === "function") {
                     rs.startReplayAtIndex(candleIndex);
                   } else {
-                    if (typeof rs.enterReplayMode === 'function') rs.enterReplayMode();
-                    if (typeof rs.goToReplayTimestamp === 'function') rs.goToReplayTimestamp(ts);
+                    if (typeof rs.enterReplayMode === "function") rs.enterReplayMode();
+                    if (typeof rs.goToReplayTimestamp === "function") {
+                      rs.goToReplayTimestamp(ts);
+                    }
                   }
-                } else if (typeof rs.goToReplayTimestamp === 'function') {
-                  // Already in replay → rewind/seek to picked candle.
+                } else if (typeof rs.goToReplayTimestamp === "function") {
                   rs.goToReplayTimestamp(ts);
                 }
               }
@@ -2477,12 +2489,15 @@ const TalariaV8bLive = () => {
           }
         }
       } catch (err) {
-        console.warn('[V9 Replay] cut-line click failed', err);
+        console.warn("[V9 Replay] cut-line click failed", err);
       }
       setRollback(false);
     };
-    const t = setTimeout(() => window.addEventListener('click', handleClick, true), 0);
-    return () => { clearTimeout(t); window.removeEventListener('click', handleClick, true); };
+    const t = setTimeout(() => window.addEventListener("click", handleClick, true), 0);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("click", handleClick, true);
+    };
   }, [rollback]);
 
   // Active line/shape sub-tool (icon + label)
@@ -9781,7 +9796,7 @@ const TalariaV8bLive = () => {
           }
         }
         return (
-          <div ref={pinnedBarRef} onClick={e=>e.stopPropagation()}
+          <div ref={pinnedBarRef} data-sdrop="1" onClick={e=>e.stopPropagation()}
             style={{position:"fixed",top:pinnedBarPos.y,left:pinnedBarPos.x,zIndex:9050,
                     background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,
                     boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(201,168,76,0.15)`,
@@ -10411,7 +10426,7 @@ const TalariaV8bLive = () => {
         const tabAccent=(id)=> id==="active"?c.gn : id==="pinned"?c.gold : c.acL;
         const tabCount=(id)=> id==="active"?indActive.length : id==="pinned"?indPinned.length : id==="all"?indicatorData.length : indicatorData.filter(i=>i.cat===id).length;
         return (
-        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${indPos.y}px)`,left:`calc(50% + ${indPos.x}px)`,transform:"translate(-50%,-50%)",width:760,height:580,zIndex:9001,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("ind")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${indPos.y}px)`,left:`calc(50% + ${indPos.x}px)`,transform:"translate(-50%,-50%)",width:760,height:580,zIndex:9001,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("ind")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"ind",startX:e.clientX,startY:e.clientY,ox:indPos.x,oy:indPos.y});}} style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
             <I n="indicator" s={17} cl={c.acL}/><span style={{fontSize:14,fontWeight:700,flex:1,marginLeft:8,color:c.tx}}>Indicators</span>
@@ -10607,7 +10622,7 @@ const TalariaV8bLive = () => {
         );
       })()}
       {(settingsOpen || closing.has("settings")) && (
-        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${settingsPos.y}px)`,left:`calc(50% + ${settingsPos.x}px)`,transform:"translate(-50%,-50%)",width:460,height:560,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("settings")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${settingsPos.y}px)`,left:`calc(50% + ${settingsPos.x}px)`,transform:"translate(-50%,-50%)",width:460,height:560,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("settings")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"settings",startX:e.clientX,startY:e.clientY,ox:settingsPos.x,oy:settingsPos.y});}} style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
             <I n="settings" s={17} cl={c.acL}/><span style={{fontSize:14,fontWeight:700,flex:1,marginLeft:8}}>Settings</span>
@@ -10918,7 +10933,7 @@ const TalariaV8bLive = () => {
         const pwInputSx = { width:"100%", background:c.hv, border:"1px solid rgba(140,160,255,0.22)", color:c.tx, fontSize:13, fontFamily:F, padding:"6px 9px", outline:"none", boxSizing:"border-box", transition:"border-color 0.14s" };
         const langLabels = { english:"English", arabic:"العربية" };
         return (
-        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${profilePos.y}px)`,left:`calc(50% + ${profilePos.x}px)`,transform:"translate(-50%,-50%)",width:400,height:540,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("profile")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${profilePos.y}px)`,left:`calc(50% + ${profilePos.x}px)`,transform:"translate(-50%,-50%)",width:400,height:540,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("profile")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
           {/* Header */}
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"profile",startX:e.clientX,startY:e.clientY,ox:profilePos.x,oy:profilePos.y});}} style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
@@ -11156,7 +11171,7 @@ const TalariaV8bLive = () => {
         const faqTabs = [["faq","FAQ"],["hotkeys","Hot Keys"],["education","Education"],["about","About"]];
         const faqTabIdx = faqTabs.findIndex(([id])=>id===faqCat);
         return (
-        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${faqPos.y}px)`,left:`calc(50% + ${faqPos.x}px)`,transform:"translate(-50%,-50%)",width:440,height:540,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("faq")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${faqPos.y}px)`,left:`calc(50% + ${faqPos.x}px)`,transform:"translate(-50%,-50%)",width:440,height:540,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("faq")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
           {/* Header */}
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"faq",startX:e.clientX,startY:e.clientY,ox:faqPos.x,oy:faqPos.y});}} style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
@@ -11384,7 +11399,7 @@ const TalariaV8bLive = () => {
         );
       })()}
       {(screenshotOpen || closing.has("screenshot")) && (
-        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${screenshotPos.y}px)`,left:`calc(50% + ${screenshotPos.x}px)`,transform:"translate(-50%,-50%)",width:920,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("screenshot")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
+        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:`calc(50% + ${screenshotPos.y}px)`,left:`calc(50% + ${screenshotPos.x}px)`,transform:"translate(-50%,-50%)",width:920,zIndex:9002,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 24px 64px rgba(0,0,0,0.85), 0 0 24px ${c.acG}`,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("screenshot")?"tlrWinOut 0.15s ease forwards":"tlrWinIn 0.18s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
           <div onMouseDown={(e)=>{e.preventDefault();setDragging({target:"screenshot",startX:e.clientX,startY:e.clientY,ox:screenshotPos.x,oy:screenshotPos.y});}}
             style={{display:"flex",alignItems:"center",padding:"9px 14px",cursor:"move",userSelect:"none",flexShrink:0}}>
@@ -11570,7 +11585,7 @@ const TalariaV8bLive = () => {
 
 
       {(logoMenu||closing.has("logoMenu")) && (
-        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:10,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:168,fontFamily:F,animation:closing.has("logoMenu")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
+        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:10,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:168,fontFamily:F,animation:closing.has("logoMenu")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
           <div style={{padding:"4px 0"}}>
             <div style={{padding:"5px 14px 3px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>MENU</div>
@@ -11640,7 +11655,7 @@ const TalariaV8bLive = () => {
         </div>
       )}
       {(symbolOpen||closing.has("symbol")) && (
-        <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:50,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:190,fontFamily:F,animation:closing.has("symbol")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
+        <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:50,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:190,fontFamily:F,animation:closing.has("symbol")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
           <div style={{position:"sticky",top:0,height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,zIndex:1}}/>
           <div style={{padding:"5px 8px 4px",borderBottom:`1px solid ${c.br}`}}>
             <div style={{fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em",marginBottom:4}}>MARKETS</div>
@@ -11704,8 +11719,10 @@ const TalariaV8bLive = () => {
                     const isH=hov===`sym-${s.id}`;
                     return (
                       <div key={s.id}
+                        onMouseDown={(e)=>e.stopPropagation()}
                         onMouseEnter={()=>setHov(`sym-${s.id}`)} onMouseLeave={()=>setHov(null)}
-                        onClick={()=>{
+                        onClick={(e)=>{
+                          e.stopPropagation();
                           setSymbol(s.id);
                           setSymbolOpen(false);
                           setSymbolSearch("");
@@ -11743,7 +11760,7 @@ const TalariaV8bLive = () => {
       {(chartTypeOpen||closing.has("chartType")) && (()=>{
         const ctMap={"Candles":"candle","Hollow Candles":"hollowCandle","Heikin Ashi":"heikinAshi","Bars":"tick","Line":"lineChart","Area":"area"};
         return (
-          <div onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:chartTypeDropL,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:136,fontFamily:F,animation:closing.has("chartType")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
+          <div data-sdrop="1" onClick={(e)=>e.stopPropagation()} style={{position:"fixed",top:42,left:chartTypeDropL,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,minWidth:136,fontFamily:F,animation:closing.has("chartType")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
             <div style={{padding:"4px 0"}}>
               <div style={{padding:"5px 14px 3px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>CHART TYPE</div>
@@ -11752,7 +11769,7 @@ const TalariaV8bLive = () => {
                 return (
                   <div key={t}
                     onMouseEnter={()=>setHov(`ct-${t}`)} onMouseLeave={()=>setHov(null)}
-                    onClick={()=>{setChartType(t);setChartTypeOpen(false);}}
+                    onClick={(e)=>{e.stopPropagation();setChartType(t);setChartTypeOpen(false);}}
                     style={{display:"flex",alignItems:"center",gap:9,padding:"5px 14px",cursor:"default",position:"relative",
                       background:isAct?c.acD:isH?c.hv2:"transparent",
                       transition:"background 0.1s"}}>
@@ -11766,7 +11783,7 @@ const TalariaV8bLive = () => {
           </div>
         );
       })()}
-      <div style={{ height: 36, flexShrink: 0, background: c.sf, borderBottom: `1px solid rgba(140,160,255,0.22)`, display: "flex", alignItems: "center", padding: "0 10px", gap: 4 }}>
+      <div onMouseDown={(e) => e.stopPropagation()} style={{ height: 36, flexShrink: 0, background: c.sf, borderBottom: `1px solid rgba(140,160,255,0.22)`, display: "flex", alignItems: "center", padding: "0 10px", gap: 4 }}>
         {(()=>{ const logoActive = logoMenu || settingsOpen || profileOpen || faqOpen; return (
         <div onClick={(e) => { e.stopPropagation(); const was=logoMenu; closeAll(); if(!was) setLogoMenu(true); }}
           onMouseEnter={() => setHov("logo-btn")} onMouseLeave={() => setHov(null)}
@@ -11838,7 +11855,7 @@ const TalariaV8bLive = () => {
                 setTfCustomVal("");
               };
               return (
-              <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:42,left:300,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7)`,width:200,fontFamily:F,animation:closing.has("tf")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
+              <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:42,left:300,zIndex:9000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7)`,width:200,fontFamily:F,animation:closing.has("tf")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
                 <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                 <div className="tlr-scroll" style={{maxHeight:360,overflowY:"auto",padding:"4px 0"}}>
                   {Object.entries(tfCategories).map(([catId,{label,items}],ci)=>(
@@ -11860,7 +11877,7 @@ const TalariaV8bLive = () => {
                               background:isAct?c.acD:isRowHov?"rgba(255,255,255,0.025)":"transparent",
                               transition:"background 0.1s"}}>
                             {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                            <button onClick={()=>{setTf(t);}}
+                            <button onClick={(e)=>{e.stopPropagation();setTf(t);}}
                               style={{flex:1,background:"transparent",border:"none",cursor:"default",
                                 color:isAct?c.acL:c.ts,fontSize:13,fontWeight:isAct?700:500,
                                 fontFamily:F,textAlign:"left",padding:0}}>
@@ -11970,7 +11987,7 @@ const TalariaV8bLive = () => {
           </div>
           <div ref={tfBarRef} style={{ display:"flex", alignItems:"center", position:"relative" }}>
             {[...new Set([...tfPinned, tf])].sort((a,b)=>{const uO={m:0,H:1,D:2,W:3,M:4};const uA=a.replace(/[0-9]/g,""),uB=b.replace(/[0-9]/g,"");return uO[uA]!==uO[uB]?uO[uA]-uO[uB]:parseInt(a)-parseInt(b);}).map((t) => (
-              <button key={t} data-tf={t} onClick={() => setTf(t)} onMouseEnter={() => setHov(`tf-${t}`)} onMouseLeave={() => setHov(null)}
+              <button key={t} data-tf={t} onClick={(e) => { e.stopPropagation(); setTf(t); }} onMouseEnter={() => setHov(`tf-${t}`)} onMouseLeave={() => setHov(null)}
                 style={{ padding: "4px 7px", position: "relative", background: tf===t ? "rgba(74,106,255,0.08)" : hov===`tf-${t}` ? c.hv : "transparent", border: "none", fontFamily: F, color: tf===t ? c.acL : hov===`tf-${t}` ? c.tx : c.ts, fontSize: 12, fontWeight: tf===t ? 700 : 500, cursor: "default", transition: "background 0.12s, color 0.12s" }}>
                 {t}
                 {hov===`tf-${t}` && tf!==t && <div style={{ position: "absolute", bottom: -1, left: "25%", right: "25%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
@@ -12020,7 +12037,7 @@ const TalariaV8bLive = () => {
         ))}
       </div>
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        <div onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 2, overflowY: "auto", overflowX: "hidden" }}>
+        <div onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 2, overflowY: "auto", overflowX: "hidden" }}>
           {toolGroups.map((group, gi) => (
             <div key={gi} style={{ width: "100%" }}>
               {gi === toolGroups.length - 1 && <div style={{ height: 1, margin: "1px 6px", background: "rgba(140,160,255,0.18)" }}/>}
@@ -12033,7 +12050,7 @@ const TalariaV8bLive = () => {
           ])}
           <div style={{ flex: 1 }}/>
           {/* Dark / Light mode toggle */}
-          <div onClick={() => setDarkMode(v => !v)}
+          <div onClick={(e) => { e.stopPropagation(); setDarkMode(v => !v); }}
             onMouseEnter={() => setHov("sb-theme")} onMouseLeave={() => setHov(null)}
             style={{ width:"100%", height:32, display:"flex", alignItems:"center", justifyContent:"flex-end",
               paddingRight:10, boxSizing:"border-box", cursor:"default", position:"relative",
@@ -12130,10 +12147,11 @@ const TalariaV8bLive = () => {
           {/* V9 mock time axis row removed — chart.js draws times at the
               bottom of the canvas. */}
           {/* Status + Replay bar */}
-          <div style={{height:36,flexShrink:0,background:c.sf,borderTop:`1px solid rgba(140,160,255,0.22)`,display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',padding:'0 10px',position:'relative'}}>
+          <div data-sdrop="1" onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{height:36,flexShrink:0,background:c.sf,borderTop:`1px solid rgba(140,160,255,0.22)`,display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',padding:'0 10px',position:'relative'}}>
             {/* Resize handle — at upper edge of replay bar, only when panel is open */}
             {btmOpen&&<div
               onPointerDown={(e)=>{
+                e.stopPropagation();
                 e.preventDefault();
                 e.currentTarget.setPointerCapture(e.pointerId);
                 const startY = e.clientY;
@@ -12203,11 +12221,11 @@ const TalariaV8bLive = () => {
                 {hov==="rp-mode"&&!replayOpts&&<div style={{position:"absolute",bottom:0,left:"25%",right:"25%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
               </button>
               {(replayOpts||closing.has("replayOpts"))&&<div style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",zIndex:9050,pointerEvents:"none"}}>
-                <div onClick={e=>e.stopPropagation()} style={{pointerEvents:"auto",background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 28px rgba(0,0,0,0.7),0 0 14px ${c.acG}`,minWidth:160,animation:closing.has("replayOpts")?"tlrPopOut 0.13s ease both":"tlrPopIn 0.15s ease both"}}>
+                <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{pointerEvents:"auto",background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 28px rgba(0,0,0,0.7),0 0 14px ${c.acG}`,minWidth:160,animation:closing.has("replayOpts")?"tlrPopOut 0.13s ease both":"tlrPopIn 0.15s ease both"}}>
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                   <div style={{padding:"6px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>MODE</div>
                   {[{id:"tick",l:"Tick by Tick"},{id:"candle",l:"Candle by Candle"}].map(({id,l})=>{const isA=replayMode===id;return(
-                    <button key={id} onClick={()=>setReplayMode(id)}
+                    <button key={id} onClick={(e)=>{e.stopPropagation();setReplayMode(id);}}
                       onMouseEnter={()=>setHov(`rm-${id}`)} onMouseLeave={()=>setHov(null)}
                       style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"5px 10px",background:isA?c.acD:hov===`rm-${id}`?c.hv2:"transparent",border:"none",cursor:"default",fontFamily:F,transition:"background 0.1s",position:"relative"}}>
                       {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
@@ -12219,7 +12237,7 @@ const TalariaV8bLive = () => {
                   <div style={{padding:"4px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>INTERVAL</div>
                   <div style={{padding:"4px 10px 8px",display:"flex",gap:4,flexWrap:"wrap"}}>
                     {["Auto","1m","5m","15m","30m"].map(t=>{const isA=replayInterval===t,isH=hov===`ri-${t}`;return(
-                      <div key={t} onClick={()=>setReplayInterval(t)}
+                      <div key={t} onClick={(e)=>{e.stopPropagation();setReplayInterval(t);}}
                         onMouseEnter={()=>setHov(`ri-${t}`)} onMouseLeave={()=>setHov(null)}
                         style={{padding:"3px 8px",position:"relative",background:isA?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",color:isA?c.acL:isH?c.tx:c.ts,fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",transition:"background 0.12s",display:"flex",alignItems:"center",justifyContent:"center"}}>
                         {t}
@@ -12234,7 +12252,8 @@ const TalariaV8bLive = () => {
             {/* Play / Pause — wired to chart.replaySystem.
                 When replay isn't yet active, open the V9 cut-line so the
                 user picks a start point (legacy UX, V9 visuals). */}
-            <button onClick={()=>{
+            <button onClick={(e)=>{
+                e.stopPropagation();
                 const rs = getReplaySystem();
                 if (rs && !rs.isActive) {
                   closeAll();
@@ -12281,7 +12300,8 @@ const TalariaV8bLive = () => {
                 the V9 cut-line for the user to pick a start. Otherwise
                 step forward via replaySystem.requestStepForward. */}
             <button
-              onClick={()=>{
+              onClick={(e)=>{
+                e.stopPropagation();
                 const rs = getReplaySystem();
                 if (rs && !rs.isActive) {
                   closeAll();
@@ -12331,7 +12351,7 @@ const TalariaV8bLive = () => {
                 const addItem=(item)=>{setGotoPresets(prev=>[...prev,{...item,id:gotoNextId()}]);};
                 const iSt={background:c.well,border:`1px solid ${c.brH}`,color:c.tx,fontSize:13,padding:"6px 9px",fontFamily:F,outline:"none",width:"100%",boxSizing:"border-box",colorScheme:c.inputScheme};
                 return(
-                <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",zIndex:9050,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 12px 48px rgba(0,0,0,0.8),0 0 18px ${c.acG}`,width:300,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("goto")?"tlrPopOut 0.13s ease both":"tlrPopIn 0.15s ease both",maxHeight:480}}>
+                <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",zIndex:9050,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 12px 48px rgba(0,0,0,0.8),0 0 18px ${c.acG}`,width:300,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("goto")?"tlrPopOut 0.13s ease both":"tlrPopIn 0.15s ease both",maxHeight:480}}>
                   {/* Top accent bar */}
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`,flexShrink:0}}/>
                   {/* Header */}
@@ -13108,7 +13128,7 @@ const TalariaV8bLive = () => {
             </div>
           </div>
         </div>
-        <div style={{ width: (rightPanel || (orderPanelOpen && !panelDetached)) ? 336 : 0, flexShrink: 0, overflow: "hidden", transition: "width 0.2s ease" }}>
+        <div data-sdrop="1" onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{ width: (rightPanel || (orderPanelOpen && !panelDetached)) ? 336 : 0, flexShrink: 0, overflow: "hidden", transition: "width 0.2s ease" }}>
         {rightPanel ? (()=>{
           // lyLines: each variant is an array of internal {x1,y1,x2,y2} dividing lines (fractions 0-1)
           const lyLines = [
@@ -15652,7 +15672,7 @@ const TalariaV8bLive = () => {
           <button onClick={e=>{e.stopPropagation();onClick();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"0 7px",fontSize:16,fontFamily:F,lineHeight:1}}>{label}</button>
         );
         return(
-        <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:gotoCalPos.top,left:gotoCalPos.left,zIndex:9200,width:224,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 12px 40px rgba(0,0,0,0.8),0 0 14px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.12s ease both"}}>
+        <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:gotoCalPos.top,left:gotoCalPos.left,zIndex:9200,width:224,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 12px 40px rgba(0,0,0,0.8),0 0 14px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.12s ease both"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
           <div style={{display:"flex",alignItems:"center",padding:"7px 10px 6px"}}>
             <span style={{fontSize:13,fontWeight:700,color:c.tx,flex:1}}>Date</span>
@@ -15770,7 +15790,7 @@ const TalariaV8bLive = () => {
           </div>
         );
         return(
-        <div onClick={e=>e.stopPropagation()} style={{position:"fixed",top:gotoTimePos.top,left:gotoTimePos.left,zIndex:9200,width:use12?122:100,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 28px rgba(0,0,0,0.75),0 0 10px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.12s ease both"}}>
+        <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:gotoTimePos.top,left:gotoTimePos.left,zIndex:9200,width:use12?122:100,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 28px rgba(0,0,0,0.75),0 0 10px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.12s ease both"}}>
           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
           <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,padding:"7px 8px 4px"}}>
             <SpinCol val={use12?String(disp12H).padStart(2,"0"):String(tH).padStart(2,"0")} onUp={()=>setH((tH+1)%24)} onDn={()=>setH((tH-1+24)%24)}/>
