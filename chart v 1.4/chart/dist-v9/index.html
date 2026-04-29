@@ -119,6 +119,117 @@
             top: auto !important;
         }
 
+        /* ── Multi-panel selection ring + resize handles (mirror chart/legacy-index.html) ──
+           panel-manager adds .panel-selected, .panel-selection-frame, .panel-resize-handle */
+        #chart-container canvas,
+        #chart-container * {
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-user-drag: none;
+            -webkit-touch-callout: none;
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+        }
+        .panel-select-bar {
+            display: none;
+        }
+        #chart-container .panel-selected {
+            position: relative;
+            z-index: 6;
+        }
+        #chart-container .panel-selected::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            box-sizing: border-box;
+            border: 3px solid rgba(65, 154, 255, 0.84) !important;
+            box-shadow: inset 0 0 0 1px rgba(65, 154, 255, 0.24), 0 0 10px rgba(41, 98, 255, 0.32) !important;
+            border-radius: 2px;
+            pointer-events: none;
+            z-index: 5000;
+        }
+        #chart-container > .panel-selection-frame {
+            position: absolute;
+            border: 3px solid rgba(65, 154, 255, 0.84) !important;
+            box-shadow: 0 0 10px rgba(41, 98, 255, 0.32) !important;
+            border-radius: 2px;
+            pointer-events: none;
+            box-sizing: border-box;
+            z-index: 250;
+        }
+        .chart-panel,
+        #chartWrapper {
+            border: none !important;
+            box-sizing: border-box !important;
+            overflow: hidden;
+        }
+        .panel-resize-handle {
+            position: absolute;
+            z-index: 200;
+            pointer-events: auto;
+            transition: background-color 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+        }
+        .panel-resize-handle.vertical {
+            cursor: col-resize;
+            width: 1.875px;
+            transform: translateX(-0.9375px);
+            background: transparent;
+            border-left: 0.75px solid transparent;
+            border-right: 0.75px solid transparent;
+            border-top: none;
+            border-bottom: none;
+            box-sizing: border-box;
+            background-clip: content-box;
+            background-color: #ffffff;
+        }
+        .panel-resize-handle.horizontal {
+            cursor: row-resize;
+            height: 1.875px;
+            transform: translateY(-0.9375px);
+            background: transparent;
+            border-top: 0.75px solid transparent;
+            border-bottom: 0.75px solid transparent;
+            border-left: none;
+            border-right: none;
+            box-sizing: border-box;
+            background-clip: content-box;
+            background-color: #ffffff;
+        }
+        .panel-resize-handle.vertical:hover {
+            background-color: #ffffff;
+            box-shadow: 0 0 0 1px rgba(41, 98, 255, 0.55), 0 0 14px rgba(41, 98, 255, 0.85) !important;
+            filter: drop-shadow(0 0 8px rgba(41, 98, 255, 0.8)) !important;
+        }
+        .panel-resize-handle.horizontal:hover {
+            background-color: #ffffff;
+            box-shadow: 0 0 0 1px rgba(41, 98, 255, 0.55), 0 0 14px rgba(41, 98, 255, 0.85) !important;
+            filter: drop-shadow(0 0 8px rgba(41, 98, 255, 0.8)) !important;
+        }
+        #chart-container .panel-resize-handle.vertical:hover,
+        #chart-container .panel-resize-handle.horizontal:hover {
+            box-shadow: 0 0 0 1px rgba(41, 98, 255, 0.55), 0 0 14px rgba(41, 98, 255, 0.85) !important;
+            filter: drop-shadow(0 0 8px rgba(41, 98, 255, 0.8)) !important;
+        }
+        .panel-resize-handle.vertical.dragging {
+            background-color: #2962ff !important;
+        }
+        .panel-resize-handle.horizontal.dragging {
+            background-color: #2962ff !important;
+        }
+        body.light-mode .panel-resize-handle.vertical,
+        body.light-mode .panel-resize-handle.horizontal {
+            background-color: #ffffff;
+        }
+        body.light-mode .panel-resize-handle.vertical:hover,
+        body.light-mode .panel-resize-handle.horizontal:hover {
+            background-color: #ffffff;
+        }
+        body.light-mode .panel-resize-handle.vertical.dragging,
+        body.light-mode .panel-resize-handle.horizontal.dragging {
+            background-color: #2962ff !important;
+        }
+
         /* Multi-panel: panel-manager injects .ohlc-info + #chartSymbol1, #open1, …
            (chart.js updates these). Full OHLC rules live in chart/legacy-index.html;
            this shell does not load that CSS. Panel .panel-canvas is z-index:1 and
