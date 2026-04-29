@@ -715,11 +715,18 @@ const TalariaV8bLive = () => {
         if (session.instruments && typeof session.instruments === 'object') {
           for (const [ticker, info] of Object.entries(session.instruments)) {
             const fid = info?.fileId ?? info?.datasetId ?? null;
-            if (ticker) pairs.push({ ticker: normalizeSymbol(ticker), fileId: fid });
+            // Object key can be a shorthand ("USD") while the row holds the real pair (symbolName/symbol).
+            const label =
+              (info && (info.symbolName || info.symbol || info.displaySymbol || info.display_symbol || info.name))
+              || info?.ticker
+              || ticker;
+            if (label)
+              pairs.push({ ticker: normalizeSymbol(String(label).trim()), fileId: fid });
           }
         } else if (Array.isArray(session.symbols)) {
           for (const s of session.symbols) {
-            if (s?.symbolName) pairs.push({ ticker: normalizeSymbol(s.symbolName), fileId: s.fileId ?? null });
+            const nm = s?.symbolName || s?.symbol || s?.ticker;
+            if (nm) pairs.push({ ticker: normalizeSymbol(String(nm).trim()), fileId: s.fileId ?? null });
           }
         } else if (Array.isArray(session.instrumentTickers)) {
           for (const t of session.instrumentTickers) {
@@ -1719,7 +1726,7 @@ const TalariaV8bLive = () => {
     priceLine: true, priceLineColor: "#FF5068",
     scaleTextColor: "rgba(255,255,255,0.25)", scaleLineColor: "rgba(140,160,255,0.12)",
     bullBody: "#00D4A1", bullBorder: "#00D4A1", bullWick: "#00D4A1",
-    bearBody: "#FF5068", bearBorder: "#FF5068", bearWick: "#FF5068", unifiedBarColor: true, unifiedBarColorVal: "#00D4A1",
+    bearBody: "#FF5068", bearBorder: "#FF5068", bearWick: "#FF5068", unifiedBarColor: false, unifiedBarColorVal: "#00D4A1",
     orderPlacement: "instant", showOrderHistory: true, showOpenOrders: true, timeFormat: "24h",
     gridLinesOn: true, gridLineStyle: "solid", gridLineThickness: 1,
     crosshairOn: true, crosshairStyle: "dashed",
@@ -11089,14 +11096,31 @@ const TalariaV8bLive = () => {
               // If the session isn't loaded yet, fall back to a single entry
               // built from the current symbol so the dropdown is never empty.
               const known = SYMBOLS_DATA.flatMap(c=>c.items.map(it=>({...it,cat:c.cat})));
+              const normSymKey = (x) => String(x||"").toUpperCase().replace(/\s+/g,"").replace(/\//g,"");
+              const parseFxPair = (raw) => {
+                const u = String(raw||"").toUpperCase().replace(/\s+/g,"");
+                if (u.includes("/")) {
+                  const p = u.split("/").filter(Boolean);
+                  if (p.length===2 && p[0].length===3 && p[1].length===3)
+                    return { id:`${p[0]}/${p[1]}`, name:`${p[0]} / ${p[1]}`, type:"forex", base:p[0], quote:p[1], cat:"BACKTEST" };
+                }
+                if (/^[A-Z]{6}$/.test(u))
+                  return { id:`${u.slice(0,3)}/${u.slice(3)}`, name:`${u.slice(0,3)} / ${u.slice(3)}`, type:"forex", base:u.slice(0,3), quote:u.slice(3), cat:"BACKTEST" };
+                return null;
+              };
               const buildEntry = (ticker, fileId) => {
-                const found = known.find(s=>s.id===ticker);
-                if(found) return {...found, fileId};
+                let found = known.find(s=>s.id===ticker);
+                if (!found && ticker)
+                  found = known.find(s=>normSymKey(s.id)===normSymKey(ticker));
+                if (found) return {...found, fileId};
                 const parts = (ticker||"").split("/");
                 if(parts.length===2 && parts[0].length===3 && parts[1].length===3){
-                  return {id:ticker,name:`${parts[0]} / ${parts[1]}`,type:"forex",base:parts[0],quote:parts[1],cat:"FOREX",fileId};
+                  const b = parts[0].toUpperCase(), q = parts[1].toUpperCase();
+                  return {id:`${b}/${q}`,name:`${b} / ${q}`,type:"forex",base:b,quote:q,cat:"FOREX",fileId};
                 }
-                return {id:ticker,name:ticker,type:"forex",cat:"BACKTEST",fileId};
+                const fx = parseFxPair(ticker);
+                if (fx) return {...fx, fileId};
+                return {id:ticker,name:ticker,type:"other",cat:"BACKTEST",fileId};
               };
               const items = (sessionPairs.length
                 ? sessionPairs.map(p=>buildEntry(p.ticker, p.fileId))
@@ -11135,7 +11159,7 @@ const TalariaV8bLive = () => {
                           transition:"background 0.1s"}}>
                         {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                         <div style={{display:"flex",alignItems:"center",position:"relative",width:27,height:12,flexShrink:0}}>
-                          {s.type==="forex" ? <>
+                          {s.type==="forex" && s.base && s.quote ? <>
                             <div style={{position:"absolute",left:0,top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 2px 4px rgba(0,0,0,0.8)",zIndex:2}}><FlagSvg code={s.base} w={18} h={12}/></div>
                             <div style={{position:"absolute",left:9,top:0,borderRadius:1,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.6)",zIndex:1}}><FlagSvg code={s.quote} w={18} h={12}/></div>
                           </> : <SymBadge sym={s} w={27} h={12}/>}
