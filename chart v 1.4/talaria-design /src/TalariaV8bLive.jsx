@@ -31,17 +31,6 @@ function cpBuildColor(r, g, b, a) {
   return a>=1 ? `#${toHex2(r)}${toHex2(g)}${toHex2(b)}` : `rgba(${r},${g},${b},${+a.toFixed(2)})`;
 }
 
-/** WebKit Safari (not Chrome/Fx/Edg on iOS): CSS `zoom` + `100dvh`/`calc(100dvh/1.05)` do not stack like Chromium — leaves black bands under the shell. Use effective zoom 1 + full `100dvh` height (matches chart.js layout zoom). */
-function isWebKitSafariUA() {
-  if (typeof navigator === 'undefined') return false;
-  const ua = navigator.userAgent || '';
-  return /\bSafari\b/i.test(ua)
-    && !/\bChrome\b/i.test(ua)
-    && !/\bChromium\b/i.test(ua)
-    && !/\bEdg\//i.test(ua)
-    && !/\b(FxiOS|CriOS|EdgiOS)\b/i.test(ua);
-}
-
 /** Multi-panel layouts (≠ single tile): V9 header symbol/TF follows `panelManager` selection. */
 function v9IsMultiPanelLayoutActive() {
   try {
@@ -2614,7 +2603,11 @@ const TalariaV8bLive = () => {
     }
   };
 
-  const Z = (typeof window !== 'undefined' && isWebKitSafariUA()) ? 1 : 1.05;
+  // Always use effective zoom 1: CSS `zoom` on the shell broke hit-testing vs visually
+  // stacked layers (left rail, floating bars) in Chromium — clicks registered on #chart-container
+  // “behind” chrome so the first mousedown cleared React panel state and it felt like buttons
+  // needed many clicks. Safari already used 1; one path keeps layout/pointer math consistent.
+  const Z = 1;
   if (typeof window !== 'undefined' && window.__v9Zoom !== Z) {
     window.__v9Zoom = Z;
   }
@@ -2644,12 +2637,14 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     const handler = (e) => {
       if (!e.target.closest('.tlr-cp')) setColorPicker(null);
-      if (!e.target.closest('[data-tlbar]')) { setTlBarDrop(null); setTlSaveAsMode(false); setTlNewTplName(""); setVwapBarDrop(null); }
-      setTlSettTplDrop(false);
-      // Ignore floating drawing UI: (1) React panels/dropdowns [data-sdrop], (2) legacy chart.js
-      // #drawing-toolbar (not under this React tree — mousedown can't be stopped from JSX).
-      // Without this, the first mousedown runs before click and was tearing down tlSettOpen /
-      // dropdown state so buttons felt like they needed extra clicks.
+      if (!e.target.closest('[data-tlbar]')) {
+        setTlBarDrop(null);
+        setTlSaveAsMode(false);
+        setTlNewTplName("");
+        setVwapBarDrop(null);
+      }
+      // Popovers marked [data-sdrop], legacy DOM drawing toolbar, or template chrome — never
+      // treat as “click outside” for panel teardown (same as before).
       if (
         e.target.closest('[data-sdrop]') ||
         e.target.closest('#drawing-toolbar') ||
@@ -2657,6 +2652,15 @@ const TalariaV8bLive = () => {
       ) {
         return;
       }
+      // Only dismiss rail/settings/dropdown state when the press actually lands on the chart
+      // surface. Doing this for “anywhere except data-sdrop” made mis-routed hits (zoom/CSS)
+      // clear state on mousedown before the button click fired.
+      const onChartSurface =
+        e.target.closest('#chart-container') ||
+        e.target.closest('#panels-container');
+      if (!onChartSurface) return;
+
+      setTlSettTplDrop(false);
       setSettDrop(null);
       setTlStyleDrop(null);
       setDropdown(null);
@@ -5139,7 +5143,7 @@ const TalariaV8bLive = () => {
   }, [rollback, darkMode, c.gn, c.rd]);
 
   return (
-    <div style={{ width: "100%", height: Z === 1 ? "100dvh" : "calc(100dvh / 1.05)", background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zoom: Z, animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
+    <div style={{ width: "100%", height: "100dvh", background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
       onClick={closeAll}>
       <style>{`
         @keyframes tlrWinIn  { from { opacity:0; transform:translate(-50%,-50%) scale(0.97) translateY(7px); } to { opacity:1; transform:translate(-50%,-50%) scale(1) translateY(0); } }
