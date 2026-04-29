@@ -3938,9 +3938,13 @@ const TalariaV8bLive = () => {
     /** @type {{ dm: object, origF?: function, wrapF?: function, origC?: function, wrapC?: function }[]} */
     const tracked = [];
 
-    const syncRailIfCursor = (dm) => {
+    const syncRailIfCursor = (dm, mirrored) => {
       try {
         if (editingDrawingRef.current) return;
+        // panel-manager.selectPanel clears non-focused tiles with clearTool(true).
+        // Syncing React from those mirrored clears races the tool bridge and forces
+        // the V9 rail back to Cursor even when the user immediately picks a draw tool.
+        if (mirrored) return;
         if (!dm || dm.currentTool) return;
         setTool("crosshair");
         setDropdown(null);
@@ -3970,8 +3974,8 @@ const TalariaV8bLive = () => {
         const origC = dm.clearTool.bind(dm);
         const wrappedC = function v9WrappedClearTool(mirrored) {
           origC.apply(this, arguments);
-          syncRailIfCursor(dm);
-          queueMicrotask(() => syncRailIfCursor(dm));
+          syncRailIfCursor(dm, mirrored);
+          queueMicrotask(() => syncRailIfCursor(dm, mirrored));
         };
         dm.clearTool = wrappedC;
         entry.origC = origC;
@@ -4075,7 +4079,10 @@ const TalariaV8bLive = () => {
           typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
         const dm = ch && ch.drawingManager;
         const legacyDrawing = ch && ch.tool;
-        if (!legacyDrawing && (!dm || !dm.currentTool)) {
+        // If the active chart has no drawingManager yet, do not fight React — the
+        // old `!dm` branch reset the rail every 200ms and made tools unselectable
+        // after panel focus changes (e.g. secondary panel still initializing).
+        if (!legacyDrawing && dm && !dm.currentTool) {
           setTool("crosshair");
           setDropdown(null);
           setBtnPressed(null);
