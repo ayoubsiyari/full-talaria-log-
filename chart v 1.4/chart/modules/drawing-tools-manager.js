@@ -1012,6 +1012,22 @@ class DrawingToolsManager {
         
         // Canvas-level events for rectangular selection and deselection
         const canvas = (this.chart && this.chart.canvas) || (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
+        // Proximity hover + cursor: one listener on #chartWrapper (parent of canvas + drawingSvg).
+        // Avoids duplicating checkDrawingProximity on both canvas mousemove and svg handleMouseMove.
+        const chartWrapper = canvas && canvas.parentElement;
+        if (chartWrapper) {
+            const prevProx = chartWrapper.__drawingToolsProximityMove;
+            if (typeof prevProx === 'function') {
+                chartWrapper.removeEventListener('mousemove', prevProx);
+            }
+            const onChartWrapperMouseMove = (event) => {
+                if (this.currentTool || this.isRectSelecting) return;
+                if (this.drawingState && this.drawingState.isDrawing) return;
+                this.checkDrawingProximity(event);
+            };
+            chartWrapper.addEventListener('mousemove', onChartWrapperMouseMove, { passive: true });
+            chartWrapper.__drawingToolsProximityMove = onChartWrapperMouseMove;
+        }
         if (canvas) {
             let suppressNextCanvasClick = false;
 
@@ -1019,7 +1035,9 @@ class DrawingToolsManager {
             if (existing) {
                 canvas.removeEventListener('mousedown', existing.mousedown, true);
                 canvas.removeEventListener('click', existing.click);
-                canvas.removeEventListener('mousemove', existing.mousemove);
+                if (typeof existing.mousemove === 'function') {
+                    canvas.removeEventListener('mousemove', existing.mousemove);
+                }
                 canvas.removeEventListener('dblclick', existing.dblclick, true);
             }
 
@@ -1315,19 +1333,10 @@ class DrawingToolsManager {
                 openDrawingSettingsFromDoubleClick(event);
             };
             canvas.addEventListener('dblclick', onDblClick, true);
-            
-            // Mousemove on canvas for proximity cursor change
-            const onMouseMove = (event) => {
-                if (!this.currentTool && !this.isRectSelecting) {
-                    this.checkDrawingProximity(event);
-                }
-            };
-            canvas.addEventListener('mousemove', onMouseMove);
 
             canvas.__drawingToolsCanvasHandlers = {
                 mousedown: onMouseDown,
                 click: onClick,
-                mousemove: onMouseMove,
                 dblclick: onDblClick
             };
         }
@@ -2596,12 +2605,7 @@ class DrawingToolsManager {
             }
             return;
         }
-        
-        // Check for line proximity cursor when no tool is active
-        if (!this.currentTool && !this.drawingState.isDrawing) {
-            this.checkDrawingProximity(event);
-        }
-        
+
         // Handle other tools' preview
         if (!this.currentTool || !this.drawingState.isDrawing) return;
         
