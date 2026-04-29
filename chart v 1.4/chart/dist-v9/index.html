@@ -187,6 +187,39 @@
             align-items: center;
             gap: 2px;
         }
+        #panels-container .ohlc-symbol-dot {
+            width: 18px;
+            height: 18px;
+            border-radius: 6px;
+            background: rgba(255, 198, 0, 0.18);
+            border: 1px solid rgba(255, 198, 0, 0.45);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            vertical-align: middle;
+            box-sizing: border-box;
+        }
+        #panels-container .ohlc-symbol-dot.ohlc-dot-flags {
+            width: 29px;
+            height: 16px;
+            border-radius: 0;
+            background: none;
+            border: none;
+            position: relative;
+            overflow: visible;
+        }
+        #panels-container .ohlc-dot-flag {
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            object-fit: cover;
+            box-sizing: border-box;
+            pointer-events: none;
+        }
+        #panels-container .ohlc-dot-flag-base { left: 0; top: 0; z-index: 2; }
+        #panels-container .ohlc-dot-flag-quote { left: 11px; top: 0; z-index: 1; }
     </style>
 
     <!--
