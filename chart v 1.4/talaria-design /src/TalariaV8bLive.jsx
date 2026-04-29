@@ -1073,7 +1073,9 @@ const TalariaV8bLive = () => {
     return () => window.removeEventListener("timeframeChanged", handleTfChanged);
   }, []);
 
-  // Multi-panel: keep V9 pair + TF matching the selected tile (panelManager).
+  // Multi-panel: sync global pair/TF from the main tile only. Pushing the focused
+  // secondary panel's symbol into React state overwrote #chartSymbol / toolbar for
+  // the main chart while its candles stayed on the old pair (label vs scale mismatch).
   useEffect(() => {
     const normalizeSymbol = (s) => {
       if (!s || typeof s !== "string") return s;
@@ -1083,8 +1085,17 @@ const TalariaV8bLive = () => {
       return u;
     };
 
+    const isMainChartTile = (d) => {
+      if (!d || typeof d !== "object") return false;
+      if (d.isMainChart === true) return true;
+      if (d.panel && d.panel.isMainChart) return true;
+      if (typeof d.panelIndex === "number" && d.panelIndex === 0) return true;
+      return false;
+    };
+
     const onPanelSelected = (e) => {
       const d = e?.detail || {};
+      if (!isMainChartTile(d)) return;
       const panel = d.panel;
       const ci = panel?.chartInstance;
       if (ci) {
@@ -1100,6 +1111,11 @@ const TalariaV8bLive = () => {
     };
 
     const onPanelTimeframeChanged = (e) => {
+      const sp =
+        typeof window.panelManager?.getSelectedPanel === "function"
+          ? window.panelManager.getSelectedPanel()
+          : null;
+      if (sp && sp.isMainChart === false) return;
       const cTf = e?.detail?.timeframe;
       const mapped = chartTfToV9(cTf);
       if (mapped) setTf(mapped);
