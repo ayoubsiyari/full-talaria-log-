@@ -732,10 +732,13 @@ const TalariaV8bLive = () => {
               attempt = chart._formatPairTicker(attempt, info?.fileName || info?.name || "") || attempt;
           } catch (_) {}
           let out = normalizeSymbol(attempt);
-          // Session map key / row.ticker is sometimes only the quote currency (e.g. "USD").
-          const looksBroken =
-            !out.includes("/") && /^[A-Z]{3}$/.test(out);
-          if (looksBroken) {
+          // Quote-only keys (CHF, USD, …) — only substitute session/chart symbol when there is a single instrument.
+          const instCount =
+            session.instruments && typeof session.instruments === "object"
+              ? Object.keys(session.instruments).length
+              : 0;
+          const looksBroken = !out.includes("/") && /^[A-Z]{3}$/.test(out);
+          if (looksBroken && instCount <= 1) {
             const fb =
               session.symbol || session.pair || session.symbolName
               || chart?.currentSymbol
@@ -746,20 +749,60 @@ const TalariaV8bLive = () => {
         };
 
         const pairs = [];
-        if (session.instruments && typeof session.instruments === 'object') {
+        const seen = new Set();
+        const pushPair = (ticker, fileId) => {
+          if (!ticker) return;
+          const fid = fileId != null ? fileId : null;
+          const dedupeKey = fid != null ? `id:${fid}` : `sym:${ticker}`;
+          if (seen.has(dedupeKey)) return;
+          seen.add(dedupeKey);
+          pairs.push({ ticker: normalizeSymbol(String(ticker).trim()), fileId: fid });
+        };
+
+        // Same source as chart.js multi-file picker: session.files + resolveSessionTickerForFileId.
+        // Instruments map keys are often quote currencies only (CHF, CAD, …) — listing from files fixes labels + flags.
+        if (Array.isArray(session.files) && session.files.length > 0) {
+          for (const f of session.files) {
+            if (!f) continue;
+            const fileId = f.id != null ? f.id : f.fileId;
+            if (fileId == null) continue;
+            let display = null;
+            try {
+              if (chart?.resolveSessionTickerForFileId)
+                display = chart.resolveSessionTickerForFileId(session, fileId);
+            } catch (_) {}
+            if (!display || !String(display).trim()) {
+              const rawName = String(f.name || f.fileName || "");
+              try {
+                if (chart?._formatPairTicker)
+                  display =
+                    chart._formatPairTicker(rawName, "") ||
+                    rawName.replace(/\.(csv|CSV)$/i, "").toUpperCase();
+                else display = rawName.replace(/\.(csv|CSV)$/i, "").toUpperCase();
+              } catch (_) {
+                display = rawName.replace(/\.(csv|CSV)$/i, "").toUpperCase();
+              }
+            }
+            if (display && String(display).trim()) pushPair(String(display).trim(), fileId);
+          }
+        }
+
+        if (pairs.length === 0 && session.instruments && typeof session.instruments === "object") {
           for (const [ticker, info] of Object.entries(session.instruments)) {
             const fid = info?.fileId ?? info?.datasetId ?? null;
             const sym = resolveTickerForInstrument(ticker, info, fid);
-            if (sym) pairs.push({ ticker: sym, fileId: fid });
+            if (sym) pushPair(sym, fid);
           }
-        } else if (Array.isArray(session.symbols)) {
+        }
+        if (pairs.length === 0 && Array.isArray(session.symbols)) {
           for (const s of session.symbols) {
             const nm = s?.symbolName || s?.symbol || s?.ticker;
-            if (nm) pairs.push({ ticker: normalizeSymbol(String(nm).trim()), fileId: s.fileId ?? null });
+            if (nm) pushPair(normalizeSymbol(String(nm).trim()), s.fileId ?? null);
           }
-        } else if (Array.isArray(session.instrumentTickers)) {
+        }
+        if (pairs.length === 0 && Array.isArray(session.instrumentTickers)) {
           for (const t of session.instrumentTickers) {
-            pairs.push({ ticker: normalizeSymbol(t), fileId: null });
+            pushPair(normalizeSymbol(t), null);
           }
         }
         if (pairs.length) setSessionPairs(pairs);
