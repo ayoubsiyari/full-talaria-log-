@@ -4504,6 +4504,11 @@ const TalariaV8bLive = () => {
     const tick = () => {
       try {
         if (editingDrawingRef.current) return;
+        // Effect deps include `dropdown` so this closure is fresh — without this guard,
+        // opening a group submenu (tool !== crosshair) saw stale dropdown=null and the
+        // interval cleared the menu every 200ms. Crosshair was exempt because it is not
+        // in DRAWING_RAIL so this interval never ran.
+        if (dropdown) return;
         const ch =
           typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
         const dm = ch && ch.drawingManager;
@@ -4520,7 +4525,7 @@ const TalariaV8bLive = () => {
     };
     const id = window.setInterval(tick, 200);
     return () => window.clearInterval(id);
-  }, [tool]);
+  }, [tool, dropdown]);
 
   // Set true just before we update tlStyle from a selected drawing's style
   // so the forward bridge below skips that pass and we don't loop.
