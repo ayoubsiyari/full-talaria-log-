@@ -12116,7 +12116,7 @@ const TalariaV8bLive = () => {
                   (ghost main OHLC / broken tiles). Default fill comes from live/index.html CSS. */}
               <div id="chartWrapper" className="chart-wrapper">
                 <canvas id="chartCanvas" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", background: "transparent" }} />
-                <svg id="drawingSvg" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
+                <svg id="drawingSvg" />
                 {/* Axis cursor zones — chart.js reserves 60px right and 30px bottom margin.
                      #timeAxisZone is a thin bottom strip so Chromium/Brave do not cover
                      canvas time labels; full-height transparent siblings can mis-composite. */}

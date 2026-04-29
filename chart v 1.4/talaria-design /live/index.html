@@ -46,10 +46,47 @@
             display: block;
             background: transparent;
         }
+        /* Drawing overlay — layout only here; pointer-events + z-index are driven by chart.js / drawingToolsManager
+           (see DrawingManager._updateAxisZonePointerEvents, Chart.updateSVGPointerEvents). */
         #drawingSvg {
-            position: absolute; inset: 0;
-            width: 100%; height: 100%;
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
             pointer-events: none;
+            z-index: 2;
+            overflow: visible;
+        }
+        #drawingSvg.drawing {
+            pointer-events: all;
+            cursor: crosshair;
+        }
+        /* Mirror chart/styles.svg drawing hover — V9 live does not load full styles.css */
+        #chart-container #drawingSvg line {
+            transition: stroke-width 0.15s ease, opacity 0.15s ease;
+        }
+        #chart-container #drawingSvg line:hover {
+            stroke-width: 3;
+            filter: drop-shadow(0 0 4px rgba(41, 98, 255, 0.5));
+        }
+        #chart-container #drawingSvg rect {
+            transition: opacity 0.15s ease, stroke-width 0.15s ease;
+        }
+        #chart-container #drawingSvg rect:hover {
+            stroke-width: 3;
+            filter: drop-shadow(0 0 4px rgba(41, 98, 255, 0.5));
+        }
+        #chart-container #drawingSvg text {
+            transition: opacity 0.15s ease;
+            user-select: none;
+        }
+        #chart-container #drawingSvg circle {
+            transition: all 0.15s ease;
+            cursor: pointer;
+        }
+        #chart-container #drawingSvg circle:hover {
+            r: 6;
+            filter: drop-shadow(0 2px 6px rgba(41, 98, 255, 0.6));
         }
         #priceAxisZone, #timeAxisZone {
             position: absolute;
@@ -121,8 +158,10 @@
 
         /* ── Multi-panel selection ring + resize handles (mirror chart/legacy-index.html) ──
            panel-manager adds .panel-selected, .panel-selection-frame, .panel-resize-handle */
+        /* Exclude .panel-resize-handle — #chart-container * loses borders via border:none !important,
+           which strips the thin side borders that widen the grab hit area (legacy keeps handles usable). */
         #chart-container canvas,
-        #chart-container * {
+        #chart-container *:not(.panel-resize-handle) {
             user-select: none;
             -webkit-user-select: none;
             -webkit-user-drag: none;
@@ -493,7 +532,7 @@
 
     <!-- Drawing-tools manager — orchestrator. Must load AFTER all individual
          drawing-tools-*.js so the registry is populated before init. -->
-    <script defer src="/chart/modules/drawing-tools-manager.js?v=20260428_prefs_drawing_sync"></script>
+    <script defer src="/chart/modules/drawing-tools-manager.js?v=20260429_resize_hover_z"></script>
     <script defer src="/chart/modules/favorites-manager.js?v=20260428b_dblclick_v9"></script>
     <script defer src="/chart/modules/keyboard-shortcuts.js?v=20260428_v9_ss_wire"></script>
 

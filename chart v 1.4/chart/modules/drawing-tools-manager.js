@@ -5510,6 +5510,8 @@ class DrawingToolsManager {
     _updateAxisZonePointerEvents() {
         const toolActive = !!this.currentTool;
         const drawingSelected = this.selectedDrawings.length > 0;
+        // Hovering an unselected drawing shows resize handles — same stacking as legacy vs axis zones (z 10).
+        const hoverResizeHandles = !!(this._hoveredDrawing && !this._hoveredDrawing.selected);
         if (this.svg) {
             if (toolActive) {
                 this.svg.style('z-index', '11');
@@ -5519,6 +5521,10 @@ class DrawingToolsManager {
                 this.svg.style('z-index', '11');
                 // Must allow pointer events so selected drawings (handles, risk/reward + buttons, borders) work.
                 this.svg.style('pointer-events', 'all');
+            } else if (hoverResizeHandles) {
+                this.svg.style('z-index', '11');
+                // Root stays none — strokes/handles use pointer-events; lifts layer above .axis-cursor-zone.
+                this.svg.style('pointer-events', 'none');
             } else {
                 // Never clear z-index to '' on panels: panel canvas uses z-index 1; SVG default (auto)
                 // stacks below it, so drawings vanish until a tool sets z-index 11 again.
@@ -8668,6 +8674,8 @@ class DrawingToolsManager {
                 canvas.classList.add('cursor-time-axis');
             }
         }
+
+        this._updateAxisZonePointerEvents();
     }
     /**
      * Load saved tool styles from localStorage
