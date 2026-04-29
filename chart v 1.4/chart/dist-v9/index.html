@@ -24,6 +24,10 @@
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html, body, #root { width: 100%; height: 100%; overflow: hidden; background: #07080E; }
 
+        /* Single-layout default for main tiles. Multi-panel: panel-manager.applyLayout() sets
+           width/height/left/top as INLINE styles — React must not own #chartWrapper geometry or
+           each re-render replaces the whole style attribute and drops panel placement (wrapper
+           goes full #chart-container and paints over #panels-container → duplicate main UI). */
         #chartWrapper.chart-wrapper {
             position: absolute;
             top: 0;
@@ -115,6 +119,87 @@
             top: auto !important;
         }
 
+        /* Multi-panel: panel-manager injects .ohlc-info + #chartSymbol1, #open1, …
+           (chart.js updates these). Full OHLC rules live in chart/legacy-index.html;
+           this shell does not load that CSS. Panel .panel-canvas is z-index:1 and
+           .panel-svg is z-index:10 — without position+z-index the OHLC block paints
+           under the canvas and looks “empty”. */
+        #panels-container .panel-chart-container .ohlc-info {
+            position: absolute;
+            top: 8px;
+            left: 10px;
+            z-index: 25;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            font-size: 11px;
+            font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: #d1d4dc;
+            pointer-events: none;
+            max-width: min(560px, 92%);
+        }
+        #panels-container .ohlc-header {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        #panels-container .ohlc-stats {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        #panels-container .ohlc-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+        }
+
+        /* chart.js loads FlagCDN `w80` PNGs into #ohlcSymbolDot1 … — without legacy-index.css
+           they paint at intrinsic bitmap size (~80px). Mirror legacy .chart-panel … rules. */
+        #panels-container .ohlc-symbol-dot {
+            width: 18px;
+            height: 18px;
+            border-radius: 6px;
+            background: rgba(255, 198, 0, 0.18);
+            border: 1px solid rgba(255, 198, 0, 0.45);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            vertical-align: middle;
+            box-sizing: border-box;
+        }
+        #panels-container .ohlc-symbol-dot.ohlc-dot-flags {
+            width: 29px;
+            height: 16px;
+            border-radius: 0;
+            background: none;
+            border: none;
+            position: relative;
+            overflow: visible;
+        }
+        #panels-container .ohlc-dot-flag {
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            object-fit: cover;
+            box-sizing: border-box;
+            pointer-events: none;
+        }
+        #panels-container .ohlc-dot-flag-base {
+            left: 0;
+            top: 0;
+            z-index: 2;
+        }
+        #panels-container .ohlc-dot-flag-quote {
+            left: 11px;
+            top: 0;
+            z-index: 1;
+        }
+
         /* Hide legacy chart.js floating drawing toolbar — V9 renders its own
            tlBar/txtBar floating toolbar (TalariaV8bLive.jsx) which is wired
            via the V9 tool bridge. Keeping the legacy one visible would show
@@ -156,70 +241,6 @@
             background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.14) 50%, transparent 100%);
             animation: loaderShimmerSweep 5.8s linear infinite; animation-delay: -1.4s; will-change: transform; }
         @keyframes loaderShimmerSweep { 0% { transform: translate3d(-100%, 0, 0); } 100% { transform: translate3d(400%, 0, 0); } }
-        #panels-container .panel-chart-container .ohlc-info {
-            position: absolute;
-            top: 8px;
-            left: 10px;
-            z-index: 25;
-            display: flex;
-            flex-direction: column;
-            gap: 3px;
-            font-size: 11px;
-            font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            color: #d1d4dc;
-            pointer-events: none;
-            max-width: min(560px, 92%);
-        }
-        #panels-container .ohlc-header {
-            display: flex;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-        #panels-container .ohlc-stats {
-            display: flex;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 6px;
-        }
-        #panels-container .ohlc-item {
-            display: inline-flex;
-            align-items: center;
-            gap: 2px;
-        }
-        #panels-container .ohlc-symbol-dot {
-            width: 18px;
-            height: 18px;
-            border-radius: 6px;
-            background: rgba(255, 198, 0, 0.18);
-            border: 1px solid rgba(255, 198, 0, 0.45);
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            vertical-align: middle;
-            box-sizing: border-box;
-        }
-        #panels-container .ohlc-symbol-dot.ohlc-dot-flags {
-            width: 29px;
-            height: 16px;
-            border-radius: 0;
-            background: none;
-            border: none;
-            position: relative;
-            overflow: visible;
-        }
-        #panels-container .ohlc-dot-flag {
-            position: absolute;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            object-fit: cover;
-            box-sizing: border-box;
-            pointer-events: none;
-        }
-        #panels-container .ohlc-dot-flag-base { left: 0; top: 0; z-index: 2; }
-        #panels-container .ohlc-dot-flag-quote { left: 11px; top: 0; z-index: 1; }
     </style>
 
     <!--
@@ -387,7 +408,7 @@
     <script defer src="/chart/modules/panel-manager.js?v=20260428b_dblclick_v9"></script>
     <!-- Economic calendar: Finnhub via /api + chart time-axis markers (__economicCalendarForChart). -->
     <script defer src="/chart/modules/economic-news-sidebar.js?v=20260428_cal_chart_now"></script>
-  <script type="module" crossorigin src="/chart/dist-v9/assets/index-CD2dYl0f.js"></script>
+  <script type="module" crossorigin src="/chart/dist-v9/assets/index-DL5ltQku.js"></script>
 </head>
 <body>
     <div id="backtestingLoader" aria-live="polite" aria-busy="true">
@@ -425,6 +446,8 @@
          ────────────────────────────────────────────────────────────────── -->
     <script>
     (function bootstrapPanelManager() {
+        /* chart.js, drawing-tools-manager, indicator-ui, order-manager call this to resolve
+           the focused tile. Legacy index defines it; V9 must too or everything targets window.chart. */
         if (typeof window.getActiveChart !== 'function') {
             window.getActiveChart = function() {
                 try {

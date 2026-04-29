@@ -3920,10 +3920,12 @@ const TalariaV8bLive = () => {
     };
     window.addEventListener("panelSelected", onPanelSelected);
     window.addEventListener("panelsCreated", onPanelSelected);
+    window.addEventListener("chartDataLoaded", onPanelSelected);
     return () => {
       cancelled = true;
       window.removeEventListener("panelSelected", onPanelSelected);
       window.removeEventListener("panelsCreated", onPanelSelected);
+      window.removeEventListener("chartDataLoaded", onPanelSelected);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool, groupSelected]);
@@ -3945,6 +3947,12 @@ const TalariaV8bLive = () => {
         // Syncing React from those mirrored clears races the tool bridge and forces
         // the V9 rail back to Cursor even when the user immediately picks a draw tool.
         if (mirrored) return;
+        const activeCh =
+          typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+        const activeDm = activeCh && activeCh.drawingManager;
+        // Only sync the left rail from the focused tile's drawing manager. Clearing or
+        // finishing a stroke on a background chart must not reset V9 while a panel is active.
+        if (activeDm && dm !== activeDm) return;
         if (!dm || dm.currentTool) return;
         setTool("crosshair");
         setDropdown(null);
@@ -4046,6 +4054,13 @@ const TalariaV8bLive = () => {
         try {
           if (editingDrawingRef.current) return;
           if (!this.tool) {
+            const active =
+              typeof window.getActiveChart === "function"
+                ? window.getActiveChart()
+                : window.chart;
+            // Legacy Chart#setTool('cursor') still runs on window.chart when a secondary
+            // panel is focused; without this guard it clears the V9 rail on every tick.
+            if (active && this !== active) return;
             setTool("crosshair");
             setDropdown(null);
             setBtnPressed(null);
@@ -4079,9 +4094,9 @@ const TalariaV8bLive = () => {
           typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
         const dm = ch && ch.drawingManager;
         const legacyDrawing = ch && ch.tool;
-        // If the active chart has no drawingManager yet, do not fight React — the
-        // old `!dm` branch reset the rail every 200ms and made tools unselectable
-        // after panel focus changes (e.g. secondary panel still initializing).
+        // chart.tool is legacy DOM toolbar state; drawing tools are armed on dm only.
+        // Do not treat chart.tool as idle when dm has a tool — otherwise multi-panel
+        // (dm armed, chart.tool never set) snaps the rail to Cursor every 200ms.
         if (!legacyDrawing && dm && !dm.currentTool) {
           setTool("crosshair");
           setDropdown(null);
