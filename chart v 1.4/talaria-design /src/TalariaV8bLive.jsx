@@ -69,6 +69,54 @@ function v9ActiveChartInstance() {
   }
 }
 
+/** V9 drawing panel uses `tlStyle.showInfo` + `showInfoTypes` (labels); chart.js reads `drawing.style.infoSettings` booleans. */
+const V9_INFO_LABEL_TO_PROP = {
+  "Price range": "priceRange",
+  "Percent change": "percentChange",
+  "Change in pips": "changeInPips",
+  "Bars range": "barsRange",
+  "Date/time range": "dateTimeRange",
+  "Volume": "volume",
+  "Distance": "distance",
+  "Angle": "angle",
+};
+const V9_INFO_PROP_TO_LABEL = Object.fromEntries(
+  Object.entries(V9_INFO_LABEL_TO_PROP).map(([label, prop]) => [prop, label])
+);
+
+function v9ChartInfoSettingsFromTlStyle(tlStyle) {
+  const show = !!tlStyle?.showInfo;
+  const types = Array.isArray(tlStyle?.showInfoTypes) ? tlStyle.showInfoTypes : [];
+  const info = {
+    showInfo: show,
+    priceRange: false,
+    percentChange: false,
+    changeInPips: false,
+    barsRange: false,
+    dateTimeRange: false,
+    volume: false,
+    distance: false,
+    angle: false,
+  };
+  types.forEach((label) => {
+    const prop = V9_INFO_LABEL_TO_PROP[label];
+    if (prop) info[prop] = true;
+  });
+  if (show && types.length === 0) {
+    info.priceRange = true;
+  }
+  return info;
+}
+
+function v9ShowInfoTypesFromChartInfoSettings(info) {
+  if (!info || typeof info !== "object") return [];
+  const out = [];
+  Object.keys(V9_INFO_PROP_TO_LABEL).forEach((prop) => {
+    if (info[prop] === true) out.push(V9_INFO_PROP_TO_LABEL[prop]);
+  });
+  return out;
+}
+
 /** PRE variables from `chart.backtestingSession` — same filter as order-manager.js `_getPreTradeVariableDefs`. */
 function getPreTradeVariablesFromSession(chart) {
   try {
@@ -4281,8 +4329,17 @@ const TalariaV8bLive = () => {
           rangeType: s.rangeMode === 'price' ? 'Price'
                    : s.rangeMode === 'time' ? 'Date and time'
                    : (prev.rangeType || 'Date & Price'),
-          showInfo: !!s.showInfo,
-          showInfoTypes: Array.isArray(s.showInfoTypes) ? [...s.showInfoTypes] : prev.showInfoTypes,
+          ...(() => {
+            const info = s.infoSettings;
+            const types = v9ShowInfoTypesFromChartInfoSettings(info);
+            const showInfo = info
+              ? (info.showInfo === true || (types.length > 0 && info.showInfo !== false))
+              : false;
+            return {
+              showInfo,
+              showInfoTypes: types.length > 0 ? types : (prev.showInfoTypes || ['Price range']),
+            };
+          })(),
           labelColor: s.labelColor || prev.labelColor,
           labelFontSize: String(s.labelFontSize ?? prev.labelFontSize),
           labelBg: !!s.labelBackground,
@@ -4371,6 +4428,18 @@ const TalariaV8bLive = () => {
         ...(s.labelFontSize != null ? { labelFontSize: String(s.labelFontSize) } : {}),
         ...(typeof s.labelBackground === 'boolean' ? { labelBg: s.labelBackground } : {}),
         ...(s.labelBackgroundColor ? { labelBgColor: s.labelBackgroundColor } : {}),
+        ...(s.infoSettings && typeof s.infoSettings === 'object'
+          ? (() => {
+              const types = v9ShowInfoTypesFromChartInfoSettings(s.infoSettings);
+              const show =
+                s.infoSettings.showInfo === true ||
+                (types.length > 0 && s.infoSettings.showInfo !== false);
+              return {
+                showInfo: show,
+                showInfoTypes: types.length > 0 ? types : ['Price range'],
+              };
+            })()
+          : {}),
       };
     };
     const hook = () => {
@@ -4461,8 +4530,7 @@ const TalariaV8bLive = () => {
       rangeMode: tlStyle.rangeType === 'Price' ? 'price'
                 : tlStyle.rangeType === 'Date and time' ? 'time'
                 : 'both',
-      showInfo: !!tlStyle.showInfo,
-      showInfoTypes: Array.isArray(tlStyle.showInfoTypes) ? [...tlStyle.showInfoTypes] : [],
+      infoSettings: v9ChartInfoSettingsFromTlStyle(tlStyle),
       // Label sub-styling (used by range tool / fib labels)
       labelColor: tlStyle.labelColor,
       labelFontSize: parseInt(tlStyle.labelFontSize, 10) || 12,

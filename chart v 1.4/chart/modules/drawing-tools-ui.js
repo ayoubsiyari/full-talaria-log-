@@ -19344,13 +19344,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 if (prop === 'showInfo') {
 
-                    const metricPropKeys = this.getInfoDropdownOptions(drawing).map(option => option.prop);
-
-                    const rawInfoInit = drawing.style.infoSettings;
-
-                    const missingMetricKeys = !rawInfoInit || metricPropKeys.every((p) => !Object.prototype.hasOwnProperty.call(rawInfoInit, p));
-
-                    if (!drawing.style.infoSettings || Object.keys(drawing.style.infoSettings).length === 0 || missingMetricKeys) {
+                    if (!drawing.style.infoSettings || Object.keys(drawing.style.infoSettings).length === 0) {
 
                         let defaultInfoSettings;
 

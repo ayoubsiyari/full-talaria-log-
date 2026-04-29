@@ -70,23 +70,6 @@ function appendTextLabel(group, text, config = {}) {
     return textEl;
 }
 
-/**
- * When Show Info is on but style only has `showInfo: true` (no metric keys yet),
- * match Labels-tab defaults so the chart renders at least one row (same as UI merge).
- */
-function mergeDefaultDrawingInfoMetricsIfNeeded(style) {
-    if (!style || !style.infoSettings || typeof style.infoSettings !== 'object') return;
-    const info = style.infoSettings;
-    if (info.showInfo !== true) return;
-    const metricProps = ['priceRange', 'percentChange', 'changeInPips', 'barsRange', 'dateTimeRange', 'distance', 'angle'];
-    const hasExplicitMetricKey = metricProps.some((p) => Object.prototype.hasOwnProperty.call(info, p));
-    const anyMetricOn = metricProps.some((p) => info[p] === true);
-    if (!anyMetricOn && !hasExplicitMetricKey) {
-        info.priceRange = true;
-    }
-}
-window.mergeDefaultDrawingInfoMetricsIfNeeded = mergeDefaultDrawingInfoMetricsIfNeeded;
-
 // Make appendTextLabel globally available for all drawing tools
 window.appendTextLabel = appendTextLabel;
 
@@ -460,7 +443,6 @@ class TrendlineTool extends BaseDrawing {
     }
     
     renderInfoBox(x1, y1, x2, y2, scales) {
-        mergeDefaultDrawingInfoMetricsIfNeeded(this.style);
         const infoSettings = this.style.infoSettings || {};
         if (!infoSettings.showInfo) return;
 
