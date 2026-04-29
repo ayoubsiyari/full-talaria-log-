@@ -3801,32 +3801,57 @@ const TalariaV8bLive = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool, groupSelected]);
 
-  // After finalizeDrawing(), legacy chart clears dm.currentTool unless brush /
-  // highlighter / keep-drawing mode. Wrap finalizeDrawing on every drawing
-  // manager (main `window.chart` + each panel's chartInstance) — strokes often
-  // finalize on a panel DM while only patching `window.chart` left V9 stuck on
-  // Trend Line / etc.
+  // Keep V9 left rail in sync when legacy drawing mode ends: (1) finalizeDrawing
+  // clears the tool after a completed stroke; (2) clearTool runs in many paths
+  // (cancel, panel switch, etc.). Without syncing, React can still show Trend Line
+  // as selected while dm.currentTool is null — looks armed but clicks pan/don't draw.
+  // Skip while dblclick edit panel is open (editingDrawingRef) — same rule as tool bridge.
   useEffect(() => {
     let cancelled = false;
-    /** @type {{ dm: object, orig: function, wrapped: function }[]} */
+    /** @type {{ dm: object, origF?: function, wrapF?: function, origC?: function, wrapC?: function }[]} */
     const tracked = [];
 
+    const syncRailIfCursor = (dm) => {
+      try {
+        if (editingDrawingRef.current) return;
+        if (!dm || dm.currentTool) return;
+        setTool("crosshair");
+        setDropdown(null);
+        setBtnPressed(null);
+      } catch (_) {}
+    };
+
     const patchDm = (dm) => {
-      if (!dm || typeof dm.finalizeDrawing !== "function") return;
+      if (!dm) return;
       if (tracked.some((t) => t.dm === dm)) return;
-      const orig = dm.finalizeDrawing.bind(dm);
-      const wrapped = function v9WrappedFinalizeDrawing() {
-        orig();
-        try {
-          if (!dm.currentTool) {
-            setTool("crosshair");
-            setDropdown(null);
-            setBtnPressed(null);
-          }
-        } catch (_) {}
-      };
-      dm.finalizeDrawing = wrapped;
-      tracked.push({ dm, orig, wrapped });
+      const entry = { dm };
+      let any = false;
+
+      if (typeof dm.finalizeDrawing === "function") {
+        const orig = dm.finalizeDrawing.bind(dm);
+        const wrapped = function v9WrappedFinalizeDrawing() {
+          orig();
+          syncRailIfCursor(dm);
+          queueMicrotask(() => syncRailIfCursor(dm));
+        };
+        dm.finalizeDrawing = wrapped;
+        entry.origF = orig;
+        entry.wrapF = wrapped;
+        any = true;
+      }
+      if (typeof dm.clearTool === "function") {
+        const origC = dm.clearTool.bind(dm);
+        const wrappedC = function v9WrappedClearTool(mirrored) {
+          origC.apply(this, arguments);
+          syncRailIfCursor(dm);
+          queueMicrotask(() => syncRailIfCursor(dm));
+        };
+        dm.clearTool = wrappedC;
+        entry.origC = origC;
+        entry.wrapC = wrappedC;
+        any = true;
+      }
+      if (any) tracked.push(entry);
     };
 
     const patchAllManagers = () => {
@@ -3858,9 +3883,10 @@ const TalariaV8bLive = () => {
       window.removeEventListener("panelsCreated", onChartStructure);
       window.removeEventListener("chartDataLoaded", onChartStructure);
       window.removeEventListener("returnedToSinglePanel", onChartStructure);
-      tracked.forEach(({ dm, orig, wrapped }) => {
+      tracked.forEach((e) => {
         try {
-          if (dm.finalizeDrawing === wrapped) dm.finalizeDrawing = orig;
+          if (e.wrapF && e.dm.finalizeDrawing === e.wrapF) e.dm.finalizeDrawing = e.origF;
+          if (e.wrapC && e.dm.clearTool === e.wrapC) e.dm.clearTool = e.origC;
         } catch (_) {}
       });
     };
