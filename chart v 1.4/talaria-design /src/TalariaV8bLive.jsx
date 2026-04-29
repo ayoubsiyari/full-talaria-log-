@@ -1073,9 +1073,10 @@ const TalariaV8bLive = () => {
     return () => window.removeEventListener("timeframeChanged", handleTfChanged);
   }, []);
 
-  // Multi-panel: sync global pair/TF from the main tile only. Pushing the focused
-  // secondary panel's symbol into React state overwrote #chartSymbol / toolbar for
-  // the main chart while its candles stayed on the old pair (label vs scale mismatch).
+  // Multi-panel: toolbar pair/TF follow the focused tile. In-chart OHLC labels are
+  // owned by chart.js (#chartSymbol / #chartTimeframe) — not React `symbol` — so we
+  // re-stamp the main chart's OHLC from window.chart after toolbar updates (React can
+  // clear those spans on re-render).
   useEffect(() => {
     const normalizeSymbol = (s) => {
       if (!s || typeof s !== "string") return s;
@@ -1085,17 +1086,8 @@ const TalariaV8bLive = () => {
       return u;
     };
 
-    const isMainChartTile = (d) => {
-      if (!d || typeof d !== "object") return false;
-      if (d.isMainChart === true) return true;
-      if (d.panel && d.panel.isMainChart) return true;
-      if (typeof d.panelIndex === "number" && d.panelIndex === 0) return true;
-      return false;
-    };
-
     const onPanelSelected = (e) => {
       const d = e?.detail || {};
-      if (!isMainChartTile(d)) return;
       const panel = d.panel;
       const ci = panel?.chartInstance;
       if (ci) {
@@ -1111,11 +1103,6 @@ const TalariaV8bLive = () => {
     };
 
     const onPanelTimeframeChanged = (e) => {
-      const sp =
-        typeof window.panelManager?.getSelectedPanel === "function"
-          ? window.panelManager.getSelectedPanel()
-          : null;
-      if (sp && sp.isMainChart === false) return;
       const cTf = e?.detail?.timeframe;
       const mapped = chartTfToV9(cTf);
       if (mapped) setTf(mapped);
@@ -1128,6 +1115,20 @@ const TalariaV8bLive = () => {
       window.removeEventListener("panelTimeframeChanged", onPanelTimeframeChanged);
     };
   }, []);
+
+  // Toolbar `symbol` / `tf` can reflect the focused panel; #chartSymbol / #chartTimeframe
+  // must stay the main chart's values (chart.js). Re-stamp after React updates.
+  useEffect(() => {
+    try {
+      const main = window.chart;
+      if (!main || typeof main.updateChartOHLCSymbol !== "function" || !main.currentSymbol) return;
+      queueMicrotask(() => {
+        try {
+          main.updateChartOHLCSymbol(main.currentSymbol);
+        } catch (_) {}
+      });
+    } catch (_) {}
+  }, [symbol, tf]);
 
   // ──────────────────────────────────────────────────────────────────────
   // Replay bridge — wires V9 replay-bar UI to window.chart.replaySystem
@@ -12029,8 +12030,8 @@ const TalariaV8bLive = () => {
                 {/* OHLC Info Panel — IDs match what chart.js expects so it updates these on hover */}
                 <div id="ohlcInfo" style={{ position: "absolute", top: 8, left: 10, zIndex: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                    <span id="chartSymbol" style={{ fontSize: 13, fontWeight: 700 }}>{symbol}</span>
-                    <span id="chartTimeframe" style={{ fontSize: 11, color: c.tm }}>1m</span>
+                    <span id="chartSymbol" style={{ fontSize: 13, fontWeight: 700 }} />
+                    <span id="chartTimeframe" style={{ fontSize: 11, color: c.tm }} />
                     <div onClick={(e) => { e.stopPropagation(); setRollback(!rollback); }} style={{ cursor: "default", opacity: rollback ? 1 : 0.4, display: "flex", alignItems: "center", gap: 3 }}>
                       <I n="rollback" s={13} cl={rollback ? c.gn : c.rd}/>
                       <span style={{ fontSize: 12, color: rollback ? c.gn : c.rd, fontWeight: 700 }}>{rollback ? "RB" : "LOCKED"}</span>
