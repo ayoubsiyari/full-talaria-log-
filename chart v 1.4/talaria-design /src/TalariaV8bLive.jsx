@@ -1221,7 +1221,7 @@ const TalariaV8bLive = () => {
   }, [screenshotOpen, symbol, tf, chartType]);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [pinnedBarOpen, setPinnedBarOpen] = useState(true);
+  const [pinnedBarOpen, setPinnedBarOpen] = useState(false);
   const [pinnedBarPos, setPinnedBarPos] = useState({ x: 50, y: 80 });
   const [groupSelected, setGroupSelected] = useState({});
   const [tlBarPos, setTlBarPos] = useState({ x: 130, y: 200 });
@@ -3800,6 +3800,21 @@ const TalariaV8bLive = () => {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool, groupSelected]);
+
+  // After a completed stroke, drawing-tools-manager clears the legacy tool and
+  // emits `talaria-v9-drawing-finalized` — mirror that in V9 so the left rail
+  // returns to Cursor (crosshair) instead of staying on Trend Line / etc.
+  useEffect(() => {
+    const onDrawingFinalized = () => {
+      try {
+        setTool("crosshair");
+        setDropdown(null);
+        setBtnPressed(null);
+      } catch (_) {}
+    };
+    window.addEventListener("talaria-v9-drawing-finalized", onDrawingFinalized);
+    return () => window.removeEventListener("talaria-v9-drawing-finalized", onDrawingFinalized);
+  }, []);
 
   // Set true just before we update tlStyle from a selected drawing's style
   // so the forward bridge below skips that pass and we don't loop.
