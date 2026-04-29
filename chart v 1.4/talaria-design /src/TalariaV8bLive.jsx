@@ -4496,37 +4496,6 @@ const TalariaV8bLive = () => {
     };
   }, []);
 
-  // Safety net: while the rail shows a drawing group, if both legacy chart.tool and
-  // dm.currentTool are idle, snap V9 back to Cursor (covers race / missed hooks).
-  useEffect(() => {
-    const DRAWING_RAIL = new Set(["trendline", "rect", "channel", "brush2", "fib", "text", "pattern", "measure", "brush"]);
-    if (!DRAWING_RAIL.has(tool)) return undefined;
-    const tick = () => {
-      try {
-        if (editingDrawingRef.current) return;
-        // Effect deps include `dropdown` so this closure is fresh — without this guard,
-        // opening a group submenu (tool !== crosshair) saw stale dropdown=null and the
-        // interval cleared the menu every 200ms. Crosshair was exempt because it is not
-        // in DRAWING_RAIL so this interval never ran.
-        if (dropdown) return;
-        const ch =
-          typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-        const dm = ch && ch.drawingManager;
-        const legacyDrawing = ch && ch.tool;
-        // chart.tool is legacy DOM toolbar state; drawing tools are armed on dm only.
-        // Do not treat chart.tool as idle when dm has a tool — otherwise multi-panel
-        // (dm armed, chart.tool never set) snaps the rail to Cursor every 200ms.
-        if (!legacyDrawing && dm && !dm.currentTool) {
-          setTool("crosshair");
-          setDropdown(null);
-          setBtnPressed(null);
-        }
-      } catch (_) {}
-    };
-    const id = window.setInterval(tick, 200);
-    return () => window.clearInterval(id);
-  }, [tool, dropdown]);
-
   // Set true just before we update tlStyle from a selected drawing's style
   // so the forward bridge below skips that pass and we don't loop.
   const suppressForwardBridge = useRef(false);
