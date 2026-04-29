@@ -2462,7 +2462,7 @@ const TalariaV8bLive = () => {
   const closeTlSett = () => {
     setClosing(s => new Set([...s, "tlsett"]));
     setTlSettTplDrop(false); setTlSaveAsMode(false); setTlNewTplName(""); setTlStyleDrop(null);
-    setTimeout(() => { setTlSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("tlsett"); return n; }); }, 155);
+    setTimeout(() => { setTlSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("tlsett"); return n; }); }, 105);
   };
   const closeTxtSett = () => {
     setClosing(s => new Set([...s, "txtsett"]));
@@ -4561,6 +4561,9 @@ const TalariaV8bLive = () => {
         const group = drawingTypeToPanelGroup(drawing.type);
         if (!group) return false; // Let legacy panel handle text / volume / etc.
 
+        // Drop stale close animation so reopening from the gear never plays PopOut first.
+        setClosing(s => { const n = new Set(s); n.delete("tlsett"); return n; });
+
         const s = drawing.style || {};
         // Stash the drawing so the tool bridge keeps chart.js in cursor mode
         // and so closeTlSett (Esc / outside-click) can clear this on close.
@@ -5157,6 +5160,9 @@ const TalariaV8bLive = () => {
         @keyframes tlrDropOut { from { opacity:1; transform:translateY(0) scale(1); } to { opacity:0; transform:translateY(-6px) scale(0.98); } }
         @keyframes tlrPopIn    { from { opacity:0; transform:scale(0.97) translateY(4px); } to { opacity:1; transform:scale(1) translateY(0); } }
         @keyframes tlrPopOut   { from { opacity:1; transform:scale(1) translateY(0); } to { opacity:0; transform:scale(0.96) translateY(4px); } }
+        /* Style panel: minimal motion + ~50ms so the window reads as instant */
+        @keyframes tlrSettIn  { from { opacity:0.92; transform:scale(0.992) translateY(2px); } to { opacity:1; transform:scale(1) translateY(0); } }
+        @keyframes tlrSettOut { from { opacity:1; transform:scale(1) translateY(0); } to { opacity:0; transform:scale(0.985) translateY(3px); } }
         @keyframes tlrLinePulse { 0%,100% { opacity:0.25; box-shadow:0 0 3px rgba(0,212,161,0.2); } 50% { opacity:1; box-shadow:0 0 10px rgba(0,212,161,0.7); } }
         @keyframes tlrBlink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
         @keyframes tlrFullscreenIn { from { opacity:0.6; transform:scale(1.015); } to { opacity:1; transform:scale(1); } }
@@ -5190,7 +5196,8 @@ const TalariaV8bLive = () => {
                    background:c.sf, border:`1px solid ${c.brH}`,
                    boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                    display:"flex", flexDirection:"column",
-                   animation: closing.has("tlsett") ? "tlrPopOut 0.155s ease both" : "tlrPopIn 0.15s ease" }}>
+                   willChange: closing.has("tlsett") ? undefined : "transform, opacity",
+                   animation: closing.has("tlsett") ? "tlrSettOut 0.1s ease both" : "tlrSettIn 0.05s ease-out both" }}>
           {/* top accent */}
           <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`, flexShrink:0 }}/>
           {/* header */}
