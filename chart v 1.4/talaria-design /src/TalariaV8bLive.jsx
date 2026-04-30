@@ -4850,6 +4850,12 @@ const TalariaV8bLive = () => {
           textItalic: s.fontStyle === 'italic',
           vertAlign: v9ChartVertToUi(s.textVAlign || s.textPosition || prev.vertAlign),
           horizAlign: (s.textHAlign || s.textAlign || prev.horizAlign),
+          midLine: typeof s.showMiddleLine === "boolean" ? s.showMiddleLine : prev.midLine,
+          midLineColor: s.middleLineColor != null && s.middleLineColor !== "" ? s.middleLineColor : prev.midLineColor,
+          midLineWidth: s.middleLineWidth != null ? String(parseInt(s.middleLineWidth, 10) || 1) : prev.midLineWidth,
+          midLineType: s.middleLineDash != null && s.middleLineDash !== undefined
+            ? (V9_LEGACY_DASH_STRING_TO_LINE_TYPE[String(s.middleLineDash).replace(/\s+/g, "")] ?? (String(s.middleLineDash).replace(/\s+/g, "") ? "dashed" : "solid"))
+            : prev.midLineType,
           ...v9CoordPatchFromDrawing(drawing),
           ...v9VisibilityPatchFromDrawing(drawing),
         }));
@@ -5013,7 +5019,8 @@ const TalariaV8bLive = () => {
     // rail) still propagate to the selected drawing.
 
     const dashArr = V9_DASH_TO_LEGACY[tlStyle.lineType] ?? '';
-    const midDashArr = V9_DASH_TO_LEGACY[tlStyle.midLineType] ?? '';
+    // UI "bold" = thick solid (no dash); not a key in V9_DASH_TO_LEGACY.
+    const midDashArr = tlStyle.midLineType === 'bold' ? '' : (V9_DASH_TO_LEGACY[tlStyle.midLineType] ?? '');
     const widthNum = parseInt(tlStyle.lineWidth, 10) || 2;
     const midWidthNum = parseInt(tlStyle.midLineWidth, 10) || 1;
     const stylePatch = {
@@ -5087,7 +5094,11 @@ const TalariaV8bLive = () => {
       const tb = dm.toolbar;
       const selectionList = (() => {
         const arr = [];
-        if (tb && tb.currentDrawing) arr.push(tb.currentDrawing);
+        // Dbl-click settings calls toolbar.hide(), which clears currentDrawing — but editingDrawingRef
+        // still holds the shape being edited; without this, stylePatch never reaches the drawing.
+        const fromPanel = editingDrawingRef.current && editingDrawingRef.current.drawing;
+        if (fromPanel && !arr.includes(fromPanel)) arr.push(fromPanel);
+        if (tb && tb.currentDrawing && !arr.includes(tb.currentDrawing)) arr.push(tb.currentDrawing);
         if (Array.isArray(dm.selectedDrawings)) {
           dm.selectedDrawings.forEach(d => { if (d && !arr.includes(d)) arr.push(d); });
         }
