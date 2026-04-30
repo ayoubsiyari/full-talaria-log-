@@ -2876,7 +2876,7 @@ const TalariaV8bLive = () => {
         || type === 'xabcd-pattern' || type === 'head-shoulders'
         || type === 'abcd-pattern' || type === 'triangle-pattern'
         || type === 'three-drives' || type === 'cypher-pattern') return 'pattern';
-    if (['rectangle', 'triangle', 'arc', 'ellipse', 'circle'].includes(type)) return 'rect';
+    if (['rectangle', 'rotated-rectangle', 'triangle', 'arc', 'ellipse', 'circle'].includes(type)) return 'rect';
     if (['parallel-channel', 'regression-trend', 'flat-top-bottom',
          'disjoint-channel', 'pitchfork'].includes(type)) return 'channel';
     if (['brush', 'highlighter'].includes(type)) return 'brush2';
@@ -5011,6 +5011,85 @@ const TalariaV8bLive = () => {
   // JSON.stringify + setItem of the entire savedToolStyles map, which can
   // stall click handlers when the bridge fires on every dropdown change.
   const saveToolStyleTimer = useRef(null);
+  // Resolve live instances from dm.drawings (same list logic as the forward bridge).
+  const resolveV9BridgeSelectionList = (dm, tb) => {
+    const liveDrawing = (d) => {
+      if (!d || !Array.isArray(dm.drawings)) return d;
+      if (d.id != null) {
+        const found = dm.drawings.find((x) => x && x.id === d.id);
+        if (found) return found;
+      }
+      const byRef = dm.drawings.find((x) => x === d);
+      return byRef || d;
+    };
+    const arr = [];
+    const fromPanel = editingDrawingRef.current && editingDrawingRef.current.drawing;
+    const panelLive = fromPanel ? liveDrawing(fromPanel) : null;
+    if (panelLive && !arr.includes(panelLive)) arr.push(panelLive);
+    if (tb && tb.currentDrawing) {
+      const cur = liveDrawing(tb.currentDrawing);
+      if (cur && !arr.includes(cur)) arr.push(cur);
+    }
+    if (Array.isArray(dm.selectedDrawings)) {
+      dm.selectedDrawings.forEach((d) => {
+        const ld = liveDrawing(d);
+        if (ld && !arr.includes(ld)) arr.push(ld);
+      });
+    }
+    if (dm.selectedDrawing) {
+      const sd = liveDrawing(dm.selectedDrawing);
+      if (sd && !arr.includes(sd)) arr.push(sd);
+    }
+    if (Array.isArray(dm.drawings)) {
+      dm.drawings.forEach((d) => {
+        if (!d || !d.selected) return;
+        const ld = liveDrawing(d);
+        if (ld && !arr.includes(ld)) arr.push(ld);
+      });
+    }
+    return arr;
+  };
+  // Pointer-toggle alone was still flaky for some users — flush middle-line fields immediately so the
+  // SVG layer always matches tlStyle even if the layout-effect batch misses selection resolution.
+  const flushV9MiddleLineToChart = (prevTl, nextMidLineOn) => {
+    try {
+      const ch =
+        typeof window !== "undefined" && typeof window.getActiveChart === "function"
+          ? window.getActiveChart()
+          : window.chart;
+      const dm = ch && ch.drawingManager;
+      if (!dm) return;
+      const midDashArr =
+        prevTl.midLineType === "bold" ? "" : (V9_DASH_TO_LEGACY[prevTl.midLineType] ?? "");
+      const midWidthNum = parseInt(prevTl.midLineWidth, 10) || 1;
+      const patch = {
+        showMiddleLine: !!nextMidLineOn,
+        middleLineColor: prevTl.midLineColor,
+        middleLineWidth: midWidthNum,
+        middleLineDash: midDashArr,
+      };
+      const tb = dm.toolbar;
+      const selectionList = resolveV9BridgeSelectionList(dm, tb);
+      selectionList.forEach((d) => {
+        if (!d || !d.style) return;
+        try {
+          tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d);
+        } catch (_) {}
+        Object.assign(d.style, patch);
+        try {
+          if (tb && typeof tb.onUpdate === "function") tb.onUpdate(d);
+          else dm.renderDrawing?.(d);
+        } catch (_) {
+          try {
+            dm.renderDrawing?.(d);
+          } catch (_) {}
+        }
+      });
+      ch && ch.scheduleRender && ch.scheduleRender();
+    } catch (err) {
+      console.warn("[V9 middle-line flush] failed:", err);
+    }
+  };
   // useLayoutEffect: apply drawing.style in the same frame as tlStyle (legacy TV panel mutates
   // synchronously on checkbox; late useEffect let the chart eat checkbox clicks and felt "unsynced").
   useLayoutEffect(() => {
@@ -5103,47 +5182,7 @@ const TalariaV8bLive = () => {
     // until the user deselected and reselected.
     try {
       const tb = dm.toolbar;
-      const liveDrawing = (d) => {
-        if (!d || !Array.isArray(dm.drawings)) return d;
-        if (d.id != null) {
-          const found = dm.drawings.find((x) => x && x.id === d.id);
-          if (found) return found;
-        }
-        const byRef = dm.drawings.find((x) => x === d);
-        return byRef || d;
-      };
-      const selectionList = (() => {
-        const arr = [];
-        // Dbl-click settings calls toolbar.hide(), which clears currentDrawing — but editingDrawingRef
-        // still holds the shape being edited; resolve to dm.drawings[] so we mutate the same instance
-        // the SVG layer renders (ref copy would leave chart.style out of sync).
-        const fromPanel = editingDrawingRef.current && editingDrawingRef.current.drawing;
-        const panelLive = fromPanel ? liveDrawing(fromPanel) : null;
-        if (panelLive && !arr.includes(panelLive)) arr.push(panelLive);
-        if (tb && tb.currentDrawing) {
-          const cur = liveDrawing(tb.currentDrawing);
-          if (cur && !arr.includes(cur)) arr.push(cur);
-        }
-        if (Array.isArray(dm.selectedDrawings)) {
-          dm.selectedDrawings.forEach(d => {
-            const ld = liveDrawing(d);
-            if (ld && !arr.includes(ld)) arr.push(ld);
-          });
-        }
-        if (dm.selectedDrawing) {
-          const sd = liveDrawing(dm.selectedDrawing);
-          if (sd && !arr.includes(sd)) arr.push(sd);
-        }
-        // Fallback: any drawing still marked selected (sometimes refs diverge from selectedDrawing).
-        if (Array.isArray(dm.drawings)) {
-          dm.drawings.forEach((d) => {
-            if (!d || !d.selected) return;
-            const ld = liveDrawing(d);
-            if (ld && !arr.includes(ld)) arr.push(ld);
-          });
-        }
-        return arr;
-      })();
+      const selectionList = resolveV9BridgeSelectionList(dm, tb);
       selectionList.forEach((d) => {
         if (!d || !d.style) return;
         // Capture before state for undo (mirror legacy onBeforeUpdate).
@@ -6193,7 +6232,11 @@ const TalariaV8bLive = () => {
                       const midOp = tlStyle.midLine ? 1 : 0.38;
                       const midPE = tlStyle.midLine ? "auto" : "none";
                       return <><div style={{ padding:"8px 0", alignSelf:"center" }}>
-                        {TlChk(tlStyle.midLine,"tlchk-midLine","Middle Line",()=>setTlStyle(s=>({...s,midLine:!s.midLine})))}
+                        {TlChk(tlStyle.midLine,"tlchk-midLine","Middle Line",()=>setTlStyle(s=>{
+                          const nextOn=!s.midLine;
+                          queueMicrotask(()=>flushV9MiddleLineToChart(s,nextOn));
+                          return {...s,midLine:nextOn};
+                        }))}
                       </div>
                       <div style={{ padding:"8px 0", opacity:midOp, pointerEvents:midPE, transition:"opacity 0.15s" }}>{colorSwatch("tlMidLineColor", tlStyle.midLineColor)}</div>
                       <div style={{ display:"flex", flexDirection:"column", gap:4, alignItems:"center", padding:"8px 0", opacity:midOp, pointerEvents:midPE, transition:"opacity 0.15s" }}>
