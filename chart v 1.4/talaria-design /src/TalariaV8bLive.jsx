@@ -2623,7 +2623,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429n-select-cursor-bridge";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429p-selection-no-deselect";
   }, []);
 
   useEffect(() => {
@@ -2861,8 +2861,11 @@ const TalariaV8bLive = () => {
 
   // After finalizeDrawing, chart clears the tool (crosshair) but `toolbar.show` already ran; until then
   // `tool` is crosshair and tlSubTool used to fall through to Trend Line. Prefer the selected drawing's group.
-  const tlBarDrawingGroup =
+  // Volume profile types map to group `brush` — normalize to `brush2` (V9 rail) for the floating bar.
+  const tlBarDrawingGroupRaw =
     tlBarSelected && tlBarSelectedType ? drawingTypeToPanelGroup(tlBarSelectedType) : null;
+  const tlBarDrawingGroup =
+    tlBarDrawingGroupRaw === "brush" ? "brush2" : tlBarDrawingGroupRaw;
   const effectiveTlGroup =
     (tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) ? tlBarDrawingGroup : null)
     || (TL_LINE_SHAPE_GROUPS.has(tool) ? tool : null);
@@ -4360,6 +4363,11 @@ const TalariaV8bLive = () => {
   // had before the panel opened, so closing the panel restores them.
   const editingDrawingRef = useRef(null);
 
+  // `drawingManager.toolbar.show` (shape selected / floating bar): the next tool-bridge tick must
+  // only clear chart.js. If we dm.setTool(legacy), drawing-tools-manager.setTool calls deselectAll()
+  // and wipes the selection the user just made — and leaves draw mode armed.
+  const v9SelectionToolbarSyncRef = useRef(false);
+
   const getSelectedDrawingForTemplate = useCallback(() => {
     try {
       const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
@@ -4417,6 +4425,14 @@ const TalariaV8bLive = () => {
       // keep chart.js in cursor mode regardless of `tool` (which we forced
       // to the panel-group key purely so the JSX conditional renders).
       if (editingDrawingRef.current) {
+        try {
+          if (typeof dm.clearTool === 'function') dm.clearTool();
+          else dm.currentTool = null;
+        } catch (_) {}
+        return;
+      }
+      if (v9SelectionToolbarSyncRef.current) {
+        v9SelectionToolbarSyncRef.current = false;
         try {
           if (typeof dm.clearTool === 'function') dm.clearTool();
           else dm.currentTool = null;
@@ -4738,12 +4754,15 @@ const TalariaV8bLive = () => {
       const origHide = tb.hide && tb.hide.bind(tb);
       tb.show = function (drawing, x, y) {
         try {
+          // Only treat as "chart selection" when not in V9 dblclick settings (editingDrawingRef).
+          if (!editingDrawingRef.current) {
+            v9SelectionToolbarSyncRef.current = true;
+          }
           setTlBarSelected(true);
           setTlBarSelectedType(drawing && drawing.type);
-          // Sync `groupSelected` for template/style defaults + update rail to Cursor. If we only
-          // updated groupSelected while `tool` stayed e.g. "pattern", resolveLegacyTool() would still
-          // return elliott-impulse and the tool bridge would dm.setTool — clicks would start a new
-          // draw. Crosshair makes resolveLegacyTool() null so the chart stays in selection/handles mode.
+          // Sync `groupSelected` for template/style defaults + rail Cursor. `drawingManager.setTool`
+          // deselects all drawings — the tool bridge must not run dm.setTool on the next pass
+          // (see v9SelectionToolbarSyncRef). Crosshair keeps resolveLegacyTool() null.
           if (drawing && drawing.type && !editingDrawingRef.current) {
             const g = drawingTypeToPanelGroup(drawing.type);
             if (g) {
@@ -4764,7 +4783,23 @@ const TalariaV8bLive = () => {
               setTool("crosshair");
               setDropdown(null);
               setBtnPressed(null);
+            } else {
+              suppressForwardBridge.current = true;
+              setTool("crosshair");
+              setDropdown(null);
+              setBtnPressed(null);
             }
+          }
+          if (!editingDrawingRef.current) {
+            try {
+              const ch =
+                typeof window.getActiveChart === "function"
+                  ? window.getActiveChart()
+                  : window.chart;
+              const dmSync = ch && ch.drawingManager;
+              if (dmSync && typeof dmSync.clearTool === "function") dmSync.clearTool();
+              else if (dmSync) dmSync.currentTool = null;
+            } catch (_) {}
           }
           const patch = v9TlStylePatchFromDrawing(drawing);
           if (patch) {
