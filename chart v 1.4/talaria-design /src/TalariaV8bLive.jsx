@@ -2623,7 +2623,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429k-tlbar-sync-selection";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429l-tlbar-effective-group";
   }, []);
 
   useEffect(() => {
@@ -2830,18 +2830,55 @@ const TalariaV8bLive = () => {
     };
   }, [rollback]);
 
+  /** chart.js `drawing.type` → V9 rail group (`tool` state). Shared by settings open + floating toolbar selection sync. */
+  const drawingTypeToPanelGroup = useCallback((type) => {
+    if (!type) return null;
+    if (['text', 'note', 'price-note', 'callout', 'comment', 'price-label', 'signpost-2', 'flag-mark', 'image', 'emoji', 'pin'].includes(type)) return 'text';
+    if (['anchored-vwap', 'fixed-range-volume-profile', 'anchored-volume-profile'].includes(type)) return 'brush';
+    if (type.startsWith('fibonacci-') || type.startsWith('fib-') || type.startsWith('trend-fib-')) return 'fib';
+    if (type.startsWith('gann-') || type.startsWith('elliott-')
+        || type === 'xabcd-pattern' || type === 'head-shoulders'
+        || type === 'abcd-pattern' || type === 'triangle-pattern'
+        || type === 'three-drives' || type === 'cypher-pattern') return 'pattern';
+    if (['rectangle', 'triangle', 'arc', 'ellipse', 'circle'].includes(type)) return 'rect';
+    if (['parallel-channel', 'regression-trend', 'flat-top-bottom',
+         'disjoint-channel', 'pitchfork'].includes(type)) return 'channel';
+    if (['brush', 'highlighter'].includes(type)) return 'brush2';
+    if (['ruler', 'short-position', 'long-position', 'price-range',
+         'date-range', 'date-and-price-range'].includes(type)) return 'measure';
+    if (['trendline', 'horizontal', 'vertical', 'horizontal-ray', 'ray',
+         'extended-line', 'cross-line', 'polyline', 'path', 'curve', 'double-curve',
+         'arrow', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down'].includes(type)) {
+      return 'trendline';
+    }
+    return null;
+  }, []);
+
+  const TL_LINE_SHAPE_GROUPS = useMemo(
+    () => new Set(["trendline", "rect", "channel", "brush2", "fib", "pattern", "measure"]),
+    [],
+  );
+
+  // After finalizeDrawing, chart clears the tool (crosshair) but `toolbar.show` already ran; until then
+  // `tool` is crosshair and tlSubTool used to fall through to Trend Line. Prefer the selected drawing's group.
+  const tlBarDrawingGroup =
+    tlBarSelected && tlBarSelectedType ? drawingTypeToPanelGroup(tlBarSelectedType) : null;
+  const effectiveTlGroup =
+    (tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) ? tlBarDrawingGroup : null)
+    || (TL_LINE_SHAPE_GROUPS.has(tool) ? tool : null);
+
   // Active line/shape sub-tool (icon + label)
-  const tlSubTool = tool === "rect"
+  const tlSubTool = effectiveTlGroup === "rect"
     ? (groupSelected.rect || { icon: "rect", label: "Rectangle" })
-    : tool === "channel"
+    : effectiveTlGroup === "channel"
     ? (groupSelected.channel || { icon: "channel", label: "Parallel Channel" })
-    : tool === "brush2"
+    : effectiveTlGroup === "brush2"
     ? (groupSelected.brush2 || { icon: "draw", label: "Brush" })
-    : tool === "fib"
+    : effectiveTlGroup === "fib"
     ? (groupSelected.fib || { icon: "fib", label: "Fib Retracement" })
-    : tool === "pattern"
+    : effectiveTlGroup === "pattern"
     ? (groupSelected.pattern || { icon: "elliott5", label: "Elliott Impulse (12345)" })
-    : tool === "measure"
+    : effectiveTlGroup === "measure"
     ? (groupSelected.measure || { icon: "measure", label: "Range Tool" })
     : (groupSelected.trendline || { icon: "trendline", label: "Trend Line" });
   const tlSubToolRef = useRef(tlSubTool.label);
@@ -2850,13 +2887,17 @@ const TalariaV8bLive = () => {
   const isFibTool = tlSubTool.icon.startsWith("fib");
   const isGannTool = ["gannBox","gannSquare","gannFan"].includes(tlSubTool.icon);
   const isElliottTool = ["elliott5","elliottABC","elliottTri","elliottWXY","elliottWXYXZ"].includes(tlSubTool.icon);
-  const isPatternTool = tool === "pattern";
+  const isPatternTool = effectiveTlGroup === "pattern";
   const isRRTool = tlSubTool.icon === "longPos" || tlSubTool.icon === "shortPos";
+
+  const lineShapeRailActive =
+    tool === "trendline" || tool === "rect" || tool === "channel" || tool === "brush2" || tool === "fib" || tool === "pattern" || tool === "measure";
+  const lineShapeUiContext = lineShapeRailActive || (tlBarSelected && !!effectiveTlGroup);
 
   useEffect(() => {
     // Include `measure` — opening Style sets tool to the drawing’s panel group; omitting it
     // immediately cleared tlSettOpen whenever the active rail tool was Range / measure.
-    if (tool !== "trendline" && tool !== "rect" && tool !== "channel" && tool !== "brush2" && tool !== "fib" && tool !== "pattern" && tool !== "measure") {
+    if (!lineShapeRailActive) {
       setTlSettOpen(false);
       setTlBarDrop(null);
     }
@@ -2866,12 +2907,12 @@ const TalariaV8bLive = () => {
   // Update name when switching between sub-tools; also reset to Style tab so the
   // tab indicator never lands off-screen when the previous tab doesn't exist on the new tool
   useEffect(() => {
-    if ((tool === "trendline" || tool === "rect" || tool === "channel" || tool === "brush2" || tool === "fib" || tool === "pattern" || tool === "measure") && tlSubTool.label !== tlSubToolRef.current) {
+    if (lineShapeUiContext && tlSubTool.label !== tlSubToolRef.current) {
       tlSubToolRef.current = tlSubTool.label;
       setTlName(tlSubTool.label);
       setTlSettTab("style");
     }
-  }, [tlSubTool.label, tool]);
+  }, [tlSubTool.label, lineShapeUiContext]);
 
   // Update txtName when switching text sub-tools (Text → Note → Callout etc.)
   useEffect(() => {
@@ -4189,30 +4230,6 @@ const TalariaV8bLive = () => {
     return m;
   }, []);
 
-  /** chart.js `drawing.type` → V9 rail group (`tool` state). Shared by settings open + floating toolbar selection sync. */
-  const drawingTypeToPanelGroup = useCallback((type) => {
-    if (!type) return null;
-    if (['text', 'note', 'price-note', 'callout', 'comment', 'price-label', 'signpost-2', 'flag-mark', 'image', 'emoji', 'pin'].includes(type)) return 'text';
-    if (['anchored-vwap', 'fixed-range-volume-profile', 'anchored-volume-profile'].includes(type)) return 'brush';
-    if (type.startsWith('fibonacci-') || type.startsWith('fib-') || type.startsWith('trend-fib-')) return 'fib';
-    if (type.startsWith('gann-') || type.startsWith('elliott-')
-        || type === 'xabcd-pattern' || type === 'head-shoulders'
-        || type === 'abcd-pattern' || type === 'triangle-pattern'
-        || type === 'three-drives' || type === 'cypher-pattern') return 'pattern';
-    if (['rectangle', 'triangle', 'arc', 'ellipse', 'circle'].includes(type)) return 'rect';
-    if (['parallel-channel', 'regression-trend', 'flat-top-bottom',
-         'disjoint-channel', 'pitchfork'].includes(type)) return 'channel';
-    if (['brush', 'highlighter'].includes(type)) return 'brush2';
-    if (['ruler', 'short-position', 'long-position', 'price-range',
-         'date-range', 'date-and-price-range'].includes(type)) return 'measure';
-    if (['trendline', 'horizontal', 'vertical', 'horizontal-ray', 'ray',
-         'extended-line', 'cross-line', 'polyline', 'path', 'curve', 'double-curve',
-         'arrow', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down'].includes(type)) {
-      return 'trendline';
-    }
-    return null;
-  }, []);
-
   // Listen for chart.js drawing changes and rebuild layersItems from
   // dm.drawings. Legacy code dispatches `drawingsChanged` on window after
   // every add / delete / load / undo / redo (see drawing-tools-manager.js
@@ -5275,7 +5292,7 @@ const TalariaV8bLive = () => {
       `}</style>
 
       {/* ── Trend Line Settings Window (portal → body: legacy drawing-toolbar is appendChild(body) @ z-index 10000, paints above #root) ── */}
-      {(tool === "trendline" || tool === "rect" || tool === "channel" || tool === "brush2" || tool === "fib" || isPatternTool || tool === "measure") && (tlSettOpen || closing.has("tlsett")) && typeof document !== "undefined" && createPortal(
+      {effectiveTlGroup && (tlSettOpen || closing.has("tlsett")) && typeof document !== "undefined" && createPortal(
         <div data-sdrop="1" onClick={e => { e.stopPropagation(); setTlStyleDrop(null); }}
           style={{ position:"fixed", left:tlSettPos.x, top:tlSettPos.y, zIndex:11000, width:440, fontFamily:F,
                    background:c.sf, border:`1px solid ${c.brH}`,
@@ -5426,7 +5443,7 @@ const TalariaV8bLive = () => {
           <div style={{ height:1, background:c.br, flexShrink:0 }}/>
           {/* tabs */}
           {(()=>{
-            const noTextTab = isFibTool || isGannTool || isPatternTool || tool === "measure" || ["crossLine","polyline","pathTool","curve","doubleCurve","triangle","arcShape","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon);
+            const noTextTab = isFibTool || isGannTool || isPatternTool || effectiveTlGroup === "measure" || ["crossLine","polyline","pathTool","curve","doubleCurve","triangle","arcShape","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon);
             const noCoordsTab = (isFibTool && tlSubTool.icon !== "fib" && tlSubTool.icon !== "fibExtension" && tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibCircles" && tlSubTool.icon !== "fibSpiral" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && tlSubTool.icon !== "fibFan") || ["polyline","pathTool","curve","doubleCurve","arcShape","flatChannel","disjointCh","draw","brush"].includes(tlSubTool.icon);
             const hasInputTab = tlSubTool.icon === "regressionCh" || tlSubTool.icon === "measure" || isRRTool || (isFibTool && tlSubTool.icon !== "fibSpiral") || isGannTool;
             const tlTabs=[["style","Style"],!noTextTab&&["text","Text"],hasInputTab&&["input","Input"],!noCoordsTab&&["coordinates","Coordinates"],["visibility","Visibility"]].filter(Boolean);
@@ -10110,7 +10127,7 @@ const TalariaV8bLive = () => {
                 <line x1="12.5" y1="3" x2="17.5" y2="3" stroke={c.acL} strokeWidth="2" strokeLinecap="round"/>
               </svg>}
             </TlBtn>
-          </> : tool === "measure" ? <>
+          </> : effectiveTlGroup === "measure" ? <>
             {/* range: font color */}
             <TlBtn id="tl-rng-fcol" isAct={colorPicker==="tlLabelColor"}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlLabelColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.labelColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlLabelColor");}}}>
