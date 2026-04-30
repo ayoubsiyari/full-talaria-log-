@@ -2623,7 +2623,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429q-magnet-sync-chart";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429r-sett-footer-click";
   }, []);
 
   useEffect(() => {
@@ -4050,10 +4050,17 @@ const TalariaV8bLive = () => {
     const isP = hk ? swHov === hk + "_dn" : false;
     return (
       <button type="button"
-        onClick={onClick}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (typeof onClick === "function") onClick(e);
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
         onMouseEnter={hk ? () => setSwHov(hk) : undefined}
         onMouseLeave={hk ? () => setSwHov(null) : undefined}
-        onMouseDown={hk ? () => setSwHov(hk + "_dn") : undefined}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          if (hk) setSwHov(hk + "_dn");
+        }}
         onMouseUp={hk ? () => setSwHov(hk) : undefined}
         style={{
           padding: small ? "0 10px" : "0 14px",
@@ -8703,7 +8710,8 @@ const TalariaV8bLive = () => {
             })()}
           </div>
           {/* footer */}
-          <div style={{borderTop:`1px solid ${c.brH}`,display:"flex",alignItems:"center",justifyContent:"flex-end",padding:"10px 14px 14px",gap:8}}>
+          <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
+            style={{borderTop:`1px solid ${c.brH}`,display:"flex",alignItems:"center",justifyContent:"flex-end",padding:"10px 14px 14px",gap:8}}>
             <B hk="txt-cancel" onClick={closeTxtSett}>Cancel</B>
             <B primary hk="txt-ok" onClick={closeTxtSett}>OK</B>
           </div>
@@ -9268,7 +9276,8 @@ const TalariaV8bLive = () => {
 
             </div>
             {/* footer */}
-            <div style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
+            <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
+              style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
               <B hk="vwap-cancel" onClick={closeVwapSett}>Cancel</B>
               <B primary hk="vwap-ok" onClick={closeVwapSett}>OK</B>
             </div>
@@ -9649,7 +9658,8 @@ const TalariaV8bLive = () => {
 
             </div>
             {/* footer */}
-            <div style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
+            <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
+              style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
               <B hk="vp-cancel" onClick={closeVpSett}>Cancel</B>
               <B primary hk="vp-ok" onClick={closeVpSett}>OK</B>
             </div>
@@ -10020,7 +10030,8 @@ const TalariaV8bLive = () => {
 
             </div>
             {/* footer */}
-            <div style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
+            <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
+              style={{borderTop:`1px solid ${c.brH}`,padding:"10px 14px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,flexShrink:0}}>
               <B hk="av-cancel" onClick={closeAvSett}>Cancel</B>
               <B primary hk="av-ok" onClick={closeAvSett}>OK</B>
             </div>
@@ -11279,8 +11290,8 @@ const TalariaV8bLive = () => {
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:4,flexShrink:0}}>
-            <div onClick={closeInd} onMouseEnter={()=>setSwHov("indCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="indCancel"?c.tx:c.ts,background:swHov==="indCancel"?c.hv:"transparent",transition:"background 0.12s,color 0.12s"}}>Cancel</div>
-            <div onClick={closeInd} onMouseEnter={()=>setSwHov("indOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="indOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,WebkitFontSmoothing:"antialiased",boxShadow:swHov==="indOk"?`0 2px 12px rgba(38,67,247,0.45)`:`0 2px 6px rgba(38,67,247,0.22)`,transition:"background 0.12s,box-shadow 0.12s"}}>Apply</div>
+            <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();closeInd();}} onMouseEnter={()=>setSwHov("indCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="indCancel"?c.tx:c.ts,background:swHov==="indCancel"?c.hv:"transparent",transition:"background 0.12s,color 0.12s"}}>Cancel</div>
+            <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();closeInd();}} onMouseEnter={()=>setSwHov("indOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="indOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,WebkitFontSmoothing:"antialiased",boxShadow:swHov==="indOk"?`0 2px 12px rgba(38,67,247,0.45)`:`0 2px 6px rgba(38,67,247,0.22)`,transition:"background 0.12s,box-shadow 0.12s"}}>Apply</div>
           </div>
         </div>
         );
@@ -11586,8 +11597,8 @@ const TalariaV8bLive = () => {
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:6,flexShrink:0}}>
-            <button type="button" onClick={()=>animClose(setSettingsOpen,"settings")} onMouseEnter={()=>setSwHov("settCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="settCancel"?c.tx:c.ts,background:swHov==="settCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="settCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
-            <button type="button" onClick={()=>animClose(setSettingsOpen,"settings")} onMouseEnter={()=>setSwHov("settOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="settOk"?`linear-gradient(135deg,${c.acL},${c.ac})`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="settOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
+            <button type="button" onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();animClose(setSettingsOpen,"settings");}} onMouseEnter={()=>setSwHov("settCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="settCancel"?c.tx:c.ts,background:swHov==="settCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="settCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
+            <button type="button" onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();animClose(setSettingsOpen,"settings");}} onMouseEnter={()=>setSwHov("settOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="settOk"?`linear-gradient(135deg,${c.acL},${c.ac})`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="settOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
           </div>
         </div>
       )}
@@ -11825,8 +11836,8 @@ const TalariaV8bLive = () => {
                 transition:"background 0.12s,border-color 0.12s,transform 0.08s"}}>
               Log Out
             </button>}
-            <button type="button" onClick={()=>animClose(setProfileOpen,"profile")} onMouseEnter={()=>setSwHov("profCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="profCancel"?c.tx:c.ts,background:swHov==="profCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="profCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
-            <button type="button" onClick={()=>animClose(setProfileOpen,"profile")} onMouseEnter={()=>setSwHov("profOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="profOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="profOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
+            <button type="button" onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();animClose(setProfileOpen,"profile");}} onMouseEnter={()=>setSwHov("profCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="profCancel"?c.tx:c.ts,background:swHov==="profCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="profCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
+            <button type="button" onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();animClose(setProfileOpen,"profile");}} onMouseEnter={()=>setSwHov("profOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="profOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="profOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
           </div>
         </div>
         );
