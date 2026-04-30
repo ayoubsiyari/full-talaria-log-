@@ -2623,7 +2623,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429p-selection-no-deselect";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429q-magnet-sync-chart";
   }, []);
 
   useEffect(() => {
@@ -4163,6 +4163,69 @@ const TalariaV8bLive = () => {
     { id: "undo", icon: "undo", label: "Undo", action: true },
     { id: "redo", icon: "redo", label: "Redo", action: true },
   ];
+
+  // Magnet dropdown items (must match `toolGroups` magnet dd). Legacy applyMagnetMode sets BOTH
+  // drawingManager + chart.magnetMode + all panel charts; V9 previously only called dm.setMagnetMode,
+  // so chart.snapToOHLC / UI stayed on 'off' and the menu always showed "Off" (no groupSelected.magnet).
+  const MAGNET_MENU_ITEMS = {
+    off: { icon: "magnetOff", label: "Off" },
+    weak: { icon: "magnetWeak", label: "Weak" },
+    strong: { icon: "magnetStrong", label: "Strong" },
+  };
+
+  const applyV9MagnetMode = useCallback((item) => {
+    const mode =
+      item?.icon === "magnetOff" ? "off"
+      : item?.icon === "magnetWeak" ? "weak"
+      : item?.icon === "magnetStrong" ? "strong"
+      : "off";
+    const applyOne = (chartInst) => {
+      if (!chartInst) return;
+      try {
+        const dm = chartInst.drawingManager;
+        if (dm && typeof dm.setMagnetMode === "function") dm.setMagnetMode(mode);
+        else if (dm) dm.magnetMode = mode;
+        chartInst.magnetMode = mode;
+        if (typeof chartInst.syncMagnetButton === "function") chartInst.syncMagnetButton();
+      } catch (_) {}
+    };
+    try {
+      if (typeof window !== "undefined") window.magnetMode = mode;
+      const ch =
+        typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+      applyOne(ch);
+      const pm = typeof window !== "undefined" ? window.panelManager : null;
+      if (pm && Array.isArray(pm.panels)) {
+        pm.panels.forEach((p) => applyOne(p && p.chartInstance));
+      }
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => {
+    const syncMagnetUiFromChart = () => {
+      try {
+        const ch =
+          typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
+        const dm = ch && ch.drawingManager;
+        let raw = dm && dm.magnetMode != null ? dm.magnetMode : ch && ch.magnetMode;
+        if (raw === true) raw = "weak";
+        if (raw === false || raw == null) raw = "off";
+        const key = String(raw).toLowerCase();
+        const item = MAGNET_MENU_ITEMS[key] || MAGNET_MENU_ITEMS.off;
+        setGroupSelected((p) => {
+          if (p.magnet && p.magnet.label === item.label) return p;
+          return { ...p, magnet: item };
+        });
+      } catch (_) {}
+    };
+    syncMagnetUiFromChart();
+    window.addEventListener("chartDataLoaded", syncMagnetUiFromChart);
+    window.addEventListener("panelSelected", syncMagnetUiFromChart);
+    return () => {
+      window.removeEventListener("chartDataLoaded", syncMagnetUiFromChart);
+      window.removeEventListener("panelSelected", syncMagnetUiFromChart);
+    };
+  }, []);
 
   // Mock price/time labels removed: chart.js renders the real axes directly
   // on the canvas (right edge for price, bottom for time). V9 used to render
@@ -10481,10 +10544,8 @@ const TalariaV8bLive = () => {
                         return;
                       }
                       if (activeKey === "magnet") {
-                        const dm = ch && ch.drawingManager;
-                        if (item.icon === "magnetOff") dm?.setMagnetMode?.("off");
-                        else if (item.icon === "magnetWeak") dm?.setMagnetMode?.("weak");
-                        else if (item.icon === "magnetStrong") dm?.setMagnetMode?.("strong");
+                        applyV9MagnetMode(item);
+                        setGroupSelected((p) => ({ ...p, magnet: item }));
                         closeDropdown();
                         return;
                       }

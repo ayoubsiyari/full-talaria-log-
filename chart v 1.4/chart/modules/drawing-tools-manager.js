@@ -7108,7 +7108,13 @@ class DrawingToolsManager {
     setMagnetMode(mode) {
         if (['off', 'weak', 'strong'].includes(mode)) {
             this.magnetMode = mode;
-            // [debug removed]
+            // chart.js reads `chart.magnetMode` for snapToOHLC / crosshair; keep in sync with dm.
+            if (this.chart) {
+                this.chart.magnetMode = mode;
+                if (typeof this.chart.syncMagnetButton === 'function') {
+                    try { this.chart.syncMagnetButton(); } catch (_) {}
+                }
+            }
             return this.magnetMode;
         }
         return this.magnetMode;
