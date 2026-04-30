@@ -158,13 +158,21 @@ class RectangleTool extends BaseDrawing {
                 .style('cursor', 'move');
         });
 
-        // Render middle line if enabled (horizontal only)
-        if (this.style.showMiddleLine) {
+        this.renderTextLabel({ x, y, width, height }, scaleFactor);
+
+        // Create 8-point resize handles (4 corners + 4 sides) like TradingView
+        this.createBoxHandles(this.group, scales);
+
+        // Middle line after handles so it paints above fill/border; thin strokes were easy to miss under side handles.
+        const sm = this.style.showMiddleLine;
+        const middleLineOn =
+            sm === true || sm === 1
+            || (typeof sm === 'string' && /^(true|1|yes)$/i.test(String(sm).trim()));
+        if (middleLineOn) {
             const midLineColor = this.style.middleLineColor || '#2962FF';
             const midLineWidth = Math.max(0.5, (this.style.middleLineWidth || 1) * scaleFactor);
             const midLineDash = this.style.middleLineDash || '';
-            
-            // Horizontal middle line
+
             this.group.append('line')
                 .attr('class', 'middle-line')
                 .attr('x1', x)
@@ -174,14 +182,10 @@ class RectangleTool extends BaseDrawing {
                 .attr('stroke', midLineColor)
                 .attr('stroke-width', midLineWidth)
                 .attr('stroke-dasharray', midLineDash)
-                .attr('opacity', this.style.opacity)
-                .style('pointer-events', 'none');
+                .attr('opacity', this.style.opacity !== undefined && this.style.opacity !== null ? this.style.opacity : 1)
+                .style('pointer-events', 'none')
+                .raise();
         }
-
-        this.renderTextLabel({ x, y, width, height }, scaleFactor);
-
-        // Create 8-point resize handles (4 corners + 4 sides) like TradingView
-        this.createBoxHandles(this.group, scales);
 
         return this.group;
     }
@@ -535,13 +539,18 @@ class EllipseTool extends BaseDrawing {
                 .style('cursor', 'move');
         }
 
-        // Render middle line if enabled (horizontal only)
-        if (this.style.showMiddleLine) {
+        // Create 8-point resize handles (4 corners + 4 sides) like TradingView
+        this.createBoxHandles(this.group, scales);
+
+        const esm = this.style.showMiddleLine;
+        const ellipseMiddleOn =
+            esm === true || esm === 1
+            || (typeof esm === 'string' && /^(true|1|yes)$/i.test(String(esm).trim()));
+        if (ellipseMiddleOn) {
             const midLineColor = this.style.middleLineColor || '#2962FF';
             const midLineWidth = this.style.middleLineWidth || 1;
             const midLineDash = this.style.middleLineDash || '';
-            
-            // Horizontal middle line
+
             this.group.append('line')
                 .attr('class', 'middle-line')
                 .attr('x1', cx - rx)
@@ -551,12 +560,10 @@ class EllipseTool extends BaseDrawing {
                 .attr('stroke', midLineColor)
                 .attr('stroke-width', midLineWidth)
                 .attr('stroke-dasharray', midLineDash)
-                .attr('opacity', this.style.opacity)
-                .style('pointer-events', 'none');
+                .attr('opacity', this.style.opacity !== undefined && this.style.opacity !== null ? this.style.opacity : 1)
+                .style('pointer-events', 'none')
+                .raise();
         }
-
-        // Create 8-point resize handles (4 corners + 4 sides) like TradingView
-        this.createBoxHandles(this.group, scales);
 
         return this.group;
     }

@@ -389,7 +389,11 @@ function v9TlStylePatchFromDrawing(d) {
     ...(s.fontStyle ? { textItalic: s.fontStyle === 'italic' } : {}),
     ...(chVert ? { vertAlign: v9ChartVertToUi(chVert) } : {}),
     ...((s.textHAlign || s.textAlign) ? { horizAlign: s.textHAlign || s.textAlign } : {}),
-    ...(typeof s.showMiddleLine === "boolean" ? { midLine: s.showMiddleLine } : {}),
+    // Must always sync midLine for rect/ellipse/circle: if showMiddleLine is missing (undefined),
+    // omitting midLine leaves a stale true in tlStyle while the canvas sees falsy — "checkbox on, no line".
+    ...(d.type === "rectangle" || d.type === "rotated-rectangle" || d.type === "ellipse" || d.type === "circle"
+      ? { midLine: !!s.showMiddleLine }
+      : (typeof s.showMiddleLine === "boolean" ? { midLine: s.showMiddleLine } : {})),
     ...(s.middleLineColor ? { midLineColor: s.middleLineColor } : {}),
     ...(s.middleLineWidth != null && s.middleLineWidth !== ""
       ? { midLineWidth: String(parseInt(s.middleLineWidth, 10) || 1) }
@@ -4945,7 +4949,11 @@ const TalariaV8bLive = () => {
           textItalic: s.fontStyle === 'italic',
           vertAlign: v9ChartVertToUi(s.textVAlign || s.textPosition || prev.vertAlign),
           horizAlign: (s.textHAlign || s.textAlign || prev.horizAlign),
-          midLine: typeof s.showMiddleLine === "boolean" ? s.showMiddleLine : prev.midLine,
+          midLine:
+            drawing.type === "rectangle" || drawing.type === "rotated-rectangle"
+            || drawing.type === "ellipse" || drawing.type === "circle"
+              ? !!s.showMiddleLine
+              : (typeof s.showMiddleLine === "boolean" ? s.showMiddleLine : prev.midLine),
           midLineColor: s.middleLineColor != null && s.middleLineColor !== "" ? s.middleLineColor : prev.midLineColor,
           midLineWidth: s.middleLineWidth != null ? String(parseInt(s.middleLineWidth, 10) || 1) : prev.midLineWidth,
           midLineType: s.middleLineDash != null && s.middleLineDash !== undefined
