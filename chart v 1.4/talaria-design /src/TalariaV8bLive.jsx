@@ -2516,6 +2516,9 @@ const TalariaV8bLive = () => {
     setTimeout(() => { setClosing(s => { const n = new Set(s); n.delete("tlSettTplDrop"); return n; }); }, 130);
   };
   const closeCP = () => {
+    setCpDragging(null);
+    setCpDragRect(null);
+    cpBarAnchorRef.current = null;
     setClosing(s => new Set([...s, "cp"]));
     setColorPicker(null);
     setTimeout(() => { setClosing(s => { const n = new Set(s); n.delete("cp"); return n; }); }, 150);
@@ -3757,9 +3760,10 @@ const TalariaV8bLive = () => {
     setColorPicker("gotoNewColor");
   };
   const cpApply = (nh, ns, nv, na, key) => {
+    const targetKey = key || colorPicker;
+    if (targetKey == null || targetKey === "") return;
     const rgb = hsvToRgb(nh, ns, nv);
     setCpHex(toHex2(rgb.r)+toHex2(rgb.g)+toHex2(rgb.b));
-    const targetKey = key || colorPicker;
     const colorVal = cpBuildColor(rgb.r, rgb.g, rgb.b, na);
     if(targetKey === "gotoNewColor") setGotoNewColor(colorVal);
     else if(targetKey === "tlLineColor") setTlStyle(s=>isFibTool ? {...s, lineColor: colorVal, fibLevels: s.fibLevels.map(l=>({...l, color: colorVal}))} : {...s, lineColor: colorVal});
@@ -16384,8 +16388,10 @@ const TalariaV8bLive = () => {
               setCpA(na); cpApply(cpH,cpS,cpV,na);
             }
           }}
-          onMouseUp={()=>setCpDragging(null)}
-          style={{position:"fixed",inset:0,zIndex:11200,cursor:cpDragging==='sv'?'crosshair':'ew-resize'}}
+          onMouseUp={()=>{ setCpDragging(null); setCpDragRect(null); }}
+          onPointerUp={()=>{ setCpDragging(null); setCpDragRect(null); }}
+          onPointerCancel={()=>{ setCpDragging(null); setCpDragRect(null); }}
+          style={{position:"fixed",inset:0,zIndex:11200,cursor:cpDragging==='sv'?'crosshair':'ew-resize',touchAction:"none"}}
         />,
         document.body
       )}
