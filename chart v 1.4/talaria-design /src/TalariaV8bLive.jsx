@@ -74,6 +74,27 @@ const V9_INFO_PROP_TO_LABEL = Object.fromEntries(
   Object.entries(V9_INFO_LABEL_TO_PROP).map(([label, prop]) => [prop, label])
 );
 
+/** Sub-tool icon ids per left-rail group (matches `toolGroups` dd). Used to clamp stale `groupSelected` so the Shapes rail cannot show a Lines icon. */
+const V9_RAIL_ICONS_BY_GROUP = Object.freeze({
+  trendline: new Set(["trendline", "hray", "hline", "vline", "ray", "extendedLine", "crossLine", "polyline", "pathTool", "curve", "doubleCurve"]),
+  rect: new Set(["rect", "triangle", "arcShape", "ellipse", "circle", "arrowMarker", "arrowLine", "arrowUp", "arrowDn"]),
+  channel: new Set(["channel", "regressionCh", "flatChannel", "disjointCh", "pitchfork"]),
+  brush2: new Set(["draw", "brush"]),
+  fib: new Set(["fib", "fibExtension", "fibChannel", "fibTimeZone", "fibFan", "fibTime", "fibCircles", "fibSpiral", "fibArcs", "fibWedge", "gannBox", "gannSquare", "gannFan"]),
+  pattern: new Set(["elliott5", "elliottABC", "elliottTri", "elliottWXY", "elliottWXYXZ", "xabcd", "headShoulders", "abcdPattern", "triPattern", "threeDrives"]),
+  measure: new Set(["shortPos", "longPos", "measure"]),
+  text: new Set(["text", "note", "priceNote", "callout", "comment", "pin", "priceLabel", "signpost", "flag", "image", "emoji"]),
+  crosshair: new Set(["crosshair", "cursorDot", "cursorArrow", "eraser"]),
+  brush: new Set(["vwap", "volProfile", "anchoredVol"]),
+});
+
+function v9RailSubtoolOrFallback(groupId, sel, fallback) {
+  const allowed = V9_RAIL_ICONS_BY_GROUP[groupId];
+  if (!allowed) return sel || fallback;
+  if (sel && sel.icon && allowed.has(sel.icon)) return sel;
+  return fallback;
+}
+
 function v9ChartInfoSettingsFromTlStyle(tlStyle) {
   const show = !!tlStyle?.showInfo;
   const types = Array.isArray(tlStyle?.showInfoTypes) ? tlStyle.showInfoTypes : [];
@@ -3011,18 +3032,18 @@ const TalariaV8bLive = () => {
 
   // Active line/shape sub-tool (icon + label)
   const tlSubTool = effectiveTlGroup === "rect"
-    ? (groupSelected.rect || { icon: "rect", label: "Rectangle" })
+    ? v9RailSubtoolOrFallback("rect", groupSelected.rect, { icon: "rect", label: "Rectangle" })
     : effectiveTlGroup === "channel"
-    ? (groupSelected.channel || { icon: "channel", label: "Parallel Channel" })
+    ? v9RailSubtoolOrFallback("channel", groupSelected.channel, { icon: "channel", label: "Parallel Channel" })
     : effectiveTlGroup === "brush2"
-    ? (groupSelected.brush2 || { icon: "draw", label: "Brush" })
+    ? v9RailSubtoolOrFallback("brush2", groupSelected.brush2, { icon: "draw", label: "Brush" })
     : effectiveTlGroup === "fib"
-    ? (groupSelected.fib || { icon: "fib", label: "Fib Retracement" })
+    ? v9RailSubtoolOrFallback("fib", groupSelected.fib, { icon: "fib", label: "Fib Retracement" })
     : effectiveTlGroup === "pattern"
-    ? (groupSelected.pattern || { icon: "elliott5", label: "Elliott Impulse (12345)" })
+    ? v9RailSubtoolOrFallback("pattern", groupSelected.pattern, { icon: "elliott5", label: "Elliott Impulse (12345)" })
     : effectiveTlGroup === "measure"
-    ? (groupSelected.measure || { icon: "measure", label: "Range Tool" })
-    : (groupSelected.trendline || { icon: "trendline", label: "Trend Line" });
+    ? v9RailSubtoolOrFallback("measure", groupSelected.measure, { icon: "measure", label: "Range Tool" })
+    : v9RailSubtoolOrFallback("trendline", groupSelected.trendline, { icon: "trendline", label: "Trend Line" });
   const tlSubToolRef = useRef(tlSubTool.label);
   const txtSubTool = groupSelected.text || { icon: "text", label: "Text" };
   const txtSubToolRef = useRef(txtSubTool.label);
@@ -5043,6 +5064,11 @@ const TalariaV8bLive = () => {
                 const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
                 icon = fb[g] || 'trendline';
               }
+              const allowRail = V9_RAIL_ICONS_BY_GROUP[g];
+              if (allowRail && icon && !allowRail.has(icon)) {
+                const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
+                icon = fb[g] || allowRail.values().next().value;
+              }
               let label = drawing.type;
               try {
                 const dm = window.chart && window.chart.drawingManager;
@@ -5383,6 +5409,11 @@ const TalariaV8bLive = () => {
       groupSelected[t.id]?.icon
       || (t.id === "brush" ? (firstDdIcon || "vwap") : t.icon || firstDdIcon)
     )) || t.icon;
+    const railAllowed = V9_RAIL_ICONS_BY_GROUP[t.id];
+    const railIcon =
+      railAllowed && activeIcon && !railAllowed.has(activeIcon)
+        ? (t.icon || firstDdIcon || railAllowed.values().next().value)
+        : activeIcon;
     const ddOpen = dropdown === t.id;
     const act = t.id === "pinbar" ? pinnedBarOpen : tool === t.id;
     const h = hov === t.id;
@@ -5471,7 +5502,7 @@ const TalariaV8bLive = () => {
           {/* pointer-events:none on icon so the whole <button type="button"> hit box counts — SVG paths alone miss gaps between strokes */}
           {t.id === "pinbar"
             ? <span style={{ display: "flex", flex: 1, width: "100%", minHeight: 32, alignItems: "center", justifyContent: "flex-end", pointerEvents: "none", transform: h && !act ? "rotate(-25deg) scale(1.15)" : "scale(1)", transition: "transform 0.15s" }}><I n={act ? "pinFill" : "pin"} s={17} cl={pressCol}/></span>
-            : <span style={{ display: "flex", flex: 1, width: "100%", minHeight: 32, alignItems: "center", justifyContent: "flex-end", pointerEvents: "none" }}><I n={activeIcon} s={17} cl={pressCol}/></span>
+            : <span style={{ display: "flex", flex: 1, width: "100%", minHeight: 32, alignItems: "center", justifyContent: "flex-end", pointerEvents: "none" }}><I n={railIcon} s={17} cl={pressCol}/></span>
           }
         </button>
         {act && <div style={{ position: "absolute", left: 3, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg, transparent, ${accentCol}, transparent)`, boxShadow: `0 0 6px ${accentGlow}`, pointerEvents: "none", zIndex: 2 }}/>}
