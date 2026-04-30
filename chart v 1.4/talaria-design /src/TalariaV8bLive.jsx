@@ -2623,7 +2623,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429j-all-buttons-type-svg";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429k-tlbar-sync-selection";
   }, []);
 
   useEffect(() => {
@@ -4189,6 +4189,30 @@ const TalariaV8bLive = () => {
     return m;
   }, []);
 
+  /** chart.js `drawing.type` → V9 rail group (`tool` state). Shared by settings open + floating toolbar selection sync. */
+  const drawingTypeToPanelGroup = useCallback((type) => {
+    if (!type) return null;
+    if (['text', 'note', 'price-note', 'callout', 'comment', 'price-label', 'signpost-2', 'flag-mark', 'image', 'emoji', 'pin'].includes(type)) return 'text';
+    if (['anchored-vwap', 'fixed-range-volume-profile', 'anchored-volume-profile'].includes(type)) return 'brush';
+    if (type.startsWith('fibonacci-') || type.startsWith('fib-') || type.startsWith('trend-fib-')) return 'fib';
+    if (type.startsWith('gann-') || type.startsWith('elliott-')
+        || type === 'xabcd-pattern' || type === 'head-shoulders'
+        || type === 'abcd-pattern' || type === 'triangle-pattern'
+        || type === 'three-drives' || type === 'cypher-pattern') return 'pattern';
+    if (['rectangle', 'triangle', 'arc', 'ellipse', 'circle'].includes(type)) return 'rect';
+    if (['parallel-channel', 'regression-trend', 'flat-top-bottom',
+         'disjoint-channel', 'pitchfork'].includes(type)) return 'channel';
+    if (['brush', 'highlighter'].includes(type)) return 'brush2';
+    if (['ruler', 'short-position', 'long-position', 'price-range',
+         'date-range', 'date-and-price-range'].includes(type)) return 'measure';
+    if (['trendline', 'horizontal', 'vertical', 'horizontal-ray', 'ray',
+         'extended-line', 'cross-line', 'polyline', 'path', 'curve', 'double-curve',
+         'arrow', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down'].includes(type)) {
+      return 'trendline';
+    }
+    return null;
+  }, []);
+
   // Listen for chart.js drawing changes and rebuild layersItems from
   // dm.drawings. Legacy code dispatches `drawingsChanged` on window after
   // every add / delete / load / undo / redo (see drawing-tools-manager.js
@@ -4575,31 +4599,6 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     // Map from drawing.style.dashArray back to V9 lineType.
     const LEGACY_DASH_TO_V9 = { '': 'solid', '5,5': 'dashed', '2,4': 'dotted', '7,4,2,4': 'dashdot' };
-    // Map drawing.type → V9 panel-group key. The panel JSX renders only
-    // when `tool` is one of these values — keep this aligned with the
-    // conditional at the panel render site (look for "Trend Line Settings
-    // Window" comment in this file).
-    const drawingTypeToPanelGroup = (type) => {
-      if (!type) return null;
-      if (type.startsWith('fibonacci-') || type.startsWith('fib-') || type.startsWith('trend-fib-')) return 'fib';
-      if (type.startsWith('gann-') || type.startsWith('elliott-')
-          || type === 'xabcd-pattern' || type === 'head-shoulders'
-          || type === 'abcd-pattern' || type === 'triangle-pattern'
-          || type === 'three-drives' || type === 'cypher-pattern') return 'pattern';
-      if (['rectangle','triangle','arc','ellipse','circle'].includes(type)) return 'rect';
-      if (['parallel-channel','regression-trend','flat-top-bottom',
-           'disjoint-channel','pitchfork'].includes(type)) return 'channel';
-      if (['brush','highlighter'].includes(type)) return 'brush2';
-      if (['ruler','short-position','long-position','price-range',
-           'date-range','date-and-price-range'].includes(type)) return 'measure';
-      // Lines (default fallback).
-      if (['trendline','horizontal','vertical','horizontal-ray','ray',
-           'extended-line','cross-line','polyline','path','curve','double-curve',
-           'arrow','arrow-marker','arrow-mark-up','arrow-mark-down'].includes(type)) {
-        return 'trendline';
-      }
-      return null;
-    };
 
     const hook = (drawing, x, y) => {
       try {
@@ -4684,7 +4683,7 @@ const TalariaV8bLive = () => {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, groupSelected]);
+  }, [tool, groupSelected, drawingTypeToPanelGroup]);
 
   // When the panel closes (tlSettOpen → false), restore the previous tool
   // and clear editingDrawingRef so the chart re-arms the user's prior tool.
@@ -4724,6 +4723,29 @@ const TalariaV8bLive = () => {
         try {
           setTlBarSelected(true);
           setTlBarSelectedType(drawing && drawing.type);
+          // Align V9 `tool` + `groupSelected` with the selected drawing so the floating
+          // bar shows the correct sub-tool icon (tlSubTool). Styles already sync via patch;
+          // without this, the rail stays on e.g. Trend Line until settings opens (setTool).
+          if (drawing && drawing.type && !editingDrawingRef.current) {
+            const g = drawingTypeToPanelGroup(drawing.type);
+            if (g) {
+              let icon = LEGACY_TYPE_TO_V9_ICON[drawing.type];
+              if (!icon) {
+                const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
+                icon = fb[g] || 'trendline';
+              }
+              let label = drawing.type;
+              try {
+                const dm = window.chart && window.chart.drawingManager;
+                if (dm && typeof dm.getDrawingDisplayTitle === 'function') {
+                  label = dm.getDrawingDisplayTitle(drawing) || label;
+                }
+              } catch (_) {}
+              suppressForwardBridge.current = true;
+              setTool(g);
+              setGroupSelected(prev => ({ ...prev, [g]: { icon, label } }));
+            }
+          }
           const patch = v9TlStylePatchFromDrawing(drawing);
           if (patch) {
             suppressForwardBridge.current = true;
