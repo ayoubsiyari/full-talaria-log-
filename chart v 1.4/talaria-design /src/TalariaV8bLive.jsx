@@ -290,6 +290,18 @@ function v9TlStylePatchFromDrawing(d) {
     ...(s.fontStyle ? { textItalic: s.fontStyle === 'italic' } : {}),
     ...(chVert ? { vertAlign: v9ChartVertToUi(chVert) } : {}),
     ...((s.textHAlign || s.textAlign) ? { horizAlign: s.textHAlign || s.textAlign } : {}),
+    ...(typeof s.showMiddleLine === "boolean" ? { midLine: s.showMiddleLine } : {}),
+    ...(s.middleLineColor ? { midLineColor: s.middleLineColor } : {}),
+    ...(s.middleLineWidth != null && s.middleLineWidth !== ""
+      ? { midLineWidth: String(parseInt(s.middleLineWidth, 10) || 1) }
+      : {}),
+    ...(s.middleLineDash !== undefined && s.middleLineDash !== null
+      ? (() => {
+          const md = String(s.middleLineDash).replace(/\s+/g, "");
+          const mt = V9_LEGACY_DASH_STRING_TO_LINE_TYPE[md] ?? (md ? "dashed" : "solid");
+          return { midLineType: mt };
+        })()
+      : {}),
     ...v9CoordPatchFromDrawing(d),
     ...v9VisibilityPatchFromDrawing(d),
   };
@@ -5001,7 +5013,9 @@ const TalariaV8bLive = () => {
     // rail) still propagate to the selected drawing.
 
     const dashArr = V9_DASH_TO_LEGACY[tlStyle.lineType] ?? '';
+    const midDashArr = V9_DASH_TO_LEGACY[tlStyle.midLineType] ?? '';
     const widthNum = parseInt(tlStyle.lineWidth, 10) || 2;
+    const midWidthNum = parseInt(tlStyle.midLineWidth, 10) || 1;
     const stylePatch = {
       // Stroke / line
       stroke: tlStyle.lineColor,
@@ -5043,6 +5057,11 @@ const TalariaV8bLive = () => {
       })(),
       textHAlign: tlStyle.horizAlign || "center",
       textAlign: tlStyle.horizAlign || "center",
+      // Middle line (rectangle / ellipse / circle — drawing-tools-shapes.js)
+      showMiddleLine: !!tlStyle.midLine,
+      middleLineColor: tlStyle.midLineColor,
+      middleLineWidth: midWidthNum,
+      middleLineDash: midDashArr,
     };
 
     // Persist as default for this tool — new drawings inherit via applySavedStyle.
@@ -5112,6 +5131,7 @@ const TalariaV8bLive = () => {
     } catch (err) { console.warn('[V9 style bridge] failed:', err); }
   }, [
     tlStyle.lineColor, tlStyle.lineWidth, tlStyle.lineType, tlStyle.bgColor,
+    tlStyle.midLine, tlStyle.midLineColor, tlStyle.midLineType, tlStyle.midLineWidth,
     tlStyle.ep1, tlStyle.ep2, tlStyle.extendLeft, tlStyle.extendRight,
     tlStyle.priceLabels, tlStyle.timeLabels, tlStyle.rangeType,
     tlStyle.showInfo, tlStyle.showInfoTypes,
