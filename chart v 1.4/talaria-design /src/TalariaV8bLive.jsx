@@ -236,6 +236,105 @@ function v9ApplyVisibilityFromTlStyle(d, tlStyle) {
   return changed;
 }
 
+// ─── Multi-chart: every panel tile has its own drawingManager. Never assume getActiveChart()
+// or window.chart alone — focus can point at one surface while the selection lives on another.
+function enumerateV9DrawingManagersFromWindow() {
+  const out = [];
+  const seen = new Set();
+  const add = (chart) => {
+    const dm = chart && chart.drawingManager;
+    if (!dm || seen.has(dm)) return;
+    seen.add(dm);
+    out.push(dm);
+  };
+  if (typeof window === "undefined") return out;
+  try {
+    add(window.chart);
+    if (typeof window.getActiveChart === "function") add(window.getActiveChart());
+    const pm = window.panelManager;
+    if (pm && Array.isArray(pm.panels)) {
+      pm.panels.forEach((p) => add(p && p.chartInstance));
+    }
+  } catch (_) {}
+  return out;
+}
+
+function resolveLiveDrawingInDm(dm, d) {
+  if (!d || !dm || !Array.isArray(dm.drawings)) return null;
+  if (d.id != null) {
+    const found = dm.drawings.find((x) => x && x.id === d.id);
+    if (found) return found;
+  }
+  return dm.drawings.find((x) => x === d) || null;
+}
+
+/** Which shape is selected for templates / gear — scan all chart instances, not just getActiveChart(). */
+function getSelectedDrawingAcrossCharts(editingRefDrawing) {
+  if (editingRefDrawing) {
+    for (const dm of enumerateV9DrawingManagersFromWindow()) {
+      const live = resolveLiveDrawingInDm(dm, editingRefDrawing);
+      if (live) return live;
+    }
+    return editingRefDrawing;
+  }
+  const managers = enumerateV9DrawingManagersFromWindow();
+  for (const dm of managers) {
+    const tb = dm.toolbar;
+    if (tb && tb.currentDrawing) {
+      const live = resolveLiveDrawingInDm(dm, tb.currentDrawing);
+      if (live) return live;
+    }
+  }
+  for (const dm of managers) {
+    if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
+      const live = resolveLiveDrawingInDm(dm, dm.selectedDrawings[0]);
+      if (live) return live;
+    }
+    if (dm.selectedDrawing) {
+      const live = resolveLiveDrawingInDm(dm, dm.selectedDrawing);
+      if (live) return live;
+    }
+  }
+  for (const dm of managers) {
+    if (!Array.isArray(dm.drawings)) continue;
+    const selected = dm.drawings.filter((x) => x && x.selected);
+    if (selected.length) return selected[0];
+  }
+  return null;
+}
+
+function collectV9BridgeTargetPairs(editingRefDrawing) {
+  const targets = [];
+  const seenIds = new Set();
+  const pushPair = (dm, raw) => {
+    const live = resolveLiveDrawingInDm(dm, raw);
+    if (!live || !live.style) return;
+    const id = live.id;
+    if (id != null) {
+      if (seenIds.has(id)) return;
+      seenIds.add(id);
+    }
+    targets.push({ dm, d: live });
+  };
+  if (editingRefDrawing) {
+    enumerateV9DrawingManagersFromWindow().forEach((dm) => pushPair(dm, editingRefDrawing));
+  }
+  enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+    const tb = dm.toolbar;
+    if (tb && tb.currentDrawing) pushPair(dm, tb.currentDrawing);
+    if (Array.isArray(dm.selectedDrawings)) {
+      dm.selectedDrawings.forEach((x) => pushPair(dm, x));
+    }
+    if (dm.selectedDrawing) pushPair(dm, dm.selectedDrawing);
+    if (Array.isArray(dm.drawings)) {
+      dm.drawings.forEach((x) => {
+        if (x && x.selected) pushPair(dm, x);
+      });
+    }
+  });
+  return targets;
+}
+
 const V9_LEGACY_DASH_STRING_TO_LINE_TYPE = (() => {
   const map = {};
   Object.entries({ solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4' }).forEach(([k, v]) => { map[v] = k; });
@@ -4537,15 +4636,7 @@ const TalariaV8bLive = () => {
 
   const getSelectedDrawingForTemplate = useCallback(() => {
     try {
-      const ch = typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart;
-      const dm = ch && ch.drawingManager;
-      if (!dm) return null;
-      if (editingDrawingRef.current?.drawing) return editingDrawingRef.current.drawing;
-      const tb = dm.toolbar;
-      if (tb?.currentDrawing) return tb.currentDrawing;
-      if (dm.selectedDrawing) return dm.selectedDrawing;
-      if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) return dm.selectedDrawings[0];
-      return null;
+      return getSelectedDrawingAcrossCharts(editingDrawingRef.current?.drawing) || null;
     } catch (_) {
       return null;
     }
@@ -5011,69 +5102,8 @@ const TalariaV8bLive = () => {
   // JSON.stringify + setItem of the entire savedToolStyles map, which can
   // stall click handlers when the bridge fires on every dropdown change.
   const saveToolStyleTimer = useRef(null);
-  // Multi-chart: panel tiles use separate Chart + drawingManager instances. getActiveChart() can
-  // disagree with window.chart — patching only one dm leaves styles applied nowhere visible.
-  const enumerateV9DrawingManagers = () => {
-    const out = [];
-    const seen = new Set();
-    const add = (chart) => {
-      const dm = chart && chart.drawingManager;
-      if (!dm || seen.has(dm)) return;
-      seen.add(dm);
-      out.push(dm);
-    };
-    if (typeof window === "undefined") return out;
-    try {
-      add(window.chart);
-      if (typeof window.getActiveChart === "function") add(window.getActiveChart());
-      const pm = window.panelManager;
-      if (pm && Array.isArray(pm.panels)) {
-        pm.panels.forEach((p) => add(p && p.chartInstance));
-      }
-    } catch (_) {}
-    return out;
-  };
-  const resolveLiveInDm = (dm, d) => {
-    if (!d || !dm || !Array.isArray(dm.drawings)) return null;
-    if (d.id != null) {
-      const found = dm.drawings.find((x) => x && x.id === d.id);
-      if (found) return found;
-    }
-    return dm.drawings.find((x) => x === d) || null;
-  };
-  const collectV9BridgeTargets = () => {
-    const targets = [];
-    const seenIds = new Set();
-    const pushPair = (dm, raw) => {
-      const live = resolveLiveInDm(dm, raw);
-      if (!live || !live.style) return;
-      const id = live.id;
-      if (id != null) {
-        if (seenIds.has(id)) return;
-        seenIds.add(id);
-      }
-      targets.push({ dm, d: live });
-    };
-
-    const refDr = editingDrawingRef.current && editingDrawingRef.current.drawing;
-    if (refDr) {
-      enumerateV9DrawingManagers().forEach((dm) => pushPair(dm, refDr));
-    }
-    enumerateV9DrawingManagers().forEach((dm) => {
-      const tb = dm.toolbar;
-      if (tb && tb.currentDrawing) pushPair(dm, tb.currentDrawing);
-      if (Array.isArray(dm.selectedDrawings)) {
-        dm.selectedDrawings.forEach((x) => pushPair(dm, x));
-      }
-      if (dm.selectedDrawing) pushPair(dm, dm.selectedDrawing);
-      if (Array.isArray(dm.drawings)) {
-        dm.drawings.forEach((x) => {
-          if (x && x.selected) pushPair(dm, x);
-        });
-      }
-    });
-    return targets;
-  };
+  const collectV9BridgeTargets = () =>
+    collectV9BridgeTargetPairs(editingDrawingRef.current && editingDrawingRef.current.drawing);
   // Pointer-toggle — flush middle-line fields immediately (same targets as full bridge).
   const flushV9MiddleLineToChart = (prevTl, nextMidLineOn) => {
     try {
@@ -10606,10 +10636,13 @@ const TalariaV8bLive = () => {
           <TlBtn id="tl-lock" isAct={tlLocked} tip={tlLocked?"Unlock":"Lock"} onClick={()=>{
             setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();
             const next = !tlLocked; setTlLocked(next);
-            const dm = window.chart && window.chart.drawingManager;
             try {
-              const sel = dm && (dm.selectedDrawings && dm.selectedDrawings.length ? dm.selectedDrawings : (dm.selectedDrawing ? [dm.selectedDrawing] : []));
-              if (sel) { sel.forEach(d => { if (d) d.locked = next; }); window.chart && window.chart.scheduleRender && window.chart.scheduleRender(); }
+              enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+                const sel = dm && (dm.selectedDrawings && dm.selectedDrawings.length ? dm.selectedDrawings : (dm.selectedDrawing ? [dm.selectedDrawing] : []));
+                if (!sel || !sel.length) return;
+                sel.forEach((d) => { if (d) d.locked = next; });
+                if (dm.chart) dm.chart.scheduleRender && dm.chart.scheduleRender();
+              });
             } catch(_){}
           }}>
             {(_,isAct,col)=><I n="lock" s={16} cl={col}/>}
@@ -10618,15 +10651,17 @@ const TalariaV8bLive = () => {
                drawing(s) so the canvas matches what the legacy toolbar does. */}
           <TlBtn id="tl-del" isAct={false} tip="Delete" onClick={()=>{
             setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();
-            const dm = window.chart && window.chart.drawingManager;
             try {
-              if (!dm) return;
-              if (dm.deleteSelected) { dm.deleteSelected(); }
-              else {
-                const sel = dm.selectedDrawings && dm.selectedDrawings.length ? [...dm.selectedDrawings] : (dm.selectedDrawing ? [dm.selectedDrawing] : []);
-                sel.forEach(d => { try { dm.deleteDrawing && dm.deleteDrawing(d); } catch(_){} });
-              }
-              window.chart && window.chart.scheduleRender && window.chart.scheduleRender();
+              enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+                const hasSel = (dm.selectedDrawings && dm.selectedDrawings.length) || dm.selectedDrawing;
+                if (!hasSel) return;
+                if (dm.deleteSelected) dm.deleteSelected();
+                else {
+                  const sel = dm.selectedDrawings && dm.selectedDrawings.length ? [...dm.selectedDrawings] : (dm.selectedDrawing ? [dm.selectedDrawing] : []);
+                  sel.forEach((d) => { try { dm.deleteDrawing && dm.deleteDrawing(d); } catch(_){} });
+                }
+                if (dm.chart) dm.chart.scheduleRender && dm.chart.scheduleRender();
+              });
             } catch(err){ console.warn('[V9 delete] failed:', err); }
           }}>
             {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
