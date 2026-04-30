@@ -5007,6 +5007,33 @@ const TalariaV8bLive = () => {
         // and so closeTlSett (Esc / outside-click) can clear this on close.
         editingDrawingRef.current = { drawing, prevTool: tool, prevGroupSelected: groupSelected };
 
+        // Match `toolbar.show`: map this drawing to the correct rail icon. Without this,
+        // dblclick/gear opens the panel while `groupSelected` still reflects the last line
+        // tool (e.g. Trend Line) because `editDrawing` calls `toolbar.hide()` and never
+        // re-ran selection sync for this drawing.
+        {
+          const g = group;
+          let icon = LEGACY_TYPE_TO_V9_ICON[drawing.type];
+          if (!icon) {
+            const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
+            icon = fb[g] || 'trendline';
+          }
+          const allowRail = V9_RAIL_ICONS_BY_GROUP[g];
+          if (allowRail && icon && !allowRail.has(icon)) {
+            const fb = { fib: 'fib', trendline: 'trendline', pattern: 'elliott5', rect: 'rect', channel: 'channel', measure: 'measure', brush: 'vwap', brush2: 'draw', text: 'text' };
+            icon = fb[g] || allowRail.values().next().value;
+          }
+          let label = drawing.type;
+          try {
+            const dm = window.chart && window.chart.drawingManager;
+            if (dm && typeof dm.getDrawingDisplayTitle === 'function') {
+              label = dm.getDrawingDisplayTitle(drawing) || label;
+            }
+          } catch (_) {}
+          suppressForwardBridge.current = true;
+          setGroupSelected(prev => v9SanitizeGroupSelected({ ...prev, [g]: { icon, label } }));
+        }
+
         // Suppress the forward bridge once: this read-back into tlStyle
         // would otherwise re-emit the same values back to the drawing.
         suppressForwardBridge.current = true;
@@ -5086,7 +5113,7 @@ const TalariaV8bLive = () => {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, groupSelected, drawingTypeToPanelGroup]);
+  }, [tool, groupSelected, drawingTypeToPanelGroup, LEGACY_TYPE_TO_V9_ICON]);
 
   // When the panel closes (tlSettOpen → false), restore the previous tool
   // and clear editingDrawingRef so the chart re-arms the user's prior tool.
