@@ -481,6 +481,20 @@ function v9RegLinesFromRegressionStyle(s) {
   ];
 }
 
+function v9ChartSourceToUiSource(src) {
+  const x = (src == null ? "close" : String(src)).toLowerCase();
+  if (x === "open") return "Open";
+  if (x === "high") return "High";
+  if (x === "low") return "Low";
+  return "Close";
+}
+
+function v9UiSourceToChartSource(label) {
+  const m = { Open: "open", High: "high", Low: "low", Close: "close" };
+  if (label != null && m[label] != null) return m[label];
+  return String(label || "close").toLowerCase();
+}
+
 function v9ApplyRegLinesToRegressionStyle(style, regLines) {
   if (!style || !Array.isArray(regLines) || regLines.length < 3) return;
   const [mid, up, lo] = regLines;
@@ -577,7 +591,22 @@ function v9TlStylePatchFromDrawing(d) {
     ...(d.type === "regression-trend"
       ? (() => {
           const rl = v9RegLinesFromRegressionStyle(s);
-          return rl ? { regLines: rl } : {};
+          const base = rl ? { regLines: rl } : {};
+          return {
+            ...base,
+            regUpperDev: {
+              on: s.useUpperDeviation !== false,
+              value: String(s.upperDeviation != null && s.upperDeviation !== "" ? s.upperDeviation : 2),
+            },
+            regLowerDev: {
+              on: s.useLowerDeviation !== false,
+              value: String(
+                Math.abs(s.lowerDeviation != null && s.lowerDeviation !== "" ? Number(s.lowerDeviation) : -2),
+              ),
+            },
+            regPearsonR: !!s.showPearsonsR,
+            source: v9ChartSourceToUiSource(s.source),
+          };
         })()
       : {}),
     ...v9CoordPatchFromDrawing(d),
@@ -2022,6 +2051,9 @@ const TalariaV8bLive = () => {
     ],
     regUpperBg: "rgba(74,106,255,0.15)", regLowerBg: "rgba(255,82,82,0.15)",
     source: "Close", regressionType: "Linear",
+    regUpperDev: { on: true, value: "2" },
+    regLowerDev: { on: true, value: "2" },
+    regPearsonR: false,
     fibTzLevels: [
       { on: true, value: "1",  color: "#787B86", type: "solid",  width: "1" },
       { on: true, value: "2",  color: "#F44336", type: "solid",  width: "1" },
@@ -5207,7 +5239,13 @@ const TalariaV8bLive = () => {
             if (!p) return {};
             const out = {};
             if (drawing.type === "parallel-channel" && p.chLines) out.chLines = p.chLines;
-            if (drawing.type === "regression-trend" && p.regLines) out.regLines = p.regLines;
+            if (drawing.type === "regression-trend") {
+              if (p.regLines) out.regLines = p.regLines;
+              if (p.regUpperDev) out.regUpperDev = p.regUpperDev;
+              if (p.regLowerDev) out.regLowerDev = p.regLowerDev;
+              if (p.regPearsonR !== undefined) out.regPearsonR = p.regPearsonR;
+              if (p.source) out.source = p.source;
+            }
             return out;
           })(),
         }));
@@ -5571,6 +5609,21 @@ const TalariaV8bLive = () => {
         if (d.type === "regression-trend" && Array.isArray(tlStyle.regLines) && tlStyle.regLines.length >= 3) {
           v9ApplyRegLinesToRegressionStyle(d.style, tlStyle.regLines);
         }
+        if (d.type === "regression-trend") {
+          const sty = d.style;
+          sty.source = v9UiSourceToChartSource(tlStyle.source);
+          sty.showPearsonsR = !!tlStyle.regPearsonR;
+          const uv = tlStyle.regUpperDev;
+          const lv = tlStyle.regLowerDev;
+          if (uv && typeof uv === "object") {
+            const nu = parseFloat(uv.value);
+            if (Number.isFinite(nu)) sty.upperDeviation = Math.max(0, nu);
+          }
+          if (lv && typeof lv === "object") {
+            const nl = parseFloat(lv.value);
+            if (Number.isFinite(nl)) sty.lowerDeviation = -Math.abs(nl);
+          }
+        }
         // Prefer onUpdate (history + render + persist + saveDrawings).
         if (tb && typeof tb.onUpdate === 'function') {
           try { tb.onUpdate(d); } catch (_) { try { dm.renderDrawing?.(d); } catch (_) {} }
@@ -5600,6 +5653,10 @@ const TalariaV8bLive = () => {
     tlStyle.visMinutes, tlStyle.visHours, tlStyle.visDays, tlStyle.visWeeks, tlStyle.visMonths,
     tlStyle.chLines,
     tlStyle.regLines,
+    tlStyle.source,
+    tlStyle.regUpperDev,
+    tlStyle.regLowerDev,
+    tlStyle.regPearsonR,
     tool, groupSelected,
   ]);
 
@@ -8069,15 +8126,25 @@ const TalariaV8bLive = () => {
             })()}
             {/* ── INPUT TAB (regressionCh) ── */}
             {tlSettTab==="input" && tlSubTool.icon === "regressionCh" && <>
-              {/* Upper Deviation — checkbox + spin input */}
-              {[["regUpperDev","Upper Deviation"],["regLowerDev","Lower Deviation"]].map(([key, label])=>{
+              {/* Upper/Lower deviation (σ multipliers) — sync on-state with regLines[1]/[2] (Style tab lines) */}
+              {[["regUpperDev","Upper Deviation",1],["regLowerDev","Lower Deviation",2]].map(([key, label, lineIdx])=>{
                 const on = tlStyle[key]?.on ?? true;
                 const val = tlStyle[key]?.value ?? "2.00";
                 const op = on ? 1 : 0.38;
                 const pe = on ? "auto" : "none";
                 return (
                   <div key={key} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0" }}>
-                    <div>{TlChk(on, `tlchk-${key}`, label, ()=>setTlStyle(s=>({...s, [key]:{...s[key], on:!on}})))}</div>
+                    <div>{TlChk(on, `tlchk-${key}`, label, ()=>setTlStyle(s=>{
+                      const cur = s[key] || { on: true, value: "2" };
+                      const nextOn = !cur.on;
+                      return {
+                        ...s,
+                        [key]: { ...cur, on: nextOn },
+                        regLines: (s.regLines && s.regLines.length > lineIdx
+                          ? s.regLines.map((l, i) => (i === lineIdx ? { ...l, on: nextOn } : l))
+                          : s.regLines),
+                      };
+                    }))}</div>
                     <div style={{ position:"relative", width:68, marginRight:40, opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
                       <input value={val}
                         onChange={e=>{const v=e.target.value;if(/^[0-9.]*$/.test(v))setTlStyle(s=>({...s,[key]:{...s[key],value:v}}));}}
@@ -8101,13 +8168,15 @@ const TalariaV8bLive = () => {
                   </div>
                 );
               })}
-              {/* Extend Right — checkbox */}
-              <div style={{ padding:"8px 0" }}>
-                {TlChk(tlStyle.regExtendRight ?? false, "tlchk-regExtRight", "Extend Right", ()=>setTlStyle(s=>({...s, regExtendRight:!(s.regExtendRight??false)})))}
+              {/* Extend Right — uses shared tlStyle.extendRight (same as Style tab; drives chart.style.extendRight) */}
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0" }}>
+                <span style={{ fontSize:12, color:c.ts }}>Extend Right</span>
+                <div style={{ marginRight:40 }}>{TlChk(!!tlStyle.extendRight, "tlchk-regExtRight", "", ()=>setTlStyle(s=>({ ...s, extendRight:!s.extendRight })))}</div>
               </div>
-              {/* Pearson's R — checkbox */}
-              <div style={{ padding:"8px 0" }}>
-                {TlChk(tlStyle.regPearsonR ?? false, "tlchk-regPearsonR", "Pearson's R", ()=>setTlStyle(s=>({...s, regPearsonR:!(s.regPearsonR??false)})))}
+              {/* Pearson's R */}
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0" }}>
+                <span style={{ fontSize:12, color:c.ts }}>Pearson's R</span>
+                <div style={{ marginRight:40 }}>{TlChk(!!tlStyle.regPearsonR, "tlchk-regPearsonR", "", ()=>setTlStyle(s=>({ ...s, regPearsonR:!s.regPearsonR })))}</div>
               </div>
               {/* Source — dropdown */}
               {(()=>{
