@@ -519,6 +519,67 @@ function v9ApplyRegLinesToRegressionStyle(style, regLines) {
   style.useLowerDeviation = lo.on !== false;
 }
 
+/** Pitchfork: chart `d.levels` + style ↔ V9 `pfLevels` / `pitchforkStyle` / median color / background. */
+const V9_PF_UI_TO_CHART = {
+  Original: "original",
+  Schiff: "schiff",
+  "Modified Schiff": "modified-schiff",
+  Inside: "inside",
+};
+const V9_PF_CHART_TO_UI = {
+  original: "Original",
+  schiff: "Schiff",
+  "modified-schiff": "Modified Schiff",
+  inside: "Inside",
+};
+
+function v9UiPitchforkStyleToChart(label) {
+  if (label != null && V9_PF_UI_TO_CHART[label] != null) return V9_PF_UI_TO_CHART[label];
+  const t = String(label || "original").trim().toLowerCase();
+  if (t === "modified schiff") return "modified-schiff";
+  if (["original", "schiff", "modified-schiff", "inside"].includes(t)) return t;
+  return "original";
+}
+
+function v9ChartPitchforkStyleToUi(v) {
+  if (v == null || v === "") return "Original";
+  const k = String(v).trim().toLowerCase();
+  if (V9_PF_CHART_TO_UI[k] != null) return V9_PF_CHART_TO_UI[k];
+  if (k === "modified schiff") return "Modified Schiff";
+  return "Original";
+}
+
+function v9PitchforkLevelsToPf(levels) {
+  if (!Array.isArray(levels) || !levels.length) return undefined;
+  return levels.map((lv) => {
+    const raw = lv.value != null ? lv.value : lv.label;
+    const valueStr =
+      raw !== undefined && raw !== null && raw !== ""
+        ? String(raw).trim()
+        : "0";
+    return {
+      on: lv.enabled !== false,
+      value: valueStr,
+      color: lv.color || "#2962FF",
+    };
+  });
+}
+
+function v9PfToPitchforkLevels(pfLevels) {
+  if (!Array.isArray(pfLevels)) return [];
+  return pfLevels.map((ln) => {
+    const t = parseFloat(ln.value);
+    const value = Number.isFinite(t) ? t : 0;
+    const vs = String(ln.value != null ? ln.value : "").trim() || String(value);
+    return {
+      value,
+      label: vs,
+      color: ln.color || "#2962FF",
+      enabled: ln.on !== false,
+    };
+  });
+}
+
 /** Full chart.js drawing → V9 `tlStyle` patch (toolbar selection + settings read-back). */
 function v9TlStylePatchFromDrawing(d) {
   if (!d) return null;
@@ -527,7 +588,10 @@ function v9TlStylePatchFromDrawing(d) {
   const bold =
     s.fontWeight === "bold" ||
     (typeof s.fontWeight === "number" && s.fontWeight >= 600);
-  const stroke = s.stroke || s.color || s.lineColor;
+  const stroke =
+    d.type === "pitchfork"
+      ? (s.medianColor || s.stroke || s.color || s.lineColor)
+      : (s.stroke || s.color || s.lineColor);
   const widthRaw = s.strokeWidth ?? s.lineWidth;
   const widthStr = widthRaw != null ? String(parseInt(widthRaw, 10) || 2) : undefined;
   const dashRaw = (s.dashArray ?? s.strokeDasharray ?? '').toString().replace(/\s+/g, '');
@@ -606,6 +670,20 @@ function v9TlStylePatchFromDrawing(d) {
             },
             regPearsonR: !!s.showPearsonsR,
             source: v9ChartSourceToUiSource(s.source),
+          };
+        })()
+      : {}),
+    ...(d.type === "pitchfork"
+      ? (() => {
+          const pf = v9PitchforkLevelsToPf(d.levels);
+          return {
+            ...(pf ? { pfLevels: pf } : {}),
+            pitchforkStyle: v9ChartPitchforkStyleToUi(s.pitchforkStyle),
+            pfBackground: s.backgroundEnabled !== false,
+            pfBgOpacity:
+              s.backgroundOpacity != null && !Number.isNaN(Number(s.backgroundOpacity))
+                ? Number(s.backgroundOpacity)
+                : 0.2,
           };
         })()
       : {}),
@@ -5246,6 +5324,12 @@ const TalariaV8bLive = () => {
               if (p.regPearsonR !== undefined) out.regPearsonR = p.regPearsonR;
               if (p.source) out.source = p.source;
             }
+            if (drawing.type === "pitchfork") {
+              if (p.pfLevels) out.pfLevels = p.pfLevels;
+              if (p.pitchforkStyle) out.pitchforkStyle = p.pitchforkStyle;
+              if (p.pfBackground !== undefined) out.pfBackground = p.pfBackground;
+              if (p.pfBgOpacity !== undefined) out.pfBgOpacity = p.pfBgOpacity;
+            }
             return out;
           })(),
         }));
@@ -5624,6 +5708,18 @@ const TalariaV8bLive = () => {
             if (Number.isFinite(nl)) sty.lowerDeviation = -Math.abs(nl);
           }
         }
+        if (d.type === "pitchfork") {
+          if (Array.isArray(tlStyle.pfLevels)) {
+            d.levels = v9PfToPitchforkLevels(tlStyle.pfLevels);
+          }
+          d.style.pitchforkStyle = v9UiPitchforkStyleToChart(tlStyle.pitchforkStyle);
+          d.style.medianColor = tlStyle.lineColor;
+          d.style.backgroundEnabled = tlStyle.pfBackground !== false;
+          d.style.backgroundOpacity =
+            tlStyle.pfBgOpacity != null && !Number.isNaN(+tlStyle.pfBgOpacity)
+              ? +tlStyle.pfBgOpacity
+              : 0.2;
+        }
         // Prefer onUpdate (history + render + persist + saveDrawings).
         if (tb && typeof tb.onUpdate === 'function') {
           try { tb.onUpdate(d); } catch (_) { try { dm.renderDrawing?.(d); } catch (_) {} }
@@ -5657,6 +5753,10 @@ const TalariaV8bLive = () => {
     tlStyle.regUpperDev,
     tlStyle.regLowerDev,
     tlStyle.regPearsonR,
+    tlStyle.pfLevels,
+    tlStyle.pitchforkStyle,
+    tlStyle.pfBackground,
+    tlStyle.pfBgOpacity,
     tool, groupSelected,
   ]);
 
