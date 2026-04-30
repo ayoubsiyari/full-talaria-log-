@@ -449,6 +449,62 @@ function v9ChLinesToParallelLevels(chLines) {
   });
 }
 
+/** Regression channel: `d.style` (middle / upper / lower strokes) ↔ `tlStyle.regLines`. */
+function v9RegDashStringToType(dashRaw) {
+  const raw = (dashRaw ?? "").toString().replace(/\s+/g, "");
+  if (!raw || raw === "0" || raw === "none") return "solid";
+  return V9_LEGACY_DASH_STRING_TO_LINE_TYPE[raw] ?? "dashed";
+}
+
+function v9RegLinesFromRegressionStyle(s) {
+  if (!s || typeof s !== "object") return undefined;
+  const sw = String(parseInt(s.strokeWidth, 10) || 2);
+  const uw = String(parseInt(s.upperStrokeWidth, 10) || 2);
+  const lw = String(parseInt(s.lowerStrokeWidth, 10) || 2);
+  const stroke = s.stroke || "#9c27b0";
+  return [
+    { on: true, label: "Middle Line", color: stroke, type: v9RegDashStringToType(s.strokeDasharray), width: sw },
+    {
+      on: s.useUpperDeviation !== false,
+      label: "Upper Line",
+      color: s.upperStroke || stroke,
+      type: v9RegDashStringToType(s.upperStrokeDasharray),
+      width: uw,
+    },
+    {
+      on: s.useLowerDeviation !== false,
+      label: "Lower Line",
+      color: s.lowerStroke || stroke,
+      type: v9RegDashStringToType(s.lowerStrokeDasharray),
+      width: lw,
+    },
+  ];
+}
+
+function v9ApplyRegLinesToRegressionStyle(style, regLines) {
+  if (!style || !Array.isArray(regLines) || regLines.length < 3) return;
+  const [mid, up, lo] = regLines;
+  const midW = parseInt(mid.width, 10) || 2;
+  const upW = parseInt(up.width, 10) || 2;
+  const loW = parseInt(lo.width, 10) || 2;
+  const dashStr = (ln) => {
+    if (ln.type === "bold") return "0";
+    const d = V9_LINE_TYPE_TO_LEGACY_DASH[ln.type];
+    return d === "" || d === undefined ? "0" : d;
+  };
+  style.stroke = mid.color;
+  style.strokeWidth = mid.type === "bold" ? Math.max(midW, 3) : midW;
+  style.strokeDasharray = dashStr(mid);
+  style.upperStroke = up.color;
+  style.upperStrokeWidth = up.type === "bold" ? Math.max(upW, 3) : upW;
+  style.upperStrokeDasharray = dashStr(up);
+  style.useUpperDeviation = up.on !== false;
+  style.lowerStroke = lo.color;
+  style.lowerStrokeWidth = lo.type === "bold" ? Math.max(loW, 3) : loW;
+  style.lowerStrokeDasharray = dashStr(lo);
+  style.useLowerDeviation = lo.on !== false;
+}
+
 /** Full chart.js drawing → V9 `tlStyle` patch (toolbar selection + settings read-back). */
 function v9TlStylePatchFromDrawing(d) {
   if (!d) return null;
@@ -516,6 +572,12 @@ function v9TlStylePatchFromDrawing(d) {
       ? (() => {
           const ch = v9ParallelLevelsToChLines(d.levels);
           return ch ? { chLines: ch } : {};
+        })()
+      : {}),
+    ...(d.type === "regression-trend"
+      ? (() => {
+          const rl = v9RegLinesFromRegressionStyle(s);
+          return rl ? { regLines: rl } : {};
         })()
       : {}),
     ...v9CoordPatchFromDrawing(d),
@@ -1954,9 +2016,9 @@ const TalariaV8bLive = () => {
       { on: true, value: "0.00", color: "#2962FF", type: "solid", width: "2" },
     ],
     regLines: [
-      { on: true, label: "Middle Line", color: "#2962FF", type: "solid", width: "2" },
-      { on: true, label: "Upper Line", color: "#2962FF", type: "dashed", width: "1" },
-      { on: true, label: "Lower Line", color: "#2962FF", type: "dashed", width: "1" },
+      { on: true, label: "Middle Line", color: "#9c27b0", type: "dashed", width: "2" },
+      { on: true, label: "Upper Line", color: "#9c27b0", type: "dashed", width: "2" },
+      { on: true, label: "Lower Line", color: "#9c27b0", type: "dashed", width: "2" },
     ],
     regUpperBg: "rgba(74,106,255,0.15)", regLowerBg: "rgba(255,82,82,0.15)",
     source: "Close", regressionType: "Linear",
@@ -5141,9 +5203,12 @@ const TalariaV8bLive = () => {
           ...v9CoordPatchFromDrawing(drawing),
           ...v9VisibilityPatchFromDrawing(drawing),
           ...(() => {
-            if (drawing.type !== "parallel-channel" || !Array.isArray(drawing.levels) || !drawing.levels.length) return {};
             const p = v9TlStylePatchFromDrawing(drawing);
-            return p && p.chLines ? { chLines: p.chLines } : {};
+            if (!p) return {};
+            const out = {};
+            if (drawing.type === "parallel-channel" && p.chLines) out.chLines = p.chLines;
+            if (drawing.type === "regression-trend" && p.regLines) out.regLines = p.regLines;
+            return out;
           })(),
         }));
 
@@ -5503,6 +5568,9 @@ const TalariaV8bLive = () => {
         if (d.type === "parallel-channel" && Array.isArray(tlStyle.chLines)) {
           d.levels = v9ChLinesToParallelLevels(tlStyle.chLines);
         }
+        if (d.type === "regression-trend" && Array.isArray(tlStyle.regLines) && tlStyle.regLines.length >= 3) {
+          v9ApplyRegLinesToRegressionStyle(d.style, tlStyle.regLines);
+        }
         // Prefer onUpdate (history + render + persist + saveDrawings).
         if (tb && typeof tb.onUpdate === 'function') {
           try { tb.onUpdate(d); } catch (_) { try { dm.renderDrawing?.(d); } catch (_) {} }
@@ -5531,6 +5599,7 @@ const TalariaV8bLive = () => {
     tlStyle.pt7Price, tlStyle.pt7Bar,
     tlStyle.visMinutes, tlStyle.visHours, tlStyle.visDays, tlStyle.visWeeks, tlStyle.visMonths,
     tlStyle.chLines,
+    tlStyle.regLines,
     tool, groupSelected,
   ]);
 
@@ -10796,8 +10865,10 @@ const TalariaV8bLive = () => {
               {(_,isAct,col)=>{
                 const fibBar = isFibTool && tlStyle.fibLevels && tlStyle.fibLevels.length > 0
                   ? `linear-gradient(90deg,${tlStyle.fibLevels.map((l,i,a)=>`${l.color} ${(i/(a.length-1)*100).toFixed(1)}%`).join(",")})`
-                  : (["channel","regressionCh"].includes(tlSubTool.icon) && tlStyle.chLines && tlStyle.chLines.length > 0)
+                  : (tlSubTool.icon === "channel" && tlStyle.chLines && tlStyle.chLines.length > 0)
                   ? `linear-gradient(90deg,${tlStyle.chLines.map((l,i,a)=>`${l.color} ${(i/(a.length-1)*100).toFixed(1)}%`).join(",")})`
+                  : (tlSubTool.icon === "regressionCh" && tlStyle.regLines && tlStyle.regLines.length > 0)
+                  ? `linear-gradient(90deg,${tlStyle.regLines.map((l,i,a)=>`${l.color} ${(i/(a.length-1)*100).toFixed(1)}%`).join(",")})`
                   : (tlSubTool.icon === "pitchfork" && tlStyle.pfLevels && tlStyle.pfLevels.length > 0)
                   ? `linear-gradient(90deg,${tlStyle.pfLevels.map((l,i,a)=>`${l.color} ${(i/(a.length-1)*100).toFixed(1)}%`).join(",")})`
                   : tlStyle.lineColor;
