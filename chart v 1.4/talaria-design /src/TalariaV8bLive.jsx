@@ -3724,7 +3724,11 @@ const TalariaV8bLive = () => {
       </svg>
     );
     return (
-      <div onClick={toggle} onMouseEnter={()=>setHov(hKey)} onMouseLeave={()=>setHov(null)}
+      <div
+        onPointerDown={(e) => { e.stopPropagation(); toggle(); }}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        onMouseEnter={()=>setHov(hKey)} onMouseLeave={()=>setHov(null)}
         style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"default",userSelect:"none",WebkitUserSelect:"none",
                 opacity: on && isH ? 0.65 : 1, transition:"opacity 0.12s"}}>
         <div style={{width:10,height:10,flexShrink:0}}>{indicator}</div>
@@ -5007,7 +5011,9 @@ const TalariaV8bLive = () => {
   // JSON.stringify + setItem of the entire savedToolStyles map, which can
   // stall click handlers when the bridge fires on every dropdown change.
   const saveToolStyleTimer = useRef(null);
-  useEffect(() => {
+  // useLayoutEffect: apply drawing.style in the same frame as tlStyle (legacy TV panel mutates
+  // synchronously on checkbox; late useEffect let the chart eat checkbox clicks and felt "unsynced").
+  useLayoutEffect(() => {
     const dm = window.chart && window.chart.drawingManager;
     if (!dm) return;
     const legacyTool = resolveLegacyTool();
@@ -5092,17 +5098,33 @@ const TalariaV8bLive = () => {
     // until the user deselected and reselected.
     try {
       const tb = dm.toolbar;
+      const liveDrawing = (d) => {
+        if (!d || !d.id || !Array.isArray(dm.drawings)) return d;
+        const found = dm.drawings.find((x) => x && x.id === d.id);
+        return found || d;
+      };
       const selectionList = (() => {
         const arr = [];
         // Dbl-click settings calls toolbar.hide(), which clears currentDrawing — but editingDrawingRef
-        // still holds the shape being edited; without this, stylePatch never reaches the drawing.
+        // still holds the shape being edited; resolve to dm.drawings[] so we mutate the same instance
+        // the SVG layer renders (ref copy would leave chart.style out of sync).
         const fromPanel = editingDrawingRef.current && editingDrawingRef.current.drawing;
-        if (fromPanel && !arr.includes(fromPanel)) arr.push(fromPanel);
-        if (tb && tb.currentDrawing && !arr.includes(tb.currentDrawing)) arr.push(tb.currentDrawing);
-        if (Array.isArray(dm.selectedDrawings)) {
-          dm.selectedDrawings.forEach(d => { if (d && !arr.includes(d)) arr.push(d); });
+        const panelLive = fromPanel ? liveDrawing(fromPanel) : null;
+        if (panelLive && !arr.includes(panelLive)) arr.push(panelLive);
+        if (tb && tb.currentDrawing) {
+          const cur = liveDrawing(tb.currentDrawing);
+          if (cur && !arr.includes(cur)) arr.push(cur);
         }
-        if (dm.selectedDrawing && !arr.includes(dm.selectedDrawing)) arr.push(dm.selectedDrawing);
+        if (Array.isArray(dm.selectedDrawings)) {
+          dm.selectedDrawings.forEach(d => {
+            const ld = liveDrawing(d);
+            if (ld && !arr.includes(ld)) arr.push(ld);
+          });
+        }
+        if (dm.selectedDrawing) {
+          const sd = liveDrawing(dm.selectedDrawing);
+          if (sd && !arr.includes(sd)) arr.push(sd);
+        }
         return arr;
       })();
       selectionList.forEach((d) => {
