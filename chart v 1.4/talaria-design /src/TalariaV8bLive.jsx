@@ -74,9 +74,13 @@ const V9_INFO_PROP_TO_LABEL = Object.fromEntries(
   Object.entries(V9_INFO_LABEL_TO_PROP).map(([label, prop]) => [prop, label])
 );
 
-/** Sub-tool icon ids per left-rail group (matches `toolGroups` dd). Used to clamp stale `groupSelected` so the Shapes rail cannot show a Lines icon. */
+/** Sub-tool icon ids per left-rail group (matches `toolGroups` dd). Used to clamp stale `groupSelected` so the Shapes rail cannot show a Lines icon.
+ * Arrow tools (`arrowMarker` … `arrowDn`) live in the Shapes menu but `drawingTypeToPanelGroup` maps their legacy types to group `trendline`; they must stay allowed there so `tlSubTool` does not fall back to plain `trendline` (wrong Style modal). */
 const V9_RAIL_ICONS_BY_GROUP = Object.freeze({
-  trendline: new Set(["trendline", "hray", "hline", "vline", "ray", "extendedLine", "crossLine", "polyline", "pathTool", "curve", "doubleCurve"]),
+  trendline: new Set([
+    "trendline", "hray", "hline", "vline", "ray", "extendedLine", "crossLine", "polyline", "pathTool", "curve", "doubleCurve",
+    "arrowMarker", "arrowLine", "arrowUp", "arrowDn",
+  ]),
   rect: new Set(["rect", "triangle", "arcShape", "ellipse", "circle", "arrowMarker", "arrowLine", "arrowUp", "arrowDn"]),
   channel: new Set(["channel", "regressionCh", "flatChannel", "disjointCh", "pitchfork"]),
   brush2: new Set(["draw", "brush"]),
