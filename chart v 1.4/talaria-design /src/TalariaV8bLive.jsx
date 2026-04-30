@@ -426,11 +426,16 @@ const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange
         </div>
       </div>
       <div style={{padding:"5px 10px",borderTop:`1px solid ${c.br}`,display:"flex",justifyContent:"flex-end"}}>
-        <div
+        <button
+          type="button"
           onPointerDown={(e)=>{ e.stopPropagation(); onClose(e); }}
           onMouseDown={(e)=>e.stopPropagation()}
-          onClick={(e)=>e.stopPropagation()}
-          style={{fontSize:10,color:c.acL,cursor:"default",fontWeight:800,fontFamily:F,padding:"2px 6px",letterSpacing:"0.05em"}}>DONE</div>
+          onClick={(e)=>{ e.stopPropagation(); onClose(e); }}
+          style={{
+            fontSize:10,color:c.acL,cursor:"default",fontWeight:800,fontFamily:F,padding:"2px 6px",letterSpacing:"0.05em",
+            background:"transparent",border:"none",margin:0,lineHeight:1.2
+          }}
+        >DONE</button>
       </div>
     </div>
   );
@@ -1471,6 +1476,9 @@ const TalariaV8bLive = () => {
   const tlBarDropRef = useRef(null);
   const pinnedBarRef = useRef(null);
   const cpBarAnchorRef = useRef(null); // set when color picker is opened from the tl bar
+  /** Latest cpApply + drag inputs for window-level pointer listeners (avoids fullscreen overlay above picker). */
+  const cpApplyRef = useRef(() => {});
+  const cpPickerDragRef = useRef({});
   const closingDropdownKey = useRef(null);
   /** Keeps latest closeWindows for chart.js → `talaria-v9-open-settings` without stale closures */
   const closeWindowsRef = useRef(() => {});
@@ -3836,6 +3844,47 @@ const TalariaV8bLive = () => {
     else if(targetKey === "rr_labelColor")  setRrStyle(s=>({...s, labelColor:  colorVal}));
     else updateSetting(targetKey, colorVal);
   };
+  cpApplyRef.current = cpApply;
+  cpPickerDragRef.current = { cpH, cpS, cpV, cpA, cpDragging, cpDragRect, colorPicker };
+
+  // Drag SV / hue / alpha via window listeners so no fullscreen portal sits above the picker and blocks DONE.
+  useEffect(() => {
+    if (!cpDragging || !cpDragRect) return;
+    const cap = { capture: true };
+    const onMove = (e) => {
+      const d = cpPickerDragRef.current;
+      const r = d.cpDragRect;
+      if (!r || !d.cpDragging) return;
+      if (d.cpDragging === "sv") {
+        const ns = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+        const nv = 1 - Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+        setCpS(ns);
+        setCpV(nv);
+        cpApplyRef.current(d.cpH, ns, nv, d.cpA, d.colorPicker);
+      } else if (d.cpDragging === "hue") {
+        const nh = Math.max(0, Math.min(360, ((e.clientX - r.left) / r.width) * 360));
+        setCpH(nh);
+        cpApplyRef.current(nh, d.cpS, d.cpV, d.cpA, d.colorPicker);
+      } else if (d.cpDragging === "alpha") {
+        const na = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+        setCpA(na);
+        cpApplyRef.current(d.cpH, d.cpS, d.cpV, na, d.colorPicker);
+      }
+    };
+    const onEnd = () => {
+      setCpDragging(null);
+      setCpDragRect(null);
+    };
+    window.addEventListener("pointermove", onMove, cap);
+    window.addEventListener("pointerup", onEnd, cap);
+    window.addEventListener("pointercancel", onEnd, cap);
+    return () => {
+      window.removeEventListener("pointermove", onMove, cap);
+      window.removeEventListener("pointerup", onEnd, cap);
+      window.removeEventListener("pointercancel", onEnd, cap);
+    };
+  }, [cpDragging, cpDragRect]);
+
   const indicatorData = [
     // Trend
     {id:"SMA",name:"Simple Moving Average",abbr:"SMA",cat:"trend",desc:"Smoothed average of closing prices over N periods"},
@@ -16380,30 +16429,6 @@ const TalariaV8bLive = () => {
           </div>
         </>;
       })()}
-      {cpDragging && typeof document !== "undefined" && createPortal(
-        <div
-          data-sdrop="1"
-          onMouseMove={(e)=>{
-            if(!cpDragRect) return;
-            if(cpDragging==='sv'){
-              const ns=Math.max(0,Math.min(1,(e.clientX-cpDragRect.left)/cpDragRect.width));
-              const nv=1-Math.max(0,Math.min(1,(e.clientY-cpDragRect.top)/cpDragRect.height));
-              setCpS(ns); setCpV(nv); cpApply(cpH,ns,nv,cpA);
-            } else if(cpDragging==='hue'){
-              const nh=Math.max(0,Math.min(360,((e.clientX-cpDragRect.left)/cpDragRect.width)*360));
-              setCpH(nh); cpApply(nh,cpS,cpV,cpA);
-            } else if(cpDragging==='alpha'){
-              const na=Math.max(0,Math.min(1,(e.clientX-cpDragRect.left)/cpDragRect.width));
-              setCpA(na); cpApply(cpH,cpS,cpV,na);
-            }
-          }}
-          onMouseUp={()=>{ setCpDragging(null); setCpDragRect(null); }}
-          onPointerUp={()=>{ setCpDragging(null); setCpDragRect(null); }}
-          onPointerCancel={()=>{ setCpDragging(null); setCpDragRect(null); }}
-          style={{position:"fixed",inset:0,zIndex:11200,cursor:cpDragging==='sv'?'crosshair':'ew-resize',touchAction:"none"}}
-        />,
-        document.body
-      )}
       {/* ── Go To Calendar sub-window ── */}
       {gotoCalOpen&&(()=>{
         const selDate=new Date(gotoNewDate+"T00:00:00");
