@@ -2623,7 +2623,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429c-click-ui";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429d-no-style-tip";
   }, []);
 
   useEffect(() => {
@@ -10213,7 +10213,7 @@ const TalariaV8bLive = () => {
           </TlBtn>
           <TlSep/>
           {/* btn 7: settings */}
-          <TlBtn id="tl-sett" isAct={tlSettOpen||closing.has("tlsett")} tip="Style"
+          <TlBtn id="tl-sett" isAct={tlSettOpen||closing.has("tlsett")}
             onClick={e=>{
               if (tlBarDrop) closeTlBarDrop();
               setColorPicker(null);
