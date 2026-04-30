@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { applyV9ThemeSettingsToChart } from "./v9ThemeSync.js";
 
 // ── Color utilities ──────────────────────────────────────────────────────────
@@ -462,6 +462,42 @@ function v9TlStylePatchFromDrawing(d) {
       : {}),
     ...v9CoordPatchFromDrawing(d),
     ...v9VisibilityPatchFromDrawing(d),
+  };
+}
+
+const V9_DEFAULT_TL_LINE_COLOR = "#8C8C8C";
+const V9_DEFAULT_TL_SHAPE_FILL = "rgba(74,106,255,0.15)";
+
+/** When the user switches armed drawing tools, merge chart.js saved defaults into V9 `tlStyle` so the next stroke does not inherit the previous tool's colors/fill. */
+function v9MergeHydratePatchFromLegacy(dm, legacy) {
+  const saved =
+    dm && typeof dm.getSavedToolStyle === "function"
+      ? dm.getSavedToolStyle(legacy) || {}
+      : {};
+  const strokeFallback =
+    saved.stroke || saved.color || saved.lineColor || V9_DEFAULT_TL_LINE_COLOR;
+  const styleForPatch = {
+    ...saved,
+    stroke: saved.stroke || strokeFallback,
+    color: saved.color || saved.stroke || strokeFallback,
+  };
+  const basePatch = v9TlStylePatchFromDrawing({ type: legacy, style: styleForPatch }) || {};
+  const fillRaw =
+    saved.fill !== undefined && saved.fill !== ""
+      ? saved.fill
+      : saved.backgroundColor !== undefined && saved.backgroundColor !== ""
+        ? saved.backgroundColor
+        : null;
+  const bgResolved =
+    basePatch.bgColor !== undefined
+      ? basePatch.bgColor
+      : fillRaw !== null && fillRaw !== ""
+        ? fillRaw
+        : V9_DEFAULT_TL_SHAPE_FILL;
+  return {
+    ...basePatch,
+    lineColor: basePatch.lineColor ?? strokeFallback,
+    bgColor: bgResolved,
   };
 }
 
@@ -5209,6 +5245,53 @@ const TalariaV8bLive = () => {
       console.warn("[V9 middle-line flush] failed:", err);
     }
   };
+
+  // When the armed legacy tool changes (e.g. Rectangle → Triangle), reload `tlStyle` from
+  // `drawingManager.getSavedToolStyle` *before* the forward bridge runs so we do not persist the
+  // previous tool's colors into the new tool's saved defaults.
+  const v9LastHydratedLegacyRef = useRef(null);
+  const [legacyHydrateNonce, setLegacyHydrateNonce] = useState(0);
+  useEffect(() => {
+    const onChartData = () => {
+      v9LastHydratedLegacyRef.current = null;
+      setLegacyHydrateNonce((n) => n + 1);
+    };
+    const onPanel = () => setLegacyHydrateNonce((n) => n + 1);
+    window.addEventListener("chartDataLoaded", onChartData);
+    window.addEventListener("panelSelected", onPanel);
+    return () => {
+      window.removeEventListener("chartDataLoaded", onChartData);
+      window.removeEventListener("panelSelected", onPanel);
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (editingDrawingRef.current) return;
+    const legacy = resolveLegacyTool();
+    if (!legacy) {
+      v9LastHydratedLegacyRef.current = null;
+      return;
+    }
+    if (v9LastHydratedLegacyRef.current === legacy) return;
+
+    let ch =
+      typeof window !== "undefined" && typeof window.getActiveChart === "function"
+        ? window.getActiveChart()
+        : window.chart;
+    let dm = ch && ch.drawingManager;
+    if (!dm && window.chart && window.chart !== ch) {
+      ch = window.chart;
+      dm = ch && ch.drawingManager;
+    }
+    if (!dm || typeof dm.getSavedToolStyle !== "function") return;
+
+    v9LastHydratedLegacyRef.current = legacy;
+    const mergePatch = v9MergeHydratePatchFromLegacy(dm, legacy);
+    flushSync(() => {
+      setTlStyle((prev) => ({ ...prev, ...mergePatch }));
+    });
+  }, [tool, groupSelected, legacyHydrateNonce]);
+
   // useLayoutEffect: apply drawing.style in the same frame as tlStyle (legacy TV panel mutates
   // synchronously on checkbox; late useEffect let the chart eat checkbox clicks and felt "unsynced").
   useLayoutEffect(() => {
