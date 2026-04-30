@@ -2623,7 +2623,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429e-rail-first-click";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429f-chrome-buttons";
   }, []);
 
   useEffect(() => {
@@ -2651,7 +2651,7 @@ const TalariaV8bLive = () => {
       // mousedown—extra renders before click and “needs many taps” symptoms on crowded stacks.
       if (
         el.closest("[data-sdrop]") ||
-        el.closest("[data-v9-rail]") ||
+        el.closest("[data-v9-chrome]") ||
         el.closest("#drawing-toolbar") ||
         el.closest(".drawing-toolbar") ||
         el.closest(".tlr-cp")
@@ -12288,7 +12288,7 @@ const TalariaV8bLive = () => {
           </div>
         );
       })()}
-      <div onMouseDown={(e) => e.stopPropagation()} style={{ height: 36, flexShrink: 0, background: c.sf, borderBottom: `1px solid rgba(140,160,255,0.22)`, display: "flex", alignItems: "center", padding: "0 10px", gap: 4 }}>
+      <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ height: 36, flexShrink: 0, background: c.sf, borderBottom: `1px solid rgba(140,160,255,0.22)`, display: "flex", alignItems: "center", padding: "0 10px", gap: 4 }}>
         {(()=>{ const logoActive = logoMenu || settingsOpen || profileOpen || faqOpen; return (
         <div onClick={(e) => { e.stopPropagation(); const was=logoMenu; closeAll(); if(!was) setLogoMenu(true); }}
           onMouseEnter={() => setHov("logo-btn")} onMouseLeave={() => setHov(null)}
@@ -12542,7 +12542,7 @@ const TalariaV8bLive = () => {
         ))}
       </div>
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        <div data-v9-rail="1" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 2, overflowY: "auto", overflowX: "hidden" }}>
+        <div data-v9-chrome="1" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ width: 36, flexShrink: 0, background: c.sf, borderRight: `1px solid rgba(140,160,255,0.22)`, display: "flex", flexDirection: "column", alignItems: "stretch", paddingTop: 2, overflowY: "auto", overflowX: "hidden" }}>
           {toolGroups.map((group, gi) => (
             <div key={gi} style={{ width: "100%" }}>
               {gi === toolGroups.length - 1 && <div style={{ height: 1, margin: "1px 6px", background: "rgba(140,160,255,0.18)" }}/>}
@@ -12577,7 +12577,7 @@ const TalariaV8bLive = () => {
             {hov==="sb-theme" && <div style={{ position:"absolute", left:"calc(100% + 10px)", top:"50%", transform:"translateY(-50%)",
               background:c.el, border:`1px solid ${c.brH}`, padding:"4px 10px", fontSize:12, fontWeight:600, fontFamily:F,
               color:c.tx, whiteSpace:"nowrap", zIndex:100, boxShadow:"0 4px 16px rgba(0,0,0,0.6)",
-              borderLeft:`2px solid ${c.brH}` }}>{darkMode ? "Light Mode" : "Dark Mode"}</div>}
+              borderLeft:`2px solid ${c.brH}`, pointerEvents:"none" }}>{darkMode ? "Light Mode" : "Dark Mode"}</div>}
             {hov==="sb-theme" && <div style={{ position:"absolute", left:3, top:"25%", bottom:"25%", width:1,
               background:`linear-gradient(180deg,transparent,`+c.hvLn+`,transparent)`, pointerEvents:"none", zIndex:2 }}/>}
           </div>
@@ -12658,7 +12658,7 @@ const TalariaV8bLive = () => {
           {/* V9 mock time axis row removed — chart.js draws times at the
               bottom of the canvas. */}
           {/* Status + Replay bar */}
-          <div data-sdrop="1" onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{height:36,flexShrink:0,background:c.sf,borderTop:`1px solid rgba(140,160,255,0.22)`,display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',padding:'0 10px',position:'relative'}}>
+          <div data-v9-chrome="1" data-sdrop="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{height:36,flexShrink:0,background:c.sf,borderTop:`1px solid rgba(140,160,255,0.22)`,display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',padding:'0 10px',position:'relative'}}>
             {/* Resize handle — at upper edge of replay bar, only when panel is open */}
             {btmOpen&&<div
               onPointerDown={(e)=>{
@@ -13253,7 +13253,7 @@ const TalariaV8bLive = () => {
               </div>
             </div>
           </div>
-          <div style={{ flexShrink:0, background:c.sf, borderTop:`1px solid ${c.brH}` }}>
+          <div data-v9-chrome="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{ flexShrink:0, background:c.sf, borderTop:`1px solid ${c.brH}` }}>
             {/* Tab bar — always visible outside the collapsing panel */}
             {(()=>{
               const ordTabs=[["all","All Trade",14],["pending","Pending",3],["open","Open Positions",4],["history","History",7],["analytics","Analytics",null]];
@@ -13639,7 +13639,7 @@ const TalariaV8bLive = () => {
             </div>
           </div>
         </div>
-        <div data-sdrop="1" onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{ width: (rightPanel || (orderPanelOpen && !panelDetached)) ? 336 : 0, flexShrink: 0, overflow: "hidden", transition: "width 0.2s ease" }}>
+        <div data-v9-chrome="1" data-sdrop="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{ width: (rightPanel || (orderPanelOpen && !panelDetached)) ? 336 : 0, flexShrink: 0, overflow: "hidden", transition: "width 0.2s ease" }}>
         {rightPanel ? (()=>{
           // lyLines: each variant is an array of internal {x1,y1,x2,y2} dividing lines (fractions 0-1)
           const lyLines = [
