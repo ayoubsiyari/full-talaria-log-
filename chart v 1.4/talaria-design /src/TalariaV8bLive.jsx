@@ -5011,54 +5011,72 @@ const TalariaV8bLive = () => {
   // JSON.stringify + setItem of the entire savedToolStyles map, which can
   // stall click handlers when the bridge fires on every dropdown change.
   const saveToolStyleTimer = useRef(null);
-  // Resolve live instances from dm.drawings (same list logic as the forward bridge).
-  const resolveV9BridgeSelectionList = (dm, tb) => {
-    const liveDrawing = (d) => {
-      if (!d || !Array.isArray(dm.drawings)) return d;
-      if (d.id != null) {
-        const found = dm.drawings.find((x) => x && x.id === d.id);
-        if (found) return found;
-      }
-      const byRef = dm.drawings.find((x) => x === d);
-      return byRef || d;
+  // Multi-chart: panel tiles use separate Chart + drawingManager instances. getActiveChart() can
+  // disagree with window.chart — patching only one dm leaves styles applied nowhere visible.
+  const enumerateV9DrawingManagers = () => {
+    const out = [];
+    const seen = new Set();
+    const add = (chart) => {
+      const dm = chart && chart.drawingManager;
+      if (!dm || seen.has(dm)) return;
+      seen.add(dm);
+      out.push(dm);
     };
-    const arr = [];
-    const fromPanel = editingDrawingRef.current && editingDrawingRef.current.drawing;
-    const panelLive = fromPanel ? liveDrawing(fromPanel) : null;
-    if (panelLive && !arr.includes(panelLive)) arr.push(panelLive);
-    if (tb && tb.currentDrawing) {
-      const cur = liveDrawing(tb.currentDrawing);
-      if (cur && !arr.includes(cur)) arr.push(cur);
-    }
-    if (Array.isArray(dm.selectedDrawings)) {
-      dm.selectedDrawings.forEach((d) => {
-        const ld = liveDrawing(d);
-        if (ld && !arr.includes(ld)) arr.push(ld);
-      });
-    }
-    if (dm.selectedDrawing) {
-      const sd = liveDrawing(dm.selectedDrawing);
-      if (sd && !arr.includes(sd)) arr.push(sd);
-    }
-    if (Array.isArray(dm.drawings)) {
-      dm.drawings.forEach((d) => {
-        if (!d || !d.selected) return;
-        const ld = liveDrawing(d);
-        if (ld && !arr.includes(ld)) arr.push(ld);
-      });
-    }
-    return arr;
+    if (typeof window === "undefined") return out;
+    try {
+      add(window.chart);
+      if (typeof window.getActiveChart === "function") add(window.getActiveChart());
+      const pm = window.panelManager;
+      if (pm && Array.isArray(pm.panels)) {
+        pm.panels.forEach((p) => add(p && p.chartInstance));
+      }
+    } catch (_) {}
+    return out;
   };
-  // Pointer-toggle alone was still flaky for some users — flush middle-line fields immediately so the
-  // SVG layer always matches tlStyle even if the layout-effect batch misses selection resolution.
+  const resolveLiveInDm = (dm, d) => {
+    if (!d || !dm || !Array.isArray(dm.drawings)) return null;
+    if (d.id != null) {
+      const found = dm.drawings.find((x) => x && x.id === d.id);
+      if (found) return found;
+    }
+    return dm.drawings.find((x) => x === d) || null;
+  };
+  const collectV9BridgeTargets = () => {
+    const targets = [];
+    const seenIds = new Set();
+    const pushPair = (dm, raw) => {
+      const live = resolveLiveInDm(dm, raw);
+      if (!live || !live.style) return;
+      const id = live.id;
+      if (id != null) {
+        if (seenIds.has(id)) return;
+        seenIds.add(id);
+      }
+      targets.push({ dm, d: live });
+    };
+
+    const refDr = editingDrawingRef.current && editingDrawingRef.current.drawing;
+    if (refDr) {
+      enumerateV9DrawingManagers().forEach((dm) => pushPair(dm, refDr));
+    }
+    enumerateV9DrawingManagers().forEach((dm) => {
+      const tb = dm.toolbar;
+      if (tb && tb.currentDrawing) pushPair(dm, tb.currentDrawing);
+      if (Array.isArray(dm.selectedDrawings)) {
+        dm.selectedDrawings.forEach((x) => pushPair(dm, x));
+      }
+      if (dm.selectedDrawing) pushPair(dm, dm.selectedDrawing);
+      if (Array.isArray(dm.drawings)) {
+        dm.drawings.forEach((x) => {
+          if (x && x.selected) pushPair(dm, x);
+        });
+      }
+    });
+    return targets;
+  };
+  // Pointer-toggle — flush middle-line fields immediately (same targets as full bridge).
   const flushV9MiddleLineToChart = (prevTl, nextMidLineOn) => {
     try {
-      const ch =
-        typeof window !== "undefined" && typeof window.getActiveChart === "function"
-          ? window.getActiveChart()
-          : window.chart;
-      const dm = ch && ch.drawingManager;
-      if (!dm) return;
       const midDashArr =
         prevTl.midLineType === "bold" ? "" : (V9_DASH_TO_LEGACY[prevTl.midLineType] ?? "");
       const midWidthNum = parseInt(prevTl.midLineWidth, 10) || 1;
@@ -5068,10 +5086,9 @@ const TalariaV8bLive = () => {
         middleLineWidth: midWidthNum,
         middleLineDash: midDashArr,
       };
-      const tb = dm.toolbar;
-      const selectionList = resolveV9BridgeSelectionList(dm, tb);
-      selectionList.forEach((d) => {
-        if (!d || !d.style) return;
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm, d }) => {
+        const tb = dm.toolbar;
         try {
           tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d);
         } catch (_) {}
@@ -5084,8 +5101,9 @@ const TalariaV8bLive = () => {
             dm.renderDrawing?.(d);
           } catch (_) {}
         }
+        if (dm.chart) chartsToRender.add(dm.chart);
       });
-      ch && ch.scheduleRender && ch.scheduleRender();
+      chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
     } catch (err) {
       console.warn("[V9 middle-line flush] failed:", err);
     }
@@ -5093,12 +5111,16 @@ const TalariaV8bLive = () => {
   // useLayoutEffect: apply drawing.style in the same frame as tlStyle (legacy TV panel mutates
   // synchronously on checkbox; late useEffect let the chart eat checkbox clicks and felt "unsynced").
   useLayoutEffect(() => {
-    // Must match getActiveChart() so panel charts / focus are not written to the wrong drawingManager.
-    const ch =
+    // Prefer focused tile; fall back to main chart if that instance is not ready yet.
+    let ch =
       typeof window !== "undefined" && typeof window.getActiveChart === "function"
         ? window.getActiveChart()
         : window.chart;
-    const dm = ch && ch.drawingManager;
+    let dm = ch && ch.drawingManager;
+    if (!dm && window.chart && window.chart !== ch) {
+      ch = window.chart;
+      dm = ch && ch.drawingManager;
+    }
     if (!dm) return;
     const legacyTool = resolveLegacyTool();
     if (!styleBridgeReady.current) { styleBridgeReady.current = true; return; }
@@ -5181,10 +5203,10 @@ const TalariaV8bLive = () => {
     // selection layer (handles + cached stroke) kept showing the old color
     // until the user deselected and reselected.
     try {
-      const tb = dm.toolbar;
-      const selectionList = resolveV9BridgeSelectionList(dm, tb);
-      selectionList.forEach((d) => {
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm, d }) => {
         if (!d || !d.style) return;
+        const tb = dm.toolbar;
         // Capture before state for undo (mirror legacy onBeforeUpdate).
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
         Object.assign(d.style, stylePatch);
@@ -5210,13 +5232,12 @@ const TalariaV8bLive = () => {
         } else {
           try { dm.renderDrawing?.(d); } catch (_) {}
         }
-        // Refresh axis highlights so price/time guides match new style.
         if (d.selected && typeof d.showAxisHighlights === 'function') {
           try { d.showAxisHighlights(); } catch (_) {}
         }
+        if (dm.chart) chartsToRender.add(dm.chart);
       });
-      // Force a chart re-render so the change is visible even when no selection.
-      ch && ch.scheduleRender && ch.scheduleRender();
+      chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
     } catch (err) { console.warn('[V9 style bridge] failed:', err); }
   }, [
     tlStyle.lineColor, tlStyle.lineWidth, tlStyle.lineType, tlStyle.bgColor,
