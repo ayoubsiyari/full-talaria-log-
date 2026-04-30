@@ -75,11 +75,10 @@ const V9_INFO_PROP_TO_LABEL = Object.fromEntries(
 );
 
 /** Sub-tool icon ids per left-rail group (matches `toolGroups` dd). Used to clamp stale `groupSelected` so the Shapes rail cannot show a Lines icon.
- * Arrow tools (`arrowMarker` … `arrowDn`) live in the Shapes menu but `drawingTypeToPanelGroup` maps their legacy types to group `trendline`; they must stay allowed there so `tlSubTool` does not fall back to plain `trendline` (wrong Style modal). */
+ * Arrow tools (`arrowMarker` … `arrowDn`) belong to group `rect` only (Shapes dropdown); chart arrow drawings map there so the Lines rail is not overwritten. */
 const V9_RAIL_ICONS_BY_GROUP = Object.freeze({
   trendline: new Set([
     "trendline", "hray", "hline", "vline", "ray", "extendedLine", "crossLine", "polyline", "pathTool", "curve", "doubleCurve",
-    "arrowMarker", "arrowLine", "arrowUp", "arrowDn",
   ]),
   rect: new Set(["rect", "triangle", "arcShape", "ellipse", "circle", "arrowMarker", "arrowLine", "arrowUp", "arrowDn"]),
   channel: new Set(["channel", "regressionCh", "flatChannel", "disjointCh", "pitchfork"]),
@@ -3074,15 +3073,15 @@ const TalariaV8bLive = () => {
         || type === 'xabcd-pattern' || type === 'head-shoulders'
         || type === 'abcd-pattern' || type === 'triangle-pattern'
         || type === 'three-drives' || type === 'cypher-pattern') return 'pattern';
-    if (['rectangle', 'rotated-rectangle', 'triangle', 'arc', 'ellipse', 'circle'].includes(type)) return 'rect';
+    if (['rectangle', 'rotated-rectangle', 'triangle', 'arc', 'ellipse', 'circle',
+         'arrow', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down'].includes(type)) return 'rect';
     if (['parallel-channel', 'regression-trend', 'flat-top-bottom',
          'disjoint-channel', 'pitchfork'].includes(type)) return 'channel';
     if (['brush', 'highlighter'].includes(type)) return 'brush2';
     if (['ruler', 'short-position', 'long-position', 'price-range',
          'date-range', 'date-and-price-range'].includes(type)) return 'measure';
     if (['trendline', 'horizontal', 'vertical', 'horizontal-ray', 'ray',
-         'extended-line', 'cross-line', 'polyline', 'path', 'curve', 'double-curve',
-         'arrow', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down'].includes(type)) {
+         'extended-line', 'cross-line', 'polyline', 'path', 'curve', 'double-curve'].includes(type)) {
       return 'trendline';
     }
     return null;
