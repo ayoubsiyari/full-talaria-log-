@@ -2623,7 +2623,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429h-rail-dd-split";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260429j-all-buttons-type-svg";
   }, []);
 
   useEffect(() => {
@@ -4005,7 +4005,7 @@ const TalariaV8bLive = () => {
     const isH = hk ? swHov === hk : false;
     const isP = hk ? swHov === hk + "_dn" : false;
     return (
-      <button
+      <button type="button"
         onClick={onClick}
         onMouseEnter={hk ? () => setSwHov(hk) : undefined}
         onMouseLeave={hk ? () => setSwHov(null) : undefined}
@@ -5068,12 +5068,14 @@ const TalariaV8bLive = () => {
             flex: 1, minWidth: 0, height: 32, display: "flex", alignItems: "center", justifyContent: "flex-end",
             background: act ? "rgba(74,106,255,0.08)" : h ? c.hv : "transparent",
             border: "none", cursor: "default", color: pressCol,
-            padding: 0, paddingRight: 4,
+            padding: 0, paddingLeft: 2, paddingRight: 4,
+            boxSizing: "border-box", touchAction: "manipulation",
             transition: "color 0.15s ease, background 0.12s", position: "relative", fontFamily: F,
           }}>
+          {/* pointer-events:none on icon so the whole <button type="button"> hit box counts — SVG paths alone miss gaps between strokes */}
           {t.id === "pinbar"
-            ? <span style={{display:"flex",transform:h&&!act?"rotate(-25deg) scale(1.15)":"scale(1)",transition:"transform 0.15s"}}><I n={act?"pinFill":"pin"} s={17} cl={pressCol}/></span>
-            : <I n={activeIcon} s={17} cl={pressCol}/>
+            ? <span style={{ display: "flex", flex: 1, width: "100%", minHeight: 32, alignItems: "center", justifyContent: "flex-end", pointerEvents: "none", transform: h && !act ? "rotate(-25deg) scale(1.15)" : "scale(1)", transition: "transform 0.15s" }}><I n={act ? "pinFill" : "pin"} s={17} cl={pressCol}/></span>
+            : <span style={{ display: "flex", flex: 1, width: "100%", minHeight: 32, alignItems: "center", justifyContent: "flex-end", pointerEvents: "none" }}><I n={activeIcon} s={17} cl={pressCol}/></span>
           }
         </button>
         {act && <div style={{ position: "absolute", left: 3, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg, transparent, ${accentCol}, transparent)`, boxShadow: `0 0 6px ${accentGlow}`, pointerEvents: "none", zIndex: 2 }}/>}
@@ -5083,6 +5085,7 @@ const TalariaV8bLive = () => {
         {t.dd ? (
           <button
             type="button"
+            aria-label="Open tool menu"
             onPointerDown={(e) => e.stopPropagation()}
             onMouseEnter={() => setHov(t.id + "-arr")}
             onMouseLeave={() => setHov(null)}
@@ -5092,19 +5095,19 @@ const TalariaV8bLive = () => {
               openDd(e.currentTarget.parentElement);
             }}
             style={{
-              width: 10, height: 32, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+              width: 14, minWidth: 14, height: 32, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
               background: hArr ? "rgba(255,255,255,0.06)" : "transparent",
               border: "none", cursor: "default",
-              padding: 0,
+              padding: "0 2px", boxSizing: "border-box", touchAction: "manipulation",
               transition: "background 0.12s", fontFamily: F,
               zIndex: 2,
             }}>
-            <svg width={5} height={5} viewBox="320 -720 296 480" preserveAspectRatio="xMaxYMid meet" fill={arrCol} style={{transition:"fill 0.12s"}}>
+            <svg width={5} height={5} viewBox="320 -720 296 480" preserveAspectRatio="xMaxYMid meet" fill={arrCol} style={{ transition: "fill 0.12s", pointerEvents: "none", display: "block" }}>
               <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>
             </svg>
           </button>
         ) : (
-          <div style={{ width: 10, height: 32, flexShrink: 0, pointerEvents: "none" }} aria-hidden />
+          <div style={{ width: 14, height: 32, flexShrink: 0, pointerEvents: "none" }} aria-hidden />
         )}
         {h && !ddOpen && !t.dd && <div style={{ position: "absolute", left: "calc(100% + 10px)", top: "50%", transform: "translateY(-50%)", background: c.el, border: `1px solid ${c.brH}`, padding: "4px 10px", fontSize: 12, fontWeight: 600, fontFamily: F, color: c.tx, whiteSpace: "nowrap", zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.6)", borderLeft: `2px solid ${act ? accentCol : c.brH}`, pointerEvents: "none" }}>{t.label}</div>}
       </div>
@@ -5203,7 +5206,7 @@ const TalariaV8bLive = () => {
   }, [rollback, darkMode, c.gn, c.rd]);
 
   return (
-    <div style={{ width: "100%", height: "100dvh", background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
+    <div data-v9-app="1" style={{ width: "100%", height: "100dvh", background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
       onClick={(e) => {
         // Never run closeAll on bubbled clicks from children — it ran after every button/dropdown
         // handler and cleared state in the same tick (felt like “dead clicks”, many taps needed).
@@ -5211,6 +5214,9 @@ const TalariaV8bLive = () => {
         closeAll();
       }}>
       <style>{`
+        /* Full-button hit targets (not just SVG ink). Portals render under body — scope is page-wide in this shell. */
+        button { touch-action: manipulation; box-sizing: border-box; }
+        button svg { pointer-events: none; }
         @keyframes tlrWinIn  { from { opacity:0; transform:translate(-50%,-50%) scale(0.97) translateY(7px); } to { opacity:1; transform:translate(-50%,-50%) scale(1) translateY(0); } }
         @keyframes tlrWinOut { from { opacity:1; transform:translate(-50%,-50%) scale(1) translateY(0); } to { opacity:0; transform:translate(-50%,-50%) scale(0.97) translateY(7px); } }
         @keyframes tlrDropIn  { from { opacity:0; transform:translateY(-6px) scale(0.98); } to { opacity:1; transform:translateY(0) scale(1); } }
@@ -5408,7 +5414,7 @@ const TalariaV8bLive = () => {
                 {tlTabs.map(([id,lbl])=>{
                   const isAct=tlSettTab===id;
                   return (
-                    <button key={id} onClick={e=>{e.stopPropagation();setTlSettTab(id);setTlStyleDrop(null);}}
+                    <button type="button" key={id} onClick={e=>{e.stopPropagation();setTlSettTab(id);setTlStyleDrop(null);}}
                       onMouseEnter={()=>setHov(`tlTab-${id}`)} onMouseLeave={()=>{ setHov(null); setBtnPressed(null); }}
                       onPointerDown={()=>setBtnPressed(`tlTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
                       style={{ flex:1, padding:"10px 4px", border:"none", fontFamily:F, cursor:"default",
@@ -5981,7 +5987,7 @@ const TalariaV8bLive = () => {
                                              color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                                   <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                                     {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                      <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.01).toFixed(2))).toFixed(2)}:l)}));}}
+                                      <button type="button" key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.01).toFixed(2))).toFixed(2)}:l)}));}}
                                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                         style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                                  display:"flex", alignItems:"center", justifyContent:"center",
@@ -6240,7 +6246,7 @@ const TalariaV8bLive = () => {
                                            color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                                 <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                                   {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                    <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
+                                    <button type="button" key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
                                       onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                       style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                                display:"flex", alignItems:"center", justifyContent:"center",
@@ -6716,7 +6722,7 @@ const TalariaV8bLive = () => {
                                      color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                           <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                             {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                              <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, fibTzLevels: s.fibTzLevels.map((l,j)=>j===idx?{...l,value:String(Math.max(1,+l.value+delta))}:l)}));}}
+                              <button type="button" key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, fibTzLevels: s.fibTzLevels.map((l,j)=>j===idx?{...l,value:String(Math.max(1,+l.value+delta))}:l)}));}}
                                 onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                 style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                          display:"flex", alignItems:"center", justifyContent:"center",
@@ -6821,7 +6827,7 @@ const TalariaV8bLive = () => {
                                        color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                             <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                               {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [stateKey]: s[stateKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
+                                <button type="button" key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [stateKey]: s[stateKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
                                   onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                   style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                            display:"flex", alignItems:"center", justifyContent:"center",
@@ -7109,7 +7115,7 @@ const TalariaV8bLive = () => {
                                      color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                           <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                             {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                              <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, fibLevels: s.fibLevels.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
+                              <button type="button" key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, fibLevels: s.fibLevels.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
                                 onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                 style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                          display:"flex", alignItems:"center", justifyContent:"center",
@@ -7194,7 +7200,7 @@ const TalariaV8bLive = () => {
                                  color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                       <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                         {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                          <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [levelKey]: s[levelKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
+                          <button type="button" key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [levelKey]: s[levelKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)}));}}
                             onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                             style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                      display:"flex", alignItems:"center", justifyContent:"center",
@@ -7373,7 +7379,7 @@ const TalariaV8bLive = () => {
                                  color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                       <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                         {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                          <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s,[key]:{...s[key],value:(Math.max(0,+(+(s[key]?.value??"2.00")+delta*0.01).toFixed(2))).toFixed(2)}}));}}
+                          <button type="button" key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s,[key]:{...s[key],value:(Math.max(0,+(+(s[key]?.value??"2.00")+delta*0.01).toFixed(2))).toFixed(2)}}));}}
                             onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                             style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                      display:"flex", alignItems:"center", justifyContent:"center",
@@ -7557,7 +7563,7 @@ const TalariaV8bLive = () => {
                              outline:"none", boxSizing:"border-box", fontVariantNumeric:"tabular-nums" }}/>
                   <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                     {[[+1,"▲"],[- 1,"▼"]].map(([delta,chr],i)=>(
-                      <button key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
+                      <button type="button" key={i} onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                         style={{ flex:1, width:18, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                  display:"flex", alignItems:"center", justifyContent:"center",
@@ -8059,7 +8065,7 @@ const TalariaV8bLive = () => {
             {txtTabs.map(([id,lbl])=>{
               const isAct=txtSettTab===id;
               return (
-                <button key={id} onClick={e=>{e.stopPropagation();setTxtSettTab(id);setTxtSizeOpen(false);}}
+                <button type="button" key={id} onClick={e=>{e.stopPropagation();setTxtSettTab(id);setTxtSizeOpen(false);}}
                   onMouseEnter={()=>setHov(`txtTab-${id}`)} onMouseLeave={()=>{setHov(null);setBtnPressed(null);}}
                   onPointerDown={()=>setBtnPressed(`txtTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
                   style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
@@ -8429,7 +8435,7 @@ const TalariaV8bLive = () => {
                             outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                   <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                     {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                      <button key={i} onClick={e=>{e.stopPropagation();setTxtStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
+                      <button type="button" key={i} onClick={e=>{e.stopPropagation();setTxtStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                         style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                 display:"flex",alignItems:"center",justifyContent:"center",
@@ -8817,7 +8823,7 @@ const TalariaV8bLive = () => {
                       outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
             <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
               {[[1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                <button key={i} onClick={e=>{e.stopPropagation();if(!disabled)setVwapStyle(s=>({...s,[valKey]:Math.max(0.1,+(+s[valKey]+delta)).toFixed(1)}));}}
+                <button type="button" key={i} onClick={e=>{e.stopPropagation();if(!disabled)setVwapStyle(s=>({...s,[valKey]:Math.max(0.1,+(+s[valKey]+delta)).toFixed(1)}));}}
                   onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                   style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                           display:"flex",alignItems:"center",justifyContent:"center",
@@ -8866,7 +8872,7 @@ const TalariaV8bLive = () => {
               {tabs.map(([id,lbl])=>{
                 const isAct=vwapSettTab===id;
                 return(
-                  <button key={id} onClick={e=>{e.stopPropagation();setVwapSettTab(id);setVwapStyleDrop(null);}}
+                  <button type="button" key={id} onClick={e=>{e.stopPropagation();setVwapSettTab(id);setVwapStyleDrop(null);}}
                     onMouseEnter={()=>setHov(`vwapTab-${id}`)} onMouseLeave={()=>{setHov(null);setBtnPressed(null);}}
                     onPointerDown={()=>setBtnPressed(`vwapTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
                     style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
@@ -9008,7 +9014,7 @@ const TalariaV8bLive = () => {
                               outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                     <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                       {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button key={i} onClick={e=>{e.stopPropagation();setVwapStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
+                        <button type="button" key={i} onClick={e=>{e.stopPropagation();setVwapStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                   display:"flex",alignItems:"center",justifyContent:"center",
@@ -9193,7 +9199,7 @@ const TalariaV8bLive = () => {
                       outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
             <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
               {[[1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                <button key={i} onClick={e=>{e.stopPropagation();setVpStyle(s=>({...s,[valKey]:String(Math.max(minVal,Math.min(maxVal,+s[valKey]+delta)))}));}}
+                <button type="button" key={i} onClick={e=>{e.stopPropagation();setVpStyle(s=>({...s,[valKey]:String(Math.max(minVal,Math.min(maxVal,+s[valKey]+delta)))}));}}
                   onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                   style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                           display:"flex",alignItems:"center",justifyContent:"center",
@@ -9242,7 +9248,7 @@ const TalariaV8bLive = () => {
               {tabs.map(([id,lbl])=>{
                 const isAct=vpSettTab===id;
                 return(
-                  <button key={id} onClick={e=>{e.stopPropagation();setVpSettTab(id);setVpStyleDrop(null);}}
+                  <button type="button" key={id} onClick={e=>{e.stopPropagation();setVpSettTab(id);setVpStyleDrop(null);}}
                     onMouseEnter={()=>setHov(`vpTab-${id}`)} onMouseLeave={()=>{setHov(null);setBtnPressed(null);}}
                     onPointerDown={()=>setBtnPressed(`vpTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
                     style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
@@ -9385,7 +9391,7 @@ const TalariaV8bLive = () => {
                               outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                     <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                       {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button key={i} onClick={e=>{e.stopPropagation();setVpStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
+                        <button type="button" key={i} onClick={e=>{e.stopPropagation();setVpStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                   display:"flex",alignItems:"center",justifyContent:"center",
@@ -9574,7 +9580,7 @@ const TalariaV8bLive = () => {
                       outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
             <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
               {[[1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                <button key={i} onClick={e=>{e.stopPropagation();setAvStyle(s=>({...s,[valKey]:String(Math.max(minVal,Math.min(maxVal,+s[valKey]+delta)))}));}}
+                <button type="button" key={i} onClick={e=>{e.stopPropagation();setAvStyle(s=>({...s,[valKey]:String(Math.max(minVal,Math.min(maxVal,+s[valKey]+delta)))}));}}
                   onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                   style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                           display:"flex",alignItems:"center",justifyContent:"center",
@@ -9623,7 +9629,7 @@ const TalariaV8bLive = () => {
               {tabs.map(([id,lbl])=>{
                 const isAct=avSettTab===id;
                 return(
-                  <button key={id} onClick={e=>{e.stopPropagation();setAvSettTab(id);setAvStyleDrop(null);}}
+                  <button type="button" key={id} onClick={e=>{e.stopPropagation();setAvSettTab(id);setAvStyleDrop(null);}}
                     onMouseEnter={()=>setHov(`avTab-${id}`)} onMouseLeave={()=>{setHov(null);setBtnPressed(null);}}
                     onPointerDown={()=>setBtnPressed(`avTab-${id}`)} onPointerUp={()=>setBtnPressed(null)}
                     style={{flex:1,padding:"10px 4px",border:"none",fontFamily:F,cursor:"default",
@@ -9758,7 +9764,7 @@ const TalariaV8bLive = () => {
                               outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
                     <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
                       {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                        <button key={i} onClick={e=>{e.stopPropagation();setAvStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
+                        <button type="button" key={i} onClick={e=>{e.stopPropagation();setAvStyle(s=>({...s,[k]:type==="price"?(+s[k]+delta*0.00001).toFixed(5):String(+s[k]+delta)}));}}
                           onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                           style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                                   display:"flex",alignItems:"center",justifyContent:"center",
@@ -10383,7 +10389,7 @@ const TalariaV8bLive = () => {
                     transform: btnPressed===`dd-${i}` ? "scale(0.97)" : "scale(1)",
                   }}>
                   {isSelected && <div style={{position:"absolute",left:0,top:"10%",bottom:"10%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 4px ${c.acG}`}}/>}
-                  <button
+                  <button type="button"
                     onClick={(e) => {
                       const ch =
                         typeof window.getActiveChart === "function"
@@ -11046,7 +11052,7 @@ const TalariaV8bLive = () => {
               const accent=tabAccent(id);
               const cnt=tabCount(id);
               return (
-                <button key={id} onClick={()=>setIndCat(id)}
+                <button type="button" key={id} onClick={()=>setIndCat(id)}
                   onMouseEnter={()=>setSwHov(`indTab-${id}`)} onMouseLeave={()=>setSwHov(null)}
                   style={{flex:1,padding:"8px 2px",border:"none",fontFamily:F,cursor:"default",
                     color: isAct ? accent : (id==="active" ? c.gn : id==="pinned" ? c.gold : swHov===`indTab-${id}` ? c.tx : c.ts),
@@ -11442,8 +11448,8 @@ const TalariaV8bLive = () => {
           </div>
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:6,flexShrink:0}}>
-            <button onClick={()=>animClose(setSettingsOpen,"settings")} onMouseEnter={()=>setSwHov("settCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="settCancel"?c.tx:c.ts,background:swHov==="settCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="settCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
-            <button onClick={()=>animClose(setSettingsOpen,"settings")} onMouseEnter={()=>setSwHov("settOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="settOk"?`linear-gradient(135deg,${c.acL},${c.ac})`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="settOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
+            <button type="button" onClick={()=>animClose(setSettingsOpen,"settings")} onMouseEnter={()=>setSwHov("settCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="settCancel"?c.tx:c.ts,background:swHov==="settCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="settCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
+            <button type="button" onClick={()=>animClose(setSettingsOpen,"settings")} onMouseEnter={()=>setSwHov("settOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="settOk"?`linear-gradient(135deg,${c.acL},${c.ac})`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="settOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
           </div>
         </div>
       )}
@@ -11466,7 +11472,7 @@ const TalariaV8bLive = () => {
             {profTabs.map(([id,label])=>{
               const isA = profileTab===id;
               return (
-                <button key={id} onClick={()=>setProfileTab(id)}
+                <button type="button" key={id} onClick={()=>setProfileTab(id)}
                   onMouseEnter={()=>setSwHov(`profTab-${id}`)} onMouseLeave={()=>setSwHov(null)}
                   style={{flex:1,padding:"8px 0",border:"none",fontFamily:F,cursor:"default",
                     color:isA?c.acL:swHov===`profTab-${id}`?c.tx:c.ts,
@@ -11518,7 +11524,7 @@ const TalariaV8bLive = () => {
                       <input autoFocus value={profileName} onChange={(e)=>setProfileName(e.target.value.slice(0,40))}
                         onKeyDown={(e)=>{if(e.key==="Enter"||e.key==="Escape"){setProfileNameEdit(false);setSwHov(null);}}}
                         style={{...pwInputSx,flex:1}}/>
-                      <button
+                      <button type="button"
                         onClick={()=>{setProfileNameEdit(false);setSwHov(null);}}
                         onMouseEnter={()=>setSwHov("pn-save")} onMouseLeave={()=>setSwHov(null)}
                         onMouseDown={()=>setSwHov("pn-save_dn")} onMouseUp={()=>setSwHov("pn-save")}
@@ -11533,7 +11539,7 @@ const TalariaV8bLive = () => {
                   ) : (
                     <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
                       <span style={{fontSize:13,fontWeight:700,color:c.tx}}>{profileName}</span>
-                      <button
+                      <button type="button"
                         onClick={()=>setProfileNameEdit(true)}
                         onMouseEnter={()=>setSwHov("pn-edit")} onMouseLeave={()=>setSwHov(null)}
                         onMouseDown={()=>setSwHov("pn-edit_dn")} onMouseUp={()=>setSwHov("pn-edit")}
@@ -11654,7 +11660,7 @@ const TalariaV8bLive = () => {
                   <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 12px",borderBottom:i<arr.length-1?`1px solid ${c.br}`:"none"}}>
                     <span style={{fontSize:13,color:c.ts}}>{d}</span>
                     <span style={{fontSize:13,fontWeight:700,color:c.gn}}>{a}</span>
-                    <button onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
+                    <button type="button" onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
                       style={{height:20,padding:"0 9px",cursor:"default",fontFamily:F,fontSize:11,fontWeight:700,letterSpacing:"0.04em",
                         color:isH?"#fff":c.acL,
                         background:isH?`linear-gradient(135deg,${c.ac},${c.acL})`:"transparent",
@@ -11670,7 +11676,7 @@ const TalariaV8bLive = () => {
           {/* Footer */}
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",justifyContent:"flex-end",alignItems:"center",gap:4,flexShrink:0}}>
-            {profileTab==="account" && <button
+            {profileTab==="account" && <button type="button"
               onMouseEnter={()=>setSwHov("prof-logout")} onMouseLeave={()=>setSwHov(null)}
               onMouseDown={()=>setSwHov("prof-logout_dn")} onMouseUp={()=>setSwHov("prof-logout")}
               style={{marginRight:"auto",height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,
@@ -11681,8 +11687,8 @@ const TalariaV8bLive = () => {
                 transition:"background 0.12s,border-color 0.12s,transform 0.08s"}}>
               Log Out
             </button>}
-            <button onClick={()=>animClose(setProfileOpen,"profile")} onMouseEnter={()=>setSwHov("profCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="profCancel"?c.tx:c.ts,background:swHov==="profCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="profCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
-            <button onClick={()=>animClose(setProfileOpen,"profile")} onMouseEnter={()=>setSwHov("profOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="profOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="profOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
+            <button type="button" onClick={()=>animClose(setProfileOpen,"profile")} onMouseEnter={()=>setSwHov("profCancel")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,color:swHov==="profCancel"?c.tx:c.ts,background:swHov==="profCancel"?"rgba(255,255,255,0.07)":c.hv2,border:`1px solid ${swHov==="profCancel"?"rgba(140,160,255,0.45)":"rgba(140,160,255,0.22)"}`,transition:"background 0.12s,border-color 0.12s,color 0.12s"}}>Cancel</button>
+            <button type="button" onClick={()=>animClose(setProfileOpen,"profile")} onMouseEnter={()=>setSwHov("profOk")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="profOk"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="profOk"?`0 0 10px ${c.acG}`:"none"}}>OK</button>
           </div>
         </div>
         );
@@ -11704,7 +11710,7 @@ const TalariaV8bLive = () => {
             {faqTabs.map(([id,label])=>{
               const isA=faqCat===id;
               return (
-              <button key={id} onClick={()=>{setFaqCat(id);setFaqExpand(null);}}
+              <button type="button" key={id} onClick={()=>{setFaqCat(id);setFaqExpand(null);}}
                 onMouseEnter={()=>setSwHov(`faqTab-${id}`)} onMouseLeave={()=>setSwHov(null)}
                 style={{flex:1,padding:"8px 0",border:"none",fontFamily:F,cursor:"default",
                   color:isA?c.acL:swHov===`faqTab-${id}`?c.tx:c.ts,
@@ -11755,7 +11761,7 @@ const TalariaV8bLive = () => {
                     support@talaria.io
                   </a>
                 </div>
-                <button
+                <button type="button"
                   onMouseEnter={()=>setSwHov("faq-more")} onMouseLeave={()=>setSwHov(null)}
                   onMouseDown={()=>setSwHov("faq-more_dn")} onMouseUp={()=>setSwHov("faq-more")}
                   style={{height:28,padding:"0 4px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",gap:6,cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,background:"none",border:"none",
@@ -11832,7 +11838,7 @@ const TalariaV8bLive = () => {
                   </div>
                 ))}
               </div>
-              <button
+              <button type="button"
                 onMouseEnter={()=>setSwHov("edu-all")} onMouseLeave={()=>setSwHov(null)}
                 onMouseDown={()=>setSwHov("edu-all_dn")} onMouseUp={()=>setSwHov("edu-all")}
                 style={{width:"100%",height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",gap:6,cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,
@@ -11896,7 +11902,7 @@ const TalariaV8bLive = () => {
               </div>
               <div style={{display:"flex",gap:4}}>
                 {[["about-docs","Documentation"],["about-support","Contact Support"]].map(([hk,label])=>(
-                  <button key={hk}
+                  <button type="button" key={hk}
                     onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
                     onMouseDown={()=>setSwHov(hk+"_dn")} onMouseUp={()=>setSwHov(hk)}
                     style={{flex:1,height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:600,
@@ -11913,7 +11919,7 @@ const TalariaV8bLive = () => {
           {/* Footer */}
           <div style={{height:1,background:c.br,flexShrink:0}}/>
           <div style={{padding:"8px 14px",display:"flex",justifyContent:"flex-end",gap:4,flexShrink:0}}>
-            <button onClick={()=>animClose(setFaqOpen,"faq")} onMouseEnter={()=>setSwHov("faqClose")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="faqClose"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="faqClose"?`0 0 10px ${c.acG}`:"none"}}>Close</button>
+            <button type="button" onClick={()=>animClose(setFaqOpen,"faq")} onMouseEnter={()=>setSwHov("faqClose")} onMouseLeave={()=>setSwHov(null)} style={{height:28,padding:"0 14px",display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",cursor:"default",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:swHov==="faqClose"?`linear-gradient(135deg,${c.acL},#6A8AFF)`:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"1px solid rgba(74,106,255,0.5)",WebkitFontSmoothing:"antialiased",transition:"background 0.12s,border-color 0.12s",boxShadow:swHov==="faqClose"?`0 0 10px ${c.acG}`:"none"}}>Close</button>
           </div>
         </div>
         );
@@ -12081,7 +12087,7 @@ const TalariaV8bLive = () => {
             ].map(({label,hk,act,primary})=>{
               const isH=swHov===hk, isDn=swHov===hk+"_dn";
               return (
-                <button key={hk} onClick={act}
+                <button type="button" key={hk} onClick={act}
                   onMouseEnter={()=>setSwHov(hk)} onMouseLeave={()=>setSwHov(null)}
                   onMouseDown={()=>setSwHov(hk+"_dn")} onMouseUp={()=>setSwHov(hk)}
                   style={{height:28,padding:"0 18px",display:"flex",alignItems:"center",justifyContent:"center",
@@ -12321,7 +12327,7 @@ const TalariaV8bLive = () => {
         </div>
         ); })()}
         <div style={{ width: 1, height: 16, margin: "0 3px 0 0", background: "rgba(140,160,255,0.18)" }}/>
-        <button onClick={(e) => { e.stopPropagation(); const was=symbolOpen; closeAll(); if(!was) setSymbolOpen(true); }} onMouseEnter={() => setHov("symbol")} onMouseLeave={() => setHov(null)}
+        <button type="button" onClick={(e) => { e.stopPropagation(); const was=symbolOpen; closeAll(); if(!was) setSymbolOpen(true); }} onMouseEnter={() => setHov("symbol")} onMouseLeave={() => setHov(null)}
           style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 8px", background: symbolOpen ? "rgba(74,106,255,0.08)" : hov==="symbol" ? c.hv : "transparent", border: "none", color: symbolOpen ? c.acL : hov==="symbol" ? c.tx : c.ts, cursor: "default", fontSize: 14, fontWeight: 700, fontFamily: F, position: "relative", width: 128, flexShrink: 0, transition: "color 0.12s, background 0.12s" }}>
           <div style={{ display: "flex", alignItems: "center", position: "relative", width: 32, height: 14, flexShrink: 0 }}>
             {currentSymbol.type==="forex" ? <>
@@ -12337,7 +12343,7 @@ const TalariaV8bLive = () => {
           {hov==="symbol" && !symbolOpen && <div style={{ position: "absolute", bottom: -1, left: "15%", right: "15%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: "rgba(140,160,255,0.18)" }}/>
-        <button onClick={(e) => { e.stopPropagation(); const was=chartTypeOpen; closeAll(); if(!was) { const r=e.currentTarget.getBoundingClientRect(); setChartTypeDropL(r.left/Z); setChartTypeOpen(true); } }} onMouseEnter={() => setHov("chartType")} onMouseLeave={() => setHov(null)}
+        <button type="button" onClick={(e) => { e.stopPropagation(); const was=chartTypeOpen; closeAll(); if(!was) { const r=e.currentTarget.getBoundingClientRect(); setChartTypeDropL(r.left/Z); setChartTypeOpen(true); } }} onMouseEnter={() => setHov("chartType")} onMouseLeave={() => setHov(null)}
           style={{ padding: "3px 7px", display: "flex", alignItems: "center", gap: 4, position: "relative", background: chartTypeOpen ? "rgba(74,106,255,0.08)" : hov==="chartType" ? c.hv : "transparent", border: "none", fontFamily: F, color: chartTypeOpen ? c.acL : hov==="chartType" ? c.tx : c.ts, fontSize: currentChartType.label==="Hollow Candles" ? 11 : 13, fontWeight: 600, cursor: "default", width: 136, flexShrink: 0, transition: "background 0.12s, color 0.12s" }}>
           <I n={currentChartType.icon} s={18} cl={chartTypeOpen ? c.acL : hov==="chartType" ? c.tx : c.ts}/><span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentChartType.label}</span>
           <div style={{transform:chartTypeOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s ease",lineHeight:0,flexShrink:0}}>
@@ -12347,7 +12353,7 @@ const TalariaV8bLive = () => {
           {hov==="chartType" && !chartTypeOpen && <div style={{ position: "absolute", bottom: -1, left: "15%", right: "15%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: "rgba(140,160,255,0.18)" }}/>
-        <button onClick={(e) => { e.stopPropagation(); if(indOpen){animClose(setIndOpen,"ind");setIndSearch("");}else{closeWindows();setSettingsOpen(false);setIndOpen(true);} }} onMouseEnter={() => setHov("indicators")} onMouseLeave={() => setHov(null)}
+        <button type="button" onClick={(e) => { e.stopPropagation(); if(indOpen){animClose(setIndOpen,"ind");setIndSearch("");}else{closeWindows();setSettingsOpen(false);setIndOpen(true);} }} onMouseEnter={() => setHov("indicators")} onMouseLeave={() => setHov(null)}
           style={{ padding: "3px 8px", display: "flex", alignItems: "center", gap: 4, background: indOpen ? "rgba(74,106,255,0.08)" : hov==="indicators" ? c.hv : "transparent", border: "none", fontFamily: F, color: indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts, fontSize: 13, fontWeight: indOpen ? 700 : 600, cursor: "default", position: "relative", transition: "background 0.12s, color 0.12s" }}>
           <I n="indicator" s={15} cl={indOpen ? c.acL : hov==="indicators" ? c.tx : c.ts}/>Indicators
           {indOpen && <div style={{ position: "absolute", bottom: -1, left: "10%", right: "10%", height: 2, background: `linear-gradient(90deg, transparent, ${c.acL}, transparent)`, boxShadow: `0 0 6px ${c.acG}` }}/>}
@@ -12356,7 +12362,7 @@ const TalariaV8bLive = () => {
         <div style={{ width: 1, height: 16, margin: "0 4px", background: "rgba(140,160,255,0.18)" }}/>
         <div style={{ display: "flex", gap: 0, alignItems: "center" }}>
           <div style={{ position: "relative" }}>
-            <button onClick={(e) => { e.stopPropagation(); const was=tfOpen; setDropdown(null); setSymbolSearch(""); setTfCat(null); setTfUnitOpen(false); setSDrop(null); setSettDrop(null); if(logoMenu)closePopup(setLogoMenu,"logoMenu");if(replayOpts)closePopup(setReplayOpts,"replayOpts");if(gotoOpen)closePopup(setGotoOpen,"goto");if(symbolOpen)closePopup(setSymbolOpen,"symbol");if(chartTypeOpen)closePopup(setChartTypeOpen,"chartType"); if(was){closePopup(setTfOpen,"tf");}else{setTfOpen(true);setTfEditMode(false);} }} onMouseEnter={() => setHov("tf-more")} onMouseLeave={() => setHov(null)}
+            <button type="button" onClick={(e) => { e.stopPropagation(); const was=tfOpen; setDropdown(null); setSymbolSearch(""); setTfCat(null); setTfUnitOpen(false); setSDrop(null); setSettDrop(null); if(logoMenu)closePopup(setLogoMenu,"logoMenu");if(replayOpts)closePopup(setReplayOpts,"replayOpts");if(gotoOpen)closePopup(setGotoOpen,"goto");if(symbolOpen)closePopup(setSymbolOpen,"symbol");if(chartTypeOpen)closePopup(setChartTypeOpen,"chartType"); if(was){closePopup(setTfOpen,"tf");}else{setTfOpen(true);setTfEditMode(false);} }} onMouseEnter={() => setHov("tf-more")} onMouseLeave={() => setHov(null)}
               style={{ padding: "4px 5px", position: "relative", background: tfOpen ? "rgba(74,106,255,0.08)" : hov==="tf-more" ? c.hv : "transparent", border: "none", fontFamily: F, cursor: "default", display: "flex", alignItems: "center", transition: "background 0.12s" }}>
               <div style={{transform:tfOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform 0.2s ease",lineHeight:0}}>
                 <svg width={10} height={6} viewBox="0 0 10 6"><path d="M1,1 L5,5 L9,1" stroke={tfOpen ? c.acL : hov==="tf-more" ? c.tx : c.ts} strokeWidth={1.8} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -12397,7 +12403,7 @@ const TalariaV8bLive = () => {
                               background:isAct?c.acD:isRowHov?"rgba(255,255,255,0.025)":"transparent",
                               transition:"background 0.1s"}}>
                             {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                            <button onClick={(e)=>{e.stopPropagation();setTf(t);}}
+                            <button type="button" onClick={(e)=>{e.stopPropagation();setTf(t);}}
                               style={{flex:1,background:"transparent",border:"none",cursor:"default",
                                 color:isAct?c.acL:c.ts,fontSize:13,fontWeight:isAct?700:500,
                                 fontFamily:F,textAlign:"left",padding:0}}>
@@ -12484,7 +12490,7 @@ const TalariaV8bLive = () => {
                     </div>
                     );
                   })()}
-                  <button onClick={addCustomTf}
+                  <button type="button" onClick={addCustomTf}
                     onMouseEnter={()=>setSwHov("tf-add")} onMouseLeave={()=>setSwHov(null)}
                     onMouseDown={()=>setSwHov("tf-add_dn")} onMouseUp={()=>setSwHov("tf-add")}
                     style={{width:22,height:22,position:"relative",boxSizing:"border-box",cursor:"default",
@@ -12507,7 +12513,7 @@ const TalariaV8bLive = () => {
           </div>
           <div ref={tfBarRef} style={{ display:"flex", alignItems:"center", position:"relative" }}>
             {[...new Set([...tfPinned, tf])].sort((a,b)=>{const uO={m:0,H:1,D:2,W:3,M:4};const uA=a.replace(/[0-9]/g,""),uB=b.replace(/[0-9]/g,"");return uO[uA]!==uO[uB]?uO[uA]-uO[uB]:parseInt(a)-parseInt(b);}).map((t) => (
-              <button key={t} data-tf={t} onClick={(e) => { e.stopPropagation(); setTf(t); }} onMouseEnter={() => setHov(`tf-${t}`)} onMouseLeave={() => setHov(null)}
+              <button type="button" key={t} data-tf={t} onClick={(e) => { e.stopPropagation(); setTf(t); }} onMouseEnter={() => setHov(`tf-${t}`)} onMouseLeave={() => setHov(null)}
                 style={{ padding: "4px 7px", position: "relative", background: tf===t ? "rgba(74,106,255,0.08)" : hov===`tf-${t}` ? c.hv : "transparent", border: "none", fontFamily: F, color: tf===t ? c.acL : hov===`tf-${t}` ? c.tx : c.ts, fontSize: 12, fontWeight: tf===t ? 700 : 500, cursor: "default", transition: "background 0.12s, color 0.12s" }}>
                 {t}
                 {hov===`tf-${t}` && tf!==t && <div style={{ position: "absolute", bottom: -1, left: "25%", right: "25%", height: 1, background: `linear-gradient(90deg, transparent, `+c.hvLn+`, transparent)` }}/>}
@@ -12524,7 +12530,7 @@ const TalariaV8bLive = () => {
           </div>
         </div>
         <div style={{ flex: 1 }}/>
-        <button onClick={(e) => { e.stopPropagation(); setRightPanel(null); setOrderPanelOpen(prev => !prev); }}
+        <button type="button" onClick={(e) => { e.stopPropagation(); setRightPanel(null); setOrderPanelOpen(prev => !prev); }}
           onMouseEnter={() => setHov("place-order")} onMouseLeave={() => setHov(null)}
           onMouseDown={() => setHov("place-order_dn")} onMouseUp={() => setHov("place-order")}
           style={{
@@ -12544,7 +12550,7 @@ const TalariaV8bLive = () => {
         </button>
         <div style={{ width: 1, height: 16, margin: "0 2px", background: c.br }}/>
         {[{id:"layout",icon:"layout",label:"Layout"},{id:"layers",icon:"tree",label:"Objects Tree"},{id:"news",icon:"news",label:"News"},{id:"screenshot",icon:"screenshot",label:"Screenshot"},{id:"expand",icon:"expand",label:"Fullscreen"}].map(({id,icon,label}) => (
-          <button key={id} onClick={(e) => { if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} } if(id==="layout"){ e.stopPropagation(); if(rightPanel==="layout"){setRightPanel(null);}else{setRightPanel("layout");setOrderPanelOpen(false);} } if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); } if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} } if(id==="expand"){ e.stopPropagation(); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }}} onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
+          <button type="button" key={id} onClick={(e) => { if(id==="news"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="news"){setRightPanel(null);}else{setRightPanel("news");setOrderPanelOpen(false);} } if(id==="layout"){ e.stopPropagation(); if(rightPanel==="layout"){setRightPanel(null);}else{setRightPanel("layout");setOrderPanelOpen(false);} } if(id==="screenshot"){ e.stopPropagation(); closeWindows(); setSettingsOpen(false); if(chartCanvasRef.current){const r=chartCanvasRef.current.getBoundingClientRect();setCanvasDims({w:Math.round(r.width),h:Math.round(r.height)});} setScreenshotFlash(true); setTimeout(()=>setScreenshotOpen(true),260); } if(id==="layers"){ e.stopPropagation(); setSettingsOpen(false); if(rightPanel==="layers"){setRightPanel(null);}else{setRightPanel("layers");setOrderPanelOpen(false);} } if(id==="expand"){ e.stopPropagation(); if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}else{document.exitFullscreen().catch(()=>{});} }}} onMouseEnter={e=>{setHov(`u-${id}`);showTip(label,e.currentTarget,"bottom");}} onMouseLeave={()=>{setHov(null);hideTip();}}
             style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "default", position: "relative",
               background: (() => { const isActive = (id==="news"&&rightPanel==="news") || (id==="layers"&&rightPanel==="layers") || (id==="layout"&&rightPanel==="layout") || (id==="expand"&&isFullscreen); return isActive ? "rgba(74,106,255,0.10)" : hov===`u-${id}` ? c.hv : "transparent"; })(),
               transition: "background 0.12s" }}>
@@ -12739,7 +12745,7 @@ const TalariaV8bLive = () => {
             <div style={{width:1,height:16,background:"rgba(140,160,255,0.18)",margin:"0 4px 0 0",flexShrink:0}}/>
             {/* Settings / Mode */}
             <div style={{position:"relative"}}>
-              <button onClick={(e)=>{e.stopPropagation();if(replayOpts){closePopup(setReplayOpts,"replayOpts");}else{if(gotoOpen){closePopup(setGotoOpen,"goto");setGotoAddType(null);}setReplayOpts(true);}}}
+              <button type="button" onClick={(e)=>{e.stopPropagation();if(replayOpts){closePopup(setReplayOpts,"replayOpts");}else{if(gotoOpen){closePopup(setGotoOpen,"goto");setGotoAddType(null);}setReplayOpts(true);}}}
                 onMouseEnter={()=>setHov("rp-mode")} onMouseLeave={()=>setHov(null)}
                 style={{padding:"4px 5px",position:"relative",background:replayOpts?"rgba(74,106,255,0.08)":hov==="rp-mode"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",color:replayOpts?c.acL:hov==="rp-mode"?c.tx:c.ts,transition:"color 0.15s ease,background 0.12s"}}>
                 <I n="config" s={18} cl="currentColor"/>
@@ -12751,7 +12757,7 @@ const TalariaV8bLive = () => {
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                   <div style={{padding:"6px 10px 2px",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.08em"}}>MODE</div>
                   {[{id:"tick",l:"Tick by Tick"},{id:"candle",l:"Candle by Candle"}].map(({id,l})=>{const isA=replayMode===id;return(
-                    <button key={id} onClick={(e)=>{e.stopPropagation();setReplayMode(id);}}
+                    <button type="button" key={id} onClick={(e)=>{e.stopPropagation();setReplayMode(id);}}
                       onMouseEnter={()=>setHov(`rm-${id}`)} onMouseLeave={()=>setHov(null)}
                       style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"5px 10px",background:isA?c.acD:hov===`rm-${id}`?c.hv2:"transparent",border:"none",cursor:"default",fontFamily:F,transition:"background 0.1s",position:"relative"}}>
                       {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
@@ -12778,7 +12784,7 @@ const TalariaV8bLive = () => {
             {/* Play / Pause — wired to chart.replaySystem.
                 When replay isn't yet active, open the V9 cut-line so the
                 user picks a start point (legacy UX, V9 visuals). */}
-            <button onClick={(e)=>{
+            <button type="button" onClick={(e)=>{
                 e.stopPropagation();
                 const rs = getReplaySystem();
                 if (rs && !rs.isActive) {
@@ -12825,7 +12831,7 @@ const TalariaV8bLive = () => {
             {/* Next candle (step forward) — if replay isn't active, open
                 the V9 cut-line for the user to pick a start. Otherwise
                 step forward via replaySystem.requestStepForward. */}
-            <button
+            <button type="button"
               onClick={(e)=>{
                 e.stopPropagation();
                 const rs = getReplaySystem();
@@ -12846,7 +12852,7 @@ const TalariaV8bLive = () => {
             {/* Rollback (cut) — always uses the V9-styled cut-line overlay.
                 The overlay's click handler computes the candle timestamp
                 and drives replaySystem.startReplayAtIndex / goToReplayTimestamp. */}
-            <button onClick={(e)=>{
+            <button type="button" onClick={(e)=>{
                 e.stopPropagation();
                 const opening=!rollback;
                 if(opening)closeAll();
@@ -12860,7 +12866,7 @@ const TalariaV8bLive = () => {
             </button>
             {/* Goto */}
             <div style={{position:"relative"}}>
-              <button onClick={(e)=>{e.stopPropagation();if(gotoOpen){closePopup(setGotoOpen,"goto");setGotoAddType(null);}else{if(replayOpts){closePopup(setReplayOpts,"replayOpts");}setGotoOpen(true);setGotoTab("pinned");}}}
+              <button type="button" onClick={(e)=>{e.stopPropagation();if(gotoOpen){closePopup(setGotoOpen,"goto");setGotoAddType(null);}else{if(replayOpts){closePopup(setReplayOpts,"replayOpts");}setGotoOpen(true);setGotoTab("pinned");}}}
                 onMouseEnter={e=>{setHov("rp-goto");showTip("Go To",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
                 style={{padding:"4px 5px",position:"relative",background:gotoOpen?"rgba(74,106,255,0.08)":hov==="rp-goto"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",color:gotoOpen?c.acL:hov==="rp-goto"?c.tx:c.ts,transition:"color 0.15s ease,background 0.12s"}}>
                 <I n="goto" s={19} cl="currentColor"/>
@@ -12899,7 +12905,7 @@ const TalariaV8bLive = () => {
                       const accent=tabAccentGoto(id);
                       const cnt=id==="pinned"?gotoItems.filter(x=>x.pinned).length:id==="preset"?gotoPresets.length:null;
                       return(
-                        <button key={id} onClick={e=>{e.stopPropagation();setGotoTab(id);if(id==="create"){setGotoAddType("datetime");const d=new Date(gotoNewDate+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}else setGotoAddType(null);}}
+                        <button type="button" key={id} onClick={e=>{e.stopPropagation();setGotoTab(id);if(id==="create"){setGotoAddType("datetime");const d=new Date(gotoNewDate+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}else setGotoAddType(null);}}
                           style={{flex:1,padding:"9px 4px",border:"none",background:"transparent",fontFamily:F,cursor:"default",
                             color:isA?accent:id==="pinned"?c.gold:c.ts,
                             fontSize:14,fontWeight:isA?700:500,
@@ -13052,7 +13058,7 @@ const TalariaV8bLive = () => {
                           {crTabs.map(({t,l})=>{
                             const isA=gotoAddType===t;
                             return(
-                              <button key={t} onClick={e=>{e.stopPropagation();setGotoAddType(t);setGotoCalOpen(false);setGotoTimeOpen(false);if(t==="datetime"){const d=new Date(gotoNewDate+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}}}
+                              <button type="button" key={t} onClick={e=>{e.stopPropagation();setGotoAddType(t);setGotoCalOpen(false);setGotoTimeOpen(false);if(t==="datetime"){const d=new Date(gotoNewDate+"T00:00:00");setGotoCalViewY(d.getFullYear());setGotoCalViewM(d.getMonth());}}}
                                 style={{flex:1,padding:"8px 4px",border:"none",background:"transparent",fontFamily:F,cursor:"default",
                                   color:isA?c.acL:c.ts,fontSize:13,fontWeight:isA?700:500,
                                   transition:"color 0.15s",whiteSpace:"nowrap"}}>
@@ -13171,11 +13177,11 @@ const TalariaV8bLive = () => {
                                 </div>
                               </div>
                               <div style={{display:"flex",gap:6}}>
-                                <button onClick={e=>{e.stopPropagation();const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});const auto=`${d.getDate()} ${mon} ${d.getFullYear()}`;doAdd({type:"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
+                                <button type="button" onClick={e=>{e.stopPropagation();const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});const auto=`${d.getDate()} ${mon} ${d.getFullYear()}`;doAdd({type:"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
                                   style={{flex:1,padding:"7px 0",background:"transparent",border:`1px solid ${c.acL}`,color:c.acL,fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em",transition:"background 0.12s"}}>
                                   Add
                                 </button>
-                                <button onClick={e=>{e.stopPropagation();const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});const auto=`${d.getDate()} ${mon} ${d.getFullYear()}`;doAddAndGo({type:"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
+                                <button type="button" onClick={e=>{e.stopPropagation();const d=new Date(gotoNewDate+"T00:00:00");const mon=d.toLocaleString("en",{month:"short"});const auto=`${d.getDate()} ${mon} ${d.getFullYear()}`;doAddAndGo({type:"datetime",label:gotoNewName||auto,time:gotoNewTime,repeat:gotoNewRepeat});}}
                                   style={{flex:1,padding:"7px 0",background:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"none",color:"#fff",fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em"}}>
                                   Go
                                 </button>
@@ -13199,20 +13205,20 @@ const TalariaV8bLive = () => {
                                     onClick={e=>e.stopPropagation()}
                                     style={{...iSt,flex:1,width:"auto",border:"none",background:"transparent",fontVariantNumeric:"tabular-nums"}}/>
                                   <div style={{display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
-                                    <button onClick={e=>{e.stopPropagation();spinPrice(1);}} style={spinSx}
+                                    <button type="button" onClick={e=>{e.stopPropagation();spinPrice(1);}} style={spinSx}
                                       onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}>▲</button>
                                     <div style={{height:1,background:c.br}}/>
-                                    <button onClick={e=>{e.stopPropagation();spinPrice(-1);}} style={spinSx}
+                                    <button type="button" onClick={e=>{e.stopPropagation();spinPrice(-1);}} style={spinSx}
                                       onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}>▼</button>
                                   </div>
                                 </div>
                               </div>
                               <div style={{display:"flex",gap:6}}>
-                                <button onClick={e=>{e.stopPropagation();if(!gotoNewPrice)return;doAdd({type:"price",label:gotoNewName||parseFloat(gotoNewPrice).toFixed(decimals)});setGotoNewPrice("");}}
+                                <button type="button" onClick={e=>{e.stopPropagation();if(!gotoNewPrice)return;doAdd({type:"price",label:gotoNewName||parseFloat(gotoNewPrice).toFixed(decimals)});setGotoNewPrice("");}}
                                   style={{flex:1,padding:"7px 0",background:"transparent",border:`1px solid ${c.acL}`,color:c.acL,fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em",transition:"background 0.12s"}}>
                                   Add
                                 </button>
-                                <button onClick={e=>{e.stopPropagation();if(!gotoNewPrice)return;doAddAndGo({type:"price",label:gotoNewName||parseFloat(gotoNewPrice).toFixed(decimals)});setGotoNewPrice("");}}
+                                <button type="button" onClick={e=>{e.stopPropagation();if(!gotoNewPrice)return;doAddAndGo({type:"price",label:gotoNewName||parseFloat(gotoNewPrice).toFixed(decimals)});setGotoNewPrice("");}}
                                   style={{flex:1,padding:"7px 0",background:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"none",color:"#fff",fontSize:12,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.03em"}}>
                                   Go
                                 </button>
@@ -14499,7 +14505,7 @@ const TalariaV8bLive = () => {
           {/* 3 — BUY / SELL */}
           <div style={{ display:"flex", flexShrink:0, position:"relative" }}>
             {["BUY","SELL"].map((s,i) => { const a=buySell===s.toLowerCase(); const col=s==="BUY"?c.gn:c.rd; const isH=swHov===`bs-${s}`; return (
-              <button key={s} onClick={()=>setBuySell(s.toLowerCase())}
+              <button type="button" key={s} onClick={()=>setBuySell(s.toLowerCase())}
                 onMouseEnter={()=>setSwHov(`bs-${s}`)} onMouseLeave={()=>setSwHov(null)}
                 style={{ flex:1, height:34, border:"none", borderRight:i===0?"1px solid rgba(140,160,255,0.08)":"none", position:"relative",
                          background:a?(s==="BUY"?c.gnD:c.rdD):isH?(s==="BUY"?"rgba(0,212,161,0.06)":"rgba(255,80,104,0.06)"):"transparent",
@@ -14520,7 +14526,7 @@ const TalariaV8bLive = () => {
           {/* 4 — Order type */}
           <div style={{ borderBottom:"1px solid rgba(140,160,255,0.12)", display:"flex", position:"relative", flexShrink:0 }}>
             {["Market","Limit","Stop"].map((t) => { const a=orderType===t.toLowerCase(); const isH=swHov===`ot-${t}`; return (
-              <button key={t} onClick={()=>setOrderType(t.toLowerCase())}
+              <button type="button" key={t} onClick={()=>setOrderType(t.toLowerCase())}
                 onMouseEnter={()=>setSwHov(`ot-${t}`)} onMouseLeave={()=>setSwHov(null)}
                 style={{ flex:1, height:26, background:isH&&!a?c.hv2:"transparent", border:"none", color:a?c.acL:isH?c.tx:c.ts, fontSize:10, fontWeight:a?700:600, fontFamily:F, cursor:"default", transition:"color 0.12s, background 0.12s", letterSpacing:"0.01em" }}>
                 {t}
@@ -16197,7 +16203,7 @@ const TalariaV8bLive = () => {
           color:isSel?"#fff":isH?c.acL:c.ts,
           transition:"background 0.08s,color 0.08s"});
         const NavBtn=({onClick,label})=>(
-          <button onClick={e=>{e.stopPropagation();onClick();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"0 7px",fontSize:16,fontFamily:F,lineHeight:1}}>{label}</button>
+          <button type="button" onClick={e=>{e.stopPropagation();onClick();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"0 7px",fontSize:16,fontFamily:F,lineHeight:1}}>{label}</button>
         );
         return(
         <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:gotoCalPos.top,left:gotoCalPos.left,zIndex:9200,width:224,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 12px 40px rgba(0,0,0,0.8),0 0 14px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.12s ease both"}}>
@@ -16310,10 +16316,10 @@ const TalariaV8bLive = () => {
         const setMn=v=>{setGotoNewTime(String(tH).padStart(2,"0")+":"+String(v).padStart(2,"0"));setGotoTimeInput(fmtTI(tH,v));};
         const SpinCol=({val,onUp,onDn})=>(
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
-            <button onClick={e=>{e.stopPropagation();onUp();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"1px 7px",fontFamily:F,fontSize:11,lineHeight:1,transition:"color 0.1s"}}
+            <button type="button" onClick={e=>{e.stopPropagation();onUp();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"1px 7px",fontFamily:F,fontSize:11,lineHeight:1,transition:"color 0.1s"}}
               onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}>▲</button>
             <div style={{fontSize:14,fontWeight:700,color:c.tx,fontVariantNumeric:"tabular-nums",minWidth:22,textAlign:"center"}}>{val}</div>
-            <button onClick={e=>{e.stopPropagation();onDn();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"1px 7px",fontFamily:F,fontSize:11,lineHeight:1,transition:"color 0.1s"}}
+            <button type="button" onClick={e=>{e.stopPropagation();onDn();}} style={{background:"transparent",border:"none",color:c.ts,cursor:"default",padding:"1px 7px",fontFamily:F,fontSize:11,lineHeight:1,transition:"color 0.1s"}}
               onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}>▼</button>
           </div>
         );
@@ -16325,7 +16331,7 @@ const TalariaV8bLive = () => {
             <span style={{fontSize:14,fontWeight:700,color:c.ts,marginBottom:2}}>:</span>
             <SpinCol val={String(tMn).padStart(2,"0")} onUp={()=>setMn((tMn+1)%60)} onDn={()=>setMn((tMn-1+60)%60)}/>
             {use12&&(
-              <button onClick={e=>{e.stopPropagation();setH(isPM?tH-12:tH+12);}}
+              <button type="button" onClick={e=>{e.stopPropagation();setH(isPM?tH-12:tH+12);}}
                 style={{marginLeft:1,padding:"3px 5px",background:isPM?"rgba(74,106,255,0.15)":"rgba(140,160,255,0.06)",
                   border:`1px solid ${isPM?c.acL:c.br}`,color:isPM?c.acL:c.ts,cursor:"default",
                   fontSize:10,fontWeight:700,fontFamily:F,letterSpacing:"0.04em",lineHeight:1,transition:"all 0.12s"}}>
@@ -16334,7 +16340,7 @@ const TalariaV8bLive = () => {
             )}
           </div>
           <div style={{padding:"3px 8px 7px"}}>
-            <button onClick={e=>{e.stopPropagation();setGotoTimeOpen(false);}} style={{width:"100%",padding:"4px 0",background:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"none",color:"#fff",fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.04em"}}>Done</button>
+            <button type="button" onClick={e=>{e.stopPropagation();setGotoTimeOpen(false);}} style={{width:"100%",padding:"4px 0",background:`linear-gradient(135deg,${c.ac},${c.acL})`,border:"none",color:"#fff",fontSize:10,fontWeight:700,fontFamily:F,cursor:"default",letterSpacing:"0.04em"}}>Done</button>
           </div>
         </div>
         );
